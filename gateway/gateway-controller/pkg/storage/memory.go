@@ -495,7 +495,7 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 			cs.apiKeysByAPI[apiKey.APIId] = make(map[string]*models.APIKey)
 		}
 
-		// Store by API key value
+		// Store API key by API ID and API key ID
 		cs.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
 	}
 
@@ -531,6 +531,25 @@ func (cs *ConfigStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 		result = append(result, apiKey)
 	}
 	return result, nil
+}
+
+// CountActiveAPIKeysByUserAndAPI counts active API keys for a specific user and API
+func (cs *ConfigStore) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
+	if !exists {
+		return 0, nil
+	}
+
+	count := 0
+	for _, apiKey := range apiKeys {
+		if apiKey.CreatedBy == userID && apiKey.Status == models.APIKeyStatusActive {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // GetAPIKeyByName retrieves an API key by its apiId and name

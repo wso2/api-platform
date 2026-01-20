@@ -128,7 +128,7 @@ const (
 	// API Key constants
 	APIKeyPrefix    = "apip_"
 	APIKeyLen       = 32 // Length of the random part of the API key in bytes
-	APIKeySeparator = "."
+	APIKeySeparator = "_"
 
 	// HashingAlgorithm constants
 	HashingAlgorithmSHA256   = "sha256"

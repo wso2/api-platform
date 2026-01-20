@@ -111,9 +111,12 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Human-readable name for the API key
     name TEXT NOT NULL,
     
-    -- The generated API key
+    -- The generated API key (hashed)
     api_key TEXT NOT NULL UNIQUE,
     
+    -- Masked version of the API key for display purposes
+    masked_api_key TEXT NOT NULL,
+
     -- API reference
     apiId TEXT NOT NULL,
 

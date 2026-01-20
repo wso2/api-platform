@@ -221,11 +221,10 @@ gateway_controller:
   # Used to hash API keys before storing/comparing them
   # By default, API keys hashing is enabled with SHA-256 algorithm
   # Supported algorithms: "sha256", "bcrypt", "argon2id"
-  # We recommend using a strong hashing algorithm like argon2id for production deployments
-  # if `api_key_hashing.enabled` is set to false, API keys will be stored and compared in plain text (not recommended for production)
-  api_key_hashing:
-    # Enable or disable API key hashing
-    enabled: true
+  # By default a user can have up to 10 API keys per API
+  api_key:
+    # Number of API keys allowed per user per API
+    api_keys_per_user_per_api: 10
     # Hashing algorithm: "sha256", "bcrypt", "argon2id"
     algorithm: sha256
 

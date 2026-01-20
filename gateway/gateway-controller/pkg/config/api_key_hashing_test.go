@@ -24,60 +24,60 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
-func TestValidateAPIKeyHashingConfig(t *testing.T) {
+func TestValidateAPIKeyConfig(t *testing.T) {
 	tests := []struct {
-		name        string
-		enabled     bool
-		algorithm   string
-		expectError bool
+		name                 string
+		apiKeysPerUserPerAPI int
+		algorithm            string
+		expectError          bool
 	}{
 		{
-			name:        "hashing disabled",
-			enabled:     false,
-			algorithm:   "",
-			expectError: false,
+			name:                 "no hashing (empty algorithm)",
+			apiKeysPerUserPerAPI: 10,
+			algorithm:            "",
+			expectError:          false,
 		},
 		{
-			name:        "hashing disabled with algorithm set",
-			enabled:     false,
-			algorithm:   constants.HashingAlgorithmSHA256,
-			expectError: false,
+			name:                 "valid SHA256 algorithm",
+			apiKeysPerUserPerAPI: 5,
+			algorithm:            constants.HashingAlgorithmSHA256,
+			expectError:          false,
 		},
 		{
-			name:        "hashing enabled without algorithm - should default to SHA256",
-			enabled:     true,
-			algorithm:   "",
-			expectError: false,
+			name:                 "valid bcrypt algorithm",
+			apiKeysPerUserPerAPI: 15,
+			algorithm:            constants.HashingAlgorithmBcrypt,
+			expectError:          false,
 		},
 		{
-			name:        "hashing enabled with valid SHA256 algorithm",
-			enabled:     true,
-			algorithm:   constants.HashingAlgorithmSHA256,
-			expectError: false,
+			name:                 "valid Argon2id algorithm",
+			apiKeysPerUserPerAPI: 20,
+			algorithm:            constants.HashingAlgorithmArgon2ID,
+			expectError:          false,
 		},
 		{
-			name:        "hashing enabled with valid bcrypt algorithm",
-			enabled:     true,
-			algorithm:   constants.HashingAlgorithmBcrypt,
-			expectError: false,
+			name:                 "invalid algorithm",
+			apiKeysPerUserPerAPI: 10,
+			algorithm:            "invalid-algorithm",
+			expectError:          true,
 		},
 		{
-			name:        "hashing enabled with valid Argon2id algorithm",
-			enabled:     true,
-			algorithm:   constants.HashingAlgorithmArgon2ID,
-			expectError: false,
+			name:                 "case-insensitive valid algorithm",
+			apiKeysPerUserPerAPI: 10,
+			algorithm:            "SHA256", // uppercase
+			expectError:          false,
 		},
 		{
-			name:        "hashing enabled with invalid algorithm",
-			enabled:     true,
-			algorithm:   "invalid-algorithm",
-			expectError: true,
+			name:                 "zero api keys per user per api",
+			apiKeysPerUserPerAPI: 0,
+			algorithm:            constants.HashingAlgorithmSHA256,
+			expectError:          true,
 		},
 		{
-			name:        "hashing enabled with case-insensitive valid algorithm",
-			enabled:     true,
-			algorithm:   "SHA256", // uppercase
-			expectError: false,
+			name:                 "negative api keys per user per api",
+			apiKeysPerUserPerAPI: -1,
+			algorithm:            constants.HashingAlgorithmSHA256,
+			expectError:          true,
 		},
 	}
 
@@ -86,14 +86,14 @@ func TestValidateAPIKeyHashingConfig(t *testing.T) {
 			// Create a minimal config with API key hashing settings
 			config := &Config{
 				GatewayController: GatewayController{
-					APIKeyHashing: APIKeyHashingConfig{
-						Enabled:   tt.enabled,
-						Algorithm: tt.algorithm,
+					APIKey: APIKeyConfig{
+						APIKeysPerUserPerAPI: tt.apiKeysPerUserPerAPI,
+						Algorithm:            tt.algorithm,
 					},
 				},
 			}
 
-			err := config.validateAPIKeyHashingConfig()
+			err := config.validateAPIKeyConfig()
 
 			if tt.expectError {
 				if err == nil {

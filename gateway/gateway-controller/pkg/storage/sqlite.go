@@ -174,11 +174,12 @@ func (s *SQLiteStorage) initSchema() error {
 		}
 
 		if version == 4 {
-			// Add API keys table
+			// Add API keys table with masked_api_key column
 			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS api_keys (
 				id TEXT PRIMARY KEY,
 				name TEXT NOT NULL,
 				api_key TEXT NOT NULL UNIQUE,
+				masked_api_key TEXT NOT NULL,
 				apiId TEXT NOT NULL,
 				operations TEXT NOT NULL DEFAULT '*',
 				status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
@@ -211,7 +212,7 @@ func (s *SQLiteStorage) initSchema() error {
 			if _, err := s.db.Exec("PRAGMA user_version = 5"); err != nil {
 				return fmt.Errorf("failed to set schema version to 5: %w", err)
 			}
-			s.logger.Info("Schema migrated to version 5 (api_keys table)")
+			s.logger.Info("Schema migrated to version 5 (api_keys table with masked_api_key)")
 			version = 5
 		}
 
@@ -1132,15 +1133,16 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		// No existing record, insert new API key
 		insertQuery := `
 			INSERT INTO api_keys (
-				id, name, api_key, apiId, operations, status,
+				id, name, api_key, masked_api_key, apiId, operations, status,
 				created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 
 		_, err := tx.Exec(insertQuery,
 			apiKey.ID,
 			apiKey.Name,
 			apiKey.APIKey,
+			apiKey.MaskedAPIKey,
 			apiKey.APIId,
 			apiKey.Operations,
 			apiKey.Status,
@@ -1170,12 +1172,13 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		// Existing record found, update it with new API key data
 		updateQuery := `
 			UPDATE api_keys 
-			SET api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?
+			SET api_key = ?, masked_api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?
 			WHERE apiId = ? AND name = ?
 		`
 
 		_, err := tx.Exec(updateQuery,
 			apiKey.APIKey,
+			apiKey.MaskedAPIKey,
 			apiKey.Operations,
 			apiKey.Status,
 			apiKey.CreatedBy,
@@ -1214,7 +1217,7 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 // GetAPIKeyByID retrieves an API key by its ID
 func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE id = ?
@@ -1227,6 +1230,7 @@ func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		&apiKey.ID,
 		&apiKey.Name,
 		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
 		&apiKey.Operations,
 		&apiKey.Status,
@@ -1254,7 +1258,7 @@ func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 // GetAPIKeyByKey retrieves an API key by its key value
 func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE api_key = ?
@@ -1267,6 +1271,7 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 		&apiKey.ID,
 		&apiKey.Name,
 		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
 		&apiKey.Operations,
 		&apiKey.Status,
@@ -1294,7 +1299,7 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 // GetAPIKeysByAPI retrieves all API keys for a specific API
 func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE apiId = ?
@@ -1317,6 +1322,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 			&apiKey.ID,
 			&apiKey.Name,
 			&apiKey.APIKey,
+			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,
 			&apiKey.Operations,
 			&apiKey.Status,
@@ -1348,7 +1354,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 // GetAPIKeysByAPIAndName retrieves an API key by its apiId and name
 func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE apiId = ? AND name = ?
@@ -1362,6 +1368,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIK
 		&apiKey.ID,
 		&apiKey.Name,
 		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
 		&apiKey.Operations,
 		&apiKey.Status,
@@ -1609,7 +1616,7 @@ func isAPIKeyUniqueConstraintError(err error) bool {
 // GetAllAPIKeys retrieves all API keys from the database
 func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE status = 'active'
@@ -1632,6 +1639,7 @@ func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 			&apiKey.ID,
 			&apiKey.Name,
 			&apiKey.APIKey,
+			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,
 			&apiKey.Operations,
 			&apiKey.Status,
@@ -1682,4 +1690,21 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 	}
 
 	return nil
+}
+
+// CountActiveAPIKeysByUserAndAPI counts active API keys for a specific user and API
+func (s *SQLiteStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM api_keys 
+		WHERE apiId = ? AND created_by = ? AND status = ?
+	`
+
+	var count int
+	err := s.db.QueryRow(query, apiId, userID, models.APIKeyStatusActive).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count active API keys for user %s and API %s: %w", userID, apiId, err)
+	}
+
+	return count, nil
 }

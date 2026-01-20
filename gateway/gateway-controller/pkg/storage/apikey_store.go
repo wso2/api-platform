@@ -38,7 +38,7 @@ import (
 // APIKeyStore manages API keys in memory with thread-safe operations
 type APIKeyStore struct {
 	mu              sync.RWMutex
-	apiKeys         map[string]*models.APIKey            // key: API key ID
+	apiKeys         map[string]*models.APIKey            // key: configID:APIKeyName → Value: *APIKey
 	apiKeysByAPI    map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
 	resourceVersion int64
 	logger          *zap.Logger
@@ -71,16 +71,17 @@ func (s *APIKeyStore) Store(apiKey *models.APIKey) error {
 		}
 	}
 
+	compositeKey := GetCompositeKey(apiKey.APIId, apiKey.Name)
 	if existingKeyID != "" {
 		// Handle both rotation and generation scenarios for existing key name
-		delete(s.apiKeys, existingKeyID)
+		delete(s.apiKeys, compositeKey)
 		delete(s.apiKeysByAPI[apiKey.APIId], existingKeyID)
 		// Store the new key (could be same ID with new value, or new ID entirely)
-		s.apiKeys[apiKey.ID] = apiKey
+		s.apiKeys[compositeKey] = apiKey
 		s.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
 	} else {
 		// Store the API key
-		s.apiKeys[apiKey.ID] = apiKey
+		s.apiKeys[compositeKey] = apiKey
 		s.addToAPIMapping(apiKey)
 	}
 
@@ -105,38 +106,37 @@ func (s *APIKeyStore) GetAll() []*models.APIKey {
 }
 
 // Revoke marks an API key as revoked by finding it through hash comparison
-func (s *APIKeyStore) Revoke(apiId, apiKeyID, plainAPIKeyValue string) bool {
+func (s *APIKeyStore) Revoke(apiId, apiKeyName string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	apiKey, exists := s.apiKeys[apiKeyID]
+	compositeKey := GetCompositeKey(apiId, apiKeyName)
+
+	apiKey, exists := s.apiKeys[compositeKey]
 	if !exists {
 		s.logger.Debug("API key ID not found for revocation",
 			zap.String("api_id", apiId),
-			zap.String("api_key_id", apiKeyID))
+			zap.String("api_key", apiKeyName))
 		return false
 	}
 
 	if apiKey != nil {
-		if compareAPIKeys(plainAPIKeyValue, apiKey.APIKey) {
-			// Hash matches - this is our target API key
-			apiKey.Status = models.APIKeyStatusRevoked
+		apiKey.Status = models.APIKeyStatusRevoked
 
-			delete(s.apiKeys, apiKey.ID)
-			s.removeFromAPIMapping(apiKey)
+		delete(s.apiKeys, compositeKey)
+		s.removeFromAPIMapping(apiKey)
 
-			s.logger.Debug("Revoked API key",
-				zap.String("id", apiKey.ID),
-				zap.String("name", apiKey.Name),
-				zap.String("api_id", apiKey.APIId))
+		s.logger.Debug("Revoked API key",
+			zap.String("id", apiKey.ID),
+			zap.String("name", apiKey.Name),
+			zap.String("api_id", apiKey.APIId))
 
-			return true
-		}
+		return true
 	}
 
 	s.logger.Debug("API key not found for revocation",
 		zap.String("api_id", apiId),
-		zap.String("api_key_id", apiKeyID))
+		zap.String("api_key", apiKeyName))
 
 	return false
 }
@@ -150,7 +150,8 @@ func (s *APIKeyStore) RemoveByAPI(apiId string) int {
 	count := len(apiKeys)
 
 	for _, apiKey := range apiKeys {
-		delete(s.apiKeys, apiKey.ID)
+		compositeKey := GetCompositeKey(apiKey.APIId, apiKey.Name)
+		delete(s.apiKeys, compositeKey)
 	}
 	delete(s.apiKeysByAPI, apiId)
 
@@ -280,7 +281,7 @@ func compareBcryptHash(apiKey, encoded string) bool {
 }
 
 // compareArgon2id parses an encoded Argon2id hash and compares it to the provided password.
-// Expected format: $argon2id$v=19$m=65536,t=3,p=4$<salt_b64>$<hash_b64>
+// Expected format: $argon2id$v=19$m=<m>,t=<t>,p=<p>$<salt_b64>$<hash_b64>
 func compareArgon2id(apiKey, encoded string) error {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
@@ -296,7 +297,7 @@ func compareArgon2id(apiKey, encoded string) error {
 		return fmt.Errorf("unsupported argon2 version: %d", version)
 	}
 
-	// parts[3] -> m=65536,t=3,p=4
+	// parts[3] -> m=<m>,t=<t>,p=<p>
 	var mem uint32
 	var iters uint32
 	var threads uint8
@@ -333,4 +334,9 @@ func decodeBase64(s string) ([]byte, error) {
 	}
 	// try StdEncoding as a fallback
 	return base64.StdEncoding.DecodeString(s)
+}
+
+// GetCompositeKey generates a composite key for storing/retrieving API keys
+func GetCompositeKey(apiId, keyName string) string {
+	return fmt.Sprintf("%s:%s", apiId, keyName)
 }

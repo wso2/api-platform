@@ -202,6 +202,11 @@ type Storage interface {
 	// Returns an error if the API key does not exist.
 	RemoveAPIKeyAPIAndName(apiId, name string) error
 
+	// CountActiveAPIKeysByUserAndAPI counts active API keys for a specific user and API.
+	//
+	// Returns the count of active API keys and an error if the operation fails.
+	CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error)
+
 	// SaveCertificate persists a new certificate.
 	//
 	// Returns an error if a certificate with the same name already exists.

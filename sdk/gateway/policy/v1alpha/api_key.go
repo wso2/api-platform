@@ -55,6 +55,8 @@ const (
 	Revoked APIKeyStatus = "revoked"
 )
 
+const APIKeySeparator = "_"
+
 // Common storage errors - implementation agnostic
 var (
 	// ErrNotFound is returned when an API key is not found
@@ -350,7 +352,7 @@ func compareBcryptHash(apiKey, encoded string) bool {
 }
 
 // compareArgon2id parses an encoded Argon2id hash and compares it to the provided password.
-// Expected format: $argon2id$v=19$m=65536,t=3,p=4$<salt_b64>$<hash_b64>
+// Expected format: $argon2id$v=19$m=<m>,t=<t>,p=<p>$<salt_b64>$<hash_b64>
 func compareArgon2id(apiKey, encoded string) error {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
@@ -366,7 +368,7 @@ func compareArgon2id(apiKey, encoded string) error {
 		return fmt.Errorf("unsupported argon2 version: %d", version)
 	}
 
-	// parts[3] -> m=65536,t=3,p=4
+	// parts[3] -> m=<m>,t=<t>,p=<p>
 	var mem uint32
 	var iters uint32
 	var threads uint8
@@ -407,27 +409,19 @@ func decodeBase64(s string) ([]byte, error) {
 
 // parseAPIKey splits an API key value into its key and ID components
 func parseAPIKey(value string) (ParsedAPIKey, bool) {
-	idx := strings.LastIndex(value, ".")
+	idx := strings.LastIndex(value, APIKeySeparator)
 	if idx <= 0 || idx == len(value)-1 {
 		return ParsedAPIKey{}, false
 	}
 
 	apiKey := value[:idx]
-	hexEncodedID := value[idx+1:]
+	encodedID := value[idx+1:]
 
-	// Decode the hex encoded ID back to the raw ID
-	decodedIDBytes, err := hex.DecodeString(hexEncodedID)
-	if err != nil {
-		// If decoding fails, return the hex value as-is for backward compatibility
-		return ParsedAPIKey{
-			APIKey: apiKey,
-			ID:     hexEncodedID,
-		}, true
-	}
-
+	// The ID is already base64url encoded (22 chars)
+	// with underscores replaced by tildes (~)
 	return ParsedAPIKey{
 		APIKey: apiKey,
-		ID:     string(decodedIDBytes),
+		ID:     encodedID, // Use the encoded ID directly (contains ~ instead of _)
 	}, true
 }
 

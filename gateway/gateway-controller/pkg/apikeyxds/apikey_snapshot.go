@@ -135,16 +135,16 @@ func (sm *APIKeySnapshotManager) StoreAPIKey(apiKey *models.APIKey) error {
 }
 
 // RevokeAPIKey revokes an API key and updates the snapshot
-func (sm *APIKeySnapshotManager) RevokeAPIKey(apiId, apiKeyID, apiKeyValue string) error {
+func (sm *APIKeySnapshotManager) RevokeAPIKey(apiId, apiKeyName string) error {
 	sm.logger.Info("Revoking API key",
 		zap.String("api_id", apiId),
-		zap.String("api_key_value", MaskAPIKey(apiKeyValue)))
+		zap.String("api_key", apiKeyName))
 
 	// Revoke in the API key store
-	if !sm.store.Revoke(apiId, apiKeyID, apiKeyValue) {
+	if !sm.store.Revoke(apiId, apiKeyName) {
 		sm.logger.Warn("API key not found for revocation",
 			zap.String("api_id", apiId),
-			zap.String("api_key_value", MaskAPIKey(apiKeyValue)))
+			zap.String("api_key", apiKeyName))
 		return nil
 	}
 

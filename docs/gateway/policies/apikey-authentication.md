@@ -202,7 +202,7 @@ spec:
 
 ## API Key Management
 
-The gateway controller provides REST APIs to manage API keys for APIs that use the API Key Authentication policy. These endpoints allow you to generate, view, rotate, and revoke API keys programmatically.
+The gateway controller provides REST APIs to manage API keys for APIs that use the API Key Authentication policy. These endpoints allow you to generate, view, regenerate, and revoke API keys programmatically.
 
 ### Base URL
 
@@ -225,7 +225,7 @@ The gateway controller uses the authentication context of the requesting user to
 #### Basic Authentication Example
 
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -H "Content-Type: application/json" \
   -u "username:password" \
   -d '{"name": "production-key"}'
@@ -234,7 +234,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
 #### JWT Authentication Example
 
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -d '{"name": "production-key"}'
@@ -244,7 +244,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
 
 Generate a new API key for a specific API.
 
-**Endpoint**: `POST /apis/{id}/generate-api-key`
+**Endpoint**: `POST /apis/{id}/api-keys`
 
 #### Request Parameters
 
@@ -278,7 +278,7 @@ Generate a new API key for a specific API.
 
 **Using Basic Authentication:**
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -H "Content-Type: application/json" \
   -u "username:password" \
   -d '{
@@ -292,7 +292,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
 
 **Using JWT Authentication:**
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -d '{
@@ -308,18 +308,19 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
 
 ```json
 {
+  "status": "success",
+  "message": "API key generated successfully",
+  "remaining_api_key_quota": 9,
   "api_key": {
+    "name": "production-key",
+    "api_key": "apip_3521f31335d98868f1526ef_dbehwy3e8d8xcub238dx2",
     "apiId": "weather-api-v1.0",
-    "api_key": "apip_3521f31335d98868f1526ef20b5c051a7aa42cdd0dd46747b1456e1264a7e6ad",
+    "operations": "[\"*\"]",
+    "status": "active",
     "created_at": "2025-12-22T13:02:24.504957558Z",
     "created_by": "john",
-    "expires_at": "2025-12-23T13:02:24.504957558Z",
-    "name": "production-key",
-    "operations": "[\"*\"]",
-    "status": "active"
-  },
-  "message": "API key generated successfully",
-  "status": "success"
+    "expires_at": "2025-12-23T13:02:24.504957558Z"
+  }
 }
 ```
 
@@ -329,14 +330,15 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
 |-------|------|------------------------------------------------|
 | `status` | string | Operation status (`success`)                   |
 | `message` | string | Detailed message of the status                 |
-| `apiKey.name` | string | Name of the generated API key                  |
-| `apiKey.apiId` | string | API identifier                                 |
-| `apiKey.api_key` | string | The actual API key value (starts with `apip_`) |
-| `apiKey.status` | string | Key status (`active`)                          |
-| `apiKey.created_at` | string | ISO 8601 timestamp of creation                 |
-| `apiKey.created_by` | string | User who created the key                       |
-| `apiKey.expires_at` | string | ISO 8601 expiration timestamp (if set)         |
-| `apiKey.operations` | array | Allowed operations (currently `["*"]` for all) |
+| `remaining_api_key_quota` | integer | Remaining API key quota for the user |
+| `api_key.name` | string | Name of the generated API key                  |
+| `api_key.apiId` | string | API identifier                                 |
+| `api_key.api_key` | string | The actual API key value (starts with `apip_`) |
+| `api_key.status` | string | Key status (`active`)                          |
+| `api_key.created_at` | string | ISO 8601 timestamp of creation                 |
+| `api_key.created_by` | string | User who created the key                       |
+| `api_key.expires_at` | string | ISO 8601 expiration timestamp (if set)         |
+| `api_key.operations` | string | Allowed operations (currently `["*"]` for all) |
 
 ### List API Keys
 
@@ -369,28 +371,30 @@ curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
 
 ```json
 {
+  "status": "success",
+  "totalCount": 2,
   "apiKeys": [
     {
+      "name": "test-key",
+      "api_key": "apip_3521f3*********",
       "apiId": "weather-api-v1.0",
+      "operations": "[\"*\"]",
+      "status": "active",
       "created_at": "2025-12-22T13:02:24.504957558Z",
       "created_by": "john",
-      "expires_at": "2025-12-23T13:02:24.504957558Z",
-      "name": "test-key",
-      "operations": "[\"*\"]",
-      "status": "active"
+      "expires_at": "2025-12-23T13:02:24.504957558Z"
     },
     {
+      "name": "production-key",
+      "api_key": "apip_18dfd4*********",
       "apiId": "weather-api-v1.0",
+      "operations": "[\"*\"]",
+      "status": "active",
       "created_at": "2025-12-22T13:02:24.504957558Z",
       "created_by": "admin",
-      "expires_at": "2026-03-22T13:02:24.504957558Z",
-      "name": "production-key",
-      "operations": "[\"*\"]",
-      "status": "active"
+      "expires_at": "2026-03-22T13:02:24.504957558Z"
     }
-  ],
-  "status": "success",
-  "totalCount": 2
+  ]
 }
 ```
 
@@ -400,23 +404,23 @@ curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
 |-------|------|-------------|
 | `status` | string | Operation status (`success`) |
 | `totalCount` | integer | Total number of active API keys |
-| `apiKeys` | array | List of API key objects (without the actual key value for security) |
+| `apiKeys` | array | List of API key objects |
 
-**Note**: The actual API key values are not returned in the list response for security reasons.
+**Note**: For security reasons, the actual API key values are masked in the list response, showing only the first 10 characters followed by asterisks. The full API key value is only returned when generating or regenerating a key.
 
-### Rotate API Key
+### Regenerate API Key
 
-Rotate an existing API key, generating a new key value while maintaining the same name and metadata.
+Regenerate an existing API key, generating a new key value while maintaining the same name and metadata.
 Only the user who created the key can perform this operation.
 
 **Endpoint**: `POST /apis/{id}/api-keys/{apiKeyName}/regenerate`
 
 #### Request Parameters
 
-| Parameter | Type | Location | Required | Description |
-|-----------|------|----------|----------|-------------|
+| Parameter | Type | Location | Required | Description                         |
+|-----------|------|----------|----------|-------------------------------------|
 | `id` | string | path | Yes | Unique public identifier of the API |
-| `apiKeyName` | string | path | Yes | Name of the API key to rotate |
+| `apiKeyName` | string | path | Yes | Name of the API key to regenerate   |
 
 #### Request Body
 
@@ -429,7 +433,7 @@ Only the user who created the key can perform this operation.
 }
 ```
 
-**Request Body Schema:** Same as the generate API key request body, but only expiration settings are typically updated during rotation.
+**Request Body Schema:** Same as the generate API key request body, but only expiration settings are typically updated during regeneration.
 
 #### Example Request
 
@@ -456,76 +460,6 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-ke
       "duration": 60,
       "unit": "days"
     }
-  }'
-```
-
-#### Successful Response (200 OK)
-
-```json
-{
-  "api_key": {
-    "apiId": "weather-api-v1.0",
-    "api_key": "apip_18dfd4da48f276043b32d3755c8ba3b0b244569f8c0f485ad50652cb95afae70",
-    "created_at": "2025-12-22T12:26:47.626109914Z",
-    "created_by": "thivindu",
-    "expires_at": "2026-11-17T12:26:47.626109914Z",
-    "name": "production-key",
-    "operations": "[\"*\"]",
-    "status": "active"
-  },
-  "message": "API key generated successfully",
-  "status": "success"
-}
-```
-
-**Note**: The old API key value becomes invalid immediately after rotation. Update your applications with the new key value.
-
-### Revoke API Key
-
-Revoke an existing API key, making it permanently invalid for authentication.
-The user who created the key or an admin can perform this operation.
-
-**Endpoint**: `POST /apis/{id}/revoke-api-key`
-
-#### Request Parameters
-
-| Parameter | Type | Location | Required | Description |
-|-----------|------|----------|----------|-------------|
-| `id` | string | path | Yes | Unique public identifier of the API |
-
-#### Request Body
-
-```json
-{
-  "api_key": "apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d"
-}
-```
-
-**Request Body Schema:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `api_key` | string | Yes | The actual API key value to revoke |
-
-#### Example Request
-
-**Using Basic Authentication:**
-```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/revoke-api-key" \
-  -H "Content-Type: application/json" \
-  -u "username:password" \
-  -d '{
-    "api_key": "apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d"
-  }'
-```
-
-**Using JWT Authentication:**
-```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/revoke-api-key" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
-  -d '{
-    "api_key": "apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d"
   }'
 ```
 
@@ -534,7 +468,58 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/revoke-api-key" \
 ```json
 {
   "status": "success",
-  "message": "API key revoked successfully"
+  "message": "API key generated successfully",
+  "remaining_api_key_quota": 9,
+  "api_key": {
+    "name": "production-key",
+    "api_key": "apip_18dfd4da48f276043b32d37_bhuced7y3gfd8r4w8bcf4wg",
+    "apiId": "weather-api-v1.0",
+    "operations": "[\"*\"]",
+    "status": "active",
+    "created_at": "2025-12-22T12:26:47.626109914Z",
+    "created_by": "thivindu",
+    "expires_at": "2026-11-17T12:26:47.626109914Z"
+  }
+}
+```
+
+**Note**: The old API key value becomes invalid immediately after regeneration. Update your applications with the new key value.
+
+### Revoke API Key
+
+Revoke an existing API key, making it permanently invalid for authentication.
+The user who created the key or an admin can perform this operation.
+
+**Endpoint**: `DELETE /apis/{id}/api-keys/{apiKeyName}`
+
+#### Request Parameters
+
+| Parameter | Type | Location | Required | Description |
+|-----------|------|----------|----------|-------------|
+| `id` | string | path | Yes | Unique public identifier of the API |
+| `apiKeyName` | string | path | Yes | Name of the API key to revoke |
+
+#### Example Request
+
+**Using Basic Authentication:**
+```bash
+curl -X DELETE "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-key" \
+  -u "username:password"
+```
+
+**Using JWT Authentication:**
+```bash
+curl -X DELETE "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-key" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+#### Successful Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "message": "API key revoked successfully",
+  "remaining_api_key_quota": 9
 }
 ```
 
@@ -577,22 +562,73 @@ All API key management endpoints may return the following error responses:
 }
 ```
 
+### API Key Quotas
+
+The API key management system includes quota controls to limit the number of API keys a user can create per API. This helps prevent abuse and ensures fair usage of the platform.
+
+#### Key Features:
+- **Per-User, Per-API Limits**: Each user has a separate quota for each API
+- **Configurable Limits**: Administrators can configure the maximum number of API keys allowed per user per API
+- **Quota Tracking**: The system tracks remaining quota and returns this information in API responses
+- **Generation vs Regeneration**: Generating a new API key decreases the quota, while regenerating an existing key does not affect the quota
+- **Revocation Impact**: Revoking an API key increases the available quota for that user
+
+#### Response Fields:
+API key generation and regeneration responses include a `remaining_api_key_quota` field that shows how many additional API keys the user can create for the specific API.
+
 ### API Key Format
 
 All generated API keys follow a consistent format:
 - **Prefix**: `apip_` (API Platform identifier)
-- **Length**: 64 hexadecimal characters after the prefix
-- **Total Length**: 69 characters
-- **Example**: `apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d`
+- **Length**: - 64 hexadecimal characters after the prefix + "_" + 22 URL-safe characters after the prefix
+- **Total Length**: 92 characters
+- **Example**: `apip_b9abae64a955aded2eb700aff88235ce3f7e6a8ca0f2f52ba31f73bcbb960360_jh~cPInvccQ09goMO5-4mQ`
+
+The API key uses a URL-safe character set and does not contain underscores or other special characters that might cause issues in various contexts.
+
+### API Key Security
+
+The platform implements comprehensive security measures for API key management:
+
+#### Secure Hashing
+API keys are securely hashed before being stored in the database using configurable cryptographic algorithms:
+
+- **SHA-256**: Fast and secure hashing with salt
+- **bcrypt**: Adaptive hashing with configurable cost factor  
+- **Argon2id**: Memory-hard hashing algorithm resistant to GPU attacks
+
+The hashing algorithm can be configured by administrators. If no algorithm is specified, SHA-256 is used by default.
+
+#### Masked Display
+For security reasons, API keys are masked when displayed in list operations:
+- Only the first 10 characters are shown (e.g., `apip_3521f3*********`)
+- Full API key values are only returned during generation and regeneration
+- This prevents accidental exposure in logs, screenshots, or shared screens
+
+#### Secure Storage
+- API keys are never stored in plain text
+- Only hashed values are persisted to the database
+- The system supports migration between different hashing algorithms
+- Keys are validated using constant-time comparison to prevent timing attacks
+
+#### Access Control
+- Users can only manage API keys they created
+- Administrators have access to all API keys for management purposes
+- API key operations require proper authentication (Basic Auth or JWT)
+- All operations are logged for audit purposes
 
 ### Best Practices
 
 1. **Secure Storage**: Store API keys securely and never expose them in client-side code or version control
-2. **Regular Rotation**: Rotate API keys periodically for enhanced security
-3. **Proper Naming**: Use descriptive names for API keys to identify their purpose
-4. **Expiration**: Set appropriate expiration times based on your security requirements
-5. **Immediate Revocation**: Revoke API keys immediately if they are compromised
+2. **Regular Regeneration**: Regenerate API keys periodically for enhanced security using the regenerate endpoint
+3. **Descriptive Naming**: Use descriptive names for API keys to identify their purpose (e.g., "production-app-key", "staging-webhook")
+4. **Appropriate Expiration**: Set appropriate expiration times based on your security requirements and usage patterns
+5. **Immediate Revocation**: Revoke API keys immediately if they are compromised or no longer needed
 6. **Environment Separation**: Use different API keys for different environments (development, staging, production)
+7. **Monitor Usage**: Monitor API key usage patterns and set up alerts for unusual activity
+8. **Quota Management**: Be aware of your API key quotas and plan key generation accordingly
+9. **HTTPS Only**: Always use API keys over HTTPS to prevent interception
+10. **Logging Security**: Be cautious with logging - API keys are automatically masked in list responses but should be kept secure in application logs
 
 ## Use Cases
 
@@ -614,14 +650,18 @@ API keys used with this policy are managed by the platform's key management syst
 
 - **Generation**: Keys are generated through the gateway, management portal, or developer portal
 - **Validation**: The policy validates incoming keys against the policy engine's key store
-- **Lifecycle**: Keys can be created, rotated, revoked, and expired through platform APIs
+- **Lifecycle**: Keys can be created, regenerated, revoked, and expired through platform APIs
 - **Security**: Keys are securely stored and managed by the platform infrastructure in the gateway environment
 
 ## Security Considerations
 
-1. **HTTPS Only**: Always use API key authentication over HTTPS to prevent key interception
-2. **Key Rotation**: Regularly rotate API keys to maintain security
-3. **Key Storage**: Store keys securely on the client side and avoid hardcoding in source code
-4. **Monitoring**: Monitor API key usage for suspicious activity
-5. **Prefix Usage**: Use prefixes like "Bearer " to clearly identify the authentication scheme
-6. **Query Parameter Caution**: Be cautious when using query parameters as they may be logged in access logs
+1. **HTTPS Only**: Always use API key authentication over HTTPS to prevent key interception during transmission
+2. **Cryptographic Hashing**: API keys are automatically hashed using secure algorithms (SHA-256, bcrypt, or Argon2id) before storage
+3. **Key Masking**: API keys are masked in list operations showing only the first 10 characters to prevent accidental exposure
+4. **Secure Storage**: Keys are never stored in plain text - only cryptographic hashes are persisted
+5. **Regular Regeneration**: Use the regenerate endpoint to regenerate API keys regularly without affecting your quota
+6. **Access Control**: Users can only manage their own API keys; administrators have broader access for management purposes
+7. **Audit Logging**: All API key operations are logged with correlation IDs for security auditing
+8. **Quota Limits**: API key quotas prevent abuse and ensure fair resource usage across users
+9. **Timing Attack Protection**: Key validation uses constant-time comparison to prevent timing-based attacks
+10. **Query Parameter Caution**: Be careful when using API keys in query parameters as they may appear in access logs or browser history

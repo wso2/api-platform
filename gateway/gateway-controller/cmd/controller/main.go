@@ -432,10 +432,10 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/:id":    {"admin", "developer"},
 		"DELETE /llm-proxies/:id": {"admin", "developer"},
 
-		"POST /apis/:id/generate-api-key":                {"admin", "consumer"},
+		"POST /apis/:id/api-keys":                        {"admin", "consumer"},
 		"GET /apis/:id/api-keys":                         {"admin", "consumer"},
 		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"POST /apis/:id/revoke-api-key":                  {"admin", "consumer"},
+		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
 		"GET /config_dump": {"admin"},
 	}

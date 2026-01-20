@@ -103,7 +103,7 @@ func NewAPIServer(
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
 			deploymentService, &systemConfig.GatewayController.Router),
 		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
-			&systemConfig.GatewayController.APIKeyHashing),
+			&systemConfig.GatewayController.APIKey),
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       &systemConfig.GatewayController.Router,
@@ -2353,7 +2353,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 }
 
 // GenerateAPIKey implements ServerInterface.GenerateAPIKey
-// (POST /apis/{id}/generate-api-key)
+// (POST /apis/{id}/api-keys)
 func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
@@ -2422,8 +2422,8 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 }
 
 // RevokeAPIKey implements ServerInterface.RevokeAPIKey
-// (POST /apis/{id}/revoke-api-key)
-func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
+// (DELETE /apis/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
@@ -2440,24 +2440,10 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
-	// Parse and validate request body
-	var request api.APIKeyRevocationRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Warn("Invalid request body for API key revocation",
-			zap.Error(err),
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Invalid request body: %v", err),
-		})
-		return
-	}
-
 	// Prepare parameters
 	params := utils.APIKeyRevocationParams{
 		Handle:        handle,
-		Request:       request,
+		APIKeyName:    apiKeyName,
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -2482,7 +2468,7 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
 
 	log.Info("API key revoked successfully",
 		zap.String("handle", handle),
-		zap.String("key", s.apiKeyService.MaskAPIKey(request.ApiKey)),
+		zap.String("key", apiKeyName),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
@@ -2490,16 +2476,16 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, result.Response)
 }
 
-// RotateAPIKey implements ServerInterface.RotateAPIKey
+// RegenerateAPIKey implements ServerInterface.RegenerateAPIKey
 // (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
-func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
+func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "RotateAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(c, "RegenerateAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
@@ -2511,7 +2497,7 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		zap.String("correlation_id", correlationID))
 
 	// Parse and validate request body
-	var request api.APIKeyRotationRequest
+	var request api.APIKeyRegenerationRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		log.Warn("Invalid request body for API key rotation",
 			zap.Error(err),
@@ -2525,7 +2511,7 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	}
 
 	// Prepare parameters
-	params := utils.APIKeyRotationParams{
+	params := utils.APIKeyRegenerationParams{
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
 		Request:       request,
@@ -2534,7 +2520,7 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		Logger:        log,
 	}
 
-	result, err := s.apiKeyService.RotateAPIKey(params)
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {

@@ -32,7 +32,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -60,11 +59,11 @@ type APIKeyGenerationResult struct {
 
 // APIKeyRevocationParams contains parameters for API key revocation operations
 type APIKeyRevocationParams struct {
-	Handle        string                      // API handle/ID
-	Request       api.APIKeyRevocationRequest // Request body with API key revocation details
-	User          *commonmodels.AuthContext   // User who initiated the request
-	CorrelationID string                      // Correlation ID for tracking
-	Logger        *zap.Logger                 // Logger instance
+	Handle        string                    // API handle/ID
+	APIKeyName    string                    // // Name of the API key to revoke
+	User          *commonmodels.AuthContext // User who initiated the request
+	CorrelationID string                    // Correlation ID for tracking
+	Logger        *zap.Logger               // Logger instance
 }
 
 // APIKeyRevocationResult contains the result of API key revocation
@@ -72,18 +71,18 @@ type APIKeyRevocationResult struct {
 	Response api.APIKeyRevocationResponse // Response following the generated schema
 }
 
-// APIKeyRotationParams contains parameters for API key rotation operations
-type APIKeyRotationParams struct {
-	Handle        string                    // API handle/ID
-	APIKeyName    string                    // Name of the API key to rotate
-	Request       api.APIKeyRotationRequest // Request body with rotation details
-	User          *commonmodels.AuthContext // User who initiated the request
-	CorrelationID string                    // Correlation ID for tracking
-	Logger        *zap.Logger               // Logger instance
+// APIKeyRegenerationParams contains parameters for API key regeneration operations
+type APIKeyRegenerationParams struct {
+	Handle        string                        // API handle/ID
+	APIKeyName    string                        // Name of the API key to regenerate
+	Request       api.APIKeyRegenerationRequest // Request body with regeneration details
+	User          *commonmodels.AuthContext     // User who initiated the request
+	CorrelationID string                        // Correlation ID for tracking
+	Logger        *zap.Logger                   // Logger instance
 }
 
-// APIKeyRotationResult contains the result of API key rotation
-type APIKeyRotationResult struct {
+// APIKeyRegenerationResult contains the result of API key regeneration
+type APIKeyRegenerationResult struct {
 	Response api.APIKeyGenerationResponse // Response following the generated schema
 	IsRetry  bool                         // Whether this was a retry due to collision
 }
@@ -110,26 +109,26 @@ type ParsedAPIKey struct {
 // XDSManager interface for API key operations
 type XDSManager interface {
 	StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error
-	RevokeAPIKey(apiId, apiName, apiVersion, apiKeyID, apiKeyValue, correlationID string) error
+	RevokeAPIKey(apiId, apiName, apiVersion, apiKeyName, correlationID string) error
 	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
 }
 
 // APIKeyService provides utilities for API configuration deployment
 type APIKeyService struct {
-	store         *storage.ConfigStore
-	db            storage.Storage
-	xdsManager    XDSManager
-	hashingConfig *config.APIKeyHashingConfig // Configuration for API key hashing
+	store        *storage.ConfigStore
+	db           storage.Storage
+	xdsManager   XDSManager
+	apiKeyConfig *config.APIKeyConfig // Configuration for API keys
 }
 
 // NewAPIKeyService creates a new API key generation service
 func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager XDSManager,
-	hashingConfig *config.APIKeyHashingConfig) *APIKeyService {
+	apiKeyConfig *config.APIKeyConfig) *APIKeyService {
 	return &APIKeyService{
-		store:         store,
-		db:            db,
-		xdsManager:    xdsManager,
-		hashingConfig: hashingConfig,
+		store:        store,
+		db:           db,
+		xdsManager:   xdsManager,
+		apiKeyConfig: apiKeyConfig,
 	}
 }
 
@@ -160,6 +159,17 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 			zap.String("handle", params.Handle),
 			zap.String("correlation_id", params.CorrelationID))
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+	}
+
+	// Check API key limit enforcement
+	if err := s.enforceAPIKeyLimit(config.ID, user.UserID, logger); err != nil {
+		logger.Warn("API key generation limit exceeded",
+			zap.String("user_id", user.UserID),
+			zap.String("api_id", config.ID),
+			zap.String("handle", params.Handle),
+			zap.Error(err),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, err
 	}
 
 	// Generate the API key from request
@@ -213,6 +223,9 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		}
 	}
 
+	plainAPIKey := apiKey.PlainAPIKey // Store plain API key for response
+	apiKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
+
 	// Store the generated API key in the ConfigStore
 	if err := s.store.StoreAPIKey(apiKey); err != nil {
 		logger.Error("Failed to store API key in ConfigStore",
@@ -262,7 +275,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	}
 
 	// Build response following the generated schema
-	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle)
+	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle, plainAPIKey)
 
 	logger.Info("API key generated successfully",
 		zap.String("handle", params.Handle),
@@ -278,6 +291,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevocationResult, error) {
 	logger := params.Logger
 	user := params.User
+	apiKeyName := params.APIKeyName
 	result := &APIKeyRevocationResult{
 		Response: api.APIKeyRevocationResponse{
 			Status:  "success",
@@ -294,31 +308,14 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 	}
 
-	providedAPIKeyValue := strings.TrimSpace(params.Request.ApiKey)
-	if providedAPIKeyValue == "" {
-		logger.Warn("API key value is required for revocation",
-			zap.String("handle", params.Handle),
-			zap.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("API key value is required for revocation")
-	}
-
-	parsedAPIkey, ok := s.parseAPIKey(providedAPIKeyValue)
-	if !ok {
-		// invalid format
-		logger.Warn("Invalid API key format",
-			zap.String("handle", params.Handle),
-			zap.String("correlation_id", params.CorrelationID))
-		return result, nil
-	}
-
 	var apiKey *models.APIKey
 	var matchedKey *models.APIKey
 
-	existingAPIKey, err := s.store.GetAPIKeyByID(config.ID, parsedAPIkey.ID)
+	existingAPIKey, err := s.store.GetAPIKeyByName(config.ID, apiKeyName)
 	if err != nil {
 		// If memory store fails, try database
 		if s.db != nil {
-			existingAPIKey, err = s.db.GetAPIKeyByID(parsedAPIkey.ID)
+			existingAPIKey, err = s.db.GetAPIKeysByAPIAndName(config.ID, apiKeyName)
 			if err != nil {
 				logger.Debug("Failed to get API keys for revocation",
 					zap.Error(err),
@@ -329,13 +326,16 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		}
 	}
 
-	// Find the API key that matches the provided plain text key
-	if existingAPIKey != nil {
-		if s.compareAPIKeys(parsedAPIkey.APIKey, existingAPIKey.APIKey) {
-			apiKey = existingAPIKey
-			matchedKey = existingAPIKey
-		}
+	// If API key not found, log and continue for security reasons
+	if existingAPIKey == nil {
+		logger.Debug("API key not found for revocation",
+			zap.String("handle", params.Handle),
+			zap.String("api_key_name", apiKeyName),
+			zap.String("correlation_id", params.CorrelationID))
 	}
+
+	apiKey = existingAPIKey
+	matchedKey = existingAPIKey
 
 	// For security reasons, perform all validations but don't return errors
 	// This prevents information leakage about API key details
@@ -429,7 +429,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	apiVersion := apiConfig.Version
 	logger.Info("Removing API key from policy engine",
 		zap.String("handle", params.Handle),
-		zap.String("api key", s.MaskAPIKey(providedAPIKeyValue)),
+		zap.String("api key", apiKeyName),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
 		zap.String("user", user.UserID),
@@ -438,8 +438,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	// Send the plain API key revocation to the policy engine via xDS
 	// The policy engine will find and revoke the matching hashed key
 	if s.xdsManager != nil {
-		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, parsedAPIkey.ID, parsedAPIkey.APIKey,
-			params.CorrelationID); err != nil {
+		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, apiKeyName, params.CorrelationID); err != nil {
 			logger.Error("Failed to remove API key from policy engine",
 				zap.Error(err),
 				zap.String("correlation_id", params.CorrelationID))
@@ -449,22 +448,22 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 
 	logger.Info("API key revoked successfully",
 		zap.String("handle", params.Handle),
-		zap.String("api key", s.MaskAPIKey(providedAPIKeyValue)),
+		zap.String("api key", apiKeyName),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
 	return result, nil
 }
 
-// RotateAPIKey rotates an existing API key
-func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotationResult, error) {
+// RegenerateAPIKey regenerates an existing API key
+func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIKeyRegenerationResult, error) {
 	logger := params.Logger
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	user := params.User
 
-	logger.Info("Starting API key rotation",
+	logger.Info("Starting API key regeneration",
 		zap.String("handle", params.Handle),
 		zap.String("api_key_name", params.APIKeyName),
 		zap.String("user", user.UserID),
@@ -473,7 +472,7 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 	// Get the API configuration
 	config, err := s.store.GetByHandle(params.Handle)
 	if err != nil {
-		logger.Warn("API configuration not found for API Key rotation",
+		logger.Warn("API configuration not found for API Key regeneration",
 			zap.String("handle", params.Handle),
 			zap.String("correlation_id", params.CorrelationID))
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
@@ -482,86 +481,89 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 	// Get the existing API key by name
 	existingKey, err := s.store.GetAPIKeyByName(config.ID, params.APIKeyName)
 	if err != nil {
-		logger.Warn("API key not found for rotation",
+		logger.Warn("API key not found for regeneration",
 			zap.String("handle", params.Handle),
 			zap.String("api_key_name", params.APIKeyName),
 			zap.String("correlation_id", params.CorrelationID))
 		return nil, fmt.Errorf("API key '%s' not found for API '%s'", params.APIKeyName, params.Handle)
 	}
 
-	err = s.canRotateAPIKey(user, existingKey, logger)
+	err = s.canRegenerateAPIKey(user, existingKey, logger)
 	if err != nil {
-		logger.Warn("User attempting to rotate API key is not the creator",
+		logger.Warn("User attempting to regenerate API key is not the creator",
 			zap.String("handle", params.Handle),
 			zap.String("api_key_name", params.APIKeyName),
 			zap.String("creator", existingKey.CreatedBy),
 			zap.String("requesting_user", user.UserID),
 			zap.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("API key rotation failed for API: '%s'", params.Handle)
+		return nil, fmt.Errorf("API key regeneration failed for API: '%s'", params.Handle)
 	}
 
-	// Generate the rotated API key using the extracted helper method
-	rotatedKey, err := s.generateRotatedAPIKey(existingKey, params.Request, user.UserID, logger)
+	// Regenerate API key using the extracted helper method
+	regeneratedKey, err := s.regenerateAPIKey(existingKey, params.Request, user.UserID, logger)
 	if err != nil {
-		logger.Error("Failed to generate rotated API key",
+		logger.Error("Failed to regenerate API key",
 			zap.Error(err),
 			zap.String("handle", params.Handle),
 			zap.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("failed to generate rotated API key: %w", err)
+		return nil, fmt.Errorf("failed to regenerate API key: %w", err)
 	}
 
-	result := &APIKeyRotationResult{
+	result := &APIKeyRegenerationResult{
 		IsRetry: false,
 	}
 
-	// Save rotated API key to database (only if persistent mode)
+	// Save regenerated API key to database (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.SaveAPIKey(rotatedKey); err != nil {
+		if err := s.db.SaveAPIKey(regeneratedKey); err != nil {
 			if errors.Is(err, storage.ErrConflict) {
 				// Handle collision by retrying once with a new key
-				logger.Warn("API key collision detected during rotation, retrying",
+				logger.Warn("API key collision detected during regeneration, retrying",
 					zap.String("handle", params.Handle),
 					zap.String("correlation_id", params.CorrelationID))
 
-				// Generate a new rotated key
-				rotatedKey, err = s.generateRotatedAPIKey(existingKey, params.Request, user.UserID, logger)
+				// Generate a new regenerated key
+				regeneratedKey, err = s.regenerateAPIKey(existingKey, params.Request, user.UserID, logger)
 				if err != nil {
-					logger.Error("Failed to regenerate rotated API key after collision",
+					logger.Error("Failed to regenerate API key after collision",
 						zap.Error(err),
 						zap.String("correlation_id", params.CorrelationID))
-					return nil, fmt.Errorf("failed to regenerate rotated API key after collision: %w", err)
+					return nil, fmt.Errorf("failed to regenerate API key after collision: %w", err)
 				}
 
 				// Try saving again
-				if err := s.db.SaveAPIKey(rotatedKey); err != nil {
-					logger.Error("Failed to save rotated API key after retry",
+				if err := s.db.SaveAPIKey(regeneratedKey); err != nil {
+					logger.Error("Failed to save regenerated API key after retry",
 						zap.Error(err),
 						zap.String("correlation_id", params.CorrelationID))
-					return nil, fmt.Errorf("failed to save rotated API key after retry: %w", err)
+					return nil, fmt.Errorf("failed to save regenerated API key after retry: %w", err)
 				}
 
 				result.IsRetry = true
 			} else {
-				logger.Error("Failed to save rotated API key to database",
+				logger.Error("Failed to save regenerated API key to database",
 					zap.Error(err),
 					zap.String("handle", params.Handle),
 					zap.String("correlation_id", params.CorrelationID))
-				return nil, fmt.Errorf("failed to save rotated API key to database: %w", err)
+				return nil, fmt.Errorf("failed to save regenerated API key to database: %w", err)
 			}
 		}
 		// No need to revoke the old API key as the old one will be overwritten
 	}
 
+	plainAPIKey := regeneratedKey.PlainAPIKey // Store plain API key for response
+	regeneratedKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
+
 	// Store the generated API key in the ConfigStore
-	if err := s.store.StoreAPIKey(rotatedKey); err != nil {
-		logger.Error("Failed to store the rotated API key in ConfigStore",
+	if err := s.store.StoreAPIKey(regeneratedKey); err != nil {
+		logger.Error("Failed to store the regenerated API key in ConfigStore",
 			zap.Error(err),
 			zap.String("handle", params.Handle),
 			zap.String("correlation_id", params.CorrelationID))
 
 		// Rollback database save to maintain consistency
 		if s.db != nil {
-			if delErr := s.db.RemoveAPIKeyAPIAndName(rotatedKey.APIId, rotatedKey.Name); delErr != nil {
+			if delErr := s.db.RemoveAPIKeyAPIAndName(regeneratedKey.APIId, regeneratedKey.Name); delErr != nil {
 				logger.Error("Failed to rollback API key from database",
 					zap.Error(delErr),
 					zap.String("correlation_id", params.CorrelationID))
@@ -584,7 +586,7 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 	apiVersion := apiConfig.Version
 	logger.Info("Storing API key in policy engine",
 		zap.String("handle", params.Handle),
-		zap.String("name", rotatedKey.Name),
+		zap.String("name", regeneratedKey.Name),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
 		zap.String("user", user.UserID),
@@ -592,21 +594,21 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 
 	// Update xDS snapshot if needed
 	if s.xdsManager != nil {
-		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, rotatedKey, params.CorrelationID); err != nil {
-			logger.Error("Failed to send rotated API key to policy engine",
+		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, regeneratedKey, params.CorrelationID); err != nil {
+			logger.Error("Failed to send regenerated API key to policy engine",
 				zap.Error(err),
 				zap.String("correlation_id", params.CorrelationID))
-			return nil, fmt.Errorf("failed to send rotated API key to policy engine: %w", err)
+			return nil, fmt.Errorf("failed to send regenerated API key to policy engine: %w", err)
 		}
 	}
 
 	// Build and return the response
-	result.Response = s.buildAPIKeyResponse(rotatedKey, params.Handle)
+	result.Response = s.buildAPIKeyResponse(regeneratedKey, params.Handle, plainAPIKey)
 
-	logger.Info("API key rotation completed successfully",
+	logger.Info("API key regeneration completed successfully",
 		zap.String("handle", params.Handle),
 		zap.String("api_key_name", params.APIKeyName),
-		zap.String("new_key_id", rotatedKey.ID),
+		zap.String("new_key_id", regeneratedKey.ID),
 		zap.String("correlation_id", params.CorrelationID))
 
 	return result, nil
@@ -678,10 +680,11 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	// Build response API keys
 	var responseAPIKeys []api.APIKey
 	for _, key := range activeUserAPIKeys {
-		// API key is not returned for security reasons
+		// Return masked API key for display purposes
 		responseAPIKey := api.APIKey{
 			Name:       key.Name,
-			ApiId:      params.Handle, // Use handle instead of internal API ID
+			ApiKey:     &key.MaskedAPIKey, // Return masked API key for security
+			ApiId:      params.Handle,     // Use handle instead of internal API ID
 			Operations: key.Operations,
 			Status:     api.APIKeyStatus(key.Status),
 			CreatedAt:  key.CreatedAt,
@@ -716,8 +719,11 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.APIKeyGenerationRequest, user string,
 	config *models.StoredConfig) (*models.APIKey, error) {
 
-	// Generate UUID for the record ID
-	id := uuid.New().String()
+	// Generate short unique ID (22 characters, URL-safe)
+	id, err := s.generateShortUniqueID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate unique ID: %w", err)
+	}
 
 	// Generate 32 random bytes for the API key
 	plainAPIKeyValue, err := s.generateAPIKeyValue()
@@ -730,6 +736,9 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash API key: %w", err)
 	}
+
+	// Generate masked API key for display purposes
+	maskedAPIKeyValue := s.MaskAPIKey(plainAPIKeyValue)
 
 	// Set name - use provided name or generate a default one
 	name := fmt.Sprintf("%s-key-%s", handle, id[:8]) // Default name
@@ -778,19 +787,26 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		expiresAt = &expiry
 	}
 
+	// Validate that expiresAt is in the future
+	if expiresAt != nil && expiresAt.Before(now) {
+		return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
+			expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+	}
+
 	apiKey := &models.APIKey{
-		ID:         id,
-		Name:       name,
-		APIKey:     hashedAPIKeyValue, // Store hashed key in database and policy engine
-		APIId:      config.ID,
-		Operations: operations,
-		Status:     models.APIKeyStatusActive,
-		CreatedAt:  now,
-		CreatedBy:  user,
-		UpdatedAt:  now,
-		ExpiresAt:  expiresAt,
-		Unit:       unit,
-		Duration:   duration,
+		ID:           id,
+		Name:         name,
+		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
+		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
+		APIId:        config.ID,
+		Operations:   operations,
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    now,
+		CreatedBy:    user,
+		UpdatedAt:    now,
+		ExpiresAt:    expiresAt,
+		Unit:         unit,
+		Duration:     duration,
 	}
 
 	// Temporarily store the plain key for response generation
@@ -826,7 +842,7 @@ func (s *APIKeyService) generateOperationsString(operations []api.Operation) str
 }
 
 // buildAPIKeyResponse builds the response following the generated schema
-func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) api.APIKeyGenerationResponse {
+func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle, plainAPIKey string) api.APIKeyGenerationResponse {
 	if key == nil {
 		return api.APIKeyGenerationResponse{
 			Status:  "error",
@@ -834,24 +850,37 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) a
 		}
 	}
 
-	// Use PlainAPIKey for response if available, otherwise mask the hashed key
+	// Calculate remaining API key quota
+	var remainingQuota *int
+	currentCount, err := s.getCurrentAPIKeyCount(key.APIId, key.CreatedBy)
+	if err == nil {
+		maxAllowed := s.apiKeyConfig.APIKeysPerUserPerAPI
+		remaining := maxAllowed - currentCount
+		if remaining < 0 {
+			remaining = 0
+		}
+		remainingQuota = &remaining
+	}
+
+	// Use plainAPIKey for response if available, otherwise mask the hashed key
 	var responseAPIKey *string
-	if key.PlainAPIKey != "" {
-		// Format: apip_{key}.{hex_encoded_id}
-		hexEncodedID := hex.EncodeToString([]byte(key.ID))
-		formattedAPIKey := key.PlainAPIKey + constants.APIKeySeparator + hexEncodedID
+	if plainAPIKey != "" {
+		// Format: apip_{key}_{base64url_encoded_id}
+		// Since the ID is already base64url encoded (22 chars), we can use it directly
+		formattedAPIKey := plainAPIKey + constants.APIKeySeparator + key.ID
 		responseAPIKey = &formattedAPIKey
 	} else {
-		// For existing keys where PlainAPIKey is not available, don't return the hashed key
+		// For existing keys where plainAPIKey is not available, don't return the hashed key
 		responseAPIKey = nil
 	}
 
 	return api.APIKeyGenerationResponse{
-		Status:  "success",
-		Message: "API key generated successfully",
+		Status:               "success",
+		Message:              "API key generated successfully",
+		RemainingApiKeyQuota: remainingQuota,
 		ApiKey: &api.APIKey{
 			Name:       key.Name,
-			ApiKey:     responseAPIKey, // Return plain key only during generation/rotation
+			ApiKey:     responseAPIKey, // Return plain key only during generation/regeneration
 			ApiId:      handle,
 			Operations: key.Operations,
 			Status:     api.APIKeyStatus(key.Status),
@@ -862,8 +891,8 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) a
 	}
 }
 
-// generateRotatedAPIKey creates a new API key for rotation based on existing key and request parameters
-func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, request api.APIKeyRotationRequest,
+// regenerateAPIKey creates a new API key for regeneration based on existing key and request parameters
+func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api.APIKeyRegenerationRequest,
 	user string, logger *zap.Logger) (*models.APIKey, error) {
 	// Generate new API key value
 	plainAPIKeyValue, err := s.generateAPIKeyValue()
@@ -874,8 +903,11 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 	// Hash the new API key for storage
 	hashedAPIKeyValue, err := s.hashAPIKey(plainAPIKeyValue)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash rotated API key: %w", err)
+		return nil, fmt.Errorf("failed to hash regenerated API key: %w", err)
 	}
+
+	// Generate masked API key for display purposes
+	maskedAPIKeyValue := s.MaskAPIKey(plainAPIKeyValue)
 
 	now := time.Now()
 
@@ -887,7 +919,7 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 	if request.ExpiresAt != nil {
 		// If expires_at is explicitly provided, use it
 		expiresAt = request.ExpiresAt
-		logger.Info("Using provided expires_at for rotation", zap.Time("expires_at", *expiresAt))
+		logger.Info("Using provided expires_at for regeneration", zap.Time("expires_at", *expiresAt))
 	} else if request.ExpiresIn != nil {
 		// If expires_in is provided, calculate expires_at from now
 		unitStr := string(request.ExpiresIn.Unit)
@@ -896,24 +928,24 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 
 		timeDuration := time.Duration(request.ExpiresIn.Duration)
 		switch request.ExpiresIn.Unit {
-		case api.APIKeyRotationRequestExpiresInUnitSeconds:
+		case api.APIKeyRegenerationRequestExpiresInUnitSeconds:
 			timeDuration *= time.Second
-		case api.APIKeyRotationRequestExpiresInUnitMinutes:
+		case api.APIKeyRegenerationRequestExpiresInUnitMinutes:
 			timeDuration *= time.Minute
-		case api.APIKeyRotationRequestExpiresInUnitHours:
+		case api.APIKeyRegenerationRequestExpiresInUnitHours:
 			timeDuration *= time.Hour
-		case api.APIKeyRotationRequestExpiresInUnitDays:
+		case api.APIKeyRegenerationRequestExpiresInUnitDays:
 			timeDuration *= 24 * time.Hour
-		case api.APIKeyRotationRequestExpiresInUnitWeeks:
+		case api.APIKeyRegenerationRequestExpiresInUnitWeeks:
 			timeDuration *= 7 * 24 * time.Hour
-		case api.APIKeyRotationRequestExpiresInUnitMonths:
+		case api.APIKeyRegenerationRequestExpiresInUnitMonths:
 			timeDuration *= 30 * 24 * time.Hour
 		default:
 			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
 		}
 		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
-		logger.Info("Using provided expires_in for rotation",
+		logger.Info("Using provided expires_in for regeneration",
 			zap.String("unit", unitStr),
 			zap.Int("duration", *duration),
 			zap.Time("calculated_expires_at", *expiresAt))
@@ -926,58 +958,65 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 
 			timeDuration := time.Duration(*existingKey.Duration)
 			switch *existingKey.Unit {
-			case string(api.APIKeyRotationRequestExpiresInUnitSeconds):
+			case string(api.APIKeyRegenerationRequestExpiresInUnitSeconds):
 				timeDuration *= time.Second
-			case string(api.APIKeyRotationRequestExpiresInUnitMinutes):
+			case string(api.APIKeyRegenerationRequestExpiresInUnitMinutes):
 				timeDuration *= time.Minute
-			case string(api.APIKeyRotationRequestExpiresInUnitHours):
+			case string(api.APIKeyRegenerationRequestExpiresInUnitHours):
 				timeDuration *= time.Hour
-			case string(api.APIKeyRotationRequestExpiresInUnitDays):
+			case string(api.APIKeyRegenerationRequestExpiresInUnitDays):
 				timeDuration *= 24 * time.Hour
-			case string(api.APIKeyRotationRequestExpiresInUnitWeeks):
+			case string(api.APIKeyRegenerationRequestExpiresInUnitWeeks):
 				timeDuration *= 7 * 24 * time.Hour
-			case string(api.APIKeyRotationRequestExpiresInUnitMonths):
+			case string(api.APIKeyRegenerationRequestExpiresInUnitMonths):
 				timeDuration *= 30 * 24 * time.Hour
 			default:
 				return nil, fmt.Errorf("unsupported existing expiration unit: %s", *existingKey.Unit)
 			}
 			expiry := now.Add(timeDuration)
 			expiresAt = &expiry
-			logger.Info("Using existing key's duration settings for rotation",
+			logger.Info("Using existing key's duration settings for regeneration",
 				zap.String("unit", *unit),
 				zap.Int("duration", *duration),
 				zap.Time("calculated_expires_at", *expiresAt))
 		} else if existingKey.ExpiresAt != nil {
 			// Existing key has absolute expiry, use same expiry
 			expiresAt = existingKey.ExpiresAt
-			logger.Info("Using existing key's expires_at for rotation", zap.Time("expires_at", *expiresAt))
+			logger.Info("Using existing key's expires_at for regeneration", zap.Time("expires_at", *expiresAt))
 		} else {
 			// Existing key has no expiry, new key also has no expiry
 			expiresAt = nil
-			logger.Info("No expiry set for rotated key (matching existing key)")
+			logger.Info("No expiry set for regenerated key (matching existing key)")
 		}
 	}
 
-	// Create the rotated API key
-	rotatedKey := &models.APIKey{
-		ID:         existingKey.ID,
-		Name:       existingKey.Name,
-		APIKey:     hashedAPIKeyValue, // Store hashed key
-		APIId:      existingKey.APIId,
-		Operations: existingKey.Operations,
-		Status:     models.APIKeyStatusActive,
-		CreatedAt:  existingKey.CreatedAt,
-		CreatedBy:  existingKey.CreatedBy,
-		UpdatedAt:  now,
-		ExpiresAt:  expiresAt,
-		Unit:       unit,
-		Duration:   duration,
+	// Validate that expiresAt is in the future (if set)
+	if expiresAt != nil && expiresAt.Before(now) {
+		return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
+			expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+	}
+
+	// Create the regenerated API key
+	regeneratedKey := &models.APIKey{
+		ID:           existingKey.ID,
+		Name:         existingKey.Name,
+		APIKey:       hashedAPIKeyValue, // Store hashed key
+		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
+		APIId:        existingKey.APIId,
+		Operations:   existingKey.Operations,
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    existingKey.CreatedAt,
+		CreatedBy:    existingKey.CreatedBy,
+		UpdatedAt:    now,
+		ExpiresAt:    expiresAt,
+		Unit:         unit,
+		Duration:     duration,
 	}
 
 	// Temporarily store the plain key for response generation
-	rotatedKey.PlainAPIKey = plainAPIKeyValue
+	regeneratedKey.PlainAPIKey = plainAPIKeyValue
 
-	return rotatedKey, nil
+	return regeneratedKey, nil
 }
 
 // canRevokeAPIKey determines if a user can revoke a specific API key
@@ -1021,9 +1060,9 @@ func (s *APIKeyService) canRevokeAPIKey(user *commonmodels.AuthContext, apiKey *
 	return nil
 }
 
-// canRotateAPIKey determines if a user can rotate a specific API key
-// Only the user who created the API key can rotate it
-func (s *APIKeyService) canRotateAPIKey(user *commonmodels.AuthContext, apiKey *models.APIKey, logger *zap.Logger) error {
+// canRegenerateAPIKey determines if a user can regenerate a specific API key
+// Only the user who created the API key can regenerate it
+func (s *APIKeyService) canRegenerateAPIKey(user *commonmodels.AuthContext, apiKey *models.APIKey, logger *zap.Logger) error {
 	if user == nil {
 		return fmt.Errorf("user authentication required")
 	}
@@ -1032,22 +1071,22 @@ func (s *APIKeyService) canRotateAPIKey(user *commonmodels.AuthContext, apiKey *
 		return fmt.Errorf("API key not found")
 	}
 
-	logger.Debug("Checking API key rotation authorization",
+	logger.Debug("Checking API key regeneration authorization",
 		zap.String("user_id", user.UserID),
 		zap.Strings("roles", user.Roles),
 		zap.String("api_key_name", apiKey.Name),
 		zap.String("api_key_creator", apiKey.CreatedBy))
 
-	// Only the creator can rotate the API key
+	// Only the creator can regenerate the API key
 	if apiKey.CreatedBy != user.UserID {
-		logger.Warn("User cannot rotate API key - not the creator",
+		logger.Warn("User cannot regenerate API key - not the creator",
 			zap.String("user_id", user.UserID),
 			zap.String("api_key_name", apiKey.Name),
 			zap.String("api_key_creator", apiKey.CreatedBy))
-		return fmt.Errorf("only the creator of the API key can rotate it")
+		return fmt.Errorf("only the creator of the API key can regenerate it")
 	}
 
-	logger.Debug("User authorized to rotate API key",
+	logger.Debug("User authorized to regenerate API key",
 		zap.String("user_id", user.UserID),
 		zap.String("api_key_name", apiKey.Name))
 
@@ -1100,12 +1139,12 @@ func (s *APIKeyService) generateAPIKeyValue() (string, error) {
 	return constants.APIKeyPrefix + hex.EncodeToString(randomBytes), nil
 }
 
-// MaskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
+// MaskAPIKey masks an API key for secure logging, showing first 10 characters
 func (s *APIKeyService) MaskAPIKey(apiKey string) string {
-	if len(apiKey) <= 12 {
-		return "****"
+	if len(apiKey) <= 10 {
+		return "**********"
 	}
-	return apiKey[:8] + "****" + apiKey[len(apiKey)-4:]
+	return apiKey[:10] + "*********"
 }
 
 // isAdmin checks if the user has admin role
@@ -1126,13 +1165,8 @@ func (s *APIKeyService) hashAPIKey(plainAPIKey string) (string, error) {
 		return "", fmt.Errorf("API key cannot be empty")
 	}
 
-	// If hashing is disabled, return the plain API key
-	if !s.hashingConfig.Enabled {
-		return plainAPIKey, nil
-	}
-
 	// Hash based on configured algorithm
-	switch strings.ToLower(s.hashingConfig.Algorithm) {
+	switch strings.ToLower(s.apiKeyConfig.Algorithm) {
 	case constants.HashingAlgorithmSHA256:
 		return s.hashAPIKeyWithSHA256(plainAPIKey)
 	case constants.HashingAlgorithmBcrypt:
@@ -1295,7 +1329,7 @@ func (s *APIKeyService) compareBcryptHash(apiKey, encoded string) bool {
 }
 
 // compareArgon2id parses an encoded Argon2id hash and compares it to the provided password.
-// Expected format: $argon2id$v=19$m=65536,t=3,p=4$<salt_b64>$<hash_b64>
+// Expected format: $argon2id$v=19$m=<m>,t=<t>,p=<p>$<salt_b64>$<hash_b64>
 func (s *APIKeyService) compareArgon2id(apiKey, encoded string) error {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
@@ -1311,7 +1345,7 @@ func (s *APIKeyService) compareArgon2id(apiKey, encoded string) error {
 		return fmt.Errorf("unsupported argon2 version: %d", version)
 	}
 
-	// parts[3] -> m=65536,t=3,p=4
+	// parts[3] -> m=<m>,t=<t>,p=<p>
 	var mem uint32
 	var iters uint32
 	var threads uint8
@@ -1350,38 +1384,108 @@ func decodeBase64(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(s)
 }
 
-// parseAPIKey splits an API key value into its key and ID components
-func (s *APIKeyService) parseAPIKey(value string) (ParsedAPIKey, bool) {
-	idx := strings.LastIndex(value, ".")
-	if idx <= 0 || idx == len(value)-1 {
-		return ParsedAPIKey{}, false
-	}
-
-	apiKey := value[:idx]
-	hexEncodedID := value[idx+1:]
-
-	// Decode the hex encoded ID back to the raw ID
-	decodedIDBytes, err := hex.DecodeString(hexEncodedID)
-	if err != nil {
-		// If decoding fails, return the hex value as-is for backward compatibility
-		return ParsedAPIKey{
-			APIKey: apiKey,
-			ID:     hexEncodedID,
-		}, true
-	}
-
-	return ParsedAPIKey{
-		APIKey: apiKey,
-		ID:     string(decodedIDBytes),
-	}, true
-}
-
 // SetHashingConfig allows updating the hashing configuration at runtime
-func (s *APIKeyService) SetHashingConfig(config *config.APIKeyHashingConfig) {
-	s.hashingConfig = config
+func (s *APIKeyService) SetHashingConfig(config *config.APIKeyConfig) {
+	s.apiKeyConfig = config
 }
 
 // GetHashingConfig returns the current hashing configuration
-func (s *APIKeyService) GetHashingConfig() *config.APIKeyHashingConfig {
-	return s.hashingConfig
+func (s *APIKeyService) GetHashingConfig() *config.APIKeyConfig {
+	return s.apiKeyConfig
+}
+
+// enforceAPIKeyLimit checks if the user has exceeded the configured API key limit for the given API
+func (s *APIKeyService) enforceAPIKeyLimit(apiId, userID string, logger *zap.Logger) error {
+	// Get the current count of active API keys for this user and API
+	var currentCount int
+	var err error
+
+	// Try to get count from memory store first
+	if currentCount, err = s.store.CountActiveAPIKeysByUserAndAPI(apiId, userID); err != nil {
+		logger.Debug("Failed to count API keys from memory store, trying database",
+			zap.Error(err),
+			zap.String("api_id", apiId),
+			zap.String("user_id", userID))
+
+		// If memory store fails, try database
+		if s.db != nil {
+			if currentCount, err = s.db.CountActiveAPIKeysByUserAndAPI(apiId, userID); err != nil {
+				logger.Error("Failed to count API keys from database",
+					zap.Error(err),
+					zap.String("api_id", apiId),
+					zap.String("user_id", userID))
+				return fmt.Errorf("failed to check API key count: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to check API key count: %w", err)
+		}
+	}
+
+	maxAllowed := s.apiKeyConfig.APIKeysPerUserPerAPI
+
+	logger.Debug("Checking API key limit",
+		zap.String("api_id", apiId),
+		zap.String("user_id", userID),
+		zap.Int("current_count", currentCount),
+		zap.Int("max_allowed", maxAllowed))
+
+	if currentCount >= maxAllowed {
+		logger.Warn("API key limit exceeded",
+			zap.String("api_id", apiId),
+			zap.String("user_id", userID),
+			zap.Int("current_count", currentCount),
+			zap.Int("max_allowed", maxAllowed))
+		return fmt.Errorf("API key limit exceeded: user has %d active keys, maximum allowed is %d",
+			currentCount, maxAllowed)
+	}
+
+	logger.Debug("API key limit check passed",
+		zap.String("api_id", apiId),
+		zap.String("user_id", userID),
+		zap.Int("current_count", currentCount),
+		zap.Int("max_allowed", maxAllowed))
+
+	return nil
+}
+
+// getCurrentAPIKeyCount gets the current count of active API keys for a user and API
+func (s *APIKeyService) getCurrentAPIKeyCount(apiId, userID string) (int, error) {
+	// Try to get count from memory store first
+	if currentCount, err := s.store.CountActiveAPIKeysByUserAndAPI(apiId, userID); err == nil {
+		return currentCount, nil
+	}
+
+	// If memory store fails, try database
+	if s.db != nil {
+		if currentCount, err := s.db.CountActiveAPIKeysByUserAndAPI(apiId, userID); err == nil {
+			return currentCount, nil
+		}
+	}
+
+	// If both fail, return error
+	return 0, fmt.Errorf("failed to get current API key count")
+}
+
+// generateShortUniqueID generates a 22-character URL-safe unique identifier
+// Uses 16 random bytes (128 bits) encoded as base64url without padding
+// Results in exactly 22 characters that are URL-safe and highly unique
+// Note: Replaces any underscore characters with tilde (~) to avoid underscore usage
+func (s *APIKeyService) generateShortUniqueID() (string, error) {
+	// Generate 16 random bytes (128 bits of entropy)
+	// This provides sufficient uniqueness for API key IDs
+	randomBytes := make([]byte, 16)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes for ID: %w", err)
+	}
+
+	// Encode as base64url without padding
+	// 16 bytes -> 22 characters (base64 encoding: 4 chars per 3 bytes, so 16 bytes = ~21.33 -> 22 chars)
+	// Use RawURLEncoding (base64url without padding) for URL-safe characters
+	id := base64.RawURLEncoding.EncodeToString(randomBytes)
+
+	// Replace any underscore characters with tilde (~) which is also URL-safe
+	// This ensures the ID never contains underscores
+	id = strings.ReplaceAll(id, "_", "~")
+
+	return id, nil
 }
