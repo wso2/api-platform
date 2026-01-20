@@ -416,7 +416,7 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, errors.New("deployment not found")
+		return nil, constants.ErrDeploymentNotFound
 	}
 
 	// Convert to DTO
