@@ -144,7 +144,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
 		if baseDeployment == nil {
-			return nil, errors.New("base deployment not found")
+			return nil, constants.ErrDeploymentNotFound
 		}
 
 		// Deployment content is already stored as YAML, reuse it directly
@@ -237,7 +237,7 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, errors.New("deployment not found")
+		return nil, constants.ErrDeploymentNotFound
 	}
 	if deployment.Status == "DEPLOYED" {
 		return nil, errors.New("deployment is already active")
@@ -302,7 +302,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 		return err
 	}
 	if deployment == nil {
-		return errors.New("deployment not found")
+		return constants.ErrDeploymentNotFound
 	}
 	if deployment.Status != "DEPLOYED" {
 		return errors.New("deployment is not currently active")
