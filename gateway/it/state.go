@@ -38,9 +38,13 @@ type Config struct {
 	PolicyEngineURL      string
 	SampleBackendURL     string
 	EchoBackendURL       string
+	MockJWKSURL          string
 	HTTPTimeout          time.Duration
 	Users                map[string]AuthUser
 }
+
+// MockJWKSPort is the port for mock-jwks service
+const MockJWKSPort = "8082"
 
 // DefaultConfig returns the default test configuration
 func DefaultConfig() *Config {
@@ -50,6 +54,7 @@ func DefaultConfig() *Config {
 		PolicyEngineURL:      "http://localhost:9002",
 		SampleBackendURL:     "http://localhost:9080",
 		EchoBackendURL:       "http://localhost:9081",
+		MockJWKSURL:          fmt.Sprintf("http://localhost:%s", MockJWKSPort),
 		HTTPTimeout:          10 * time.Second,
 		Users: map[string]AuthUser{
 			"admin": {Username: "admin", Password: "admin"},
