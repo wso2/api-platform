@@ -131,6 +131,9 @@ gateway_controller:
         route_idle_timeout_in_seconds: 300
     tracing_service_name: router
 
+    http_listener:
+      server_header_transformation: OVERWRITE # Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+      server_header_value: WSO2 API Platform
 
     # Policy Engine ext_proc filter configuration
     policy_engine:

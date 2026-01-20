@@ -20,6 +20,7 @@ package xds
 
 import (
 	"fmt"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"net"
 	"net/url"
 	"os"
@@ -105,6 +106,21 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 		routerConfig: routerConfig,
 		certStore:    cs,
 		config:       config,
+	}
+}
+
+// convertServerHeaderTransformation converts string configuration values to Envoy enum values
+func convertServerHeaderTransformation(transformation string) hcm.HttpConnectionManager_ServerHeaderTransformation {
+	switch transformation {
+	case commonconstants.APPEND_IF_ABSENT:
+		return hcm.HttpConnectionManager_APPEND_IF_ABSENT
+	case commonconstants.OVERWRITE:
+		return hcm.HttpConnectionManager_OVERWRITE
+	case commonconstants.PASS_THROUGH:
+		return hcm.HttpConnectionManager_PASS_THROUGH
+	default:
+		// Default to OVERWRITE if unknown value
+		return hcm.HttpConnectionManager_OVERWRITE
 	}
 }
 
@@ -498,7 +514,9 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
 			RouteConfig: routeConfig,
 		},
-		HttpFilters: httpFilters,
+		HttpFilters:                httpFilters,
+		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
+		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
 	}
 
 	// Add access logs if enabled
@@ -620,6 +638,8 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
 			},
 		},
+		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
+		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
 	}
 
 	// Attach access logs if enabled
@@ -735,6 +755,8 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
 			},
 		},
+		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
+		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
 	}
 
 	// Attach access logs if enabled

@@ -23,8 +23,6 @@ import (
 	"fmt"
 
 	"google.golang.org/protobuf/types/known/structpb"
-
-	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 )
 
 // Constants for analytics metadata
@@ -99,28 +97,7 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	return &structpb.Struct{Fields: fields}, nil
 }
 
-// buildDynamicMetadata creates the dynamic metadata structure for analytics
-func buildDynamicMetadata(analyticsStruct *structpb.Struct) *structpb.Struct {
-	return &structpb.Struct{
-		Fields: map[string]*structpb.Value{
-			constants.ExtProcFilterName: {
-				Kind: &structpb.Value_StructValue{
-					StructValue: &structpb.Struct{
-						Fields: map[string]*structpb.Value{
-							"analytics_data": {
-								Kind: &structpb.Value_StructValue{
-									StructValue: analyticsStruct,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-// extractMetadataFromMap extracts the metadata from the route metadata
+// extractMetadataFromRouteMetadata extracts the metadata from the route metadata
 func extractMetadataFromRouteMetadata(routeMeta RouteMetadata) map[string]interface{} {
 	metadata := make(map[string]interface{})
 	if routeMeta.APIName != "" {

@@ -38,10 +38,10 @@ func GetPolicy(
 // Mode returns the processing mode for this policy
 func (p *RewriteResourcePathPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeSkip, // Don't process request headers
-		RequestBodyMode:    policy.BodyModeSkip,   // Don't need request body
-		ResponseHeaderMode: policy.HeaderModeSkip, // Don't process response headers
-		ResponseBodyMode:   policy.BodyModeSkip,   // Don't need response body
+		RequestHeaderMode:  policy.HeaderModeProcess, // Process request headers to rewrite path
+		RequestBodyMode:    policy.BodyModeSkip,      // Don't need request body
+		ResponseHeaderMode: policy.HeaderModeSkip,    // Don't process response headers
+		ResponseBodyMode:   policy.BodyModeSkip,      // Don't need response body
 	}
 }
 

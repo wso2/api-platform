@@ -27,6 +27,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
@@ -192,6 +193,9 @@ type RouterConfig struct {
 	VHosts        VHostsConfig       `koanf:"vhosts"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
+
+	// HTTPListener configuration
+	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
 }
 
 // EventGatewayConfig holds event gateway specific configurations
@@ -246,6 +250,12 @@ type VHostEntry struct {
 	// If empty, the router will rely on the default pattern.
 	Domains []string `koanf:"domains"`
 	Default string   `koanf:"default"`
+}
+
+// HTTPListenerConfig holds HTTP listener related configuration of an API
+type HTTPListenerConfig struct {
+	ServerHeaderTransformation string `koanf:"server_header_transformation"` // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+	ServerHeaderValue          string `koanf:"server_header_value"`          // Custom value for the Server header
 }
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
@@ -477,6 +487,10 @@ func defaultConfig() *Config {
 					Sandbox: VHostEntry{Default: "sandbox-*"},
 				},
 				TracingServiceName: "router",
+				HTTPListener: HTTPListenerConfig{
+					ServerHeaderTransformation: commonconstants.OVERWRITE,
+					ServerHeaderValue:          commonconstants.ServerName,
+				},
 			},
 			Auth: AuthConfig{
 				Basic: BasicAuth{
@@ -675,6 +689,10 @@ func (c *Config) Validate() error {
 
 	// Validate authentication configuration
 	if err := c.validateAuthConfig(); err != nil {
+		return err
+	}
+
+	if err := c.validateHTTPListenerConfig(); err != nil {
 		return err
 	}
 
@@ -1180,4 +1198,39 @@ func (c *Config) IsAccessLogsEnabled() bool {
 // IsPolicyEngineEnabled returns true if policy engine is enabled
 func (c *Config) IsPolicyEngineEnabled() bool {
 	return c.GatewayController.Router.PolicyEngine.Enabled
+}
+
+// validateHTTPListenerConfig validates the HTTP listener configuration
+func (c *Config) validateHTTPListenerConfig() error {
+	httpListener := &c.GatewayController.Router.HTTPListener
+
+	// Set default values if not provided
+	if httpListener.ServerHeaderTransformation == "" {
+		httpListener.ServerHeaderTransformation = commonconstants.OVERWRITE
+	}
+
+	// Validate ServerHeaderTransformation value
+	validTransformations := []string{
+		commonconstants.APPEND_IF_ABSENT,
+		commonconstants.OVERWRITE,
+		commonconstants.PASS_THROUGH,
+	}
+
+	isValid := false
+	for _, valid := range validTransformations {
+		if httpListener.ServerHeaderTransformation == valid {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		return fmt.Errorf("http_listener.server_header_transformation must be one of: %s, %s, %s. Got: %s",
+			commonconstants.APPEND_IF_ABSENT,
+			commonconstants.OVERWRITE,
+			commonconstants.PASS_THROUGH,
+			httpListener.ServerHeaderTransformation)
+	}
+
+	return nil
 }
