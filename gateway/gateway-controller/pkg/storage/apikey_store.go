@@ -97,7 +97,7 @@ func (s *APIKeyStore) GetAll() []*models.APIKey {
 	return result
 }
 
-// Revoke marks an API key as revoked by finding it through hash comparison
+// Revoke marks an API key as revoked by finding it through API ID and key name lookup
 func (s *APIKeyStore) Revoke(apiId, apiKeyName string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

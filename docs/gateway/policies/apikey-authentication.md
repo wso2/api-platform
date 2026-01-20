@@ -236,7 +236,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
 ```bash
 curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
   -d '{"name": "production-key"}'
 ```
 
@@ -294,7 +294,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
 ```bash
 curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
   -d '{
     "name": "production-key",
     "expires_in": {
@@ -313,7 +313,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   "remaining_api_key_quota": 9,
   "api_key": {
     "name": "production-key",
-    "api_key": "apip_3521f31335d98868f1526ef_dbehwy3e8d8xcub238dx2",
+    "api_key": "apip_<64_hex>_<22_chars>",
     "apiId": "weather-api-v1.0",
     "operations": "[\"*\"]",
     "status": "active",
@@ -364,7 +364,7 @@ curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
 **Using JWT Authentication:**
 ```bash
 curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
 #### Successful Response (200 OK)
@@ -454,7 +454,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-ke
 ```bash
 curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-key/regenerate" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
   -d '{
     "expires_in": {
       "duration": 60,
@@ -510,7 +510,7 @@ curl -X DELETE "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-
 **Using JWT Authentication:**
 ```bash
 curl -X DELETE "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-key" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer <JWT_TOKEN>"
 ```
 
 #### Successful Response (200 OK)
