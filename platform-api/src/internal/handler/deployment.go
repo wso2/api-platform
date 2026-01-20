@@ -165,7 +165,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 		return
 	}
 
-	err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, orgId)
+	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -182,7 +182,7 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	c.JSON(http.StatusOK, deployment)
 }
 
 // DeleteDeployment handles DELETE /api/v1/apis/:apiId/deployments/:deploymentId

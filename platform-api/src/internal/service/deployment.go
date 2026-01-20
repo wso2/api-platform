@@ -295,22 +295,22 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 }
 
 // UndeployDeployment undeploys an active deployment
-func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID string) error {
+func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID string) (*dto.DeploymentResponse, error) {
 	// Get the deployment
 	deployment, err := s.apiRepo.GetDeploymentByID(deploymentID, apiUUID, orgUUID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if deployment == nil {
-		return constants.ErrDeploymentNotFound
+		return nil, constants.ErrDeploymentNotFound
 	}
 	if deployment.Status != "DEPLOYED" {
-		return errors.New("deployment is not currently active")
+		return nil, errors.New("deployment is not currently active")
 	}
 
 	// Update status to UNDEPLOYED
 	if err := s.apiRepo.UpdateDeploymentStatus(deploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
-		return fmt.Errorf("failed to update deployment status: %w", err)
+		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
 	// Send undeployment event to gateway
@@ -332,7 +332,17 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 		}
 	}
 
-	return nil
+	deployment.Status = "UNDEPLOYED"
+
+	return &dto.DeploymentResponse{
+		DeploymentID:     deployment.DeploymentID,
+		ApiID:            deployment.ApiID,
+		GatewayID:        deployment.GatewayID,
+		Status:           deployment.Status,
+		BaseDeploymentID: deployment.BaseDeploymentID,
+		Metadata:         deployment.Metadata,
+		CreatedAt:        deployment.CreatedAt,
+	}, nil
 }
 
 // DeleteDeployment permanently deletes an undeployed deployment artifact
@@ -551,11 +561,11 @@ func (s *DeploymentService) RedeployDeploymentByHandle(apiHandle, deploymentID, 
 }
 
 // UndeployDeploymentByHandle undeploys a deployment using API handle
-func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, orgUUID string) error {
+func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, orgUUID string) (*dto.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	return s.UndeployDeployment(apiUUID, deploymentID, orgUUID)

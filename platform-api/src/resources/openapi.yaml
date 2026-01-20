@@ -948,8 +948,9 @@ paths:
       summary: Undeploy deployment
       description: |
         Undeploys an active deployment, stopping the API from being served. The deployment artifact
-        remains in the system with UNDEPLOYED status and can be redeployed later. Access is validated
-        against the organization in the JWT token.
+        remains in the system with UNDEPLOYED status and can be redeployed later. Returns the updated
+        deployment object with status changed to UNDEPLOYED. Access is validated against the organization 
+        in the JWT token.
       operationId: UndeployDeployment
       tags:
         - API Deployments
@@ -958,7 +959,7 @@ paths:
         - $ref: '#/components/parameters/deploymentId'
       responses:
         '200':
-          description: Deployment undeployed successfully
+          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
           content:
             application/json:
               schema:
