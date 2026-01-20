@@ -172,7 +172,6 @@ type DeployAPIRequest struct {
 // DeploymentResponse represents a deployment artifact
 type DeploymentResponse struct {
 	DeploymentID     string                 `json:"deploymentId" yaml:"deploymentId"`
-	ApiID            string                 `json:"apiId" yaml:"apiId"`
 	GatewayID        string                 `json:"gatewayId" yaml:"gatewayId"`
 	Status           string                 `json:"status" yaml:"status"`
 	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" yaml:"baseDeploymentId,omitempty"`
