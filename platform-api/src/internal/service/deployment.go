@@ -161,23 +161,11 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
 	}
 
-	// If exists, undeploy it
+	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
+	// The gateway will receive the new deployment event and handle the transition
 	if existingDeployment != nil {
 		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
-			log.Printf("[WARN] Failed to undeploy existing deployment %s: %v", existingDeployment.DeploymentID, err)
-		}
-	}
-
-	// Send undeployment event to gateway
-	if s.gatewayEventsService != nil {
-		undeploymentEvent := &model.APIUndeploymentEvent{
-			ApiId:       apiUUID,
-			Vhost:       gateway.Vhost,
-			Environment: "production",
-		}
-
-		if err := s.gatewayEventsService.BroadcastUndeploymentEvent(req.GatewayID, undeploymentEvent); err != nil {
-			log.Printf("[WARN] Failed to broadcast undeployment event: %v", err)
+			log.Printf("[WARN] Failed to mark existing deployment as undeployed %s: %v", existingDeployment.DeploymentID, err)
 		}
 	}
 
@@ -248,10 +236,11 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
 	}
 
-	// If exists, undeploy it
+	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
+	// The gateway will receive the new deployment event and handle the transition
 	if existingDeployment != nil {
 		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
-			log.Printf("[WARN] Failed to undeploy existing deployment %s: %v", existingDeployment.DeploymentID, err)
+			log.Printf("[WARN] Failed to mark existing deployment as undeployed %s: %v", existingDeployment.DeploymentID, err)
 		}
 	}
 
