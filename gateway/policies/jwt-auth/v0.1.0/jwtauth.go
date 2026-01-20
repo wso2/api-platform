@@ -23,11 +23,12 @@ import (
 
 const (
 	// Metadata keys for context storage
-	MetadataKeyAuthSuccess = "auth.success"
-	MetadataKeyAuthMethod  = "auth.method"
-	MetadataKeyTokenClaims = "auth.claims"
-	MetadataKeyIssuer      = "auth.issuer"
-	MetadataKeySubject     = "auth.subject"
+	MetadataKeyAuthSuccess  = "auth.success"
+	MetadataKeyAuthMethod   = "auth.method"
+	MetadataKeyTokenClaims  = "auth.claims"
+	MetadataKeyIssuer       = "auth.issuer"
+	MetadataKeySubject      = "auth.subject"
+	MetadataValidatedClaims = "auth.validatedClaims"
 )
 
 // JwtAuthPolicy implements JWT Authentication with JWKS support
@@ -436,6 +437,8 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 		)
 		return p.handleAuthFailure(ctx, onFailureStatusCode, errorMessageFormat, errorMessage, fmt.Sprintf("token validation failed: %v", err))
 	}
+	// Store validated claims in metadata for authz policies to use
+	ctx.Metadata[MetadataValidatedClaims] = claims
 
 	slog.Debug("JWT Auth Policy: Token signature validated successfully")
 
