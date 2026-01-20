@@ -3723,10 +3723,6 @@ components:
           type: string
           format: uuid
           description: UUID of the deployed API
-        organizationId:
-          type: string
-          format: uuid
-          description: UUID of the organization
         gatewayId:
           type: string
           format: uuid
