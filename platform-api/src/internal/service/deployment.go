@@ -343,10 +343,10 @@ func (s *DeploymentService) DeleteDeployment(apiUUID, deploymentID, orgUUID stri
 		return err
 	}
 	if deployment == nil {
-		return errors.New("deployment not found")
+		return constants.ErrDeploymentNotFound
 	}
 	if deployment.Status == "DEPLOYED" {
-		return errors.New("cannot delete an active deployment - undeploy it first")
+		return constants.ErrDeploymentIsDeployed
 	}
 
 	// Delete the deployment

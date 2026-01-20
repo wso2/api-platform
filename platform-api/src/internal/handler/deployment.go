@@ -221,6 +221,11 @@ func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 				"Deployment not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentIsDeployed) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Cannot delete an active deployment - undeploy it first"))
+			return
+		}
 		log.Printf("[ERROR] Failed to delete deployment: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", err.Error()))
 		return
