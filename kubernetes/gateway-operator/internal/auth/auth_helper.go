@@ -108,6 +108,50 @@ func GetDeploymentConfigFromGateway(ctx context.Context, k8sClient client.Client
 	return &deploymentConfig.Gateway.Config.GatewayController.Auth, nil
 }
 
+// GetAuthConfigFromSecret retrieves authentication configuration from a Gateway's AuthSecretRef.
+// It parses the 'users.yaml' key from the Secret into a list of AuthUser.
+// Returns nil if no AuthSecretRef is specified, or if the Secret/key is missing.
+func GetAuthConfigFromSecret(ctx context.Context, k8sClient client.Client, gateway *apiv1.Gateway) (*AuthSettings, error) {
+	// If no AuthSecretRef, return nil
+	if gateway.Spec.AuthSecretRef == nil {
+		return nil, nil
+	}
+
+	// Get the Secret
+	secret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{
+		Name:      gateway.Spec.AuthSecretRef.Name,
+		Namespace: gateway.Namespace,
+	}, secret); err != nil {
+		return nil, fmt.Errorf("failed to get Auth Secret %s/%s: %w", gateway.Namespace, gateway.Spec.AuthSecretRef.Name, err)
+	}
+
+	// Look for users.yaml key
+	usersYAML, ok := secret.Data["users.yaml"]
+	if !ok {
+		// Fallback to stringData if not in Data (though client normally consolidates them)
+		// But in controller-runtime Struct Data contains byte slices
+		return nil, fmt.Errorf("secret %s/%s does not contain 'users.yaml' key", gateway.Namespace, gateway.Spec.AuthSecretRef.Name)
+	}
+
+	// Parse the YAML
+	var users []AuthUser
+	if err := yaml.Unmarshal(usersYAML, &users); err != nil {
+		return nil, fmt.Errorf("failed to parse users from Secret: %w", err)
+	}
+
+	// Construct AuthSettings
+	// We assume basic auth is enabled if users are provided via secret
+	authSettings := &AuthSettings{
+		Basic: BasicAuthConfig{
+			Enabled: true,
+			Users:   users,
+		},
+	}
+
+	return authSettings, nil
+}
+
 // GetBasicAuthCredentials extracts basic auth credentials from the auth config
 // Returns username, password, and ok=true if basic auth is enabled and has at least one user
 // Returns empty strings and ok=false if basic auth is not configured or disabled

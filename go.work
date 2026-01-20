@@ -8,6 +8,7 @@ use (
 	./gateway/gateway-controller
 	./gateway/it
 	./gateway/policy-engine
+	./kubernetes/gateway-operator
 	./platform-api/src
 	./sdk
 )
