@@ -373,7 +373,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 			revision_id = ?, type = ?, transport = ?, security_enabled = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-		_, err = tx.Exec(r.db.Rebind(query), api.Description,
+	_, err = tx.Exec(r.db.Rebind(query), api.Description,
 		api.Provider, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision,
 		api.RevisionedAPIID, api.RevisionID, api.Type, string(transportJSON),
@@ -755,6 +755,7 @@ func (r *APIRepo) loadRateLimitingConfig(apiId string) (*model.RateLimitingConfi
 func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId string, operation *model.Operation) error {
 	var authRequired bool
 	var scopesJSON string
+	var err error
 	if operation.Request.Authentication != nil {
 		authRequired = operation.Request.Authentication.Required
 		if len(operation.Request.Authentication.Scopes) > 0 {
@@ -764,19 +765,36 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 	}
 
 	// Insert operation
-	opQuery := `
-		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`
-	result, err := tx.Exec(r.db.Rebind(opQuery), apiId, operation.Name, operation.Description,
-		operation.Request.Method, operation.Request.Path, authRequired, scopesJSON)
-	if err != nil {
-		return err
-	}
+	var operationID int64
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: use RETURNING to get the generated ID
+		opQuery := `
+			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			RETURNING id
+		`
+		if err := tx.QueryRow(r.db.Rebind(opQuery), apiId, operation.Name, operation.Description,
+			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON).Scan(&operationID); err != nil {
+			return err
+		}
+	} else {
+		// SQLite (and other drivers that support LastInsertId)
+		opQuery := `
+			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`
+		result, err := tx.Exec(r.db.Rebind(opQuery), apiId, operation.Name, operation.Description,
+			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON)
+		if err != nil {
+			return err
+		}
 
-	operationID, err := result.LastInsertId()
-	if err != nil {
-		return err
+		var lastID int64
+		lastID, err = result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		operationID = lastID
 	}
 
 	// Insert backend services routing
@@ -796,8 +814,7 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 			INSERT INTO operation_backend_services (operation_id, backend_service_uuid, weight)
 			VALUES (?, ?, ?)
 		`
-		_, err = tx.Exec(r.db.Rebind(bsQuery), operationID, backendServiceUUID, backendRouting.Weight)
-		if err != nil {
+		if _, err = tx.Exec(r.db.Rebind(bsQuery), operationID, backendServiceUUID, backendRouting.Weight); err != nil {
 			return err
 		}
 	}
@@ -971,23 +988,35 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 	deployment.CreatedAt = time.Now()
 
-	query := `
-		INSERT INTO api_deployments (api_uuid, organization_uuid, gateway_uuid, created_at)
-		VALUES (?, ?, ?, ?)
-	`
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: use RETURNING to get the generated ID
+		query := `
+			INSERT INTO api_deployments (api_uuid, organization_uuid, gateway_uuid, created_at)
+			VALUES (?, ?, ?, ?)
+			RETURNING id
+		`
+		if err := r.db.QueryRow(r.db.Rebind(query), deployment.ApiID, deployment.OrganizationID,
+			deployment.GatewayID, deployment.CreatedAt).Scan(&deployment.ID); err != nil {
+			return err
+		}
+	} else {
+		// SQLite: use LastInsertId
+		query := `
+			INSERT INTO api_deployments (api_uuid, organization_uuid, gateway_uuid, created_at)
+			VALUES (?, ?, ?, ?)
+		`
+		result, err := r.db.Exec(r.db.Rebind(query), deployment.ApiID, deployment.OrganizationID,
+			deployment.GatewayID, deployment.CreatedAt)
+		if err != nil {
+			return err
+		}
 
-	result, err := r.db.Exec(r.db.Rebind(query), deployment.ApiID, deployment.OrganizationID,
-		deployment.GatewayID, deployment.CreatedAt)
-	if err != nil {
-		return err
+		lastID, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		deployment.ID = int(lastID)
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	deployment.ID = int(id)
 	return nil
 }
 
@@ -1022,22 +1051,35 @@ func (r *APIRepo) GetDeploymentsByAPIUUID(apiUUID, orgUUID string) ([]*model.API
 
 // CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
-	query := `
-		INSERT INTO api_associations (api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`
-	result, err := r.db.Exec(r.db.Rebind(query), association.ApiID, association.OrganizationID, association.ResourceID,
-		association.AssociationType, association.CreatedAt, association.UpdatedAt)
-	if err != nil {
-		return err
-	}
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: use RETURNING to get the generated ID
+		query := `
+			INSERT INTO api_associations (api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			RETURNING id
+		`
+		if err := r.db.QueryRow(r.db.Rebind(query), association.ApiID, association.OrganizationID, association.ResourceID,
+			association.AssociationType, association.CreatedAt, association.UpdatedAt).Scan(&association.ID); err != nil {
+			return err
+		}
+	} else {
+		// SQLite: use LastInsertId
+		query := `
+			INSERT INTO api_associations (api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`
+		result, err := r.db.Exec(r.db.Rebind(query), association.ApiID, association.OrganizationID, association.ResourceID,
+			association.AssociationType, association.CreatedAt, association.UpdatedAt)
+		if err != nil {
+			return err
+		}
 
-	// Get the auto-generated ID
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
+		lastID, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		association.ID = int(lastID)
 	}
-	association.ID = int(id)
 
 	return nil
 }
