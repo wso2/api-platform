@@ -584,8 +584,6 @@ All generated API keys follow a consistent format:
 - **Total Length**: 92 characters
 - **Example**: `apip_b9abae64a955aded2eb700aff88235ce3f7e6a8ca0f2f52ba31f73bcbb960360_jh~cPInvccQ09goMO5-4mQ`
 
-The API key uses a URL-safe character set and does not contain underscores or other special characters that might cause issues in various contexts.
-
 ### API Key Security
 
 The platform implements comprehensive security measures for API key management:

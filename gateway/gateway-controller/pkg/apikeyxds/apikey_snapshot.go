@@ -145,7 +145,6 @@ func (sm *APIKeySnapshotManager) RevokeAPIKey(apiId, apiKeyName string) error {
 		sm.logger.Warn("API key not found for revocation",
 			zap.String("api_id", apiId),
 			zap.String("api_key", apiKeyName))
-		return nil
 	}
 
 	// Update the snapshot to reflect the new state

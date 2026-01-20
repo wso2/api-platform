@@ -1156,7 +1156,7 @@ func (c *Config) validateAPIKeyConfig() error {
 		}
 	}
 	if !isValidAlgorithm {
-		return fmt.Errorf("api_key_hashing.algorithm must be one of: %s, got: %s",
+		return fmt.Errorf("api_key.algorithm must be one of: %s, got: %s",
 			strings.Join(validAlgorithms, ", "), c.GatewayController.APIKey.Algorithm)
 	}
 	return nil

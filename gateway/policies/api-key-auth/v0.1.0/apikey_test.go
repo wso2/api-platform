@@ -30,7 +30,7 @@ func generateShortUniqueID() string {
 	randomBytes := make([]byte, 16)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
-		return "defaulttestid123456" // fallback for tests
+		return "defaulttestid123456789" // fallback for tests
 	}
 
 	// Encode as base64url without padding and replace underscores with tildes
