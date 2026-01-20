@@ -41,6 +41,7 @@ type ImmediateResponse struct {
 	Headers           map[string]string
 	Body              []byte
 	AnalyticsMetadata map[string]any // Custom analytics metadata (key-value pairs)
+	DropHeadersFromAnalytics DropHeaderAction // Headers to be excluded from analytics event
 }
 
 func (i ImmediateResponse) isRequestAction() {}

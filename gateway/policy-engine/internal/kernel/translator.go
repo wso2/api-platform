@@ -129,7 +129,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 
 				dropAction := mods.DropHeadersFromAnalytics
 				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-					slog.Info("Translator: Found DropHeadersFromAnalytics action (REQUEST)",
+					slog.Debug("Translator: Found DropHeadersFromAnalytics action (REQUEST)",
 						"action", dropAction.Action,
 						"headers", dropAction.Headers,
 						"headers_count", len(dropAction.Headers))

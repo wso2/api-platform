@@ -114,14 +114,14 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// if present; otherwise, fall back to the existing hardcoded headers.
 	defaultReqHeaders := map[string]interface{}{
 		"User-Agent":   event.UserAgentHeader,
-		"Content-Type": "application/json",
+		"Content-Type": "-",
 	}
 
 	defaultRspHeaders := map[string]interface{}{
 		"Vary":          "Accept-Encoding",
 		"Pragma":        "no-cache",
 		"Expires":       "-1",
-		"Content-Type":  "application/json; charset=utf-8",
+		"Content-Type":  "-",
 		"Cache-Control": "no-cache",
 	}
 
