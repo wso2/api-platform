@@ -472,12 +472,22 @@ func (p *SemanticToolFilteringPolicy) OnRequest(ctx *policy.RequestContext, para
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-
+    countStore := policy.GetRequestCountStoreInstance()
+    
+    // Build a unique key for this request
+    key := fmt.Sprintf("%s:%s:%s", ctx.APIId, ctx.Method, ctx.Path)
+    
+    // Increment and get count
+    count := countStore.Increment(key)
+    
+    slog.Debug("SemanticToolFiltering: Request count",
+        "key", key,
+        "count", count)
 	if len(content) == 0 {
 		slog.Debug("SemanticToolFiltering: Empty request body")
 		return policy.UpstreamRequestModifications{}
 	}
-
+	slog.Debug("Onrequest")
 	// Handle based on format type (JSON or Text)
 	if p.userQueryIsJson && p.toolsIsJson {
 		// Pure JSON mode

@@ -56,6 +56,8 @@ type ResourceHandler struct {
 // NewResourceHandler creates a new ResourceHandler
 func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *ResourceHandler {
 	apiKeyStore := policy.GetAPIkeyStoreInstance()
+
+
 	return &ResourceHandler{
 		kernel:        k,
 		registry:      reg,
