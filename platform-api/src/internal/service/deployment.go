@@ -439,7 +439,7 @@ func (s *DeploymentService) GetDeploymentContent(apiUUID, deploymentID, orgUUID 
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, errors.New("deployment not found")
+		return nil, constants.ErrDeploymentNotFound
 	}
 
 	// Get content - apiId is validated at repository level
@@ -580,5 +580,5 @@ func (s *DeploymentService) GetDeploymentContentByHandle(apiHandle, deploymentID
 		return nil, err
 	}
 
-	return s.GetDeploymentContent(deploymentID, apiUUID, orgUUID)
+	return s.GetDeploymentContent(apiUUID, deploymentID, orgUUID)
 }
