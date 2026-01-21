@@ -19,6 +19,7 @@ The Remove Headers policy dynamically removes HTTP headers from incoming request
 
 The Remove Headers policy can be configured for removal in request phase, response phase, or both.
 This policy does not require system-level configuration and operates entirely based on the configured header name arrays.
+At least one of `requestHeaders` or `responseHeaders` must be specified in the policy configuration. The policy will fail validation if both arrays are empty or omitted.
 
 ### User Parameters (API Definition)
 

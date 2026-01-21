@@ -37,6 +37,9 @@ parameters:
             pattern: "^[a-zA-Z0-9-_]+$"
         required:
         - name
+  anyOf:
+    - required: [ requestHeaders ]
+    - required: [ responseHeaders ]
 
 systemParameters:
   type: object

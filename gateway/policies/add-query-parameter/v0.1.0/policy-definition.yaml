@@ -43,6 +43,9 @@ parameters:
           - name
           - value
 
+  required:
+    - queryParameters
+
 systemParameters:
   type: object
   properties: { }

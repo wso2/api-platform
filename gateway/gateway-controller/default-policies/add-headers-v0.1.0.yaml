@@ -47,6 +47,9 @@ parameters:
         required:
         - name
         - value
+  anyOf:
+    - required: [requestHeaders]
+    - required: [responseHeaders]
 
 systemParameters:
   type: object

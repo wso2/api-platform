@@ -20,6 +20,7 @@ The Add Headers policy dynamically adds HTTP headers to incoming requests before
 
 The Add Headers policy can be configured for request phase, response phase, or both.
 This policy does not require system-level configuration and operates entirely based on the configured header arrays.
+At least one of `requestHeaders` or `responseHeaders` must be specified in the policy configuration. The policy will fail validation if both arrays are empty or omitted.
 
 ### User Parameters (API Definition)
 
