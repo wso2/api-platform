@@ -137,27 +137,27 @@ func NewGatewayReconciler(client client.Client, scheme *runtime.Scheme, cfg *con
 	}
 }
 
-//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=gateways,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=gateways/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=gateways/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=apigateways,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=apigateways/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=apigateways/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services;persistentvolumeclaims;configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("namespace", req.Namespace), zap.String("name", req.Name))
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("namespace", req.Namespace), zap.String("name", req.Name))
 
-	// Fetch the Gateway instance
-	gatewayConfig := &apiv1.Gateway{}
+	// Fetch the APIGateway instance
+	gatewayConfig := &apiv1.APIGateway{}
 	if err := r.Get(ctx, req.NamespacedName, gatewayConfig); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
-		log.Error("unable to fetch Gateway", zap.Error(err))
+		log.Error("unable to fetch APIGateway", zap.Error(err))
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling Gateway",
+	log.Info("Reconciling APIGateway",
 		zap.String("name", gatewayConfig.Name),
 		zap.String("namespace", gatewayConfig.Namespace),
 		zap.Int64("generation", gatewayConfig.Generation))
@@ -174,7 +174,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			log.Error("failed to add finalizer", zap.Error(err))
 			return ctrl.Result{}, err
 		}
-		log.Info("Added finalizer to Gateway")
+		log.Info("Added finalizer to APIGateway")
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -197,7 +197,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 // decideAndProcess implements the decision logic for processing reconcile events
 func (r *GatewayReconciler) decideAndProcess(
 	ctx context.Context,
-	gatewayConfig *apiv1.Gateway,
+	gatewayConfig *apiv1.APIGateway,
 	trackingKey string,
 	crGeneration int64,
 	statusObservedGen int64,
@@ -205,7 +205,7 @@ func (r *GatewayReconciler) decideAndProcess(
 	trackingEntry *GatewayTrackingEntry,
 	hasTrackingEntry bool,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
 
 	// Calculate current config hash
 	currentConfigHash := ""
@@ -376,12 +376,12 @@ func (r *GatewayReconciler) decideAndProcess(
 // processGatewayDeployment handles the actual deployment of the Gateway
 func (r *GatewayReconciler) processGatewayDeployment(
 	ctx context.Context,
-	gatewayConfig *apiv1.Gateway,
+	gatewayConfig *apiv1.APIGateway,
 	trackingKey string,
 	generation int64,
 	configHash string,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
 
 	// Get existing entry to preserve retry count if retrying same generation
 	existingEntry, hasExisting := r.gatewayTracker.Get(trackingKey)
@@ -466,7 +466,7 @@ func (r *GatewayReconciler) processGatewayDeployment(
 }
 
 // setGatewayInitialConditions sets the Accepted and initial Programmed conditions
-func (r *GatewayReconciler) setGatewayInitialConditions(ctx context.Context, gatewayConfig *apiv1.Gateway, generation int64) error {
+func (r *GatewayReconciler) setGatewayInitialConditions(ctx context.Context, gatewayConfig *apiv1.APIGateway, generation int64) error {
 	base := gatewayConfig.DeepCopy()
 
 	acceptedCond := metav1.Condition{
@@ -503,14 +503,14 @@ func (r *GatewayReconciler) setGatewayInitialConditions(ctx context.Context, gat
 // handleGatewayDeploymentSuccess handles successful deployment
 func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 	ctx context.Context,
-	gatewayConfig *apiv1.Gateway,
+	gatewayConfig *apiv1.APIGateway,
 	trackingKey string,
 	entry *GatewayTrackingEntry,
 	selectedCount int,
 	readinessMsg string,
 	configHash string,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
 	log.Info("Gateway deployment succeeded", zap.String("gateway", gatewayConfig.Name))
 
 	// Update tracker to Deployed
@@ -535,13 +535,13 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 // handleGatewayDeploymentError handles deployment errors
 func (r *GatewayReconciler) handleGatewayDeploymentError(
 	ctx context.Context,
-	gatewayConfig *apiv1.Gateway,
+	gatewayConfig *apiv1.APIGateway,
 	trackingKey string,
 	entry *GatewayTrackingEntry,
 	err error,
 	selectedCount int,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
 
 	entry.RetryCount++
 	entry.LastRetryTime = time.Now()
@@ -628,9 +628,9 @@ func (r *GatewayReconciler) calculateBackoff(retryCount int) time.Duration {
 }
 
 // updateGatewayProgrammedCondition updates the Programmed condition and related status fields
-func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context, gatewayConfig *apiv1.Gateway, cond metav1.Condition, selectedCount *int, configHash string) error {
+func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context, gatewayConfig *apiv1.APIGateway, cond metav1.Condition, selectedCount *int, configHash string) error {
 	// Re-fetch to get latest version
-	latest := &apiv1.Gateway{}
+	latest := &apiv1.APIGateway{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: gatewayConfig.Namespace, Name: gatewayConfig.Name}, latest); err != nil {
 		return err
 	}
@@ -688,8 +688,8 @@ func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context
 }
 
 // reconcileGatewayDeletion handles Gateway CR deletion
-func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewayConfig *apiv1.Gateway) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
+func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewayConfig *apiv1.APIGateway) (ctrl.Result, error) {
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
 
 	if !controllerutil.ContainsFinalizer(gatewayConfig, gatewayFinalizerName) {
 		return ctrl.Result{}, nil
@@ -721,7 +721,7 @@ func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewa
 	r.gatewayTracker.Delete(trackingKey)
 
 	// Remove finalizer: re-fetch latest object to avoid UID/resourceVersion precondition failures
-	latest := &apiv1.Gateway{}
+	latest := &apiv1.APIGateway{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: gatewayConfig.Namespace, Name: gatewayConfig.Name}, latest); err != nil {
 		if apierrors.IsNotFound(err) {
 			// already deleted - nothing to do
@@ -742,7 +742,7 @@ func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewa
 }
 
 // applyGatewayManifest applies the gateway using Helm only
-func (r *GatewayReconciler) applyGatewayManifest(ctx context.Context, owner *apiv1.Gateway, dockerUserName, dockerPassword string) error {
+func (r *GatewayReconciler) applyGatewayManifest(ctx context.Context, owner *apiv1.APIGateway, dockerUserName, dockerPassword string) error {
 	namespace := owner.Namespace
 	if namespace == "" {
 		namespace = "default"
@@ -751,7 +751,7 @@ func (r *GatewayReconciler) applyGatewayManifest(ctx context.Context, owner *api
 }
 
 // deployGatewayWithHelm deploys the gateway using Helm chart
-func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *apiv1.Gateway, namespace, dockerUserName, dockerPassword string) error {
+func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *apiv1.APIGateway, namespace, dockerUserName, dockerPassword string) error {
 	log := r.Logger.With(zap.String("release", helm.GetReleaseName(owner.Name)))
 
 	// Prepare Helm values based on ConfigRef
@@ -841,8 +841,8 @@ func (r *GatewayReconciler) getConfigMapValues(ctx context.Context, configMapNam
 }
 
 // registerGateway registers the gateway in the in-memory registry by discovering the actual service
-func (r *GatewayReconciler) registerGateway(ctx context.Context, gatewayConfig *apiv1.Gateway) error {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
+func (r *GatewayReconciler) registerGateway(ctx context.Context, gatewayConfig *apiv1.APIGateway) error {
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
 
 	namespace := gatewayConfig.Namespace
 	if namespace == "" {
@@ -905,7 +905,7 @@ func (r *GatewayReconciler) registerGateway(ctx context.Context, gatewayConfig *
 }
 
 // countSelectedAPIs returns the number of RestApis that match the gateway selector
-func (r *GatewayReconciler) countSelectedAPIs(ctx context.Context, gatewayConfig *apiv1.Gateway) (int, error) {
+func (r *GatewayReconciler) countSelectedAPIs(ctx context.Context, gatewayConfig *apiv1.APIGateway) (int, error) {
 	apiSelector := selector.NewAPISelector(r.Client)
 	apis, err := apiSelector.SelectAPIsForGateway(ctx, gatewayConfig)
 	if err != nil {
@@ -915,7 +915,7 @@ func (r *GatewayReconciler) countSelectedAPIs(ctx context.Context, gatewayConfig
 }
 
 // evaluateGatewayReadiness inspects the gateway deployments and reports readiness status
-func (r *GatewayReconciler) evaluateGatewayReadiness(ctx context.Context, gatewayConfig *apiv1.Gateway) (bool, string, error) {
+func (r *GatewayReconciler) evaluateGatewayReadiness(ctx context.Context, gatewayConfig *apiv1.APIGateway) (bool, string, error) {
 	namespace := gatewayConfig.Namespace
 	if namespace == "" {
 		namespace = "default"
@@ -957,7 +957,7 @@ func (r *GatewayReconciler) evaluateGatewayReadiness(ctx context.Context, gatewa
 }
 
 // deleteGatewayResources deletes all Kubernetes resources created for the gateway
-func (r *GatewayReconciler) deleteGatewayResources(ctx context.Context, owner *apiv1.Gateway) error {
+func (r *GatewayReconciler) deleteGatewayResources(ctx context.Context, owner *apiv1.APIGateway) error {
 	// Unregister from the gateway registry
 	namespace := owner.Namespace
 	if namespace == "" {
@@ -969,8 +969,8 @@ func (r *GatewayReconciler) deleteGatewayResources(ctx context.Context, owner *a
 }
 
 // deleteGatewayWithHelm uninstalls the Helm release for the gateway
-func (r *GatewayReconciler) deleteGatewayWithHelm(ctx context.Context, owner *apiv1.Gateway, namespace string) error {
-	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", owner.Name))
+func (r *GatewayReconciler) deleteGatewayWithHelm(ctx context.Context, owner *apiv1.APIGateway, namespace string) error {
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", owner.Name))
 
 	releaseName := helm.GetReleaseName(owner.Name)
 	log.Info("Uninstalling Helm release", zap.String("release", releaseName), zap.String("namespace", namespace))
@@ -1009,7 +1009,7 @@ func (r *GatewayReconciler) enqueueGatewaysForConfigMap(ctx context.Context, obj
 	logger := log.FromContext(ctx)
 
 	// Find all Gateways that reference this ConfigMap
-	gatewayList := &apiv1.GatewayList{}
+	gatewayList := &apiv1.APIGatewayList{}
 	if err := r.List(ctx, gatewayList); err != nil {
 		logger.Error(err, "failed to list Gateways for ConfigMap event",
 			"configMap", configMap.Name,
@@ -1072,7 +1072,7 @@ func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(opts).
-		For(&apiv1.Gateway{}).
+		For(&apiv1.APIGateway{}).
 		Owns(&appsv1.Deployment{}).
 		Watches(&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueGatewaysForConfigMap),

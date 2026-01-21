@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: gateways.gateway.api-platform.wso2.com
+  name: apigateways.gateway.api-platform.wso2.com
 spec:
   group: gateway.api-platform.wso2.com
   names:
-    kind: Gateway
-    listKind: GatewayList
-    plural: gateways
-    singular: gateway
+    kind: APIGateway
+    listKind: APIGatewayList
+    plural: apigateways
+    singular: apigateway
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Gateway is the Schema for the gateways API
+        description: APIGateway is the Schema for the apigateways API
         properties:
           apiVersion:
             description: |-

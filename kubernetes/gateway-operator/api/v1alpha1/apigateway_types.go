@@ -256,8 +256,8 @@ type GatewayStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// Gateway is the Schema for the gateways API
-type Gateway struct {
+// APIGateway is the Schema for the apigateways API
+type APIGateway struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
@@ -267,13 +267,13 @@ type Gateway struct {
 
 //+kubebuilder:object:root=true
 
-// GatewayList contains a list of Gateway
-type GatewayList struct {
+// APIGatewayList contains a list of APIGateway
+type APIGatewayList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Gateway `json:"items"`
+	Items           []APIGateway `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Gateway{}, &GatewayList{})
+	SchemeBuilder.Register(&APIGateway{}, &APIGatewayList{})
 }
