@@ -1117,8 +1117,8 @@ jobs:
           kubectl rollout status deployment/test-gateway-gateway-policy-engine --timeout=300s || true
           
           echo "Waiting for Gateway CR to be Programmed..."
-          kubectl wait --for=condition=Programmed gateway/test-gateway --timeout=180s
-          echo "Gateway rollout complete. Verifying Controller health..."
+          kubectl wait --for=condition=Programmed apigateway/test-gateway --timeout=180s
+          echo "APIGateway rollout complete. Verifying Controller health..."
           # Give it a moment to stabilize
           sleep 20
           # Port forward the new controller to check health
@@ -1132,7 +1132,7 @@ jobs:
           kill $PF_PID || true
           
           if [ "$HEALTH_STATUS" != "200" ]; then
-            echo "Gateway Controller is not healthy after upgrade!"
+            echo "APIGateway Controller is not healthy after upgrade!"
             exit 1
           fi
           
@@ -1403,11 +1403,11 @@ jobs:
 
           echo ""
           echo "=== APIGateway Status ==="
-          kubectl describe gateway test-gateway || true
+          kubectl describe apigateway test-gateway || true
 
           echo ""
           echo "=== Scoped APIGateway Status ==="
-          kubectl describe gateway scoped-gateway -n scoped-test || true
+          kubectl describe apigateway scoped-gateway -n scoped-test || true
 
           echo ""
           echo "=== RestApi Status ==="
