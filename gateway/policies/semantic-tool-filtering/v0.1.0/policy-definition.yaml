@@ -15,33 +15,33 @@ parameters:
       type: string
       description: |
         Method used to filter tools:
-        - "TOP_K": Selects a fixed number of the most relevant tools.
-        - "THRESHOLD": Selects all tools exceeding a specific similarity score.
+        - "By Rank": Selects a fixed number of the most relevant tools.
+        - "By Threshold": Selects all tools exceeding a specific similarity score.
       enum:
-        - TOP_K
-        - THRESHOLD
-      default: "TOP_K"
-    topK:
+        - By Rank
+        - By Threshold
+      default: "By Rank"
+    Limit:
       type: integer
-      description: "The number of most relevant tools to include (used if selectionMode is TOP_K)."
+      description: "The number of most relevant tools to include (used if selectionMode is By Rank)."
       minimum: 0
       maximum: 20
       default: 5
-    similarityThreshold:
+    Threshold:
       type: number
       description: |
         Similarity threshold for filtering (0.0 to 1.0). 
-        Only tools with a score above this value are included (used if selectionMode is THRESHOLD).
+        Only tools with a score above this value are included (used if selectionMode is By Threshold).
       minimum: 0.0
       maximum: 1.0
       default: 0.7
-    jsonPath:
+    queryJSONPath:
       type: string
       description: |
         JSONPath expression to extract the user's query from the request body.
         Example: "$.messages[-1].content"
       default: "$.messages[-1].content"
-    toolsPath:
+    toolsJSONPath:
       type: string
       description: |
         JSONPath expression to extract the tools array from the request body (used when toolsIsJson is true).

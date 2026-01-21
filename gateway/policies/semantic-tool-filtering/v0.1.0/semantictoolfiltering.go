@@ -33,8 +33,8 @@ import (
 
 const (
 	// Selection modes
-	SelectionModeTopK      = "TOP_K"
-	SelectionModeThreshold = "THRESHOLD"
+	SelectionModeTopK      = "By Rank"
+	SelectionModeThreshold = "By Threshold"
 
 	// Internal timeout for embedding provider (not exposed in policy definition)
 	DefaultTimeoutMs = 5000
@@ -156,32 +156,32 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 		selectionMode = SelectionModeTopK
 	}
 	if selectionMode != SelectionModeTopK && selectionMode != SelectionModeThreshold {
-		return fmt.Errorf("'selectionMode' must be TOP_K or THRESHOLD")
+		return fmt.Errorf("'selectionMode' must be By Rank or By Threshold")
 	}
 	p.selectionMode = selectionMode
 
-	// Optional: topK (default 5 as per policy-definition.yaml)
-	if topKRaw, ok := params["topK"]; ok {
-		topK, err := extractInt(topKRaw)
+	// Optional: Limit (default 5 as per policy-definition.yaml)
+	if limitRaw, ok := params["Limit"]; ok {
+		limit, err := extractInt(limitRaw)
 		if err != nil {
-			return fmt.Errorf("'topK' must be a number: %w", err)
+			return fmt.Errorf("'Limit' must be a number: %w", err)
 		}
-		if topK < 0 || topK > 20 {
-			return fmt.Errorf("'topK' must be between 0 and 20")
+		if limit < 0 || limit > 20 {
+			return fmt.Errorf("'Limit' must be between 0 and 20")
 		}
-		p.topK = topK
+		p.topK = limit
 	} else {
 		p.topK = 5 // default from policy-definition.yaml
 	}
 
 	// Optional: similarityThreshold (default 0.7 as per policy-definition.yaml)
-	if thresholdRaw, ok := params["similarityThreshold"]; ok {
+	if thresholdRaw, ok := params["Threshold"]; ok {
 		threshold, err := extractFloat64(thresholdRaw)
 		if err != nil {
-			return fmt.Errorf("'similarityThreshold' must be a number: %w", err)
+			return fmt.Errorf("'Threshold' must be a number: %w", err)
 		}
 		if threshold < 0.0 || threshold > 1.0 {
-			return fmt.Errorf("'similarityThreshold' must be between 0.0 and 1.0")
+			return fmt.Errorf("'Threshold' must be between 0.0 and 1.0")
 		}
 		p.threshold = threshold
 	} else {
@@ -189,7 +189,7 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 	}
 
 	// Optional: jsonPath (default "$.messages[-1].content" as per policy-definition.yaml)
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
+	if jsonPathRaw, ok := params["queryJSONPath"]; ok {
 		if jsonPath, ok := jsonPathRaw.(string); ok {
 			if jsonPath != "" {
 				p.queryJSONPath = jsonPath
@@ -204,7 +204,7 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 	}
 
 	// Optional: toolsPath (default "$.tools" as per policy-definition.yaml)
-	if toolsPathRaw, ok := params["toolsPath"]; ok {
+	if toolsPathRaw, ok := params["toolsJSONPath"]; ok {
 		if toolsPath, ok := toolsPathRaw.(string); ok {
 			if toolsPath != "" {
 				p.toolsJSONPath = toolsPath
