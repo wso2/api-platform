@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Gateway CRD supports custom Helm configuration through ConfigMap references. This allows you to override the default Helm values on a per-gateway basis.
+The APIGateway CRD supports custom Helm configuration through ConfigMap references. This allows you to override the default Helm values on a per-gateway basis.
 
 ## Configuration Options
 
@@ -12,7 +12,7 @@ If you don't specify `configRef`, the operator will use the default mounted conf
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: default-gateway
 spec:
@@ -49,7 +49,7 @@ data:
 ---
 # Reference the ConfigMap in your Gateway
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: custom-gateway
   namespace: default
@@ -65,12 +65,12 @@ spec:
 ## ConfigMap Requirements
 
 1. **Key Name**: The ConfigMap must contain a key named `values.yaml`
-2. **Namespace**: The ConfigMap must be in the same namespace as the Gateway
+2. **Namespace**: The ConfigMap must be in the same namespace as the APIGateway
 3. **Format**: The content must be valid YAML for Helm values
 
 ## How It Works
 
-1. When a Gateway is created/updated:
+1. When an APIGateway is created/updated:
    - If `configRef` is specified:
      - The operator reads the ConfigMap
      - Uses the `values.yaml` content as Helm values
@@ -79,7 +79,7 @@ spec:
 
 2. The ConfigMap values override the default Helm chart values
 
-3. Any changes to the ConfigMap require updating the Gateway (e.g., adding an annotation) to trigger reconciliation
+3. Any changes to the ConfigMap require updating the APIGateway (e.g., adding an annotation) to trigger reconciliation
 
 ## Use Cases
 
@@ -178,7 +178,7 @@ data:
 Error: failed to get ConfigMap default/my-config: configmap "my-config" not found
 ```
 
-**Solution**: Ensure the ConfigMap exists in the same namespace as the Gateway.
+**Solution**: Ensure the ConfigMap exists in the same namespace as the APIGateway.
 
 ### Missing values.yaml Key
 

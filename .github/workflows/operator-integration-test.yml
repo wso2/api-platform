@@ -235,7 +235,7 @@ jobs:
 
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=gateway-operator -n operator --timeout=120s
 
-      - name: Create test Gateway
+      - name: Create test APIGateway
         run: |
           # Create ConfigMap with gateway values pointing to test images
           cat <<EOF | kubectl apply -f -
@@ -836,7 +836,7 @@ jobs:
           # Create Gateway CR
           cat <<EOF | kubectl apply -f -
           apiVersion: gateway.api-platform.wso2.com/v1alpha1
-          kind: Gateway
+          kind: APIGateway
           metadata:
             name: test-gateway
             namespace: default
@@ -848,13 +848,13 @@ jobs:
               name: test-gateway-config
           EOF
 
-      - name: Wait for Gateway to be ready
+      - name: Wait for APIGateway to be ready
         run: |
-          echo "Waiting for Gateway to be programmed..."
-          kubectl wait --for=condition=Programmed gateway/test-gateway --timeout=180s
+          echo "Waiting for APIGateway to be programmed..."
+          kubectl wait --for=condition=Programmed apigateway/test-gateway --timeout=180s
 
-          echo "Gateway status:"
-          kubectl get gateway test-gateway -o yaml
+          echo "APIGateway status:"
+          kubectl get apigateway test-gateway -o yaml
 
       - name: Create test RestApi
         run: |
@@ -1158,9 +1158,9 @@ jobs:
           fi
           echo "RestApi deletion and route removal verified!"
 
-      - name: Delete test Gateway
+      - name: Delete test APIGateway
         run: |
-          echo "Deleting Gateway test-gateway..."
+          echo "Deleting APIGateway test-gateway..."
           kubectl delete gateway test-gateway
           
           echo "Waiting for resources to be cleaned up..."
@@ -1174,7 +1174,7 @@ jobs:
           echo "Found $pods pods remaining."
           
           if [ "$pods" -ne "0" ]; then
-            echo "Gateway pods were not removed!"
+            echo "APIGateway pods were not removed!"
             kubectl get pods -A
             exit 1
           fi
@@ -1184,12 +1184,12 @@ jobs:
           echo "Found $services services remaining."
           
           if [ "$services" -ne "0" ]; then
-            echo "Gateway services were not removed!"
+            echo "APIGateway services were not removed!"
             kubectl get svc -A
             exit 1
           fi
           
-          echo "Gateway deletion and resource cleanup verified!"
+          echo "APIGateway deletion and resource cleanup verified!"
 
       - name: Verify Scoped Mode
         run: |
@@ -1241,13 +1241,13 @@ jobs:
           fi
 
           # 3. Positive Test: Deploy Gateway & API in scoped-test
-          echo "Deploying Gateway in scoped-test..."
+          echo "Deploying APIGateway in scoped-test..."
           # Configure Gateway to use test images (same configmap as before but in new namespace)
           kubectl create configmap test-gateway-config --from-file=values.yaml=<(kubectl get cm test-gateway-config -n default -o jsonpath='{.data.values\.yaml}') -n scoped-test
 
           cat <<EOF | kubectl apply -f -
           apiVersion: gateway.api-platform.wso2.com/v1alpha1
-          kind: Gateway
+          kind: APIGateway
           metadata:
             name: scoped-gateway
             namespace: scoped-test
@@ -1260,7 +1260,7 @@ jobs:
           EOF
 
           echo "Waiting for scoped-gateway to be Ready..."
-          kubectl wait --for=condition=Programmed gateway/scoped-gateway -n scoped-test --timeout=180s
+          kubectl wait --for=condition=Programmed apigateway/scoped-gateway -n scoped-test --timeout=180s
 
           echo "Deploying RestApi in scoped-test..."
           cat <<EOF | kubectl apply -f -
@@ -1340,7 +1340,7 @@ jobs:
           kubectl delete restapi scoped-api -n scoped-test --ignore-not-found
           
           # Wait for resources to be deleted to ensure finalizers are handled
-          kubectl wait --for=delete gateway/scoped-gateway -n scoped-test --timeout=60s || true
+          kubectl wait --for=delete apigateway/scoped-gateway -n scoped-test --timeout=60s || true
           kubectl wait --for=delete restapi/scoped-api -n scoped-test --timeout=60s || true
 
           helm uninstall gateway-operator -n scoped-test
@@ -1358,11 +1358,11 @@ jobs:
           kubectl logs -n scoped-test -l app.kubernetes.io/name=gateway-operator --tail=200 || true
 
           echo ""
-          echo "=== Gateway Status ==="
+          echo "=== APIGateway Status ==="
           kubectl describe gateway test-gateway || true
 
           echo ""
-          echo "=== Scoped Gateway Status ==="
+          echo "=== Scoped APIGateway Status ==="
           kubectl describe gateway scoped-gateway -n scoped-test || true
 
           echo ""
@@ -1378,11 +1378,11 @@ jobs:
           kubectl describe pods --all-namespaces || true
 
           echo ""
-          echo "=== Gateway Controller Logs ==="
+          echo "=== APIGateway Controller Logs ==="
           kubectl logs -l app.kubernetes.io/component=controller --tail=200 || true
 
           echo ""
-          echo "=== Scoped Gateway Controller Logs ==="
+          echo "=== Scoped APIGateway Controller Logs ==="
           kubectl logs -n scoped-test -l app.kubernetes.io/component=controller --tail=200 || true
           
           echo ""

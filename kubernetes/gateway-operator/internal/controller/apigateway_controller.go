@@ -63,7 +63,7 @@ const (
 	GatewayTrackingStatusConfigChanged GatewayTrackingStatus = "ConfigChanged"
 )
 
-// GatewayTrackingEntry tracks the state of a Gateway deployment
+// GatewayTrackingEntry tracks the state of an APIGateway deployment
 type GatewayTrackingEntry struct {
 	Generation    int64
 	Status        GatewayTrackingStatus
@@ -72,14 +72,14 @@ type GatewayTrackingEntry struct {
 	NextRetryTime time.Time
 }
 
-// GatewayTracker manages in-memory tracking of Gateway deployment states
-// Entries persist until the Gateway CR is deleted
+// GatewayTracker manages in-memory tracking of APIGateway deployment states
+// Entries persist until the APIGateway CR is deleted
 type GatewayTracker struct {
 	mu      sync.RWMutex
 	entries map[string]*GatewayTrackingEntry // key: "namespace/name"
 }
 
-// NewGatewayTracker creates a new Gateway tracker
+// NewGatewayTracker creates a new APIGateway tracker
 func NewGatewayTracker() *GatewayTracker {
 	return &GatewayTracker{
 		entries: make(map[string]*GatewayTrackingEntry),
@@ -106,7 +106,7 @@ func (t *GatewayTracker) Set(key string, entry *GatewayTrackingEntry) {
 	t.entries[key] = entry
 }
 
-// Delete removes a tracking entry (only called when Gateway CR is deleted)
+// Delete removes a tracking entry (only called when APIGateway CR is deleted)
 func (t *GatewayTracker) Delete(key string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -114,10 +114,10 @@ func (t *GatewayTracker) Delete(key string) {
 }
 
 const (
-	gatewayFinalizerName = "gateway.api-platform.wso2.com/gateway-finalizer"
+	apigatewayFinalizerName = "gateway.api-platform.wso2.com/apigateway-finalizer"
 )
 
-// GatewayReconciler reconciles a Gateway object
+// GatewayReconciler reconciles an APIGateway object
 type GatewayReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
@@ -168,8 +168,8 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(gatewayConfig, gatewayFinalizerName) {
-		controllerutil.AddFinalizer(gatewayConfig, gatewayFinalizerName)
+	if !controllerutil.ContainsFinalizer(gatewayConfig, apigatewayFinalizerName) {
+		controllerutil.AddFinalizer(gatewayConfig, apigatewayFinalizerName)
 		if err := r.Update(ctx, gatewayConfig); err != nil {
 			log.Error("failed to add finalizer", zap.Error(err))
 			return ctrl.Result{}, err
@@ -262,7 +262,7 @@ func (r *GatewayReconciler) decideAndProcess(
 			Generation: crGeneration,
 			Status:     GatewayTrackingStatusDeployed,
 		})
-		log.Debug("Gateway already deployed, skipping",
+		log.Debug("APIGateway already deployed, skipping",
 			zap.String("name", gatewayConfig.Name),
 			zap.Int64("generation", crGeneration))
 
@@ -293,7 +293,7 @@ func (r *GatewayReconciler) decideAndProcess(
 				}
 				// If Retrying, let it proceed to retry the Helm deployment
 				if trackingEntry.Status == GatewayTrackingStatusRetrying {
-					log.Info("Retrying Gateway deployment",
+					log.Info("Retrying APIGateway deployment",
 						zap.String("name", gatewayConfig.Name),
 						zap.Int64("generation", crGeneration),
 						zap.Int("retryCount", trackingEntry.RetryCount))
@@ -308,7 +308,7 @@ func (r *GatewayReconciler) decideAndProcess(
 				}
 				// If ConfigChanged, proceed to redeploy
 				if trackingEntry.Status == GatewayTrackingStatusConfigChanged {
-					log.Info("Processing Gateway config change redeployment",
+					log.Info("Processing APIGateway config change redeployment",
 						zap.String("name", gatewayConfig.Name),
 						zap.Int64("generation", crGeneration))
 					return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
@@ -317,7 +317,7 @@ func (r *GatewayReconciler) decideAndProcess(
 
 			if trackingEntry.Generation < crGeneration {
 				// UPDATE - new generation to process
-				log.Info("Processing Gateway update",
+				log.Info("Processing APIGateway update",
 					zap.String("name", gatewayConfig.Name),
 					zap.Int64("oldGeneration", trackingEntry.Generation),
 					zap.Int64("newGeneration", crGeneration))
@@ -326,7 +326,7 @@ func (r *GatewayReconciler) decideAndProcess(
 		} else {
 			// No tracking entry
 			if crGeneration == 1 {
-				// NEW Gateway - first generation
+				// NEW APIGateway - first generation
 				log.Info("Processing new Gateway",
 					zap.String("name", gatewayConfig.Name),
 					zap.Int64("generation", crGeneration))
@@ -511,7 +511,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 	configHash string,
 ) (ctrl.Result, error) {
 	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
-	log.Info("Gateway deployment succeeded", zap.String("gateway", gatewayConfig.Name))
+	log.Info("APIGateway deployment succeeded", zap.String("gateway", gatewayConfig.Name))
 
 	// Update tracker to Deployed
 	entry.Status = GatewayTrackingStatusDeployed
@@ -687,11 +687,11 @@ func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context
 	return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 }
 
-// reconcileGatewayDeletion handles Gateway CR deletion
+// reconcileGatewayDeletion handles APIGateway CR deletion
 func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewayConfig *apiv1.APIGateway) (ctrl.Result, error) {
 	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
 
-	if !controllerutil.ContainsFinalizer(gatewayConfig, gatewayFinalizerName) {
+	if !controllerutil.ContainsFinalizer(gatewayConfig, apigatewayFinalizerName) {
 		return ctrl.Result{}, nil
 	}
 
@@ -703,7 +703,7 @@ func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewa
 		Status:             metav1.ConditionFalse,
 		ObservedGeneration: gatewayConfig.Generation,
 		Reason:             "Deleting",
-		Message:            "Gateway is being deleted",
+		Message:            "APIGateway is being deleted",
 		LastTransitionTime: metav1.Now(),
 	})
 	if err := r.Status().Patch(ctx, gatewayConfig, client.MergeFrom(base)); err != nil {
@@ -727,17 +727,17 @@ func (r *GatewayReconciler) reconcileGatewayDeletion(ctx context.Context, gatewa
 			// already deleted - nothing to do
 			return ctrl.Result{}, nil
 		}
-		log.Error("failed to re-fetch Gateway before removing finalizer", zap.Error(err))
+		log.Error("failed to re-fetch APIGateway before removing finalizer", zap.Error(err))
 		return ctrl.Result{}, err
 	}
 
-	controllerutil.RemoveFinalizer(latest, gatewayFinalizerName)
+	controllerutil.RemoveFinalizer(latest, apigatewayFinalizerName)
 	if err := r.Update(ctx, latest); err != nil {
 		log.Error("failed to remove finalizer", zap.Error(err))
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Successfully cleaned up gateway resources and removed finalizer")
+	log.Info("Successfully cleaned up APIGateway resources and removed finalizer")
 	return ctrl.Result{}, nil
 }
 
@@ -1027,7 +1027,7 @@ func (r *GatewayReconciler) enqueueGatewaysForConfigMap(ctx context.Context, obj
 			gateway.Spec.ConfigRef.Name == configMap.Name &&
 			gateway.Namespace == configMap.Namespace {
 
-			logger.Info("Enqueuing Gateway for ConfigMap change",
+			logger.Info("Enqueuing APIGateway for ConfigMap change",
 				"gateway", gateway.Name,
 				"namespace", gateway.Namespace,
 				"configMap", configMap.Name)
