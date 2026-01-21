@@ -32,10 +32,24 @@ import (
 	_ "github.com/mattn/go-sqlite3" // SQLite3 driver
 )
 
+const (
+	// DriverSQLite is the driver name for SQLite3
+	DriverSQLite = "sqlite3"
+	// DriverPostgres is the driver name for PostgreSQL (used by sql.Open)
+	DriverPostgres = "postgres"
+	// DriverPostgreSQL is an alternate name for PostgreSQL (accepted in config)
+	DriverPostgreSQL = "postgresql"
+)
+
 // DB holds the database connection
 type DB struct {
 	*sql.DB
 	driver string // Database driver name (sqlite3, postgres, etc.)
+}
+
+// isPostgresDriver returns true if the driver is PostgreSQL (accepts both "postgres" and "postgresql")
+func isPostgresDriver(driver string) bool {
+	return driver == DriverPostgres || driver == DriverPostgreSQL
 }
 
 // Driver returns the underlying database driver name (e.g., sqlite3, postgres).
@@ -49,7 +63,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 	var err error
 
 	switch cfg.Driver {
-	case "sqlite3":
+	case DriverSQLite:
 		// Ensure the directory exists for SQLite
 		dir := filepath.Dir(cfg.Path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -57,7 +71,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		}
 
 		// Open SQLite connection to the api_platform.db file
-		db, err = sql.Open("sqlite3", cfg.Path)
+		db, err = sql.Open(DriverSQLite, cfg.Path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open database: %w", err)
 		}
@@ -66,17 +80,18 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 			return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 		}
-	case "postgres", "postgresql":
+	case DriverPostgres, DriverPostgreSQL:
 		// Build PostgreSQL DSN from config
 		dsn := fmt.Sprintf(
 			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
 		)
 
-		db, err = sql.Open("postgres", dsn)
+		db, err = sql.Open(DriverPostgres, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open postgres database: %w", err)
 		}
+		fmt.Sprintf("Successfully opened PostgreSQL database connection: host=%s port=%d dbname=%s\n", cfg.Host, cfg.Port, cfg.Name)
 	default:
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
@@ -110,9 +125,9 @@ func (db *DB) InitSchema(dbSchemaPath string) error {
 		// Determine driver-specific schema filename
 		var schemaFile string
 		switch db.driver {
-		case "sqlite3":
+		case DriverSQLite:
 			schemaFile = "schema.sqlite.sql"
-		case "postgres", "postgresql":
+		case DriverPostgres, DriverPostgreSQL:
 			schemaFile = "schema.postgres.sql"
 		default:
 			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
@@ -122,9 +137,9 @@ func (db *DB) InitSchema(dbSchemaPath string) error {
 	} else {
 		// Fallback: construct path from driver
 		switch db.driver {
-		case "sqlite3":
+		case DriverSQLite:
 			schemaPath = "./internal/database/schema.sqlite.sql"
-		case "postgres", "postgresql":
+		case DriverPostgres, DriverPostgreSQL:
 			schemaPath = "./internal/database/schema.postgres.sql"
 		default:
 			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
@@ -139,7 +154,7 @@ func (db *DB) InitSchema(dbSchemaPath string) error {
 
 	// For PostgreSQL, we need to execute statements individually
 	// because PostgreSQL driver doesn't handle multi-statement Exec() well
-	if db.driver == "postgres" || db.driver == "postgresql" {
+	if isPostgresDriver(db.driver) {
 		return db.initSchemaPostgres(string(schemaSQL))
 	}
 
@@ -320,7 +335,7 @@ func min(a, b int) int {
 // for the current database driver. For PostgreSQL, converts `?` to `$1, $2, ...`.
 // For SQLite, leaves `?` as-is.
 func (db *DB) Rebind(query string) string {
-	if db.driver == "postgres" || db.driver == "postgresql" {
+	if isPostgresDriver(db.driver) {
 		// Convert ? placeholders to $1, $2, $3, etc.
 		parts := strings.Split(query, "?")
 		if len(parts) == 1 {
