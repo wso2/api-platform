@@ -1,23 +1,27 @@
-# permissions for end users to view gateways.
+# permissions for end users to edit apigateways.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: gateway-operator
     app.kubernetes.io/managed-by: kustomize
-  name: gateway-viewer-role
+  name: apigateway-editor-role
 rules:
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways
+  - apigateways
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways/status
+  - apigateways/status
   verbs:
   - get
