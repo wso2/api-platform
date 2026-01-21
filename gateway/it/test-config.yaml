@@ -217,6 +217,14 @@ gateway_controller:
       # Expected issuer value in the JWT `iss` claim
       issuer: ""
 
+  # Metrics configuration
+  metrics:
+    # Enable or disable Prometheus metrics endpoint
+    enabled: true
+
+    # Port for metrics HTTP server
+    port: 9091
+
   # Logging configuration
   logging:
     # Log level: "debug", "info", "warn", or "error"
@@ -291,6 +299,14 @@ policy_engine:
   file_config:
     path: ""
 
+  # Metrics configuration
+  metrics:
+    # Enable or disable Prometheus metrics endpoint
+    enabled: true
+
+    # Port for metrics HTTP server
+    port: 9003
+
   # Logging configuration
   logging:
     # Log level: debug, info, warn, error
@@ -300,6 +316,34 @@ policy_engine:
     format: json
 
 policy_configurations:
+  # JWT Authentication Policy Configuration
+  jwtauth_v010:
+    keymanagers:
+      - name: mock-jwks
+        issuer: "http://mock-jwks:8080/token"
+        jwks:
+          remote:
+            uri: "http://mock-jwks:8080/jwks"
+      - name: wrong-issuer-km
+        issuer: "http://expected-issuer.com"
+        jwks:
+          remote:
+            uri: "http://mock-jwks:8080/jwks"
+    jwkscachettl: "5m"
+    jwksfetchtimeout: "5s"
+    jwksfetchretrycount: 3
+    jwksfetchretryinterval: "2s"
+    allowedalgorithms:
+      - "RS256"
+      - "ES256"
+    leeway: "30s"
+    authheaderscheme: "Bearer"
+    headername: "Authorization"
+    onfailurestatuscode: 401
+    errormessageformat: "json"
+    errormessage: "Authentication failed"
+    validateissuer: true
+
   # Rate Limiting Policy Configuration
   # See documentation: docs/gateway/policies/ratelimit.md
   ratelimit_v010:

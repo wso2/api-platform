@@ -34,6 +34,9 @@ policies:
   - name: mcp-auth
     version: v0.1.0
     filePath: ./mcp-auth/v0.1.0
+  - name: mcp-authz
+    version: v0.1.0
+    filePath: ./mcp-authz/v0.1.0
   - name: model-round-robin
     version: v0.1.0
     filePath: ./model-round-robin/v0.1.0

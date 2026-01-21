@@ -1305,3 +1305,253 @@ Feature: Rate Limiting
     When I send a GET request to "http://localhost:8080/ratelimit-apiname-isolation-a/v1.0/resource"
     Then the response status code should be 429
 
+  Scenario: Resource grouping using constant key extraction
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-constant-key-api
+      spec:
+        displayName: RateLimit Constant Key API
+        version: v1.0
+        context: /ratelimit-constant/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /group-a-1
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+                        - type: constant
+                          key: "group-A"
+          - method: GET
+            path: /group-a-2
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+                        - type: constant
+                          key: "group-A"
+          - method: GET
+            path: /group-b-1
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+                        - type: constant
+                          key: "group-B"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-constant/v1.0/health" to be ready
+
+    # Group A: Send 3 requests to /group-a-1
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-constant/v1.0/group-a-1"
+    Then the response status code should be 200
+
+    # Group A: Send 2 requests to /group-a-2 (should share bucket with group-a-1)
+    # Total Group A usage: 3 + 2 = 5 (Limit reached)
+    When I send 2 GET requests to "http://localhost:8080/ratelimit-constant/v1.0/group-a-2"
+    Then the response status code should be 200
+
+    # Group A: Verify Limit Exceeded on /group-a-1
+    When I send a GET request to "http://localhost:8080/ratelimit-constant/v1.0/group-a-1"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # Group A: Verify Limit Exceeded on /group-a-2
+    When I send a GET request to "http://localhost:8080/ratelimit-constant/v1.0/group-a-2"
+    Then the response status code should be 429
+
+    # Group B: Should be independent (0 usage)
+    When I send 5 GET requests to "http://localhost:8080/ratelimit-constant/v1.0/group-b-1"
+    Then the response status code should be 200
+
+    # Group B: 6th request should fail
+    When I send a GET request to "http://localhost:8080/ratelimit-constant/v1.0/group-b-1"
+    Then the response status code should be 429
+
+  Scenario: CEL expression based key extraction for per-user rate limiting
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-cel-key-api
+      spec:
+        displayName: RateLimit CEL Key API
+        version: v1.0
+        context: /ratelimit-cel-key/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /resource
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: per-user-cel
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: cel
+                          expression: 'request.Headers["x-user-id"][0]'
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-cel-key/v1.0/resource" to be ready
+
+    # User-A sends 3 requests using CEL key extraction - should succeed
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-cel-key/v1.0/resource" with header "X-User-ID" value "cel-user-A"
+    Then the response status code should be 200
+
+    # User-A's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-cel-key/v1.0/resource" with header "X-User-ID" value "cel-user-A"
+    Then the response status code should be 429
+
+    # User-B should have separate quota (different CEL-extracted key)
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-cel-key/v1.0/resource" with header "X-User-ID" value "cel-user-B"
+    Then the response status code should be 200
+
+    # User-B's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-cel-key/v1.0/resource" with header "X-User-ID" value "cel-user-B"
+    Then the response status code should be 429
+
+  Scenario: CEL expression based composite key extraction
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-cel-composite-key-api
+      spec:
+        displayName: RateLimit CEL Composite Key API
+        version: v1.0
+        context: /ratelimit-cel-composite-key/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /resource
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: per-user-per-api-cel
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: cel
+                          expression: 'api.Name + ":" + request.Headers["x-user-id"][0]'
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-cel-composite-key/v1.0/resource" to be ready
+
+    # User-A sends 3 requests - composite key includes API name + user ID
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-cel-composite-key/v1.0/resource" with header "X-User-ID" value "composite-user-A"
+    Then the response status code should be 200
+
+    # User-A's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-cel-composite-key/v1.0/resource" with header "X-User-ID" value "composite-user-A"
+    Then the response status code should be 429
+
+    # User-B should have separate composite key and full quota
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-cel-composite-key/v1.0/resource" with header "X-User-ID" value "composite-user-B"
+    Then the response status code should be 200
+
+  Scenario: CEL expression based cost extraction from request header
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-cel-cost-api
+      spec:
+        displayName: RateLimit CEL Cost API
+        version: v1.0
+        context: /ratelimit-cel-cost/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: POST
+            path: /resource
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: token-quota-cel
+                      limits:
+                        - limit: 100
+                          duration: "1h"
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: request_cel
+                            expression: 'int(request.Headers["x-token-cost"][0])'
+                        default: 1
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-cel-cost/v1.0/health" to be ready
+
+    # Send a request with X-Token-Cost=40 header, CEL extracts as integer
+    When I send a POST request to "http://localhost:8080/ratelimit-cel-cost/v1.0/resource" with header "X-Token-Cost" value "40" with body:
+      """
+      {}
+      """
+    Then the response status code should be 200
+    # After first request: 100 - 40 = 60 remaining
+    And the response header "X-RateLimit-Remaining" should be "60"
+
+    # Send another request with X-Token-Cost=40
+    When I send a POST request to "http://localhost:8080/ratelimit-cel-cost/v1.0/resource" with header "X-Token-Cost" value "40" with body:
+      """
+      {}
+      """
+    Then the response status code should be 200
+    # After second request: 60 - 40 = 20 remaining
+    And the response header "X-RateLimit-Remaining" should be "20"
+
+    # Send a request with X-Token-Cost=30 - should be rate limited (need 30, only 20 remaining)
+    When I send a POST request to "http://localhost:8080/ratelimit-cel-cost/v1.0/resource" with header "X-Token-Cost" value "30" with body:
+      """
+      {}
+      """
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"

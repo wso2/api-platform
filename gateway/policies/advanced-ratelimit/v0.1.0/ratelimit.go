@@ -25,8 +25,9 @@ var memoryLimiterCache sync.Map // map[string]limiter.Limiter
 
 // KeyComponent represents a single component for building rate limit keys
 type KeyComponent struct {
-	Type string // "header", "metadata", "ip", "apiname", "apiversion", "routename"
-	Key  string // header name or metadata key (required for header/metadata)
+	Type       string // "header", "metadata", "ip", "apiname", "apiversion", "routename", "cel"
+	Key        string // header name or metadata key (required for header/metadata)
+	Expression string // CEL expression (required for cel type)
 }
 
 // LimitConfig holds parsed rate limit configuration
@@ -603,6 +604,9 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 		slog.Warn("Header not found for rate limit key, using placeholder", "header", comp.Key, "type", comp.Type, "placeholder", placeholder)
 		return placeholder
 
+	case "constant":
+		return comp.Key
+
 	case "metadata":
 		if val, ok := ctx.Metadata[comp.Key]; ok {
 			if strVal, ok := val.(string); ok && strVal != "" {
@@ -632,6 +636,19 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 
 	case "routename":
 		return p.routeName
+
+	case "cel":
+		evaluator, err := GetCELEvaluator()
+		if err != nil {
+			slog.Error("Failed to get CEL evaluator for key extraction", "error", err)
+			return "_cel_error_"
+		}
+		result, err := evaluator.EvaluateKeyExpression(comp.Expression, ctx, p.routeName)
+		if err != nil {
+			slog.Warn("CEL key extraction failed, using placeholder", "expression", comp.Expression, "error", err)
+			return "_cel_eval_error_"
+		}
+		return result
 
 	default:
 		slog.Warn("Unknown key component type, using empty string", "type", comp.Type)
@@ -1053,6 +1070,20 @@ func parseKeyExtraction(raw interface{}) ([]KeyComponent, error) {
 			} else {
 				return nil, fmt.Errorf("keyExtraction[%d].key must be a string", i)
 			}
+		}
+
+		// Parse expression for CEL type
+		if exprRaw, ok := compMap["expression"]; ok {
+			if exprStr, ok := exprRaw.(string); ok {
+				comp.Expression = exprStr
+			} else {
+				return nil, fmt.Errorf("keyExtraction[%d].expression must be a string", i)
+			}
+		}
+
+		// Validate: CEL type requires expression
+		if compType == "cel" && comp.Expression == "" {
+			return nil, fmt.Errorf("keyExtraction[%d]: type 'cel' requires 'expression' field", i)
 		}
 
 		components = append(components, comp)

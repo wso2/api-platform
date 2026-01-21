@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package tests
+package unit
 
 import (
 	"os"
@@ -29,7 +29,7 @@ import (
 
 // TestFlagValuesUnique ensures all flag values are unique across all flags
 func TestFlagValuesUnique(t *testing.T) {
-	flagsFilePath := filepath.Join("..", "..", "..", "src", "utils", "flags.go")
+	flagsFilePath := filepath.Join("..", "..", "utils", "flags.go")
 	content, err := os.ReadFile(flagsFilePath)
 	if err != nil {
 		t.Fatalf("Failed to read flags.go: %v", err)
@@ -64,6 +64,8 @@ func TestFlagValuesUnique(t *testing.T) {
 			t.Errorf("Duplicate flag value '%s' found %d times", value, count+1)
 		}
 	} else {
-		t.Logf("✓ All %d flag values are unique", len(allFlagValues))
+		t.Logf("%s:%d: ✓ All %d flag values are unique", "flags_test.go", 67, len(allFlagValues))
 	}
+
+	// Divider handled by test runner script; avoid printing inside the test to prevent duplication
 }

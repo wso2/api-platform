@@ -45,6 +45,9 @@ var (
 	// assertSteps provides common assertion steps
 	assertSteps *steps.AssertSteps
 
+	// jwtSteps provides JWT authentication steps
+	jwtSteps *JWTSteps
+
 	// coverageCollector manages coverage data collection
 	coverageCollector *CoverageCollector
 
@@ -70,10 +73,13 @@ func TestFeatures(t *testing.T) {
 			Format: "pretty",
 			Paths: []string{
 				"features/health.feature",
+				"features/metrics.feature",
 				"features/api_deploy.feature",
 				"features/mcp_deploy.feature",
 				"features/ratelimit.feature",
 				"features/basic-ratelimit.feature",
+				"features/jwt-auth.feature",
+				"features/cors.feature",
 			},
 			TestingT: t,
 		},
@@ -130,8 +136,12 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			"policy-engine":      testState.Config.PolicyEngineURL,
 			"sample-backend":     testState.Config.SampleBackendURL,
 			"echo-backend":       testState.Config.EchoBackendURL,
+			"mock-jwks":          testState.Config.MockJWKSURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
+
+		// Initialize JWT steps
+		jwtSteps = NewJWTSteps(testState, httpSteps, testState.Config.MockJWKSURL)
 
 		log.Println("=== Test Suite Ready ===")
 	})
@@ -193,6 +203,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		if httpSteps != nil {
 			httpSteps.Reset()
 		}
+		if jwtSteps != nil {
+			jwtSteps.Reset()
+		}
 		// Record scenario start for reporting
 		if testReporter != nil {
 			testReporter.StartScenario(sc)
@@ -218,9 +231,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Register step definitions
 	if testState != nil {
 		RegisterHealthSteps(ctx, testState, httpSteps)
+		RegisterMetricsSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterMCPSteps(ctx, testState, httpSteps)
+		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 	}
 
 	// Register common HTTP and assertion steps

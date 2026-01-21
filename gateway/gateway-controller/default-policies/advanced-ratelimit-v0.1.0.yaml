@@ -66,8 +66,9 @@ parameters:
                   type: string
                   description: |
                     Time window for the limit (Go duration string format).
-                    Examples: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "24h" (1 day)
-                  pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+                    Examples: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "24h" (1 day),
+                    "1h30m" (1 hour 30 minutes), "1.5h" (1.5 hours)
+                  pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
                 burst:
                   type: integer
                   description: |
@@ -98,12 +99,30 @@ parameters:
                     - apiname: Use API name from context
                     - apiversion: Use API version from context
                     - routename: Use route name from metadata (default)
-                  enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename"]
+                    - constant: Use a static string value (requires 'key' field)
+                    - cel: Use CEL expression to extract key (requires 'expression' field)
+                  enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "cel", "constant"]
                 key:
                   type: string
                   description: Header name or metadata key (required for header/metadata types)
                   minLength: 1
                   maxLength: 256
+                expression:
+                  type: string
+                  description: |
+                    CEL expression for key extraction (required for cel type).
+                    The expression must return a string value.
+                    Available variables:
+                    - request.Headers: map[string][]string of request headers
+                    - request.Path: string, the request path
+                    - request.Method: string, the HTTP method
+                    - request.Metadata: map[string]any, shared metadata
+                    - api.Name: string, API name
+                    - api.Version: string, API version
+                    - api.Context: string, API context path
+                    Example: 'request.Headers["x-user-id"][0] + ":" + api.Name'
+                  minLength: 1
+                  maxLength: 1024
 
           costExtraction:
             type: object
@@ -145,8 +164,11 @@ parameters:
                         - response_header: Extract from response header (post-response)
                         - response_metadata: Extract from response metadata (post-response)
                         - response_body: Extract from JSON response body using jsonPath (post-response)
+                        - request_cel: Use CEL expression to extract cost from request context (pre-request)
+                        - response_cel: Use CEL expression to extract cost from response context (post-response)
                       enum: ["request_header", "request_metadata", "request_body",
-                             "response_header", "response_metadata", "response_body"]
+                             "response_header", "response_metadata", "response_body",
+                             "request_cel", "response_cel"]
 
                     key:
                       type: string
@@ -164,6 +186,29 @@ parameters:
                         Example: "$.usage.total_tokens" or "$.usage.prompt_tokens"
                       minLength: 1
                       maxLength: 512
+
+                    expression:
+                      type: string
+                      description: |
+                        CEL expression for cost extraction (required for request_cel/response_cel types).
+                        The expression must return a numeric value (int or double).
+                        Available variables for request_cel:
+                        - request.Headers: map[string][]string of request headers
+                        - request.Body: request body bytes (if buffered)
+                        - request.Path: string, the request path
+                        - request.Method: string, the HTTP method
+                        - request.Metadata: map[string]any, shared metadata
+                        Available variables for response_cel:
+                        - response.Headers: map[string][]string of response headers
+                        - response.Body: response body bytes (if buffered)
+                        - response.Status: int, response status code
+                        - request.Headers: map[string][]string of original request headers
+                        - request.Path: string, the original request path
+                        - request.Method: string, the original HTTP method
+                        - request.Metadata: map[string]any, shared metadata
+                        Example: 'int(request.Headers["x-token-count"][0])'
+                      minLength: 1
+                      maxLength: 1024
 
                     multiplier:
                       type: number
@@ -207,12 +252,30 @@ parameters:
               - apiname: Use API name from context
               - apiversion: Use API version from context
               - routename: Use route name from metadata (default)
-            enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename"]
+              - constant: Use a static string value (requires 'key' field)
+              - cel: Use CEL expression to extract key (requires 'expression' field)
+            enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "cel", "constant"]
           key:
             type: string
             description: Header name or metadata key (required for header/metadata types)
             minLength: 1
             maxLength: 256
+          expression:
+            type: string
+            description: |
+              CEL expression for key extraction (required for cel type).
+              The expression must return a string value.
+              Available variables:
+              - request.Headers: map[string][]string of request headers
+              - request.Path: string, the request path
+              - request.Method: string, the HTTP method
+              - request.Metadata: map[string]any, shared metadata
+              - api.Name: string, API name
+              - api.Version: string, API version
+              - api.Context: string, API context path
+              Example: 'request.Headers["x-user-id"][0] + ":" + api.Name'
+            minLength: 1
+            maxLength: 1024
 
     onRateLimitExceeded:
       type: object

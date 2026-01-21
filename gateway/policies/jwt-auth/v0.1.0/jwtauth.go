@@ -23,11 +23,12 @@ import (
 
 const (
 	// Metadata keys for context storage
-	MetadataKeyAuthSuccess = "auth.success"
-	MetadataKeyAuthMethod  = "auth.method"
-	MetadataKeyTokenClaims = "auth.claims"
-	MetadataKeyIssuer      = "auth.issuer"
-	MetadataKeySubject     = "auth.subject"
+	MetadataKeyAuthSuccess  = "auth.success"
+	MetadataKeyAuthMethod   = "auth.method"
+	MetadataKeyTokenClaims  = "auth.claims"
+	MetadataKeyIssuer       = "auth.issuer"
+	MetadataKeySubject      = "auth.subject"
+	MetadataValidatedClaims = "auth.validatedClaims"
 )
 
 // JwtAuthPolicy implements JWT Authentication with JWKS support
@@ -436,6 +437,8 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 		)
 		return p.handleAuthFailure(ctx, onFailureStatusCode, errorMessageFormat, errorMessage, fmt.Sprintf("token validation failed: %v", err))
 	}
+	// Store validated claims in metadata for authz policies to use
+	ctx.Metadata[MetadataValidatedClaims] = claims
 
 	slog.Debug("JWT Auth Policy: Token signature validated successfully")
 
@@ -712,11 +715,22 @@ func (p *JwtAuthPolicy) validateTokenWithSignature(tokenString string, unverifie
 		// If no issuer match found
 		if len(applicableKeyManagers) == 0 {
 			if validateIssuer {
-				// Strict mode: reject if token issuer doesn't match any key manager
-				slog.Debug("JWT Auth Policy: No key manager found for token issuer (validateIssuer=true)",
+				// Strict mode: reject if token issuer doesn't match any key manager unless wildcard key managers exist
+				for _, km := range keyManagers {
+					if km.Issuer == "" {
+						applicableKeyManagers = append(applicableKeyManagers, km)
+					}
+				}
+				if len(applicableKeyManagers) == 0 {
+					slog.Debug("JWT Auth Policy: No key manager found for token issuer (validateIssuer=true)",
+						"tokenIssuer", tokenIssuer,
+					)
+					return nil, fmt.Errorf("no key manager configured for token issuer '%s'", tokenIssuer)
+				}
+				slog.Debug("JWT Auth Policy: Using key managers without issuer for token validation",
 					"tokenIssuer", tokenIssuer,
+					"count", len(applicableKeyManagers),
 				)
-				return nil, fmt.Errorf("no key manager configured for token issuer '%s'", tokenIssuer)
 			} else {
 				// Lenient mode: try all key managers
 				slog.Debug("JWT Auth Policy: No issuer match found, using all key managers (validateIssuer=false)")

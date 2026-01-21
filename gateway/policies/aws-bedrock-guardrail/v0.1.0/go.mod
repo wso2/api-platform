@@ -1,6 +1,6 @@
 module github.com/policy-engine/policies/aws-bedrock-guardrail
 
-go 1.23.0
+go 1.25.1
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.31.0

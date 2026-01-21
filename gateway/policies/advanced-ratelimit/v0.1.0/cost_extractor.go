@@ -18,11 +18,13 @@ const (
 	CostSourceRequestHeader   CostSourceType = "request_header"
 	CostSourceRequestMetadata CostSourceType = "request_metadata"
 	CostSourceRequestBody     CostSourceType = "request_body"
+	CostSourceRequestCEL      CostSourceType = "request_cel"
 
 	// Response phase sources
 	CostSourceResponseHeader   CostSourceType = "response_header"
 	CostSourceResponseMetadata CostSourceType = "response_metadata"
 	CostSourceResponseBody     CostSourceType = "response_body"
+	CostSourceResponseCEL      CostSourceType = "response_cel"
 )
 
 // CostSource represents a single source for extracting cost
@@ -30,6 +32,7 @@ type CostSource struct {
 	Type       CostSourceType // source type
 	Key        string         // Header name or metadata key
 	JSONPath   string         // For body types: JSONPath expression
+	Expression string         // For CEL types: CEL expression
 	Multiplier float64        // Multiplier for extracted value (default: 1.0)
 }
 
@@ -148,7 +151,7 @@ func (e *CostExtractor) ExtractResponseCost(ctx *policy.ResponseContext) (float6
 // isRequestPhaseSource returns true if the source type is available during request phase
 func isRequestPhaseSource(t CostSourceType) bool {
 	switch t {
-	case CostSourceRequestHeader, CostSourceRequestMetadata, CostSourceRequestBody:
+	case CostSourceRequestHeader, CostSourceRequestMetadata, CostSourceRequestBody, CostSourceRequestCEL:
 		return true
 	default:
 		return false
@@ -158,7 +161,7 @@ func isRequestPhaseSource(t CostSourceType) bool {
 // isResponsePhaseSource returns true if the source type is available during response phase
 func isResponsePhaseSource(t CostSourceType) bool {
 	switch t {
-	case CostSourceResponseHeader, CostSourceResponseMetadata, CostSourceResponseBody:
+	case CostSourceResponseHeader, CostSourceResponseMetadata, CostSourceResponseBody, CostSourceResponseCEL:
 		return true
 	default:
 		return false
@@ -174,6 +177,8 @@ func (e *CostExtractor) extractFromRequestSource(ctx *policy.RequestContext, sou
 		return e.extractFromRequestMetadata(ctx, source.Key)
 	case CostSourceRequestBody:
 		return e.extractFromRequestBody(ctx, source.JSONPath)
+	case CostSourceRequestCEL:
+		return e.extractFromRequestCEL(ctx, source.Expression)
 	default:
 		return 0, false
 	}
@@ -188,6 +193,8 @@ func (e *CostExtractor) extractFromResponseSource(ctx *policy.ResponseContext, s
 		return e.extractFromResponseMetadata(ctx, source.Key)
 	case CostSourceResponseBody:
 		return e.extractFromResponseBody(ctx, source.JSONPath)
+	case CostSourceResponseCEL:
+		return e.extractFromResponseCEL(ctx, source.Expression)
 	default:
 		return 0, false
 	}
@@ -267,6 +274,44 @@ func (e *CostExtractor) extractFromResponseBody(ctx *policy.ResponseContext, jso
 	return extractFromBodyBytes(ctx.ResponseBody.Content, jsonPath)
 }
 
+// extractFromRequestCEL extracts cost from request context using CEL expression
+func (e *CostExtractor) extractFromRequestCEL(ctx *policy.RequestContext, expression string) (float64, bool) {
+	evaluator, err := GetCELEvaluator()
+	if err != nil {
+		slog.Error("Failed to get CEL evaluator for request cost extraction", "error", err)
+		return 0, false
+	}
+
+	cost, err := evaluator.EvaluateRequestCostExpression(expression, ctx)
+	if err != nil {
+		slog.Debug("CEL request cost extraction failed",
+			"expression", expression,
+			"error", err)
+		return 0, false
+	}
+
+	return cost, true
+}
+
+// extractFromResponseCEL extracts cost from response context using CEL expression
+func (e *CostExtractor) extractFromResponseCEL(ctx *policy.ResponseContext, expression string) (float64, bool) {
+	evaluator, err := GetCELEvaluator()
+	if err != nil {
+		slog.Error("Failed to get CEL evaluator for response cost extraction", "error", err)
+		return 0, false
+	}
+
+	cost, err := evaluator.EvaluateResponseCostExpression(expression, ctx)
+	if err != nil {
+		slog.Debug("CEL response cost extraction failed",
+			"expression", expression,
+			"error", err)
+		return 0, false
+	}
+
+	return cost, true
+}
+
 // extractFromMetadataMap is a helper to extract cost from a metadata map
 func extractFromMetadataMap(metadata map[string]interface{}, key string) (float64, bool) {
 	val, ok := metadata[key]
@@ -333,7 +378,8 @@ func (e *CostExtractor) RequiresResponseBody() bool {
 		return false
 	}
 	for _, source := range e.config.Sources {
-		if source.Type == CostSourceResponseBody {
+		// response_body always needs body, response_cel may need it for body-related expressions
+		if source.Type == CostSourceResponseBody || source.Type == CostSourceResponseCEL {
 			return true
 		}
 	}
@@ -346,7 +392,8 @@ func (e *CostExtractor) RequiresRequestBody() bool {
 		return false
 	}
 	for _, source := range e.config.Sources {
-		if source.Type == CostSourceRequestBody {
+		// request_body always needs body, request_cel may need it for body-related expressions
+		if source.Type == CostSourceRequestBody || source.Type == CostSourceRequestCEL {
 			return true
 		}
 	}
@@ -449,6 +496,16 @@ func parseCostExtractionConfig(raw interface{}) (*CostExtractionConfig, error) {
 
 		if jsonPath, ok := sourceMap["jsonPath"].(string); ok {
 			source.JSONPath = jsonPath
+		}
+
+		// Parse expression for CEL types
+		if expression, ok := sourceMap["expression"].(string); ok {
+			source.Expression = expression
+		}
+
+		// Validate: CEL types require expression
+		if (sourceType == "request_cel" || sourceType == "response_cel") && source.Expression == "" {
+			return nil, fmt.Errorf("sources[%d]: type '%s' requires 'expression' field", i, sourceType)
 		}
 
 		// Parse multiplier

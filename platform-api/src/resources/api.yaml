@@ -99,7 +99,7 @@ spec:
         authentication:
           required: true
           scopes: ["read:pets"]
-        requestPolicies:
+        policies:
           - name: SET_HEADER
             params:
               key: MyHeader
@@ -125,7 +125,6 @@ spec:
               message: my message
               printBody: true
               printHeaders: true
-        responsePolicies:
           - name: SET_HEADER
             params:
               key: MyHeader

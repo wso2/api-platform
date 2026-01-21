@@ -30,6 +30,7 @@ services:
       - "9010:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
+      - "9091:9091"   # Metrics
     environment:
       - GATEWAY_STORAGE_TYPE=sqlite
       - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
@@ -59,6 +60,7 @@ services:
     command: ["-xds-server", "it-gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
+      - "9003:9003"   # Metrics
     volumes:
       - ./test-config.yaml:/app/configs/config.yaml:ro
     depends_on:
@@ -117,6 +119,18 @@ services:
     image: kennethreitz/httpbin:latest
     ports:
       - "9081:80"
+    networks:
+      - it-gateway-network
+
+  # Mock JWKS server for JWT authentication testing
+  mock-jwks:
+    container_name: it-mock-jwks
+    image: ghcr.io/wso2/api-platform/mock-jwks:latest
+    build:
+      context: ../../tests/mock-servers/mock-jwks
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
     networks:
       - it-gateway-network
 
