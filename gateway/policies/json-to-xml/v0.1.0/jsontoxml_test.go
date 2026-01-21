@@ -19,6 +19,7 @@ package jsontoxml
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1395,5 +1396,202 @@ func TestJSONToXMLPolicy_EdgeCasesAndLimits(t *testing.T) {
 			t.Logf("%s XML:\n%s", test.name, xmlStr)
 			test.validate(t, xmlStr)
 		})
+	}
+}
+
+// TestJSONToXMLPolicy_TagNameSanitization tests the sanitization of invalid XML tag names
+func TestJSONToXMLPolicy_TagNameSanitization(t *testing.T) {
+	p := &JSONToXMLPolicy{}
+
+	tests := []struct {
+		name          string
+		jsonStr       string
+		expectedTags  []string
+		expectedAttrs []string
+	}{
+		{
+			name:          "Keys with spaces",
+			jsonStr:       `{"first name": "John", "last name": "Doe", "age group": 25}`,
+			expectedTags:  []string{"<first_name", "<last_name", "<age_group"},
+			expectedAttrs: []string{`originalKey="first name"`, `originalKey="last name"`, `originalKey="age group"`},
+		},
+		{
+			name:          "Keys starting with digits",
+			jsonStr:       `{"123abc": "value1", "456def": "value2", "789": "value3"}`,
+			expectedTags:  []string{"<_123abc", "<_456def", "<_789"},
+			expectedAttrs: []string{`originalKey="123abc"`, `originalKey="456def"`, `originalKey="789"`},
+		},
+		{
+			name:          "Keys with special characters",
+			jsonStr:       `{"user@domain": "email", "price$amount": 100, "data:value": "test", "key with spaces & symbols!": "complex"}`,
+			expectedTags:  []string{"<user_domain", "<price_amount", "<data_value", "<key_with_spaces___symbols_"},
+			expectedAttrs: []string{`originalKey="user@domain"`, `originalKey="price$amount"`, `originalKey="data:value"`, `originalKey="key with spaces &amp; symbols!"`},
+		},
+		{
+			name:          "Keys with hyphens and periods (valid)",
+			jsonStr:       `{"valid-key": "test", "valid.key": "test2", "mixed-key.name": "test3"}`,
+			expectedTags:  []string{"<valid-key", "<valid.key", "<mixed-key.name"},
+			expectedAttrs: []string{}, // No originalKey attrs needed for valid names
+		},
+		{
+			name:          "Empty and very short keys",
+			jsonStr:       `{"": "empty", "a": "single", "_": "underscore"}`,
+			expectedTags:  []string{"<empty", "<a", "<_"},
+			expectedAttrs: []string{}, // Empty string originalKey is omitted due to omitempty XML tag
+		},
+		{
+			name:          "Mixed valid and invalid keys",
+			jsonStr:       `{"validKey": "ok", "123invalid": "bad", "also@invalid": "bad", "another_valid": "ok"}`,
+			expectedTags:  []string{"<validKey", "<_123invalid", "<also_invalid", "<another_valid"},
+			expectedAttrs: []string{"", `originalKey="123invalid"`, `originalKey="also@invalid"`, ""},
+		},
+		{
+			name:          "Unicode characters in keys",
+			jsonStr:       `{"café": "coffee", "naïve": "simple", "résumé": "cv"}`,
+			expectedTags:  []string{"<café", "<naïve", "<résumé"},
+			expectedAttrs: []string{}, // Unicode letters are preserved, so no originalKey attributes needed
+		},
+		{
+			name:          "Keys starting with hyphens or periods",
+			jsonStr:       `{"-hyphen": "value1", ".period": "value2", "--double": "value3"}`,
+			expectedTags:  []string{"<_-hyphen", "<_.period", "<_--double"},
+			expectedAttrs: []string{`originalKey="-hyphen"`, `originalKey=".period"`, `originalKey="--double"`},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var jsonData interface{}
+			err := json.Unmarshal([]byte(test.jsonStr), &jsonData)
+			if err != nil {
+				t.Fatalf("Failed to parse JSON: %v", err)
+			}
+
+			xmlBytes, err := p.ConvertJSONToXML(jsonData)
+			if err != nil {
+				t.Fatalf("Expected no error, got: %v", err)
+			}
+
+			xmlStr := string(xmlBytes)
+			t.Logf("Sanitized XML:\n%s", xmlStr)
+
+			// Check for expected sanitized tag names
+			for _, expectedTag := range test.expectedTags {
+				if !strings.Contains(xmlStr, expectedTag) {
+					t.Errorf("Expected to find sanitized tag %s in XML", expectedTag)
+				}
+			}
+
+			// Check for expected original key attributes (only for non-empty expected attrs)
+			for _, expectedAttr := range test.expectedAttrs {
+				if expectedAttr != "" && !strings.Contains(xmlStr, expectedAttr) {
+					t.Errorf("Expected to find original key attribute %s in XML", expectedAttr)
+				}
+			}
+		})
+	}
+}
+
+// TestJSONToXMLPolicy_SanitizeTagName tests the sanitizeTagName helper function directly
+func TestJSONToXMLPolicy_SanitizeTagName(t *testing.T) {
+	p := &JSONToXMLPolicy{}
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"validName", "validName"},
+		{"valid_name", "valid_name"},
+		{"valid-name", "valid-name"},
+		{"valid.name", "valid.name"},
+		{"123invalid", "_123invalid"},
+		{"@invalid", "_invalid"},
+		{"key with spaces", "key_with_spaces"},
+		{"user@domain.com", "user_domain.com"},
+		{"price$amount", "price_amount"},
+		{"data:value", "data_value"},
+		{"special!@#$%^&*()", "special__________"},
+		{"café", "café"},   // Unicode letters should be preserved
+		{"naïve", "naïve"}, // Unicode letters should be preserved
+		{"", "empty"},
+		{"a", "a"},
+		{"_validUnderscore", "_validUnderscore"},
+		{"mixed123_Valid-name.test", "mixed123_Valid-name.test"},
+		{"-starts-with-hyphen", "_-starts-with-hyphen"}, // Hyphen at start is invalid
+		{".starts-with-period", "_.starts-with-period"}, // Period at start is invalid but preserved
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("Input: %s", test.input), func(t *testing.T) {
+			result := p.sanitizeTagName(test.input)
+			if result != test.expected {
+				t.Errorf("sanitizeTagName(%q) = %q, expected %q", test.input, result, test.expected)
+			}
+		})
+	}
+}
+
+// TestJSONToXMLPolicy_ComplexNestedSanitization tests sanitization in nested structures
+func TestJSONToXMLPolicy_ComplexNestedSanitization(t *testing.T) {
+	p := &JSONToXMLPolicy{}
+
+	jsonStr := `{
+		"user info": {
+			"first name": "John",
+			"last name": "Doe",
+			"123id": "user123",
+			"contact@info": {
+				"email@address": "john@example.com",
+				"phone number": "+1-555-0123"
+			}
+		},
+		"purchase history": [
+			{
+				"item id": "item123",
+				"item@name": "Product A",
+				"price$amount": 29.99
+			}
+		]
+	}`
+
+	var jsonData interface{}
+	err := json.Unmarshal([]byte(jsonStr), &jsonData)
+	if err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	xmlBytes, err := p.ConvertJSONToXML(jsonData)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	xmlStr := string(xmlBytes)
+	t.Logf("Complex nested sanitized XML:\n%s", xmlStr)
+
+	// Test for sanitized tag names
+	expectedSanitizedTags := []string{
+		"<user_info", "<first_name", "<last_name", "<_123id", "<contact_info",
+		"<email_address", "<phone_number", "<purchase_history", "<item_id",
+		"<item_name", "<price_amount",
+	}
+
+	for _, tag := range expectedSanitizedTags {
+		if !strings.Contains(xmlStr, tag) {
+			t.Errorf("Expected to find sanitized tag %s in XML", tag)
+		}
+	}
+
+	// Test for original key attributes
+	expectedOriginalKeys := []string{
+		`originalKey="user info"`, `originalKey="first name"`, `originalKey="last name"`,
+		`originalKey="123id"`, `originalKey="contact@info"`, `originalKey="email@address"`,
+		`originalKey="phone number"`, `originalKey="purchase history"`,
+		`originalKey="item id"`, `originalKey="item@name"`, `originalKey="price$amount"`,
+	}
+
+	for _, attr := range expectedOriginalKeys {
+		if !strings.Contains(xmlStr, attr) {
+			t.Errorf("Expected to find original key attribute %s in XML", attr)
+		}
 	}
 }

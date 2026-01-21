@@ -22,6 +22,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"strings"
+	"unicode"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
@@ -204,7 +205,13 @@ func (p *JSONToXMLPolicy) convertJSONToXML(jsonData interface{}) ([]byte, error)
 
 // buildXMLStruct recursively builds an XML-compatible structure from JSON data
 func (p *JSONToXMLPolicy) buildXMLStruct(data interface{}, tagName string) XMLElement {
-	element := XMLElement{XMLName: xml.Name{Local: tagName}}
+	sanitizedTagName := p.sanitizeTagName(tagName)
+	element := XMLElement{XMLName: xml.Name{Local: sanitizedTagName}}
+
+	// Store original key as attribute if it was sanitized (and not root)
+	if sanitizedTagName != tagName && tagName != "root" {
+		element.OriginalKey = tagName
+	}
 
 	switch v := data.(type) {
 	case map[string]interface{}:
@@ -248,9 +255,67 @@ func (p *JSONToXMLPolicy) buildXMLStruct(data interface{}, tagName string) XMLEl
 	return element
 }
 
+// sanitizeTagName ensures the given name is a valid XML NCName (Non-Colon Name)
+// XML NCName rules:
+// - Must start with a letter or underscore (not digit, hyphen, or period)
+// - Can contain letters (including Unicode), digits, hyphens, periods, and underscores
+// - Cannot contain spaces, colons, or other special characters
+func (p *JSONToXMLPolicy) sanitizeTagName(name string) string {
+	if name == "" {
+		return "empty"
+	}
+
+	// Convert to runes for proper Unicode handling
+	runes := []rune(name)
+	result := make([]rune, 0, len(runes))
+
+	for i, r := range runes {
+		if i == 0 {
+			// First character: must be letter or underscore
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || unicode.IsLetter(r) {
+				result = append(result, r)
+			} else {
+				// Invalid first character: prefix with underscore
+				result = append(result, '_')
+				// Only add the character if it's valid for subsequent positions and not the same as prefix
+				if isValidNCNameChar(r) {
+					result = append(result, r)
+				}
+				// If invalid character or underscore, we just use the prefix underscore
+			}
+		} else {
+			// Subsequent characters: letters, digits, hyphens, periods, underscores
+			if isValidNCNameChar(r) {
+				result = append(result, r)
+			} else {
+				result = append(result, '_')
+			}
+		}
+	}
+
+	// Fallback for empty results
+	if len(result) == 0 {
+		return "element"
+	}
+
+	return string(result)
+}
+
+// isValidNCNameChar checks if a rune is valid for XML NCName (after first character)
+func isValidNCNameChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z') ||
+		(r >= '0' && r <= '9') ||
+		r == '_' ||
+		r == '-' ||
+		r == '.' ||
+		unicode.IsLetter(r)
+}
+
 // XMLElement represents a generic XML element for marshaling
 type XMLElement struct {
-	XMLName  xml.Name     `xml:""`
-	Content  string       `xml:",chardata"`
-	Children []XMLElement `xml:",any"`
+	XMLName     xml.Name     `xml:""`
+	OriginalKey string       `xml:"originalKey,attr,omitempty"`
+	Content     string       `xml:",chardata"`
+	Children    []XMLElement `xml:",any"`
 }
