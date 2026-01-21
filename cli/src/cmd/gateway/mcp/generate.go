@@ -21,6 +21,7 @@ package mcp
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	mcpgen "github.com/wso2/api-platform/cli/internal/mcp"
@@ -39,6 +40,7 @@ ap gateway mcp generate --server http://localhost:3001/mcp`
 var (
 	generateServer string
 	generateOutput string
+	generateHeader string
 )
 
 var generateCmd = &cobra.Command{
@@ -63,10 +65,23 @@ func init() {
 
 	utils.AddStringFlag(generateCmd, utils.FlagServer, &generateServer, "", "MCP server URL (required)")
 	utils.AddStringFlag(generateCmd, utils.FlagOutput, &generateOutput, cwd, "Output directory for generated configuration")
+	utils.AddStringFlag(generateCmd, utils.FlagHeader, &generateHeader, "", "HTTP header to include in MCP requests. Format: 'Name: Value'")
 
 	generateCmd.MarkFlagRequired(utils.FlagServer)
 }
 
 func runGenerateCommand() error {
-	return mcpgen.Generate(generateServer, generateOutput)
+	var headerName, headerValue string
+	if strings.TrimSpace(generateHeader) != "" {
+		parts := strings.SplitN(generateHeader, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid header format; expected 'Name: Value'")
+		}
+		headerName = strings.TrimSpace(parts[0])
+		headerValue = strings.TrimSpace(parts[1])
+		if headerName == "" {
+			return fmt.Errorf("header name cannot be empty")
+		}
+	}
+	return mcpgen.Generate(generateServer, generateOutput, headerName, headerValue)
 }
