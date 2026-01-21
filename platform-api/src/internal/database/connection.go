@@ -28,15 +28,17 @@ import (
 
 	"platform-api/src/config"
 
-	_ "github.com/lib/pq"           // PostgreSQL driver
-	_ "github.com/mattn/go-sqlite3" // SQLite3 driver
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver (pgx stdlib)
+	_ "github.com/mattn/go-sqlite3"    // SQLite3 driver
 )
 
 const (
 	// DriverSQLite is the driver name for SQLite3
 	DriverSQLite = "sqlite3"
-	// DriverPostgres is the driver name for PostgreSQL (used by sql.Open)
+	// DriverPostgres is the canonical driver name for PostgreSQL
 	DriverPostgres = "postgres"
+	// DriverPGX is the canonical driver name for PostgreSQL
+	DriverPGX = "pgx"
 	// DriverPostgreSQL is an alternate name for PostgreSQL (accepted in config)
 	DriverPostgreSQL = "postgresql"
 )
@@ -47,9 +49,9 @@ type DB struct {
 	driver string // Database driver name (sqlite3, postgres, etc.)
 }
 
-// isPostgresDriver returns true if the driver is PostgreSQL (accepts both "postgres" and "postgresql")
+// isPostgresDriver returns true if the driver is PostgreSQL.
 func isPostgresDriver(driver string) bool {
-	return driver == DriverPostgres || driver == DriverPostgreSQL
+	return driver == DriverPostgres
 }
 
 // Driver returns the underlying database driver name (e.g., sqlite3, postgres).
@@ -62,7 +64,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 	var db *sql.DB
 	var err error
 
-	switch cfg.Driver {
+	switch strings.ToLower(cfg.Driver) {
 	case DriverSQLite:
 		// Ensure the directory exists for SQLite
 		dir := filepath.Dir(cfg.Path)
@@ -80,14 +82,16 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 			return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 		}
-	case DriverPostgres, DriverPostgreSQL:
+		fmt.Sprintf("Successfully opened SQLite database connection: path=%s\n", cfg.Path)
+	case DriverPostgres, DriverPostgreSQL, DriverPGX:
 		// Build PostgreSQL DSN from config
 		dsn := fmt.Sprintf(
 			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
 		)
 
-		db, err = sql.Open(DriverPostgres, dsn)
+		// Use pgx stdlib driver for PostgreSQL
+		db, err = sql.Open(DriverPGX, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open postgres database: %w", err)
 		}
@@ -106,7 +110,13 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &DB{DB: db, driver: cfg.Driver}, nil
+	// Normalize driver name so that all PostgreSQL aliases are treated the same
+	normalizedDriver := strings.ToLower(cfg.Driver)
+	if normalizedDriver == DriverPGX || normalizedDriver == DriverPostgreSQL {
+		normalizedDriver = DriverPostgres
+	}
+
+	return &DB{DB: db, driver: normalizedDriver}, nil
 }
 
 // InitSchema initializes the database schema
