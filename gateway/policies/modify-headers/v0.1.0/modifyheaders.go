@@ -2,6 +2,7 @@ package modifyheaders
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -9,15 +10,6 @@ import (
 
 // HeaderAction represents the action to perform on a header
 type HeaderAction string
-
-var ins = &ModifyHeadersPolicy{}
-
-func GetPolicy(
-	metadata policy.PolicyMetadata,
-	params map[string]interface{},
-) (policy.Policy, error) {
-	return ins, nil
-}
 
 const (
 	ActionSet    HeaderAction = "SET"
@@ -33,7 +25,20 @@ type HeaderModification struct {
 }
 
 // ModifyHeadersPolicy implements comprehensive header manipulation for both request and response
-type ModifyHeadersPolicy struct{}
+type ModifyHeadersPolicy struct {
+	logger *slog.Logger
+}
+
+func GetPolicy(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+	logger *slog.Logger,
+) (policy.Policy, error) {
+	p := &ModifyHeadersPolicy{
+		logger: logger,
+	}
+	return p, nil
+}
 
 // Mode returns the processing mode for this policy
 func (p *ModifyHeadersPolicy) Mode() policy.ProcessingMode {

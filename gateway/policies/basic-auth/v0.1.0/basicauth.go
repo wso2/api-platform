@@ -3,6 +3,7 @@ package basicauth
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -16,15 +17,19 @@ const (
 )
 
 // BasicAuthPolicy implements HTTP Basic Authentication
-type BasicAuthPolicy struct{}
-
-var ins = &BasicAuthPolicy{}
+type BasicAuthPolicy struct {
+	logger *slog.Logger
+}
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	return ins, nil
+	p := &BasicAuthPolicy{
+		logger: logger,
+	}
+	return p, nil
 }
 
 // Mode returns the processing mode for this policy

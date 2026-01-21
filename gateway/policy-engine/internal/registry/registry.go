@@ -20,6 +20,7 @@ package registry
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -125,8 +126,11 @@ func (r *PolicyRegistry) CreateInstance(
 	// Merge resolved initParams with runtime params (params override initParams)
 	mergedParams := mergeParams(initParams, params)
 
-	// Call factory to create instance with merged params
-	instance, err := factory(metadata, mergedParams)
+	// Create logger with policy name
+	logger := slog.Default().With("policy", name)
+
+	// Call factory to create instance with merged params and logger
+	instance, err := factory(metadata, mergedParams, logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create policy instance %s: %w", key, err)
 	}

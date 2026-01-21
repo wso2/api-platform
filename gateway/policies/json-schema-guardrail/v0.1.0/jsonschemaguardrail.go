@@ -16,6 +16,7 @@ const (
 
 // JSONSchemaGuardrailPolicy implements JSON schema validation
 type JSONSchemaGuardrailPolicy struct {
+	logger            *slog.Logger
 	hasRequestParams  bool
 	hasResponseParams bool
 	requestParams     JSONSchemaGuardrailPolicyParams
@@ -32,8 +33,11 @@ type JSONSchemaGuardrailPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &JSONSchemaGuardrailPolicy{}
+	p := &JSONSchemaGuardrailPolicy{
+		logger: logger,
+	}
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
@@ -60,7 +64,7 @@ func GetPolicy(
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
 
-	slog.Debug("JSONSchemaGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
+	p.logger.Debug("Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -139,7 +143,7 @@ func (p *JSONSchemaGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false, ctx.RequestID).(policy.RequestAction)
 }
 
 // OnResponse validates response body against JSON schema
@@ -152,11 +156,12 @@ func (p *JSONSchemaGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, para
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, p.responseParams, true, ctx.RequestID).(policy.ResponseAction)
 }
 
 // validatePayload validates payload against JSON schema
-func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONSchemaGuardrailPolicyParams, isResponse bool) interface{} {
+func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONSchemaGuardrailPolicyParams, isResponse bool, requestID string) interface{} {
+	log := policy.WithRequestID(p.logger, requestID)
 	// Parse schema
 	schemaLoader := gojsonschema.NewStringLoader(params.Schema)
 
@@ -165,7 +170,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 	if params.JsonPath != "" {
 		extractedValue, err := extractValueFromJSONPathForSchema(payload, params.JsonPath)
 		if err != nil {
-			slog.Debug("JSONSchemaGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
+			log.Debug("Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 			return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, nil)
 		}
 		documentLoader = gojsonschema.NewBytesLoader(extractedValue)
@@ -176,7 +181,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 	// Validate against schema
 	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
 	if err != nil {
-		slog.Debug("JSONSchemaGuardrail: Error validating schema", "error", err, "isResponse", isResponse)
+		log.Debug("Error validating schema", "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error validating schema", err, isResponse, params.ShowAssessment, nil)
 	}
 
@@ -189,7 +194,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 	}
 
 	if !validationPassed {
-		slog.Debug("JSONSchemaGuardrail: Validation failed", "valid", result.Valid(), "invert", params.Invert, "errorCount", len(result.Errors()), "isResponse", isResponse)
+		log.Debug("Validation failed", "valid", result.Valid(), "invert", params.Invert, "errorCount", len(result.Errors()), "isResponse", isResponse)
 		var reason string
 		if params.Invert {
 			reason = "JSON schema validation passed but invert is enabled"
@@ -199,7 +204,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 		return p.buildErrorResponse(reason, nil, isResponse, params.ShowAssessment, result.Errors())
 	}
 
-	slog.Debug("JSONSchemaGuardrail: Validation passed", "invert", params.Invert, "isResponse", isResponse)
+	log.Debug("Validation passed", "invert", params.Invert, "isResponse", isResponse)
 	if isResponse {
 		return policy.UpstreamResponseModifications{}
 	}

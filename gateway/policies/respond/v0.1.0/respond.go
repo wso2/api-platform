@@ -1,20 +1,26 @@
 package respond
 
 import (
+	"log/slog"
+
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 // RespondPolicy implements immediate response functionality
 // This policy terminates the request processing and returns an immediate response to the client
-type RespondPolicy struct{}
-
-var ins = &RespondPolicy{}
+type RespondPolicy struct {
+	logger *slog.Logger
+}
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	return ins, nil
+	p := &RespondPolicy{
+		logger: logger,
+	}
+	return p, nil
 }
 
 // Mode returns the processing mode for this policy

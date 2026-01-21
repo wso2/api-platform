@@ -35,15 +35,18 @@ const (
 
 // APIKeyPolicy implements API Key Authentication
 type APIKeyPolicy struct {
+	logger *slog.Logger
 }
-
-var ins = &APIKeyPolicy{}
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	return ins, nil
+	p := &APIKeyPolicy{
+		logger: logger,
+	}
+	return p, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -58,7 +61,8 @@ func (p *APIKeyPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest performs API Key Authentication
 func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	slog.Debug("API Key Auth Policy: OnRequest started",
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+	log.Debug("OnRequest started",
 		"path", ctx.Path,
 		"method", ctx.Method,
 		"apiId", ctx.APIId,
@@ -69,7 +73,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	// Get configuration parameters
 	keyName, ok := params["key"].(string)
 	if !ok || keyName == "" {
-		slog.Debug("API Key Auth Policy: Missing or invalid 'key' configuration",
+		log.Debug("Missing or invalid 'key' configuration",
 			"keyName", keyName,
 			"ok", ok,
 		)
@@ -79,7 +83,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 
 	location, ok := params["in"].(string)
 	if !ok || location == "" {
-		slog.Debug("API Key Auth Policy: Missing or invalid 'in' configuration",
+		log.Debug("Missing or invalid 'in' configuration",
 			"location", location,
 			"ok", ok,
 		)
@@ -94,7 +98,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 		}
 	}
 
-	slog.Debug("API Key Auth Policy: Configuration loaded",
+	log.Debug("Configuration loaded",
 		"keyName", keyName,
 		"location", location,
 		"valuePrefix", valuePrefix,
@@ -107,7 +111,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 		// Check header (case-insensitive)
 		if headerValues := ctx.Headers.Get(http.CanonicalHeaderKey(keyName)); len(headerValues) > 0 {
 			providedKey = headerValues[0]
-			slog.Debug("API Key Auth Policy: Found API key in header",
+			log.Debug("Found API key in header",
 				"headerName", keyName,
 				"keyLength", len(providedKey),
 			)
@@ -116,7 +120,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 		// Extract query parameters from the full path
 		providedKey = extractQueryParam(ctx.Path, keyName)
 		if providedKey != "" {
-			slog.Debug("API Key Auth Policy: Found API key in query parameter",
+			log.Debug("Found API key in query parameter",
 				"paramName", keyName,
 				"keyLength", len(providedKey),
 			)
@@ -125,7 +129,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 
 	// If no API key provided
 	if providedKey == "" {
-		slog.Debug("API Key Auth Policy: No API key found",
+		log.Debug("No API key found",
 			"location", location,
 			"keyName", keyName,
 		)
@@ -137,7 +141,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	if valuePrefix != "" {
 		originalLength := len(providedKey)
 		providedKey = stripPrefix(providedKey, valuePrefix)
-		slog.Debug("API Key Auth Policy: Processed value prefix",
+		log.Debug("Processed value prefix",
 			"prefix", valuePrefix,
 			"originalLength", originalLength,
 			"processedLength", len(providedKey),
@@ -145,7 +149,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 
 		// If after stripping prefix, the key is empty, treat as missing
 		if providedKey == "" {
-			slog.Debug("API Key Auth Policy: API key became empty after prefix removal")
+			log.Debug("API key became empty after prefix removal")
 			return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
 				"missing API key")
 		}
@@ -158,7 +162,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	operationMethod := ctx.Method
 
 	if apiId == "" || apiName == "" || apiVersion == "" || apiOperation == "" || operationMethod == "" {
-		slog.Debug("API Key Auth Policy: Missing API details for validation",
+		log.Debug("Missing API details for validation",
 			"apiId", apiId,
 			"apiName", apiName,
 			"apiVersion", apiVersion,
@@ -169,7 +173,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 			"missing API details for validation")
 	}
 
-	slog.Debug("API Key Auth Policy: Starting validation",
+	log.Debug("Starting validation",
 		"apiId", apiId,
 		"apiName", apiName,
 		"apiVersion", apiVersion,
@@ -181,26 +185,27 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	// API key was provided - validate it using external validation
 	isValid, err := p.validateAPIKey(apiId, apiOperation, operationMethod, providedKey)
 	if err != nil {
-		slog.Debug("API Key Auth Policy: Validation error",
+		log.Debug("Validation error",
 			"error", err,
 		)
 		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
 			"error validating API key")
 	}
 	if !isValid {
-		slog.Debug("API Key Auth Policy: Invalid API key")
+		log.Debug("Invalid API key")
 		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
 			"invalid API key")
 	}
 
 	// Authentication successful
-	slog.Debug("API Key Auth Policy: Authentication successful")
+	log.Debug("Authentication successful")
 	return p.handleAuthSuccess(ctx)
 }
 
 // handleAuthSuccess handles successful authentication
 func (p *APIKeyPolicy) handleAuthSuccess(ctx *policy.RequestContext) policy.RequestAction {
-	slog.Debug("API Key Auth Policy: handleAuthSuccess called",
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+	log.Debug("handleAuthSuccess called",
 		"apiId", ctx.APIId,
 		"apiName", ctx.APIName,
 		"apiVersion", ctx.APIVersion,
@@ -212,7 +217,7 @@ func (p *APIKeyPolicy) handleAuthSuccess(ctx *policy.RequestContext) policy.Requ
 	ctx.Metadata[MetadataKeyAuthSuccess] = true
 	ctx.Metadata[MetadataKeyAuthMethod] = "api-key"
 
-	slog.Debug("API Key Auth Policy: Authentication metadata set",
+	log.Debug("Authentication metadata set",
 		"authSuccess", true,
 		"authMethod", "api-key",
 	)
@@ -229,7 +234,8 @@ func (p *APIKeyPolicy) OnResponse(_ctx *policy.ResponseContext, _params map[stri
 // handleAuthFailure handles authentication failure
 func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, statusCode int, errorFormat, errorMessage,
 	reason string) policy.RequestAction {
-	slog.Debug("API Key Auth Policy: handleAuthFailure called",
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+	log.Debug("handleAuthFailure called",
 		"statusCode", statusCode,
 		"errorFormat", errorFormat,
 		"errorMessage", errorMessage,
@@ -263,7 +269,7 @@ func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, statusCode 
 		body = string(bodyBytes)
 	}
 
-	slog.Debug("API Key Auth Policy: Returning immediate response",
+	log.Debug("Returning immediate response",
 		"statusCode", statusCode,
 		"contentType", headers["content-type"],
 		"bodyLength", len(body),
