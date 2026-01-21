@@ -1161,7 +1161,7 @@ jobs:
       - name: Delete test APIGateway
         run: |
           echo "Deleting APIGateway test-gateway..."
-          kubectl delete gateway test-gateway
+          kubectl delete apigateway test-gateway
           
           echo "Waiting for resources to be cleaned up..."
           # Cleanup can take a bit longer as it involves uninstalling Helm charts
@@ -1336,7 +1336,7 @@ jobs:
           
           # Cleanup
           echo "Cleaning up scoped resources..."
-          kubectl delete gateway scoped-gateway -n scoped-test --ignore-not-found
+          kubectl delete apigateway scoped-gateway -n scoped-test --ignore-not-found
           kubectl delete restapi scoped-api -n scoped-test --ignore-not-found
           
           # Wait for resources to be deleted to ensure finalizers are handled

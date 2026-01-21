@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: GatewaySpec defines the desired state of Gateway
+            description: GatewaySpec defines the desired state of APIGateway
             properties:
               apiSelector:
                 description: APISelector defines how this gateway selects which APIs
@@ -1277,7 +1277,7 @@ spec:
             - apiSelector
             type: object
           status:
-            description: GatewayStatus defines the observed state of Gateway
+            description: GatewayStatus defines the observed state of APIGateway
             properties:
               appliedGeneration:
                 description: AppliedGeneration tracks the latest spec generation that
