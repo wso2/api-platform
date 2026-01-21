@@ -110,12 +110,12 @@ type ResourcesResult struct {
 }
 
 // Generate generates MCP configuration from the given URL
-func Generate(url string, outputDir string) error {
+func Generate(url string, outputDir string, headerName string, headerValue string) error {
 	fmt.Printf("Generating MCP configuration for server: %s\n", url)
 
 	// Step 1: initialize
 	fmt.Println("→ Sending initialize...")
-	sessionID, err := initializeMCPServer(url)
+	sessionID, err := initializeMCPServer(url, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to initialize MCP server: %w", err)
 	}
@@ -127,7 +127,7 @@ func Generate(url string, outputDir string) error {
 		JSONRPC: JsonRpcVersion,
 		Method:  MethodInitialized,
 	}
-	_, err = postJSONRPCWithSession(url, notifyReq, sessionID)
+	_, err = postJSONRPCWithSession(url, notifyReq, sessionID, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
@@ -140,7 +140,7 @@ func Generate(url string, outputDir string) error {
 		ID:      2,
 		Method:  MethodToolsList,
 	}
-	toolsResp, err := postJSONRPCWithSession(url, toolsReq, sessionID)
+	toolsResp, err := postJSONRPCWithSession(url, toolsReq, sessionID, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to get tools: %w", err)
 	}
@@ -161,7 +161,7 @@ func Generate(url string, outputDir string) error {
 		ID:      3,
 		Method:  MethodPromptsList,
 	}
-	promptsResp, err := postJSONRPCWithSession(url, promptsReq, sessionID)
+	promptsResp, err := postJSONRPCWithSession(url, promptsReq, sessionID, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to get prompts: %w", err)
 	}
@@ -182,7 +182,7 @@ func Generate(url string, outputDir string) error {
 		ID:      4,
 		Method:  MethodResourcesList,
 	}
-	resourcesResp, err := postJSONRPCWithSession(url, resourcesReq, sessionID)
+	resourcesResp, err := postJSONRPCWithSession(url, resourcesReq, sessionID, headerName, headerValue)
 	if err != nil {
 		return fmt.Errorf("failed to get resources: %w", err)
 	}
@@ -207,7 +207,7 @@ func Generate(url string, outputDir string) error {
 }
 
 // postJSONRPCWithSession sends a JSON-RPC request with mcp-session-id header if provided
-func postJSONRPCWithSession(url string, req interface{}, sessionID string) ([]byte, error) {
+func postJSONRPCWithSession(url string, req interface{}, sessionID string, headerName string, headerValue string) ([]byte, error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -218,6 +218,12 @@ func postJSONRPCWithSession(url string, req interface{}, sessionID string) ([]by
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	if headerName != "" {
+		lower := strings.ToLower(headerName)
+		if lower != "mcp-session-id" && lower != "content-type" && lower != "accept" {
+			httpReq.Header.Set(headerName, headerValue)
+		}
+	}
 	if sessionID != "" {
 		httpReq.Header.Set("mcp-session-id", sessionID)
 	}
@@ -248,7 +254,7 @@ func postJSONRPCWithSession(url string, req interface{}, sessionID string) ([]by
 }
 
 // initializeMCPServer initializes the MCP server and returns the session ID
-func initializeMCPServer(url string) (string, error) {
+func initializeMCPServer(url string, headerName string, headerValue string) (string, error) {
 	initReq := JsonRPCRequest{
 		JSONRPC: JsonRpcVersion,
 		ID:      1,
@@ -269,6 +275,12 @@ func initializeMCPServer(url string) (string, error) {
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	if headerName != "" {
+		lower := strings.ToLower(headerName)
+		if lower != "mcp-session-id" && lower != "content-type" && lower != "accept" {
+			httpReq.Header.Set(headerName, headerValue)
+		}
+	}
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
