@@ -75,9 +75,9 @@ type IDPConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
 
-// GetDeploymentConfigFromGateway retrieves authentication configuration from a Gateway's ConfigRef
+// GetDeploymentConfigFromGateway retrieves authentication configuration from an APIGateway's ConfigRef
 // Returns nil if no ConfigRef is specified or if auth config is not found in the ConfigMap
-func GetDeploymentConfigFromGateway(ctx context.Context, k8sClient client.Client, gateway *apiv1.Gateway) (*AuthSettings, error) {
+func GetDeploymentConfigFromGateway(ctx context.Context, k8sClient client.Client, gateway *apiv1.APIGateway) (*AuthSettings, error) {
 	// If no ConfigRef, return nil (will use default auth)
 	if gateway.Spec.ConfigRef == nil {
 		return nil, nil

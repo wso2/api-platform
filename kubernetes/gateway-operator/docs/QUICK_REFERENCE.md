@@ -150,10 +150,10 @@ metadata:
 
 ```bash
 # Check gateway status
-kubectl get gateway <name> -o yaml
+kubectl get apigateway <name> -o yaml
 
 # See selected API count
-kubectl get gateway <name> -o jsonpath='{.status.selectedAPIs}'
+kubectl get apigateway <name> -o jsonpath='{.status.selectedAPIs}'
 
 # Check API deployment status
 kubectl get apiconfiguration <name> -n <ns> -o jsonpath='{.status.deployedGateways}'
@@ -190,13 +190,13 @@ kubectl apply -f gateway.yaml
 kubectl apply -f api.yaml
 
 # List gateways
-kubectl get gateways
+kubectl get apigateways
 
 # List APIs
 kubectl get restapis -A
 
 # Check gateway-API relationship
-kubectl describe gateway <name>
+kubectl describe apigateway <name>
 kubectl describe apiconfiguration <name> -n <namespace>
 
 # Label an API for selection
