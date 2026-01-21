@@ -20,6 +20,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -82,7 +83,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 			return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 		}
-		fmt.Sprintf("Successfully opened SQLite database connection: path=%s\n", cfg.Path)
+		log.Printf("Successfully opened SQLite database connection: path=%s\n", cfg.Path)
 	case DriverPostgres, DriverPostgreSQL, DriverPGX:
 		// Build PostgreSQL DSN from config
 		dsn := fmt.Sprintf(
@@ -95,7 +96,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open postgres database: %w", err)
 		}
-		fmt.Sprintf("Successfully opened PostgreSQL database connection: host=%s port=%d dbname=%s\n", cfg.Host, cfg.Port, cfg.Name)
+		log.Printf("Successfully opened PostgreSQL database connection: host=%s port=%d dbname=%s\n", cfg.Host, cfg.Port, cfg.Name)
 	default:
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}

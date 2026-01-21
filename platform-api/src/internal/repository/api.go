@@ -1015,7 +1015,7 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 		if err != nil {
 			return err
 		}
-		deployment.ID = int(lastID)
+		deployment.ID = lastID
 	}
 	return nil
 }
@@ -1078,7 +1078,7 @@ func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error 
 		if err != nil {
 			return err
 		}
-		association.ID = int(lastID)
+		association.ID = lastID
 	}
 
 	return nil
