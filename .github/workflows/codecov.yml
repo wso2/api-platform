@@ -19,9 +19,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Unit Tests
+      - name: Gateway Unit Tests
         run: |
           cd gateway
+          make test
+
+      - name: CLI Unit Tests
+        run: |
+          cd cli/src
           make test
 
       - name: Build coverage-instrumented images

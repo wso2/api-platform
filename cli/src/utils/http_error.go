@@ -38,7 +38,7 @@ func FormatHTTPError(operation string, resp *http.Response, responder string) er
 			b.WriteString(bodyStr)
 			b.WriteString("\n")
 		}
-		return fmt.Errorf(b.String())
+		return fmt.Errorf("%s", b.String())
 	}
 
 	if responder == "" {
@@ -131,7 +131,7 @@ func FormatHTTPErrorWithCredSource(operation string, resp *http.Response, respon
 			b.WriteString(bodyStr)
 			b.WriteString("\n")
 		}
-		return fmt.Errorf(b.String())
+		return fmt.Errorf("%s", b.String())
 	}
 
 	// Default error formatting
