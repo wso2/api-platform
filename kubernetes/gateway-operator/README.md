@@ -48,7 +48,7 @@ curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main
 
 apigatewayconfig_path="/tmp/api_v1_apigateway.yaml"
 
-kubectl apply -f $apiapigatewayconfig_path
+kubectl apply -f $apigatewayconfig_path
 kubectl get apigateway -n default -o json | jq '.items[0].status'
 ```
 
@@ -61,7 +61,6 @@ curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main
   -o /tmp/api_v1_restapi.yaml
 
 apiconfig_path="/tmp/api_v1_restapi.yaml"
-kubectl create ns test
 kubectl apply -f $apiconfig_path
 
 kubectl get restapi -n default -o json | jq '.items[0].status'
