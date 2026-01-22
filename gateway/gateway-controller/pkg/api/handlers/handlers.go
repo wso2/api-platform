@@ -25,6 +25,8 @@ import (
 
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 
 	"io"
 	"net/http"
@@ -67,6 +69,8 @@ type APIServer struct {
 	deploymentService    *utils.APIDeploymentService
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
+	secretService        *secrets.SecretService
+	policyResolver       *resolver.PolicyResolver
 	apiKeyService        *utils.APIKeyService
 	apiKeyXDSManager     *apikeyxds.APIKeyStateManager
 	controlPlaneClient   controlplane.ControlPlaneClient
@@ -87,6 +91,8 @@ func NewAPIServer(
 	policyDefinitions map[string]api.PolicyDefinition,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
+	secretService *secrets.SecretService,
+	policyResolver *resolver.PolicyResolver,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
 ) *APIServer {
@@ -99,6 +105,8 @@ func NewAPIServer(
 		policyDefinitions:    policyDefinitions,
 		parser:               config.NewParser(),
 		validator:            validator,
+		secretService:        secretService,
+		policyResolver:       policyResolver,
 		logger:               logger,
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
@@ -1653,7 +1661,24 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 // used by the xDS translator for consistency.
 func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
 	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
-	apiCfg := &cfg.Configuration
+	var apiCfg *api.APIConfiguration
+	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(cfg)
+	if len(validationErrors) > 0 {
+		// Aggregate errors into a single error message
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		s.logger.Error("Policy resolution failed",
+			slog.String("config_id", cfg.ID),
+			slog.String("errors", errMsg),
+		)
+		apiCfg = &cfg.Configuration // Fallback to original config
+	} else {
+		apiCfg = &resolvedCfg.Configuration
+	}
 
 	// Collect API-level policies
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
@@ -2228,6 +2253,251 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			// Continue waiting if status is still pending
 		}
 	}
+}
+
+// CreateSecret handles POST /secrets
+func (s *APIServer) CreateSecret(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.CreateSecret(secrets.SecretParams{
+		Data:        body,
+		ContentType: c.GetHeader("Content-Type"),
+		Logger:      log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret created successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusCreated, gin.H{
+		"id":         secret.Handle,
+		"value":      secret.Value,
+		"created_at": secret.CreatedAt,
+		"updated_at": secret.UpdatedAt,
+	})
+}
+
+// ListSecrets implements ServerInterface.ListSecrets
+// (GET /secrets)
+func (s *APIServer) ListSecrets(c *gin.Context) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secretsList", slog.String("correlation_id", correlationID))
+
+	ids, err := s.secretService.GetSecrets(correlationID)
+	if err != nil {
+		log.Error("Failed to retrieve secretsList",
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve secretsList",
+		})
+		return
+	}
+
+	secretsList := make([]string, 0, len(ids))
+	for _, id := range ids {
+		secretsList = append(secretsList, id)
+	}
+
+	c.JSON(http.StatusOK, api.SecretListResponse{
+		Status:     stringPtr("success"),
+		TotalCount: intPtr(len(secretsList)),
+		Secrets:    &secretsList,
+	})
+}
+
+// GetSecret handles GET /secrets/{id}
+func (s *APIServer) GetSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secret",
+		slog.String("secret_handle", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Retrieve secret
+	secret, err := s.secretService.Get(id, correlationID)
+	if err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for decryption failures (security-first)
+		log.Error("Failed to retrieve secret",
+			slog.String("secret_handle", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to decrypt secret",
+		})
+		return
+	}
+
+	log.Debug("Secret retrieved successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return secret
+	c.JSON(http.StatusOK, gin.H{
+		"id":         secret.Handle,
+		"value":      secret.Value,
+		"created_at": secret.CreatedAt,
+		"updated_at": secret.UpdatedAt,
+	})
+}
+
+// UpdateSecret handles PUT /secrets/{id}
+func (s *APIServer) UpdateSecret(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.UpdateSecret(secrets.SecretParams{
+		Data:        body,
+		ContentType: c.GetHeader("Content-Type"),
+		Logger:      log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if strings.Contains(err.Error(), "does not exist") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret updated successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusOK, gin.H{
+		"id":         secret.Handle,
+		"value":      secret.Value,
+		"created_at": secret.CreatedAt,
+		"updated_at": secret.UpdatedAt,
+	})
+}
+
+// DeleteSecret handles DELETE /secrets/{id}
+func (s *APIServer) DeleteSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Deleting secret",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Delete secret
+	if err := s.secretService.Delete(id, correlationID); err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for storage failures
+		log.Error("Failed to delete secret",
+			slog.String("secret_id", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete secret",
+		})
+		return
+	}
+
+	log.Info("Secret deleted successfully",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Return 200 OK on successful deletion
+	c.Status(http.StatusOK)
 }
 
 // GetConfigDump implements the GET /config_dump endpoint

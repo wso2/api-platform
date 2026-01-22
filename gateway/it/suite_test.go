@@ -83,6 +83,7 @@ func TestFeatures(t *testing.T) {
 				"features/llm-provider-templates.feature",
 				"features/analytics-header-filter.feature",
 				"features/lazy-resources-xds.feature",
+				"features/secrets.feature",
 			},
 			TestingT: t,
 		},
@@ -240,6 +241,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterMCPSteps(ctx, testState, httpSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterLLMSteps(ctx, testState, httpSteps)
+		RegisterSecretSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps
