@@ -73,7 +73,7 @@ func LoadManifest(manifestLockPath string) (*types.PolicyManifestLock, error) {
 
 // validateManifest validates the manifest lock structure and contents
 func validateManifest(manifest *types.PolicyManifestLock) error {
-	// Check version
+	// Check manifest version
 	if manifest.Version == "" {
 		return errors.NewDiscoveryError("manifest version is required", nil)
 	}
@@ -97,21 +97,14 @@ func validateManifest(manifest *types.PolicyManifestLock) error {
 		slog.Debug("Validating manifest entry",
 			"index", i,
 			"name", entry.Name,
-			"version", entry.Version,
 			"filePath", entry.FilePath,
+			"gomodule", entry.Gomodule,
 			"phase", "discovery")
 
 		// Check required fields
 		if entry.Name == "" {
 			return errors.NewDiscoveryError(
 				fmt.Sprintf("policy entry %d: name is required", i),
-				nil,
-			)
-		}
-
-		if entry.Version == "" {
-			return errors.NewDiscoveryError(
-				fmt.Sprintf("policy entry %d (%s): version is required", i, entry.Name),
 				nil,
 			)
 		}
@@ -124,11 +117,11 @@ func validateManifest(manifest *types.PolicyManifestLock) error {
 		}
 
 		if entry.FilePath != "" && entry.Gomodule != "" {
-			slog.Debug("Both filePath and gomodule provided; preferring filePath", "name", entry.Name, "version", entry.Version)
+			slog.Debug("Both filePath and gomodule provided; preferring filePath", "name", entry.Name)
 		}
 
-		// Check for duplicates (name:version combination must be unique)
-		key := fmt.Sprintf("%s:%s", entry.Name, entry.Version)
+		// Check for duplicates based on name + filePath/gomodule to avoid ambiguity
+		key := fmt.Sprintf("%s:%s|%s", entry.Name, entry.FilePath, entry.Gomodule)
 		if seen[key] {
 			return errors.NewDiscoveryError(
 				fmt.Sprintf("duplicate policy entry: %s", key),
@@ -186,7 +179,7 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 			modDir, err := resolveModuleDir(entry.Gomodule)
 			if err != nil {
 				return nil, errors.NewDiscoveryError(
-					fmt.Sprintf("failed to resolve gomodule for %s:%s: %v", entry.Name, entry.Version, err),
+					fmt.Sprintf("failed to resolve gomodule for %s: %v", entry.Name, err),
 					err,
 				)
 			}
@@ -194,14 +187,13 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 			source = "gomodule"
 		} else {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy entry %s:%s: either filePath or gomodule must be provided", entry.Name, entry.Version),
+				fmt.Sprintf("policy entry %s: either filePath or gomodule must be provided", entry.Name),
 				nil,
 			)
 		}
 
 		slog.Debug("Resolving policy",
 			"policy", entry.Name,
-			"version", entry.Version,
 			"source", source,
 			"path", policyPath,
 			"phase", "discovery")
@@ -209,7 +201,7 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 		// Check path exists and is accessible
 		if err := fsutil.ValidatePathExists(policyPath, "policy path"); err != nil {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("from manifest entry %s:%s: %v", entry.Name, entry.Version, err),
+				fmt.Sprintf("from manifest entry %s: %v", entry.Name, err),
 				err,
 			)
 		}
@@ -217,7 +209,7 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 		// Validate directory structure
 		if err := ValidateDirectoryStructure(policyPath); err != nil {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("invalid structure for %s:%s at %s", entry.Name, entry.Version, policyPath),
+				fmt.Sprintf("invalid structure for %s at %s", entry.Name, policyPath),
 				err,
 			)
 		}
@@ -227,7 +219,7 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 		definition, err := ParsePolicyYAML(policyYAMLPath)
 		if err != nil {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("failed to parse %s for %s:%s at %s", types.PolicyDefinitionFile, entry.Name, entry.Version, policyPath),
+				fmt.Sprintf("failed to parse %s for %s at %s", types.PolicyDefinitionFile, entry.Name, policyPath),
 				err,
 			)
 		}
@@ -238,7 +230,7 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 			"path", policyYAMLPath,
 			"phase", "discovery")
 
-		// Validate manifest entry matches policy definition
+		// Validate manifest entry matches policy definition name
 		if entry.Name != definition.Name {
 			return nil, errors.NewDiscoveryError(
 				fmt.Sprintf("policy name mismatch: manifest declares '%s' but %s has '%s' at %s",
@@ -247,10 +239,9 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 			)
 		}
 
-		if entry.Version != definition.Version {
+		if definition.Version == "" {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy version mismatch: manifest declares '%s' but %s has '%s' for %s at %s",
-					entry.Version, types.PolicyDefinitionFile, definition.Version, entry.Name, policyPath),
+				fmt.Sprintf("policy version cannot be found in definition for %s", entry.Name),
 				nil,
 			)
 		}
@@ -259,7 +250,7 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 		sourceFiles, err := CollectSourceFiles(policyPath)
 		if err != nil {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("failed to collect source files for %s:%s at %s", entry.Name, entry.Version, policyPath),
+				fmt.Sprintf("failed to collect source files for %s:%s at %s", entry.Name, definition.Version, policyPath),
 				err,
 			)
 		}
