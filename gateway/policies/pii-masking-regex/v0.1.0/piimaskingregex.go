@@ -39,7 +39,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &PIIMaskingRegexPolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 
 	// Parse parameters (piiEntities is required)

@@ -45,7 +45,7 @@ func GetPolicy(
 	params map[string]interface{},
 	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &WordCountGuardrailPolicy{logger: logger}
+	p := &WordCountGuardrailPolicy{logger: policy.EnsureLogger(logger)}
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {

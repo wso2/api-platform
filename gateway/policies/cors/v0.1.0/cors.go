@@ -45,6 +45,7 @@ func GetPolicy(
 	params map[string]any,
 	logger *slog.Logger,
 ) (policy.Policy, error) {
+	logger = policy.EnsureLogger(logger)
 	logger.Debug("GetPolicy called")
 	p := &CorsPolicy{
 		logger: logger,

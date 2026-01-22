@@ -262,6 +262,7 @@ func GetPolicy(
 
 	// Return configured policy instance
 	return &RateLimitPolicy{
+		logger:         policy.EnsureLogger(logger),
 		quotas:         quotas,
 		routeName:      routeName,
 		apiId:          apiId,

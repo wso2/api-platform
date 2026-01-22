@@ -52,7 +52,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &SemanticPromptGuardPolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 
 	// Parse and validate embedding provider configuration (from systemParameters)

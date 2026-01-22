@@ -100,7 +100,7 @@ func GetPolicy(
 	params map[string]interface{},
 	logger *slog.Logger,
 ) (policy.Policy, error) {
-	logger.Debug("GetPolicy called")
+	policy.EnsureLogger(logger).Debug("GetPolicy called")
 	return ins, nil
 }
 

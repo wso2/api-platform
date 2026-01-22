@@ -44,7 +44,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &PromptDecoratorPolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 
 	// Parse parameters

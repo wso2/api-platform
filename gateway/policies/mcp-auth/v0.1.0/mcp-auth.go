@@ -53,7 +53,7 @@ func GetPolicy(
 	params map[string]any,
 	logger *slog.Logger,
 ) (policy.Policy, error) {
-	logger.Debug("GetPolicy called")
+	policy.EnsureLogger(logger).Debug("GetPolicy called")
 	return ins, nil
 }
 

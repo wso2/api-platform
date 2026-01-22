@@ -35,7 +35,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &ModifyHeadersPolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 	return p, nil
 }

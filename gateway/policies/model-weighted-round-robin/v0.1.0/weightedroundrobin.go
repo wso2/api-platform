@@ -89,7 +89,7 @@ func GetPolicy(
 	}
 
 	p := &ModelWeightedRoundRobinPolicy{
-		logger:           logger,
+		logger:           policy.EnsureLogger(logger),
 		currentIndex:     0,
 		suspendedModels:  make(map[string]time.Time),
 		weightedSequence: buildWeightedSequence(weightedModels),

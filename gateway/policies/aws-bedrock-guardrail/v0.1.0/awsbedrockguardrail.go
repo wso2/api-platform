@@ -69,7 +69,7 @@ func GetPolicy(
 	}
 
 	p := &AWSBedrockGuardrailPolicy{
-		logger:           logger,
+		logger:           policy.EnsureLogger(logger),
 		region:           getStringParam(params, "region"),
 		guardrailID:      getStringParam(params, "guardrailID"),
 		guardrailVersion: getStringParam(params, "guardrailVersion"),

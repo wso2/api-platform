@@ -3,7 +3,7 @@ module github.com/policy-engine/policies/json-schema-guardrail
 go 1.25.1
 
 require (
-	github.com/wso2/api-platform/sdk v0.3.3
+	github.com/wso2/api-platform/sdk v0.3.5
 	github.com/xeipuuv/gojsonschema v1.2.0
 )
 

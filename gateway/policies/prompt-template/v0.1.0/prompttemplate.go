@@ -42,7 +42,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &PromptTemplatePolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 
 	// Parse parameters

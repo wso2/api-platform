@@ -42,7 +42,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &ContentLengthGuardrailPolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 
 	// Extract and parse request parameters if present

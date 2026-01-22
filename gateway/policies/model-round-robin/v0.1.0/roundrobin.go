@@ -77,7 +77,7 @@ func GetPolicy(
 	}
 
 	p := &ModelRoundRobinPolicy{
-		logger:          logger,
+		logger:          policy.EnsureLogger(logger),
 		currentIndex:    0,
 		suspendedModels: make(map[string]time.Time),
 		params:          policyParams,

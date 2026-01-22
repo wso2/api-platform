@@ -27,7 +27,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &BasicAuthPolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 	return p, nil
 }

@@ -67,7 +67,7 @@ func GetPolicy(
 	}
 
 	p := &AzureContentSafetyContentModerationPolicy{
-		logger:   logger,
+		logger:   policy.EnsureLogger(logger),
 		endpoint: getStringParam(params, "azureContentSafetyEndpoint"),
 		apiKey:   getStringParam(params, "azureContentSafetyKey"),
 		client: &http.Client{

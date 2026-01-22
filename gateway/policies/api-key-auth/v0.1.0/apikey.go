@@ -44,7 +44,7 @@ func GetPolicy(
 	logger *slog.Logger,
 ) (policy.Policy, error) {
 	p := &APIKeyPolicy{
-		logger: logger,
+		logger: policy.EnsureLogger(logger),
 	}
 	return p, nil
 }
