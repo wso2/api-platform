@@ -37,7 +37,7 @@ const (
 )
 
 // LoadManifest loads and validates the policy manifest lock file
-func LoadManifest(manifestLockPath string) (*types.PolicyManifestLock, error) {
+func LoadManifest(manifestLockPath string) (*types.PolicyManifest, error) {
 	slog.Debug("Reading manifest lock file", "path", manifestLockPath, "phase", "discovery")
 
 	// Read manifest lock file
@@ -50,7 +50,7 @@ func LoadManifest(manifestLockPath string) (*types.PolicyManifestLock, error) {
 	}
 
 	// Parse YAML
-	var manifest types.PolicyManifestLock
+	var manifest types.PolicyManifest
 	if err := yaml.Unmarshal(data, &manifest); err != nil {
 		return nil, errors.NewDiscoveryError(
 			"failed to parse manifest YAML",
@@ -72,7 +72,7 @@ func LoadManifest(manifestLockPath string) (*types.PolicyManifestLock, error) {
 }
 
 // validateManifest validates the manifest lock structure and contents
-func validateManifest(manifest *types.PolicyManifestLock) error {
+func validateManifest(manifest *types.PolicyManifest) error {
 	// Check manifest version
 	if manifest.Version == "" {
 		return errors.NewDiscoveryError("manifest version is required", nil)

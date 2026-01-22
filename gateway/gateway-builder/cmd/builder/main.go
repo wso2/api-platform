@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	DefaultManifestLockFile             = "policy-manifest-lock.yaml"
+	DefaultManifestFile                 = "policy-manifest.yaml"
 	DefaultSystemPolicyManifestLockFile = "system-policy-manifest-lock.yaml"
 	DefaultOutputDir                    = "output"
 	DefaultPolicyEngineSrc              = "/api-platform/gateway/policy-engine"
@@ -55,7 +55,7 @@ func main() {
 	defaultRouterBaseImage := "ghcr.io/wso2/api-platform/gateway-router:" + Version
 
 	// Parse command-line flags
-	manifestLockPath := flag.String("manifest-lock", DefaultManifestLockFile, "Path to policy manifest lock file")
+	manifestPath := flag.String("manifest", DefaultManifestFile, "Path to policy manifest file")
 	systemManifestLockPath := flag.String("system-manifest-lock", DefaultSystemPolicyManifestLockFile, "Path to system policy manifest lock file")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
 	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
@@ -75,12 +75,12 @@ func main() {
 	initLogger(*logFormat, *logLevel)
 
 	// Resolve paths to absolute paths
-	absManifestLockPath, err := filepath.Abs(*manifestLockPath)
+	absManifestPath, err := filepath.Abs(*manifestPath)
 	if err != nil {
-		slog.Error("Failed to resolve manifest lock path", "path", *manifestLockPath, "error", err)
+		slog.Error("Failed to resolve manifest path", "path", *manifestPath, "error", err)
 		os.Exit(1)
 	}
-	manifestLockPath = &absManifestLockPath
+	manifestPath = &absManifestPath
 
 	var absSystemManifestLockPath string
 	if *systemManifestLockPath != "" {
@@ -110,7 +110,7 @@ func main() {
 		"version", Version,
 		"git_commit", GitCommit,
 		"build_date", BuildDate,
-		"manifest_lock", *manifestLockPath,
+		"manifest", *manifestPath,
 		"system_manifest_lock", *systemManifestLockPath,
 	}
 	slog.Info("Policy Builder starting", logFields...)
@@ -121,7 +121,7 @@ func main() {
 	slog.Info("Starting Phase 1: Discovery", "phase", "discovery")
 
 	// Discover policies from main manifest
-	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestLockPath, "")
+	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestPath, "")
 	if err != nil {
 		errors.FatalError(err)
 	}

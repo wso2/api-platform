@@ -18,13 +18,13 @@
 
 package types
 
-// PolicyManifestLock represents the policy-manifest-lock.yaml file
-type PolicyManifestLock struct {
+// PolicyManifest represents the policy-manifest.yaml file
+type PolicyManifest struct {
 	Version  string          `yaml:"version"`
 	Policies []ManifestEntry `yaml:"policies"`
 }
 
-// ManifestEntry represents a single policy entry in the manifest lock
+// ManifestEntry represents a single policy entry in the manifest
 type ManifestEntry struct {
 	Name     string `yaml:"name"`
 	FilePath string `yaml:"filePath,omitempty"`
