@@ -82,12 +82,15 @@ func main() {
 	}
 	manifestLockPath = &absManifestLockPath
 
-	absSystemManifestLockPath, err := filepath.Abs(*systemManifestLockPath)
-	if err != nil {
-		slog.Error("Failed to resolve system manifest lock path", "path", *systemManifestLockPath, "error", err)
-		os.Exit(1)
+	var absSystemManifestLockPath string
+	if *systemManifestLockPath != "" {
+		absSystemManifestLockPath, err = filepath.Abs(*systemManifestLockPath)
+		if err != nil {
+			slog.Error("Failed to resolve system manifest lock path", "path", *systemManifestLockPath, "error", err)
+			os.Exit(1)
+		}
+		systemManifestLockPath = &absSystemManifestLockPath
 	}
-	systemManifestLockPath = &absSystemManifestLockPath
 
 	absPolicyEngineSrc, err := filepath.Abs(*policyEngineSrc)
 	if err != nil {
@@ -127,19 +130,22 @@ func main() {
 		"phase", "discovery")
 
 	// Discover system policies from system manifest if provided
-	systemPolicies, err := discovery.DiscoverPoliciesFromManifest(absSystemManifestLockPath, "")
-	if err != nil {
-		errors.FatalError(err)
+	if *systemManifestLockPath != "" {
+		systemPolicies, err := discovery.DiscoverPoliciesFromManifest(absSystemManifestLockPath, "")
+		if err != nil {
+			errors.FatalError(err)
+		}
+		slog.Info("Loaded system manifest",
+			"count", len(systemPolicies),
+			"phase", "discovery")
+		// Merge system policies with regular policies
+		policies = append(policies, systemPolicies...)
+		slog.Info("Total policies after merging",
+			"count", len(policies),
+			"phase", "discovery")
+	} else {
+		slog.Info("No system manifest provided; skipping system policies", "phase", "discovery")
 	}
-	slog.Info("Loaded system manifest",
-		"count", len(systemPolicies),
-		"phase", "discovery")
-	// Merge system policies with regular policies
-	policies = append(policies, systemPolicies...)
-	slog.Info("Total policies after merging",
-		"count", len(policies),
-		"phase", "discovery")
-	
 
 	// Print discovered policies
 	for i, p := range policies {

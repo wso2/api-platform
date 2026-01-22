@@ -28,5 +28,6 @@ type PolicyManifestLock struct {
 type ManifestEntry struct {
 	Name     string `yaml:"name"`
 	Version  string `yaml:"version"`
-	FilePath string `yaml:"filePath"`
+	FilePath string `yaml:"filePath,omitempty"`
+	Gomodule string `yaml:"gomodule,omitempty"`
 }

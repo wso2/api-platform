@@ -19,9 +19,11 @@
 package discovery
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
@@ -114,6 +116,17 @@ func validateManifest(manifest *types.PolicyManifestLock) error {
 			)
 		}
 
+		if entry.FilePath == "" && entry.Gomodule == "" {
+			return errors.NewDiscoveryError(
+				fmt.Sprintf("policy entry %d (%s): either filePath or gomodule must be provided", i, entry.Name),
+				nil,
+			)
+		}
+
+		if entry.FilePath != "" && entry.Gomodule != "" {
+			slog.Debug("Both filePath and gomodule provided; preferring filePath", "name", entry.Name, "version", entry.Version)
+		}
+
 		// Check for duplicates (name:version combination must be unique)
 		key := fmt.Sprintf("%s:%s", entry.Name, entry.Version)
 		if seen[key] {
@@ -163,14 +176,34 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 
 	// Process each manifest entry
 	for _, entry := range manifest.Policies {
-		filePath := entry.FilePath
-		policyPath := filepath.Join(baseDir, filePath)
+		var policyPath string
+		var source string
 
-		slog.Debug("Resolving policy path",
+		if entry.FilePath != "" {
+			policyPath = filepath.Join(baseDir, entry.FilePath)
+			source = "filePath"
+		} else if entry.Gomodule != "" {
+			modDir, err := resolveModuleDir(entry.Gomodule)
+			if err != nil {
+				return nil, errors.NewDiscoveryError(
+					fmt.Sprintf("failed to resolve gomodule for %s:%s: %v", entry.Name, entry.Version, err),
+					err,
+				)
+			}
+			policyPath = modDir
+			source = "gomodule"
+		} else {
+			return nil, errors.NewDiscoveryError(
+				fmt.Sprintf("policy entry %s:%s: either filePath or gomodule must be provided", entry.Name, entry.Version),
+				nil,
+			)
+		}
+
+		slog.Debug("Resolving policy",
 			"policy", entry.Name,
 			"version", entry.Version,
-			"filePath", filePath,
-			"resolvedPath", policyPath,
+			"source", source,
+			"path", policyPath,
 			"phase", "discovery")
 
 		// Check path exists and is accessible
@@ -253,4 +286,27 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 	}
 
 	return discovered, nil
+}
+
+// ResolveModuleDir resolves a Go module to its local directory using 'go mod download'
+func resolveModuleDir(gomodule string) (string, error) {
+	// Run: go mod download -json <gomodule>
+	cmd := exec.Command("go", "mod", "download", "-json", gomodule)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to run 'go mod download -json %s': %w; output: %s", gomodule, err, string(out))
+	}
+
+	var info struct {
+		Dir string `json:"Dir"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		return "", fmt.Errorf("failed to parse 'go mod download' output: %w", err)
+	}
+
+	if info.Dir == "" {
+		return "", fmt.Errorf("module download did not return a Dir for %s", gomodule)
+	}
+
+	return info.Dir, nil
 }
