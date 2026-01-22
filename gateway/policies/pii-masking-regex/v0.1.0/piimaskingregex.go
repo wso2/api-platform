@@ -3,6 +3,7 @@ package piimaskingregex
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strings"
@@ -22,6 +23,7 @@ var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // PIIMaskingRegexPolicy implements regex-based PII masking
 type PIIMaskingRegexPolicy struct {
+	logger *slog.Logger
 	params PIIMaskingRegexPolicyParams
 }
 
@@ -34,8 +36,11 @@ type PIIMaskingRegexPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &PIIMaskingRegexPolicy{}
+	p := &PIIMaskingRegexPolicy{
+		logger: logger,
+	}
 
 	// Parse parameters (piiEntities is required)
 	policyParams, err := parseParams(params, true) // true = piiEntities is required
@@ -43,6 +48,8 @@ func GetPolicy(
 		return nil, fmt.Errorf("invalid parameters: %w", err)
 	}
 	p.params = policyParams
+
+	p.logger.Debug("Policy initialized", "piiEntityCount", len(p.params.PIIEntities), "redactPII", p.params.RedactPII)
 
 	return p, nil
 }
@@ -146,6 +153,8 @@ func (p *PIIMaskingRegexPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest masks PII in request body
 func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	if len(p.params.PIIEntities) == 0 {
 		// No PII entities configured, pass through
 		return policy.UpstreamRequestModifications{}
@@ -159,6 +168,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, p.params.JsonPath)
 	if err != nil {
+		log.Debug("Error extracting value from JSONPath", "jsonPath", p.params.JsonPath, "error", err)
 		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err)).(policy.RequestAction)
 	}
 
@@ -174,6 +184,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 		// Masking mode: replace with placeholders and store mappings
 		modifiedContent, err = p.maskPIIFromContent(extractedValue, p.params.PIIEntities, ctx.Metadata)
 		if err != nil {
+			log.Debug("Error masking PII", "error", err)
 			return p.buildErrorResponse(fmt.Sprintf("error masking PII: %v", err)).(policy.RequestAction)
 		}
 	}
@@ -181,6 +192,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 	// If content was modified, update the payload
 	if modifiedContent != "" && modifiedContent != extractedValue {
 		modifiedPayload := p.updatePayloadWithMaskedContent(payload, extractedValue, modifiedContent, p.params.JsonPath)
+		log.Debug("PII masked in request", "originalLength", len(extractedValue), "modifiedLength", len(modifiedContent))
 		return policy.UpstreamRequestModifications{
 			Body: modifiedPayload,
 		}
@@ -191,6 +203,8 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 
 // OnResponse restores PII in response body (if redactPII is false)
 func (p *PIIMaskingRegexPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	// If redactPII is true, no restoration needed
 	if p.params.RedactPII {
 		return policy.UpstreamResponseModifications{}
@@ -215,6 +229,7 @@ func (p *PIIMaskingRegexPolicy) OnResponse(ctx *policy.ResponseContext, params m
 	// Restore PII in response
 	restoredContent := p.restorePIIInResponse(string(payload), maskedPIIMap)
 	if restoredContent != string(payload) {
+		log.Debug("PII restored in response", "maskedCount", len(maskedPIIMap))
 		return policy.UpstreamResponseModifications{
 			Body: []byte(restoredContent),
 		}

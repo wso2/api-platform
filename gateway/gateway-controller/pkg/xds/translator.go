@@ -1847,10 +1847,12 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		AllowModeOverride: policyEngine.AllowModeOverride,
 		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName, constants.ExtProcRequestAttributeRouteMetadata},
 		ProcessingMode: &extproc.ProcessingMode{
-			RequestHeaderMode:  extproc.ProcessingMode_SEND,
-			RequestBodyMode:    extproc.ProcessingMode_FULL_DUPLEX_STREAMED,
-			ResponseHeaderMode: extproc.ProcessingMode_SEND,
-			ResponseBodyMode:   extproc.ProcessingMode_FULL_DUPLEX_STREAMED,
+			RequestHeaderMode:   extproc.ProcessingMode_SEND,
+			RequestBodyMode:     extproc.ProcessingMode_FULL_DUPLEX_STREAMED,
+			RequestTrailerMode:  extproc.ProcessingMode_SEND,
+			ResponseHeaderMode:  extproc.ProcessingMode_SEND,
+			ResponseBodyMode:    extproc.ProcessingMode_FULL_DUPLEX_STREAMED,
+			ResponseTrailerMode: extproc.ProcessingMode_SEND,
 		},
 		MessageTimeout: durationpb.New(time.Duration(policyEngine.MessageTimeoutMs) * time.Millisecond),
 		MutationRules: &mutationrules.HeaderMutationRules{

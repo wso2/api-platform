@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.16
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.13.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.28.10
-	github.com/wso2/api-platform/sdk v0.3.1
+	github.com/wso2/api-platform/sdk v0.3.3
 )
 
 require (

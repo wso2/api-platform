@@ -58,6 +58,7 @@ type RequestModelConfig struct {
 
 // ModelRoundRobinPolicy implements round-robin load balancing for AI models
 type ModelRoundRobinPolicy struct {
+	logger          *slog.Logger
 	currentIndex    int
 	mu              sync.Mutex
 	suspendedModels map[string]time.Time // Track suspended models
@@ -67,6 +68,7 @@ type ModelRoundRobinPolicy struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
 	// Parse and validate parameters
 	policyParams, err := parseParams(params)
@@ -75,6 +77,7 @@ func GetPolicy(
 	}
 
 	p := &ModelRoundRobinPolicy{
+		logger:          logger,
 		currentIndex:    0,
 		suspendedModels: make(map[string]time.Time),
 		params:          policyParams,
@@ -226,10 +229,12 @@ func (p *ModelRoundRobinPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest processes the request and selects the next model in round-robin order
 func (p *ModelRoundRobinPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	// Extract original model from request
 	originalModel, err := p.extractModelFromRequest(ctx)
 	if err != nil {
-		slog.Debug("ModelRoundRobin: Could not extract original model", "error", err)
+		log.Debug("Could not extract original model", "error", err)
 	}
 
 	// Store original model in metadata
@@ -250,13 +255,15 @@ func (p *ModelRoundRobinPolicy) OnRequest(ctx *policy.RequestContext, params map
 
 	ctx.Metadata[MetadataKeySelectedModel] = selectedModel.Model
 
-	slog.Debug("ModelRoundRobin: Selected model", "model", selectedModel.Model, "index", p.currentIndex)
+	log.Debug("Selected model", "model", selectedModel.Model, "index", p.currentIndex)
 
-	return p.modifyRequestModel(ctx, selectedModel.Model)
+	return p.modifyRequestModel(ctx, selectedModel.Model, ctx.RequestID)
 }
 
 // OnResponse handles response processing and suspension on error
 func (p *ModelRoundRobinPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	// Check if response indicates an error that should trigger suspension
 	if ctx.ResponseStatus >= 500 || ctx.ResponseStatus == 429 {
 		selectedModel := ""
@@ -271,7 +278,7 @@ func (p *ModelRoundRobinPolicy) OnResponse(ctx *policy.ResponseContext, params m
 			p.mu.Lock()
 			p.suspendedModels[selectedModel] = time.Now().Add(time.Duration(p.params.SuspendDuration) * time.Second)
 			p.mu.Unlock()
-			slog.Debug("ModelRoundRobin: Suspended model", "model", selectedModel, "duration", p.params.SuspendDuration)
+			log.Debug("Suspended model", "model", selectedModel, "duration", p.params.SuspendDuration)
 		}
 	}
 
@@ -420,27 +427,29 @@ func (p *ModelRoundRobinPolicy) extractModelFromPath(ctx *policy.RequestContext,
 }
 
 // modifyRequestModel modifies the request to replace the model field based on location
-func (p *ModelRoundRobinPolicy) modifyRequestModel(ctx *policy.RequestContext, newModel string) policy.RequestAction {
+func (p *ModelRoundRobinPolicy) modifyRequestModel(ctx *policy.RequestContext, newModel string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	location := p.params.RequestModel.Location
 	identifier := p.params.RequestModel.Identifier
 
 	switch location {
 	case "payload":
-		return p.modifyModelInPayload(ctx, newModel, identifier)
+		return p.modifyModelInPayload(ctx, newModel, identifier, requestID)
 	case "header":
-		return p.modifyModelInHeader(ctx, newModel, identifier)
+		return p.modifyModelInHeader(ctx, newModel, identifier, requestID)
 	case "queryParam":
-		return p.modifyModelInQueryParam(ctx, newModel, identifier)
+		return p.modifyModelInQueryParam(ctx, newModel, identifier, requestID)
 	case "pathParam":
-		return p.modifyModelInPathParam(ctx, newModel, identifier)
+		return p.modifyModelInPathParam(ctx, newModel, identifier, requestID)
 	default:
-		slog.Debug("ModelRoundRobin: Unsupported location", "location", location)
+		log.Debug("Unsupported location", "location", location)
 		return policy.UpstreamRequestModifications{}
 	}
 }
 
 // modifyModelInPayload modifies the model in request body using JSONPath
-func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext, newModel string, jsonPath string) policy.RequestAction {
+func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext, newModel string, jsonPath string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	if ctx.Body == nil || ctx.Body.Content == nil {
 		return policy.ImmediateResponse{
 			StatusCode: 400,
@@ -452,7 +461,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 	// Parse request body
 	var payloadData map[string]interface{}
 	if err := json.Unmarshal(ctx.Body.Content, &payloadData); err != nil {
-		slog.Error("ModelRoundRobin: Error unmarshaling request body", "error", err)
+		log.Error("Error unmarshaling request body", "error", err)
 		return policy.ImmediateResponse{
 			StatusCode: 400,
 			Headers:    map[string]string{"Content-Type": "application/json"},
@@ -462,7 +471,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 
 	// Update model in payload
 	if err := utils.SetValueAtJSONPath(payloadData, jsonPath, newModel); err != nil {
-		slog.Error("ModelRoundRobin: Error setting model in request body", "jsonPath", jsonPath, "error", err)
+		log.Error("Error setting model in request body", "jsonPath", jsonPath, "error", err)
 		return policy.ImmediateResponse{
 			StatusCode: 400,
 			Headers:    map[string]string{"Content-Type": "application/json"},
@@ -473,7 +482,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 	// Marshal back to JSON
 	updatedPayload, err := json.Marshal(payloadData)
 	if err != nil {
-		slog.Error("ModelRoundRobin: Error marshaling updated request body", "error", err)
+		log.Error("Error marshaling updated request body", "error", err)
 		return policy.ImmediateResponse{
 			StatusCode: 500,
 			Headers:    map[string]string{"Content-Type": "application/json"},
@@ -481,7 +490,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 		}
 	}
 
-	slog.Debug("ModelRoundRobin: Modified request model in payload", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "jsonPath", jsonPath)
+	log.Debug("Modified request model in payload", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "jsonPath", jsonPath)
 
 	return policy.UpstreamRequestModifications{
 		Body: updatedPayload,
@@ -489,8 +498,9 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 }
 
 // modifyModelInHeader modifies the model in request header
-func (p *ModelRoundRobinPolicy) modifyModelInHeader(ctx *policy.RequestContext, newModel string, headerName string) policy.RequestAction {
-	slog.Debug("ModelRoundRobin: Modified request model in header", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "header", headerName)
+func (p *ModelRoundRobinPolicy) modifyModelInHeader(ctx *policy.RequestContext, newModel string, headerName string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
+	log.Debug("Modified request model in header", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "header", headerName)
 
 	return policy.UpstreamRequestModifications{
 		SetHeaders: map[string]string{headerName: newModel},
@@ -498,16 +508,17 @@ func (p *ModelRoundRobinPolicy) modifyModelInHeader(ctx *policy.RequestContext, 
 }
 
 // modifyModelInQueryParam modifies the model in query parameter by updating the path
-func (p *ModelRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.RequestContext, newModel string, paramName string) policy.RequestAction {
+func (p *ModelRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.RequestContext, newModel string, paramName string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	if ctx.Path == "" {
-		slog.Debug("ModelRoundRobin: Cannot modify query param, path is empty")
+		log.Debug("Cannot modify query param, path is empty")
 		return policy.UpstreamRequestModifications{}
 	}
 
 	// Parse the URL-encoded path
 	decodedPath, err := url.PathUnescape(ctx.Path)
 	if err != nil {
-		slog.Debug("ModelRoundRobin: Error decoding path", "error", err)
+		log.Debug("Error decoding path", "error", err)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -520,7 +531,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.RequestConte
 		// Parse existing query string
 		queryValues, err = url.ParseQuery(parts[1])
 		if err != nil {
-			slog.Debug("ModelRoundRobin: Error parsing query string", "error", err)
+			log.Debug("Error parsing query string", "error", err)
 			return policy.UpstreamRequestModifications{}
 		}
 	} else {
@@ -537,7 +548,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.RequestConte
 		updatedPath = pathBase + "?" + queryValues.Encode()
 	}
 
-	slog.Debug("ModelRoundRobin: Modified request model in query param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "param", paramName, "newPath", updatedPath)
+	log.Debug("Modified request model in query param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "param", paramName, "newPath", updatedPath)
 
 	// Set the :path pseudo-header to modify the path and query string
 	// Envoy ext_proc requires path modifications via the :path header
@@ -549,16 +560,17 @@ func (p *ModelRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.RequestConte
 }
 
 // modifyModelInPathParam modifies the model in path parameter using regex replacement
-func (p *ModelRoundRobinPolicy) modifyModelInPathParam(ctx *policy.RequestContext, newModel string, regexPattern string) policy.RequestAction {
+func (p *ModelRoundRobinPolicy) modifyModelInPathParam(ctx *policy.RequestContext, newModel string, regexPattern string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	if ctx.Path == "" {
-		slog.Debug("ModelRoundRobin: Cannot modify path param, path is empty")
+		log.Debug("Cannot modify path param, path is empty")
 		return policy.UpstreamRequestModifications{}
 	}
 
 	// Parse the URL-encoded path
 	decodedPath, err := url.PathUnescape(ctx.Path)
 	if err != nil {
-		slog.Debug("ModelRoundRobin: Error decoding path", "error", err)
+		log.Debug("Error decoding path", "error", err)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -573,14 +585,14 @@ func (p *ModelRoundRobinPolicy) modifyModelInPathParam(ctx *policy.RequestContex
 	// Compile regex pattern
 	re, err := regexp.Compile(regexPattern)
 	if err != nil {
-		slog.Debug("ModelRoundRobin: Invalid regex pattern", "pattern", regexPattern, "error", err)
+		log.Debug("Invalid regex pattern", "pattern", regexPattern, "error", err)
 		return policy.UpstreamRequestModifications{}
 	}
 
 	// Find the match to verify it exists and get the match indices
 	matchIndices := re.FindStringSubmatchIndex(pathWithoutQuery)
 	if len(matchIndices) < 4 {
-		slog.Debug("ModelRoundRobin: Regex pattern did not match path or no capture group", "pattern", regexPattern, "path", pathWithoutQuery)
+		log.Debug("Regex pattern did not match path or no capture group", "pattern", regexPattern, "path", pathWithoutQuery)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -591,7 +603,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInPathParam(ctx *policy.RequestContex
 	captureEnd := matchIndices[3]
 
 	if captureStart == -1 || captureEnd == -1 {
-		slog.Debug("ModelRoundRobin: No capture group found in regex pattern", "pattern", regexPattern)
+		log.Debug("No capture group found in regex pattern", "pattern", regexPattern)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -604,7 +616,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInPathParam(ctx *policy.RequestContex
 		updatedFullPath = updatedPath + "?" + queryString
 	}
 
-	slog.Debug("ModelRoundRobin: Modified request model in path param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "pattern", regexPattern, "originalPath", pathWithoutQuery, "newPath", updatedPath)
+	log.Debug("Modified request model in path param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "pattern", regexPattern, "originalPath", pathWithoutQuery, "newPath", updatedPath)
 
 	// Set the :path pseudo-header to modify the path
 	// Envoy ext_proc requires path modifications via the :path header

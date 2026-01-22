@@ -38,6 +38,9 @@ type SemanticPromptGuardPolicyParams struct {
 
 // SemanticPromptGuardPolicy performs semantic similarity checks against allow/deny lists.
 type SemanticPromptGuardPolicy struct {
+	// Logger
+	logger *slog.Logger
+
 	embeddingProvider embeddingproviders.EmbeddingProvider
 	embeddingConfig   embeddingproviders.EmbeddingProviderConfig
 	params            SemanticPromptGuardPolicyParams
@@ -46,8 +49,11 @@ type SemanticPromptGuardPolicy struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &SemanticPromptGuardPolicy{}
+	p := &SemanticPromptGuardPolicy{
+		logger: logger,
+	}
 
 	// Parse and validate embedding provider configuration (from systemParameters)
 	if err := parseEmbeddingConfig(params, p); err != nil {
@@ -188,7 +194,7 @@ func parseParams(params map[string]interface{}, p *SemanticPromptGuardPolicy) (S
 		return result, fmt.Errorf("at least one allowedPhrases or deniedPhrases entry is required")
 	}
 
-	slog.Debug("SemanticPromptGuard: Loaded phrases", "allowedCount", len(allowedPhrases), "deniedCount", len(deniedPhrases))
+	p.logger.Debug("Loaded phrases", "allowedCount", len(allowedPhrases), "deniedCount", len(deniedPhrases))
 
 	// Ensure embeddings for phrases that don't have them
 	allowedPhrases, err = p.ensureEmbeddings(allowedPhrases)
@@ -276,7 +282,7 @@ func (p *SemanticPromptGuardPolicy) ensureEmbeddings(phrases []PhraseEmbedding) 
 	}
 
 	// Fetch all embeddings in a single batch call
-	slog.Debug("SemanticPromptGuard: Fetching embeddings", "phraseCount", len(textsToFetch))
+	p.logger.Debug("Fetching embeddings", "phraseCount", len(textsToFetch))
 	embeddingsFloat32, err := p.embeddingProvider.GetEmbeddings(textsToFetch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get embeddings: %w", err)
@@ -310,7 +316,7 @@ func (p *SemanticPromptGuardPolicy) OnRequest(ctx *policy.RequestContext, params
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, p.params).(policy.RequestAction)
+	return p.validatePayload(content, p.params, ctx.RequestID).(policy.RequestAction)
 }
 
 // OnResponse is not used by this policy (validation is request-only)
@@ -319,7 +325,9 @@ func (p *SemanticPromptGuardPolicy) OnResponse(ctx *policy.ResponseContext, para
 }
 
 // validatePayload validates payload using semantic similarity
-func (p *SemanticPromptGuardPolicy) validatePayload(payload []byte, params SemanticPromptGuardPolicyParams) interface{} {
+func (p *SemanticPromptGuardPolicy) validatePayload(payload []byte, params SemanticPromptGuardPolicyParams, requestID string) interface{} {
+	log := policy.WithRequestID(p.logger, requestID)
+
 	// Extract prompt using JSONPath
 	prompt, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
@@ -333,7 +341,7 @@ func (p *SemanticPromptGuardPolicy) validatePayload(payload []byte, params Seman
 	// Get embedding using the provider
 	promptEmbedding, err := p.embeddingProvider.GetEmbedding(prompt)
 	if err != nil {
-		slog.Debug("SemanticPromptGuard: Error fetching prompt embedding", "error", err)
+		log.Debug("Error fetching prompt embedding", "error", err)
 		return p.buildErrorResponse("Failed to generate embedding for prompt", err, params.ShowAssessment)
 	}
 
@@ -342,13 +350,13 @@ func (p *SemanticPromptGuardPolicy) validatePayload(payload []byte, params Seman
 		// Only denied list: block if matches denied phrases, allow otherwise
 		if similarity, phrase, err := maxSimilarity(promptEmbedding, params.DeniedPhrases); err == nil {
 			if similarity >= params.DenySimilarityThreshold {
-				slog.Debug("SemanticPromptGuard: BLOCKED - prompt too similar to denied phrase", "phrase", phrase.Phrase, "similarity", similarity, "threshold", params.DenySimilarityThreshold)
+				log.Debug("BLOCKED - prompt too similar to denied phrase", "phrase", phrase.Phrase, "similarity", similarity, "threshold", params.DenySimilarityThreshold)
 				reason := fmt.Sprintf("prompt is too similar to denied phrase '%s' (similarity=%.4f)", phrase.Phrase, similarity)
 				return p.buildErrorResponse(reason, nil, params.ShowAssessment)
 			}
-			slog.Debug("SemanticPromptGuard: ALLOWED - prompt does not match denied phrases", "maxSimilarity", similarity, "threshold", params.DenySimilarityThreshold)
+			log.Debug("ALLOWED - prompt does not match denied phrases", "maxSimilarity", similarity, "threshold", params.DenySimilarityThreshold)
 		} else {
-			slog.Debug("SemanticPromptGuard: Error calculating similarity to denied phrases", "error", err)
+			log.Debug("Error calculating similarity to denied phrases", "error", err)
 			return p.buildErrorResponse("Error calculating semantic similarity", err, params.ShowAssessment)
 		}
 		return policy.UpstreamRequestModifications{}
@@ -356,39 +364,39 @@ func (p *SemanticPromptGuardPolicy) validatePayload(payload []byte, params Seman
 		// Only allowed list: allow if matches allowed phrases, block otherwise
 		allowedSimilarity, phrase, err := maxSimilarity(promptEmbedding, params.AllowedPhrases)
 		if err != nil {
-			slog.Debug("SemanticPromptGuard: Error calculating similarity to allowed phrases", "error", err)
+			log.Debug("Error calculating similarity to allowed phrases", "error", err)
 			return p.buildErrorResponse("Error calculating semantic similarity", err, params.ShowAssessment)
 		}
 		if allowedSimilarity >= params.AllowSimilarityThreshold {
-			slog.Debug("SemanticPromptGuard: ALLOWED - prompt matches allowed phrase", "phrase", phrase.Phrase, "similarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
+			log.Debug("ALLOWED - prompt matches allowed phrase", "phrase", phrase.Phrase, "similarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
 			return policy.UpstreamRequestModifications{}
 		}
-		slog.Debug("SemanticPromptGuard: BLOCKED - prompt does not match allowed phrases", "maxSimilarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
+		log.Debug("BLOCKED - prompt does not match allowed phrases", "maxSimilarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
 		reason := fmt.Sprintf("prompt is not similar enough to allowed phrases (similarity=%.4f < threshold=%.4f)", allowedSimilarity, params.AllowSimilarityThreshold)
 		return p.buildErrorResponse(reason, nil, params.ShowAssessment)
 	} else {
 		// Both allowed and denied lists are configured: check both
 		if similarity, phrase, err := maxSimilarity(promptEmbedding, params.DeniedPhrases); err == nil {
 			if similarity >= params.DenySimilarityThreshold {
-				slog.Debug("SemanticPromptGuard: BLOCKED - prompt too similar to denied phrase", "phrase", phrase.Phrase, "similarity", similarity, "threshold", params.DenySimilarityThreshold)
+				log.Debug("BLOCKED - prompt too similar to denied phrase", "phrase", phrase.Phrase, "similarity", similarity, "threshold", params.DenySimilarityThreshold)
 				reason := fmt.Sprintf("prompt is too similar to denied phrase '%s' (similarity=%.4f)", phrase.Phrase, similarity)
 				return p.buildErrorResponse(reason, nil, params.ShowAssessment)
 			}
 		} else {
-			slog.Debug("SemanticPromptGuard: Error calculating similarity to denied phrases", "error", err)
+			log.Debug("Error calculating similarity to denied phrases", "error", err)
 			return p.buildErrorResponse("Error calculating semantic similarity", err, params.ShowAssessment)
 		}
 
 		allowedSimilarity, phrase, err := maxSimilarity(promptEmbedding, params.AllowedPhrases)
 		if err != nil {
-			slog.Debug("SemanticPromptGuard: Error calculating similarity to allowed phrases", "error", err)
+			log.Debug("Error calculating similarity to allowed phrases", "error", err)
 			return p.buildErrorResponse("Error calculating semantic similarity", err, params.ShowAssessment)
 		}
 		if allowedSimilarity >= params.AllowSimilarityThreshold {
-			slog.Debug("SemanticPromptGuard: ALLOWED - prompt matches allowed phrase", "phrase", phrase.Phrase, "similarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
+			log.Debug("ALLOWED - prompt matches allowed phrase", "phrase", phrase.Phrase, "similarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
 			return policy.UpstreamRequestModifications{}
 		}
-		slog.Debug("SemanticPromptGuard: BLOCKED - prompt does not match allowed phrases", "maxSimilarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
+		log.Debug("BLOCKED - prompt does not match allowed phrases", "maxSimilarity", allowedSimilarity, "threshold", params.AllowSimilarityThreshold)
 		reason := fmt.Sprintf("prompt is not similar enough to allowed phrases (similarity=%.4f < threshold=%.4f)", allowedSimilarity, params.AllowSimilarityThreshold)
 		return p.buildErrorResponse(reason, nil, params.ShowAssessment)
 	}

@@ -51,8 +51,9 @@ var ins = &McpAuthPolicy{}
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]any,
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	slog.Debug("MCP Auth Policy: GetPolicy called")
+	logger.Debug("GetPolicy called")
 	return ins, nil
 }
 
@@ -159,7 +160,7 @@ func (p *McpAuthPolicy) handleAuth(ctx *policy.RequestContext, params map[string
 	}
 
 	slog.Debug("MCP Auth Policy: Delegating authentication to JWT Auth Policy")
-	jwtPolicy, _ := jwtauth.GetPolicy(policy.PolicyMetadata{}, params)
+	jwtPolicy, _ := jwtauth.GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	reqAction := jwtPolicy.OnRequest(ctx, params)
 	if _, ok := reqAction.(policy.ImmediateResponse); ok {
 		slog.Debug("MCP Auth Policy: Authentication failed in JWT Auth Policy, handling failure")

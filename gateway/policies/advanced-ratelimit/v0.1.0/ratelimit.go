@@ -51,6 +51,7 @@ type QuotaRuntime struct {
 
 // RateLimitPolicy defines the policy for rate limiting
 type RateLimitPolicy struct {
+	logger         *slog.Logger
 	quotas         []QuotaRuntime // Per-quota configurations with independent limiters
 	routeName      string         // From metadata, used as default key
 	apiId          string         // From metadata, API identifier
@@ -71,6 +72,7 @@ type RateLimitPolicy struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
 	// Store route name for default key
 	routeName := metadata.RouteName
@@ -175,7 +177,7 @@ func GetPolicy(
 			if !redisFailOpen {
 				return nil, fmt.Errorf("redis connection failed and failureMode=closed: %w", err)
 			}
-			slog.Warn("Redis connection failed but failureMode=open", "error", err)
+			logger.Warn("Redis connection failed but failureMode=open", "error", err)
 		}
 
 		// Create a limiter per quota
@@ -229,7 +231,7 @@ func GetPolicy(
 			// Try to get cached limiter
 			if cached, ok := memoryLimiterCache.Load(cacheKey); ok {
 				q.Limiter = cached.(limiter.Limiter)
-				slog.Debug("Reusing cached memory limiter",
+				logger.Debug("Reusing cached memory limiter",
 					"route", routeName, "apiName", apiName,
 					"quota", q.Name, "cacheKey", cacheKey[:16])
 			} else {
@@ -251,7 +253,7 @@ func GetPolicy(
 				// Store in cache
 				memoryLimiterCache.Store(cacheKey, rlLimiter)
 				q.Limiter = rlLimiter
-				slog.Debug("Created and cached new memory limiter",
+				logger.Debug("Created and cached new memory limiter",
 					"route", routeName, "apiName", apiName,
 					"quota", q.Name, "cacheKey", cacheKey[:16])
 			}
@@ -321,6 +323,8 @@ func (p *RateLimitPolicy) OnRequest(
 	ctx *policy.RequestContext,
 	params map[string]interface{},
 ) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	var quotaResults []quotaResult
 	var quotaKeys = make(map[string]string) // Store keys for response phase
 
@@ -328,7 +332,7 @@ func (p *RateLimitPolicy) OnRequest(
 		q := &p.quotas[i]
 
 		// Extract rate limit key for this quota
-		key := p.extractQuotaKey(ctx, q)
+		key := p.extractQuotaKey(ctx, q, log)
 		quotaName := q.Name
 		if quotaName == "" {
 			quotaName = fmt.Sprintf("quota-%d", i)
@@ -342,7 +346,7 @@ func (p *RateLimitPolicy) OnRequest(
 				// Extract cost from request (headers, metadata, or body)
 				requestCost, extracted := q.CostExtractor.ExtractRequestCost(ctx)
 				if !extracted {
-					slog.Debug("Request cost extraction failed, using default",
+					log.Debug("Request cost extraction failed, using default",
 						"key", key, "quota", quotaName, "defaultCost", requestCost)
 				}
 
@@ -356,15 +360,15 @@ func (p *RateLimitPolicy) OnRequest(
 				result, err := q.Limiter.AllowN(context.Background(), key, cost)
 				if err != nil {
 					if p.backend == "redis" && p.redisFailOpen {
-						slog.Warn("Rate limit check failed (fail-open)", "error", err, "quota", quotaName)
+						log.Warn("Rate limit check failed (fail-open)", "error", err, "quota", quotaName)
 						continue
 					}
-					slog.Error("Rate limit check failed (fail-closed)", "error", err, "quota", quotaName)
+					log.Error("Rate limit check failed (fail-closed)", "error", err, "quota", quotaName)
 					return p.buildRateLimitResponse(nil, quotaName, quotaResults)
 				}
 
 				if !result.Allowed {
-					slog.Debug("Rate limit exceeded", "key", key, "cost", cost, "quota", quotaName)
+					log.Debug("Rate limit exceeded", "key", key, "cost", cost, "quota", quotaName)
 					return p.buildRateLimitResponse(result, quotaName, quotaResults)
 				}
 
@@ -382,16 +386,16 @@ func (p *RateLimitPolicy) OnRequest(
 			result, err := q.Limiter.AllowN(context.Background(), key, 0)
 			if err != nil {
 				if p.backend == "redis" && p.redisFailOpen {
-					slog.Warn("Rate limit pre-check failed (fail-open)", "error", err, "key", key, "quota", quotaName)
+					log.Warn("Rate limit pre-check failed (fail-open)", "error", err, "key", key, "quota", quotaName)
 					continue
 				}
-				slog.Error("Rate limit pre-check failed (fail-closed)", "error", err, "key", key, "quota", quotaName)
+				log.Error("Rate limit pre-check failed (fail-closed)", "error", err, "key", key, "quota", quotaName)
 				return p.buildRateLimitResponse(nil, quotaName, quotaResults)
 			}
 
 			// If remaining <= 0, quota is exhausted - block the request
 			if result != nil && result.Remaining <= 0 {
-				slog.Debug("Cost extraction mode: quota exhausted, blocking request",
+				log.Debug("Cost extraction mode: quota exhausted, blocking request",
 					"key", key, "remaining", result.Remaining, "quota", quotaName)
 				return p.buildRateLimitResponse(result, quotaName, quotaResults)
 			}
@@ -411,15 +415,15 @@ func (p *RateLimitPolicy) OnRequest(
 		result, err := q.Limiter.AllowN(context.Background(), key, cost)
 		if err != nil {
 			if p.backend == "redis" && p.redisFailOpen {
-				slog.Warn("Rate limit check failed (fail-open)", "error", err, "quota", quotaName)
+				log.Warn("Rate limit check failed (fail-open)", "error", err, "quota", quotaName)
 				continue
 			}
-			slog.Error("Rate limit check failed (fail-closed)", "error", err, "quota", quotaName)
+			log.Error("Rate limit check failed (fail-closed)", "error", err, "quota", quotaName)
 			return p.buildRateLimitResponse(nil, quotaName, quotaResults)
 		}
 
 		if !result.Allowed {
-			slog.Debug("Rate limit exceeded", "key", key, "quota", quotaName)
+			log.Debug("Rate limit exceeded", "key", key, "quota", quotaName)
 			return p.buildRateLimitResponse(result, quotaName, quotaResults)
 		}
 
@@ -443,6 +447,8 @@ func (p *RateLimitPolicy) OnResponse(
 	ctx *policy.ResponseContext,
 	params map[string]interface{},
 ) policy.ResponseAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	// Retrieve stored keys for cost extraction
 	quotaKeysRaw, hasKeys := ctx.Metadata[rateLimitKeysKey]
 	quotaKeys := make(map[string]string)
@@ -482,14 +488,14 @@ func (p *RateLimitPolicy) OnResponse(
 		if q.CostExtractionEnabled && q.CostExtractor != nil && q.CostExtractor.HasResponsePhaseSources() {
 			key := quotaKeys[quotaName]
 			if key == "" {
-				slog.Warn("Rate limit key not found for cost extraction", "quota", quotaName)
+				log.Warn("Rate limit key not found for cost extraction", "quota", quotaName)
 				continue
 			}
 
 			// Extract actual cost from response
 			actualCost, extracted := q.CostExtractor.ExtractResponseCost(ctx)
 			if !extracted {
-				slog.Debug("Cost extraction failed, using default", "key", key, "quota", quotaName, "defaultCost", actualCost)
+				log.Debug("Cost extraction failed, using default", "key", key, "quota", quotaName, "defaultCost", actualCost)
 			}
 
 			// Clamp cost to minimum of 0 (allow 0 cost for free operations)
@@ -510,17 +516,17 @@ func (p *RateLimitPolicy) OnResponse(
 			result, err := q.Limiter.AllowN(context.Background(), key, int64(actualCost))
 			if err != nil {
 				if p.backend == "redis" && p.redisFailOpen {
-					slog.Warn("Post-response rate limit check failed (fail-open)",
+					log.Warn("Post-response rate limit check failed (fail-open)",
 						"error", err, "key", key, "cost", actualCost, "quota", quotaName)
 					continue
 				}
-				slog.Error("Post-response rate limit check failed (fail-closed)",
+				log.Error("Post-response rate limit check failed (fail-closed)",
 					"error", err, "key", key, "cost", actualCost, "quota", quotaName)
 				continue
 			}
 
 			if result != nil && !result.Allowed {
-				slog.Warn("Rate limit exceeded post-response",
+				log.Warn("Rate limit exceeded post-response",
 					"key", key, "cost", actualCost, "limit", result.Limit,
 					"remaining", result.Remaining, "quota", quotaName)
 			}
@@ -574,26 +580,26 @@ func (p *RateLimitPolicy) getMostRestrictiveResult(results []*limiter.Result) *l
 }
 
 // extractQuotaKey builds the rate limit key from quota's key extraction components
-func (p *RateLimitPolicy) extractQuotaKey(ctx *policy.RequestContext, q *QuotaRuntime) string {
+func (p *RateLimitPolicy) extractQuotaKey(ctx *policy.RequestContext, q *QuotaRuntime, log *slog.Logger) string {
 	if len(q.KeyExtraction) == 0 {
 		return p.routeName
 	}
 
 	if len(q.KeyExtraction) == 1 {
-		return p.extractKeyComponent(ctx, q.KeyExtraction[0])
+		return p.extractKeyComponent(ctx, q.KeyExtraction[0], log)
 	}
 
 	// Multiple components - join with ':' in the order specified
 	parts := make([]string, 0, len(q.KeyExtraction))
 	for _, comp := range q.KeyExtraction {
-		part := p.extractKeyComponent(ctx, comp)
+		part := p.extractKeyComponent(ctx, comp, log)
 		parts = append(parts, part)
 	}
 	return strings.Join(parts, ":")
 }
 
 // extractKeyComponent extracts a single component value
-func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp KeyComponent) string {
+func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp KeyComponent, log *slog.Logger) string {
 	switch comp.Type {
 	case "header":
 		values := ctx.Headers.Get(strings.ToLower(comp.Key))
@@ -601,7 +607,7 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 			return values[0]
 		}
 		placeholder := fmt.Sprintf("_missing_header_%s_", comp.Key)
-		slog.Warn("Header not found for rate limit key, using placeholder", "header", comp.Key, "type", comp.Type, "placeholder", placeholder)
+		log.Warn("Header not found for rate limit key, using placeholder", "header", comp.Key, "type", comp.Type, "placeholder", placeholder)
 		return placeholder
 
 	case "constant":
@@ -614,24 +620,24 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 			}
 		}
 		placeholder := fmt.Sprintf("_missing_metadata_%s_", comp.Key)
-		slog.Warn("Metadata key not found for rate limit key, using placeholder", "key", comp.Key, "type", comp.Type, "placeholder", placeholder)
+		log.Warn("Metadata key not found for rate limit key, using placeholder", "key", comp.Key, "type", comp.Type, "placeholder", placeholder)
 		return placeholder
 
 	case "ip":
-		return p.extractIPAddress(ctx)
+		return p.extractIPAddress(ctx, log)
 
 	case "apiname":
 		if ctx.APIName != "" {
 			return ctx.APIName
 		}
-		slog.Warn("APIName not available for rate limit key, using empty string")
+		log.Warn("APIName not available for rate limit key, using empty string")
 		return ""
 
 	case "apiversion":
 		if ctx.APIVersion != "" {
 			return ctx.APIVersion
 		}
-		slog.Warn("APIVersion not available for rate limit key, using empty string")
+		log.Warn("APIVersion not available for rate limit key, using empty string")
 		return ""
 
 	case "routename":
@@ -640,24 +646,24 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 	case "cel":
 		evaluator, err := GetCELEvaluator()
 		if err != nil {
-			slog.Error("Failed to get CEL evaluator for key extraction", "error", err)
+			log.Error("Failed to get CEL evaluator for key extraction", "error", err)
 			return "_cel_error_"
 		}
 		result, err := evaluator.EvaluateKeyExpression(comp.Expression, ctx, p.routeName)
 		if err != nil {
-			slog.Warn("CEL key extraction failed, using placeholder", "expression", comp.Expression, "error", err)
+			log.Warn("CEL key extraction failed, using placeholder", "expression", comp.Expression, "error", err)
 			return "_cel_eval_error_"
 		}
 		return result
 
 	default:
-		slog.Warn("Unknown key component type, using empty string", "type", comp.Type)
+		log.Warn("Unknown key component type, using empty string", "type", comp.Type)
 		return ""
 	}
 }
 
 // extractIPAddress extracts client IP from headers
-func (p *RateLimitPolicy) extractIPAddress(ctx *policy.RequestContext) string {
+func (p *RateLimitPolicy) extractIPAddress(ctx *policy.RequestContext, log *slog.Logger) string {
 	// Try X-Forwarded-For first (most common)
 	if xff := ctx.Headers.Get("x-forwarded-for"); len(xff) > 0 && xff[0] != "" {
 		// Take the first IP (client)
@@ -675,7 +681,7 @@ func (p *RateLimitPolicy) extractIPAddress(ctx *policy.RequestContext) string {
 		return xri[0]
 	}
 
-	slog.Warn("Could not extract IP address for rate limit key, using 'unknown'")
+	log.Warn("Could not extract IP address for rate limit key, using 'unknown'")
 	return "unknown"
 }
 

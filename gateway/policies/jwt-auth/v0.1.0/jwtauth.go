@@ -98,8 +98,9 @@ var ins = &JwtAuthPolicy{
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	slog.Debug("JWT Auth Policy: GetPolicy called")
+	logger.Debug("GetPolicy called")
 	return ins, nil
 }
 

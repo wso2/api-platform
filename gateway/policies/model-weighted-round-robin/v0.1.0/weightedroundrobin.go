@@ -59,6 +59,7 @@ type RequestModelConfig struct {
 
 // ModelWeightedRoundRobinPolicy implements weighted round-robin load balancing for AI models
 type ModelWeightedRoundRobinPolicy struct {
+	logger           *slog.Logger
 	currentIndex     int
 	mu               sync.Mutex
 	suspendedModels  map[string]time.Time // Track suspended models
@@ -70,6 +71,7 @@ type ModelWeightedRoundRobinPolicy struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
 	// Parse and validate parameters
 	policyParams, err := parseParams(params)
@@ -87,6 +89,7 @@ func GetPolicy(
 	}
 
 	p := &ModelWeightedRoundRobinPolicy{
+		logger:           logger,
 		currentIndex:     0,
 		suspendedModels:  make(map[string]time.Time),
 		weightedSequence: buildWeightedSequence(weightedModels),
@@ -256,10 +259,12 @@ func (p *ModelWeightedRoundRobinPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest processes the request and selects a model based on weights
 func (p *ModelWeightedRoundRobinPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	// Extract original model from request
 	originalModel, err := p.extractModelFromRequest(ctx)
 	if err != nil {
-		slog.Debug("ModelWeightedRoundRobin: Could not extract original model", "error", err)
+		log.Debug("Could not extract original model", "error", err)
 	}
 
 	// Store original model in metadata
@@ -280,13 +285,15 @@ func (p *ModelWeightedRoundRobinPolicy) OnRequest(ctx *policy.RequestContext, pa
 
 	ctx.Metadata[MetadataKeySelectedModel] = selectedModel.Model
 
-	slog.Debug("ModelWeightedRoundRobin: Selected model", "model", selectedModel.Model, "weight", selectedModel.Weight, "index", p.currentIndex)
+	log.Debug("Selected model", "model", selectedModel.Model, "weight", selectedModel.Weight, "index", p.currentIndex)
 
-	return p.modifyRequestModel(ctx, selectedModel.Model)
+	return p.modifyRequestModel(ctx, selectedModel.Model, ctx.RequestID)
 }
 
 // OnResponse handles response processing and suspension on error
 func (p *ModelWeightedRoundRobinPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	// Check if response indicates an error that should trigger suspension
 	if ctx.ResponseStatus >= 500 || ctx.ResponseStatus == 429 {
 		selectedModel := ""
@@ -301,7 +308,7 @@ func (p *ModelWeightedRoundRobinPolicy) OnResponse(ctx *policy.ResponseContext, 
 			p.mu.Lock()
 			p.suspendedModels[selectedModel] = time.Now().Add(time.Duration(p.params.SuspendDuration) * time.Second)
 			p.mu.Unlock()
-			slog.Debug("ModelWeightedRoundRobin: Suspended model", "model", selectedModel, "duration", p.params.SuspendDuration)
+			log.Debug("Suspended model", "model", selectedModel, "duration", p.params.SuspendDuration)
 		}
 	}
 
@@ -485,27 +492,29 @@ func (p *ModelWeightedRoundRobinPolicy) extractModelFromPath(ctx *policy.Request
 }
 
 // modifyRequestModel modifies the request to replace the model field based on location
-func (p *ModelWeightedRoundRobinPolicy) modifyRequestModel(ctx *policy.RequestContext, newModel string) policy.RequestAction {
+func (p *ModelWeightedRoundRobinPolicy) modifyRequestModel(ctx *policy.RequestContext, newModel string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	location := p.params.RequestModel.Location
 	identifier := p.params.RequestModel.Identifier
 
 	switch location {
 	case "payload":
-		return p.modifyModelInPayload(ctx, newModel, identifier)
+		return p.modifyModelInPayload(ctx, newModel, identifier, requestID)
 	case "header":
-		return p.modifyModelInHeader(ctx, newModel, identifier)
+		return p.modifyModelInHeader(ctx, newModel, identifier, requestID)
 	case "queryParam":
-		return p.modifyModelInQueryParam(ctx, newModel, identifier)
+		return p.modifyModelInQueryParam(ctx, newModel, identifier, requestID)
 	case "pathParam":
-		return p.modifyModelInPathParam(ctx, newModel, identifier)
+		return p.modifyModelInPathParam(ctx, newModel, identifier, requestID)
 	default:
-		slog.Debug("ModelWeightedRoundRobin: Unsupported location", "location", location)
+		log.Debug("Unsupported location", "location", location)
 		return policy.UpstreamRequestModifications{}
 	}
 }
 
 // modifyModelInPayload modifies the model in request body using JSONPath
-func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext, newModel string, jsonPath string) policy.RequestAction {
+func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext, newModel string, jsonPath string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	if ctx.Body == nil || ctx.Body.Content == nil {
 		return policy.ImmediateResponse{
 			StatusCode: 400,
@@ -517,7 +526,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.Request
 	// Parse request body
 	var payloadData map[string]interface{}
 	if err := json.Unmarshal(ctx.Body.Content, &payloadData); err != nil {
-		slog.Debug("ModelWeightedRoundRobin: Error unmarshaling request body", "error", err)
+		log.Debug("Error unmarshaling request body", "error", err)
 		return policy.ImmediateResponse{
 			StatusCode: 400,
 			Headers:    map[string]string{"Content-Type": "application/json"},
@@ -527,7 +536,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.Request
 
 	// Update model in payload
 	if err := utils.SetValueAtJSONPath(payloadData, jsonPath, newModel); err != nil {
-		slog.Debug("ModelWeightedRoundRobin: Error setting model in request body", "jsonPath", jsonPath, "error", err)
+		log.Debug("Error setting model in request body", "jsonPath", jsonPath, "error", err)
 		return policy.ImmediateResponse{
 			StatusCode: 400,
 			Headers:    map[string]string{"Content-Type": "application/json"},
@@ -538,7 +547,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.Request
 	// Marshal back to JSON
 	updatedPayload, err := json.Marshal(payloadData)
 	if err != nil {
-		slog.Debug("ModelWeightedRoundRobin: Error marshaling updated request body", "error", err)
+		log.Debug("Error marshaling updated request body", "error", err)
 		return policy.ImmediateResponse{
 			StatusCode: 500,
 			Headers:    map[string]string{"Content-Type": "application/json"},
@@ -546,7 +555,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.Request
 		}
 	}
 
-	slog.Debug("ModelWeightedRoundRobin: Modified request model in payload", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "jsonPath", jsonPath)
+	log.Debug("Modified request model in payload", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "jsonPath", jsonPath)
 
 	return policy.UpstreamRequestModifications{
 		Body: updatedPayload,
@@ -554,8 +563,9 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.Request
 }
 
 // modifyModelInHeader modifies the model in request header
-func (p *ModelWeightedRoundRobinPolicy) modifyModelInHeader(ctx *policy.RequestContext, newModel string, headerName string) policy.RequestAction {
-	slog.Debug("ModelWeightedRoundRobin: Modified request model in header", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "header", headerName)
+func (p *ModelWeightedRoundRobinPolicy) modifyModelInHeader(ctx *policy.RequestContext, newModel string, headerName string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
+	log.Debug("Modified request model in header", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "header", headerName)
 
 	return policy.UpstreamRequestModifications{
 		SetHeaders: map[string]string{headerName: newModel},
@@ -563,16 +573,17 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInHeader(ctx *policy.RequestC
 }
 
 // modifyModelInQueryParam modifies the model in query parameter by updating the path
-func (p *ModelWeightedRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.RequestContext, newModel string, paramName string) policy.RequestAction {
+func (p *ModelWeightedRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.RequestContext, newModel string, paramName string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	if ctx.Path == "" {
-		slog.Debug("ModelWeightedRoundRobin: Cannot modify query param, path is empty")
+		log.Debug("Cannot modify query param, path is empty")
 		return policy.UpstreamRequestModifications{}
 	}
 
 	// Parse the URL-encoded path
 	decodedPath, err := url.PathUnescape(ctx.Path)
 	if err != nil {
-		slog.Debug("ModelWeightedRoundRobin: Error decoding path", "error", err)
+		log.Debug("Error decoding path", "error", err)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -585,7 +596,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.Requ
 		// Parse existing query string
 		queryValues, err = url.ParseQuery(parts[1])
 		if err != nil {
-			slog.Debug("ModelWeightedRoundRobin: Error parsing query string", "error", err)
+			log.Debug("Error parsing query string", "error", err)
 			return policy.UpstreamRequestModifications{}
 		}
 	} else {
@@ -602,7 +613,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.Requ
 		updatedPath = pathBase + "?" + queryValues.Encode()
 	}
 
-	slog.Debug("ModelWeightedRoundRobin: Modified request model in query param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "param", paramName, "newPath", updatedPath)
+	log.Debug("Modified request model in query param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "param", paramName, "newPath", updatedPath)
 
 	// Set the :path pseudo-header to modify the path and query string
 	// Envoy ext_proc requires path modifications via the :path header
@@ -614,16 +625,17 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInQueryParam(ctx *policy.Requ
 }
 
 // modifyModelInPathParam modifies the model in path parameter using regex replacement
-func (p *ModelWeightedRoundRobinPolicy) modifyModelInPathParam(ctx *policy.RequestContext, newModel string, regexPattern string) policy.RequestAction {
+func (p *ModelWeightedRoundRobinPolicy) modifyModelInPathParam(ctx *policy.RequestContext, newModel string, regexPattern string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	if ctx.Path == "" {
-		slog.Debug("ModelWeightedRoundRobin: Cannot modify path param, path is empty")
+		log.Debug("Cannot modify path param, path is empty")
 		return policy.UpstreamRequestModifications{}
 	}
 
 	// Parse the URL-encoded path
 	decodedPath, err := url.PathUnescape(ctx.Path)
 	if err != nil {
-		slog.Debug("ModelWeightedRoundRobin: Error decoding path", "error", err)
+		log.Debug("Error decoding path", "error", err)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -638,14 +650,14 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPathParam(ctx *policy.Reque
 	// Compile regex pattern
 	re, err := regexp.Compile(regexPattern)
 	if err != nil {
-		slog.Debug("ModelWeightedRoundRobin: Invalid regex pattern", "pattern", regexPattern, "error", err)
+		log.Debug("Invalid regex pattern", "pattern", regexPattern, "error", err)
 		return policy.UpstreamRequestModifications{}
 	}
 
 	// Find the match to verify it exists and get the match indices
 	matchIndices := re.FindStringSubmatchIndex(pathWithoutQuery)
 	if len(matchIndices) < 4 {
-		slog.Debug("ModelWeightedRoundRobin: Regex pattern did not match path or no capture group", "pattern", regexPattern, "path", pathWithoutQuery)
+		log.Debug("Regex pattern did not match path or no capture group", "pattern", regexPattern, "path", pathWithoutQuery)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -656,7 +668,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPathParam(ctx *policy.Reque
 	captureEnd := matchIndices[3]
 
 	if captureStart == -1 || captureEnd == -1 {
-		slog.Debug("ModelWeightedRoundRobin: No capture group found in regex pattern", "pattern", regexPattern)
+		log.Debug("No capture group found in regex pattern", "pattern", regexPattern)
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -669,7 +681,7 @@ func (p *ModelWeightedRoundRobinPolicy) modifyModelInPathParam(ctx *policy.Reque
 		updatedFullPath = updatedPath + "?" + queryString
 	}
 
-	slog.Debug("ModelWeightedRoundRobin: Modified request model in path param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "pattern", regexPattern, "originalPath", pathWithoutQuery, "newPath", updatedPath)
+	log.Debug("Modified request model in path param", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "pattern", regexPattern, "originalPath", pathWithoutQuery, "newPath", updatedPath)
 
 	// Set the :path pseudo-header to modify the path
 	// Envoy ext_proc requires path modifications via the :path header
