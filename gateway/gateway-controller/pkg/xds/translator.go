@@ -229,18 +229,22 @@ func (t *Translator) TranslateConfigs(
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
 
+	// Collect route configurations for RDS
+	var routeConfigs []types.Resource
+
 	// Always create the HTTP listener, even with no APIs deployed
-	httpListener, err := t.createListener(virtualHosts, false)
+	httpListener, httpRouteConfig, err := t.createListener(virtualHosts, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP listener: %w", err)
 	}
 	listeners = append(listeners, httpListener)
+	routeConfigs = append(routeConfigs, httpRouteConfig)
 
 	// Create HTTPS listener if enabled
 	if t.routerConfig.HTTPSEnabled {
 		log.Info("HTTPS is enabled, creating HTTPS listener",
 			zap.Int("https_port", t.routerConfig.HTTPSPort))
-		httpsListener, err := t.createListener(virtualHosts, true)
+		httpsListener, httpsRouteConfig, err := t.createListener(virtualHosts, true)
 		if err != nil {
 			log.Error("Failed to create HTTPS listener", zap.Error(err))
 			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
@@ -248,6 +252,7 @@ func (t *Translator) TranslateConfigs(
 		log.Info("HTTPS listener created successfully",
 			zap.String("listener_name", httpsListener.GetName()))
 		listeners = append(listeners, httpsListener)
+		routeConfigs = append(routeConfigs, httpsRouteConfig)
 	} else {
 		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
 	}
@@ -321,12 +326,13 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	resources[resource.ListenerType] = listeners
-	// Don't add empty routes - we use inline route configs in listeners
-	// resources[resource.RouteType] = routes
+	// Use RDS for route configurations
+	resources[resource.RouteType] = routeConfigs
 	resources[resource.ClusterType] = clusters
 
 	log.Info("Translated resources ready for snapshot",
 		zap.Int("num_listeners", len(listeners)),
+		zap.Int("num_routes", len(routeConfigs)),
 		zap.Int("num_clusters", len(clusters)))
 	for i, l := range listeners {
 		if listenerProto, ok := l.(*listener.Listener); ok {
@@ -460,14 +466,22 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
-func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, error) {
-	routeConfig := t.createRouteConfiguration(virtualHosts)
+// Returns the listener and the route configuration (for RDS)
+func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, *route.RouteConfiguration, error) {
+	// Determine route config name based on protocol
+	var routeConfigName string
+	if isHTTPS {
+		routeConfigName = "local_route_https"
+	} else {
+		routeConfigName = "local_route"
+	}
+	routeConfig := t.createRouteConfigurationWithName(virtualHosts, routeConfigName)
 
 	// Create router filter with typed config
 	routerConfig := &router.Router{}
 	routerAny, err := anypb.New(routerConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create router config: %w", err)
+		return nil, nil, fmt.Errorf("failed to create router config: %w", err)
 	}
 
 	// Build HTTP filters chain
@@ -477,7 +491,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if t.routerConfig.PolicyEngine.Enabled {
 		extProcFilter, err := t.createExtProcFilter()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
+			return nil, nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
 		}
 		httpFilters = append(httpFilters, extProcFilter)
 	}
@@ -490,13 +504,21 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		},
 	})
 
-	// Create HTTP connection manager
+	// Create HTTP connection manager with RDS (Route Discovery Service)
 	manager := &hcm.HttpConnectionManager{
 		CodecType:         hcm.HttpConnectionManager_AUTO,
 		StatPrefix:        "http",
 		GenerateRequestId: wrapperspb.Bool(true),
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
-			RouteConfig: routeConfig,
+		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
+			Rds: &hcm.Rds{
+				ConfigSource: &core.ConfigSource{
+					ResourceApiVersion: core.ApiVersion_V3,
+					ConfigSourceSpecifier: &core.ConfigSource_Ads{
+						Ads: &core.AggregatedConfigSource{},
+					},
+				},
+				RouteConfigName: routeConfigName,
+			},
 		},
 		HttpFilters: httpFilters,
 	}
@@ -505,7 +527,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if t.routerConfig.AccessLogs.Enabled {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create access log config: %w", err)
+			return nil, nil, fmt.Errorf("failed to create access log config: %w", err)
 		}
 		manager.AccessLog = accessLogs
 	}
@@ -513,7 +535,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	// Add tracing if enabled
 	tracingConfig, err := t.createTracingConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tracing config: %w", err)
+		return nil, nil, fmt.Errorf("failed to create tracing config: %w", err)
 	}
 	if tracingConfig != nil {
 		manager.Tracing = tracingConfig
@@ -521,7 +543,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 
 	pbst, err := anypb.New(manager)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Determine listener name and port based on protocol
@@ -549,12 +571,12 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if isHTTPS {
 		tlsContext, err := t.createDownstreamTLSContext()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+			return nil, nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
 		}
 
 		tlsContextAny, err := anypb.New(tlsContext)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+			return nil, nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
 		}
 
 		filterChain.TransportSocket = &core.TransportSocket{
@@ -579,7 +601,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			},
 		},
 		FilterChains: []*listener.FilterChain{filterChain},
-	}, nil
+	}, routeConfig, nil
 }
 
 func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
@@ -776,10 +798,15 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 	}, nil
 }
 
-// createRouteConfiguration creates a route configuration
+// createRouteConfiguration creates a route configuration with the default name
 func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost) *route.RouteConfiguration {
+	return t.createRouteConfigurationWithName(virtualHosts, "local_route")
+}
+
+// createRouteConfigurationWithName creates a route configuration with a custom name
+func (t *Translator) createRouteConfigurationWithName(virtualHosts []*route.VirtualHost, name string) *route.RouteConfiguration {
 	return &route.RouteConfiguration{
-		Name:         "local_route",
+		Name:         name,
 		VirtualHosts: virtualHosts,
 	}
 }
