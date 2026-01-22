@@ -99,10 +99,10 @@ clean:
 	@rm -rf $(BUILD_DIR)
 	@echo "Clean complete"
 
-## test: Run tests
+## test: Run tests with coverage report
 test:
 	@echo "Running tests..."
-	@$(GOTEST) -v ./test/unit/... || (echo "Tests failed. Build aborted." && exit 1)
+	@$(GOTEST) -v ./... -cover -coverprofile=unit-test-coverage.txt || (echo "Tests failed. Build aborted." && exit 1)
 
 ## deps: Download dependencies
 deps:

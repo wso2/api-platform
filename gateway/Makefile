@@ -56,6 +56,7 @@ help: ## Show this help message
 	@echo 'Test Targets:'
 	@echo '  make test                      - Run all tests'
 	@echo '  make test-controller           - Test gateway-controller'
+	@echo '  make test-gateway-builder      - Test gateway-builder'
 	@echo '  make test-policy-engine        - Test policy-engine'
 	@echo ''
 	@echo 'Integration Test Targets:'
@@ -148,11 +149,15 @@ build-and-push-multiarch-router: ## Build and push router Docker image for multi
 
 # Test Targets
 .PHONY: test
-test: test-controller test-policy-engine ## Run all tests
+test: test-controller test-gateway-builder test-policy-engine ## Run all tests
 
 .PHONY: test-controller
 test-controller: ## Test gateway-controller
 	$(MAKE) -C gateway-controller test
+
+.PHONY: test-gateway-builder
+test-gateway-builder: ## Test gateway-builder
+	$(MAKE) -C gateway-builder test
 
 .PHONY: test-policy-engine
 test-policy-engine: ## Test policy-engine

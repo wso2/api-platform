@@ -48,6 +48,9 @@ tmp/
 # Testing and coverage
 *.test
 *.out
+**/unit-test-coverage.txt
+**/integration-test-coverage.txt
+**/integration-test-coverage.html
 
 # Environment files
 .env*
@@ -90,6 +93,9 @@ yarn-debug.log*
 
 *.DS_Store
 
+
+# Docker
+**/.dockerignore
 
 # Go-specific patterns
 *.exe
