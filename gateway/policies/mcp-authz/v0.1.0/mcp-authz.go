@@ -77,8 +77,10 @@ type McpAuthzPolicy struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]any,
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	slog.Debug("MCP Authorization Policy: GetPolicy called")
+	logger = policy.EnsureLogger(logger)
+	logger.Debug("GetPolicy called")
 
 	p := &McpAuthzPolicy{}
 
@@ -89,7 +91,7 @@ func GetPolicy(
 	}
 	p.Rules = rules
 
-	slog.Debug("MCP Authorization Policy: Parsed policy configuration",
+	logger.Debug("Parsed policy configuration",
 		"rulesCount", len(p.Rules))
 
 	return p, nil

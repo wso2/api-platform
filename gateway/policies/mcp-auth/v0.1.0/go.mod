@@ -2,7 +2,7 @@ module github.com/policy-engine/policies/mcp-authentication
 
 go 1.25.1
 
-require github.com/wso2/api-platform/sdk v0.3.1
+require github.com/wso2/api-platform/sdk v0.3.5
 
 require github.com/policy-engine/policies/jwt-auth v0.1.0
 

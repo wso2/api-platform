@@ -21,6 +21,7 @@ var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // ContentLengthGuardrailPolicy implements content length validation
 type ContentLengthGuardrailPolicy struct {
+	logger            *slog.Logger
 	hasRequestParams  bool
 	hasResponseParams bool
 	requestParams     ContentLengthGuardrailPolicyParams
@@ -38,8 +39,11 @@ type ContentLengthGuardrailPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &ContentLengthGuardrailPolicy{}
+	p := &ContentLengthGuardrailPolicy{
+		logger: policy.EnsureLogger(logger),
+	}
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
@@ -66,7 +70,7 @@ func GetPolicy(
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
 
-	slog.Debug("ContentLengthGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
+	p.logger.Debug("Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -182,7 +186,7 @@ func (p *ContentLengthGuardrailPolicy) OnRequest(ctx *policy.RequestContext, par
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false, ctx.RequestID).(policy.RequestAction)
 }
 
 // OnResponse validates response body content length
@@ -195,15 +199,16 @@ func (p *ContentLengthGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, p.responseParams, true, ctx.RequestID).(policy.ResponseAction)
 }
 
 // validatePayload validates payload content length (request phase)
-func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ContentLengthGuardrailPolicyParams, isResponse bool) interface{} {
+func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ContentLengthGuardrailPolicyParams, isResponse bool, requestID string) interface{} {
+	log := policy.WithRequestID(p.logger, requestID)
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
-		slog.Debug("ContentLengthGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
+		log.Debug("Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
@@ -225,7 +230,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params Co
 	}
 
 	if !validationPassed {
-		slog.Debug("ContentLengthGuardrail: Validation failed", "byteCount", byteCount, "min", params.Min, "max", params.Max, "invert", params.Invert, "isResponse", isResponse)
+		log.Debug("Validation failed", "byteCount", byteCount, "min", params.Min, "max", params.Max, "invert", params.Invert, "isResponse", isResponse)
 		var reason string
 		if params.Invert {
 			reason = fmt.Sprintf("content length %d bytes is within the excluded range %d-%d bytes", byteCount, params.Min, params.Max)
@@ -235,7 +240,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params Co
 		return p.buildErrorResponse(reason, nil, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
-	slog.Debug("ContentLengthGuardrail: Validation passed", "byteCount", byteCount, "min", params.Min, "max", params.Max, "isResponse", isResponse)
+	log.Debug("Validation passed", "byteCount", byteCount, "min", params.Min, "max", params.Max, "isResponse", isResponse)
 	if isResponse {
 		return policy.UpstreamResponseModifications{}
 	}

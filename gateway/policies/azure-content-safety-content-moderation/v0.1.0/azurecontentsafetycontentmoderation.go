@@ -29,6 +29,9 @@ var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // AzureContentSafetyContentModerationPolicy implements Azure Content Safety content moderation
 type AzureContentSafetyContentModerationPolicy struct {
+	// Logger
+	logger *slog.Logger
+
 	// Static configuration from params
 	endpoint string
 	apiKey   string
@@ -56,6 +59,7 @@ type AzureContentSafetyPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
 	// Validate and extract static configuration from params
 	if err := validateAzureConfigParams(params); err != nil {
@@ -63,6 +67,7 @@ func GetPolicy(
 	}
 
 	p := &AzureContentSafetyContentModerationPolicy{
+		logger:   policy.EnsureLogger(logger),
 		endpoint: getStringParam(params, "azureContentSafetyEndpoint"),
 		apiKey:   getStringParam(params, "azureContentSafetyKey"),
 		client: &http.Client{
@@ -95,7 +100,7 @@ func GetPolicy(
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
 
-	slog.Debug("AzureContentSafety: Policy initialized", "endpoint", p.endpoint, "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
+	p.logger.Debug("Policy initialized", "endpoint", p.endpoint, "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -251,7 +256,7 @@ func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.Reques
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false, ctx.RequestID).(policy.RequestAction)
 }
 
 // OnResponse validates response body content
@@ -264,17 +269,19 @@ func (p *AzureContentSafetyContentModerationPolicy) OnResponse(ctx *policy.Respo
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, p.responseParams, true, ctx.RequestID).(policy.ResponseAction)
 }
 
 // validatePayload validates payload against Azure Content Safety
-func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []byte, params AzureContentSafetyPolicyParams, isResponse bool) interface{} {
+func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []byte, params AzureContentSafetyPolicyParams, isResponse bool, requestID string) interface{} {
+	log := policy.WithRequestID(p.logger, requestID)
+
 	// Build category thresholds from params
 	categoryMap := p.buildCategoryMap(params)
 	categories := p.getValidCategories(categoryMap)
 
 	if len(categories) == 0 {
-		slog.Debug("AzureContentSafety: No valid categories configured, passing through", "isResponse", isResponse)
+		log.Debug("No valid categories configured, passing through", "isResponse", isResponse)
 		// No valid categories, pass through
 		if isResponse {
 			return policy.UpstreamResponseModifications{}
@@ -293,13 +300,13 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
 		if params.PassthroughOnError {
-			slog.Debug("AzureContentSafety: JSONPath extraction error, passthrough enabled", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
+			log.Debug("JSONPath extraction error, passthrough enabled", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 			if isResponse {
 				return policy.UpstreamResponseModifications{}
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		slog.Debug("AzureContentSafety: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
+		log.Debug("Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, nil, "")
 	}
 
@@ -311,13 +318,13 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	categoriesAnalysis, err := p.callAzureContentSafetyAPI(p.endpoint, p.apiKey, extractedValue, categories)
 	if err != nil {
 		if params.PassthroughOnError {
-			slog.Debug("AzureContentSafety: API call error, passthrough enabled", "error", err, "isResponse", isResponse)
+			log.Debug("API call error, passthrough enabled", "error", err, "isResponse", isResponse)
 			if isResponse {
 				return policy.UpstreamResponseModifications{}
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		slog.Debug("AzureContentSafety: Error calling Azure Content Safety API", "error", err, "isResponse", isResponse)
+		log.Debug("Error calling Azure Content Safety API", "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error calling Azure Content Safety API", err, isResponse, params.ShowAssessment, nil, "")
 	}
 
@@ -329,13 +336,13 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 		threshold := categoryMap[category]
 
 		if threshold >= 0 && severity >= threshold {
-			slog.Debug("AzureContentSafety: Violation detected", "category", category, "severity", severity, "threshold", threshold, "isResponse", isResponse)
+			log.Debug("Violation detected", "category", category, "severity", severity, "threshold", threshold, "isResponse", isResponse)
 			// Violation detected
 			return p.buildErrorResponse("Violation of Azure content safety content moderation detected", nil, isResponse, params.ShowAssessment, categoriesAnalysis, extractedValue)
 		}
 	}
 
-	slog.Debug("AzureContentSafety: Validation passed", "categoryCount", len(categoriesAnalysis), "isResponse", isResponse)
+	log.Debug("Validation passed", "categoryCount", len(categoriesAnalysis), "isResponse", isResponse)
 
 	// No violations, continue
 	if isResponse {

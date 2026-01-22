@@ -62,6 +62,7 @@ var ins = &AnalyticsPolicy{}
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
 	return ins, nil
 }

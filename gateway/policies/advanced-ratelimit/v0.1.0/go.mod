@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/google/cel-go v0.26.1
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/wso2/api-platform/sdk v0.3.1
+	github.com/wso2/api-platform/sdk v0.3.5
 )
 
 require (

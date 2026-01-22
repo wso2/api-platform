@@ -19,6 +19,8 @@
 package basicratelimit
 
 import (
+	"log/slog"
+
 	ratelimit "github.com/policy-engine/policies/advanced-ratelimit"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
@@ -36,12 +38,13 @@ type BasicRateLimitPolicy struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
 	// Transform simple limits to full ratelimit config
 	rlParams := transformToRatelimitParams(params, metadata)
 
 	// Create the delegate ratelimit policy
-	delegate, err := ratelimit.GetPolicy(metadata, rlParams)
+	delegate, err := ratelimit.GetPolicy(metadata, rlParams, logger)
 	if err != nil {
 		return nil, err
 	}

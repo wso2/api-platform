@@ -1,5 +1,7 @@
 package policyv1alpha
 
+import "log/slog"
+
 // PolicyMetadata contains metadata passed to GetPolicy for instance creation
 // This will be passed to the GetPolicy factory function to provide context about policy
 type PolicyMetadata struct {
@@ -45,6 +47,7 @@ type Policy interface {
 //	func GetPolicy(
 //	    metadata PolicyMetadata,
 //	    params map[string]interface{},
+//	    logger *slog.Logger,
 //	) (Policy, error)
 //
 // Parameters:
@@ -52,6 +55,8 @@ type Policy interface {
 //   - params: Merged parameters combining static config (from policy definition
 //     with resolved ${config} references) and runtime parameters (from API
 //     configuration). Runtime params override static config on key conflicts.
+//   - logger: Pre-configured logger with policy name as a structured field.
+//     Use this for all policy logging to ensure consistent format.
 //
 // Returns:
 //   - Policy instance (can be singleton, cached, or per-route)
@@ -60,7 +65,7 @@ type Policy interface {
 // The policy should perform all initialization, validation, and preprocessing
 // in GetPolicy. This includes parsing configuration, caching expensive operations,
 // and setting up any required state.
-type PolicyFactory func(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)
+type PolicyFactory func(metadata PolicyMetadata, params map[string]interface{}, logger *slog.Logger) (Policy, error)
 
 // ProcessingMode declares a policy's processing requirements for each phase
 // Used by the kernel to optimize execution (skip unnecessary phases, buffer strategically)

@@ -16,6 +16,7 @@ const (
 
 // RegexGuardrailPolicy implements regex-based content validation
 type RegexGuardrailPolicy struct {
+	logger            *slog.Logger
 	hasRequestParams  bool
 	hasResponseParams bool
 	requestParams     RegexGuardrailPolicyParams
@@ -32,8 +33,11 @@ type RegexGuardrailPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &RegexGuardrailPolicy{}
+	p := &RegexGuardrailPolicy{
+		logger: policy.EnsureLogger(logger),
+	}
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
@@ -60,7 +64,7 @@ func GetPolicy(
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
 
-	slog.Debug("RegexGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
+	p.logger.Debug("Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -139,7 +143,7 @@ func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false, ctx.RequestID).(policy.RequestAction)
 }
 
 // OnResponse validates response body against regex pattern
@@ -152,11 +156,12 @@ func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params ma
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, p.responseParams, true, ctx.RequestID).(policy.ResponseAction)
 }
 
 // validatePayload validates payload against regex pattern
-func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuardrailPolicyParams, isResponse bool) interface{} {
+func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuardrailPolicyParams, isResponse bool, requestID string) interface{} {
+	log := policy.WithRequestID(p.logger, requestID)
 	// Nothing to validate (avoid blocking no-body requests / 204 responses)
 	if len(payload) == 0 {
 		if isResponse {
@@ -167,14 +172,14 @@ func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuard
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
-		slog.Debug("RegexGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
+		log.Debug("Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment)
 	}
 
 	// Compile regex pattern
 	compiledRegex, err := regexp.Compile(params.Regex)
 	if err != nil {
-		slog.Debug("RegexGuardrail: Invalid regex pattern", "regex", params.Regex, "error", err, "isResponse", isResponse)
+		log.Debug("Invalid regex pattern", "regex", params.Regex, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Invalid regex pattern", err, isResponse, params.ShowAssessment)
 	}
 	matched := compiledRegex.MatchString(extractedValue)
@@ -188,11 +193,11 @@ func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuard
 	}
 
 	if !validationPassed {
-		slog.Debug("RegexGuardrail: Validation failed", "regex", params.Regex, "matched", matched, "invert", params.Invert, "isResponse", isResponse)
+		log.Debug("Validation failed", "regex", params.Regex, "matched", matched, "invert", params.Invert, "isResponse", isResponse)
 		return p.buildErrorResponse("Violated regular expression: "+params.Regex, nil, isResponse, params.ShowAssessment)
 	}
 
-	slog.Debug("RegexGuardrail: Validation passed", "regex", params.Regex, "matched", matched, "invert", params.Invert, "isResponse", isResponse)
+	log.Debug("Validation passed", "regex", params.Regex, "matched", matched, "invert", params.Invert, "isResponse", isResponse)
 
 	if isResponse {
 		return policy.UpstreamResponseModifications{}

@@ -256,7 +256,6 @@ type PolicyEngineConfig struct {
 	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
 	RouteCacheAction  string          `koanf:"route_cache_action"`
 	AllowModeOverride bool            `koanf:"allow_mode_override"`
-	RequestHeaderMode string          `koanf:"request_header_mode"`
 	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
 	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration
 }
@@ -454,7 +453,6 @@ func defaultConfig() *Config {
 					FailureModeAllow:  false,
 					RouteCacheAction:  "RETAIN",
 					AllowModeOverride: true,
-					RequestHeaderMode: "SEND",
 					MessageTimeoutMs:  250,
 					TLS: PolicyEngineTLS{
 						Enabled:    false,
@@ -994,20 +992,6 @@ func (c *Config) validatePolicyEngineConfig() error {
 	if !isValidAction {
 		return fmt.Errorf("router.policy_engine.route_cache_action must be one of: DEFAULT, RETAIN, CLEAR, got: %s",
 			policyEngine.RouteCacheAction)
-	}
-
-	// Validate request header mode
-	validHeaderModes := []string{"DEFAULT", "SEND", "SKIP"}
-	isValidMode := false
-	for _, mode := range validHeaderModes {
-		if policyEngine.RequestHeaderMode == mode {
-			isValidMode = true
-			break
-		}
-	}
-	if !isValidMode {
-		return fmt.Errorf("router.policy_engine.request_header_mode must be one of: DEFAULT, SEND, SKIP, got: %s",
-			policyEngine.RequestHeaderMode)
 	}
 
 	return nil

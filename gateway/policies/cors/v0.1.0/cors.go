@@ -29,6 +29,7 @@ import (
 )
 
 type CorsPolicy struct {
+	logger                 *slog.Logger
 	AllowedOrigins         []string
 	CompiledAllowedOrigins []*regexp.Regexp
 	AllowedMethods         []string
@@ -42,18 +43,22 @@ type CorsPolicy struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]any,
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	slog.Debug("Cors Policy: GetPolicy called")
-	p := &CorsPolicy{}
+	logger = policy.EnsureLogger(logger)
+	logger.Debug("GetPolicy called")
+	p := &CorsPolicy{
+		logger: logger,
+	}
 	p.AllowedOrigins = getStringArrayParam(params, "allowedOrigins", []string{"*"})
 	if slices.Contains(p.AllowedOrigins, "*") {
-		slog.Debug("Ignoring other origins as wildcard is included")
+		p.logger.Debug("Ignoring other origins as wildcard is included")
 		p.AllowedOrigins = []string{"*"}
 	}
 	p.AllowedMethods = getStringArrayParam(params, "allowedMethods", []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"})
 	p.AllowedHeaders = getStringArrayParam(params, "allowedHeaders", []string{})
 	if slices.Contains(p.AllowedHeaders, "*") {
-		slog.Debug("Ignoring other headers as wildcard is included")
+		p.logger.Debug("Ignoring other headers as wildcard is included")
 		p.AllowedHeaders = []string{"*"}
 	}
 	p.ExposedHeaders = getStringArrayParam(params, "exposedHeaders", nil)
@@ -78,16 +83,16 @@ func GetPolicy(
 	if p.AllowCredentials != nil && *p.AllowCredentials {
 		// As per CORS spec, wildcard cannot be used with allow-credentials
 		if len(p.AllowedOrigins) == 1 && p.AllowedOrigins[0] == "*" {
-			slog.Debug("Cannot have wildcard origin with allowCredentials set to true")
+			p.logger.Debug("Cannot have wildcard origin with allowCredentials set to true")
 			return nil, fmt.Errorf("cannot have wildcard origin with allowCredentials set to true")
 		} else if len(p.AllowedHeaders) == 1 && p.AllowedHeaders[0] == "*" {
-			slog.Debug("Cannot have wildcard headers with allowCredentials set to true")
+			p.logger.Debug("Cannot have wildcard headers with allowCredentials set to true")
 			return nil, fmt.Errorf("cannot have wildcard headers with allowCredentials set to true")
 		} else if len(p.AllowedMethods) == 1 && p.AllowedMethods[0] == "*" {
-			slog.Debug("Cannot have wildcard methods with allowCredentials set to true")
+			p.logger.Debug("Cannot have wildcard methods with allowCredentials set to true")
 			return nil, fmt.Errorf("cannot have wildcard methods with allowCredentials set to true")
 		} else if len(p.ExposedHeaders) == 1 && p.ExposedHeaders[0] == "*" {
-			slog.Debug("Cannot have wildcard exposed headers with allowCredentials set to true")
+			p.logger.Debug("Cannot have wildcard exposed headers with allowCredentials set to true")
 			return nil, fmt.Errorf("cannot have wildcard exposed headers with allowCredentials set to true")
 		}
 	}
@@ -107,7 +112,7 @@ func GetPolicy(
 		}
 		regex, err := regexp.Compile(origin)
 		if err != nil {
-			slog.Debug("Invalid origin regex", "origin", origin, "error", err)
+			p.logger.Debug("Invalid origin regex", "origin", origin, "error", err)
 			return nil, fmt.Errorf("invalid origin regex: %s", origin)
 		}
 		p.CompiledAllowedOrigins = append(p.CompiledAllowedOrigins, regex)
@@ -126,17 +131,18 @@ func (p *CorsPolicy) Mode() policy.ProcessingMode {
 }
 
 func (p *CorsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]any) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
 	if strings.EqualFold(ctx.Method, "options") {
-		slog.Debug("CORS: Preflight request detected; handling preflight")
+		log.Debug("Preflight request detected; handling preflight")
 		return p.handlePreflight(ctx)
 	} else {
 		// Non-preflight
 		corsHeaders, ok := p.handleNonPreflight(ctx)
 		if ok {
-			slog.Debug("CORS: Adding CORS headers to non-preflight request")
+			log.Debug("Adding CORS headers to non-preflight request")
 			ctx.Metadata["cors_headers"] = corsHeaders
 		} else {
-			slog.Debug("CORS: No CORS headers to add for non-preflight request")
+			log.Debug("No CORS headers to add for non-preflight request")
 		}
 		return nil
 	}
@@ -144,6 +150,7 @@ func (p *CorsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]any
 
 // handlePreflight processes CORS preflight (OPTIONS) requests
 func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
 	requestHeaders := ctx.Headers
 	origin := requestHeaders.Get("Origin")
 
@@ -157,13 +164,13 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 	originAllowed := false
 	if len(p.AllowedOrigins) > 0 {
 		if p.AllowedOrigins[0] == "*" {
-			slog.Debug("CORS: Allowing all origins")
+			log.Debug("Allowing all origins")
 			headers["Access-Control-Allow-Origin"] = "*"
 			originAllowed = true
 		} else if len(origin) > 0 {
 			for _, regex := range p.CompiledAllowedOrigins {
 				if regex.MatchString(origin[0]) {
-					slog.Debug("CORS: Adding allowed origins")
+					log.Debug("Adding allowed origins")
 					headers["Access-Control-Allow-Origin"] = origin[0]
 					originAllowed = true
 					break
@@ -172,7 +179,7 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 		}
 	}
 	if !originAllowed {
-		slog.Debug("CORS: Origin not allowed")
+		log.Debug("Origin not allowed")
 		isCorsFailure = true
 	}
 
@@ -180,19 +187,19 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 	methodAllowed := false
 	if len(p.AllowedMethods) > 0 {
 		if p.AllowedMethods[0] == "*" {
-			slog.Debug("CORS: Allowing all methods")
+			log.Debug("Allowing all methods")
 			headers["Access-Control-Allow-Methods"] = "*"
 			methodAllowed = true
 		} else if len(requestedMethod) > 0 {
 			if slices.Contains(p.AllowedMethods, requestedMethod[0]) {
-				slog.Debug("CORS: Adding allowed methods")
+				log.Debug("Adding allowed methods")
 				headers["Access-Control-Allow-Methods"] = strings.Join(p.AllowedMethods, ",")
 				methodAllowed = true
 			}
 		}
 	}
 	if !methodAllowed {
-		slog.Debug("CORS: Method not allowed")
+		log.Debug("Method not allowed")
 		isCorsFailure = true
 	}
 
@@ -200,7 +207,7 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 	headersAllowed := false
 	if len(p.AllowedHeaders) > 0 {
 		if p.AllowedHeaders[0] == "*" {
-			slog.Debug("CORS: Allowing all headers")
+			log.Debug("Allowing all headers")
 			if len(requestedHeaders) > 0 {
 				headers["Access-Control-Allow-Headers"] = requestedHeaders[0]
 			}
@@ -218,7 +225,7 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 				}
 			}
 			if len(requestedList) == allowedCount {
-				slog.Debug("CORS: Adding allowed headers")
+				log.Debug("Adding allowed headers")
 				headers["Access-Control-Allow-Headers"] = strings.Join(checkedHeaders, ",")
 				headersAllowed = true
 			}
@@ -226,25 +233,25 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 	}
 
 	if !headersAllowed && len(requestedHeaders) > 0 {
-		slog.Debug("CORS: Headers not allowed")
+		log.Debug("Headers not allowed")
 		isCorsFailure = true
 	}
 
 	if p.MaxAge != nil {
-		slog.Debug("CORS: Adding max age header")
+		log.Debug("Adding max age header")
 		headers["Access-Control-Max-Age"] = fmt.Sprintf("%d", *p.MaxAge)
 	}
 
 	if p.AllowCredentials != nil {
-		slog.Debug("CORS: Adding allow credentials header")
+		log.Debug("Adding allow credentials header")
 		headers["Access-Control-Allow-Credentials"] = fmt.Sprintf("%t", *p.AllowCredentials)
 	}
 
 	if isCorsFailure {
-		slog.Debug("CORS: Preflight request did not pass the conditions")
+		log.Debug("Preflight request did not pass the conditions")
 		headers = make(map[string]string)
 		if p.ForwardPreflight {
-			slog.Debug("CORS: Forwarding preflight request to upstream.")
+			log.Debug("Forwarding preflight request to upstream.")
 			return policy.UpstreamRequestModifications{}
 		}
 	}
@@ -257,19 +264,21 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 }
 
 func (p *CorsPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]any) policy.ResponseAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
 	corsHeaders, ok := ctx.Metadata["cors_headers"].(map[string]string)
 	if ok {
-		slog.Debug("CORS: Adding CORS headers to response")
+		log.Debug("Adding CORS headers to response")
 		return policy.UpstreamResponseModifications{
 			SetHeaders: corsHeaders,
 		}
 	}
-	slog.Debug("CORS: No CORS headers to add to response")
+	log.Debug("No CORS headers to add to response")
 	return nil
 }
 
 // handleNonPreflight adds CORS headers to actual (non-preflight) responses
 func (p *CorsPolicy) handleNonPreflight(ctx *policy.RequestContext) (map[string]string, bool) {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
 	// Add CORS headers for actual requests
 	headersToInclude := make(map[string]string)
 
@@ -296,19 +305,19 @@ func (p *CorsPolicy) handleNonPreflight(ctx *policy.RequestContext) (map[string]
 	}
 
 	if !originAllowed {
-		slog.Debug("CORS: Origin not allowed for non-preflight request")
+		log.Debug("Origin not allowed for non-preflight request")
 		return nil, false
 	}
 
 	// Expose headers to the client, if configured
 	if len(p.ExposedHeaders) > 0 {
-		slog.Debug("CORS: Adding exposed headers")
+		log.Debug("Adding exposed headers")
 		headersToInclude["Access-Control-Expose-Headers"] = strings.Join(p.ExposedHeaders, ",")
 	}
 
 	// Allow credentials if enabled
 	if p.AllowCredentials != nil {
-		slog.Debug("CORS: Adding allow credentials header")
+		log.Debug("Adding allow credentials header")
 		headersToInclude["Access-Control-Allow-Credentials"] = fmt.Sprintf("%t", *p.AllowCredentials)
 	}
 

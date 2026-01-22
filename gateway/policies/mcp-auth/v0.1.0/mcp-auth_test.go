@@ -20,6 +20,7 @@ package mcpauthn
 
 import (
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -27,7 +28,7 @@ import (
 )
 
 func TestGetPolicy(t *testing.T) {
-	p, err := GetPolicy(policy.PolicyMetadata{}, nil)
+	p, err := GetPolicy(policy.PolicyMetadata{}, nil, slog.Default())
 	if err != nil {
 		t.Errorf("GetPolicy returned error: %v", err)
 	}

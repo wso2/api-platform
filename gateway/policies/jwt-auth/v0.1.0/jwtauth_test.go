@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -78,7 +79,7 @@ func TestJWTAuthPolicy_ValidToken(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -135,7 +136,7 @@ func TestJWTAuthPolicy_MissingToken(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -180,7 +181,7 @@ func TestJWTAuthPolicy_InvalidTokenFormat(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestJWTAuthPolicy_ExpiredToken(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -277,7 +278,7 @@ func TestJWTAuthPolicy_InvalidAudience(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -327,7 +328,7 @@ func TestJWTAuthPolicy_CustomClaims(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -377,7 +378,7 @@ func TestJWTAuthPolicy_InvalidCustomClaims(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -428,7 +429,7 @@ func TestJWTAuthPolicy_InvalidSignature(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -480,7 +481,7 @@ func TestJWTAuthPolicy_CustomHeaderPrefix(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -515,7 +516,7 @@ func TestJWTAuthPolicy_ErrorResponseFormatJSON(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -550,7 +551,7 @@ func TestJWTAuthPolicy_ErrorResponseFormatPlain(t *testing.T) {
 		},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -637,7 +638,7 @@ func TestJWTAuthPolicy_RemoteWithSelfSignedCert(t *testing.T) {
 		"audiences": []interface{}{"api-audience"},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -730,7 +731,7 @@ func TestJWTAuthPolicy_SkipTlsVerify_Success(t *testing.T) {
 		"audiences": []interface{}{"api-audience"},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -824,7 +825,7 @@ func TestJWTAuthPolicy_SkipTlsVerify_False_Fails(t *testing.T) {
 		"jwksFetchRetryCount": 0,
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -890,7 +891,7 @@ func TestJWTAuthPolicy_LocalInlineCertificate(t *testing.T) {
 		"audiences": []interface{}{"api-audience"},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}
@@ -952,7 +953,7 @@ func TestJWTAuthPolicy_LocalCertificateFile(t *testing.T) {
 		"audiences": []interface{}{"api-audience"},
 	}
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	p, err := GetPolicy(policy.PolicyMetadata{}, params, slog.Default())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}

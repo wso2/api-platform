@@ -31,6 +31,7 @@ var (
 
 // URLGuardrailPolicy implements URL validation guardrail
 type URLGuardrailPolicy struct {
+	logger            *slog.Logger
 	hasRequestParams  bool
 	hasResponseParams bool
 	requestParams     URLGuardrailPolicyParams
@@ -47,8 +48,11 @@ type URLGuardrailPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &URLGuardrailPolicy{}
+	p := &URLGuardrailPolicy{
+		logger: policy.EnsureLogger(logger),
+	}
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
@@ -75,7 +79,7 @@ func GetPolicy(
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
 
-	slog.Debug("URLGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
+	p.logger.Debug("Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -174,7 +178,7 @@ func (p *URLGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[st
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false, ctx.RequestID).(policy.RequestAction)
 }
 
 // OnResponse validates URLs in response body
@@ -187,15 +191,17 @@ func (p *URLGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, p.responseParams, true, ctx.RequestID).(policy.ResponseAction)
 }
 
 // validatePayload validates URLs in payload
-func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrailPolicyParams, isResponse bool) interface{} {
+func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrailPolicyParams, isResponse bool, requestID string) interface{} {
+	log := policy.WithRequestID(p.logger, requestID)
+
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
-		slog.Debug("URLGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
+		log.Debug("Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, []string{})
 	}
 
@@ -206,7 +212,7 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrail
 	// Extract URLs from the value
 	urls := urlRegexCompiled.FindAllString(extractedValue, -1)
 	if len(urls) > 0 {
-		slog.Debug("URLGuardrail: Found URLs to validate", "urlCount", len(urls), "onlyDNS", params.OnlyDNS, "isResponse", isResponse)
+		log.Debug("Found URLs to validate", "urlCount", len(urls), "onlyDNS", params.OnlyDNS, "isResponse", isResponse)
 	}
 	invalidURLs := make([]string, 0)
 
@@ -224,12 +230,12 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrail
 	}
 
 	if len(invalidURLs) > 0 {
-		slog.Debug("URLGuardrail: Validation failed", "invalidURLCount", len(invalidURLs), "totalURLCount", len(urls), "isResponse", isResponse)
+		log.Debug("Validation failed", "invalidURLCount", len(invalidURLs), "totalURLCount", len(urls), "isResponse", isResponse)
 		return p.buildErrorResponse("Violation of url validity detected", nil, isResponse, params.ShowAssessment, invalidURLs)
 	}
 
 	if len(urls) > 0 {
-		slog.Debug("URLGuardrail: Validation passed", "urlCount", len(urls), "isResponse", isResponse)
+		log.Debug("Validation passed", "urlCount", len(urls), "isResponse", isResponse)
 	}
 
 	if isResponse {

@@ -25,6 +25,7 @@ var (
 
 // WordCountGuardrailPolicy implements word count validation
 type WordCountGuardrailPolicy struct {
+	logger            *slog.Logger
 	hasRequestParams  bool
 	hasResponseParams bool
 	requestParams     WordCountGuardrailPolicyParams
@@ -42,8 +43,9 @@ type WordCountGuardrailPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &WordCountGuardrailPolicy{}
+	p := &WordCountGuardrailPolicy{logger: policy.EnsureLogger(logger)}
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
@@ -70,7 +72,7 @@ func GetPolicy(
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
 
-	slog.Debug("WordCountGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
+	p.logger.Debug("Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -186,7 +188,7 @@ func (p *WordCountGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params 
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false, ctx.RequestID).(policy.RequestAction)
 }
 
 // OnResponse validates response body word count
@@ -199,15 +201,17 @@ func (p *WordCountGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, param
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, p.responseParams, true, ctx.RequestID).(policy.ResponseAction)
 }
 
 // validatePayload validates payload word count
-func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params WordCountGuardrailPolicyParams, isResponse bool) interface{} {
+func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params WordCountGuardrailPolicyParams, isResponse bool, requestID string) interface{} {
+	log := policy.WithRequestID(p.logger, requestID)
+
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
-		slog.Debug("WordCountGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
+		log.Debug("Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
@@ -235,7 +239,7 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params WordCo
 	}
 
 	if !validationPassed {
-		slog.Debug("WordCountGuardrail: Validation failed", "wordCount", wordCount, "min", params.Min, "max", params.Max, "invert", params.Invert, "isResponse", isResponse)
+		log.Debug("Validation failed", "wordCount", wordCount, "min", params.Min, "max", params.Max, "invert", params.Invert, "isResponse", isResponse)
 		var reason string
 		if params.Invert {
 			reason = fmt.Sprintf("word count %d is within the excluded range %d-%d words", wordCount, params.Min, params.Max)
@@ -245,7 +249,7 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params WordCo
 		return p.buildErrorResponse(reason, nil, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
-	slog.Debug("WordCountGuardrail: Validation passed", "wordCount", wordCount, "min", params.Min, "max", params.Max, "isResponse", isResponse)
+	log.Debug("Validation passed", "wordCount", wordCount, "min", params.Min, "max", params.Max, "isResponse", isResponse)
 	if isResponse {
 		return policy.UpstreamResponseModifications{}
 	}

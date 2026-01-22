@@ -16,6 +16,7 @@ var arrayIndexRegex = regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
 
 // PromptDecoratorPolicy implements prompt decoration by applying custom decorations
 type PromptDecoratorPolicy struct {
+	logger *slog.Logger
 	params PromptDecoratorPolicyParams
 }
 
@@ -40,8 +41,11 @@ type PromptDecoratorPolicyParams struct {
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
+	logger *slog.Logger,
 ) (policy.Policy, error) {
-	p := &PromptDecoratorPolicy{}
+	p := &PromptDecoratorPolicy{
+		logger: policy.EnsureLogger(logger),
+	}
 
 	// Parse parameters
 	policyParams, err := parseParams(params)
@@ -50,7 +54,7 @@ func GetPolicy(
 	}
 	p.params = policyParams
 
-	slog.Debug("PromptDecorator: Policy initialized", "jsonPath", p.params.JsonPath, "append", p.params.Append)
+	p.logger.Debug("Policy initialized", "jsonPath", p.params.JsonPath, "append", p.params.Append)
 
 	return p, nil
 }
@@ -155,6 +159,8 @@ func (p *PromptDecoratorPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest decorates request body
 func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, ctx.RequestID)
+
 	var content []byte
 	if ctx.Body != nil {
 		content = ctx.Body.Content
@@ -168,14 +174,14 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 	// Parse JSON payload
 	var payloadData map[string]interface{}
 	if err := json.Unmarshal(content, &payloadData); err != nil {
-		slog.Debug("PromptDecorator: Error parsing JSON payload", "error", err)
+		log.Debug("Error parsing JSON payload", "error", err)
 		return p.buildErrorResponse("Error parsing JSON payload", err)
 	}
 
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractValueFromJsonpath(payloadData, p.params.JsonPath)
 	if err != nil {
-		slog.Debug("PromptDecorator: Error extracting value from JSONPath", "jsonPath", p.params.JsonPath, "error", err)
+		log.Debug("Error extracting value from JSONPath", "jsonPath", p.params.JsonPath, "error", err)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err)
 	}
 
@@ -214,9 +220,9 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 			updatedContent = decorationStr + " " + v
 		}
 
-		slog.Debug("PromptDecorator: Applied string decoration", "jsonPath", p.params.JsonPath, "append", p.params.Append, "originalLength", len(v), "updatedLength", len(updatedContent))
+		log.Debug("Applied string decoration", "jsonPath", p.params.JsonPath, "append", p.params.Append, "originalLength", len(v), "updatedLength", len(updatedContent))
 		// Update the content field
-		return p.updateStringAtPath(payloadData, p.params.JsonPath, updatedContent)
+		return p.updateStringAtPath(payloadData, p.params.JsonPath, updatedContent, ctx.RequestID)
 
 	case []interface{}:
 		// Decorating an array of messages (e.g., $.messages)
@@ -231,7 +237,7 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 				elementType := fmt.Sprintf("%T", item)
 				elementValue := fmt.Sprintf("%v", item)
 				malformedEntries = append(malformedEntries, fmt.Sprintf("index %d: type=%s, value=%s", i, elementType, elementValue))
-				slog.Debug("PromptDecorator: Non-map element detected in messages array", "jsonPath", p.params.JsonPath, "index", i, "type", elementType, "value", elementValue)
+				log.Debug("Non-map element detected in messages array", "jsonPath", p.params.JsonPath, "index", i, "type", elementType, "value", elementValue)
 			}
 		}
 
@@ -244,7 +250,7 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 		// Create decoration messages from decoration config
 		decorationMessages, err := p.createDecorationMessages()
 		if err != nil {
-			slog.Debug("PromptDecorator: Error creating decoration messages", "error", err)
+			log.Debug("Error creating decoration messages", "error", err)
 			return p.buildErrorResponse("Error creating decoration messages", err)
 		}
 
@@ -256,9 +262,9 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 			updatedMessages = append(decorationMessages, messages...)
 		}
 
-		slog.Debug("PromptDecorator: Applied array decoration", "jsonPath", p.params.JsonPath, "append", p.params.Append, "originalCount", len(messages), "decorationCount", len(decorationMessages), "updatedCount", len(updatedMessages))
+		log.Debug("Applied array decoration", "jsonPath", p.params.JsonPath, "append", p.params.Append, "originalCount", len(messages), "decorationCount", len(decorationMessages), "updatedCount", len(updatedMessages))
 		// Update the messages array
-		return p.updateArrayAtPath(payloadData, p.params.JsonPath, updatedMessages)
+		return p.updateArrayAtPath(payloadData, p.params.JsonPath, updatedMessages, ctx.RequestID)
 
 	case []map[string]interface{}:
 		// Already in the right format
@@ -267,7 +273,7 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 		// Create decoration messages from decoration config
 		decorationMessages, err := p.createDecorationMessages()
 		if err != nil {
-			slog.Debug("PromptDecorator: Error creating decoration messages", "error", err)
+			log.Debug("Error creating decoration messages", "error", err)
 			return p.buildErrorResponse("Error creating decoration messages", err)
 		}
 
@@ -279,12 +285,12 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 			updatedMessages = append(decorationMessages, messages...)
 		}
 
-		slog.Debug("PromptDecorator: Applied array decoration", "jsonPath", p.params.JsonPath, "append", p.params.Append, "originalCount", len(messages), "decorationCount", len(decorationMessages), "updatedCount", len(updatedMessages))
+		log.Debug("Applied array decoration", "jsonPath", p.params.JsonPath, "append", p.params.Append, "originalCount", len(messages), "decorationCount", len(decorationMessages), "updatedCount", len(updatedMessages))
 		// Update the messages array
-		return p.updateArrayAtPath(payloadData, p.params.JsonPath, updatedMessages)
+		return p.updateArrayAtPath(payloadData, p.params.JsonPath, updatedMessages, ctx.RequestID)
 
 	default:
-		slog.Debug("PromptDecorator: Invalid extracted value type", "type", fmt.Sprintf("%T", extractedValue))
+		log.Debug("Invalid extracted value type", "type", fmt.Sprintf("%T", extractedValue))
 		return p.buildErrorResponse("Extracted value must be a string or an array of message objects", fmt.Errorf("unexpected type: %T", extractedValue))
 	}
 }
@@ -321,7 +327,8 @@ func (p *PromptDecoratorPolicy) createDecorationMessages() ([]map[string]interfa
 }
 
 // updateStringAtPath updates a string value at the given JSONPath
-func (p *PromptDecoratorPolicy) updateStringAtPath(payloadData map[string]interface{}, jsonPath string, value string) policy.RequestAction {
+func (p *PromptDecoratorPolicy) updateStringAtPath(payloadData map[string]interface{}, jsonPath string, value string, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	path := jsonPath
 	if strings.HasPrefix(path, "$.") {
 		path = strings.TrimPrefix(path, "$.")
@@ -338,7 +345,7 @@ func (p *PromptDecoratorPolicy) updateStringAtPath(payloadData map[string]interf
 		key := pathComponents[i]
 		current = p.navigatePath(current, key)
 		if current == nil {
-			slog.Debug("PromptDecorator: Error navigating JSONPath", "jsonPath", jsonPath, "key", key)
+			log.Debug("Error navigating JSONPath", "jsonPath", jsonPath, "key", key)
 			return p.buildErrorResponse("Error navigating JSONPath", fmt.Errorf("key not found: %s", key))
 		}
 	}
@@ -346,13 +353,13 @@ func (p *PromptDecoratorPolicy) updateStringAtPath(payloadData map[string]interf
 	// Update final key
 	finalKey := pathComponents[len(pathComponents)-1]
 	if err := p.setValueAtPath(current, finalKey, value); err != nil {
-		slog.Debug("PromptDecorator: Error updating JSONPath", "jsonPath", jsonPath, "error", err)
+		log.Debug("Error updating JSONPath", "jsonPath", jsonPath, "error", err)
 		return p.buildErrorResponse("Error updating JSONPath", err)
 	}
 
 	updatedPayload, err := json.Marshal(payloadData)
 	if err != nil {
-		slog.Debug("PromptDecorator: Error marshaling updated JSON payload", "error", err)
+		log.Debug("Error marshaling updated JSON payload", "error", err)
 		return p.buildErrorResponse("Error marshaling updated JSON payload", err)
 	}
 
@@ -362,7 +369,8 @@ func (p *PromptDecoratorPolicy) updateStringAtPath(payloadData map[string]interf
 }
 
 // updateArrayAtPath updates an array value at the given JSONPath
-func (p *PromptDecoratorPolicy) updateArrayAtPath(payloadData map[string]interface{}, jsonPath string, value []map[string]interface{}) policy.RequestAction {
+func (p *PromptDecoratorPolicy) updateArrayAtPath(payloadData map[string]interface{}, jsonPath string, value []map[string]interface{}, requestID string) policy.RequestAction {
+	log := policy.WithRequestID(p.logger, requestID)
 	path := jsonPath
 	if strings.HasPrefix(path, "$.") {
 		path = strings.TrimPrefix(path, "$.")
@@ -379,7 +387,7 @@ func (p *PromptDecoratorPolicy) updateArrayAtPath(payloadData map[string]interfa
 		key := pathComponents[i]
 		current = p.navigatePath(current, key)
 		if current == nil {
-			slog.Debug("PromptDecorator: Error navigating JSONPath", "jsonPath", jsonPath, "key", key)
+			log.Debug("Error navigating JSONPath", "jsonPath", jsonPath, "key", key)
 			return p.buildErrorResponse("Error navigating JSONPath", fmt.Errorf("key not found: %s", key))
 		}
 	}
@@ -393,13 +401,13 @@ func (p *PromptDecoratorPolicy) updateArrayAtPath(payloadData map[string]interfa
 	// Update final key
 	finalKey := pathComponents[len(pathComponents)-1]
 	if err := p.setValueAtPath(current, finalKey, valueInterface); err != nil {
-		slog.Debug("PromptDecorator: Error updating JSONPath", "jsonPath", jsonPath, "error", err)
+		log.Debug("Error updating JSONPath", "jsonPath", jsonPath, "error", err)
 		return p.buildErrorResponse("Error updating JSONPath", err)
 	}
 
 	updatedPayload, err := json.Marshal(payloadData)
 	if err != nil {
-		slog.Debug("PromptDecorator: Error marshaling updated JSON payload", "error", err)
+		log.Debug("Error marshaling updated JSON payload", "error", err)
 		return p.buildErrorResponse("Error marshaling updated JSON payload", err)
 	}
 
