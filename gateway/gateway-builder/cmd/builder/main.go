@@ -237,6 +237,12 @@ func main() {
 
 	// Print success summary with manifest
 	printDockerfileGenerationSummary(generateResult, buildManifest, outManifestPath)
+
+	if err := manifest.WriteManifestLockWithVersions(*manifestPath, policies); err != nil {
+		slog.Warn("Failed to write policy lock file with versions", "error", err)
+	} else {
+		slog.Info("Policy lock file generated with versions", "path", filepath.Join(filepath.Dir(*manifestPath), "policy-manifest-lock.yaml"))
+	}
 }
 
 // initLogger sets up the slog logger based on format and level
