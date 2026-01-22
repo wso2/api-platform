@@ -512,7 +512,8 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
 			Rds: &hcm.Rds{
 				ConfigSource: &core.ConfigSource{
-					ResourceApiVersion: core.ApiVersion_V3,
+					ResourceApiVersion:  core.ApiVersion_V3,
+					InitialFetchTimeout: durationpb.New(0), // Wait indefinitely for route config
 					ConfigSourceSpecifier: &core.ConfigSource_Ads{
 						Ads: &core.AggregatedConfigSource{},
 					},
