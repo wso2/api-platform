@@ -1112,16 +1112,116 @@ func (p *SemanticToolFilteringPolicy) filterTools(toolsWithScores []ToolWithScor
 
 // updateToolsInRequestBody updates the tools array in the request body
 func updateToolsInRequestBody(requestBody *map[string]interface{}, toolsPath string, tools []map[string]interface{}) error {
-	// For simplicity, assume toolsPath is "$.tools" which means top-level "tools" key
-	// More complex JSONPath would require a library for setting values
-	if toolsPath == "$.tools" {
-		(*requestBody)["tools"] = tools
-		return nil
+	// Remove leading "$." if present
+	path := strings.TrimPrefix(toolsPath, "$.")
+	parts := strings.Split(path, ".")
+
+	if len(parts) == 0 {
+		return fmt.Errorf("invalid toolsPath: %s", toolsPath)
 	}
 
-	// For other paths, we'd need a more sophisticated JSONPath setter
-	// For now, return error for unsupported paths
-	return fmt.Errorf("unsupported toolsPath: %s (only $.tools is currently supported)", toolsPath)
+	// Handle array index in path, e.g., "tools[0]"
+	curr := *requestBody
+	for idx, part := range parts {
+		// Check if part contains array index, e.g., "tools[0]"
+		if openIdx := strings.Index(part, "["); openIdx != -1 && strings.HasSuffix(part, "]") {
+			field := part[:openIdx]
+			indexStr := part[openIdx+1 : len(part)-1]
+			index, err := strconv.Atoi(indexStr)
+			if err != nil {
+				return fmt.Errorf("invalid array index in path: %s", part)
+			}
+
+			// If this is the last part, set the value at the array index
+			if idx == len(parts)-1 {
+				// Ensure the array exists
+				arr, ok := curr[field].([]interface{})
+				if !ok {
+					// Create array if not present
+					arr = make([]interface{}, index+1)
+				} else if len(arr) <= index {
+					// Extend array if needed
+					newArr := make([]interface{}, index+1)
+					copy(newArr, arr)
+					arr = newArr
+				}
+				arr[index] = tools
+				curr[field] = arr
+				return nil
+			}
+
+			// Not last part, descend into the array element
+			arr, ok := curr[field].([]interface{})
+			if !ok {
+				// Create array if not present
+				arr = make([]interface{}, index+1)
+				curr[field] = arr
+			} else if len(arr) <= index {
+				// Extend array if needed
+				newArr := make([]interface{}, index+1)
+				copy(newArr, arr)
+				arr = newArr
+				curr[field] = arr
+			}
+			// If element is nil, create map
+			if arr[index] == nil {
+				arr[index] = make(map[string]interface{})
+			}
+			nextMap, ok := arr[index].(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("expected map at array index %d in field %s", index, field)
+			}
+			curr = nextMap
+			continue
+		}
+
+		// If this is the last part, set the value
+		if idx == len(parts)-1 {
+			curr[part] = tools
+			return nil
+		}
+
+		// If the next level doesn't exist, create it as a map
+		next, ok := curr[part]
+		if !ok {
+			newMap := make(map[string]interface{})
+			curr[part] = newMap
+			curr = newMap
+			continue
+		}
+
+		// If the next level is a map, descend into it
+		nextMap, ok := next.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("expected map at path %s but found %T", part, next)
+		}
+		curr = nextMap
+	}
+	for i, part := range parts {
+		// If this is the last part, set the value
+		if i == len(parts)-1 {
+			curr[part] = tools
+			return nil
+		}
+
+		// If the next level doesn't exist, create it as a map
+		next, ok := curr[part]
+		if !ok {
+			newMap := make(map[string]interface{})
+			curr[part] = newMap
+			curr = newMap
+			continue
+		}
+
+		// If the next level is a map, descend into it
+		nextMap, ok := next.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("expected map at path %s but found %T", part, next)
+		}
+		curr = nextMap
+	}
+
+	return nil
 }
 
 // buildErrorResponse builds an error response
