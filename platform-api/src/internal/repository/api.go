@@ -1329,11 +1329,12 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			aa.created_at as associated_at,
 			aa.updated_at as association_updated_at,
 			CASE WHEN ad.deployment_id IS NOT NULL THEN 1 ELSE 0 END as is_deployed,
+			ad.deployment_id,
 			ad.created_at as deployed_at
 		FROM gateways g
 		INNER JOIN api_associations aa ON g.uuid = aa.resource_uuid AND aa.association_type = 'gateway'
 		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ?
-		WHERE aa.api_uuid = ? AND g.organization_uuid = ?
+		WHERE aa.api_uuid = ? AND g.organization_uuid = ? AND ad.status = 'DEPLOYED'
 		ORDER BY aa.created_at DESC
 	`
 
@@ -1364,16 +1365,13 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.AssociationUpdatedAt,
 			&gateway.IsDeployed,
 			&deployedAt,
+			&gateway.DeploymentId,
 		)
 		if err != nil {
 			return nil, err
 		}
 
 		gateway.DeployedAt = deployedAt
-		// For now, we don't have revision information in api_deployments table
-		// This can be enhanced when revision support is added
-		gateway.DeployedRevision = nil
-
 		gateways = append(gateways, gateway)
 	}
 
