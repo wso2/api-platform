@@ -100,7 +100,7 @@ spec:
       path: /settings
 ```
 
-### Example 2: Request-Only Logging
+### Example 3: Request-Only Logging
 
 Log only request payloads and headers, skip response logging:
 
