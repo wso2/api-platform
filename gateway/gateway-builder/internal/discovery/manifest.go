@@ -19,12 +19,15 @@
 package discovery
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
@@ -281,11 +284,20 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 
 // ResolveModuleDir resolves a Go module to its local directory using 'go mod download'
 func resolveModuleDir(gomodule string) (string, error) {
-	// Run: go mod download -json <gomodule>
-	cmd := exec.Command("go", "mod", "download", "-json", gomodule)
-	out, err := cmd.CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "go", "mod", "download", "-json", gomodule)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to run 'go mod download -json %s': %w; output: %s", gomodule, err, string(out))
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("timed out while running 'go mod download -json %s'", gomodule)
+		}
+		return "", fmt.Errorf("failed to run 'go mod download -json %s': %w; stderr: %s", gomodule, err, stderr.String())
 	}
 
 	var info struct {
