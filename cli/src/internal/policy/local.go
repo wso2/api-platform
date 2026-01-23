@@ -32,7 +32,7 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 		return []ProcessedPolicy{}, nil
 	}
 
-	fmt.Printf("→ Processing %d local policies...\n", len(localPolicies))
+	fmt.Printf("  → Processing %d local policies...\n", len(localPolicies))
 
 	var processed []ProcessedPolicy
 

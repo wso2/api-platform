@@ -136,7 +136,6 @@ func runBuildCommand() error {
 		fmt.Println("  ✓ Docker buildx is available")
 	}
 
-	fmt.Println("→ Building gateway image")
 	fmt.Println()
 	return runUnifiedBuild()
 }
