@@ -920,13 +920,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/apiID'
         - $ref: '#/components/parameters/deploymentId'
-      requestBody:
-        description: Redeploy request details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RedeployRequest'
       responses:
         '200':
           description: Deployment redeployed successfully
@@ -3691,18 +3684,6 @@ components:
           type: object
           additionalProperties: true
           description: Optional metadata for the deployment
-
-    RedeployRequest:
-      type: object
-      properties:
-        gatewayId:
-          type: string
-          format: uuid
-          description: Gateway UUID to redeploy the API to
-        metadata:
-          type: object
-          additionalProperties: true
-          description: Optional metadata for the redeployment
 
     DeploymentResponse:
       type: object
