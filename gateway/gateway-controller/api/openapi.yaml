@@ -3644,7 +3644,7 @@ components:
           type: string
           description: Secret value (stored encrypted)
           minLength: 1
-          maxLength: 8192
+          maxLength: 10240
           format: password
           example: sk_xxx
 
