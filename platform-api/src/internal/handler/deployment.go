@@ -316,50 +316,6 @@ func (h *DeploymentHandler) GetDeployments(c *gin.Context) {
 	c.JSON(http.StatusOK, deployments)
 }
 
-// GetDeploymentContent handles GET /api/v1/apis/:apiId/deployments/:deploymentId/content
-// Retrieves the immutable content blob for a deployment
-func (h *DeploymentHandler) GetDeploymentContent(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	apiId := c.Param("apiId")
-	deploymentId := c.Param("deploymentId")
-
-	if apiId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
-	}
-	if deploymentId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Deployment ID is required"))
-		return
-	}
-
-	content, err := h.deploymentService.GetDeploymentContentByHandle(apiId, deploymentId, orgId)
-	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Deployment not found"))
-			return
-		}
-		log.Printf("[ERROR] Failed to get deployment content: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to retrieve deployment content"))
-		return
-	}
-	c.Data(http.StatusOK, "application/json", content)
-}
-
 // RegisterRoutes registers all deployment-related routes
 func (h *DeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	apiGroup := r.Group("/api/v1/apis/:apiId")
@@ -370,6 +326,5 @@ func (h *DeploymentHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.POST("/deployments/:deploymentId/redeploy", h.RedeployDeployment)
 		apiGroup.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)
 		apiGroup.DELETE("/deployments/:deploymentId", h.DeleteDeployment)
-		apiGroup.GET("/deployments/:deploymentId/content", h.GetDeploymentContent)
 	}
 }
