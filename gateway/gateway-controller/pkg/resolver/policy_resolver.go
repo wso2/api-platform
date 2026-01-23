@@ -115,6 +115,11 @@ func (pr *PolicyResolver) ResolvePolicies(apiConfig *models.StoredConfig) (
 	*models.StoredConfig, []config.ValidationError) {
 	var errors []config.ValidationError
 
+	// Only support RESTAPI kind
+	if apiConfig.Configuration.Kind != api.RestApi {
+		return apiConfig, nil
+	}
+
 	apiData, err := apiConfig.Configuration.Spec.AsAPIConfigData()
 	if err != nil {
 		errors = append(errors, config.ValidationError{
@@ -219,7 +224,10 @@ func (pr *PolicyResolver) ResolvePolicies(apiConfig *models.StoredConfig) (
 
 	err = resolvedConfig.Configuration.Spec.FromAPIConfigData(apiData)
 	if err != nil {
-		errors = append(errors, config.ValidationError{})
+		errors = append(errors, config.ValidationError{
+			Field:   "spec",
+			Message: fmt.Sprintf("Failed to rebuild API spec after policy resolution: %v", err),
+		})
 	}
 
 	if len(errors) > 0 {
@@ -300,6 +308,10 @@ func (pr *PolicyResolver) resolveValuesByPath(params map[string]interface{}, pat
 // Example: "Bearer $secret{wso2-openai-apikey}" -> "Bearer sk_xxx"
 // Example: "$secret{auth-type} $secret{wso2-openai-apikey}" -> "Bearer sk_xxx"
 func (pr *PolicyResolver) resolveSecretTemplates(templateStr string) (string, error) {
+	if pr.secretsService == nil {
+		return "", fmt.Errorf("secret service is not initialized properly")
+	}
+
 	// Pattern to match $secret{key}
 	secretPattern := `\$secret\{([^}]+)\}`
 	re := regexp.MustCompile(secretPattern)

@@ -75,10 +75,10 @@ func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error
 	var secretConfig api.SecretConfiguration
 	// Parse configuration
 	err := s.parser.Parse(params.Data, params.ContentType, &secretConfig)
-	handle := secretConfig.Metadata.Name
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
+	handle := secretConfig.Metadata.Name
 
 	// Validate configuration
 	validationErrors := s.validator.Validate(&secretConfig)
@@ -237,11 +237,10 @@ func (s *SecretService) Get(handle string, correlationID string) (*models.Secret
 }
 
 // UpdateSecret updates an existing secret with re-encryption using current primary key
-func (s *SecretService) UpdateSecret(params SecretParams) (*models.Secret, error) {
+func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*models.Secret, error) {
 	var secretConfig api.SecretConfiguration
 	// Parse configuration
 	err := s.parser.Parse(params.Data, params.ContentType, &secretConfig)
-	handle := secretConfig.Metadata.Name
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
@@ -274,7 +273,19 @@ func (s *SecretService) UpdateSecret(params SecretParams) (*models.Secret, error
 		return nil, fmt.Errorf("failed to check secret existence: %w", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("secret with id '%s' does not exists", handle)
+		return nil, fmt.Errorf("secret configuration not found: id=%s", handle)
+	}
+
+	// Check for metadata.name conflicts
+	if secretConfig.Metadata.Name != handle {
+		conflict, err := s.storage.SecretExists(secretConfig.Metadata.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check conflicting secret existence: %w", err)
+		}
+		if conflict {
+			return nil, fmt.Errorf("unable to change the secret id because a secret with the id '%s'"+
+				" already exists", secretConfig.Metadata.Name)
+		}
 	}
 
 	// Encrypt with current primary key (automatic key migration)

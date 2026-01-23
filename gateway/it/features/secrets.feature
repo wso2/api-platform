@@ -45,7 +45,7 @@ Feature: Secrets Management
     Then the response status code should be 201
     And the response should be valid JSON
     And the JSON response field "id" should be "wso2-openai-key"
-    And the JSON response field "value" should be "sk_xxx"
+    And the JSON response field "value" should be ""
 
     Given I authenticate using basic auth as "admin"
     When I retrieve the secret "wso2-openai-key"
@@ -70,7 +70,7 @@ Feature: Secrets Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "id" should be "wso2-openai-key"
-    And the JSON response field "value" should be "sk_yyy"
+    And the JSON response field "value" should be ""
 
     Given I authenticate using basic auth as "admin"
     When I retrieve the secret "wso2-openai-key"
@@ -82,10 +82,14 @@ Feature: Secrets Management
     Then the response status code should be 200
 
     Given I authenticate using basic auth as "admin"
-    When I retrieve the secret "wso2-openai-keye"
+    When I retrieve the secret "wso2-openai-key"
     Then the response status code should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
+
+    Given I authenticate using basic auth as "admin"
+    When I create a secret with value size 10000
+    Then the response status code should be 201
 
 # ========================================
   # Scenario Group 2: Listing and Filtering
@@ -285,7 +289,7 @@ Feature: Secrets Management
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "Secret value must be at most 8192 characters"
+    And the response body should contain "Secret value must be less than 10KB"
 
   Scenario: Update secret with missing value field
     Given I authenticate using basic auth as "admin"
@@ -479,7 +483,7 @@ Feature: Secrets Management
     Then the response status code should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "not found"
+    And the response body should contain "secret configuration not found"
 
   Scenario: Update non-existent secret returns not found
     Given I authenticate using basic auth as "admin"
@@ -498,7 +502,7 @@ Feature: Secrets Management
     Then the response status code should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "does not exists"
+    And the response body should contain "secret configuration not found"
 
   Scenario: Delete non-existent secret returns not found
     Given I authenticate using basic auth as "admin"
@@ -506,7 +510,7 @@ Feature: Secrets Management
     Then the response status code should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "not found"
+    And the response body should contain "secret configuration not found"
 
   Scenario: Delete operation is idempotent - second delete returns not found
     Given I authenticate using basic auth as "admin"
@@ -533,4 +537,53 @@ Feature: Secrets Management
     Then the response status code should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "not found"
+    And the response body should contain "secret configuration not found"
+
+  Scenario: Update secret with an existing secret name returns conflict
+    Given I authenticate using basic auth as "admin"
+    When I create this secret:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: Secret
+      metadata:
+        name: update-conflict-secret-1
+      spec:
+        displayName: Update Conflict Secret 1
+        description: First secret for update conflict test
+        type: default
+        value: first-value
+      """
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I create this secret:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: Secret
+      metadata:
+        name: update-conflict-secret-2
+      spec:
+        displayName: Update Conflict Secret 2
+        description: Second secret for update conflict test
+        type: default
+        value: second-value
+      """
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I update the secret "update-conflict-secret-1" with:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: Secret
+      metadata:
+        name: update-conflict-secret-2
+      spec:
+        displayName: Update Conflict Secret 1
+        description: Attempting to update secret with duplicate name
+        type: default
+        value: updated-value
+      """
+    Then the response status code should be 409
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "already exists"

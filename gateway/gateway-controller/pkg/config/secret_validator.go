@@ -37,6 +37,9 @@ type SecretValidator struct {
 
 	// supportedTypes defines supported secret types
 	supportedTypes []string
+
+	// maxSecretSize defines maximum allowed size for a secret value in KB
+	maxSecretSize int
 }
 
 // NewSecretValidator creates a new Secret configuration validator
@@ -45,6 +48,7 @@ func NewSecretValidator() *SecretValidator {
 		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_. ]+$`),
 		supportedKinds:       []string{"Secret"},
 		supportedTypes:       []string{"default"},
+		maxSecretSize:        10,
 	}
 }
 
@@ -143,10 +147,10 @@ func (v *SecretValidator) validateSpec(spec *api.SecretConfigData) []ValidationE
 			Field:   "spec.value",
 			Message: "Secret value is required",
 		})
-	} else if len(spec.Value) > 8192 {
+	} else if len(spec.Value) > v.maxSecretSize*1024 {
 		errors = append(errors, ValidationError{
 			Field:   "spec.value",
-			Message: "Secret value must be at most 8192 characters",
+			Message: fmt.Sprintf("Secret value must be less than %dKB", v.maxSecretSize),
 		})
 	}
 

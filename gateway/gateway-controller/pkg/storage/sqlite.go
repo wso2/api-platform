@@ -1711,22 +1711,13 @@ func (s *SQLiteStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (in
 
 // SaveSecret persists a new encrypted secret
 func (s *SQLiteStorage) SaveSecret(secret *models.Secret) error {
-	// Check if secret already exists
-	exists, err := s.SecretExists(secret.Handle)
-	if err != nil {
-		return fmt.Errorf("failed to check secret existence: %w", err)
-	}
-	if exists {
-		return fmt.Errorf("%w: secret with id '%s' already exists", ErrConflict, secret.Handle)
-	}
-
 	query := `
 	INSERT INTO secrets (id, handle, provider, key_version, ciphertext, created_at, updated_at)
 	VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now().UTC()
-	_, err = s.db.Exec(query,
+	_, err := s.db.Exec(query,
 		secret.ID,
 		secret.Handle,
 		secret.Provider,
@@ -1737,6 +1728,9 @@ func (s *SQLiteStorage) SaveSecret(secret *models.Secret) error {
 	)
 
 	if err != nil {
+		if err.Error() == "UNIQUE constraint failed: secrets.handle" {
+			return fmt.Errorf("%w: secret with id '%s' already exists", ErrConflict, secret.Handle)
+		}
 		s.logger.Error("Failed to save secret",
 			slog.String("secret_handle", secret.Handle),
 			slog.Any("error", err),
@@ -1761,15 +1755,24 @@ func (s *SQLiteStorage) GetSecrets() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query secrets: %w", err)
 	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
 
 	var ids []string
-
 	for rows.Next() {
 		var handle string
 		if err := rows.Scan(&handle); err != nil {
 			return nil, fmt.Errorf("failed to scan handle: %w", err)
 		}
 		ids = append(ids, handle)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating secrets: %w", err)
 	}
 
 	s.logger.Debug("Secrets retrieved successfully",
@@ -1799,7 +1802,7 @@ func (s *SQLiteStorage) GetSecret(handle string) (*models.Secret, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("%w: id=%s", ErrNotFound, handle)
+		return nil, fmt.Errorf("secret %w: id=%s", ErrNotFound, handle)
 	}
 
 	if err != nil {
@@ -1850,7 +1853,7 @@ func (s *SQLiteStorage) UpdateSecret(secret *models.Secret) error {
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("%w: id=%s", ErrNotFound, secret.Handle)
+		return fmt.Errorf("secret %w: id=%s", ErrNotFound, secret.Handle)
 	}
 
 	s.logger.Debug("Secret updated successfully",
@@ -1881,7 +1884,7 @@ func (s *SQLiteStorage) DeleteSecret(handle string) error {
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("%w: id=%s", ErrNotFound, handle)
+		return fmt.Errorf("secret %w: id=%s", ErrNotFound, handle)
 	}
 
 	s.logger.Debug("Secret deleted successfully",

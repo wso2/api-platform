@@ -113,6 +113,9 @@ func (m *ProviderManager) Encrypt(plaintext []byte) (*EncryptedPayload, error) {
 // Decrypt decrypts the payload using the provider chain
 // It tries to match the provider by name from the payload metadata
 func (m *ProviderManager) Decrypt(payload *EncryptedPayload) ([]byte, error) {
+	if payload == nil {
+		return nil, fmt.Errorf("encrypted payload is nil")
+	}
 	m.logger.Debug("Decrypting payload",
 		slog.String("provider", payload.Provider),
 		slog.String("key_version", payload.KeyVersion),

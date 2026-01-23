@@ -258,12 +258,12 @@ type Storage interface {
 	// DeleteSecret permanently removes a secret.
 	//
 	// Returns error if the secret does not exist.
-	DeleteSecret(id string) error
+	DeleteSecret(handle string) error
 
-	// SecretExists checks if a secret with the given ID exists.
+	// SecretExists checks if a secret with the given handle exists.
 	//
 	// Returns true if the secret exists, false otherwise.
-	SecretExists(id string) (bool, error)
+	SecretExists(handle string) (bool, error)
 
 	// Close closes the storage connection and releases resources.
 	//

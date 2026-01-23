@@ -2273,11 +2273,20 @@ func (s *APIServer) CreateSecret(c *gin.Context) {
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
 	// Delegate to service which parses/validates/encrypt and persists
 	secret, err := s.secretService.CreateSecret(secrets.SecretParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to encrypt Secret", slog.Any("error", err))
@@ -2296,7 +2305,7 @@ func (s *APIServer) CreateSecret(c *gin.Context) {
 	// Return created secret
 	c.JSON(http.StatusCreated, gin.H{
 		"id":         secret.Handle,
-		"value":      secret.Value,
+		"value":      "",
 		"created_at": secret.CreatedAt,
 		"updated_at": secret.UpdatedAt,
 	})
@@ -2309,6 +2318,14 @@ func (s *APIServer) ListSecrets(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	log.Debug("Retrieving secretsList", slog.String("correlation_id", correlationID))
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
 
 	ids, err := s.secretService.GetSecrets(correlationID)
 	if err != nil {
@@ -2357,6 +2374,14 @@ func (s *APIServer) GetSecret(c *gin.Context, id string) {
 			Status:  "error",
 			Message: "Secret ID too long (max 255 characters)",
 		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
 		return
 	}
 
@@ -2415,16 +2440,27 @@ func (s *APIServer) UpdateSecret(c *gin.Context, id string) {
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
 	// Delegate to service which parses/validates/encrypt and persists
-	secret, err := s.secretService.UpdateSecret(secrets.SecretParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+	secret, err := s.secretService.UpdateSecret(id, secrets.SecretParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to encrypt Secret", slog.Any("error", err))
-		if strings.Contains(err.Error(), "does not exist") {
+		if strings.Contains(err.Error(), "secret configuration not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		}
@@ -2438,7 +2474,7 @@ func (s *APIServer) UpdateSecret(c *gin.Context, id string) {
 	// Return created secret
 	c.JSON(http.StatusOK, gin.H{
 		"id":         secret.Handle,
-		"value":      secret.Value,
+		"value":      "",
 		"created_at": secret.CreatedAt,
 		"updated_at": secret.UpdatedAt,
 	})
@@ -2466,6 +2502,14 @@ func (s *APIServer) DeleteSecret(c *gin.Context, id string) {
 			Status:  "error",
 			Message: "Secret ID too long (max 255 characters)",
 		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
 		return
 	}
 

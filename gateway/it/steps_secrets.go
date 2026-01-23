@@ -54,6 +54,30 @@ spec:
 		return httpSteps.SendPOSTToService("gateway-controller", "/secrets", body)
 	})
 
+	// Create secret with value of given size (bytes)
+	ctx.Step(`^I create a secret with value size (\d+)$`, func(size int) error {
+		// Generate value of requested size
+		value := make([]byte, size)
+		for i := range value {
+			value[i] = 'x'
+		}
+
+		body := &godog.DocString{
+			Content: `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Secret
+metadata:
+  name: size-test-secret
+spec:
+  displayName: Size Test Secret
+  description: Secret with configurable value size
+  type: default
+  value: ` + string(value),
+		}
+
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPOSTToService("gateway-controller", "/secrets", body)
+	})
+
 	// Retrieve secret step
 	ctx.Step(`^I retrieve the secret "([^"]*)"$`, func(secretID string) error {
 		return httpSteps.SendGETToService("gateway-controller", "/secrets/"+secretID)

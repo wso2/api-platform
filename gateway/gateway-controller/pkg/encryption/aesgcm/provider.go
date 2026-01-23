@@ -31,6 +31,8 @@ import (
 const (
 	// NonceSize is the size of the nonce for AES-GCM (12 bytes is standard)
 	NonceSize = 12
+	// GCM tag is 16 bytes
+	GCMTagSize = 16
 )
 
 // AESGCMProvider implements encryption using AES-GCM
@@ -70,6 +72,9 @@ func (p *AESGCMProvider) Name() string {
 func (p *AESGCMProvider) Encrypt(plaintext []byte) (*encryption.EncryptedPayload, error) {
 	// Get primary key for encryption
 	key := p.keyManager.GetPrimaryKey()
+	if key == nil {
+		return nil, fmt.Errorf("no primary key available")
+	}
 
 	// Create AES cipher
 	block, err := aes.NewCipher(key.Data)
@@ -115,7 +120,8 @@ func (p *AESGCMProvider) Decrypt(payload *encryption.EncryptedPayload) ([]byte, 
 	}
 
 	// Validate ciphertext length (must be at least nonce size + tag size)
-	if len(payload.Ciphertext) < NonceSize {
+	// GCM tag is 16 bytes
+	if len(payload.Ciphertext) < NonceSize+GCMTagSize {
 		return nil, fmt.Errorf("ciphertext too short: %d bytes", len(payload.Ciphertext))
 	}
 

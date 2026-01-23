@@ -1701,7 +1701,7 @@ paths:
   /secrets:
     get:
       tags:
-        - secrets
+        - Secrets Management
       summary: List all secrets
       description: |
         Retrieve a list of all stored secrets. Returns secret metadata without
@@ -1729,7 +1729,7 @@ paths:
 
     post:
       tags:
-        - secrets
+        - Secrets Management
       summary: Create a new secret
       description: |
         Stores a new secret encrypted at rest. The secret ID must be unique.
@@ -1802,7 +1802,7 @@ paths:
 
     get:
       tags:
-        - secrets
+        - Secrets Management
       summary: Retrieve a secret
       description: |
         Retrieves and decrypts a secret. The secret value is decrypted using the
@@ -1831,7 +1831,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Secret not found
+          description: Secret configuration not found
           content:
             application/json:
               schema:
@@ -1845,7 +1845,7 @@ paths:
 
     put:
       tags:
-        - secrets
+        - Secrets Management
       summary: Update a secret
       description: |
         Updates an existing secret with a new value. The new value is encrypted
@@ -1889,7 +1889,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Secret not found
+          description: Secret configuration not found
           content:
             application/json:
               schema:
@@ -1903,7 +1903,7 @@ paths:
 
     delete:
       tags:
-        - secrets
+        - Secrets Management
       summary: Delete a secret
       description: |
         Permanently deletes a secret from the database. This is a hard delete with
@@ -1920,7 +1920,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Secret not found
+          description: Secret configuration not found
           content:
             application/json:
               schema:
@@ -1930,7 +1930,7 @@ paths:
                   summary: Secret does not exist
                   value:
                     error: "not_found"
-                    message: "Secret not found"
+                    message: "secret configuration not found"
                     correlation_id: "req-bcd-890"
         '500':
           description: Internal server error - database failure
@@ -3642,7 +3642,7 @@ components:
 
         value:
           type: string
-          description: Secret value (stored securely and never returned in API responses)
+          description: Secret value (stored encrypted)
           minLength: 1
           maxLength: 8192
           format: password
@@ -3934,3 +3934,5 @@ tags:
     description: CRUD operations for LLM Provider configurations
   - name: LLM Proxy Management
     description: CRUD operations for LLM Proxy configurations
+  - name: Secrets Management
+    description: CRUD operations for Secrets

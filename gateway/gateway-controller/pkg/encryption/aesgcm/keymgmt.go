@@ -58,6 +58,11 @@ func NewKeyManager(keyConfigs []KeyConfig, logger *slog.Logger) (*KeyManager, er
 
 	// Load all keys
 	for i, config := range keyConfigs {
+		// Avoid duplicate key override
+		if _, exists := km.keys[config.Version]; exists {
+			return nil, fmt.Errorf("duplicate key version: %s", config.Version)
+		}
+
 		key, err := km.loadKey(config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load key %s: %w", config.Version, err)
