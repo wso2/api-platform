@@ -24,9 +24,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
+	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -150,7 +152,32 @@ func WriteManifestLockWithVersions(manifestFilePath string, discovered []*types.
 				}
 			}
 		} else if me.Gomodule != "" {
+			// me.Gomodule may be in the form "module/path" or "module/path@version"
+			modPath := me.Gomodule
+			modVersion := ""
+			if strings.Contains(me.Gomodule, "@") {
+				parts := strings.SplitN(me.Gomodule, "@", 2)
+				modPath = parts[0]
+				modVersion = parts[1]
+			}
+
 			for _, c := range candidates {
+				// Prefer matching declared module path in candidate's go.mod
+				if c.GoModPath != "" {
+					if data, err := os.ReadFile(c.GoModPath); err == nil {
+						if mf, err := modfile.Parse(c.GoModPath, data, nil); err == nil && mf.Module != nil {
+							if mf.Module.Mod.Path == modPath {
+								// If version specified, ensure it matches discovered policy version (normalize 'v' prefix)
+								if modVersion == "" || strings.TrimPrefix(modVersion, "v") == strings.TrimPrefix(c.Version, "v") {
+									found = c
+									break
+								}
+							}
+						}
+					}
+				}
+
+				// Fallback to path comparison (support file paths as well)
 				cAbs, _ := filepath.Abs(c.Path)
 				if c.Path != "" && (c.Path == me.Gomodule || cAbs == c.Path) {
 					found = c
