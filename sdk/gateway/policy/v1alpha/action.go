@@ -12,6 +12,12 @@ type ResponseAction interface {
 	StopExecution() bool // returns true if execution should stop
 }
 
+// Holds the action and headers list to drop or allow from analytics event
+type DropHeaderAction struct {
+	Action string // Type of the action -> "allow" or "deny"
+	Headers []string // Headers list to drop or allow
+}
+
 // UpstreamRequestModifications - continue request to upstream with modifications
 type UpstreamRequestModifications struct {
 	SetHeaders        map[string]string   // Set or replace headers
@@ -21,6 +27,7 @@ type UpstreamRequestModifications struct {
 	Path              *string             // nil = no change
 	Method            *string             // nil = no change
 	AnalyticsMetadata map[string]any      // Custom analytics metadata (key-value pairs)
+	DropHeadersFromAnalytics DropHeaderAction  // Request headers to exclude from analytics event
 }
 
 func (u UpstreamRequestModifications) isRequestAction() {}
@@ -34,6 +41,7 @@ type ImmediateResponse struct {
 	Headers           map[string]string
 	Body              []byte
 	AnalyticsMetadata map[string]any // Custom analytics metadata (key-value pairs)
+	DropHeadersFromAnalytics DropHeaderAction // Headers to be excluded from analytics event
 }
 
 func (i ImmediateResponse) isRequestAction() {}
@@ -49,6 +57,7 @@ type UpstreamResponseModifications struct {
 	Body              []byte              // nil = no change, []byte{} = clear
 	StatusCode        *int                // nil = no change
 	AnalyticsMetadata map[string]any      // Custom analytics metadata (key-value pairs)
+	DropHeadersFromAnalytics DropHeaderAction // Response headers to exclude from analytics event
 }
 
 func (u UpstreamResponseModifications) isResponseAction() {}
