@@ -1,8 +1,8 @@
 ---
-# Example 1: Cluster-scoped Gateway
-# This gateway accepts APIs from ANY namespace
+# Example 1: Cluster-scoped APIGateway
+# This apigateway accepts APIs from ANY namespace
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: cluster-gateway
 spec:

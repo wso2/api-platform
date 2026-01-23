@@ -113,11 +113,11 @@ spec:
 
 ### Apply Gateway Configuration
 
-Once the operator is running with proper configuration, create a `Gateway` resource:
+Once the operator is running with proper configuration, create an `APIGateway` resource:
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: my-gateway
   namespace: default
@@ -128,7 +128,7 @@ spec:
 Apply it:
 
 ```bash
-kubectl apply -f config/samples/api_v1_gateway.yaml
+kubectl apply -f config/samples/api_v1_apigateway.yaml
 ```
 
 The operator will:

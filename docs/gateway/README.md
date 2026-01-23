@@ -52,6 +52,7 @@ User → Gateway-Controller (REST API)
 
 | Section | Description |
 |---------|-------------|
+| [kubernetes/](kubernetes/) | Kubernetes Gateway Operator deployment |
 | [policies/](policies/) | Authentication policies (JWT, API Key) |
 | [mcp/](mcp/) | MCP proxy setup and policies |
 | [observability/](observability/) | Logging and tracing configuration |
