@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 
@@ -1117,7 +1118,7 @@ func (r *APIRepo) GetDeploymentContent(deploymentID, apiID, orgID string) ([]byt
 	err := r.db.QueryRow(query, deploymentID, apiID, orgID).Scan(&content)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("deployment not found")
+			return nil, constants.ErrDeploymentNotFound
 		}
 		return nil, err
 	}
@@ -1144,7 +1145,7 @@ func (r *APIRepo) UpdateDeploymentStatus(deploymentID, apiID, status, orgID stri
 	}
 
 	if rowsAffected == 0 {
-		return errors.New("deployment not found")
+		return constants.ErrDeploymentNotFound
 	}
 
 	return nil
@@ -1165,7 +1166,7 @@ func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 	}
 
 	if rowsAffected == 0 {
-		return errors.New("deployment not found")
+		return constants.ErrDeploymentNotFound
 	}
 
 	return nil
