@@ -40,6 +40,7 @@ const (
 	FlagGatewayBuilder         = "gateway-builder"
 	FlagGatewayControllerImage = "gateway-controller-base-image"
 	FlagRouterBaseImage        = "router-base-image"
+	FlagHeader                 = "header"
 )
 
 var shortFlags = map[string]string{

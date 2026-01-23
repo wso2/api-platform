@@ -43,7 +43,7 @@ type ReporterConfig struct {
 func DefaultReporterConfig() *ReporterConfig {
 	return &ReporterConfig{
 		OutputDir:  "reports",
-		ReportName: "test-results",
+		ReportName: "integration-test-results",
 	}
 }
 

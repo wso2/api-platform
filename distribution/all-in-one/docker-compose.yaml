@@ -27,7 +27,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-devportal.sql
+      - ../../platform-api/src/internal/database/init-platform-api-db.sql:/docker-entrypoint-initdb.d/02-init-platform-api.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d devportal"]
       interval: 5s
@@ -58,6 +59,20 @@ services:
       - platform-api-data:/api-platform/data
     environment:
       - DEFAULT_DEVPORTAL_API_URL=http://devportal:3001
+      - DATABASE_DRIVER=postgres
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=platform_api
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_SSL_MODE=disable
+      - DATABASE_MAX_OPEN_CONNS=25
+      - DATABASE_MAX_IDLE_CONNS=10
+      - DATABASE_CONN_MAX_LIFETIME=300
+      - DB_SCHEMA_PATH=./schema.postgres.sql
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:9243/health"]
       interval: 30s

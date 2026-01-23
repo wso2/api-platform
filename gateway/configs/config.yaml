@@ -131,6 +131,9 @@ gateway_controller:
         route_idle_timeout_in_seconds: 300
     tracing_service_name: router
 
+    http_listener:
+      server_header_transformation: OVERWRITE # Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+      server_header_value: WSO2 API Platform
 
     # Policy Engine ext_proc filter configuration
     policy_engine:
@@ -216,6 +219,17 @@ gateway_controller:
       jwks_url: ""
       # Expected issuer value in the JWT `iss` claim
       issuer: ""
+
+  # API key hashing configuration
+  # Used to hash API keys before storing/comparing them
+  # By default, API keys hashing is enabled with SHA-256 algorithm
+  # Supported algorithms: "sha256", "bcrypt", "argon2id"
+  # By default a user can have up to 10 API keys per API
+  api_key:
+    # Number of API keys allowed per user per API
+    api_keys_per_user_per_api: 10
+    # Hashing algorithm: "sha256", "bcrypt", "argon2id"
+    algorithm: sha256
 
   # Logging configuration
   logging:

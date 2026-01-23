@@ -27,6 +27,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
@@ -58,6 +59,7 @@ type GatewayController struct {
 	Policies     PoliciesConfig     `koanf:"policies"`
 	LLM          LLMConfig          `koanf:"llm"`
 	Auth         AuthConfig         `koanf:"auth"`
+	APIKey       APIKeyConfig       `koanf:"api_key"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
 }
 
@@ -191,6 +193,9 @@ type RouterConfig struct {
 	VHosts        VHostsConfig       `koanf:"vhosts"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
+
+	// HTTPListener configuration
+	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
 }
 
 // EventGatewayConfig holds event gateway specific configurations
@@ -245,6 +250,12 @@ type VHostEntry struct {
 	// If empty, the router will rely on the default pattern.
 	Domains []string `koanf:"domains"`
 	Default string   `koanf:"default"`
+}
+
+// HTTPListenerConfig holds HTTP listener related configuration of an API
+type HTTPListenerConfig struct {
+	ServerHeaderTransformation string `koanf:"server_header_transformation"` // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+	ServerHeaderValue          string `koanf:"server_header_value"`          // Custom value for the Server header
 }
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
@@ -302,6 +313,12 @@ type ControlPlaneConfig struct {
 	ReconnectMax       time.Duration `koanf:"reconnect_max"`        // Maximum retry delay
 	PollingInterval    time.Duration `koanf:"polling_interval"`     // Reconciliation polling interval
 	InsecureSkipVerify bool          `koanf:"insecure_skip_verify"` // Skip TLS certificate verification (default: true for dev)
+}
+
+// APIKeyConfig represents the configuration for API keys
+type APIKeyConfig struct {
+	APIKeysPerUserPerAPI int    `koanf:"api_keys_per_user_per_api"` // Number of API keys allowed per user per API
+	Algorithm            string `koanf:"algorithm"`                 // Hashing algorithm to use
 }
 
 // LoadConfig loads configuration from file, environment variables, and defaults
@@ -470,6 +487,10 @@ func defaultConfig() *Config {
 					Sandbox: VHostEntry{Default: "sandbox-*"},
 				},
 				TracingServiceName: "router",
+				HTTPListener: HTTPListenerConfig{
+					ServerHeaderTransformation: commonconstants.OVERWRITE,
+					ServerHeaderValue:          commonconstants.ServerName,
+				},
 			},
 			Auth: AuthConfig{
 				Basic: BasicAuth{
@@ -499,6 +520,10 @@ func defaultConfig() *Config {
 				ReconnectMax:       5 * time.Minute,
 				PollingInterval:    15 * time.Minute,
 				InsecureSkipVerify: true,
+			},
+			APIKey: APIKeyConfig{
+				APIKeysPerUserPerAPI: 10,
+				Algorithm:            constants.HashingAlgorithmSHA256,
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -664,6 +689,15 @@ func (c *Config) Validate() error {
 
 	// Validate authentication configuration
 	if err := c.validateAuthConfig(); err != nil {
+		return err
+	}
+
+	if err := c.validateHTTPListenerConfig(); err != nil {
+		return err
+	}
+
+	// Validate API key configuration
+	if err := c.validateAPIKeyConfig(); err != nil {
 		return err
 	}
 
@@ -1113,6 +1147,39 @@ func (c *Config) validateAuthConfig() error {
 	return nil
 }
 
+// validateAPIKeyConfig validates the API key configuration
+func (c *Config) validateAPIKeyConfig() error {
+	// If number of api keys per user is not provided or negative throw error
+	if c.GatewayController.APIKey.APIKeysPerUserPerAPI <= 0 {
+		return fmt.Errorf("api_key.api_keys_per_user_per_api must be a positive integer, got: %d",
+			c.GatewayController.APIKey.APIKeysPerUserPerAPI)
+	}
+	// If hashing is enabled but no algorithm is provided, default to SHA256
+	if c.GatewayController.APIKey.Algorithm == "" {
+		c.GatewayController.APIKey.Algorithm = constants.HashingAlgorithmSHA256
+		return nil
+	}
+
+	// If hashing is enabled and algorithm is provided, validate it's one of the supported ones
+	validAlgorithms := []string{
+		constants.HashingAlgorithmSHA256,
+		constants.HashingAlgorithmBcrypt,
+		constants.HashingAlgorithmArgon2ID,
+	}
+	isValidAlgorithm := false
+	for _, alg := range validAlgorithms {
+		if strings.ToLower(c.GatewayController.APIKey.Algorithm) == alg {
+			isValidAlgorithm = true
+			break
+		}
+	}
+	if !isValidAlgorithm {
+		return fmt.Errorf("api_key.algorithm must be one of: %s, got: %s",
+			strings.Join(validAlgorithms, ", "), c.GatewayController.APIKey.Algorithm)
+	}
+	return nil
+}
+
 // IsPersistentMode returns true if storage type is not memory
 func (c *Config) IsPersistentMode() bool {
 	return c.GatewayController.Storage.Type != "memory"
@@ -1131,4 +1198,39 @@ func (c *Config) IsAccessLogsEnabled() bool {
 // IsPolicyEngineEnabled returns true if policy engine is enabled
 func (c *Config) IsPolicyEngineEnabled() bool {
 	return c.GatewayController.Router.PolicyEngine.Enabled
+}
+
+// validateHTTPListenerConfig validates the HTTP listener configuration
+func (c *Config) validateHTTPListenerConfig() error {
+	httpListener := &c.GatewayController.Router.HTTPListener
+
+	// Set default values if not provided
+	if httpListener.ServerHeaderTransformation == "" {
+		httpListener.ServerHeaderTransformation = commonconstants.OVERWRITE
+	}
+
+	// Validate ServerHeaderTransformation value
+	validTransformations := []string{
+		commonconstants.APPEND_IF_ABSENT,
+		commonconstants.OVERWRITE,
+		commonconstants.PASS_THROUGH,
+	}
+
+	isValid := false
+	for _, valid := range validTransformations {
+		if httpListener.ServerHeaderTransformation == valid {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		return fmt.Errorf("http_listener.server_header_transformation must be one of: %s, %s, %s. Got: %s",
+			commonconstants.APPEND_IF_ABSENT,
+			commonconstants.OVERWRITE,
+			commonconstants.PASS_THROUGH,
+			httpListener.ServerHeaderTransformation)
+	}
+
+	return nil
 }

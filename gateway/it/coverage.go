@@ -157,13 +157,13 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 	}
 
 	// Generate text report
-	textReportPath := filepath.Join(c.config.OutputDir, "coverage.txt")
+	textReportPath := filepath.Join(c.config.OutputDir, "integration-test-coverage.txt")
 	if err := c.generateTextReport(mergedDir, textReportPath); err != nil {
 		log.Printf("Warning: Failed to generate text report: %v", err)
 	}
 
 	// Generate HTML report
-	htmlReportPath := filepath.Join(c.config.OutputDir, "output", "coverage.html")
+	htmlReportPath := filepath.Join(c.config.OutputDir, "output", "integration-test-coverage.html")
 	if err := c.generateHTMLReport(mergedDir, htmlReportPath); err != nil {
 		log.Printf("Warning: Failed to generate HTML report: %v", err)
 	}
@@ -319,7 +319,7 @@ func (c *CoverageCollector) logCoveragePercentage(coverDir string) error {
 	packages := c.parseCoverageOutput(string(output))
 
 	// Get total coverage from the text coverage file
-	textFile := filepath.Join(c.config.OutputDir, "coverage.txt")
+	textFile := filepath.Join(c.config.OutputDir, "integration-test-coverage.txt")
 	totalCoverage := c.getTotalCoverage(textFile)
 
 	// Build coverage report
@@ -331,7 +331,7 @@ func (c *CoverageCollector) logCoveragePercentage(coverDir string) error {
 	}
 
 	// Write JSON report
-	jsonPath := filepath.Join(c.config.OutputDir, "output", "coverage-report.json")
+	jsonPath := filepath.Join(c.config.OutputDir, "output", "integration-test-coverage-report.json")
 	if err := c.writeCoverageJSON(jsonPath, &report); err != nil {
 		return err
 	}
@@ -357,7 +357,7 @@ func (c *CoverageCollector) writeCoverageJSON(path string, report *CoverageRepor
 	return nil
 }
 
-// getTotalCoverage calculates total coverage from the coverage.txt file
+// getTotalCoverage calculates total coverage from the integration-test-coverage.txt file
 func (c *CoverageCollector) getTotalCoverage(textFile string) float64 {
 	// Get gateway-controller directory (where go.mod is)
 	controllerDir, err := filepath.Abs("../gateway-controller")

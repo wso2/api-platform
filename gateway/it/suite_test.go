@@ -80,6 +80,7 @@ func TestFeatures(t *testing.T) {
 				"features/basic-ratelimit.feature",
 				"features/jwt-auth.feature",
 				"features/cors.feature",
+				"features/llm-provider-templates.feature",
 			},
 			TestingT: t,
 		},

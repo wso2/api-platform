@@ -20,12 +20,16 @@ package kernel
 
 import (
 	"fmt"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/utils"
+	"google.golang.org/protobuf/types/known/structpb"
+	"log/slog"
 	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -48,6 +52,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerMutation *extprocv3.HeaderMutation,
 	bodyMutation *extprocv3.BodyMutation,
 	analyticsData map[string]any,
+	pathMutation *string,
 	immediateResp *extprocv3.ProcessingResponse,
 	err error) {
 
@@ -69,10 +74,10 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 			// Handle analytics metadata for immediate response
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
 			if err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+				return nil, nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
-			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
-			return nil, nil, nil, response, nil
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
+			return nil, nil, nil, nil, response, nil
 		}
 	}
 
@@ -82,6 +87,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerMutation = &extprocv3.HeaderMutation{}
 	var finalBodyLength int
 	bodyModified := false
+
+	path := execCtx.requestContext.Path
 
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
@@ -119,11 +126,41 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					bodyModified = true
 				}
 
+				if mods.AddQueryParameters != nil {
+					path = utils.AddQueryParametersToPath(path, mods.AddQueryParameters)
+					pathMutation = &path
+				}
+
+				if mods.RemoveQueryParameters != nil {
+					path = utils.RemoveQueryParametersFromPath(path, mods.RemoveQueryParameters)
+					pathMutation = &path
+				}
+
+				if mods.Path != nil {
+					pathMutation = mods.Path
+				}
+
 				// Collect analytics metadata from policies
 				if mods.AnalyticsMetadata != nil {
 					for key, value := range mods.AnalyticsMetadata {
 						analyticsData[key] = value
+						// Store in execution context for preservation across phases
+						execCtx.analyticsMetadata[key] = value
 					}
+				}
+
+				dropAction := mods.DropHeadersFromAnalytics
+				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+					slog.Debug("Translator: Found DropHeadersFromAnalytics action (REQUEST)",
+						"action", dropAction.Action,
+						"headers", dropAction.Headers,
+						"headers_count", len(dropAction.Headers))
+
+					// Set the finalized headers to the analytics data
+					originalHeaders := execCtx.requestContext.Headers.GetAll()
+					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+					analyticsData["request_headers"] = finalizedHeaders
+					execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
 				}
 			}
 		}
@@ -142,12 +179,12 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, nil, nil
+	return headerMutation, bodyMutation, analyticsData, pathMutation, nil, nil
 }
 
 // TranslateRequestHeadersActions converts request headers execution result to ext_proc response
 func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, path, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -173,14 +210,14 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, path)
 
 	return response, nil
 }
 
 // TranslateRequestBodyActions converts request body execution result to ext_proc response
 func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, _, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +243,7 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
 
 	return response, nil
 }
@@ -222,6 +259,14 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	headerOps := make(map[string][]*headerOp)
 	analyticsData = make(map[string]any)
 	headerMutation = &extprocv3.HeaderMutation{}
+
+	// Merge analytics data from request phase stored in execution context
+	for key, value := range execCtx.analyticsMetadata {
+		// Skip request_headers as it's handled separately below
+		if key != "request_headers" {
+			analyticsData[key] = value
+		}
+	}
 	var finalBodyLength int
 	bodyModified := false
 
@@ -267,6 +312,26 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 						analyticsData[key] = value
 					}
 				}
+
+				dropAction := mods.DropHeadersFromAnalytics
+				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+					slog.Debug("Translator: Found DropHeadersFromAnalytics action (RESPONSE)",
+						"action", dropAction.Action,
+						"headers", dropAction.Headers,
+						"headers_count", len(dropAction.Headers))
+
+					// Set the finalized headers to the analytics data
+					originalHeaders := execCtx.responseContext.ResponseHeaders.GetAll()
+					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+					analyticsData["response_headers"] = finalizedHeaders
+
+					// Include request_headers from execution context if it was set in a previous phase
+					if _, exists := execCtx.analyticsMetadata["request_headers"]; exists {
+						slog.Debug("Translator: Including request_headers from execution context")
+						analyticsData["request_headers"] = execCtx.analyticsMetadata["request_headers"]
+					}
+					
+				}
 			}
 		}
 	}
@@ -285,6 +350,59 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	}
 
 	return headerMutation, bodyMutation, analyticsData, nil
+}
+
+// finalizeAnalyticsHeaders finalizes the analytics headers based on the drop action
+// If action is "allow", only the specified headers that exist in originalHeaders are returned
+// If action is "deny", all headers except the specified ones are returned
+func finalizeAnalyticsHeaders(dropAction policy.DropHeaderAction, originalHeaders map[string][]string) map[string][]string {
+	finalizedHeaders := make(map[string][]string)
+
+	// If no action specified or no headers to filter, return all original headers
+	if dropAction.Action == "" || len(dropAction.Headers) == 0 {
+		return originalHeaders
+	}
+
+	// Create a map of specified headers (normalized to lowercase) for quick lookup
+	specifiedHeaders := make(map[string]bool)
+	for _, header := range dropAction.Headers {
+		specifiedHeaders[strings.ToLower(header)] = true
+	}
+	switch dropAction.Action {
+	case "allow":
+		// Allow mode: only include headers that are in the specified list AND exist in original headers
+		for headerName, headerValues := range originalHeaders {
+			normalizedName := strings.ToLower(headerName)
+			if specifiedHeaders[normalizedName] {
+				// Include this header in the finalized headers
+				finalizedHeaders[headerName] = headerValues
+			}
+		}
+		slog.Debug("Analytics headers filtered (allow mode)",
+			"original_count", len(originalHeaders),
+			"specified_count", len(dropAction.Headers),
+			"finalized_count", len(finalizedHeaders))
+	case "deny":
+		// Deny mode: include all headers except those in the specified list
+		for headerName, headerValues := range originalHeaders {
+			normalizedName := strings.ToLower(headerName)
+			if !specifiedHeaders[normalizedName] {
+				// Include this header (it's not in the deny list)
+				finalizedHeaders[headerName] = headerValues
+			}
+		}
+		slog.Debug("Analytics headers filtered (deny mode)",
+			"original_count", len(originalHeaders),
+			"specified_count", len(dropAction.Headers),
+			"finalized_count", len(finalizedHeaders))
+	default:
+		// Unknown action, log warning and return all original headers
+		slog.Warn("Unknown drop action, returning all headers",
+			"action", dropAction.Action)
+		return originalHeaders
+	}
+
+	return finalizedHeaders
 }
 
 // TranslateResponseHeadersActions converts response headers execution result to ext_proc response
@@ -311,7 +429,7 @@ func TranslateResponseHeadersActions(result *executor.ResponseExecutionResult, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
 
 	return response, nil
 }
@@ -341,10 +459,55 @@ func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, exec
 		if err != nil {
 			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 		}
-		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
 	}
 
 	return response, nil
+}
+
+// buildDynamicMetadata creates the dynamic metadata structure for analytics and path rewrite
+func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string) *structpb.Struct {
+	if path != nil {
+		return &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				constants.ExtProcFilterName: {
+					Kind: &structpb.Value_StructValue{
+						StructValue: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								"analytics_data": {
+									Kind: &structpb.Value_StructValue{
+										StructValue: analyticsStruct,
+									},
+								},
+								"path": {
+									Kind: &structpb.Value_StringValue{
+										StringValue: *path,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			constants.ExtProcFilterName: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"analytics_data": {
+								Kind: &structpb.Value_StructValue{
+									StructValue: analyticsStruct,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // buildHeaderMutationFromOps builds HeaderMutation from header operations with conflict resolution

@@ -18,6 +18,7 @@
 package publishers
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -109,29 +110,61 @@ func (m *Moesif) Publish(event *dto.Event) {
 		uri = event.Operation.APIResourceTemplate
 	}
 
+	// Build request headers: prefer dynamic headers from event.Properties["requestHeaders"]
+	// if present; otherwise, fall back to the existing hardcoded headers.
+	defaultReqHeaders := map[string]interface{}{
+		"User-Agent":   event.UserAgentHeader,
+		"Content-Type": "-",
+	}
+
+	defaultRspHeaders := map[string]interface{}{
+		"Vary":          "Accept-Encoding",
+		"Pragma":        "no-cache",
+		"Expires":       "-1",
+		"Content-Type":  "-",
+		"Cache-Control": "no-cache",
+	}
+
+	headers := defaultReqHeaders
+	if rawReqHeaders, ok := event.Properties["requestHeaders"]; ok && rawReqHeaders != nil {
+		slog.Debug("Request headers (PUBLISHER): ", "requestHeaders", rawReqHeaders)
+		if jsonStr, ok := rawReqHeaders.(string); ok {
+			var hMap map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
+				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "requestHeaders", hMap)
+				headers = hMap
+			} else if err != nil {
+				slog.Warn("Failed to unmarshal request headers", "error", err)
+			}
+		}
+	}
+
+	rspHeaders := defaultRspHeaders
+	if rawRspHeaders, ok := event.Properties["responseHeaders"]; ok && rawRspHeaders != nil {
+		slog.Debug("Response headers (PUBLISHER): ", "responseHeaders", rawRspHeaders)
+		if jsonStr, ok := rawRspHeaders.(string); ok {
+			var hMap map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
+				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "responseHeaders", hMap)
+				rspHeaders = hMap
+			} else if err != nil {
+				slog.Warn("Failed to unmarshal response headers", "error", err)
+			}
+		}
+	}
+
 	req := models.EventRequestModel{
 		Time:       &event.RequestTimestamp,
 		Uri:        uri,
 		Verb:       event.Operation.APIMethod,
 		ApiVersion: &event.API.APIVersion,
 		IpAddress:  &event.UserIP,
-		Headers: map[string]interface{}{ // TODO (osura): Need to populate them dynamically
-			"User-Agent":   event.UserAgentHeader,
-			"Content-Type": "application/json",
-		},
-		Body: nil,
+		Headers:    headers,
+		Body:       nil,
 	}
 	respTime := event.RequestTimestamp
 	if event.Latencies != nil {
 		respTime = event.RequestTimestamp.Add(time.Duration(event.Latencies.ResponseLatency) * time.Millisecond)
-	}
-
-	rspHeaders := map[string]string{ //TODO (osura): Need to populate them dynamically
-		"Vary":          "Accept-Encoding",
-		"Pragma":        "no-cache",
-		"Expires":       "-1",
-		"Content-Type":  "application/json; charset=utf-8",
-		"Cache-Control": "no-cache",
 	}
 
 	rsp := models.EventResponseModel{
@@ -148,6 +181,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 	metadataMap["apiName"] = event.API.APIName
 	metadataMap["apiVersion"] = event.API.APIVersion
 	metadataMap["apiType"] = event.API.APIType
+	metadataMap["apiId"] = event.API.APIID
 
 	// AI Metadata
 	if event.API.APIType == "LlmProvider" {

@@ -107,10 +107,10 @@ After running tests, reports are available at:
 
 | Report | Location |
 |--------|----------|
-| Test Results (JSON) | `reports/test-results.json` |
-| Coverage Summary | `coverage/coverage.txt` |
-| Coverage HTML | `coverage/coverage.html` |
-| Coverage JSON | `coverage/coverage-report.json` |
+| Test Results (JSON) | `reports/integration-test-results.json` |
+| Coverage Summary | `coverage/integration-test-coverage.txt` |
+| Coverage HTML | `coverage/integration-test-coverage.html` |
+| Coverage JSON | `coverage/integration-test-coverage-report.json` |
 
 ## Example Test Scenario
 

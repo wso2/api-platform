@@ -114,6 +114,8 @@ func main() {
 
 	// Initialize in-memory API key store for xDS
 	apiKeyStore := storage.NewAPIKeyStore(log)
+	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
+	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
 
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
@@ -131,7 +133,7 @@ func main() {
 		if err := storage.LoadAPIKeysFromDatabase(db, configStore, apiKeyStore); err != nil {
 			log.Fatal("Failed to load API keys from database", zap.Error(err))
 		}
-		log.Info("Loaded API keys", zap.Int("count", apiKeyStore.Count()))
+		log.Info("Loaded API keys", zap.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -174,12 +176,10 @@ func main() {
 		}
 	}()
 
-	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
-	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
-
 	// Generate initial API key snapshot if API keys were loaded from database
-	if cfg.IsPersistentMode() && apiKeyStore.Count() > 0 {
-		log.Info("Generating initial API key snapshot for policy engine", zap.Int("api_key_count", apiKeyStore.Count()))
+	if cfg.IsPersistentMode() && apiKeyXDSManager.GetAPIKeyCount() > 0 {
+		log.Info("Generating initial API key snapshot for policy engine",
+			zap.Int("api_key_count", apiKeyXDSManager.GetAPIKeyCount()))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := apiKeySnapshotManager.UpdateSnapshot(ctx); err != nil {
 			log.Warn("Failed to generate initial API key snapshot", zap.Error(err))
@@ -432,10 +432,10 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/:id":    {"admin", "developer"},
 		"DELETE /llm-proxies/:id": {"admin", "developer"},
 
-		"POST /apis/:id/generate-api-key":                {"admin", "consumer"},
+		"POST /apis/:id/api-keys":                        {"admin", "consumer"},
 		"GET /apis/:id/api-keys":                         {"admin", "consumer"},
 		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"POST /apis/:id/revoke-api-key":                  {"admin", "consumer"},
+		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
 		"GET /config_dump": {"admin"},
 	}

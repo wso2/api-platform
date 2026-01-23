@@ -259,7 +259,7 @@ func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 		}
 		if errors.Is(err, constants.ErrGatewayHasAssociatedAPIs) {
 			utils.LogError("Gateway has associated APIs during deletion", err)
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"The gateway has associated APIs. Please remove all API associations before deleting the gateway"))
 			return
 		}

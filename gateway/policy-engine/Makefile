@@ -155,7 +155,7 @@ stop:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	$(GOTEST) -v ./...
+	$(GOTEST) -v ./... -cover -coverprofile=unit-test-coverage.txt
 	@echo "Tests completed"
 
 ## clean: Clean build artifacts

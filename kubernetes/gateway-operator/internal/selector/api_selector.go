@@ -39,7 +39,7 @@ func NewAPISelector(client client.Client) *APISelector {
 }
 
 // SelectAPIsForGateway returns all APIs that should be deployed to the given gateway
-func (s *APISelector) SelectAPIsForGateway(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
+func (s *APISelector) SelectAPIsForGateway(ctx context.Context, gateway *apiv1.APIGateway) ([]apiv1.RestApi, error) {
 	switch gateway.Spec.APISelector.Scope {
 	case apiv1.ClusterScope:
 		return s.selectClusterScopedAPIs(ctx, gateway)
@@ -54,7 +54,7 @@ func (s *APISelector) SelectAPIsForGateway(ctx context.Context, gateway *apiv1.G
 }
 
 // selectClusterScopedAPIs selects all APIs from all namespaces
-func (s *APISelector) selectClusterScopedAPIs(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
+func (s *APISelector) selectClusterScopedAPIs(ctx context.Context, gateway *apiv1.APIGateway) ([]apiv1.RestApi, error) {
 	apiList := &apiv1.RestApiList{}
 
 	// List all APIs across all namespaces
@@ -67,7 +67,7 @@ func (s *APISelector) selectClusterScopedAPIs(ctx context.Context, gateway *apiv
 }
 
 // selectNamespacedAPIs selects APIs from specific namespaces
-func (s *APISelector) selectNamespacedAPIs(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
+func (s *APISelector) selectNamespacedAPIs(ctx context.Context, gateway *apiv1.APIGateway) ([]apiv1.RestApi, error) {
 	var allAPIs []apiv1.RestApi
 
 	// If no namespaces specified, use gateway's own namespace
@@ -90,7 +90,7 @@ func (s *APISelector) selectNamespacedAPIs(ctx context.Context, gateway *apiv1.G
 }
 
 // selectLabelBasedAPIs selects APIs based on label selectors
-func (s *APISelector) selectLabelBasedAPIs(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
+func (s *APISelector) selectLabelBasedAPIs(ctx context.Context, gateway *apiv1.APIGateway) ([]apiv1.RestApi, error) {
 	// Build label selector from matchLabels and matchExpressions
 	selector := labels.NewSelector()
 
@@ -141,7 +141,7 @@ func (s *APISelector) selectLabelBasedAPIs(ctx context.Context, gateway *apiv1.G
 }
 
 // IsAPISelectedByGateway checks if a specific API is selected by a gateway
-func (s *APISelector) IsAPISelectedByGateway(ctx context.Context, api *apiv1.RestApi, gateway *apiv1.Gateway) (bool, error) {
+func (s *APISelector) IsAPISelectedByGateway(ctx context.Context, api *apiv1.RestApi, gateway *apiv1.APIGateway) (bool, error) {
 
 	// Otherwise check based on gateway's selector
 	switch gateway.Spec.APISelector.Scope {

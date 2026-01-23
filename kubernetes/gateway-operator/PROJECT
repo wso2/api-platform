@@ -19,8 +19,9 @@ resources:
 - api:
     crdVersion: v1
     namespaced: true
+  controller: true
   domain: gateway.api-platform.wso2.com
-  kind: Gateway
+  kind: APIGateway
   path: github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

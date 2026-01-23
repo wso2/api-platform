@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	// API Kinds
 	KindAsyncsse       = "async/sse"
 	KindAsyncwebsocket = "async/websocket"
 	KindAsyncwebsub    = "async/websub"
@@ -79,7 +80,7 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest performs Analytics collection process during the request phase
 func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	slog.Info("Analytics system policy: OnRequest called")
+	slog.Debug("Analytics system policy: OnRequest called")
 	// Extract common analytics data from the request
 	// Based on the API kind, collect the analytics data
 	apiKind := ctx.SharedContext.APIKind
@@ -103,7 +104,7 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 
 // OnRequest performs Analytics collection process during the response phase
 func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	slog.Info("Analytics system policy: OnResponse called")
+	slog.Debug("Analytics system policy: OnResponse called")
 	// Store tokenInfo in analytics metadata for publishing
 	analyticsMetadata := make(map[string]any)
 
