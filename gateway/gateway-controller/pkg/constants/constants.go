@@ -125,6 +125,16 @@ const (
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
 
+	// API Key constants
+	APIKeyPrefix    = "apip_"
+	APIKeyLen       = 32 // Length of the random part of the API key in bytes
+	APIKeySeparator = "_"
+
+	// HashingAlgorithm constants
+	HashingAlgorithmSHA256   = "sha256"
+	HashingAlgorithmBcrypt   = "bcrypt"
+	HashingAlgorithmArgon2ID = "argon2id"
+
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
 	ANALYTICS_SYSTEM_POLICY_VERSION = "v0.1.0"

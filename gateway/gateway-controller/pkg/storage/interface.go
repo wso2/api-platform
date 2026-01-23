@@ -151,6 +151,12 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic (all-or-nothing).
 	SaveAPIKey(apiKey *models.APIKey) error
 
+	// GetAPIKeyByID retrieves an API key by its ID.
+	//
+	// Returns an error if the API key is not found.
+	// This is used for API key validation during authentication.
+	GetAPIKeyByID(id string) (*models.APIKey, error)
+
 	// GetAPIKeyByKey retrieves an API key by its key value.
 	//
 	// Returns an error if the API key is not found.
@@ -195,6 +201,11 @@ type Storage interface {
 	//
 	// Returns an error if the API key does not exist.
 	RemoveAPIKeyAPIAndName(apiId, name string) error
+
+	// CountActiveAPIKeysByUserAndAPI counts active API keys for a specific user and API.
+	//
+	// Returns the count of active API keys and an error if the operation fails.
+	CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error)
 
 	// SaveCertificate persists a new certificate.
 	//

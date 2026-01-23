@@ -19,6 +19,7 @@
 package storage
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -29,9 +30,8 @@ import (
 // APIKeyStore manages API keys in memory with thread-safe operations
 type APIKeyStore struct {
 	mu              sync.RWMutex
-	apiKeys         map[string]*models.APIKey   // key: API key ID
-	apiKeysByValue  map[string]*models.APIKey   // key: API key value
-	apiKeysByAPI    map[string][]*models.APIKey // key: API ID
+	apiKeys         map[string]*models.APIKey            // key: configID:APIKeyName → Value: *APIKey
+	apiKeysByAPI    map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
 	resourceVersion int64
 	logger          *zap.Logger
 }
@@ -39,63 +39,50 @@ type APIKeyStore struct {
 // NewAPIKeyStore creates a new API key store
 func NewAPIKeyStore(logger *zap.Logger) *APIKeyStore {
 	return &APIKeyStore{
-		apiKeys:        make(map[string]*models.APIKey),
-		apiKeysByValue: make(map[string]*models.APIKey),
-		apiKeysByAPI:   make(map[string][]*models.APIKey),
-		logger:         logger,
+		apiKeys:      make(map[string]*models.APIKey),
+		apiKeysByAPI: make(map[string]map[string]*models.APIKey),
+		logger:       logger,
 	}
 }
 
 // Store adds or updates an API key
-func (s *APIKeyStore) Store(apiKey *models.APIKey) {
+func (s *APIKeyStore) Store(apiKey *models.APIKey) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Remove old entry if updating
-	if existing, exists := s.apiKeys[apiKey.ID]; exists {
-		delete(s.apiKeysByValue, existing.APIKey)
-		s.removeFromAPIMapping(existing)
+	// Check if an API key with the same APIId and name already exists
+	existingKeys, apiIdExists := s.apiKeysByAPI[apiKey.APIId]
+	var existingKeyID = ""
+
+	if apiIdExists {
+		for id, existingKey := range existingKeys {
+			if existingKey.Name == apiKey.Name {
+				existingKeyID = id
+				break
+			}
+		}
 	}
 
-	// Store the API key
-	s.apiKeys[apiKey.ID] = apiKey
-	s.apiKeysByValue[apiKey.APIKey] = apiKey
-	s.addToAPIMapping(apiKey)
+	compositeKey := GetCompositeKey(apiKey.APIId, apiKey.Name)
+	if existingKeyID != "" {
+		// Handle both rotation and generation scenarios for existing key name
+		delete(s.apiKeys, compositeKey)
+		delete(s.apiKeysByAPI[apiKey.APIId], existingKeyID)
+		// Store the new key (could be same ID with new value, or new ID entirely)
+		s.apiKeys[compositeKey] = apiKey
+		s.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
+	} else {
+		// Store the API key
+		s.apiKeys[compositeKey] = apiKey
+		s.addToAPIMapping(apiKey)
+	}
 
-	s.logger.Debug("Stored API key",
+	s.logger.Debug("Successfully stored API key",
 		zap.String("id", apiKey.ID),
 		zap.String("api_id", apiKey.APIId),
 		zap.String("status", string(apiKey.Status)))
-}
 
-// GetByID retrieves an API key by its ID
-func (s *APIKeyStore) GetByID(id string) (*models.APIKey, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	apiKey, exists := s.apiKeys[id]
-	return apiKey, exists
-}
-
-// GetByValue retrieves an API key by its value
-func (s *APIKeyStore) GetByValue(value string) (*models.APIKey, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	apiKey, exists := s.apiKeysByValue[value]
-	return apiKey, exists
-}
-
-// GetByAPI retrieves all API keys for a specific API
-func (s *APIKeyStore) GetByAPI(apiId string) []*models.APIKey {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	apiKeys := s.apiKeysByAPI[apiId]
-	// Return a copy to avoid external modification
-	result := make([]*models.APIKey, len(apiKeys))
-	copy(result, apiKeys)
-	return result
+	return nil
 }
 
 // GetAll retrieves all API keys
@@ -110,45 +97,40 @@ func (s *APIKeyStore) GetAll() []*models.APIKey {
 	return result
 }
 
-// Revoke marks an API key as revoked
-func (s *APIKeyStore) Revoke(apiKeyValue string) bool {
+// Revoke marks an API key as revoked by finding it through API ID and key name lookup
+func (s *APIKeyStore) Revoke(apiId, apiKeyName string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	apiKey, exists := s.apiKeysByValue[apiKeyValue]
+	compositeKey := GetCompositeKey(apiId, apiKeyName)
+
+	apiKey, exists := s.apiKeys[compositeKey]
 	if !exists {
+		s.logger.Debug("API key ID not found for revocation",
+			zap.String("api_id", apiId),
+			zap.String("api_key", apiKeyName))
 		return false
 	}
 
-	// Update status to revoked
-	apiKey.Status = models.APIKeyStatusRevoked
+	if apiKey != nil {
+		apiKey.Status = models.APIKeyStatusRevoked
 
-	s.logger.Debug("Revoked API key",
-		zap.String("id", apiKey.ID),
-		zap.String("api_id", apiKey.APIId))
+		delete(s.apiKeys, compositeKey)
+		s.removeFromAPIMapping(apiKey)
 
-	return true
-}
+		s.logger.Debug("Revoked API key",
+			zap.String("id", apiKey.ID),
+			zap.String("name", apiKey.Name),
+			zap.String("api_id", apiKey.APIId))
 
-// RemoveByID removes an API key by its ID
-func (s *APIKeyStore) RemoveByID(id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	apiKey, exists := s.apiKeys[id]
-	if !exists {
-		return false
+		return true
 	}
 
-	delete(s.apiKeys, id)
-	delete(s.apiKeysByValue, apiKey.APIKey)
-	s.removeFromAPIMapping(apiKey)
+	s.logger.Debug("API key not found for revocation",
+		zap.String("api_id", apiId),
+		zap.String("api_key", apiKeyName))
 
-	s.logger.Debug("Removed API key",
-		zap.String("id", id),
-		zap.String("api_id", apiKey.APIId))
-
-	return true
+	return false
 }
 
 // RemoveByAPI removes all API keys for a specific API
@@ -160,8 +142,8 @@ func (s *APIKeyStore) RemoveByAPI(apiId string) int {
 	count := len(apiKeys)
 
 	for _, apiKey := range apiKeys {
-		delete(s.apiKeys, apiKey.ID)
-		delete(s.apiKeysByValue, apiKey.APIKey)
+		compositeKey := GetCompositeKey(apiKey.APIId, apiKey.Name)
+		delete(s.apiKeys, compositeKey)
 	}
 	delete(s.apiKeysByAPI, apiId)
 
@@ -191,23 +173,28 @@ func (s *APIKeyStore) GetResourceVersion() int64 {
 
 // addToAPIMapping adds an API key to the API mapping
 func (s *APIKeyStore) addToAPIMapping(apiKey *models.APIKey) {
-	apiKeys := s.apiKeysByAPI[apiKey.APIId]
-	s.apiKeysByAPI[apiKey.APIId] = append(apiKeys, apiKey)
+	// Initialize the map for this API ID if it doesn't exist
+	if s.apiKeysByAPI[apiKey.APIId] == nil {
+		s.apiKeysByAPI[apiKey.APIId] = make(map[string]*models.APIKey)
+	}
+
+	// Store by API key ID
+	s.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
 }
 
 // removeFromAPIMapping removes an API key from the API mapping
 func (s *APIKeyStore) removeFromAPIMapping(apiKey *models.APIKey) {
-	apiKeys := s.apiKeysByAPI[apiKey.APIId]
-	for i, ak := range apiKeys {
-		if ak.ID == apiKey.ID {
-			// Remove the element at index i
-			s.apiKeysByAPI[apiKey.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
-			break
+	apiKeys, apiIdExists := s.apiKeysByAPI[apiKey.APIId]
+	if apiIdExists {
+		delete(apiKeys, apiKey.ID)
+		// clean up empty maps
+		if len(s.apiKeysByAPI[apiKey.APIId]) == 0 {
+			delete(s.apiKeysByAPI, apiKey.APIId)
 		}
 	}
+}
 
-	// If no API keys left for this API, remove the mapping
-	if len(s.apiKeysByAPI[apiKey.APIId]) == 0 {
-		delete(s.apiKeysByAPI, apiKey.APIId)
-	}
+// GetCompositeKey generates a composite key for storing/retrieving API keys
+func GetCompositeKey(apiId, keyName string) string {
+	return fmt.Sprintf("%s:%s", apiId, keyName)
 }

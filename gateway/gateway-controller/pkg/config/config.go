@@ -58,6 +58,7 @@ type GatewayController struct {
 	Policies     PoliciesConfig     `koanf:"policies"`
 	LLM          LLMConfig          `koanf:"llm"`
 	Auth         AuthConfig         `koanf:"auth"`
+	APIKey       APIKeyConfig       `koanf:"api_key"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
 }
 
@@ -304,6 +305,12 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify bool          `koanf:"insecure_skip_verify"` // Skip TLS certificate verification (default: true for dev)
 }
 
+// APIKeyConfig represents the configuration for API keys
+type APIKeyConfig struct {
+	APIKeysPerUserPerAPI int    `koanf:"api_keys_per_user_per_api"` // Number of API keys allowed per user per API
+	Algorithm            string `koanf:"algorithm"`                 // Hashing algorithm to use
+}
+
 // LoadConfig loads configuration from file, environment variables, and defaults
 // Priority: Environment variables > Config file > Defaults
 func LoadConfig(configPath string) (*Config, error) {
@@ -500,6 +507,10 @@ func defaultConfig() *Config {
 				PollingInterval:    15 * time.Minute,
 				InsecureSkipVerify: true,
 			},
+			APIKey: APIKeyConfig{
+				APIKeysPerUserPerAPI: 10,
+				Algorithm:            constants.HashingAlgorithmSHA256,
+			},
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:    false,
@@ -664,6 +675,11 @@ func (c *Config) Validate() error {
 
 	// Validate authentication configuration
 	if err := c.validateAuthConfig(); err != nil {
+		return err
+	}
+
+	// Validate API key configuration
+	if err := c.validateAPIKeyConfig(); err != nil {
 		return err
 	}
 
@@ -1110,6 +1126,39 @@ func (c *Config) validateAuthConfig() error {
 		}
 	}
 
+	return nil
+}
+
+// validateAPIKeyConfig validates the API key configuration
+func (c *Config) validateAPIKeyConfig() error {
+	// If number of api keys per user is not provided or negative throw error
+	if c.GatewayController.APIKey.APIKeysPerUserPerAPI <= 0 {
+		return fmt.Errorf("api_key.api_keys_per_user_per_api must be a positive integer, got: %d",
+			c.GatewayController.APIKey.APIKeysPerUserPerAPI)
+	}
+	// If hashing is enabled but no algorithm is provided, default to SHA256
+	if c.GatewayController.APIKey.Algorithm == "" {
+		c.GatewayController.APIKey.Algorithm = constants.HashingAlgorithmSHA256
+		return nil
+	}
+
+	// If hashing is enabled and algorithm is provided, validate it's one of the supported ones
+	validAlgorithms := []string{
+		constants.HashingAlgorithmSHA256,
+		constants.HashingAlgorithmBcrypt,
+		constants.HashingAlgorithmArgon2ID,
+	}
+	isValidAlgorithm := false
+	for _, alg := range validAlgorithms {
+		if strings.ToLower(c.GatewayController.APIKey.Algorithm) == alg {
+			isValidAlgorithm = true
+			break
+		}
+	}
+	if !isValidAlgorithm {
+		return fmt.Errorf("api_key.algorithm must be one of: %s, got: %s",
+			strings.Join(validAlgorithms, ", "), c.GatewayController.APIKey.Algorithm)
+	}
 	return nil
 }
 
