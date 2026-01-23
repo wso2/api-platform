@@ -80,6 +80,7 @@ func TestFeatures(t *testing.T) {
 				"features/basic-ratelimit.feature",
 				"features/jwt-auth.feature",
 				"features/cors.feature",
+				"features/llm-provider-templates.feature",
 			},
 			TestingT: t,
 		},
@@ -236,6 +237,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterMCPSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterLLMSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps
