@@ -102,6 +102,20 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 		return nil, errors.New("API must have at least one backend service attached before deployment")
 	}
 
+	// Check if there's an existing active deployment on this gateway
+	existingDeployment, err := s.apiRepo.GetActiveDeploymentByGateway(apiUUID, req.GatewayID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
+	}
+
+	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
+	// The gateway will receive the new deployment event and handle the transition
+	if existingDeployment != nil {
+		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
+			return nil, fmt.Errorf("failed to undeploy existing deployment %s: %w", existingDeployment.DeploymentID, err)
+		}
+	}
+
 	// Check deployment limits
 	apiDeploymentCount, err := s.apiRepo.CountDeploymentsByAPIAndGateway(apiUUID, req.GatewayID, orgUUID)
 	if err != nil {
@@ -155,20 +169,6 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 
 	// Generate deployment ID
 	deploymentID := uuid.New().String()
-
-	// Check if there's an existing active deployment on this gateway
-	existingDeployment, err := s.apiRepo.GetActiveDeploymentByGateway(apiUUID, req.GatewayID, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
-	}
-
-	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
-	// The gateway will receive the new deployment event and handle the transition
-	if existingDeployment != nil {
-		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
-			return nil, fmt.Errorf("failed to undeploy existing deployment %s: %w", existingDeployment.DeploymentID, err)
-		}
-	}
 
 	// Create new deployment record
 	deployment := &model.APIDeployment{
