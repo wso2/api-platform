@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -295,8 +295,8 @@ CREATE TABLE IF NOT EXISTS devportals (
     is_default BOOLEAN DEFAULT FALSE,
     visibility VARCHAR(20) NOT NULL DEFAULT 'private',
     description VARCHAR(500),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, api_url),
     UNIQUE(organization_uuid, hostname)
@@ -318,8 +318,8 @@ CREATE TABLE IF NOT EXISTS api_publications (
     production_endpoint_url VARCHAR(500) NOT NULL,
 
     -- Timestamps
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
     -- Foreign key constraints
     PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
@@ -350,7 +350,7 @@ CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid
 CREATE INDEX IF NOT EXISTS idx_api_publications_devportal ON api_publications(devportal_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_publications_org ON api_publications(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_publications_api_devportal_org ON api_publications(api_uuid, devportal_uuid, organization_uuid);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_devportals_default_per_org ON devportals(organization_uuid) WHERE is_default = TRUE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devportals_default_per_org ON devportals(organization_uuid) WHERE is_default = 1;
 CREATE INDEX IF NOT EXISTS idx_api_associations_api_resource_type ON api_associations(api_uuid, association_type, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_associations_resource ON api_associations(association_type, resource_uuid, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_associations_org ON api_associations(organization_uuid);

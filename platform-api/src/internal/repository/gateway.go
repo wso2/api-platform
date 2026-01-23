@@ -47,7 +47,7 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 		                      gateway_functionality_type, is_active, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
+	_, err := r.db.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
 		gateway.Description, gateway.Vhost, gateway.IsCritical, gateway.FunctionalityType, gateway.IsActive,
 		gateway.CreatedAt, gateway.UpdatedAt)
 	return err
@@ -62,7 +62,7 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 		FROM gateways
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, gatewayId).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayId).Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
 		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
@@ -83,7 +83,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(query, orgID)
+	rows, err := r.db.Query(r.db.Rebind(query), orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 		FROM gateways
 		WHERE name = ? AND organization_uuid = ?
 	`
-	err := r.db.QueryRow(query, name, orgID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
 		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
@@ -132,7 +132,7 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 		FROM gateways
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(query)
+	rows, err := r.db.Query(r.db.Rebind(query))
 	if err != nil {
 		return nil, err
 	}
@@ -164,14 +164,14 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 	// Delete API associations for this gateway
 	deleteAssocQuery := `DELETE FROM api_associations 
 	                     WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
-	_, err = tx.Exec(deleteAssocQuery, gatewayID, organizationID)
+	_, err = tx.Exec(r.db.Rebind(deleteAssocQuery), gatewayID, organizationID)
 	if err != nil {
 		return err
 	}
 
 	// Delete gateway with organization isolation (gateway_tokens and api_deployments will be cascade deleted via FK)
 	deleteGatewayQuery := `DELETE FROM gateways WHERE uuid = ? AND organization_uuid = ?`
-	result, err := tx.Exec(deleteGatewayQuery, gatewayID, organizationID)
+	result, err := tx.Exec(r.db.Rebind(deleteGatewayQuery), gatewayID, organizationID)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
 		SET display_name = ?, description = ?, is_critical = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(query, gateway.DisplayName, gateway.Description, gateway.IsCritical, gateway.UpdatedAt, gateway.ID)
+	_, err := r.db.Exec(r.db.Rebind(query), gateway.DisplayName, gateway.Description, gateway.IsCritical, gateway.UpdatedAt, gateway.ID)
 	return err
 }
 
@@ -208,7 +208,7 @@ func (r *GatewayRepo) UpdateActiveStatus(gatewayId string, isActive bool) error 
 		SET is_active = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(query, isActive, time.Now(), gatewayId)
+	_, err := r.db.Exec(r.db.Rebind(query), isActive, time.Now(), gatewayId)
 	return err
 }
 
@@ -220,7 +220,7 @@ func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
 		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status, token.CreatedAt,
+	_, err := r.db.Exec(r.db.Rebind(query), token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status, token.CreatedAt,
 		token.RevokedAt)
 	return err
 }
@@ -233,7 +233,7 @@ func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.G
 		WHERE gateway_uuid = ? AND status = 'active'
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(query, gatewayId)
+	rows, err := r.db.Query(r.db.Rebind(query), gatewayId)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func (r *GatewayRepo) GetTokenByUUID(tokenId string) (*model.GatewayToken, error
 		FROM gateway_tokens
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, tokenId).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), tokenId).Scan(
 		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
 	)
 	if err != nil {
@@ -281,7 +281,7 @@ func (r *GatewayRepo) RevokeToken(tokenId string) error {
 		SET status = 'revoked', revoked_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(query, now, tokenId)
+	_, err := r.db.Exec(r.db.Rebind(query), now, tokenId)
 	return err
 }
 
@@ -292,7 +292,7 @@ func (r *GatewayRepo) CountActiveTokens(gatewayId string) (int, error) {
 		SELECT COUNT(*) FROM gateway_tokens
 		WHERE gateway_uuid = ? AND status = 'active'
 	`
-	err := r.db.QueryRow(query, gatewayId).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayId).Scan(&count)
 	return count, err
 }
 
@@ -300,7 +300,7 @@ func (r *GatewayRepo) CountActiveTokens(gatewayId string) (int, error) {
 func (r *GatewayRepo) HasGatewayAPIDeployments(gatewayID, organizationID string) (bool, error) {
 	var deploymentCount int
 	deploymentQuery := `SELECT COUNT(*) FROM api_deployments WHERE gateway_uuid = ? AND organization_uuid = ?`
-	err := r.db.QueryRow(deploymentQuery, gatewayID, organizationID).Scan(&deploymentCount)
+	err := r.db.QueryRow(r.db.Rebind(deploymentQuery), gatewayID, organizationID).Scan(&deploymentCount)
 	if err != nil {
 		return false, err
 	}
@@ -312,7 +312,7 @@ func (r *GatewayRepo) HasGatewayAPIDeployments(gatewayID, organizationID string)
 func (r *GatewayRepo) HasGatewayAPIAssociations(gatewayID, organizationID string) (bool, error) {
 	var associationCount int
 	associationQuery := `SELECT COUNT(*) FROM api_associations WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
-	err := r.db.QueryRow(associationQuery, gatewayID, organizationID).Scan(&associationCount)
+	err := r.db.QueryRow(r.db.Rebind(associationQuery), gatewayID, organizationID).Scan(&associationCount)
 	if err != nil {
 		return false, err
 	}

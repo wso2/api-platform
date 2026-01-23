@@ -71,19 +71,19 @@ type WebSocket struct {
 
 // Database holds database-specific configuration
 type Database struct {
-	Driver   string `envconfig:"DRIVER" default:"sqlite3"`
-	Path     string `envconfig:"PATH" default:"./data/api_platform.db"`
-	Host     string `envconfig:"HOST" default:"localhost"`
-	Port     int    `envconfig:"PORT" default:"5432"`
-	Name     string `envconfig:"NAME" default:"platform_api"`
-	User     string `envconfig:"USER" default:""`
-	Password string `envconfig:"PASSWORD" default:""`
-	SSLMode  string `envconfig:"SSL_MODE" default:"disable"`
-
-	// SQLite specific settings
-	MaxOpenConns    int `envconfig:"MAX_OPEN_CONNS" default:"25"`
-	MaxIdleConns    int `envconfig:"MAX_IDLE_CONNS" default:"10"`
-	ConnMaxLifetime int `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
+	Driver string `envconfig:"DRIVER" default:"sqlite3"`
+	// DBPath is the file path for SQLite databases.
+	// Use DATABASE_DB_PATH to override; keeping it distinct from the OS PATH variable.
+	Path            string `envconfig:"DB_PATH" default:"./data/api_platform.db"`
+	Host            string `envconfig:"HOST" default:"localhost"`
+	Port            int    `envconfig:"PORT" default:"5432"`
+	Name            string `envconfig:"NAME" default:"platform_api"`
+	User            string `envconfig:"USER" default:""`
+	Password        string `envconfig:"PASSWORD" default:""`
+	SSLMode         string `envconfig:"SSL_MODE" default:"disable"`
+	MaxOpenConns    int    `envconfig:"MAX_OPEN_CONNS" default:"25"`
+	MaxIdleConns    int    `envconfig:"MAX_IDLE_CONNS" default:"10"`
+	ConnMaxLifetime int    `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations
@@ -133,8 +133,6 @@ func GetConfig() *Server {
 	if err != nil {
 		panic(err)
 	}
-	settingInstance.Database.Driver = "sqlite3"
-	settingInstance.Database.Path = "./data/api_platform.db"
 	return settingInstance
 }
 
