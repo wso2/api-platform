@@ -45,6 +45,7 @@ type API struct {
 	BackendServices  []BackendService    `json:"backend-services,omitempty"`
 	APIRateLimiting  *RateLimitingConfig `json:"api-rate-limiting,omitempty"`
 	Operations       []Operation         `json:"operations,omitempty"`
+	Channels         []Channel           `json:"channels,omitempty"`
 }
 
 // TableName returns the table name for the API model
@@ -73,9 +74,17 @@ type MTLSConfig struct {
 
 // SecurityConfig represents security configuration
 type SecurityConfig struct {
-	Enabled bool            `json:"enabled,omitempty"`
-	APIKey  *APIKeySecurity `json:"apiKey,omitempty"`
-	OAuth2  *OAuth2Security `json:"oauth2,omitempty"`
+	Enabled       bool            `json:"enabled,omitempty"`
+	APIKey        *APIKeySecurity `json:"apiKey,omitempty"`
+	OAuth2        *OAuth2Security `json:"oauth2,omitempty"`
+	XHubSignature *XHubSignature  `json:"xHubSignature,omitempty"`
+}
+
+// XHubSignature represents X-Hub-Signature security configuration
+type XHubSignature struct {
+	Enabled    bool   `json:"enabled,omitempty"`
+	HeaderName string `json:"headerName,omitempty"`
+	Secret     string `json:"secret,omitempty"`
 }
 
 // APIKeySecurity represents API key security configuration
@@ -210,8 +219,24 @@ type Operation struct {
 	Request     *OperationRequest `json:"request,omitempty"`
 }
 
+// Channel represents an API operation
+type Channel struct {
+	Name        string          `json:"name,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Request     *ChannelRequest `json:"request,omitempty"`
+}
+
 // OperationRequest represents operation request details
 type OperationRequest struct {
+	Method          string                `json:"method,omitempty"`
+	Path            string                `json:"path,omitempty"`
+	BackendServices []BackendRouting      `json:"backend-services,omitempty"`
+	Authentication  *AuthenticationConfig `json:"authentication,omitempty"`
+	Policies        []Policy              `json:"policies,omitempty"`
+}
+
+// ChannelRequest represents channel request details
+type ChannelRequest struct {
 	Method          string                `json:"method,omitempty"`
 	Path            string                `json:"path,omitempty"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty"`

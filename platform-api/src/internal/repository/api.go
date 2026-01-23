@@ -113,6 +113,13 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 		}
 	}
 
+	// Insert Channels
+	for _, channel := range api.Channels {
+		if err := r.insertChannel(tx, api.ID, api.OrganizationID, &channel); err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -414,6 +421,13 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 		}
 	}
 
+	// Re-insert channels
+	for _, channel := range api.Channels {
+		if err := r.insertChannel(tx, api.ID, api.OrganizationID, &channel); err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -519,6 +533,13 @@ func (r *APIRepo) loadAPIConfigurations(api *model.API) error {
 		return err
 	} else {
 		api.Operations = operations
+	}
+
+	// Load Channels
+	if channels, err := r.loadChannels(api.ID); err != nil {
+		return err
+	} else {
+		api.Channels = channels
 	}
 
 	return nil
@@ -824,6 +845,42 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 	return nil
 }
 
+func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, organizationId string, channel *model.Channel) error {
+	var authRequired bool
+	var scopesJSON string
+	if channel.Request.Authentication != nil {
+		authRequired = channel.Request.Authentication.Required
+		if len(channel.Request.Authentication.Scopes) > 0 {
+			scopesBytes, _ := json.Marshal(channel.Request.Authentication.Scopes)
+			scopesJSON = string(scopesBytes)
+		}
+	}
+	// Insert channel
+	channelQuery := `
+		INSERT INTO api_operations (api_uuid, name, description, type, config)
+		VALUES (?, ?, ?, ?, ?)`
+	result, err := tx.Exec(channelQuery, apiId, channel.Name, channel.Description,
+		channel.Request.Method, channel.Request.Path, authRequired, scopesJSON)
+
+	if err != nil {
+		return err
+	}
+
+	channelID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	// Insert policies
+	for _, policy := range channel.Request.Policies {
+		if err := r.insertPolicy(tx, channelID, &policy); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, policy *model.Policy) error {
 	var paramsJSON []byte
 	if policy.Params != nil {
@@ -837,6 +894,54 @@ func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, policy *model.Poli
 	_, err := tx.Exec(r.db.Rebind(policyQuery), operationID, policy.Name, string(paramsJSON),
 		policy.ExecutionCondition, policy.Version)
 	return err
+}
+
+func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
+	query := `
+		SELECT id, name, description, method, path, authentication_required, scopes 
+		FROM api_operations WHERE api_uuid = ?
+	`
+	rows, err := r.db.Query(query, apiId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var channels []model.Channel
+	for rows.Next() {
+		var operationID int64
+		channel := model.Channel{
+			Request: &model.ChannelRequest{},
+		}
+		var authRequired bool
+		var scopesJSON string
+
+		err := rows.Scan(&operationID, &channel.Name, &channel.Description,
+			&channel.Request.Method, &channel.Request.Path, &authRequired, &scopesJSON)
+		if err != nil {
+			return nil, err
+		}
+
+		// Build authentication config
+		if authRequired || scopesJSON != "" {
+			auth := &model.AuthenticationConfig{Required: authRequired}
+			if scopesJSON != "" {
+				json.Unmarshal([]byte(scopesJSON), &auth.Scopes)
+			}
+			channel.Request.Authentication = auth
+		}
+
+		// Load policies
+		if policies, err := r.loadPolicies(operationID); err != nil {
+			return nil, err
+		} else {
+			channel.Request.Policies = policies
+		}
+
+		channels = append(channels, channel)
+	}
+
+	return channels, rows.Err()
 }
 
 func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {

@@ -117,10 +117,13 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 	if req.LifeCycleStatus == "" {
 		req.LifeCycleStatus = "CREATED"
 	}
-	if len(req.Operations) == 0 {
+	if len(req.Operations) == 0 && constants.APITypeHTTP == req.Type {
 		// generate default get, post, patch and delete operations with path /*
 		defaultOperations := s.generateDefaultOperations()
 		req.Operations = defaultOperations
+	} else if (constants.APITypeWebSub == req.Type || constants.APITypeWS == req.Type) && len(req.Channels) == 0 {
+		defaultChannels := s.generateDefaultChannels(req.Type)
+		req.Channels = defaultChannels
 	}
 
 	// Create API DTO - ID field holds the handle (user-facing identifier)
@@ -144,6 +147,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		BackendServices:  req.BackendServices,
 		APIRateLimiting:  req.APIRateLimiting,
 		Operations:       req.Operations,
+		Channels:         req.Channels,
 	}
 
 	// Process backend services: check if they exist, create or update them
@@ -693,6 +697,9 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPI
 	if req.Operations != nil {
 		existingAPI.Operations = *req.Operations
 	}
+	if req.Channels != nil {
+		existingAPI.Channels = *req.Channels
+	}
 
 	return existingAPI, nil
 }
@@ -819,6 +826,7 @@ type CreateAPIRequest struct {
 	CORS             *dto.CORSConfig         `json:"cors,omitempty"`
 	BackendServices  []dto.BackendService    `json:"backend-services,omitempty"`
 	APIRateLimiting  *dto.RateLimitingConfig `json:"api-rate-limiting,omitempty"`
+	Channels         []dto.Channel           `json:"channels,omitempty"`
 	Operations       []dto.Operation         `json:"operations,omitempty"`
 }
 
@@ -838,6 +846,7 @@ type UpdateAPIRequest struct {
 	BackendServices  *[]dto.BackendService   `json:"backend-services,omitempty"`
 	APIRateLimiting  *dto.RateLimitingConfig `json:"api-rate-limiting,omitempty"`
 	Operations       *[]dto.Operation        `json:"operations,omitempty"`
+	Channels         *[]dto.Channel          `json:"channels,omitempty"`
 }
 
 // generateDefaultOperations creates default CRUD operations for an API
@@ -888,6 +897,55 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			Request: &dto.OperationRequest{
 				Method: "DELETE",
 				Path:   "/*",
+				Authentication: &dto.AuthenticationConfig{
+					Required: false,
+					Scopes:   []string{},
+				},
+				Policies: []dto.Policy{},
+			},
+		},
+	}
+}
+
+// getDefaultChannels creates default PUB/SUB operations for an API
+func (s *APIService) generateDefaultChannels(asyncAPIType string) []dto.Channel {
+	if asyncAPIType == "WEBSUB" {
+		return []dto.Channel{
+			{
+				Name:        "Default",
+				Description: "Default SUB Channel",
+				Request: &dto.ChannelRequest{
+					Method: "SUB",
+					Path:   "/_default",
+					Authentication: &dto.AuthenticationConfig{
+						Required: false,
+						Scopes:   []string{},
+					},
+					Policies: []dto.Policy{},
+				},
+			},
+		}
+	}
+	return []dto.Channel{
+		{
+			Name:        "Default",
+			Description: "Default SUB Channel",
+			Request: &dto.ChannelRequest{
+				Method: "SUB",
+				Path:   "/_default",
+				Authentication: &dto.AuthenticationConfig{
+					Required: false,
+					Scopes:   []string{},
+				},
+				Policies: []dto.Policy{},
+			},
+		},
+		{
+			Name:        "Default PUB Channel",
+			Description: "Default PUB Channel",
+			Request: &dto.ChannelRequest{
+				Method: "PUB",
+				Path:   "/_default",
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},

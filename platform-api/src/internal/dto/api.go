@@ -44,6 +44,7 @@ type API struct {
 	BackendServices  []BackendService    `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	APIRateLimiting  *RateLimitingConfig `json:"api-rate-limiting,omitempty" yaml:"api-rate-limiting,omitempty"`
 	Operations       []Operation         `json:"operations,omitempty" yaml:"operations,omitempty"`
+	Channels         []Channel           `json:"channels,omitempty" yaml:"channels,omitempty"`
 }
 
 // MTLSConfig represents mutual TLS configuration
@@ -133,8 +134,24 @@ type Operation struct {
 	Request     *OperationRequest `json:"request,omitempty" yaml:"request,omitempty"`
 }
 
+// Channel represents an API operation
+type Channel struct {
+	Name        string          `json:"name,omitempty" yaml:"name,omitempty"`
+	Description string          `json:"description,omitempty" yaml:"description,omitempty"`
+	Request     *ChannelRequest `json:"request,omitempty" yaml:"request,omitempty"`
+}
+
 // OperationRequest represents operation request details
 type OperationRequest struct {
+	Method          string                `json:"method" yaml:"method"`
+	Path            string                `json:"path" yaml:"path"`
+	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
+	Authentication  *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
+	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// OperationRequest represents operation request details
+type ChannelRequest struct {
 	Method          string                `json:"method" yaml:"method"`
 	Path            string                `json:"path" yaml:"path"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`

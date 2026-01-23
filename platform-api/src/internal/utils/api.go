@@ -68,6 +68,7 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 		BackendServices:  u.BackendServicesDTOToModel(dto.BackendServices),
 		APIRateLimiting:  u.RateLimitingDTOToModel(dto.APIRateLimiting),
 		Operations:       u.OperationsDTOToModel(dto.Operations),
+		Channels:         u.ChannelsDTOToModel(dto.Channels),
 	}
 }
 
@@ -101,6 +102,7 @@ func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 		BackendServices:  u.BackendServicesModelToDTO(model.BackendServices),
 		APIRateLimiting:  u.RateLimitingModelToDTO(model.APIRateLimiting),
 		Operations:       u.OperationsModelToDTO(model.Operations),
+		Channels:         u.ChannelsModelToDTO(model.Channels),
 	}
 }
 
@@ -337,6 +339,28 @@ func (u *APIUtil) OperationsDTOToModel(dtos []dto.Operation) []model.Operation {
 	return operationsModels
 }
 
+func (u *APIUtil) ChannelsDTOToModel(dtos []dto.Channel) []model.Channel {
+	if dtos == nil {
+		return nil
+	}
+	channelsModels := make([]model.Channel, 0)
+	for _, channelDTO := range dtos {
+		channelsModels = append(channelsModels, *u.ChannelDTOToModel(&channelDTO))
+	}
+	return channelsModels
+}
+
+func (u *APIUtil) ChannelDTOToModel(dto *dto.Channel) *model.Channel {
+	if dto == nil {
+		return nil
+	}
+	return &model.Channel{
+		Name:        dto.Name,
+		Description: dto.Description,
+		Request:     u.ChannelRequestDTOToModel(dto.Request),
+	}
+}
+
 func (u *APIUtil) OperationDTOToModel(dto *dto.Operation) *model.Operation {
 	if dto == nil {
 		return nil
@@ -353,6 +377,19 @@ func (u *APIUtil) OperationRequestDTOToModel(dto *dto.OperationRequest) *model.O
 		return nil
 	}
 	return &model.OperationRequest{
+		Method:          dto.Method,
+		Path:            dto.Path,
+		BackendServices: u.BackendRoutingDTOsToModel(dto.BackendServices),
+		Authentication:  u.AuthConfigDTOToModel(dto.Authentication),
+		Policies:        u.PoliciesDTOToModel(dto.Policies),
+	}
+}
+
+func (u *APIUtil) ChannelRequestDTOToModel(dto *dto.ChannelRequest) *model.ChannelRequest {
+	if dto == nil {
+		return nil
+	}
+	return &model.ChannelRequest{
 		Method:          dto.Method,
 		Path:            dto.Path,
 		BackendServices: u.BackendRoutingDTOsToModel(dto.BackendServices),
@@ -648,6 +685,17 @@ func (u *APIUtil) OperationsModelToDTO(models []model.Operation) []dto.Operation
 	return operationsDTOs
 }
 
+func (u *APIUtil) ChannelsModelToDTO(models []model.Channel) []dto.Channel {
+	if models == nil {
+		return nil
+	}
+	channelsDTOs := make([]dto.Channel, 0)
+	for _, channelModel := range models {
+		channelsDTOs = append(channelsDTOs, *u.ChannelModelToDTO(&channelModel))
+	}
+	return channelsDTOs
+}
+
 func (u *APIUtil) OperationModelToDTO(model *model.Operation) *dto.Operation {
 	if model == nil {
 		return nil
@@ -656,6 +704,30 @@ func (u *APIUtil) OperationModelToDTO(model *model.Operation) *dto.Operation {
 		Name:        model.Name,
 		Description: model.Description,
 		Request:     u.OperationRequestModelToDTO(model.Request),
+	}
+}
+
+func (u *APIUtil) ChannelModelToDTO(model *model.Channel) *dto.Channel {
+	if model == nil {
+		return nil
+	}
+	return &dto.Channel{
+		Name:        model.Name,
+		Description: model.Description,
+		Request:     u.ChannelRequestModelToDTO(model.Request),
+	}
+}
+
+func (u *APIUtil) ChannelRequestModelToDTO(model *model.ChannelRequest) *dto.ChannelRequest {
+	if model == nil {
+		return nil
+	}
+	return &dto.ChannelRequest{
+		Method:          model.Method,
+		Path:            model.Path,
+		BackendServices: u.BackendRoutingModelsToDTO(model.BackendServices),
+		Authentication:  u.AuthConfigModelToDTO(model.Authentication),
+		Policies:        u.PoliciesModelToDTO(model.Policies),
 	}
 }
 
