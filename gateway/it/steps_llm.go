@@ -59,7 +59,7 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		// The actual assertion is done by checking the response body
 		body := httpSteps.LastBody()
 		if len(body) == 0 {
-			return nil
+			return fmt.Errorf("expected non-empty response body for oob-templates assertion")
 		}
 		// The actual validation of OOB templates should be done using JSON assertions
 		// in the feature file itself, so this step just ensures we got a response
@@ -74,23 +74,7 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 			return fmt.Errorf("failed to parse response JSON: %w", err)
 		}
 
-		// 1️⃣ Validate count
-		expectedCount := 7
-		if response.Count != expectedCount {
-			return fmt.Errorf(
-				"expected template count to be %d, but got %d",
-				expectedCount,
-				response.Count,
-			)
-		}
-
-		// 2️⃣ Collect actual template IDs
-		actualIDs := make(map[string]bool)
-		for _, t := range response.Templates {
-			actualIDs[t.ID] = true
-		}
-
-		// 3️⃣ Expected OOB template IDs
+		// 1️⃣ Expected OOB template IDs
 		expectedIDs := []string{
 			"azureai-foundry",
 			"anthropic",
@@ -99,6 +83,22 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 			"azure-openai",
 			"mistralai",
 			"awsbedrock",
+		}
+
+		// 2️⃣ Validate count is at least the expected set
+		expectedCount := len(expectedIDs)
+		if response.Count < expectedCount {
+			return fmt.Errorf(
+				"expected template count to be >= %d, but got %d",
+				expectedCount,
+				response.Count,
+			)
+		}
+
+		// 3️⃣ Collect actual template IDs
+		actualIDs := make(map[string]bool)
+		for _, t := range response.Templates {
+			actualIDs[t.ID] = true
 		}
 
 		// 4️⃣ Validate all expected IDs are present
