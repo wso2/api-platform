@@ -1,4 +1,4 @@
-import type { ApiPublishPayload } from "../../../hooks/apiPublish";
+import type { ApiPublishPayload } from '../../../hooks/apiPublish';
 
 type FormLike = {
   apiName: string;
@@ -15,7 +15,10 @@ type FormLike = {
   subscriptionPolicies?: string[];
 };
 
-export const buildPublishPayload = (form: FormLike, devPortalUUID: string): ApiPublishPayload => {
+export const buildPublishPayload = (
+  form: FormLike,
+  devPortalUUID: string
+): ApiPublishPayload => {
   return {
     devPortalUUID,
     endPoints: {
@@ -27,7 +30,7 @@ export const buildPublishPayload = (form: FormLike, devPortalUUID: string): ApiP
       apiDescription: form.apiDescription ?? '',
       visibility: form.visibility ?? 'PUBLIC',
       tags: form.tags ?? [],
-      labels: form.labels ?? [],
+      labels: ['default'],
       owners: {
         technicalOwner: form.technicalOwner ?? '',
         technicalOwnerEmail: form.technicalOwnerEmail ?? '',
@@ -35,7 +38,7 @@ export const buildPublishPayload = (form: FormLike, devPortalUUID: string): ApiP
         businessOwnerEmail: form.businessOwnerEmail ?? '',
       },
     },
-    subscriptionPolicies: form.subscriptionPolicies ?? [],
+    subscriptionPolicies: ['Default'],
   };
 };
 
