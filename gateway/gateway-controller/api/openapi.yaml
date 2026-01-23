@@ -1704,7 +1704,7 @@ paths:
         - Secrets Management
       summary: List all secrets
       description: |
-        Retrieve a list of all stored secrets. Returns secret metadata without
+        Retrieve a list of all stored secrets. Returns secret identifiers without
         the actual secret values for security purposes.
       operationId: listSecrets
       responses:
@@ -3740,49 +3740,6 @@ components:
         status:
           type: string
           example: success
-
-    SecretCreateRequest:
-      type: object
-      required:
-        - id
-        - value
-      properties:
-        id:
-          type: string
-          description: |
-            Unique identifier for the secret. Must be unique across all secrets.
-            Recommended format: alphanumeric with hyphens/underscores.
-          minLength: 1
-          maxLength: 255
-          example: "database-password"
-        value:
-          type: string
-          description: |
-            The secret value to encrypt and store. Will be encrypted at rest
-            using the primary encryption provider. Maximum size: 10KB.
-          minLength: 1
-          maxLength: 10240
-          example: "sup3rs3cr3t!"
-      example:
-        id: "api-key-production"
-        value: "sk-abcd1234efgh5678"
-
-    SecretUpdateRequest:
-      type: object
-      required:
-        - value
-      properties:
-        value:
-          type: string
-          description: |
-            New secret value to encrypt and store. The secret will be re-encrypted
-            using the current primary encryption provider, enabling automatic key
-            rotation. Maximum size: 10KB.
-          minLength: 1
-          maxLength: 10240
-          example: "n3w_s3cr3t_v@lu3!"
-      example:
-        value: "updated-secret-value"
 
     SecretResponse:
       type: object
