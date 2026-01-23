@@ -166,7 +166,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	// The gateway will receive the new deployment event and handle the transition
 	if existingDeployment != nil {
 		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
-			log.Printf("[WARN] Failed to mark existing deployment as undeployed %s: %v", existingDeployment.DeploymentID, err)
+			return nil, fmt.Errorf("failed to undeploy existing deployment %s: %w", existingDeployment.DeploymentID, err)
 		}
 	}
 
