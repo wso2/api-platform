@@ -25,15 +25,11 @@ import (
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
 
-// policyPropagationDelay is the time to wait after mutating operations
-// to allow the Policy Engine to receive and apply configuration changes.
-const policyPropagationDelay = 2 * time.Second
-
-// RegisterAPISteps registers all API deployment step definitions
-func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
-	ctx.Step(`^I deploy this API configuration:$`, func(body *godog.DocString) error {
+// RegisterLLMSteps registers all LLM provider step definitions
+func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
+	ctx.Step(`^I deploy this LLM provider configuration:$`, func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		err := httpSteps.SendPOSTToService("gateway-controller", "/apis", body)
+		err := httpSteps.SendPOSTToService("gateway-controller", "/llm-providers", body)
 		if err != nil {
 			return err
 		}
@@ -41,8 +37,8 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		return nil
 	})
 
-	ctx.Step(`^I delete the API "([^"]*)"$`, func(name string) error {
-		err := httpSteps.SendDELETEToService("gateway-controller", "/apis/"+name)
+	ctx.Step(`^I delete the LLM provider "([^"]*)"$`, func(id string) error {
+		err := httpSteps.SendDELETEToService("gateway-controller", "/llm-providers/"+id)
 		if err != nil {
 			return err
 		}
@@ -50,13 +46,21 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		return nil
 	})
 
-	ctx.Step(`^I update the API "([^"]*)" with this configuration:$`, func(apiName string, body *godog.DocString) error {
+	ctx.Step(`^I update the LLM provider "([^"]*)" with this configuration:$`, func(id string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		err := httpSteps.SendPUTToService("gateway-controller", "/apis/"+apiName, body)
+		err := httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+id, body)
 		if err != nil {
 			return err
 		}
 		time.Sleep(policyPropagationDelay)
 		return nil
+	})
+
+	ctx.Step(`^I list all LLM providers$`, func() error {
+		return httpSteps.SendGETToService("gateway-controller", "/llm-providers")
+	})
+
+	ctx.Step(`^I get the LLM provider "([^"]*)"$`, func(id string) error {
+		return httpSteps.SendGETToService("gateway-controller", "/llm-providers/"+id)
 	})
 }
