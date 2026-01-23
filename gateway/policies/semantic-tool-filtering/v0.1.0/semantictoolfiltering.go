@@ -33,8 +33,8 @@ import (
 
 const (
 	// Selection modes
-	SelectionModeTopK      = "TOP_K"
-	SelectionModeThreshold = "THRESHOLD"
+	SelectionModeTopK      = "By Rank"
+	SelectionModeThreshold = "By Threshold"
 
 	// Internal timeout for embedding provider (not exposed in policy definition)
 	DefaultTimeoutMs = 5000
@@ -156,32 +156,32 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 		selectionMode = SelectionModeTopK
 	}
 	if selectionMode != SelectionModeTopK && selectionMode != SelectionModeThreshold {
-		return fmt.Errorf("'selectionMode' must be TOP_K or THRESHOLD")
+		return fmt.Errorf("'selectionMode' must be By Rank or By Threshold")
 	}
 	p.selectionMode = selectionMode
 
-	// Optional: topK (default 5 as per policy-definition.yaml)
-	if topKRaw, ok := params["topK"]; ok {
-		topK, err := extractInt(topKRaw)
+	// Optional: Limit (default 5 as per policy-definition.yaml)
+	if limitRaw, ok := params["Limit"]; ok {
+		limit, err := extractInt(limitRaw)
 		if err != nil {
-			return fmt.Errorf("'topK' must be a number: %w", err)
+			return fmt.Errorf("'Limit' must be a number: %w", err)
 		}
-		if topK < 0 || topK > 20 {
-			return fmt.Errorf("'topK' must be between 0 and 20")
+		if limit < 0 || limit > 20 {
+			return fmt.Errorf("'Limit' must be between 0 and 20")
 		}
-		p.topK = topK
+		p.topK = limit
 	} else {
 		p.topK = 5 // default from policy-definition.yaml
 	}
 
 	// Optional: similarityThreshold (default 0.7 as per policy-definition.yaml)
-	if thresholdRaw, ok := params["similarityThreshold"]; ok {
+	if thresholdRaw, ok := params["Threshold"]; ok {
 		threshold, err := extractFloat64(thresholdRaw)
 		if err != nil {
-			return fmt.Errorf("'similarityThreshold' must be a number: %w", err)
+			return fmt.Errorf("'Threshold' must be a number: %w", err)
 		}
 		if threshold < 0.0 || threshold > 1.0 {
-			return fmt.Errorf("'similarityThreshold' must be between 0.0 and 1.0")
+			return fmt.Errorf("'Threshold' must be between 0.0 and 1.0")
 		}
 		p.threshold = threshold
 	} else {
@@ -189,7 +189,7 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 	}
 
 	// Optional: jsonPath (default "$.messages[-1].content" as per policy-definition.yaml)
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
+	if jsonPathRaw, ok := params["queryJSONPath"]; ok {
 		if jsonPath, ok := jsonPathRaw.(string); ok {
 			if jsonPath != "" {
 				p.queryJSONPath = jsonPath
@@ -204,7 +204,7 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 	}
 
 	// Optional: toolsPath (default "$.tools" as per policy-definition.yaml)
-	if toolsPathRaw, ok := params["toolsPath"]; ok {
+	if toolsPathRaw, ok := params["toolsJSONPath"]; ok {
 		if toolsPath, ok := toolsPathRaw.(string); ok {
 			if toolsPath != "" {
 				p.toolsJSONPath = toolsPath
@@ -477,22 +477,22 @@ func (p *SemanticToolFilteringPolicy) OnRequest(ctx *policy.RequestContext, para
 		slog.Debug("SemanticToolFiltering: Empty request body")
 		return policy.UpstreamRequestModifications{}
 	}
-
+	slog.Debug("Onrequest")
 	// Handle based on format type (JSON or Text)
 	if p.userQueryIsJson && p.toolsIsJson {
 		// Pure JSON mode
-		return p.handleJSONRequest(content)
+		return p.handleJSONRequest(ctx, content)
 	} else if !p.userQueryIsJson && !p.toolsIsJson {
 		// Pure Text mode
-		return p.handleTextRequest(content)
+		return p.handleTextRequest(ctx, content)
 	} else {
 		// Mixed mode
-		return p.handleMixedRequest(content)
+		return p.handleMixedRequest(ctx, content)
 	}
 }
 
 // handleJSONRequest handles requests where both user query and tools are in JSON format
-func (p *SemanticToolFilteringPolicy) handleJSONRequest(content []byte) policy.RequestAction {
+func (p *SemanticToolFilteringPolicy) handleJSONRequest(ctx *policy.RequestContext, content []byte) policy.RequestAction {
 	// Parse request body as JSON
 	var requestBody map[string]interface{}
 	if err := json.Unmarshal(content, &requestBody); err != nil {
@@ -547,6 +547,15 @@ func (p *SemanticToolFilteringPolicy) handleJSONRequest(content []byte) policy.R
 		return p.buildErrorResponse("Error generating query embedding", err)
 	}
 
+	// Get embedding cache instance
+	embeddingCache := policy.GetEmbeddingCacheStoreInstance()
+	apiId := ctx.APIId
+
+	// Ensure API cache exists
+	if !embeddingCache.HasAPI(apiId) {
+		embeddingCache.AddAPICache(apiId)
+	}
+
 	// Calculate similarity scores for each tool
 	toolsWithScores := make([]ToolWithScore, 0, len(tools))
 	for _, toolRaw := range tools {
@@ -564,12 +573,34 @@ func (p *SemanticToolFilteringPolicy) handleJSONRequest(content []byte) policy.R
 			continue
 		}
 
-		// Generate embedding for tool description
-		toolEmbedding, err := p.embeddingProvider.GetEmbedding(toolDesc)
-		if err != nil {
-			slog.Warn("SemanticToolFiltering: Error generating tool embedding, skipping",
-				"error", err, "toolName", toolMap["name"])
-			continue
+		// Get tool name for cache entry
+		toolName, _ := toolMap["name"].(string)
+
+		// Hash the tool description for cache lookup
+		descHash := policy.HashDescription(toolDesc)
+
+		// Try to get embedding from cache
+		var toolEmbedding []float32
+		cachedEntry := embeddingCache.GetEntry(apiId, descHash)
+		if cachedEntry != nil {
+			// Cache hit - use cached embedding
+			toolEmbedding = cachedEntry.Embedding
+			slog.Debug("SemanticToolFiltering: Cache hit for tool embedding",
+				"toolName", toolName)
+		} else {
+			// Cache miss - generate embedding and store in cache
+			var err error
+			toolEmbedding, err = p.embeddingProvider.GetEmbedding(toolDesc)
+			if err != nil {
+				slog.Warn("SemanticToolFiltering: Error generating tool embedding, skipping",
+					"error", err, "toolName", toolName)
+				continue
+			}
+
+			// Store in cache
+			embeddingCache.AddEntry(apiId, descHash, toolName, toolEmbedding)
+			slog.Debug("SemanticToolFiltering: Cached new tool embedding",
+				"toolName", toolName)
 		}
 
 		// Calculate cosine similarity
@@ -616,7 +647,7 @@ func (p *SemanticToolFilteringPolicy) handleJSONRequest(content []byte) policy.R
 }
 
 // handleTextRequest handles requests where both user query and tools are in text format with tags
-func (p *SemanticToolFilteringPolicy) handleTextRequest(content []byte) policy.RequestAction {
+func (p *SemanticToolFilteringPolicy) handleTextRequest(ctx *policy.RequestContext, content []byte) policy.RequestAction {
 	contentStr := string(content)
 
 	// Extract user query from <userq> tags
@@ -648,6 +679,15 @@ func (p *SemanticToolFilteringPolicy) handleTextRequest(content []byte) policy.R
 		return p.buildErrorResponse("Error generating query embedding", err)
 	}
 
+	// Get embedding cache instance
+	embeddingCache := policy.GetEmbeddingCacheStoreInstance()
+	apiId := ctx.APIId
+
+	// Ensure API cache exists
+	if !embeddingCache.HasAPI(apiId) {
+		embeddingCache.AddAPICache(apiId)
+	}
+
 	// Calculate similarity scores for each tool
 	type TextToolWithScore struct {
 		Tool  TextTool
@@ -659,12 +699,31 @@ func (p *SemanticToolFilteringPolicy) handleTextRequest(content []byte) policy.R
 		// Use name + description for better semantic matching
 		toolText := fmt.Sprintf("%s: %s", tool.Name, tool.Description)
 
-		// Generate embedding for tool
-		toolEmbedding, err := p.embeddingProvider.GetEmbedding(toolText)
-		if err != nil {
-			slog.Warn("SemanticToolFiltering: Error generating tool embedding, skipping",
-				"error", err, "toolName", tool.Name)
-			continue
+		// Hash the tool text for cache lookup
+		textHash := policy.HashDescription(toolText)
+
+		// Try to get embedding from cache
+		var toolEmbedding []float32
+		cachedEntry := embeddingCache.GetEntry(apiId, textHash)
+		if cachedEntry != nil {
+			// Cache hit - use cached embedding
+			toolEmbedding = cachedEntry.Embedding
+			slog.Debug("SemanticToolFiltering: Cache hit for tool embedding",
+				"toolName", tool.Name)
+		} else {
+			// Cache miss - generate embedding and store in cache
+			var err error
+			toolEmbedding, err = p.embeddingProvider.GetEmbedding(toolText)
+			if err != nil {
+				slog.Warn("SemanticToolFiltering: Error generating tool embedding, skipping",
+					"error", err, "toolName", tool.Name)
+				continue
+			}
+
+			// Store in cache
+			embeddingCache.AddEntry(apiId, textHash, tool.Name, toolEmbedding)
+			slog.Debug("SemanticToolFiltering: Cached new tool embedding",
+				"toolName", tool.Name)
 		}
 
 		// Calculate cosine similarity
@@ -724,7 +783,7 @@ func (p *SemanticToolFilteringPolicy) handleTextRequest(content []byte) policy.R
 }
 
 // handleMixedRequest handles requests where user query and tools have different formats
-func (p *SemanticToolFilteringPolicy) handleMixedRequest(content []byte) policy.RequestAction {
+func (p *SemanticToolFilteringPolicy) handleMixedRequest(ctx *policy.RequestContext, content []byte) policy.RequestAction {
 	contentStr := string(content)
 	var userQuery string
 	var err error
@@ -754,6 +813,15 @@ func (p *SemanticToolFilteringPolicy) handleMixedRequest(content []byte) policy.
 	if err != nil {
 		slog.Error("SemanticToolFiltering: Error generating query embedding", "error", err)
 		return p.buildErrorResponse("Error generating query embedding", err)
+	}
+
+	// Get embedding cache instance
+	embeddingCache := policy.GetEmbeddingCacheStoreInstance()
+	apiId := ctx.APIId
+
+	// Ensure API cache exists
+	if !embeddingCache.HasAPI(apiId) {
+		embeddingCache.AddAPICache(apiId)
 	}
 
 	// Handle tools based on format
@@ -803,9 +871,32 @@ func (p *SemanticToolFilteringPolicy) handleMixedRequest(content []byte) policy.
 				continue
 			}
 
-			toolEmbedding, err := p.embeddingProvider.GetEmbedding(toolDesc)
-			if err != nil {
-				continue
+			// Get tool name for cache entry
+			toolName, _ := toolMap["name"].(string)
+
+			// Hash the tool description for cache lookup
+			descHash := policy.HashDescription(toolDesc)
+
+			// Try to get embedding from cache
+			var toolEmbedding []float32
+			cachedEntry := embeddingCache.GetEntry(apiId, descHash)
+			if cachedEntry != nil {
+				// Cache hit - use cached embedding
+				toolEmbedding = cachedEntry.Embedding
+				slog.Debug("SemanticToolFiltering: Cache hit for tool embedding",
+					"toolName", toolName)
+			} else {
+				// Cache miss - generate embedding and store in cache
+				var err error
+				toolEmbedding, err = p.embeddingProvider.GetEmbedding(toolDesc)
+				if err != nil {
+					continue
+				}
+
+				// Store in cache
+				embeddingCache.AddEntry(apiId, descHash, toolName, toolEmbedding)
+				slog.Debug("SemanticToolFiltering: Cached new tool embedding",
+					"toolName", toolName)
 			}
 
 			similarity, err := cosineSimilarity(queryEmbedding, toolEmbedding)
@@ -855,9 +946,30 @@ func (p *SemanticToolFilteringPolicy) handleMixedRequest(content []byte) policy.
 
 		for _, tool := range textTools {
 			toolText := fmt.Sprintf("%s: %s", tool.Name, tool.Description)
-			toolEmbedding, err := p.embeddingProvider.GetEmbedding(toolText)
-			if err != nil {
-				continue
+
+			// Hash the tool text for cache lookup
+			textHash := policy.HashDescription(toolText)
+
+			// Try to get embedding from cache
+			var toolEmbedding []float32
+			cachedEntry := embeddingCache.GetEntry(apiId, textHash)
+			if cachedEntry != nil {
+				// Cache hit - use cached embedding
+				toolEmbedding = cachedEntry.Embedding
+				slog.Debug("SemanticToolFiltering: Cache hit for tool embedding",
+					"toolName", tool.Name)
+			} else {
+				// Cache miss - generate embedding and store in cache
+				var err error
+				toolEmbedding, err = p.embeddingProvider.GetEmbedding(toolText)
+				if err != nil {
+					continue
+				}
+
+				// Store in cache
+				embeddingCache.AddEntry(apiId, textHash, tool.Name, toolEmbedding)
+				slog.Debug("SemanticToolFiltering: Cached new tool embedding",
+					"toolName", tool.Name)
 			}
 
 			similarity, err := cosineSimilarity(queryEmbedding, toolEmbedding)
@@ -1000,16 +1112,116 @@ func (p *SemanticToolFilteringPolicy) filterTools(toolsWithScores []ToolWithScor
 
 // updateToolsInRequestBody updates the tools array in the request body
 func updateToolsInRequestBody(requestBody *map[string]interface{}, toolsPath string, tools []map[string]interface{}) error {
-	// For simplicity, assume toolsPath is "$.tools" which means top-level "tools" key
-	// More complex JSONPath would require a library for setting values
-	if toolsPath == "$.tools" {
-		(*requestBody)["tools"] = tools
-		return nil
+	// Remove leading "$." if present
+	path := strings.TrimPrefix(toolsPath, "$.")
+	parts := strings.Split(path, ".")
+
+	if len(parts) == 0 {
+		return fmt.Errorf("invalid toolsPath: %s", toolsPath)
 	}
 
-	// For other paths, we'd need a more sophisticated JSONPath setter
-	// For now, return error for unsupported paths
-	return fmt.Errorf("unsupported toolsPath: %s (only $.tools is currently supported)", toolsPath)
+	// Handle array index in path, e.g., "tools[0]"
+	curr := *requestBody
+	for idx, part := range parts {
+		// Check if part contains array index, e.g., "tools[0]"
+		if openIdx := strings.Index(part, "["); openIdx != -1 && strings.HasSuffix(part, "]") {
+			field := part[:openIdx]
+			indexStr := part[openIdx+1 : len(part)-1]
+			index, err := strconv.Atoi(indexStr)
+			if err != nil {
+				return fmt.Errorf("invalid array index in path: %s", part)
+			}
+
+			// If this is the last part, set the value at the array index
+			if idx == len(parts)-1 {
+				// Ensure the array exists
+				arr, ok := curr[field].([]interface{})
+				if !ok {
+					// Create array if not present
+					arr = make([]interface{}, index+1)
+				} else if len(arr) <= index {
+					// Extend array if needed
+					newArr := make([]interface{}, index+1)
+					copy(newArr, arr)
+					arr = newArr
+				}
+				arr[index] = tools
+				curr[field] = arr
+				return nil
+			}
+
+			// Not last part, descend into the array element
+			arr, ok := curr[field].([]interface{})
+			if !ok {
+				// Create array if not present
+				arr = make([]interface{}, index+1)
+				curr[field] = arr
+			} else if len(arr) <= index {
+				// Extend array if needed
+				newArr := make([]interface{}, index+1)
+				copy(newArr, arr)
+				arr = newArr
+				curr[field] = arr
+			}
+			// If element is nil, create map
+			if arr[index] == nil {
+				arr[index] = make(map[string]interface{})
+			}
+			nextMap, ok := arr[index].(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("expected map at array index %d in field %s", index, field)
+			}
+			curr = nextMap
+			continue
+		}
+
+		// If this is the last part, set the value
+		if idx == len(parts)-1 {
+			curr[part] = tools
+			return nil
+		}
+
+		// If the next level doesn't exist, create it as a map
+		next, ok := curr[part]
+		if !ok {
+			newMap := make(map[string]interface{})
+			curr[part] = newMap
+			curr = newMap
+			continue
+		}
+
+		// If the next level is a map, descend into it
+		nextMap, ok := next.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("expected map at path %s but found %T", part, next)
+		}
+		curr = nextMap
+	}
+	for i, part := range parts {
+		// If this is the last part, set the value
+		if i == len(parts)-1 {
+			curr[part] = tools
+			return nil
+		}
+
+		// If the next level doesn't exist, create it as a map
+		next, ok := curr[part]
+		if !ok {
+			newMap := make(map[string]interface{})
+			curr[part] = newMap
+			curr = newMap
+			continue
+		}
+
+		// If the next level is a map, descend into it
+		nextMap, ok := next.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("expected map at path %s but found %T", part, next)
+		}
+		curr = nextMap
+	}
+
+	return nil
 }
 
 // buildErrorResponse builds an error response
