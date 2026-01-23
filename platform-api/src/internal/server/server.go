@@ -110,6 +110,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	gatewayHandler := handler.NewGatewayHandler(gatewayService)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService)
+	internalAPIHandler := handler.NewInternalAPIHandler(gatewayService)
 	gitHandler := handler.NewGitHandler(gitService)
 
 	// Setup router
@@ -140,6 +141,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	gatewayHandler.RegisterRoutes(router)
 	wsHandler.RegisterRoutes(router)
 	internalGatewayHandler.RegisterRoutes(router)
+	internalAPIHandler.RegisterRoutes(router)
 	gitHandler.RegisterRoutes(router)
 
 	log.Printf("[INFO] WebSocket manager initialized: maxConnections=%d heartbeatTimeout=%ds rateLimitPerMin=%d",
