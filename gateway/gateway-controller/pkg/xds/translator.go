@@ -245,18 +245,22 @@ func (t *Translator) TranslateConfigs(
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
 
+	// Variable to hold the shared route configuration (created once, used by both listeners)
+	var sharedRouteConfig *route.RouteConfiguration
+
 	// Always create the HTTP listener, even with no APIs deployed
-	httpListener, err := t.createListener(virtualHosts, false)
+	httpListener, routeConfig, err := t.createListener(virtualHosts, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP listener: %w", err)
 	}
 	listeners = append(listeners, httpListener)
+	sharedRouteConfig = routeConfig // Save route config for RDS
 
 	// Create HTTPS listener if enabled
 	if t.routerConfig.HTTPSEnabled {
 		log.Info("HTTPS is enabled, creating HTTPS listener",
 			zap.Int("https_port", t.routerConfig.HTTPSPort))
-		httpsListener, err := t.createListener(virtualHosts, true)
+		httpsListener, _, err := t.createListener(virtualHosts, true)
 		if err != nil {
 			log.Error("Failed to create HTTPS listener", zap.Error(err))
 			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
@@ -266,6 +270,15 @@ func (t *Translator) TranslateConfigs(
 		listeners = append(listeners, httpsListener)
 	} else {
 		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
+	}
+
+	// Add route configuration for RDS
+	var routes []types.Resource
+	if sharedRouteConfig != nil {
+		routes = append(routes, sharedRouteConfig)
+		log.Info("Added shared route configuration for RDS",
+			zap.String("route_config_name", sharedRouteConfig.GetName()),
+			zap.Int("num_virtual_hosts", len(sharedRouteConfig.GetVirtualHosts())))
 	}
 
 	// Add all clusters
@@ -337,12 +350,14 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	resources[resource.ListenerType] = listeners
-	// Don't add empty routes - we use inline route configs in listeners
-	// resources[resource.RouteType] = routes
+	// Add route configuration for RDS (Route Discovery Service)
+	// This allows sharing route config between HTTP and HTTPS listeners
+	resources[resource.RouteType] = routes
 	resources[resource.ClusterType] = clusters
 
 	log.Info("Translated resources ready for snapshot",
 		zap.Int("num_listeners", len(listeners)),
+		zap.Int("num_routes", len(routes)),
 		zap.Int("num_clusters", len(clusters)))
 	for i, l := range listeners {
 		if listenerProto, ok := l.(*listener.Listener); ok {
@@ -474,16 +489,20 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 	return clusterName, parsedURL, nil
 }
 
+// SharedRouteConfigName is the name of the shared route configuration used by both HTTP and HTTPS listeners
+const SharedRouteConfigName = "shared_route_config"
+
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
-func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, error) {
+// Uses RDS (Route Discovery Service) to share route configuration between listeners
+func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, *route.RouteConfiguration, error) {
 	routeConfig := t.createRouteConfiguration(virtualHosts)
 
 	// Create router filter with typed config
 	routerConfig := &router.Router{}
 	routerAny, err := anypb.New(routerConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create router config: %w", err)
+		return nil, nil, fmt.Errorf("failed to create router config: %w", err)
 	}
 
 	// Build HTTP filters chain
@@ -493,7 +512,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if t.routerConfig.PolicyEngine.Enabled {
 		extProcFilter, err := t.createExtProcFilter()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
+			return nil, nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
 		}
 		httpFilters = append(httpFilters, extProcFilter)
 	}
@@ -506,13 +525,24 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		},
 	})
 
-	// Create HTTP connection manager
+	// Create HTTP connection manager with RDS (Route Discovery Service)
+	// This allows route configuration to be shared between HTTP and HTTPS listeners
 	manager := &hcm.HttpConnectionManager{
 		CodecType:         hcm.HttpConnectionManager_AUTO,
 		StatPrefix:        "http",
 		GenerateRequestId: wrapperspb.Bool(true),
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
-			RouteConfig: routeConfig,
+		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
+			Rds: &hcm.Rds{
+				ConfigSource: &core.ConfigSource{
+					ResourceApiVersion: core.ApiVersion_V3,
+					ConfigSourceSpecifier: &core.ConfigSource_Ads{
+						Ads: &core.AggregatedConfigSource{},
+					},
+					// No timeout - wait indefinitely for route config
+					InitialFetchTimeout: durationpb.New(0),
+				},
+				RouteConfigName: SharedRouteConfigName,
+			},
 		},
 		HttpFilters:                httpFilters,
 		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
@@ -523,7 +553,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if t.routerConfig.AccessLogs.Enabled {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create access log config: %w", err)
+			return nil, nil, fmt.Errorf("failed to create access log config: %w", err)
 		}
 		manager.AccessLog = accessLogs
 	}
@@ -531,7 +561,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	// Add tracing if enabled
 	tracingConfig, err := t.createTracingConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tracing config: %w", err)
+		return nil, nil, fmt.Errorf("failed to create tracing config: %w", err)
 	}
 	if tracingConfig != nil {
 		manager.Tracing = tracingConfig
@@ -539,7 +569,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 
 	pbst, err := anypb.New(manager)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Determine listener name and port based on protocol
@@ -567,12 +597,12 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if isHTTPS {
 		tlsContext, err := t.createDownstreamTLSContext()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+			return nil, nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
 		}
 
 		tlsContextAny, err := anypb.New(tlsContext)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+			return nil, nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
 		}
 
 		filterChain.TransportSocket = &core.TransportSocket{
@@ -597,7 +627,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			},
 		},
 		FilterChains: []*listener.FilterChain{filterChain},
-	}, nil
+	}, routeConfig, nil
 }
 
 func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
@@ -799,9 +829,10 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 }
 
 // createRouteConfiguration creates a route configuration
+// Uses SharedRouteConfigName so it can be discovered via RDS
 func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost) *route.RouteConfiguration {
 	return &route.RouteConfiguration{
-		Name:         "local_route",
+		Name:         SharedRouteConfigName,
 		VirtualHosts: virtualHosts,
 	}
 }

@@ -37,6 +37,7 @@ dynamic_resources:
 
   lds_config:
     resource_api_version: V3
+    initial_fetch_timeout: 0s
     ads: {}
 
   cds_config:

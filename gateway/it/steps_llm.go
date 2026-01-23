@@ -21,6 +21,7 @@ package it
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/gateway/it/steps"
@@ -30,7 +31,12 @@ import (
 func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
 	ctx.Step(`^I create this LLM provider template:$`, func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		return httpSteps.SendPOSTToService("gateway-controller", "/llm-provider-templates", body)
+		err := httpSteps.SendPOSTToService("gateway-controller", "/llm-provider-templates", body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
 	})
 
 	ctx.Step(`^I retrieve the LLM provider template "([^"]*)"$`, func(templateID string) error {
@@ -39,11 +45,21 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 	ctx.Step(`^I update the LLM provider template "([^"]*)" with:$`, func(templateID string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		return httpSteps.SendPUTToService("gateway-controller", "/llm-provider-templates/"+templateID, body)
+		err := httpSteps.SendPUTToService("gateway-controller", "/llm-provider-templates/"+templateID, body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
 	})
 
 	ctx.Step(`^I delete the LLM provider template "([^"]*)"$`, func(templateID string) error {
-		return httpSteps.SendDELETEToService("gateway-controller", "/llm-provider-templates/"+templateID)
+		err := httpSteps.SendDELETEToService("gateway-controller", "/llm-provider-templates/"+templateID)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
 	})
 
 	ctx.Step(`^I list all LLM provider templates$`, func() error {
