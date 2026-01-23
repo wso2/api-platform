@@ -983,7 +983,10 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 
 	var metadataJSON string
 	if deployment.Metadata != nil {
-		metadataBytes, _ := json.Marshal(deployment.Metadata)
+		metadataBytes, err := json.Marshal(deployment.Metadata)
+		if err != nil {
+			return fmt.Errorf("failed to marshal deployment metadata: %w", err)
+		}
 		metadataJSON = string(metadataBytes)
 	}
 
