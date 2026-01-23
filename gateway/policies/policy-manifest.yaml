@@ -59,6 +59,6 @@ policies:
   - name: mcp-authz
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0.1.0
   - name: jwt-auth
-    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@main
+    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.0
   - name: advanced-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@main
