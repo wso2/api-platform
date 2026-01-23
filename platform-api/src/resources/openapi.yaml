@@ -966,34 +966,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{apiId}/deployments/{deploymentId}/content:
-    get:
-      summary: Get deployment artifact content
-      description: |
-        Retrieves the full content of a deployment artifact. The artifact contains the complete
-        API configuration and policies as they were at deployment time. Access is validated
-        against the organization in the JWT token.
-      operationId: GetDeploymentContent
-      tags:
-        - API Deployments
-      parameters:
-        - $ref: '#/components/parameters/apiID'
-        - $ref: '#/components/parameters/deploymentId'
-      responses:
-        '200':
-          description: Deployment content retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                description: Raw deployment artifact content
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /gateways:
     post:
       summary: Register a new gateway
