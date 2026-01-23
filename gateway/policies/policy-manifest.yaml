@@ -1,0 +1,4 @@
+version: v1
+policies:
+  - name: respond
+    gomodule: github.com/wso2/gateway-controllers/policies/respond@v0.1.0
