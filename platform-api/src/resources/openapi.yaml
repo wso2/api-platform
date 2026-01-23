@@ -3694,8 +3694,6 @@ components:
 
     RedeployRequest:
       type: object
-      required:
-        - gatewayId
       properties:
         gatewayId:
           type: string
@@ -3972,15 +3970,6 @@ components:
         type: string
         format: uuid
       description: The UUID of the deployment
-
-    apiId-Q:
-      name: apiId
-      in: query
-      required: false
-      schema:
-        type: string
-        format: uuid
-      description: Filter deployments by API UUID
 
     deploymentStatus-Q:
       name: status

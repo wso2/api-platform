@@ -93,6 +93,15 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 		return nil, constants.ErrAPINotFound
 	}
 
+	// Validate API has backend services attached (do this early before deployment limits)
+	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(apiUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get backend services: %w", err)
+	}
+	if len(backendServices) == 0 {
+		return nil, errors.New("API must have at least one backend service attached before deployment")
+	}
+
 	// Check deployment limits
 	apiDeploymentCount, err := s.apiRepo.CountDeploymentsByAPIAndGateway(apiUUID, req.GatewayID, orgUUID)
 	if err != nil {
@@ -110,14 +119,6 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 			}
 			log.Printf("[INFO] Deleted oldest undeployed deployment %s to make room for new deployment", oldestDeployment.DeploymentID)
 		}
-	}
-	// Validate API has backend services attached
-	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(apiUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get backend services: %w", err)
-	}
-	if len(backendServices) == 0 {
-		return nil, errors.New("API must have at least one backend service attached before deployment")
 	}
 
 	var baseDeploymentID *string

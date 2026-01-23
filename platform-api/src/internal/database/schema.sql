@@ -346,6 +346,8 @@ CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operat
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_api_deployments_api_gateway_status ON api_deployments(api_uuid, gateway_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_api_status ON api_deployments (api_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_gateway_status ON api_deployments (gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_devportals_org ON devportals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_devportals_active ON devportals(organization_uuid, is_active);
 CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid);
