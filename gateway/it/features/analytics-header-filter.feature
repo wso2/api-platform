@@ -101,7 +101,7 @@ Feature: Analytics Header Filter Policy
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for the endpoint "http://localhost:8080/analytics-request/v1.0/data" to be ready
+    And I wait for the endpoint "http://localhost:8080/analytics-response/v1.0/data" to be ready
 
     When I set header "Content-Type" to "application/json"
     And I set header "User-Agent" to "test-client"
@@ -180,7 +180,7 @@ Feature: Analytics Header Filter Policy
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "operation"
+    And the response body should contain "configuration validation failed"
 
   Scenario: Invalid policy configuration - invalid operation value
     Given I authenticate using basic auth as "admin"
@@ -212,7 +212,7 @@ Feature: Analytics Header Filter Policy
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "operation"
+    And the response body should contain "configuration validation failed"
 
   Scenario: Invalid policy configuration - missing headers field
     Given I authenticate using basic auth as "admin"
@@ -242,7 +242,7 @@ Feature: Analytics Header Filter Policy
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "headers"
+    And the response body should contain "configuration validation failed"
 
   Scenario: Case-insensitive header matching with allow operation
     Given I authenticate using basic auth as "admin"
