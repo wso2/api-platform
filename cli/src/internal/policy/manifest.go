@@ -135,10 +135,6 @@ func GenerateLockFileWithPaths(policies []ProcessedPolicy, manifestVersion strin
 
 // validateManifest validates the manifest structure
 func validateManifest(manifest *PolicyManifest) error {
-	if manifest.Version == "" {
-		return fmt.Errorf("manifest version is required")
-	}
-
 	if len(manifest.Policies) == 0 {
 		return fmt.Errorf("manifest must contain at least one policy")
 	}
@@ -148,12 +144,7 @@ func validateManifest(manifest *PolicyManifest) error {
 			return fmt.Errorf("policy at index %d: name is required", i)
 		}
 
-		// Require version for all policies. Version is mandatory and not optional.
-		if policy.Version == "" {
-			return fmt.Errorf("policy[%d] (%s): 'version' field is required", i, policy.Name)
-		}
-
-		// Validate local policy zip file structure when a filePath is provided
+		// Validate local policy when a filePath is provided
 		if policy.FilePath != "" {
 			// Resolve relative paths relative to manifest directory
 			policyPath := policy.FilePath
@@ -162,17 +153,23 @@ func validateManifest(manifest *PolicyManifest) error {
 				policyPath = filepath.Clean(policyPath)
 			}
 
-			// Check if file exists
-			if _, err := os.Stat(policyPath); os.IsNotExist(err) {
-				return fmt.Errorf("policy %s: file not found at path: %s", policy.Name, policy.FilePath)
+			// Check if path exists
+			info, err := os.Stat(policyPath)
+			if os.IsNotExist(err) {
+				return fmt.Errorf("policy %s: path not found: %s", policy.Name, policy.FilePath)
+			} else if err != nil {
+				return fmt.Errorf("failed to access policy path %s: %w", policy.FilePath, err)
 			}
 
-			// Validate local policy zip structure and that YAML matches manifest
-			if err := utils.ValidateLocalPolicyZip(policyPath, policy.Name, policy.Version); err != nil {
+			// Must be a directory containing policy-definition.yaml
+			if !info.IsDir() {
+				return fmt.Errorf("policy %s: path must be a directory containing policy-definition.yaml (zip files are not supported)", policy.Name)
+			}
+
+			if err := utils.ValidateLocalPolicyDir(policyPath, policy.Name); err != nil {
 				return fmt.Errorf("policy %s: validation failed:\n%w\n\nLocal policies must:\n"+
-					"  1. Be a .zip file (file extension .zip)\n"+
-					"  2. Contain a policy-definition.yaml at the root of the archive\n"+
-					"  3. Ensure 'name' and 'version' fields inside policy-definition.yaml exactly match the manifest", policy.Name, err)
+					"  1. Be a directory containing policy-definition.yaml at the root\n"+
+					"  2. Ensure 'name' matches the manifest", policy.Name, err)
 			}
 		}
 	}

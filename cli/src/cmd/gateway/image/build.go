@@ -40,9 +40,6 @@ ap gateway image build --name my-gateway --version 1.0.0
 # Build with custom path containing manifest files
 ap gateway image build --name my-gateway --path ./my-policies --repository myregistry
 
-# Build in offline mode (uses manifest lock file)
-ap gateway image build --name my-gateway --offline
-
 # Build with platform specification
 ap gateway image build --name my-gateway --platform linux/amd64`
 )
@@ -59,7 +56,6 @@ var (
 	push                     bool
 	noCache                  bool
 	platform                 string
-	offline                  bool
 	outputDir                string
 
 	// Computed values
@@ -91,7 +87,6 @@ func init() {
 	buildCmd.Flags().BoolVar(&push, "push", false, "Push image to registry after build")
 	buildCmd.Flags().BoolVar(&noCache, "no-cache", false, "Build without using cache")
 	buildCmd.Flags().StringVar(&platform, "platform", "", "Target platform (e.g., linux/amd64)")
-	buildCmd.Flags().BoolVar(&offline, "offline", false, "Build in offline mode using manifest lock file")
 	buildCmd.Flags().StringVar(&outputDir, "output-dir", "", "Output directory for build artifacts")
 }
 
@@ -141,135 +136,9 @@ func runBuildCommand() error {
 		fmt.Println("  ✓ Docker buildx is available")
 	}
 
-	// Determine build mode
-	if offline {
-		fmt.Println("→ Building in OFFLINE mode")
-		fmt.Println()
-		return runOfflineBuild()
-	}
-
-	fmt.Println("→ Building in ONLINE mode")
+	fmt.Println("→ Building gateway image")
 	fmt.Println()
-	return runOnlineBuild()
-}
-
-func runOnlineBuild() error {
-	// Step 2: Read Policy Manifest
-	fmt.Println("[2/9] Reading Policy Manifest")
-
-	// Get manifest file path
-	manifestFilePath, err := getManifestFilePath(manifestPath)
-	if err != nil {
-		return err
-	}
-
-	manifest, err := policy.ParseManifest(manifestFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to parse manifest file at '%s': %w", manifestFilePath, err)
-	}
-	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
-
-	// Step 3: Display policy breakdown
-	fmt.Println("[3/9] Categorizing Policies")
-	localPolicies, hubPolicies := policy.SeparatePolicies(manifest)
-	fmt.Printf("  → Local policies: %d\n", len(localPolicies))
-	fmt.Printf("  → Hub policies: %d\n\n", len(hubPolicies))
-
-	var allProcessed []policy.ProcessedPolicy
-
-	// Step 4: Process Local Policies
-	fmt.Println("[4/9] Processing Local Policies")
-	if len(localPolicies) > 0 {
-		processed, err := policy.ProcessLocalPolicies(localPolicies)
-		if err != nil {
-			return fmt.Errorf("failed to process local policies: %w", err)
-		}
-		allProcessed = append(allProcessed, processed...)
-	} else {
-		fmt.Println("  → No local policies to process")
-		fmt.Println()
-	}
-
-	// Step 5: Resolve and Download Hub Policies
-	fmt.Println("[5/9] Resolving Hub Policies from PolicyHub")
-	if len(hubPolicies) > 0 {
-		processed, err := policy.ProcessHubPolicies(hubPolicies, manifest.VersionResolution)
-		if err != nil {
-			return fmt.Errorf("failed to process hub policies: %w", err)
-		}
-		allProcessed = append(allProcessed, processed...)
-	} else {
-		fmt.Println("  → No hub policies to resolve")
-		fmt.Println()
-	}
-
-	// Step 6: Generate Lock File (user-facing, without filePaths)
-	fmt.Println("[6/9] Generating Manifest Lock File")
-	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
-	if err := policy.GenerateLockFile(allProcessed, manifest.Version, lockFilePath); err != nil {
-		return fmt.Errorf("failed to generate lock file: %w", err)
-	}
-	fmt.Printf("  ✓ Generated lock file: %s\n\n", lockFilePath)
-
-	// Step 7: Setup Workspace
-	fmt.Println("[7/9] Setting Up Docker Build Workspace")
-	if err := utils.SetupTempGatewayImageBuildDir(lockFilePath); err != nil {
-		return fmt.Errorf("failed to setup workspace: %w", err)
-	}
-
-	// Load policy index for workspace copy
-	index, err := utils.LoadPolicyIndex()
-	if err != nil {
-		return fmt.Errorf("failed to load policy index: %w", err)
-	}
-
-	// Copy all policies to workspace and collect their workspace paths
-	policyWorkspacePaths := make(map[string]string) // key: name:version, value: workspace relative path
-	for _, p := range allProcessed {
-		workspacePath, err := utils.CopyPolicyToWorkspace(p.Name, p.Version, p.LocalPath, p.IsLocal, index)
-		if err != nil {
-			return fmt.Errorf("failed to copy policy %s v%s to workspace: %w", p.Name, p.Version, err)
-		}
-		policyWorkspacePaths[fmt.Sprintf("%s:%s", p.Name, p.Version)] = workspacePath
-	}
-
-	// Generate workspace lock file with filePaths
-	tempGatewayImageBuildDir, err := utils.GetTempGatewayImageBuildDir()
-	if err != nil {
-		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
-	}
-	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
-	if err := policy.GenerateLockFileWithPaths(allProcessed, manifest.Version, workspaceLockPath, policyWorkspacePaths); err != nil {
-		return fmt.Errorf("failed to generate workspace lock file: %w", err)
-	}
-
-	fmt.Printf("  ✓ Workspace ready: %s\n", tempGatewayImageBuildDir)
-	fmt.Printf("  ✓ Copied %d policies\n\n", len(allProcessed))
-
-	// Step 8: Run Docker Build
-	fmt.Println("[8/9] Building Gateway Images")
-	if err := runDockerBuild(); err != nil {
-		return fmt.Errorf("failed to build gateway images: %w", err)
-	}
-	fmt.Println("  ✓ All images built successfully")
-
-	// Step 9: Copy Output if requested
-	fmt.Println("[9/9] Finalizing Build")
-	if outputDir != "" {
-		fmt.Printf("  → Copying output to %s...\n", outputDir)
-		outputSrcDir := filepath.Join(tempGatewayImageBuildDir, "output")
-		if err := utils.CopyDir(outputSrcDir, outputDir); err != nil {
-			return fmt.Errorf("failed to copy output directory: %w", err)
-		}
-		fmt.Printf("  ✓ Output copied to %s\n\n", outputDir)
-	} else {
-		fmt.Println()
-	}
-
-	// Display Summary
-	displayBuildSummary(manifest, manifestFilePath, lockFilePath, allProcessed, tempGatewayImageBuildDir)
-
-	return nil
+	return runUnifiedBuild()
 }
 
 // getManifestFilePath returns the full path to the manifest file
@@ -299,9 +168,9 @@ func getManifestFilePath(basePath string) (string, error) {
 	return "", fmt.Errorf("--path must be a directory, not a file: %s\n\nPlease provide the directory path containing %s", basePath, utils.DefaultManifestFile)
 }
 
-func runOfflineBuild() error {
-	// Step 2: Read Manifest and Lock Files
-	fmt.Println("[2/7] Reading Manifest and Lock Files")
+func runUnifiedBuild() error {
+	// Step 2: Read Policy Manifest
+	fmt.Println("[2/6] Reading Policy Manifest")
 
 	// Get manifest file path
 	manifestFilePath, err := getManifestFilePath(manifestPath)
@@ -309,126 +178,72 @@ func runOfflineBuild() error {
 		return err
 	}
 
-	// Read manifest file (needed for local policy paths)
 	manifest, err := policy.ParseManifest(manifestFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to parse manifest file at '%s': %w", manifestFilePath, err)
 	}
+	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
 
-	// Read lock file
-	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
-	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("lock file '%s' not found in directory: %s\n\nExpected file: %s\n\nPlease run the build command in ONLINE mode first (without --offline flag) to generate the lock file", utils.DefaultManifestLockFile, manifestPath, lockFilePath)
+	// Step 3: Validate Manifest and Separate Policies
+	fmt.Println("[3/6] Validating manifest")
+	localPolicies, hubPolicies := policy.SeparatePolicies(manifest)
+	fmt.Printf("  → Hub policies: %d\n", len(hubPolicies))
+	fmt.Printf("  → Local policies: %d\n\n", len(localPolicies))
+
+	// Step 4: Process Local Policies
+	fmt.Println("[4/6] Processing Local Policies")
+	var processed []policy.ProcessedPolicy
+	if len(localPolicies) > 0 {
+		processed, err = policy.ProcessLocalPolicies(localPolicies)
+		if err != nil {
+			return fmt.Errorf("failed to process local policies: %w", err)
+		}
+		fmt.Printf("  ✓ Processed %d local policies\n\n", len(processed))
 	}
 
-	lockFile, err := policy.ParseLockFile(lockFilePath)
+	// Step 5: Prepare workspace and copy manifest + policies
+	fmt.Println("[5/6] Preparing workspace and copying policies")
+	tempDir, err := utils.SetupTempGatewayWorkspace(manifestFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to parse lock file at '%s': %w\n\nThe lock file may be corrupted. Try regenerating it by running in ONLINE mode (without --offline flag)", lockFilePath, err)
-	}
-	fmt.Printf("  ✓ Loaded manifest and lock file with %d policies\n\n", len(lockFile.Policies))
-
-	// Step 3: Verify All Policies
-	fmt.Println("[3/7] Verifying Policies")
-	verified, err := policy.VerifyOfflinePolicies(lockFile, manifest)
-	if err != nil {
-		return fmt.Errorf("policy verification failed: %w", err)
-	}
-
-	// Step 4: Setup Workspace
-	fmt.Println("[4/7] Setting Up Docker Build Workspace")
-	if err := utils.SetupTempGatewayImageBuildDir(lockFilePath); err != nil {
 		return fmt.Errorf("failed to setup workspace: %w", err)
 	}
 
-	// Load policy index for workspace copy
-	index, err := utils.LoadPolicyIndex()
-	if err != nil {
-		return fmt.Errorf("failed to load policy index: %w", err)
-	}
+	// Policies were copied into the workspace by SetupTempGatewayWorkspace
 
-	// Copy all policies to workspace and collect their workspace paths
-	policyWorkspacePaths := make(map[string]string) // key: name:version, value: workspace relative path
-	for _, p := range verified {
-		workspacePath, err := utils.CopyPolicyToWorkspace(p.Name, p.Version, p.LocalPath, p.IsLocal, index)
-		if err != nil {
-			return fmt.Errorf("failed to copy policy %s v%s to workspace: %w", p.Name, p.Version, err)
-		}
-		policyWorkspacePaths[fmt.Sprintf("%s:%s", p.Name, p.Version)] = workspacePath
-	}
+	fmt.Printf("  ✓ Workspace ready: %s\n\n", tempDir)
 
-	// Generate workspace lock file with filePaths
-	tempGatewayImageBuildDir, err := utils.GetTempGatewayImageBuildDir()
-	if err != nil {
-		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
-	}
-	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
-	if err := policy.GenerateLockFileWithPaths(verified, manifest.Version, workspaceLockPath, policyWorkspacePaths); err != nil {
-		return fmt.Errorf("failed to generate workspace lock file: %w", err)
-	}
-
-	fmt.Printf("  ✓ Workspace ready: %s\n", tempGatewayImageBuildDir)
-	fmt.Printf("  ✓ Copied %d policies\n\n", len(verified))
-
-	// Step 5: Run Docker Build
-	fmt.Println("[5/7] Building Gateway Images")
+	// Step 6: Run Docker build (gateway-builder + image build)
+	fmt.Println("[6/6] Building Gateway Images")
 	if err := runDockerBuild(); err != nil {
 		return fmt.Errorf("failed to build gateway images: %w", err)
 	}
 	fmt.Println("  ✓ All images built successfully")
 
-	// Step 6: Copy Output
-	fmt.Println("[6/7] Finalizing Build")
-	if outputDir != "" {
-		fmt.Printf("  → Copying output to %s...\n", outputDir)
-		outputSrcDir := filepath.Join(tempGatewayImageBuildDir, "output")
-		if err := utils.CopyDir(outputSrcDir, outputDir); err != nil {
-			return fmt.Errorf("failed to copy output directory: %w", err)
+	// Copy generated lock file from workspace back to manifest location (if present)
+	tempGatewayImageBuildDir, err := utils.GetTempGatewayImageBuildDir()
+	if err != nil {
+		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
+	}
+	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
+	if _, err := os.Stat(workspaceLockPath); err == nil {
+		// Copy to manifest directory
+		manifestLockDst := filepath.Join(filepath.Dir(manifestFilePath), utils.DefaultManifestLockFile)
+		lockContent, err := os.ReadFile(workspaceLockPath)
+		if err != nil {
+			return fmt.Errorf("failed to read workspace lock file: %w", err)
 		}
-		fmt.Printf("  ✓ Output copied to %s\n", outputDir)
+		if err := os.WriteFile(manifestLockDst, lockContent, 0644); err != nil {
+			return fmt.Errorf("failed to write manifest lock file to %s: %w", manifestLockDst, err)
+		}
+		fmt.Printf("  ✓ Copied lock file to manifest location: %s\n\n", manifestLockDst)
+	} else {
+		fmt.Println("  → No lock file generated by builder")
 	}
 
-	// Step 7: Display Summary
-	fmt.Println("[7/7] Build Complete")
-	displayOfflineBuildSummary(manifestFilePath, lockFilePath, verified, tempGatewayImageBuildDir)
+	// Display Summary
+	displayBuildSummary(manifest, manifestFilePath, filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile), processed, tempGatewayImageBuildDir)
 
 	return nil
-}
-
-func displayOfflineBuildSummary(manifestFile, lockFile string, verified []policy.ProcessedPolicy, workspaceDir string) {
-	fmt.Println("=== Build Summary ===")
-	fmt.Println()
-
-	// Images built
-	fmt.Printf("✓ Built gateway images with %d policies:\n", len(verified))
-	fmt.Printf("  • %s/%s-policy-engine:%s\n", imageRepository, gatewayName, gatewayVersion)
-	fmt.Printf("  • %s/%s-gateway-controller:%s\n", imageRepository, gatewayName, gatewayVersion)
-	fmt.Printf("  • %s/%s-router:%s\n", imageRepository, gatewayName, gatewayVersion)
-	fmt.Println()
-
-	// Where images are
-	if push {
-		fmt.Printf("✓ Images pushed to registry: %s\n", imageRepository)
-		if platform != "" {
-			fmt.Printf("  Platform: %s\n", platform)
-		}
-	} else {
-		fmt.Println("✓ Images available in local Docker")
-		if platform != "" {
-			fmt.Printf("  Platform: %s\n", platform)
-		}
-	}
-	fmt.Println()
-
-	// Workspace and output
-	// Workspace output
-	outputPath := filepath.Join(workspaceDir, "output")
-	fmt.Printf("✓ Temporary Build output: %s\n", outputPath)
-	if outputDir != "" {
-		fmt.Printf("✓ Output artifacts copied to: %s\n", outputDir)
-	}
-	// Explain workspace cleanup behavior
-	fmt.Printf("\nNote: Workspace may be cleared on the next run of this command.\n")
-	fmt.Println()
 }
 
 func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lockFile string, processed []policy.ProcessedPolicy, workspaceDir string) {
