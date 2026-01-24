@@ -79,6 +79,11 @@ const (
 	Success CertificateResponseStatus = "success"
 )
 
+// Defines values for ChannelMethod.
+const (
+	SUB ChannelMethod = "SUB"
+)
+
 // Defines values for ConfigDumpAPIMetadataStatus.
 const (
 	ConfigDumpAPIMetadataStatusDeployed ConfigDumpAPIMetadataStatus = "deployed"
@@ -545,58 +550,18 @@ type CertificateUploadRequest struct {
 
 // Channel Channel (topic/event stream) definition for async APIs.
 type Channel struct {
-	// Bindings Protocol-specific channel bindings (arbitrary key/value structure).
-	Bindings *map[string]interface{} `json:"bindings,omitempty" yaml:"bindings,omitempty"`
+	// Method Operation method type.
+	Method ChannelMethod `json:"method" yaml:"method"`
 
-	// Description Human-readable description of the channel.
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// Parameters Path/channel parameters (keyed by parameter name).
-	Parameters *map[string]struct {
-		Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-		// Schema JSON Schema fragment for the parameter value.
-		Schema *map[string]interface{} `json:"schema,omitempty" yaml:"schema,omitempty"`
-	} `json:"parameters,omitempty" yaml:"parameters,omitempty"`
-
-	// Path Channel path or topic identifier relative to API context.
-	Path string `json:"path" yaml:"path"`
-
-	// Publish Producer (send) operation definition.
-	Publish *struct {
-		// Message Event/message definition transported over a channel.
-		Message *ChannelMessage `json:"message,omitempty" yaml:"message,omitempty"`
-
-		// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-		Summary  *string   `json:"summary,omitempty" yaml:"summary,omitempty"`
-	} `json:"publish,omitempty" yaml:"publish,omitempty"`
-
-	// Subscribe Consumer (receive) operation definition.
-	Subscribe *struct {
-		// Message Event/message definition transported over a channel.
-		Message *ChannelMessage `json:"message,omitempty" yaml:"message,omitempty"`
-
-		// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
-		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-		Summary  *string   `json:"summary,omitempty" yaml:"summary,omitempty"`
-	} `json:"subscribe,omitempty" yaml:"subscribe,omitempty"`
-}
-
-// ChannelMessage Event/message definition transported over a channel.
-type ChannelMessage struct {
-	// ContentType Content type of the payload.
-	ContentType *string `json:"content_type,omitempty" yaml:"content_type,omitempty"`
-
-	// Name Logical message name.
+	// Name Channel name or topic identifier relative to API context.
 	Name string `json:"name" yaml:"name"`
 
-	// Payload JSON Schema representation of the message body.
-	Payload map[string]interface{} `json:"payload" yaml:"payload"`
-
-	// Summary Short description of the message.
-	Summary *string `json:"summary,omitempty" yaml:"summary,omitempty"`
+	// Policies List of policies applied only to this channel (overrides or adds to API-level policies)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
+
+// ChannelMethod Operation method type.
+type ChannelMethod string
 
 // ConfigDumpAPIItem API item in config dump response
 type ConfigDumpAPIItem struct {
@@ -1292,7 +1257,7 @@ type ValidationError struct {
 
 // WebhookAPIData defines model for WebhookAPIData.
 type WebhookAPIData struct {
-	// Channels List of operations - HTTP operations for REST APIs or event/topic operations for async APIs
+	// Channels List of channels - Async operations(SUB) for WebSub APIs
 	Channels []Channel `json:"channels" yaml:"channels"`
 
 	// Context Base path for all API routes (must start with /, no trailing slash)

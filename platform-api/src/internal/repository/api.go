@@ -630,6 +630,18 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiId string, security *model
 		if err != nil {
 			return err
 		}
+
+		if security.XHubSignature != nil {
+			xHubQuery := `
+				INSERT INTO xhub_signature_security (api_uuid, enabled, secret, algorithm, header)
+				VALUES (?, ?, ?, ?, ?)
+			`
+			_, err := tx.Exec(xHubQuery, apiId, security.XHubSignature.Enabled,
+				security.XHubSignature.Secret, security.XHubSignature.Algorithm, security.XHubSignature.Header)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -693,12 +705,26 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 		}
 		oauth2.GrantTypes = grantTypes
 		security.OAuth2 = oauth2
+
+		// Load XHub Signature security if present
+		xHub := &model.XHubSignatureSecurity{}
+		xHubQuery := `
+			SELECT enabled, secret, algorithm, header
+			FROM xhub_signature_security WHERE api_uuid = ?
+		`
+		err = r.db.QueryRow(xHubQuery, apiId).Scan(&xHub.Enabled,
+			&xHub.Secret, &xHub.Algorithm, &xHub.Header)
+		if err == nil {
+			security.XHubSignature = xHub
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
-	// Return security config only if we have API key or OAuth2 config
-	if security.APIKey == nil && security.OAuth2 == nil {
+	// Return security config only if we have API key or OAuth2 config or XHubSignature config
+	if security.APIKey == nil && security.OAuth2 == nil && security.XHubSignature == nil {
 		return nil, nil
 	}
 
@@ -857,10 +883,10 @@ func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, organizationId string,
 	}
 	// Insert channel
 	channelQuery := `
-		INSERT INTO api_operations (api_uuid, name, description, type, config)
-		VALUES (?, ?, ?, ?, ?)`
+		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
 	result, err := tx.Exec(channelQuery, apiId, channel.Name, channel.Description,
-		channel.Request.Method, channel.Request.Path, authRequired, scopesJSON)
+		channel.Request.Method, channel.Request.Name, authRequired, scopesJSON)
 
 	if err != nil {
 		return err
@@ -917,7 +943,7 @@ func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
 		var scopesJSON string
 
 		err := rows.Scan(&operationID, &channel.Name, &channel.Description,
-			&channel.Request.Method, &channel.Request.Path, &authRequired, &scopesJSON)
+			&channel.Request.Method, &channel.Request.Name, &authRequired, &scopesJSON)
 		if err != nil {
 			return nil, err
 		}
@@ -1073,6 +1099,7 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 		`DELETE FROM oauth2_security WHERE api_uuid = ?`,
 		`DELETE FROM api_key_security WHERE api_uuid = ?`,
 		`DELETE FROM api_mtls_config WHERE api_uuid = ?`,
+		`DELETE FROM xhub_signature_security WHERE api_uuid = ?`,
 	}
 
 	for _, query := range queries {

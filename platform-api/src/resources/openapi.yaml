@@ -2346,15 +2346,14 @@ components:
       properties:
         method:
           type: string
-          description: HTTP method for the operation
+          description: Async method for the channel
           enum:
-            - PUB
             - SUB
-          example: "PUB"
-        path:
+          example: "SUB"
+        name:
           type: string
-          description: Channel path for the event
-          example: "/issues"
+          description: Channel name for the event
+          example: "issues"
         backend-services:
           type: array
           description: List of backend services for this operation

@@ -147,11 +147,11 @@ func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
 
 	apiTopicsPerRevision := make(map[string]bool)
 	for _, topic := range asyncData.Channels {
-		name := strings.TrimPrefix(asyncData.DisplayName, "/")
-		context := strings.TrimPrefix(asyncData.Context, "/")
-		version := strings.TrimPrefix(asyncData.Version, "/")
-		path := strings.TrimPrefix(topic.Path, "/")
-		modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
+		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
+		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
+		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
+		name := strings.TrimPrefix(topic.Name, "/")
+		modifiedTopic := fmt.Sprintf("%s_%s", contextWithVersion, name)
 		cs.TopicManager.Add(cfg.ID, modifiedTopic)
 		apiTopicsPerRevision[modifiedTopic] = true
 	}

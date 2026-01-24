@@ -59,9 +59,18 @@ type MTLSConfig struct {
 
 // SecurityConfig represents security configuration
 type SecurityConfig struct {
-	Enabled bool            `json:"enabled,omitempty" yaml:"enabled,omitempty"`
-	APIKey  *APIKeySecurity `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
-	OAuth2  *OAuth2Security `json:"oauth2,omitempty" yaml:"oauth2,omitempty"`
+	Enabled       bool                   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	APIKey        *APIKeySecurity        `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
+	OAuth2        *OAuth2Security        `json:"oauth2,omitempty" yaml:"oauth2,omitempty"`
+	XHubSignature *XHubSignatureSecurity `json:"xHubSignature,omitempty" yaml:"xHubSignature,omitempty"`
+}
+
+// XHubSignatureSecurity represents X-Hub-Signature security configuration
+type XHubSignatureSecurity struct {
+	Enabled   bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Header    string `json:"header,omitempty" yaml:"header,omitempty"`
+	Secret    string `json:"secret,omitempty" yaml:"secret,omitempty"`
+	Algorithm string `json:"algorithm,omitempty" yaml:"algorithm,omitempty"`
 }
 
 // APIKeySecurity represents API key security configuration
@@ -153,7 +162,7 @@ type OperationRequest struct {
 // OperationRequest represents operation request details
 type ChannelRequest struct {
 	Method          string                `json:"method" yaml:"method"`
-	Path            string                `json:"path" yaml:"path"`
+	Name            string                `json:"name" yaml:"name"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	Authentication  *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
 	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -222,6 +231,7 @@ type APIYAMLData struct {
 	Context     string             `yaml:"context"`
 	Upstream    *UpstreamYAML      `yaml:"upstream,omitempty"`
 	Operations  []OperationRequest `yaml:"operations,omitempty"`
+	Channels    []ChannelRequest   `yaml:"channels,omitempty"`
 }
 
 // UpstreamYAML represents the upstream configuration for API deployment YAML

@@ -407,12 +407,12 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route
 	}
 
 	for _, ch := range apiData.Channels {
-		chPath := ch.Path
-		if !strings.HasPrefix(chPath, "/") {
-			chPath = "/" + chPath
+		chName := ch.Name
+		if !strings.HasPrefix(chName, "/") {
+			chName = "/" + chName
 		}
 		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoutePerTopic(apiData.DisplayName, apiData.Version, apiData.Context, "POST", chPath,
+		r := t.createRoutePerTopic(apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
 			mainClusterName, effectiveMainVHost)
 		mainRoutesList = append(mainRoutesList, r)
 	}
@@ -1181,8 +1181,8 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 }
 
 // createRoutePerTopic creates a route for an operation
-func (t *Translator) createRoutePerTopic(apiName, apiVersion, context, method, path, clusterName, vhost string) *route.Route {
-	routeName := GenerateRouteName(method, context, apiVersion, path, vhost)
+func (t *Translator) createRoutePerTopic(apiName, apiVersion, context, method, name, clusterName, vhost string) *route.Route {
+	routeName := GenerateRouteName(method, context, apiVersion, name, vhost)
 	r := &route.Route{
 		Name: routeName,
 		Match: &route.RouteMatch{
@@ -1191,7 +1191,7 @@ func (t *Translator) createRoutePerTopic(apiName, apiVersion, context, method, p
 				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
 					StringMatch: &matcher.StringMatcher{
 						MatchPattern: &matcher.StringMatcher_Exact{
-							Exact: method,
+							Exact: "POST",
 						},
 					},
 				},
@@ -1212,7 +1212,7 @@ func (t *Translator) createRoutePerTopic(apiName, apiVersion, context, method, p
 		"api_name":    apiName,
 		"api_version": apiVersion,
 		"api_context": context,
-		"path":        path,
+		"name":        name,
 		"method":      method,
 	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
@@ -1222,7 +1222,7 @@ func (t *Translator) createRoutePerTopic(apiName, apiVersion, context, method, p
 	}
 
 	r.Match.PathSpecifier = &route.RouteMatch_Path{
-		Path: ConstructFullPath(context, apiVersion, path),
+		Path: ConstructFullPath(context, apiVersion, name),
 	}
 
 	r.GetRoute().PrefixRewrite = "/hub"

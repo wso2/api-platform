@@ -8,34 +8,13 @@ spec:
   context: /websubnewapi
   vhosts:
     main: "*"
+  security:
+    enabled: true
+    header: x-hub-signature
+    secret: xxxxxxx
+    algorithm: SHA1
   channels:
-    - path: /pull-requests
-      subscribe:
-        policies:
-          - name: ModifyHeaders
-            version: v1.0.0
-            enabled: true
-            params:
-              requestHeaders:
-                - action: SET
-                  name: operation-level-req-header
-                  value: hello
-              responseHeaders:
-                - action: SET
-                  name: operation-level-res-header
-                  value: world
-    - path: /issues
-      subscribe:
-        policies:
-          - name: ModifyHeaders
-            version: v1.0.0
-            enabled: true
-            params:
-              requestHeaders:
-                - action: SET
-                  name: operation-level-req-header
-                  value: hello
-              responseHeaders:
-                - action: SET
-                  name: operation-level-res-header
-                  value: world
+    - path: issues
+      method: SUB
+    - path: pull_requests
+      method: SUB

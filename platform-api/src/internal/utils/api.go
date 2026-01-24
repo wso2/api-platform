@@ -127,9 +127,22 @@ func (u *APIUtil) SecurityDTOToModel(dto *dto.SecurityConfig) *model.SecurityCon
 		return nil
 	}
 	return &model.SecurityConfig{
-		Enabled: dto.Enabled,
-		APIKey:  u.APIKeyDTOToModel(dto.APIKey),
-		OAuth2:  u.OAuth2DTOToModel(dto.OAuth2),
+		Enabled:       dto.Enabled,
+		APIKey:        u.APIKeyDTOToModel(dto.APIKey),
+		OAuth2:        u.OAuth2DTOToModel(dto.OAuth2),
+		XHubSignature: u.XHubSignatureDTOToModel(dto.XHubSignature),
+	}
+}
+
+func (u *APIUtil) XHubSignatureDTOToModel(dto *dto.XHubSignatureSecurity) *model.XHubSignatureSecurity {
+	if dto == nil {
+		return nil
+	}
+	return &model.XHubSignatureSecurity{
+		Enabled:   dto.Enabled,
+		Header:    dto.Header,
+		Secret:    dto.Secret,
+		Algorithm: dto.Algorithm,
 	}
 }
 
@@ -391,7 +404,7 @@ func (u *APIUtil) ChannelRequestDTOToModel(dto *dto.ChannelRequest) *model.Chann
 	}
 	return &model.ChannelRequest{
 		Method:          dto.Method,
-		Path:            dto.Path,
+		Name:            dto.Name,
 		BackendServices: u.BackendRoutingDTOsToModel(dto.BackendServices),
 		Authentication:  u.AuthConfigDTOToModel(dto.Authentication),
 		Policies:        u.PoliciesDTOToModel(dto.Policies),
@@ -473,9 +486,22 @@ func (u *APIUtil) SecurityModelToDTO(model *model.SecurityConfig) *dto.SecurityC
 		return nil
 	}
 	return &dto.SecurityConfig{
-		Enabled: model.Enabled,
-		APIKey:  u.APIKeyModelToDTO(model.APIKey),
-		OAuth2:  u.OAuth2ModelToDTO(model.OAuth2),
+		Enabled:       model.Enabled,
+		APIKey:        u.APIKeyModelToDTO(model.APIKey),
+		OAuth2:        u.OAuth2ModelToDTO(model.OAuth2),
+		XHubSignature: u.XHubSignatureModelToDTO(model.XHubSignature),
+	}
+}
+
+func (u *APIUtil) XHubSignatureModelToDTO(model *model.XHubSignatureSecurity) *dto.XHubSignatureSecurity {
+	if model == nil {
+		return nil
+	}
+	return &dto.XHubSignatureSecurity{
+		Enabled:   model.Enabled,
+		Header:    model.Header,
+		Secret:    model.Secret,
+		Algorithm: model.Algorithm,
 	}
 }
 
@@ -724,7 +750,7 @@ func (u *APIUtil) ChannelRequestModelToDTO(model *model.ChannelRequest) *dto.Cha
 	}
 	return &dto.ChannelRequest{
 		Method:          model.Method,
-		Path:            model.Path,
+		Name:            model.Name,
 		BackendServices: u.BackendRoutingModelsToDTO(model.BackendServices),
 		Authentication:  u.AuthConfigModelToDTO(model.Authentication),
 		Policies:        u.PoliciesModelToDTO(model.Policies),
@@ -822,6 +848,10 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	for _, op := range api.Operations {
 		operationList = append(operationList, *op.Request)
 	}
+	channelList := make([]dto.ChannelRequest, 0)
+	for _, ch := range api.Channels {
+		channelList = append(channelList, *ch.Request)
+	}
 
 	// Get the main upstream URL from the first backend service endpoint
 	var upstreamYAML *dto.UpstreamYAML
@@ -841,18 +871,41 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 		}
 	}
 
-	// Create API deployment YAML structure
-	apiYAMLData := dto.APIYAMLData{
-		DisplayName: api.Name,
-		Version:     api.Version,
-		Context:     api.Context,
-		Upstream:    upstreamYAML,
-		Operations:  operationList,
+	apiYAMLData := dto.APIYAMLData{}
+	apiYAMLData.DisplayName = api.Name
+	apiYAMLData.Version = api.Version
+	apiYAMLData.Context = api.Context
+
+	// Only set upstream and operations for HTTP APIs
+	switch api.Type {
+	case constants.APITypeHTTP:
+		apiYAMLData.Upstream = upstreamYAML
+		apiYAMLData.Operations = operationList
+	case constants.APITypeWebSub:
+		apiYAMLData.Channels = channelList
+	}
+
+	// // Create API deployment YAML structure
+	// apiYAMLData = dto.APIYAMLData{
+	// 	DisplayName: api.Name,
+	// 	Version:     api.Version,
+	// 	Context:     api.Context,
+	// 	Upstream:    upstreamYAML,
+	// 	Operations:  operationList,
+	// 	Channels:    channelList,
+	// }
+
+	apiType := ""
+	switch api.Type {
+	case constants.APITypeHTTP:
+		apiType = "RestApi"
+	case constants.APITypeWebSub:
+		apiType = "WebSubApi"
 	}
 
 	apiDeployment := dto.APIDeploymentYAML{
 		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
-		Kind:       "RestApi",
+		Kind:       apiType,
 		Metadata: dto.APIDeploymentMetadata{
 			Name: api.ID,
 		},

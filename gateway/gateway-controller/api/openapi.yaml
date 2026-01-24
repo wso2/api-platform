@@ -2021,7 +2021,7 @@ components:
               example: sandbox-api.example.com
         channels:
           type: array
-          description: List of operations - HTTP operations for REST APIs or event/topic operations for async APIs
+          description: List of channels - Async operations(SUB) for WebSub APIs
           minItems: 1
           items:
             $ref: '#/components/schemas/Channel'
@@ -2101,92 +2101,99 @@ components:
       type: object
       description: Channel (topic/event stream) definition for async APIs.
       required:
-        - path
-      properties:
-        path:
-          type: string
-          description: Channel path or topic identifier relative to API context.
-          example: /issues
-        description:
-          type: string
-          description: Human-readable description of the channel.
-          example: GitHub issue events channel.
-        subscribe:
-          type: object
-          description: Consumer (receive) operation definition.
-          properties:
-            summary:
-              type: string
-              example: Receive issue events.
-            policies:
-              type: array
-              description: List of policies applied only to this operation (overrides or adds to API-level policies)
-              items:
-                $ref: "#/components/schemas/Policy"
-            message:
-              $ref: '#/components/schemas/ChannelMessage'
-        publish:
-          type: object
-          description: Producer (send) operation definition.
-          properties:
-            summary:
-              type: string
-              example: Publish issue events.
-            policies:
-              type: array
-              description: List of policies applied only to this operation (overrides or adds to API-level policies)
-              items:
-                $ref: "#/components/schemas/Policy"
-            message:
-              $ref: '#/components/schemas/ChannelMessage'
-        parameters:
-          type: object
-          description: Path/channel parameters (keyed by parameter name).
-          additionalProperties:
-            type: object
-            properties:
-              description:
-                type: string
-              schema:
-                type: object
-                description: JSON Schema fragment for the parameter value.
-                additionalProperties: true
-        bindings:
-          type: object
-          description: Protocol-specific channel bindings (arbitrary key/value structure).
-          additionalProperties: true
-
-    # Message schema used within Channel publish/subscribe operations.
-    ChannelMessage:
-      type: object
-      description: Event/message definition transported over a channel.
-      required:
         - name
-        - payload
+        - method
       properties:
         name:
           type: string
-          description: Logical message name.
-          example: IssueEvent
-        content_type:
+          description: Channel name or topic identifier relative to API context.
+          example: issues
+        method:
           type: string
-          description: Content type of the payload.
-          example: application/json
-        summary:
-          type: string
-          description: Short description of the message.
-          example: Event emitted when an issue is created.
-        payload:
-          type: object
-          description: JSON Schema representation of the message body.
-          additionalProperties: true
-          example:
-            type: object
-            properties:
-              action:
-                type: string
-              issue:
-                type: object
+          description: Operation method type.
+          enum:
+            - SUB
+        policies:
+          type: array
+          description: List of policies applied only to this channel (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/Policy"
+        # subscribe:
+        #   type: object
+        #   description: Consumer (receive) operation definition.
+        #   properties:
+        #     summary:
+        #       type: string
+        #       example: Receive issue events.
+        #     policies:
+        #       type: array
+        #       description: List of policies applied only to this operation (overrides or adds to API-level policies)
+        #       items:
+        #         $ref: "#/components/schemas/Policy"
+        #     message:
+        #       $ref: '#/components/schemas/ChannelMessage'
+        # publish:
+        #   type: object
+        #   description: Producer (send) operation definition.
+        #   properties:
+        #     summary:
+        #       type: string
+        #       example: Publish issue events.
+        #     policies:
+        #       type: array
+        #       description: List of policies applied only to this operation (overrides or adds to API-level policies)
+        #       items:
+        #         $ref: "#/components/schemas/Policy"
+        #     message:
+        #       $ref: '#/components/schemas/ChannelMessage'
+        # parameters:
+        #   type: object
+        #   description: Path/channel parameters (keyed by parameter name).
+        #   additionalProperties:
+        #     type: object
+        #     properties:
+        #       description:
+        #         type: string
+        #       schema:
+        #         type: object
+        #         description: JSON Schema fragment for the parameter value.
+        #         additionalProperties: true
+        # bindings:
+        #   type: object
+        #   description: Protocol-specific channel bindings (arbitrary key/value structure).
+        #   additionalProperties: true
+
+    # # Message schema used within Channel publish/subscribe operations.
+    # ChannelMessage:
+    #   type: object
+    #   description: Event/message definition transported over a channel.
+    #   required:
+    #     - name
+    #     - payload
+    #   properties:
+    #     name:
+    #       type: string
+    #       description: Logical message name.
+    #       example: IssueEvent
+    #     content_type:
+    #       type: string
+    #       description: Content type of the payload.
+    #       example: application/json
+    #     summary:
+    #       type: string
+    #       description: Short description of the message.
+    #       example: Event emitted when an issue is created.
+    #     payload:
+    #       type: object
+    #       description: JSON Schema representation of the message body.
+    #       additionalProperties: true
+    #       example:
+    #         type: object
+    #         properties:
+    #           action:
+    #             type: string
+    #           issue:
+    #             type: object
 
     APICreateResponse:
       type: object

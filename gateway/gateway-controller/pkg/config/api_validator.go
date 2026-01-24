@@ -322,29 +322,29 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 		return errors
 	}
 
-	for i, op := range channels {
+	for i, ch := range channels {
 
 		// Validate path
-		if op.Path == "" {
+		if ch.Name == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].path", i),
-				Message: "Channel path is required",
+				Field:   fmt.Sprintf("spec.channels[%d].name", i),
+				Message: "Channel name is required",
 			})
 			continue
 		}
 
 		// Validate path parameters have balanced braces
-		if !v.validatePathParametersForAsyncAPIs(op.Path) {
+		if !v.validatePathParametersForAsyncAPIs(ch.Name) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].path", i),
+				Field:   fmt.Sprintf("spec.channels[%d].name", i),
 				Message: "Operation path has braces which is not allowed",
 			})
 		}
 
-		if !v.validatePathParametersForAsyncAPIs(op.Path) {
+		if !v.validatePathParametersForAsyncAPIs(ch.Name) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].path", i),
-				Message: "Channel path has unbalanced braces in parameters",
+				Field:   fmt.Sprintf("spec.channels[%d].name", i),
+				Message: "Channel name has {} in parameters",
 			})
 		}
 	}

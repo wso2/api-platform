@@ -1704,13 +1704,13 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 		for _, ch := range apiData.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			if ch.Subscribe != nil && len(*ch.Subscribe.Policies) > 0 {
+			if len(*ch.Policies) > 0 {
 				// Operation has policies: use operation policy order as authoritative
 				// This allows operations to reorder, override, or extend API-level policies
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Subscribe.Policies))
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
 				addedNames := make(map[string]struct{})
 
-				for _, opPolicy := range *ch.Subscribe.Policies {
+				for _, opPolicy := range *ch.Policies {
 					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy, policy.LevelRoute))
 					addedNames[opPolicy.Name] = struct{}{}
 				}
@@ -1733,7 +1733,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				}
 			}
 
-			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, ch.Name, s.routerConfig.GatewayHost)
 
 			// Inject system policies into the chain
 			props := make(map[string]any)

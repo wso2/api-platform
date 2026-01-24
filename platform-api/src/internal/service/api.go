@@ -91,6 +91,8 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		return nil, constants.ErrProjectNotFound
 	}
 
+	fmt.Println("Project Created")
+
 	// Handle the API handle (user-facing identifier)
 	var handle string
 	if req.ID != "" {
@@ -100,6 +102,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		var err error
 		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgUUID))
 		if err != nil {
+			fmt.Println("Error generating handle:", err)
 			return nil, err
 		}
 	}
@@ -121,10 +124,12 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		// generate default get, post, patch and delete operations with path /*
 		defaultOperations := s.generateDefaultOperations()
 		req.Operations = defaultOperations
-	} else if (constants.APITypeWebSub == req.Type || constants.APITypeWS == req.Type) && len(req.Channels) == 0 {
+	} else if constants.APITypeWebSub == req.Type && len(req.Channels) == 0 {
 		defaultChannels := s.generateDefaultChannels(req.Type)
 		req.Channels = defaultChannels
 	}
+
+	fmt.Println("Channels Created")
 
 	// Create API DTO - ID field holds the handle (user-facing identifier)
 	api := &dto.API{
@@ -160,11 +165,16 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		backendServiceIdList = append(backendServiceIdList, backendServiceId)
 	}
 
+	fmt.Println("Backend Services Created")
+
 	apiModel := s.apiUtil.DTOToModel(api)
+	fmt.Println("Got API Model")
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
+
+	fmt.Println("Created API in Repository: ", apiModel.ID)
 
 	// Get the generated UUID from the model (set by CreateAPI)
 	apiUUID := apiModel.ID
@@ -185,11 +195,15 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		}
 	}
 
+	fmt.Println("Associated Backends")
+
 	// Automatically create DevPortal association for default DevPortal (use internal UUID)
 	if err := s.createDefaultDevPortalAssociation(apiUUID, orgUUID); err != nil {
 		// Log error but don't fail API creation if default DevPortal association fails
 		log.Printf("[APIService] Failed to create default DevPortal association for API %s: %v", apiUUID, err)
 	}
+
+	fmt.Println("Associated Devportal")
 
 	return api, nil
 }
@@ -916,7 +930,7 @@ func (s *APIService) generateDefaultChannels(asyncAPIType string) []dto.Channel 
 				Description: "Default SUB Channel",
 				Request: &dto.ChannelRequest{
 					Method: "SUB",
-					Path:   "/_default",
+					Name:   "/_default",
 					Authentication: &dto.AuthenticationConfig{
 						Required: false,
 						Scopes:   []string{},
@@ -932,7 +946,7 @@ func (s *APIService) generateDefaultChannels(asyncAPIType string) []dto.Channel 
 			Description: "Default SUB Channel",
 			Request: &dto.ChannelRequest{
 				Method: "SUB",
-				Path:   "/_default",
+				Name:   "/_default",
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},
@@ -945,7 +959,7 @@ func (s *APIService) generateDefaultChannels(asyncAPIType string) []dto.Channel 
 			Description: "Default PUB Channel",
 			Request: &dto.ChannelRequest{
 				Method: "PUB",
-				Path:   "/_default",
+				Name:   "/_default",
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},

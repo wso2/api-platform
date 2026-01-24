@@ -74,17 +74,18 @@ type MTLSConfig struct {
 
 // SecurityConfig represents security configuration
 type SecurityConfig struct {
-	Enabled       bool            `json:"enabled,omitempty"`
-	APIKey        *APIKeySecurity `json:"apiKey,omitempty"`
-	OAuth2        *OAuth2Security `json:"oauth2,omitempty"`
-	XHubSignature *XHubSignature  `json:"xHubSignature,omitempty"`
+	Enabled       bool                   `json:"enabled,omitempty"`
+	APIKey        *APIKeySecurity        `json:"apiKey,omitempty"`
+	OAuth2        *OAuth2Security        `json:"oauth2,omitempty"`
+	XHubSignature *XHubSignatureSecurity `json:"xHubSignature,omitempty"`
 }
 
 // XHubSignature represents X-Hub-Signature security configuration
-type XHubSignature struct {
-	Enabled    bool   `json:"enabled,omitempty"`
-	HeaderName string `json:"headerName,omitempty"`
-	Secret     string `json:"secret,omitempty"`
+type XHubSignatureSecurity struct {
+	Enabled   bool   `json:"enabled,omitempty"`
+	Header    string `json:"header,omitempty"`
+	Secret    string `json:"secret,omitempty"`
+	Algorithm string `json:"algorithm,omitempty"`
 }
 
 // APIKeySecurity represents API key security configuration
@@ -238,7 +239,7 @@ type OperationRequest struct {
 // ChannelRequest represents channel request details
 type ChannelRequest struct {
 	Method          string                `json:"method,omitempty"`
-	Path            string                `json:"path,omitempty"`
+	Name            string                `json:"name,omitempty"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty"`
 	Authentication  *AuthenticationConfig `json:"authentication,omitempty"`
 	Policies        []Policy              `json:"policies,omitempty"`
