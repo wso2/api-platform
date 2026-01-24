@@ -39,7 +39,7 @@ Feature: Analytics Header Filter Policy
         context: /analytics-both/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
           - method: GET
             path: /test
@@ -84,9 +84,9 @@ Feature: Analytics Header Filter Policy
         context: /analytics-request/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
-          - method: POST
+          - method: GET
             path: /data
             policies:
               - name: analytics-header-filter
@@ -101,15 +101,12 @@ Feature: Analytics Header Filter Policy
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for the endpoint "http://localhost:8080/analytics-response/v1.0/data" to be ready
+    And I wait for the endpoint "http://localhost:8080/analytics-request/v1.0/data" to be ready
 
     When I set header "Content-Type" to "application/json"
     And I set header "User-Agent" to "test-client"
     And I set header "Authorization" to "Bearer secret-token"
-    And I send a POST request to "http://localhost:8080/analytics-request/v1.0/data" with body:
-      """
-      {"message": "test data"}
-      """
+    And I send a GET request to "http://localhost:8080/analytics-request/v1.0/data"
     Then the response should be successful
     And the response should be valid JSON
 
@@ -127,7 +124,7 @@ Feature: Analytics Header Filter Policy
         context: /analytics-response/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
           - method: GET
             path: /headers
@@ -165,7 +162,7 @@ Feature: Analytics Header Filter Policy
         context: /analytics-invalid/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
           - method: GET
             path: /test
@@ -196,7 +193,7 @@ Feature: Analytics Header Filter Policy
         context: /analytics-invalid-op/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
           - method: GET
             path: /test
@@ -228,7 +225,7 @@ Feature: Analytics Header Filter Policy
         context: /analytics-no-headers/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
           - method: GET
             path: /test
@@ -258,7 +255,7 @@ Feature: Analytics Header Filter Policy
         context: /analytics-case/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
           - method: GET
             path: /case-test
@@ -300,7 +297,7 @@ Feature: Analytics Header Filter Policy
         context: /analytics-empty/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://echo-backend:80/anything
         operations:
           - method: GET
             path: /empty-test
