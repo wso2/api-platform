@@ -19,6 +19,8 @@
 package integration
 
 import (
+	"io"
+	"log/slog"
 	"path/filepath"
 	"testing"
 
@@ -27,7 +29,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 )
 
 // TestDatabasePersistenceAcrossRestarts verifies that configurations
@@ -40,8 +41,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "persistence.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Phase 1: Create database and save configurations
 	t.Log("Phase 1: Creating database and saving configurations")
@@ -165,8 +165,7 @@ func TestLoadFromDatabaseWithMultipleRestarts(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "load-test.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create and populate database
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
@@ -217,8 +216,7 @@ func TestZeroDataLoss(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "zero-loss.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create 10 configurations
 	t.Log("Creating 10 configurations")

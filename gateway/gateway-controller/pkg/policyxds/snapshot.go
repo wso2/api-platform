@@ -22,13 +22,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -37,19 +37,19 @@ import (
 type SnapshotManager struct {
 	cache      *cache.LinearCache // Use LinearCache directly for custom type URLs
 	store      *storage.PolicyStore
-	logger     *zap.Logger
+	logger     *slog.Logger
 	nodeID     string
 	mu         sync.RWMutex
 	translator *Translator
 }
 
 // NewSnapshotManager creates a new policy snapshot manager with LinearCache for custom type URLs
-func NewSnapshotManager(store *storage.PolicyStore, logger *zap.Logger) *SnapshotManager {
+func NewSnapshotManager(store *storage.PolicyStore, logger *slog.Logger) *SnapshotManager {
 	// Create a LinearCache for custom PolicyChainConfig type URL
 	// LinearCache is designed for single custom resource types in ADS
 	linearCache := cache.NewLinearCache(
 		PolicyChainTypeURL,
-		cache.WithLogger(logger.Sugar()),
+		cache.WithLogger(slogAdapter{logger}),
 	)
 
 	return &SnapshotManager{
@@ -75,13 +75,13 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	policies := sm.store.GetAll()
 
 	sm.logger.Info("Updating policy snapshot",
-		zap.Int("policy_count", len(policies)),
-		zap.String("node_id", sm.nodeID))
+		slog.Int("policy_count", len(policies)),
+		slog.String("node_id", sm.nodeID))
 
 	// Translate policies to xDS resources
 	resourcesMap, err := sm.translator.TranslatePolicies(policies)
 	if err != nil {
-		sm.logger.Error("Failed to translate policies", zap.Error(err))
+		sm.logger.Error("Failed to translate policies", slog.Any("error", err))
 		return fmt.Errorf("failed to translate policies: %w", err)
 	}
 
@@ -109,15 +109,36 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	sm.cache.SetResources(resourcesById)
 
 	sm.logger.Info("Policy snapshot updated successfully",
-		zap.String("version", versionStr),
-		zap.Int("policy_count", len(policies)))
+		slog.String("version", versionStr),
+		slog.Int("policy_count", len(policies)))
 
 	return nil
 }
 
 // Translator converts policy configurations to xDS resources
 type Translator struct {
-	logger *zap.Logger
+	logger *slog.Logger
+}
+
+// slogAdapter adapts slog.Logger to the go-control-plane Logger interface
+type slogAdapter struct {
+	logger *slog.Logger
+}
+
+func (a slogAdapter) Debugf(format string, args ...interface{}) {
+	a.logger.Debug(fmt.Sprintf(format, args...))
+}
+
+func (a slogAdapter) Infof(format string, args ...interface{}) {
+	a.logger.Info(fmt.Sprintf(format, args...))
+}
+
+func (a slogAdapter) Warnf(format string, args ...interface{}) {
+	a.logger.Warn(fmt.Sprintf(format, args...))
+}
+
+func (a slogAdapter) Errorf(format string, args ...interface{}) {
+	a.logger.Error(fmt.Sprintf(format, args...))
 }
 
 const (
@@ -126,7 +147,7 @@ const (
 )
 
 // NewTranslator creates a new policy translator
-func NewTranslator(logger *zap.Logger) *Translator {
+func NewTranslator(logger *slog.Logger) *Translator {
 	return &Translator{
 		logger: logger,
 	}
@@ -145,26 +166,26 @@ func (t *Translator) TranslatePolicies(policies []*models.StoredPolicyConfig) (m
 		policyResource, err := t.createPolicyResource(policy)
 		if err != nil {
 			t.logger.Error("Failed to create policy resource",
-				zap.String("id", policy.ID),
-				zap.Error(err))
+				slog.String("id", policy.ID),
+				slog.Any("error", err))
 			continue
 		}
 
 		policyResources = append(policyResources, policyResource)
 
 		t.logger.Debug("Processing policy for xDS",
-			zap.String("id", policy.ID),
-			zap.String("api_name", policy.APIName()),
-			zap.String("version", policy.APIVersion()),
-			zap.Int("route_count", len(policy.Configuration.Routes)))
+			slog.String("id", policy.ID),
+			slog.String("api_name", policy.APIName()),
+			slog.String("version", policy.APIVersion()),
+			slog.Int("route_count", len(policy.Configuration.Routes)))
 	}
 
 	// Store policy resources with custom type URL
 	resources[PolicyChainTypeURL] = policyResources
 
 	t.logger.Info("Translated policies to xDS resources",
-		zap.Int("total_policies", len(policies)),
-		zap.Int("policy_resources", len(policyResources)))
+		slog.Int("total_policies", len(policies)),
+		slog.Int("policy_resources", len(policyResources)))
 
 	return resources, nil
 }

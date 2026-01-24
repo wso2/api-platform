@@ -18,6 +18,8 @@
 package authenticators
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,7 +28,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
-	"go.uber.org/zap"
 )
 
 func setupTestRouter() *gin.Engine {
@@ -38,7 +39,7 @@ func TestAuthorizationMiddleware_NoResourceRoles_AllowsAllRequests(t *testing.T)
 	// Scenario: When idp.enabled=true but roles_claim and role_mapping are not provided
 	// Authorization should be bypassed - all authenticated calls are allowed
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Config with no ResourceRoles defined (empty map)
 	config := models.AuthConfig{
@@ -67,7 +68,7 @@ func TestAuthorizationMiddleware_NoResourceRoles_NilMap_AllowsAllRequests(t *tes
 	// Scenario: When ResourceRoles is nil (not initialized)
 	// Authorization should be bypassed
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Config with nil ResourceRoles
 	config := models.AuthConfig{
@@ -96,7 +97,7 @@ func TestAuthorizationMiddleware_WithResourceRoles_MatchingRole_Allowed(t *testi
 	// Scenario: When roles_claim and role_mapping are provided
 	// Authorization happens - user with matching role is allowed
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Config with specific ResourceRoles mapping
 	config := models.AuthConfig{
@@ -126,7 +127,7 @@ func TestAuthorizationMiddleware_WithResourceRoles_MatchingRole_Allowed(t *testi
 func TestAuthorizationMiddleware_WithResourceRoles_NoMatchingRole_Forbidden(t *testing.T) {
 	// Scenario: Authorization is enabled and user doesn't have required role
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Config with specific ResourceRoles mapping
 	config := models.AuthConfig{
@@ -156,7 +157,7 @@ func TestAuthorizationMiddleware_WithResourceRoles_NoMatchingRole_Forbidden(t *t
 func TestAuthorizationMiddleware_WithResourceRoles_MultipleRoles_OneMatches_Allowed(t *testing.T) {
 	// Scenario: User has multiple roles, one of them matches the required role
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
@@ -186,7 +187,7 @@ func TestAuthorizationMiddleware_ResourceNotDefined_Forbidden(t *testing.T) {
 	// Scenario: Resource is not in the ResourceRoles map
 	// Should be forbidden (secure by default)
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Config with specific resources defined
 	config := models.AuthConfig{
@@ -214,7 +215,7 @@ func TestAuthorizationMiddleware_ResourceNotDefined_Forbidden(t *testing.T) {
 func TestAuthorizationMiddleware_NoUserRoles_Forbidden(t *testing.T) {
 	// Scenario: User is authenticated but has no roles
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
@@ -242,7 +243,7 @@ func TestAuthorizationMiddleware_NoUserRoles_Forbidden(t *testing.T) {
 func TestAuthorizationMiddleware_RolesNotSetInContext_Forbidden(t *testing.T) {
 	// Scenario: Roles were not set in context (authentication may have failed)
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
@@ -267,7 +268,7 @@ func TestAuthorizationMiddleware_AuthSkipped_BypassesAuthorization(t *testing.T)
 	// Scenario: Authentication was skipped (e.g., public endpoint)
 	// Authorization should also be skipped
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
@@ -295,7 +296,7 @@ func TestAuthorizationMiddleware_AuthSkipped_BypassesAuthorization(t *testing.T)
 
 func TestAuthorizationMiddleware_DifferentMethodsSamePathDifferentRoles(t *testing.T) {
 	// Scenario: Same path but different methods require different roles
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
@@ -360,7 +361,7 @@ func TestAuthorizationMiddleware_WildcardRoleMapping(t *testing.T) {
 	// In practice, this means any user with "developer" role can access resources
 	// that list "developer" as allowed, regardless of other claim values
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
@@ -388,7 +389,7 @@ func TestAuthorizationMiddleware_WildcardRoleMapping(t *testing.T) {
 
 func TestAuthorizationMiddleware_CaseSensitiveRoles(t *testing.T) {
 	// Scenario: Roles should be case-sensitive
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		ResourceRoles: map[string][]string{
@@ -419,7 +420,7 @@ func TestAuthorizationMiddleware_SkipAuthzFlag_BypassesAuthorization(t *testing.
 	// Scenario: When JWT authenticator sets skip_authz flag (no role claim configured)
 	// Authorization should be bypassed even if ResourceRoles are defined
 	router := setupTestRouter()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Config with ResourceRoles defined (normally would enforce authorization)
 	config := models.AuthConfig{

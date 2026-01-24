@@ -302,7 +302,7 @@ type GRPCAccessLogConfig struct {
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	Level  string `koanf:"level"`  // "debug", "info", "warn", "error"
-	Format string `koanf:"format"` // "json" or "console"
+	Format string `koanf:"format"` // "json" (default) or "text"
 }
 
 // ControlPlaneConfig holds control plane connection configuration
@@ -621,8 +621,8 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate log format
-	if c.GatewayController.Logging.Format != "json" && c.GatewayController.Logging.Format != "console" {
-		return fmt.Errorf("logging.format must be either 'json' or 'console', got: %s", c.GatewayController.Logging.Format)
+	if c.GatewayController.Logging.Format != "json" && c.GatewayController.Logging.Format != "text" {
+		return fmt.Errorf("logging.format must be either 'json' or 'text', got: %s", c.GatewayController.Logging.Format)
 	}
 
 	// Validate ports

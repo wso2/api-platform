@@ -20,6 +20,8 @@ package integration
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -29,7 +31,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 )
 
 // TestConcurrentWrites tests that SQLite can handle concurrent write operations
@@ -42,8 +43,7 @@ func TestConcurrentWrites(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
 	require.NoError(t, err)
@@ -95,8 +95,7 @@ func TestConcurrentReads(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent-reads.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
 	require.NoError(t, err)
@@ -155,8 +154,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "mixed-ops.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
 	require.NoError(t, err)
@@ -247,8 +245,7 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "same-config.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
 	require.NoError(t, err)
@@ -316,8 +313,7 @@ func TestConcurrentGetAllConfigs(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "get-all.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
 	require.NoError(t, err)

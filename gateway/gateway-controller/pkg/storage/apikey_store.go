@@ -20,11 +20,11 @@ package storage
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"go.uber.org/zap"
 )
 
 // APIKeyStore manages API keys in memory with thread-safe operations
@@ -33,11 +33,11 @@ type APIKeyStore struct {
 	apiKeys         map[string]*models.APIKey            // key: configID:APIKeyName → Value: *APIKey
 	apiKeysByAPI    map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
 	resourceVersion int64
-	logger          *zap.Logger
+	logger          *slog.Logger
 }
 
 // NewAPIKeyStore creates a new API key store
-func NewAPIKeyStore(logger *zap.Logger) *APIKeyStore {
+func NewAPIKeyStore(logger *slog.Logger) *APIKeyStore {
 	return &APIKeyStore{
 		apiKeys:      make(map[string]*models.APIKey),
 		apiKeysByAPI: make(map[string]map[string]*models.APIKey),
@@ -78,9 +78,9 @@ func (s *APIKeyStore) Store(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Debug("Successfully stored API key",
-		zap.String("id", apiKey.ID),
-		zap.String("api_id", apiKey.APIId),
-		zap.String("status", string(apiKey.Status)))
+		slog.String("id", apiKey.ID),
+		slog.String("api_id", apiKey.APIId),
+		slog.String("status", string(apiKey.Status)))
 
 	return nil
 }
@@ -107,8 +107,8 @@ func (s *APIKeyStore) Revoke(apiId, apiKeyName string) bool {
 	apiKey, exists := s.apiKeys[compositeKey]
 	if !exists {
 		s.logger.Debug("API key ID not found for revocation",
-			zap.String("api_id", apiId),
-			zap.String("api_key", apiKeyName))
+			slog.String("api_id", apiId),
+			slog.String("api_key", apiKeyName))
 		return false
 	}
 
@@ -119,16 +119,16 @@ func (s *APIKeyStore) Revoke(apiId, apiKeyName string) bool {
 		s.removeFromAPIMapping(apiKey)
 
 		s.logger.Debug("Revoked API key",
-			zap.String("id", apiKey.ID),
-			zap.String("name", apiKey.Name),
-			zap.String("api_id", apiKey.APIId))
+			slog.String("id", apiKey.ID),
+			slog.String("name", apiKey.Name),
+			slog.String("api_id", apiKey.APIId))
 
 		return true
 	}
 
 	s.logger.Debug("API key not found for revocation",
-		zap.String("api_id", apiId),
-		zap.String("api_key", apiKeyName))
+		slog.String("api_id", apiId),
+		slog.String("api_key", apiKeyName))
 
 	return false
 }
@@ -148,8 +148,8 @@ func (s *APIKeyStore) RemoveByAPI(apiId string) int {
 	delete(s.apiKeysByAPI, apiId)
 
 	s.logger.Debug("Removed API keys by API",
-		zap.String("api_id", apiId),
-		zap.Int("count", count))
+		slog.String("api_id", apiId),
+		slog.Int("count", count))
 
 	return count
 }

@@ -20,6 +20,8 @@ package integration
 
 import (
 	"database/sql"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,7 +31,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 )
 
 // TestDatabaseFileCreation verifies that SQLite database files are created correctly
@@ -41,8 +42,7 @@ func TestDatabaseFileCreation(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create storage
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
@@ -86,8 +86,7 @@ func TestSchemaInitialization(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "schema.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create storage (should initialize schema)
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
@@ -270,8 +269,7 @@ func TestSchemaInitializationIdempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "idempotent.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// First initialization
 	db1, err := storage.NewSQLiteStorage(dbPath, logger)
@@ -309,8 +307,7 @@ func TestEmptyDatabaseInitialization(t *testing.T) {
 	_, err := os.Stat(dbPath)
 	assert.True(t, os.IsNotExist(err), "Database file should not exist initially")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create storage (should auto-create database and schema)
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
@@ -341,8 +338,7 @@ func TestDatabaseIntegrityCheck(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "integrity.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
 	require.NoError(t, err)

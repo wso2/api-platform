@@ -19,15 +19,15 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"go.uber.org/zap"
 )
 
 // ErrorHandlingMiddleware creates a Gin middleware for error recovery
-func ErrorHandlingMiddleware(logger *zap.Logger) gin.HandlerFunc {
+func ErrorHandlingMiddleware(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -35,9 +35,9 @@ func ErrorHandlingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 				log := GetLogger(c, logger)
 
 				log.Error("Panic recovered",
-					zap.Any("error", err),
-					zap.String("path", c.Request.URL.Path),
-					zap.String("method", c.Request.Method),
+					slog.Any("error", err),
+					slog.String("path", c.Request.URL.Path),
+					slog.String("method", c.Request.Method),
 				)
 
 				c.JSON(http.StatusInternalServerError, api.ErrorResponse{

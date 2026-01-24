@@ -24,12 +24,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"go.uber.org/zap"
 )
 
 //go:embed gateway-controller-db.sql
@@ -38,11 +38,11 @@ var schemaSQL string
 // SQLiteStorage implements the Storage interface using SQLite
 type SQLiteStorage struct {
 	db     *sql.DB
-	logger *zap.Logger
+	logger *slog.Logger
 }
 
 // NewSQLiteStorage creates a new SQLite storage instance
-func NewSQLiteStorage(dbPath string, logger *zap.Logger) (*SQLiteStorage, error) {
+func NewSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error) {
 	// Build connection string with SQLite pragmas for optimal performance
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=2000&_foreign_keys=ON", dbPath)
 
@@ -68,8 +68,8 @@ func NewSQLiteStorage(dbPath string, logger *zap.Logger) (*SQLiteStorage, error)
 	}
 
 	logger.Info("SQLite storage initialized",
-		zap.String("database_path", dbPath),
-		zap.String("journal_mode", "WAL"))
+		slog.String("database_path", dbPath),
+		slog.String("journal_mode", "WAL"))
 
 	return storage, nil
 }
@@ -85,7 +85,7 @@ func (s *SQLiteStorage) initSchema() error {
 
 	if version == 0 {
 		s.logger.Info("Initializing database schema (version 1)")
-		s.logger.Debug("Creating schema with SQL", zap.String("schema_sql", schemaSQL))
+		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
 		if _, err := s.db.Exec(schemaSQL); err != nil {
@@ -216,7 +216,7 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 5
 		}
 
-		s.logger.Info("Database schema up to date", zap.Int("version", version))
+		s.logger.Debug("Database schema up to date", slog.Int("version", version))
 	}
 
 	return nil
@@ -275,9 +275,9 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	}
 
 	s.logger.Info("Configuration saved",
-		zap.String("id", cfg.ID),
-		zap.String("displayName", displayName),
-		zap.String("version", version))
+		slog.String("id", cfg.ID),
+		slog.String("displayName", displayName),
+		slog.String("version", version))
 
 	return nil
 }
@@ -371,9 +371,9 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("update", table).Observe(time.Since(startTime).Seconds())
 
 	s.logger.Info("Configuration updated",
-		zap.String("id", cfg.ID),
-		zap.String("displayName", displayName),
-		zap.String("version", version))
+		slog.String("id", cfg.ID),
+		slog.String("displayName", displayName),
+		slog.String("version", version))
 
 	return nil
 }
@@ -408,7 +408,7 @@ func (s *SQLiteStorage) DeleteConfig(id string) error {
 	metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "success").Inc()
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("delete", table).Observe(time.Since(startTime).Seconds())
 
-	s.logger.Info("Configuration deleted", zap.String("id", id))
+	s.logger.Info("Configuration deleted", slog.String("id", id))
 
 	return nil
 }
@@ -775,8 +775,8 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 	}
 
 	s.logger.Info("LLM provider template saved",
-		zap.String("uuid", template.ID),
-		zap.String("handle", handle))
+		slog.String("uuid", template.ID),
+		slog.String("handle", handle))
 
 	return nil
 }
@@ -827,8 +827,8 @@ func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProv
 	}
 
 	s.logger.Info("LLM provider template updated",
-		zap.String("uuid", template.ID),
-		zap.String("handle", handle))
+		slog.String("uuid", template.ID),
+		slog.String("handle", handle))
 
 	return nil
 }
@@ -851,7 +851,7 @@ func (s *SQLiteStorage) DeleteLLMProviderTemplate(id string) error {
 		return fmt.Errorf("%w: uuid=%s", ErrNotFound, id)
 	}
 
-	s.logger.Info("LLM provider template deleted", zap.String("uuid", id))
+	s.logger.Info("LLM provider template deleted", slog.String("uuid", id))
 
 	return nil
 }
@@ -1091,11 +1091,11 @@ func (s *SQLiteStorage) DeleteCertificate(id string) error {
 	}
 
 	if rows == 0 {
-		s.logger.Debug("Certificate not found for deletion", zap.String("id", id))
+		s.logger.Debug("Certificate not found for deletion", slog.String("id", id))
 		return ErrNotFound
 	}
 
-	s.logger.Info("Certificate deleted", zap.String("id", id))
+	s.logger.Info("Certificate deleted", slog.String("id", id))
 
 	return nil
 }
@@ -1164,10 +1164,10 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		}
 
 		s.logger.Info("API key inserted successfully",
-			zap.String("id", apiKey.ID),
-			zap.String("name", apiKey.Name),
-			zap.String("apiId", apiKey.APIId),
-			zap.String("created_by", apiKey.CreatedBy))
+			slog.String("id", apiKey.ID),
+			slog.String("name", apiKey.Name),
+			slog.String("apiId", apiKey.APIId),
+			slog.String("created_by", apiKey.CreatedBy))
 	} else {
 		// Existing record found, update it with new API key data
 		updateQuery := `
@@ -1200,10 +1200,10 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		}
 
 		s.logger.Info("API key updated successfully",
-			zap.String("existing_id", existingID),
-			zap.String("name", apiKey.Name),
-			zap.String("apiId", apiKey.APIId),
-			zap.String("created_by", apiKey.CreatedBy))
+			slog.String("existing_id", existingID),
+			slog.String("name", apiKey.Name),
+			slog.String("apiId", apiKey.APIId),
+			slog.String("created_by", apiKey.CreatedBy))
 	}
 
 	// Commit the transaction
@@ -1422,8 +1422,8 @@ func (s *SQLiteStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Info("API key updated successfully",
-		zap.String("id", apiKey.ID),
-		zap.String("status", string(apiKey.Status)))
+		slog.String("id", apiKey.ID),
+		slog.String("status", string(apiKey.Status)))
 
 	return nil
 }
@@ -1446,7 +1446,7 @@ func (s *SQLiteStorage) DeleteAPIKey(key string) error {
 		return fmt.Errorf("%w: API key not found", ErrNotFound)
 	}
 
-	s.logger.Info("API key deleted successfully", zap.String("key_prefix", key[:min(8, len(key))]+"***"))
+	s.logger.Info("API key deleted successfully", slog.String("key_prefix", key[:min(8, len(key))]+"***"))
 
 	return nil
 }
@@ -1461,7 +1461,7 @@ func (s *SQLiteStorage) RemoveAPIKeysAPI(apiId string) error {
 	}
 
 	s.logger.Info("API keys removed successfully",
-		zap.String("apiId", apiId))
+		slog.String("apiId", apiId))
 
 	return nil
 }
@@ -1485,8 +1485,8 @@ func (s *SQLiteStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
 	}
 
 	s.logger.Info("API key removed successfully",
-		zap.String("apiId", apiId),
-		zap.String("name", name))
+		slog.String("apiId", apiId),
+		slog.String("name", name))
 
 	return nil
 }

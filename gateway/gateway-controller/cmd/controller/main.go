@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,7 +31,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
-	"go.uber.org/zap"
 )
 
 // Version information (set via ldflags during build)
@@ -58,25 +58,20 @@ func main() {
 	metrics.Init() // Initialize metrics immediately so they're available throughout the codebase
 
 	// Initialize logger with config
-	log, err := logger.NewLogger(logger.Config{
+	log := logger.NewLogger(logger.Config{
 		Level:  cfg.GatewayController.Logging.Level,
 		Format: cfg.GatewayController.Logging.Format,
 	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
-		os.Exit(1)
-	}
-	defer log.Sync()
 
 	log.Info("Starting Gateway-Controller",
-		zap.String("version", Version),
-		zap.String("git_commit", GitCommit),
-		zap.String("build_date", BuildDate),
-		zap.String("config_file", *configPath),
-		zap.String("storage_type", cfg.GatewayController.Storage.Type),
-		zap.Bool("access_logs_enabled", cfg.GatewayController.Router.AccessLogs.Enabled),
-		zap.String("control_plane_host", cfg.GatewayController.ControlPlane.Host),
-		zap.Bool("control_plane_token_configured", cfg.GatewayController.ControlPlane.Token != ""),
+		slog.String("version", Version),
+		slog.String("git_commit", GitCommit),
+		slog.String("build_date", BuildDate),
+		slog.String("config_file", *configPath),
+		slog.String("storage_type", cfg.GatewayController.Storage.Type),
+		slog.Bool("access_logs_enabled", cfg.GatewayController.Router.AccessLogs.Enabled),
+		slog.String("control_plane_host", cfg.GatewayController.ControlPlane.Host),
+		slog.Bool("control_plane_token_configured", cfg.GatewayController.ControlPlane.Token != ""),
 	)
 
 	if !cfg.GatewayController.Auth.Basic.Enabled && !cfg.GatewayController.Auth.IDP.Enabled {
@@ -88,22 +83,26 @@ func main() {
 	if cfg.IsPersistentMode() {
 		switch cfg.GatewayController.Storage.Type {
 		case "sqlite":
-			log.Info("Initializing SQLite storage", zap.String("path", cfg.GatewayController.Storage.SQLite.Path))
+			log.Info("Initializing SQLite storage", slog.String("path", cfg.GatewayController.Storage.SQLite.Path))
 			db, err = storage.NewSQLiteStorage(cfg.GatewayController.Storage.SQLite.Path, log)
 			if err != nil {
 				// Check for database locked error and provide clear guidance
 				if err.Error() == "database is locked" || err.Error() == "failed to open database: database is locked" {
-					log.Fatal("Database is locked by another process",
-						zap.String("database_path", cfg.GatewayController.Storage.SQLite.Path),
-						zap.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
+					log.Error("Database is locked by another process",
+						slog.String("database_path", cfg.GatewayController.Storage.SQLite.Path),
+						slog.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
+					os.Exit(1)
 				}
-				log.Fatal("Failed to initialize SQLite database", zap.Error(err))
+				log.Error("Failed to initialize SQLite database", slog.Any("error", err))
+				os.Exit(1)
 			}
 			defer db.Close()
 		case "postgres":
-			log.Fatal("PostgreSQL storage not yet implemented")
+			log.Error("PostgreSQL storage not yet implemented")
+			os.Exit(1)
 		default:
-			log.Fatal("Unknown storage type", zap.String("type", cfg.GatewayController.Storage.Type))
+			log.Error("Unknown storage type", slog.String("type", cfg.GatewayController.Storage.Type))
+			os.Exit(1)
 		}
 	} else {
 		log.Info("Running in memory-only mode (no persistent storage)")
@@ -121,19 +120,22 @@ func main() {
 	if cfg.IsPersistentMode() && db != nil {
 		log.Info("Loading configurations from database")
 		if err := storage.LoadFromDatabase(db, configStore); err != nil {
-			log.Fatal("Failed to load configurations from database", zap.Error(err))
+			log.Error("Failed to load configurations from database", slog.Any("error", err))
+			os.Exit(1)
 		}
 		if err := storage.LoadLLMProviderTemplatesFromDatabase(db, configStore); err != nil {
-			log.Fatal("Failed to load llm provider template configurations from database", zap.Error(err))
+			log.Error("Failed to load llm provider template configurations from database", slog.Any("error", err))
+			os.Exit(1)
 		}
-		log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
+		log.Info("Loaded configurations", slog.Int("count", len(configStore.GetAll())))
 
 		// Load API keys from database into both in-memory stores
 		log.Info("Loading API keys from database")
 		if err := storage.LoadAPIKeysFromDatabase(db, configStore, apiKeyStore); err != nil {
-			log.Fatal("Failed to load API keys from database", zap.Error(err))
+			log.Error("Failed to load API keys from database", slog.Any("error", err))
+			os.Exit(1)
 		}
-		log.Info("Loaded API keys", zap.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
+		log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -152,7 +154,7 @@ func main() {
 		)
 		// Update SDS secrets with current certificates
 		if err := sdsSecretManager.UpdateSecrets(); err != nil {
-			log.Warn("Failed to initialize SDS secrets", zap.Error(err))
+			log.Warn("Failed to initialize SDS secrets", slog.Any("error", err))
 		} else {
 			log.Info("SDS secret manager initialized successfully")
 			// Set the SDS secret manager in snapshot manager so secrets are included in snapshots
@@ -164,7 +166,7 @@ func main() {
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
-		log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
+		log.Warn("Failed to generate initial xDS snapshot", slog.Any("error", err))
 	}
 	cancel()
 
@@ -172,17 +174,18 @@ func main() {
 	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.GatewayController.Server.XDSPort, log)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
-			log.Fatal("xDS server failed", zap.Error(err))
+			log.Error("xDS server failed", slog.Any("error", err))
+			os.Exit(1)
 		}
 	}()
 
 	// Generate initial API key snapshot if API keys were loaded from database
 	if cfg.IsPersistentMode() && apiKeyXDSManager.GetAPIKeyCount() > 0 {
 		log.Info("Generating initial API key snapshot for policy engine",
-			zap.Int("api_key_count", apiKeyXDSManager.GetAPIKeyCount()))
+			slog.Int("api_key_count", apiKeyXDSManager.GetAPIKeyCount()))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := apiKeySnapshotManager.UpdateSnapshot(ctx); err != nil {
-			log.Warn("Failed to generate initial API key snapshot", zap.Error(err))
+			log.Warn("Failed to generate initial API key snapshot", slog.Any("error", err))
 		} else {
 			log.Info("Initial API key snapshot generated successfully")
 		}
@@ -193,7 +196,7 @@ func main() {
 	var policyXDSServer *policyxds.Server
 	var policyManager *policyxds.PolicyManager
 	if cfg.GatewayController.PolicyServer.Enabled {
-		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.GatewayController.PolicyServer.Port))
+		log.Info("Initializing Policy xDS server", slog.Int("port", cfg.GatewayController.PolicyServer.Port))
 
 		// Initialize policy store
 		policyStore := storage.NewPolicyStore()
@@ -215,8 +218,8 @@ func main() {
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {
 							log.Warn("Failed to load policy from API",
-								zap.String("api_id", apiConfig.ID),
-								zap.Error(err))
+								slog.String("api_id", apiConfig.ID),
+								slog.Any("error", err))
 						} else {
 							derivedCount++
 						}
@@ -224,15 +227,15 @@ func main() {
 				}
 			}
 			log.Info("Loaded policies from API configurations",
-				zap.Int("total_apis", len(loadedAPIs)),
-				zap.Int("policies_derived", derivedCount))
+				slog.Int("total_apis", len(loadedAPIs)),
+				slog.Int("policies_derived", derivedCount))
 		}
 
 		// Generate initial policy snapshot
 		log.Info("Generating initial policy xDS snapshot")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := policySnapshotManager.UpdateSnapshot(ctx); err != nil {
-			log.Warn("Failed to generate initial policy xDS snapshot", zap.Error(err))
+			log.Warn("Failed to generate initial policy xDS snapshot", slog.Any("error", err))
 		}
 		cancel()
 
@@ -247,7 +250,8 @@ func main() {
 		policyXDSServer = policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
 		go func() {
 			if err := policyXDSServer.Start(); err != nil {
-				log.Fatal("Policy xDS server failed", zap.Error(err))
+				log.Error("Policy xDS server failed", slog.Any("error", err))
+				os.Exit(1)
 			}
 		}()
 	} else {
@@ -257,22 +261,24 @@ func main() {
 	// Load policy definitions from files (must be done before creating validator)
 	policyLoader := utils.NewPolicyLoader(log)
 	policyDir := cfg.GatewayController.Policies.DefinitionsPath
-	log.Info("Loading policy definitions from directory", zap.String("directory", policyDir))
+	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
 	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
 	if err != nil {
-		log.Fatal("Failed to load policy definitions", zap.Error(err))
+		log.Error("Failed to load policy definitions", slog.Any("error", err))
+		os.Exit(1)
 	}
-	log.Info("Policy definitions loaded", zap.Int("count", len(policyDefinitions)))
+	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
 	// Load llm provider templates from files
 	templateLoader := utils.NewLLMTemplateLoader(log)
 	templateDir := cfg.GatewayController.LLM.TemplateDefinitionsPath
-	log.Info("Loading llm provider templates from directory", zap.String("directory", templateDir))
+	log.Info("Loading llm provider templates from directory", slog.String("directory", templateDir))
 	templateDefinitions, err := templateLoader.LoadTemplatesFromDirectory(templateDir)
 	if err != nil {
-		log.Fatal("Failed to load llm provider templates", zap.Error(err))
+		log.Error("Failed to load llm provider templates", slog.Any("error", err))
+		os.Exit(1)
 	}
-	log.Info("Default llm provider templates loaded", zap.Int("count", len(templateDefinitions)))
+	log.Info("Default llm provider templates loaded", slog.Int("count", len(templateDefinitions)))
 
 	// Create validator with policy validation support
 	validator := config.NewAPIValidator()
@@ -282,7 +288,7 @@ func main() {
 	// Initialize and start control plane client with dependencies for API creation
 	cpClient := controlplane.NewClient(cfg.GatewayController.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.GatewayController.Router)
 	if err := cpClient.Start(); err != nil {
-		log.Error("Failed to start control plane client", zap.Error(err))
+		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
 	}
 
@@ -305,7 +311,8 @@ func main() {
 	authConfig := generateAuthConfig(cfg)
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
-		log.Fatal("Failed to create auth middleware", zap.Error(err))
+		log.Error("Failed to create auth middleware", slog.Any("error", err))
+		os.Exit(1)
 	}
 	router.Use(authMiddleWare)
 	router.Use(authenticators.AuthorizationMiddleware(authConfig, log))
@@ -322,14 +329,15 @@ func main() {
 	var metricsServer *metrics.Server
 	var metricsCtxCancel context.CancelFunc
 	if cfg.GatewayController.Metrics.Enabled {
-		log.Info("Starting metrics server", zap.Int("port", cfg.GatewayController.Metrics.Port))
+		log.Info("Starting metrics server", slog.Int("port", cfg.GatewayController.Metrics.Port))
 
 		// Set build info metric
 		metrics.Info.WithLabelValues(Version, cfg.GatewayController.Storage.Type, BuildDate).Set(1)
 
 		metricsServer = metrics.NewServer(&cfg.GatewayController.Metrics, log)
 		if err := metricsServer.Start(); err != nil {
-			log.Fatal("Metrics server failed", zap.Error(err))
+			log.Error("Metrics server failed", slog.Any("error", err))
+			os.Exit(1)
 		}
 
 		// Start memory metrics updater with cancellable context
@@ -339,7 +347,7 @@ func main() {
 	}
 
 	// Start REST API server
-	log.Info("Starting REST API server", zap.Int("port", cfg.GatewayController.Server.APIPort))
+	log.Info("Starting REST API server", slog.Int("port", cfg.GatewayController.Server.APIPort))
 
 	// Setup graceful shutdown
 	srv := &http.Server{
@@ -350,9 +358,12 @@ func main() {
 	// Start server in a goroutine
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("Failed to start REST API server", zap.Error(err))
+			log.Error("Failed to start REST API server", slog.Any("error", err))
+			os.Exit(1)
 		}
 	}()
+
+	log.Info("Gateway Controller started successfully")
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
@@ -369,7 +380,7 @@ func main() {
 	cpClient.Stop()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("Server forced to shutdown", zap.Error(err))
+		log.Error("Server forced to shutdown", slog.Any("error", err))
 	}
 
 	xdsServer.Stop()
@@ -386,7 +397,7 @@ func main() {
 			metricsCtxCancel()
 		}
 		if err := metricsServer.Stop(ctx); err != nil {
-			log.Error("Failed to stop metrics server", zap.Error(err))
+			log.Error("Failed to stop metrics server", slog.Any("error", err))
 		}
 	}
 
@@ -541,7 +552,7 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Conf
 			// Inject system policies into the chain
 			props := make(map[string]any)
 			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, fullConfig, props)
-			
+
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
 				Policies: injectedPolicies,

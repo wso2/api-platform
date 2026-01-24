@@ -20,13 +20,13 @@ package xds
 
 import (
 	"fmt"
+	"log/slog"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
-	"go.uber.org/zap"
 )
 
 const (
@@ -38,13 +38,13 @@ const (
 type SDSSecretManager struct {
 	cache     cache.SnapshotCache
 	certStore *certstore.CertStore
-	logger    *zap.Logger
+	logger    *slog.Logger
 	nodeID    string
 }
 
 // NewSDSSecretManager creates a new SDS secret manager
 // It shares the same cache and node ID as the main xDS to ensure Envoy can fetch secrets
-func NewSDSSecretManager(certStore *certstore.CertStore, cache cache.SnapshotCache, nodeID string, logger *zap.Logger) *SDSSecretManager {
+func NewSDSSecretManager(certStore *certstore.CertStore, cache cache.SnapshotCache, nodeID string, logger *slog.Logger) *SDSSecretManager {
 	return &SDSSecretManager{
 		cache:     cache,
 		certStore: certStore,
@@ -75,7 +75,7 @@ func (sm *SDSSecretManager) UpdateSecrets() error {
 	}
 
 	sm.logger.Info("Certificate store ready for SDS",
-		zap.Int("cert_bytes", len(combinedCerts)),
+		slog.Int("cert_bytes", len(combinedCerts)),
 	)
 
 	return nil

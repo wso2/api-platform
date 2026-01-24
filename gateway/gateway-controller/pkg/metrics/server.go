@@ -21,24 +21,24 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"go.uber.org/zap"
 )
 
 // Server is the metrics HTTP server
 type Server struct {
 	cfg        *config.MetricsConfig
 	httpServer *http.Server
-	log        *zap.Logger
+	log        *slog.Logger
 }
 
 // NewServer creates a new metrics server
-func NewServer(cfg *config.MetricsConfig, log *zap.Logger) *Server {
+func NewServer(cfg *config.MetricsConfig, log *slog.Logger) *Server {
 	// Initialize metrics registry
 	registry := Init()
 
@@ -69,7 +69,7 @@ func NewServer(cfg *config.MetricsConfig, log *zap.Logger) *Server {
 
 // Start starts the metrics HTTP server
 func (s *Server) Start() error {
-	s.log.Info("Starting metrics HTTP server", zap.Int("port", s.cfg.Port))
+	s.log.Info("Starting metrics HTTP server", slog.Int("port", s.cfg.Port))
 
 	ln, err := net.Listen("tcp", s.httpServer.Addr)
 	if err != nil {
@@ -78,7 +78,7 @@ func (s *Server) Start() error {
 
 	go func() {
 		if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
-			s.log.Error("Metrics server failed", zap.Error(err))
+			s.log.Error("Metrics server failed", slog.Any("error", err))
 		}
 	}()
 
