@@ -20,13 +20,13 @@ package authenticators
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
-	"go.uber.org/zap"
 )
 
 var (
@@ -34,7 +34,7 @@ var (
 )
 
 // AuthMiddleware creates a unified authentication middleware supporting both Basic and Bearer auth
-func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFunc, error) {
+func AuthMiddleware(config models.AuthConfig, logger *slog.Logger) (gin.HandlerFunc, error) {
 	// Initialize authenticators once at startup (middleware creation time).
 	// Any configuration errors (e.g., JWT JWKS init failures) should fail fast here
 	// rather than per-request.
@@ -101,15 +101,15 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 		result, err := selectedAuth.Authenticate(c)
 		if err != nil {
 			logger.Info("authentication failed",
-				zap.String("authenticator", selectedAuth.Name()),
-				zap.String("method", c.Request.Method),
-				zap.String("path", c.Request.URL.Path),
-				zap.String("client_ip", c.ClientIP()),
+				slog.String("authenticator", selectedAuth.Name()),
+				slog.String("method", c.Request.Method),
+				slog.String("path", c.Request.URL.Path),
+				slog.String("client_ip", c.ClientIP()),
 			)
 			// Keep details for debug only.
 			logger.Debug("authentication failure detail",
-				zap.String("authenticator", selectedAuth.Name()),
-				zap.Error(err),
+				slog.String("authenticator", selectedAuth.Name()),
+				slog.Any("error", err),
 			)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "authentication failed",
@@ -117,8 +117,8 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 			c.Abort()
 			return
 		}
-		logger.Sugar().Debugf("Authentication result %v", result)
-		logger.Sugar().Debugf("Authentication roles %v", result.Roles)
+		logger.Debug("Authentication result", slog.Any("result", result))
+		logger.Debug("Authentication roles", slog.Any("roles", result.Roles))
 
 		claims := result.Claims
 		if claims == nil {

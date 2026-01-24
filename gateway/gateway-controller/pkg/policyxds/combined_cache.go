@@ -20,12 +20,12 @@ package policyxds
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
-	"go.uber.org/zap"
 )
 
 // CombinedCache combines policy and API key caches to provide a unified xDS cache interface
@@ -33,7 +33,7 @@ import (
 type CombinedCache struct {
 	policyCache cache.Cache
 	apiKeyCache cache.Cache
-	logger      *zap.Logger
+	logger      *slog.Logger
 	mu          sync.RWMutex
 	watchers    map[int64]*combinedWatcher
 	watcherID   int64
@@ -53,12 +53,12 @@ type combinedWatcher struct {
 
 // NewCombinedCache creates a new combined cache that merges policy and API key caches
 // Returns a cache.Cache interface implementation
-func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, logger *zap.Logger) cache.Cache {
+func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, logger *slog.Logger) cache.Cache {
 	if policyCache == nil || apiKeyCache == nil {
 		panic("policyCache and apiKeyCache must not be nil")
 	}
 	if logger == nil {
-		logger = zap.NewNop()
+		logger = slog.Default()
 	}
 	return &CombinedCache{
 		policyCache: policyCache,
@@ -90,9 +90,9 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 	c.watchers[watcherID] = watcher
 
 	c.logger.Debug("Creating combined watch",
-		zap.Int64("watcher_id", watcherID),
-		zap.String("type_url", request.TypeUrl),
-		zap.String("node_id", request.Node.GetId()))
+		slog.Int64("watcher_id", watcherID),
+		slog.String("type_url", request.TypeUrl),
+		slog.String("node_id", request.Node.GetId()))
 
 	// Create separate response channels for each cache to avoid recursion
 	policyResponseChan := make(chan cache.Response, 1)
@@ -116,7 +116,7 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan chan cache.Response,
 	mainResponseChan chan cache.Response, done chan struct{}) {
 	defer func() {
-		c.logger.Debug("Response handler goroutine exiting", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Response handler goroutine exiting", slog.Int64("watcher_id", watcherID))
 	}()
 
 	var lastPolicyVersion, lastApiKeyVersion string
@@ -124,12 +124,12 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 	for {
 		select {
 		case <-done:
-			c.logger.Debug("Watcher cancelled, exiting response handler", zap.Int64("watcher_id", watcherID))
+			c.logger.Debug("Watcher cancelled, exiting response handler", slog.Int64("watcher_id", watcherID))
 			return
 
 		case response, ok := <-policyResponseChan:
 			if !ok {
-				c.logger.Debug("Policy response channel closed", zap.Int64("watcher_id", watcherID))
+				c.logger.Debug("Policy response channel closed", slog.Int64("watcher_id", watcherID))
 				return
 			}
 
@@ -137,7 +137,7 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if response == nil {
 				// Don't create continuous empty responses - this causes the loop
 				c.logger.Debug("Policy cache has no data, skipping nil response",
-					zap.Int64("watcher_id", watcherID))
+					slog.Int64("watcher_id", watcherID))
 				continue
 			}
 
@@ -150,26 +150,26 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if version != lastPolicyVersion {
 				lastPolicyVersion = version
 				c.logger.Debug("Forwarding policy cache response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 
 				select {
 				case mainResponseChan <- response:
 					// Successfully sent
 				case <-time.After(100 * time.Millisecond):
 					c.logger.Warn("Timeout sending policy response, client may be slow",
-						zap.Int64("watcher_id", watcherID),
-						zap.String("version", version))
+						slog.Int64("watcher_id", watcherID),
+						slog.String("version", version))
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate policy response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 			}
 
 		case response, ok := <-apiKeyResponseChan:
 			if !ok {
-				c.logger.Debug("API key response channel closed", zap.Int64("watcher_id", watcherID))
+				c.logger.Debug("API key response channel closed", slog.Int64("watcher_id", watcherID))
 				return
 			}
 
@@ -177,7 +177,7 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if response == nil {
 				// Don't create continuous empty responses - this causes the loop
 				c.logger.Debug("API key cache has no data, skipping nil response",
-					zap.Int64("watcher_id", watcherID))
+					slog.Int64("watcher_id", watcherID))
 				continue
 			}
 
@@ -190,21 +190,21 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if version != lastApiKeyVersion {
 				lastApiKeyVersion = version
 				c.logger.Debug("Forwarding API key cache response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 
 				select {
 				case mainResponseChan <- response:
 					// Successfully sent
 				case <-time.After(100 * time.Millisecond):
 					c.logger.Warn("Timeout sending API key response, client may be slow",
-						zap.Int64("watcher_id", watcherID),
-						zap.String("version", version))
+						slog.Int64("watcher_id", watcherID),
+						slog.String("version", version))
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate API key response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 			}
 		}
 
@@ -214,7 +214,7 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 		c.mu.RUnlock()
 
 		if !exists {
-			c.logger.Debug("Watcher removed, exiting response handler", zap.Int64("watcher_id", watcherID))
+			c.logger.Debug("Watcher removed, exiting response handler", slog.Int64("watcher_id", watcherID))
 			return
 		}
 	}
@@ -230,9 +230,9 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 	watcherID := c.watcherID
 
 	c.logger.Debug("Creating combined delta watch",
-		zap.Int64("watcher_id", watcherID),
-		zap.String("type_url", request.TypeUrl),
-		zap.String("node_id", request.Node.GetId()))
+		slog.Int64("watcher_id", watcherID),
+		slog.String("type_url", request.TypeUrl),
+		slog.String("node_id", request.Node.GetId()))
 
 	// Create delta watches on both underlying caches
 	var policyCancel, apiKeyCancel func()
@@ -242,9 +242,9 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		CreateDeltaWatch(*cache.DeltaRequest, stream.StreamState, chan cache.DeltaResponse) func()
 	}); ok {
 		policyCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "policy", responseChan))
-		c.logger.Debug("Policy cache supports delta watch", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Policy cache supports delta watch", slog.Int64("watcher_id", watcherID))
 	} else {
-		c.logger.Debug("Policy cache does not support delta watch, skipping", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Policy cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
 	}
 
 	// Try to create delta watch on API key cache if it supports it
@@ -252,17 +252,17 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		CreateDeltaWatch(*cache.DeltaRequest, stream.StreamState, chan cache.DeltaResponse) func()
 	}); ok {
 		apiKeyCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "apikey", responseChan))
-		c.logger.Debug("API key cache supports delta watch", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("API key cache supports delta watch", slog.Int64("watcher_id", watcherID))
 	} else {
-		c.logger.Debug("API key cache does not support delta watch, skipping", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("API key cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
 	}
 
 	// If neither cache supports delta watch, we could fall back to regular watch
 	// but for now we'll just return a no-op cancel function
 	if policyCancel == nil && apiKeyCancel == nil {
 		c.logger.Warn("Neither underlying cache supports delta watch",
-			zap.Int64("watcher_id", watcherID),
-			zap.String("type_url", request.TypeUrl))
+			slog.Int64("watcher_id", watcherID),
+			slog.String("type_url", request.TypeUrl))
 	}
 
 	// Return cancel function
@@ -277,7 +277,7 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 			apiKeyCancel()
 		}
 
-		c.logger.Debug("Canceled combined delta watch", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Canceled combined delta watch", slog.Int64("watcher_id", watcherID))
 	}
 }
 
@@ -285,9 +285,9 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 // Implements cache.ConfigFetcher interface
 func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cache.Response, error) {
 	c.logger.Debug("Fetching from combined cache",
-		zap.String("type_url", request.TypeUrl),
-		zap.String("node_id", request.Node.GetId()),
-		zap.Strings("resource_names", request.ResourceNames))
+		slog.String("type_url", request.TypeUrl),
+		slog.String("node_id", request.Node.GetId()),
+		slog.Any("resource_names", request.ResourceNames))
 
 	// Try to fetch from policy cache first
 	if response, err := c.policyCache.Fetch(ctx, request); err == nil {
@@ -296,7 +296,7 @@ func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cach
 			version = "unknown"
 		}
 		c.logger.Debug("Fetched from policy cache",
-			zap.String("version", version))
+			slog.String("version", version))
 		return response, nil
 	}
 
@@ -307,14 +307,14 @@ func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cach
 			version = "unknown"
 		}
 		c.logger.Debug("Fetched from API key cache",
-			zap.String("version", version))
+			slog.String("version", version))
 		return response, nil
 	}
 
 	// If not found in either cache, return empty response
 	c.logger.Debug("Resource not found in either cache",
-		zap.String("type_url", request.TypeUrl),
-		zap.Strings("resource_names", request.ResourceNames))
+		slog.String("type_url", request.TypeUrl),
+		slog.Any("resource_names", request.ResourceNames))
 
 	return &cache.RawResponse{
 		Version:   "0",
@@ -330,19 +330,19 @@ func (c *CombinedCache) createDeltaResponseHandler(watcherID int64, cacheType st
 	go func() {
 		for response := range responseChan {
 			c.logger.Debug("Received delta response from cache",
-				zap.Int64("watcher_id", watcherID),
-				zap.String("cache_type", cacheType))
+				slog.Int64("watcher_id", watcherID),
+				slog.String("cache_type", cacheType))
 
 			// Forward the delta response to the main response channel
 			select {
 			case mainResponseChan <- response:
 				c.logger.Debug("Forwarded delta response from combined cache",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("cache_type", cacheType))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("cache_type", cacheType))
 			default:
 				c.logger.Warn("Failed to forward delta response, channel full",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("cache_type", cacheType))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("cache_type", cacheType))
 			}
 		}
 	}()
@@ -358,12 +358,12 @@ func (c *CombinedCache) cancelWatch(watcherID int64) {
 	watcher, exists := c.watchers[watcherID]
 	if !exists {
 		c.logger.Debug("Watcher already removed",
-			zap.Int64("watcher_id", watcherID))
+			slog.Int64("watcher_id", watcherID))
 		return
 	}
 
 	c.logger.Debug("Canceling combined watch",
-		zap.Int64("watcher_id", watcherID))
+		slog.Int64("watcher_id", watcherID))
 
 	// Signal the goroutine to stop by closing the done channel
 	close(watcher.done)

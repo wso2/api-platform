@@ -19,16 +19,16 @@
 package middleware
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 // LoggingMiddleware creates a Gin middleware for request/response logging
 // Note: This middleware should be registered AFTER CorrelationIDMiddleware
 // to ensure the correlation-aware logger is available in the context
-func LoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
+func LoggingMiddleware(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -47,13 +47,13 @@ func LoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 		log := GetLogger(c, logger)
 
 		log.Info("HTTP request",
-			zap.String("method", method),
-			zap.String("path", path),
-			zap.String("query", query),
-			zap.Int("status", statusCode),
-			zap.Duration("latency", latency),
-			zap.String("client_ip", clientIP),
-			zap.String("user_agent", c.Request.UserAgent()),
+			slog.String("method", method),
+			slog.String("path", path),
+			slog.String("query", query),
+			slog.Int("status", statusCode),
+			slog.Duration("latency", latency),
+			slog.String("client_ip", clientIP),
+			slog.String("user_agent", c.Request.UserAgent()),
 		)
 	}
 }

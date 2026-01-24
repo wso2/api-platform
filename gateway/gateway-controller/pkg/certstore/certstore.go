@@ -23,6 +23,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 )
 
 // generateCertificateID creates a unique ID for a certificate
@@ -42,7 +42,7 @@ func generateCertificateID() string {
 
 // CertStore manages custom certificates for upstream TLS verification
 type CertStore struct {
-	logger         *zap.Logger
+	logger         *slog.Logger
 	certsDir       string
 	systemCertPath string
 	combinedCerts  []byte
@@ -54,7 +54,7 @@ type CertStore struct {
 // db: database storage for custom certificates
 // certsDir: legacy directory containing custom certificates (deprecated, for backward compatibility)
 // systemCertPath: path to system CA certificates (e.g., "/etc/ssl/certs/ca-certificates.crt")
-func NewCertStore(logger *zap.Logger, db storage.Storage, certsDir string, systemCertPath string) *CertStore {
+func NewCertStore(logger *slog.Logger, db storage.Storage, certsDir string, systemCertPath string) *CertStore {
 	return &CertStore{
 		logger:         logger,
 		db:             db,
@@ -73,7 +73,7 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	if cs.db != nil && cs.certsDir != "" {
 		if err := cs.bootstrapCertificatesFromFilesystem(); err != nil {
 			cs.logger.Warn("Failed to bootstrap certificates from filesystem",
-				zap.Error(err))
+				slog.Any("error", err))
 		}
 	}
 
@@ -82,12 +82,12 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 		dbCerts, count, err := cs.loadDatabaseCertificates()
 		if err != nil {
 			cs.logger.Warn("Failed to load certificates from database",
-				zap.Error(err))
+				slog.Any("error", err))
 		} else if count > 0 {
 			certBuffer.Write(dbCerts)
 			loadedCount += count
 			cs.logger.Info("Loaded custom certificates from database",
-				zap.Int("count", count))
+				slog.Int("count", count))
 		}
 	}
 
@@ -96,8 +96,8 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 		systemCerts, err := os.ReadFile(cs.systemCertPath)
 		if err != nil {
 			cs.logger.Warn("Failed to load system certificates",
-				zap.String("path", cs.systemCertPath),
-				zap.Error(err))
+				slog.String("path", cs.systemCertPath),
+				slog.Any("error", err))
 			// If we have custom certs, we can continue without system certs
 			if loadedCount == 0 {
 				return nil, fmt.Errorf("failed to load both custom and system certificates")
@@ -106,7 +106,7 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 			// Add system certificates to the buffer
 			certBuffer.Write(systemCerts)
 			cs.logger.Info("Loaded system certificates",
-				zap.String("path", cs.systemCertPath))
+				slog.String("path", cs.systemCertPath))
 		}
 	}
 
@@ -120,8 +120,8 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	cs.mu.Unlock()
 
 	cs.logger.Info("Certificate trust store initialized",
-		zap.Int("custom_certs", loadedCount),
-		zap.Int("total_bytes", len(certBuffer.Bytes())))
+		slog.Int("custom_certs", loadedCount),
+		slog.Int("total_bytes", len(certBuffer.Bytes())))
 
 	return certBuffer.Bytes(), nil
 }
@@ -146,9 +146,9 @@ func (cs *CertStore) loadDatabaseCertificates() ([]byte, int, error) {
 		count, err := cs.validateCertificateData(cert.Name, cert.Certificate)
 		if err != nil {
 			cs.logger.Warn("Invalid certificate in database",
-				zap.String("name", cert.Name),
-				zap.String("id", cert.ID),
-				zap.Error(err))
+				slog.String("name", cert.Name),
+				slog.String("id", cert.ID),
+				slog.Any("error", err))
 			continue
 		}
 
@@ -160,9 +160,9 @@ func (cs *CertStore) loadDatabaseCertificates() ([]byte, int, error) {
 			}
 			certCount += count
 			cs.logger.Debug("Loaded certificate from database",
-				zap.String("name", cert.Name),
-				zap.String("id", cert.ID),
-				zap.Int("certs_in_chain", count))
+				slog.String("name", cert.Name),
+				slog.String("id", cert.ID),
+				slog.Int("certs_in_chain", count))
 		}
 	}
 
@@ -174,7 +174,7 @@ func (cs *CertStore) loadCustomCertificates() ([]byte, int, error) {
 	// Check if directory exists
 	if _, err := os.Stat(cs.certsDir); os.IsNotExist(err) {
 		cs.logger.Debug("Certificates directory does not exist",
-			zap.String("path", cs.certsDir))
+			slog.String("path", cs.certsDir))
 		return nil, 0, nil
 	}
 
@@ -196,7 +196,7 @@ func (cs *CertStore) loadCustomCertificates() ([]byte, int, error) {
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".pem" && ext != ".crt" && ext != ".cer" && ext != ".cert" {
 			cs.logger.Debug("Skipping non-certificate file",
-				zap.String("file", path))
+				slog.String("file", path))
 			return nil
 		}
 
@@ -204,8 +204,8 @@ func (cs *CertStore) loadCustomCertificates() ([]byte, int, error) {
 		certData, err := os.ReadFile(path)
 		if err != nil {
 			cs.logger.Warn("Failed to read certificate file",
-				zap.String("file", path),
-				zap.Error(err))
+				slog.String("file", path),
+				slog.Any("error", err))
 			return nil // Continue with other files
 		}
 
@@ -213,8 +213,8 @@ func (cs *CertStore) loadCustomCertificates() ([]byte, int, error) {
 		count, err := cs.validateAndExtractCertificates(path, certData)
 		if err != nil {
 			cs.logger.Warn("Invalid certificate file",
-				zap.String("file", path),
-				zap.Error(err))
+				slog.String("file", path),
+				slog.Any("error", err))
 			return nil // Continue with other files
 		}
 
@@ -226,8 +226,8 @@ func (cs *CertStore) loadCustomCertificates() ([]byte, int, error) {
 			}
 			certCount += count
 			cs.logger.Debug("Loaded certificate file",
-				zap.String("file", path),
-				zap.Int("certs_in_file", count))
+				slog.String("file", path),
+				slog.Int("certs_in_file", count))
 		}
 
 		return nil
@@ -256,8 +256,8 @@ func (cs *CertStore) validateAndExtractCertificates(filename string, data []byte
 		// Only accept CERTIFICATE blocks
 		if block.Type != "CERTIFICATE" {
 			cs.logger.Debug("Skipping non-certificate PEM block",
-				zap.String("file", filename),
-				zap.String("type", block.Type))
+				slog.String("file", filename),
+				slog.String("type", block.Type))
 			continue
 		}
 
@@ -293,8 +293,8 @@ func (cs *CertStore) validateCertificateData(name string, data []byte) (int, err
 		// Only accept CERTIFICATE blocks
 		if block.Type != "CERTIFICATE" {
 			cs.logger.Debug("Skipping non-certificate PEM block",
-				zap.String("name", name),
-				zap.String("type", block.Type))
+				slog.String("name", name),
+				slog.String("type", block.Type))
 			continue
 		}
 
@@ -340,7 +340,7 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 	// Check if directory exists
 	if _, err := os.Stat(cs.certsDir); os.IsNotExist(err) {
 		cs.logger.Debug("Certificates directory does not exist, skipping bootstrap",
-			zap.String("path", cs.certsDir))
+			slog.String("path", cs.certsDir))
 		return nil
 	}
 
@@ -368,8 +368,8 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 		certData, err := os.ReadFile(path)
 		if err != nil {
 			cs.logger.Warn("Failed to read certificate file during bootstrap",
-				zap.String("file", path),
-				zap.Error(err))
+				slog.String("file", path),
+				slog.Any("error", err))
 			return nil // Continue with other files
 		}
 
@@ -377,8 +377,8 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 		count, err := cs.validateCertificateData(filepath.Base(path), certData)
 		if err != nil {
 			cs.logger.Warn("Invalid certificate file during bootstrap",
-				zap.String("file", path),
-				zap.Error(err))
+				slog.String("file", path),
+				slog.Any("error", err))
 			return nil
 		}
 
@@ -392,14 +392,14 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 		exists, err := cs.certificateExistsByName(filename)
 		if err != nil {
 			cs.logger.Warn("Failed to check if certificate exists",
-				zap.String("filename", filename),
-				zap.Error(err))
+				slog.String("filename", filename),
+				slog.Any("error", err))
 			return nil
 		}
 
 		if exists {
 			cs.logger.Debug("Certificate already in database, skipping",
-				zap.String("filename", filename))
+				slog.String("filename", filename))
 			skippedCount++
 			return nil
 		}
@@ -409,15 +409,15 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 		block, _ := pem.Decode(certData)
 		if block == nil {
 			cs.logger.Warn("Failed to decode PEM data during bootstrap",
-				zap.String("filename", filename))
+				slog.String("filename", filename))
 			return nil
 		}
 
 		x509Cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
 			cs.logger.Warn("Failed to parse certificate during bootstrap",
-				zap.String("filename", filename),
-				zap.Error(err))
+				slog.String("filename", filename),
+				slog.Any("error", err))
 			return nil
 		}
 
@@ -436,15 +436,15 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 
 		if err := cs.db.SaveCertificate(cert); err != nil {
 			cs.logger.Warn("Failed to import certificate to database",
-				zap.String("filename", filename),
-				zap.Error(err))
+				slog.String("filename", filename),
+				slog.Any("error", err))
 			return nil
 		}
 
 		cs.logger.Info("Bootstrapped certificate from filesystem to database",
-			zap.String("filename", filename),
-			zap.String("id", cert.ID),
-			zap.Int("cert_count", count))
+			slog.String("filename", filename),
+			slog.String("id", cert.ID),
+			slog.Int("cert_count", count))
 		bootstrapCount++
 
 		return nil
@@ -456,8 +456,8 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 
 	if bootstrapCount > 0 || skippedCount > 0 {
 		cs.logger.Info("Certificate bootstrap completed",
-			zap.Int("imported", bootstrapCount),
-			zap.Int("skipped", skippedCount))
+			slog.Int("imported", bootstrapCount),
+			slog.Int("skipped", skippedCount))
 	}
 
 	return nil

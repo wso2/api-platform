@@ -19,17 +19,18 @@
 package middleware
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 func TestCorrelationIDMiddleware_ExistingHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	router := gin.New()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -63,7 +64,7 @@ func TestCorrelationIDMiddleware_ExistingHeader(t *testing.T) {
 
 func TestCorrelationIDMiddleware_GenerateNew(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	router := gin.New()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -93,7 +94,7 @@ func TestCorrelationIDMiddleware_GenerateNew(t *testing.T) {
 
 func TestGetLogger(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	baseLogger, _ := zap.NewDevelopment()
+	baseLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	router := gin.New()
 	router.Use(CorrelationIDMiddleware(baseLogger))
@@ -118,7 +119,7 @@ func TestGetLogger(t *testing.T) {
 
 func TestGetLogger_Fallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	fallbackLogger, _ := zap.NewDevelopment()
+	fallbackLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create a context without the middleware
 	router := gin.New()
@@ -142,7 +143,7 @@ func TestGetLogger_Fallback(t *testing.T) {
 
 func TestCorrelationIDMiddleware_LowercaseHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	router := gin.New()
 	router.Use(CorrelationIDMiddleware(logger))
@@ -177,7 +178,7 @@ func TestCorrelationIDMiddleware_LowercaseHeader(t *testing.T) {
 
 func TestCorrelationIDMiddleware_MixedCaseHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	router := gin.New()
 	router.Use(CorrelationIDMiddleware(logger))

@@ -22,12 +22,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
-	"go.uber.org/zap"
 	"golang.org/x/crypto/argon2"
 	bcrypt "golang.org/x/crypto/bcrypt"
 )
@@ -35,11 +35,11 @@ import (
 // BasicAuthenticator implements HTTP Basic Authentication
 type BasicAuthenticator struct {
 	authConfig models.AuthConfig
-	logger     *zap.Logger
+	logger     *slog.Logger
 }
 
 // NewBasicAuthenticator creates a new BasicAuthenticator
-func NewBasicAuthenticator(authConfig models.AuthConfig, logger *zap.Logger) *BasicAuthenticator {
+func NewBasicAuthenticator(authConfig models.AuthConfig, logger *slog.Logger) *BasicAuthenticator {
 	return &BasicAuthenticator{
 		authConfig: authConfig,
 		logger:     logger,

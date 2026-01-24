@@ -18,17 +18,17 @@
 package authenticators
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/constants"
 	commonerrors "github.com/wso2/api-platform/common/errors"
 	"github.com/wso2/api-platform/common/models"
-	"go.uber.org/zap"
 )
 
 // AuthorizationMiddleware enforces resource->roles mapping stored in this package.
-func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.HandlerFunc {
+func AuthorizationMiddleware(config models.AuthConfig, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Skip authorization if authentication was skipped
 		if v, ok := c.Get(constants.AuthzSkipKey); ok {
@@ -40,7 +40,7 @@ func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.H
 
 		// Use config.ResourceRoles if provided, else fallback to DefaultResourceRoles
 		resourceRoles := config.ResourceRoles
-		logger.Sugar().Debugf("Resource roles %v", resourceRoles)
+		logger.Debug("Resource roles", slog.Any("resourceRoles", resourceRoles))
 		if len(resourceRoles) == 0 {
 			c.Next()
 			return
@@ -52,7 +52,7 @@ func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.H
 				userRoles = ac.Roles
 			}
 		}
-		logger.Sugar().Debugf("User roles %v", userRoles)
+		logger.Debug("User roles", slog.Any("userRoles", userRoles))
 
 		// Determine resource key
 		resourcePath := c.FullPath()
@@ -63,7 +63,7 @@ func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.H
 
 		// Try METHOD + path first
 		methodKey := c.Request.Method + " " + resourcePath
-		logger.Sugar().Debugf("method key %v", methodKey)
+		logger.Debug("method key", slog.String("methodKey", methodKey))
 		allowed, found := resourceRoles[methodKey]
 		if !found {
 			// Resource not defined -> reject

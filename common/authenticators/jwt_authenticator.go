@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -31,7 +32,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
-	"go.uber.org/zap"
 )
 
 var (
@@ -43,18 +43,18 @@ var (
 // JWTAuthenticator implements JWT authentication
 type JWTAuthenticator struct {
 	config *models.AuthConfig
-	logger *zap.Logger
+	logger *slog.Logger
 	jwks   keyfunc.Keyfunc
 }
 
 // NewJWTAuthenticator creates a new JWT authenticator
-func NewJWTAuthenticator(config *models.AuthConfig, logger *zap.Logger) (*JWTAuthenticator, error) {
+func NewJWTAuthenticator(config *models.AuthConfig, logger *slog.Logger) (*JWTAuthenticator, error) {
 	return newJWTAuthenticatorWithJWKS(config, logger, true)
 }
 
 // newJWTAuthenticatorWithJWKS creates a new JWT authenticator with optional JWKS initialization
 // This is useful for testing where JWKS is not needed
-func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *zap.Logger, initJWKS bool) (*JWTAuthenticator, error) {
+func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger, initJWKS bool) (*JWTAuthenticator, error) {
 	var jwks keyfunc.Keyfunc
 	if config.JWTConfig != nil && initJWKS {
 		if config.JWTConfig.IssuerURL == "" {
@@ -186,8 +186,8 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 			}
 		}
 	}
-	j.logger.Sugar().Debugf("permissions %v", permissions)
-	j.logger.Sugar().Debugf("permission mapping %v", j.config.JWTConfig.PermissionMapping)
+	j.logger.Debug("permissions", slog.Any("permissions", permissions))
+	j.logger.Debug("permission mapping", slog.Any("permissionMapping", j.config.JWTConfig.PermissionMapping))
 	if j.config.JWTConfig.PermissionMapping != nil {
 		mappedPermissions := []string{}
 
@@ -204,7 +204,7 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 				break
 			}
 		}
-		j.logger.Sugar().Debugf("wildcard role: %v", wildcardRole)
+		j.logger.Debug("wildcard role", slog.String("wildcardRole", wildcardRole))
 
 		for _, perm := range permissions {
 			mapped := false
@@ -216,7 +216,7 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 						continue
 					}
 					if claimValue == perm {
-						j.logger.Sugar().Debugf("mapped claim value %v to role %v", perm, role)
+						j.logger.Debug("mapped claim value to role", slog.String("claimValue", perm), slog.String("role", role))
 						mappedPermissions = append(mappedPermissions, role)
 						mapped = true
 					}
@@ -225,11 +225,11 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 
 			// If no specific mapping found and wildcard role exists, use wildcard
 			if !mapped && wildcardRole != "" {
-				j.logger.Sugar().Debugf("mapped claim value %v to wildcard role %v", perm, wildcardRole)
+				j.logger.Debug("mapped claim value to wildcard role", slog.String("claimValue", perm), slog.String("wildcardRole", wildcardRole))
 				mappedPermissions = append(mappedPermissions, wildcardRole)
 			} else if !mapped {
 				// No mapping and no wildcard, keep original
-				j.logger.Sugar().Debugf("unmapped claim value %v", perm)
+				j.logger.Debug("unmapped claim value", slog.String("claimValue", perm))
 				mappedPermissions = append(mappedPermissions, perm)
 			}
 		}
@@ -251,6 +251,6 @@ func (j *JWTAuthenticator) CanHandle(ctx *gin.Context) bool {
 	}
 	// Determine auth type from header
 	canHandle := strings.HasPrefix(authHeader, constants.BearerPrefix)
-	j.logger.Sugar().Debugf("can handle token %v", canHandle)
+	j.logger.Debug("can handle token", slog.Bool("canHandle", canHandle))
 	return canHandle
 }

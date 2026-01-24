@@ -21,22 +21,22 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
 // LLMTemplateLoader loads LLM provider template definitions from files
 type LLMTemplateLoader struct {
-	logger *zap.Logger
+	logger *slog.Logger
 }
 
 // NewLLMTemplateLoader creates a new LLM template loader
-func NewLLMTemplateLoader(logger *zap.Logger) *LLMTemplateLoader {
+func NewLLMTemplateLoader(logger *slog.Logger) *LLMTemplateLoader {
 	return &LLMTemplateLoader{
 		logger: logger,
 	}
@@ -49,7 +49,7 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 
 	// Check if directory exists
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		tl.logger.Warn("LLM templates directory does not exist", zap.String("path", dirPath))
+		tl.logger.Warn("LLM templates directory does not exist", slog.String("path", dirPath))
 		return templates, nil
 	}
 
@@ -67,7 +67,7 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 		// Only process JSON and YAML files
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".json" && ext != ".yaml" && ext != ".yml" {
-			tl.logger.Debug("Skipping non-template file", zap.String("file", path))
+			tl.logger.Debug("Skipping non-template file", slog.String("file", path))
 			return nil
 		}
 
@@ -75,8 +75,8 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 		template, err := tl.loadTemplateFile(path)
 		if err != nil {
 			tl.logger.Error("Failed to load template file",
-				zap.String("file", path),
-				zap.Error(err))
+				slog.String("file", path),
+				slog.Any("error", err))
 			return err
 		}
 
@@ -88,9 +88,9 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 
 		templates[templateHandle] = template
 		tl.logger.Info("Loaded LLM provider template",
-			zap.String("handle", templateHandle),
-			zap.String("apiVersion", string(template.ApiVersion)),
-			zap.String("file", path))
+			slog.String("handle", templateHandle),
+			slog.String("apiVersion", string(template.ApiVersion)),
+			slog.String("file", path))
 
 		return nil
 	})
@@ -100,8 +100,8 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 	}
 
 	tl.logger.Info("Successfully loaded LLM provider templates",
-		zap.Int("count", len(templates)),
-		zap.String("directory", dirPath))
+		slog.Int("count", len(templates)),
+		slog.String("directory", dirPath))
 
 	return templates, nil
 }
@@ -140,16 +140,16 @@ func (tl *LLMTemplateLoader) loadTemplateFile(filePath string) (*api.LLMProvider
 		}
 
 		tl.logger.Debug("Parsed template from YAML",
-			zap.String("file", filePath),
-			zap.String("handle", templateConfig.Metadata.Name),
-			zap.String("apiVersion", string(templateConfig.ApiVersion)))
+			slog.String("file", filePath),
+			slog.String("handle", templateConfig.Metadata.Name),
+			slog.String("apiVersion", string(templateConfig.ApiVersion)))
 	}
 
 	// Log serialized JSON to see what will be stored
 	jsonBytes, _ := json.Marshal(templateConfig)
 	tl.logger.Debug("Serialized template to JSON",
-		zap.String("file", filePath),
-		zap.String("json", string(jsonBytes)))
+		slog.String("file", filePath),
+		slog.String("json", string(jsonBytes)))
 
 	return &templateConfig, nil
 }

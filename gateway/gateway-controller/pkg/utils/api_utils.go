@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,8 +33,6 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-
-	"go.uber.org/zap"
 )
 
 // PlatformAPIConfig contains configuration for fetching API definitions
@@ -47,11 +46,11 @@ type PlatformAPIConfig struct {
 // APIUtilsService provides utilities for API operations
 type APIUtilsService struct {
 	config PlatformAPIConfig
-	logger *zap.Logger
+	logger *slog.Logger
 }
 
 // NewAPIUtilsService creates a new API utilities service
-func NewAPIUtilsService(config PlatformAPIConfig, logger *zap.Logger) *APIUtilsService {
+func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtilsService {
 	// Set default timeout if not provided
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
@@ -69,8 +68,8 @@ func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 	apiURL := s.config.BaseURL + "/apis/" + apiID
 
 	s.logger.Info("Fetching API definition",
-		zap.String("api_id", apiID),
-		zap.String("url", apiURL),
+		slog.String("api_id", apiID),
+		slog.String("url", apiURL),
 	)
 
 	// Create HTTP client with TLS configuration
@@ -113,8 +112,8 @@ func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 	}
 
 	s.logger.Info("Successfully fetched API definition",
-		zap.String("api_id", apiID),
-		zap.Int("size_bytes", len(bodyBytes)),
+		slog.String("api_id", apiID),
+		slog.Int("size_bytes", len(bodyBytes)),
 	)
 
 	return bodyBytes, nil
@@ -133,7 +132,7 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 		// Check for common API definition file names
 		if filepath.Ext(file.Name) == ".yaml" || filepath.Ext(file.Name) == ".yml" {
 			s.logger.Info("Found YAML file in zip",
-				zap.String("filename", file.Name),
+				slog.String("filename", file.Name),
 			)
 
 			// Open the file
@@ -190,8 +189,8 @@ func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error 
 	}
 
 	s.logger.Info("Saved API definition to disk",
-		zap.String("api_id", apiID),
-		zap.String("filename", filename),
+		slog.String("api_id", apiID),
+		slog.String("filename", filename),
 	)
 
 	return nil
@@ -256,9 +255,9 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 	req.Header.Add("api-key", s.config.Token)
 
 	s.logger.Info("Sending API deployment notification to platform-api",
-		zap.String("api_id", apiID),
-		zap.String("url", deployURL),
-		zap.String("revision_id", revisionID))
+		slog.String("api_id", apiID),
+		slog.String("url", deployURL),
+		slog.String("revision_id", revisionID))
 
 	// Make the request
 	resp, err := client.Do(req)
@@ -276,16 +275,16 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 	// Check response status
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		s.logger.Error("API deployment notification failed",
-			zap.String("api_id", apiID),
-			zap.Int("status_code", resp.StatusCode),
-			zap.String("response", string(bodyBytes)))
+			slog.String("api_id", apiID),
+			slog.Int("status_code", resp.StatusCode),
+			slog.String("response", string(bodyBytes)))
 		return fmt.Errorf("deployment notification for api %s failed with status %d", apiID, resp.StatusCode)
 	}
 
 	s.logger.Info("Successfully sent API deployment notification",
-		zap.String("api_id", apiID),
-		zap.Int("status_code", resp.StatusCode),
-		zap.String("response", string(bodyBytes)))
+		slog.String("api_id", apiID),
+		slog.Int("status_code", resp.StatusCode),
+		slog.String("response", string(bodyBytes)))
 
 	return nil
 }

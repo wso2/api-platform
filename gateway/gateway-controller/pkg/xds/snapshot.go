@@ -21,16 +21,41 @@ package xds
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+	xdslog "github.com/envoyproxy/go-control-plane/pkg/log"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 )
+
+// slogAdapter adapts slog.Logger to the go-control-plane Logger interface
+type slogAdapter struct {
+	logger *slog.Logger
+}
+
+func (a *slogAdapter) Debugf(format string, args ...interface{}) {
+	a.logger.Debug(fmt.Sprintf(format, args...))
+}
+
+func (a *slogAdapter) Infof(format string, args ...interface{}) {
+	a.logger.Info(fmt.Sprintf(format, args...))
+}
+
+func (a *slogAdapter) Warnf(format string, args ...interface{}) {
+	a.logger.Warn(fmt.Sprintf(format, args...))
+}
+
+func (a *slogAdapter) Errorf(format string, args ...interface{}) {
+	a.logger.Error(fmt.Sprintf(format, args...))
+}
+
+// Ensure slogAdapter implements xdslog.Logger
+var _ xdslog.Logger = (*slogAdapter)(nil)
 
 // StatusUpdateCallback is called after xDS snapshot update completes
 type StatusUpdateCallback func(configID string, success bool, version int64, correlationID string)
@@ -40,16 +65,16 @@ type SnapshotManager struct {
 	cache            cache.SnapshotCache
 	translator       *Translator
 	store            *storage.ConfigStore
-	logger           *zap.Logger
+	logger           *slog.Logger
 	nodeID           string // Node ID for Envoy (default: "router-node")
 	statusCallback   StatusUpdateCallback
 	sdsSecretManager *SDSSecretManager
 }
 
 // NewSnapshotManager creates a new snapshot manager
-func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage, cfg *config.Config) *SnapshotManager {
+func NewSnapshotManager(store *storage.ConfigStore, logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, cfg *config.Config) *SnapshotManager {
 	// Create a snapshot cache with a simple node ID hasher
-	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, logger.Sugar())
+	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, &slogAdapter{logger: logger})
 
 	return &SnapshotManager{
 		cache:            snapshotCache,
@@ -84,7 +109,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	// Create a logger with correlation ID if provided
 	log := sm.logger
 	if correlationID != "" {
-		log = sm.logger.With(zap.String("correlation_id", correlationID))
+		log = sm.logger.With(slog.String("correlation_id", correlationID))
 	}
 	// Get all configurations from in-memory store
 	configs := sm.store.GetAll()
@@ -94,7 +119,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	// If event gw,
 	resources, err := sm.translator.TranslateConfigs(configs, correlationID)
 	if err != nil {
-		log.Error("Failed to translate configurations", zap.Error(err))
+		log.Error("Failed to translate configurations", slog.Any("error", err))
 		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
 		metrics.TranslationErrorsTotal.WithLabelValues("translation_failed").Inc()
 		// Mark all pending configs as failed
@@ -110,10 +135,10 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	if sm.sdsSecretManager != nil {
 		secret, err := sm.sdsSecretManager.GetSecret()
 		if err != nil {
-			log.Warn("Failed to get SDS secret, continuing without it", zap.Error(err))
+			log.Warn("Failed to get SDS secret, continuing without it", slog.Any("error", err))
 		} else {
 			resources[resource.SecretType] = []types.Resource{secret}
-			log.Debug("Added SDS secret to snapshot", zap.String("secret_name", SecretNameUpstreamCA))
+			log.Debug("Added SDS secret to snapshot", slog.String("secret_name", SecretNameUpstreamCA))
 		}
 	}
 
@@ -126,7 +151,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		resources,
 	)
 	if err != nil {
-		log.Error("Failed to create snapshot", zap.Error(err))
+		log.Error("Failed to create snapshot", slog.Any("error", err))
 		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
 		metrics.TranslationErrorsTotal.WithLabelValues("snapshot_create_failed").Inc()
 		// Mark all pending configs as failed
@@ -140,7 +165,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 
 	// Validate snapshot consistency
 	if err := snapshot.Consistent(); err != nil {
-		log.Error("Snapshot is inconsistent", zap.Error(err))
+		log.Error("Snapshot is inconsistent", slog.Any("error", err))
 		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
 		metrics.TranslationErrorsTotal.WithLabelValues("snapshot_inconsistent").Inc()
 		// Mark all pending configs as failed
@@ -154,7 +179,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 
 	// Update cache with new snapshot
 	if err := sm.cache.SetSnapshot(ctx, sm.nodeID, snapshot); err != nil {
-		log.Error("Failed to set snapshot", zap.Error(err))
+		log.Error("Failed to set snapshot", slog.Any("error", err))
 		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
 		metrics.TranslationErrorsTotal.WithLabelValues("cache_set_failed").Inc()
 		// Mark all pending configs as failed
@@ -167,11 +192,11 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	}
 
 	log.Info("Updated xDS snapshot",
-		zap.Int64("version", version),
-		zap.Int("num_configs", len(configs)),
-		zap.Int("num_listeners", len(resources[resource.ListenerType])),
-		zap.Int("num_routes", len(resources[resource.RouteType])),
-		zap.Int("num_clusters", len(resources[resource.ClusterType])),
+		slog.Int64("version", version),
+		slog.Int("num_configs", len(configs)),
+		slog.Int("num_listeners", len(resources[resource.ListenerType])),
+		slog.Int("num_routes", len(resources[resource.RouteType])),
+		slog.Int("num_clusters", len(resources[resource.ClusterType])),
 	)
 
 	// Record successful snapshot generation metrics
