@@ -61,4 +61,4 @@ policies:
   - name: jwt-auth
     gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.0
   - name: advanced-ratelimit
-    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@main
+    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0.1.0
