@@ -472,9 +472,9 @@ jobs:
                       # Log level: "debug", "info", "warn", or "error"
                       level: debug
 
-                      # Log format: "json" or "console"
+                      # Log format: "json" or "text"
                       # - json: Structured JSON format (recommended for production)
-                      # - console: Human-readable console format (recommended for development)
+                      # - text: Human-readable text format (recommended for development)
                       format: json
 
                   policy_engine:

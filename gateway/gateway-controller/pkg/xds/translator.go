@@ -294,7 +294,7 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	// Add ALS cluster if gRPC access log is enabled
-	t.logger.Debug("gRPC access log config", slog.Any("config", t.config.Analytics.GRPCAccessLogCfg))
+	log.Debug("gRPC access log config", slog.Any("config", t.config.Analytics.GRPCAccessLogCfg))
 	if t.config.Analytics.Enabled {
 		log.Info("gRPC access log is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()

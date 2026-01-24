@@ -106,7 +106,7 @@ router:
 # Logging configuration
 logging:
   level: info             # "debug", "info", "warn", "error"
-  format: json            # "json" or "console"
+  format: json            # "json" or "text"
 ```
 
 ### Command-Line Flags

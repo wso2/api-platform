@@ -684,7 +684,11 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 		// Check if topic operations failed and return error
 		if regErrs > 0 || deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", slog.Any("error", err))
+			log.Error("Failed to register & deregister topics",
+				slog.Int("topics_to_register", len(topicsToRegister)),
+				slog.Int("topics_to_unregister", len(topicsToUnregister)),
+				slog.Int("register_errors", int(regErrs)),
+				slog.Int("deregister_errors", int(deregErrs)))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Topic lifecycle operations failed",
