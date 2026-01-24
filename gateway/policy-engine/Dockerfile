@@ -112,4 +112,4 @@ EXPOSE 9001 9002
 
 # Run the binary
 ENTRYPOINT ["/app/policy-engine"]
-CMD ["-config=/configs/config.yaml"]
+CMD ["-config=/configs/config.toml"]

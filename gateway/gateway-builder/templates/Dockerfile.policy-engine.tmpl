@@ -50,7 +50,7 @@ EXPOSE 9001 9002
 # Set entry point
 # Run the binary
 ENTRYPOINT ["/app/policy-engine"]
-CMD ["-config=/configs/config.yaml"]
+CMD ["-config=/configs/config.toml"]
 
 # Metadata labels
 LABEL org.opencontainers.image.title="API Platform Policy Engine"

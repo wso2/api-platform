@@ -42,7 +42,7 @@ var (
 
 func main() {
 	// Parse command-line flags
-	configPath := flag.String("config", "config/config.yaml", "Path to configuration file")
+	configPath := flag.String("config", "config/config.toml", "Path to configuration file")
 	flag.Parse()
 
 	// Load configuration

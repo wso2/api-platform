@@ -53,7 +53,7 @@ var (
 )
 
 var (
-	configFile       = flag.String("config", "configs/config.yaml", "Path to configuration file")
+	configFile       = flag.String("config", "configs/config.toml", "Path to configuration file")
 	policyChainsFile = flag.String("policy-chains-file", "", "Path to policy chains file (enables file mode)")
 	xdsServerAddr    = flag.String("xds-server", "", "xDS server address (e.g., localhost:18000)")
 	xdsNodeID        = flag.String("xds-node-id", "", "xDS node identifier")

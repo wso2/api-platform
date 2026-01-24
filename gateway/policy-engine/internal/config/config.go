@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/knadh/koanf/parsers/yaml"
+	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
@@ -209,7 +209,7 @@ func Load(configPath string) (*Config, error) {
 
 	// Load config file if path is provided
 	if configPath != "" {
-		if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
 			return nil, fmt.Errorf("failed to load config file: %w", err)
 		}
 	}

@@ -38,7 +38,7 @@ services:
       - GOCOVERDIR=/coverage
     volumes:
       - controller-data-tests:/app/data
-      - ./test-config.yaml:/app/config/config.yaml:ro
+      - ./test-config.toml:/app/config/config.toml:ro
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
       - ./coverage/gateway-controller:/coverage
@@ -62,7 +62,7 @@ services:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
     volumes:
-      - ./test-config.yaml:/app/configs/config.yaml:ro
+      - ./test-config.toml:/app/configs/config.toml:ro
     depends_on:
       gateway-controller:
         condition: service_healthy
