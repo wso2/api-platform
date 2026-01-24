@@ -236,8 +236,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterMCPSteps(ctx, testState, httpSteps)
-		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
+		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 	}
 
 	// Register common HTTP and assertion steps
