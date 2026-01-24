@@ -20,7 +20,7 @@
             "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller/main.go",
             "args": [
                 "-config",
-                "${workspaceFolder}/gateway/configs/config.yaml",
+                "${workspaceFolder}/gateway/configs/config.toml",
             ],
             "env": {
                 "GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
@@ -51,7 +51,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/policy-engine/cmd/policy-engine",
             "args": [
-                "-config", "${workspaceFolder}/gateway/configs/config.yaml" ,
+                "-config", "${workspaceFolder}/gateway/configs/config.toml" ,
                 "-xds-server", "localhost:18001",
                 "-xds-node-id", "node-1",
             ],
@@ -63,7 +63,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/policy-engine/cmd/policy-engine",
             "args": [
-                "-config", "${workspaceFolder}/gateway/configs/config.yaml",
+                "-config", "${workspaceFolder}/gateway/configs/config.toml",
                 "-policy-chains-file", "${workspaceFolder}/gateway/policy-engine/configs/policy-chains.yaml",
             ],
         },
