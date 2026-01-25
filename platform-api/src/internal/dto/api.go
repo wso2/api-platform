@@ -181,9 +181,8 @@ type DeploymentResponse struct {
 
 // DeploymentListResponse represents a list of deployments
 type DeploymentListResponse struct {
-	Count      int                   `json:"count" yaml:"count"`
-	List       []*DeploymentResponse `json:"list" yaml:"list"`
-	Pagination Pagination            `json:"pagination" yaml:"pagination"`
+	Count int                   `json:"count" yaml:"count"`
+	List  []*DeploymentResponse `json:"list" yaml:"list"`
 }
 
 // APIDeploymentYAML represents the API deployment YAML structure

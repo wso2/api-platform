@@ -188,6 +188,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	}
 
 	// Ensure API-Gateway association exists
+	// TODO:// Handle error properly (maybe rollback deployment?)
 	if err := s.ensureAPIGatewayAssociation(apiUUID, req.GatewayID, orgUUID); err != nil {
 		log.Printf("[WARN] Failed to ensure API-gateway association: %v", err)
 	}
