@@ -85,7 +85,7 @@ func (sm *LazyResourceSnapshotManager) UpdateSnapshot(ctx context.Context) error
 	// Translate resources to xDS resources
 	resourcesMap, err := sm.translator.TranslateResources(resources)
 	if err != nil {
-		sm.logger.Error("Failed to translate lazy resources", err)
+		sm.logger.Error("Failed to translate lazy resources", slog.Any("error", err))
 		return fmt.Errorf("failed to translate lazy resources: %w", err)
 	}
 
@@ -209,7 +209,7 @@ func (t *LazyResourceTranslator) TranslateResources(resources []*storage.LazyRes
 	// Convert to xDS resource
 	resource, err := t.createLazyResourceStateResource(&stateResource)
 	if err != nil {
-		t.logger.Error("Failed to create lazy resource state resource", err)
+		t.logger.Error("Failed to create lazy resource state resource", slog.Any("error", err))
 		return nil, fmt.Errorf("failed to create lazy resource state resource: %w", err)
 	}
 

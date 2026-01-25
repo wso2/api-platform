@@ -54,7 +54,7 @@ func (lrm *LazyResourceStateManager) StoreResource(resource *storage.LazyResourc
 	if err := lrm.snapshotManager.StoreResource(resource); err != nil {
 		lrm.logger.Error("Failed to store lazy resource and update snapshot",
 			slog.String("resource_id", resource.ID),
-			err)
+			slog.Any("error", err))
 		return fmt.Errorf("failed to store lazy resource: %w", err)
 	}
 
@@ -75,7 +75,7 @@ func (lrm *LazyResourceStateManager) RemoveResource(id, correlationID string) er
 	if err := lrm.snapshotManager.RemoveResource(id); err != nil {
 		lrm.logger.Error("Failed to remove lazy resource and update snapshot",
 			slog.String("resource_id", id),
-			err)
+			slog.Any("error", err))
 		return fmt.Errorf("failed to remove lazy resource: %w", err)
 	}
 
@@ -96,7 +96,7 @@ func (lrm *LazyResourceStateManager) RemoveResourcesByType(resourceType, correla
 	if err := lrm.snapshotManager.RemoveResourcesByType(resourceType); err != nil {
 		lrm.logger.Error("Failed to remove lazy resources by type and update snapshot",
 			slog.String("resource_type", resourceType),
-			err)
+			slog.Any("error", err))
 		return fmt.Errorf("failed to remove lazy resources by type: %w", err)
 	}
 
@@ -132,7 +132,7 @@ func (lrm *LazyResourceStateManager) RefreshSnapshot() error {
 	lrm.logger.Info("Manually refreshing lazy resource snapshot")
 
 	if err := lrm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
-		lrm.logger.Error("Failed to refresh lazy resource snapshot", err)
+		lrm.logger.Error("Failed to refresh lazy resource snapshot", slog.Any("error", err))
 		return fmt.Errorf("failed to refresh snapshot: %w", err)
 	}
 

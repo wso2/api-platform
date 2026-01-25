@@ -350,7 +350,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		if params.Logger != nil {
 			params.Logger.Warn("Failed to publish LLM provider template to policy engine via lazy resource xDS",
 				slog.String("template_id", stored.ID),
-				err)
+				slog.Any("error", err))
 		}
 	}
 
@@ -504,7 +504,7 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		if params.Logger != nil {
 			params.Logger.Warn("Failed to publish updated LLM provider template to policy engine via lazy resource xDS",
 				slog.String("template_id", updated.ID),
-				err)
+				slog.Any("error", err))
 		}
 	}
 
@@ -534,7 +534,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 			// Don't fail deletion if xDS publish fails; just log.
 			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
 				slog.String("template_id", tmpl.ID),
-				err)
+				slog.Any("error", err))
 		}
 	}
 
