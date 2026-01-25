@@ -3661,7 +3661,6 @@ components:
       type: object
       required:
         - deploymentId
-        - apiId
         - gatewayId
         - status
         - createdAt
@@ -3670,10 +3669,6 @@ components:
           type: string
           format: uuid
           description: Unique identifier for the deployment
-        apiId:
-          type: string
-          format: uuid
-          description: UUID of the deployed API
         gatewayId:
           type: string
           format: uuid
