@@ -1973,7 +1973,6 @@ components:
         - displayName
         - version
         - context
-        - upstream
         - channels
       properties:
         displayName:

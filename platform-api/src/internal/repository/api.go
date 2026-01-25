@@ -115,7 +115,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Insert Channels
 	for _, channel := range api.Channels {
-		if err := r.insertChannel(tx, api.ID, api.OrganizationID, &channel); err != nil {
+		if err := r.insertChannel(tx, api.ID, &channel); err != nil {
 			return err
 		}
 	}
@@ -423,7 +423,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 
 	// Re-insert channels
 	for _, channel := range api.Channels {
-		if err := r.insertChannel(tx, api.ID, api.OrganizationID, &channel); err != nil {
+		if err := r.insertChannel(tx, api.ID, &channel); err != nil {
 			return err
 		}
 	}
@@ -871,10 +871,10 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 	return nil
 }
 
-func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, organizationId string, channel *model.Channel) error {
+func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel) error {
 	var authRequired bool
 	var scopesJSON string
-	if channel.Request.Authentication != nil {
+	if channel.Request != nil && channel.Request.Authentication != nil {
 		authRequired = channel.Request.Authentication.Required
 		if len(channel.Request.Authentication.Scopes) > 0 {
 			scopesBytes, _ := json.Marshal(channel.Request.Authentication.Scopes)

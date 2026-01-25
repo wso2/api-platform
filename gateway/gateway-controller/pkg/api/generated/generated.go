@@ -1270,13 +1270,13 @@ type WebhookAPIData struct {
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// Upstream API-level upstream configuration
-	Upstream struct {
+	Upstream *struct {
 		// Main Upstream backend configuration (single target or reference)
 		Main *Upstream `json:"main,omitempty" yaml:"main,omitempty"`
 
 		// Sandbox Upstream backend configuration (single target or reference)
 		Sandbox *Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-	} `json:"upstream" yaml:"upstream"`
+	} `json:"upstream,omitempty" yaml:"upstream,omitempty"`
 
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`

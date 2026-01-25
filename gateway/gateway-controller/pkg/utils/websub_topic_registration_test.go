@@ -32,8 +32,10 @@ spec:
   vhosts:
     main: "*"
   channels:
-    - path: /topic1
-    - path: /topic2
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB
 `
 
 	// Build a StoredAPIConfig from the YAML
@@ -57,8 +59,9 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	t.Logf("topics after add: %v", configStore.TopicManager.GetAllForConfig())
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 }
 
 func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
@@ -78,8 +81,10 @@ spec:
   vhosts:
     main: "*"
   channels:
-    - path: /topic1
-    - path: /topic2
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB
 `
 
 	// Build a StoredAPIConfig from the YAML
@@ -103,8 +108,8 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 
 	// Second deployment with topic2 removed -> should deregister topic2
 	yamlConfig2 := `kind: WebSubApi
@@ -118,7 +123,8 @@ spec:
   vhosts:
     main: "*"
   channels:
-    - path: /topic1
+    - name: /topic1
+      method: SUB
 `
 
 	if err := parser.Parse([]byte(yamlConfig2), "application/yaml", &apiCfg); err != nil {
@@ -141,8 +147,8 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 }
 
 func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
@@ -162,9 +168,10 @@ spec:
   vhosts:
     main: "*"
   channels:
-    - path: /topic1
-    - path: /topic2
-`
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB`
 
 	yamlB := `kind: WebSubApi
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -177,9 +184,10 @@ spec:
   vhosts:
     main: "*"
   channels:
-    - path: /topic3
-    - path: /topic4
-`
+    - name: /topic3
+      method: SUB
+    - name: /topic4
+      method: SUB`
 
 	var apiCfgA, apiCfgB api.APIConfiguration
 	parser := config.NewParser()
@@ -239,12 +247,12 @@ spec:
 	}
 
 	// Verify topics for cfgA
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testapiA_testA_v1_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testapiA_testA_v1_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testA_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testA_topic2"))
 
 	// Verify topics for cfgB
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testapiB_testB_v1_topic3"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testapiB_testB_v1_topic4"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testB_topic3"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testB_topic4"))
 }
 
 func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
@@ -264,9 +272,10 @@ spec:
   vhosts:
     main: "*"
   channels:
-    - path: /topic1
-    - path: /topic2
-`
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB`
 
 	// Build a StoredAPIConfig from the YAML
 	var apiCfg api.APIConfiguration
@@ -289,14 +298,14 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 
 	err = service.store.Delete(cfg.ID)
 	if err != nil {
 		t.Fatalf("failed to delete config from store: %v", err)
 	}
 
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 }
