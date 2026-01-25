@@ -11,7 +11,7 @@ policies:
   - name: basic-auth
     gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v0.1.0
   - name: basic-ratelimit
-    gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0.1.0
+    gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0.1.1
   - name: content-length-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v0.1.0
   - name: cors
@@ -55,10 +55,10 @@ policies:
   - name: xml-to-json
     gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0.1.0
   - name: mcp-auth
-    gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0.1.0
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0.1.1
   - name: mcp-authz
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0.1.0
   - name: jwt-auth
-    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.0
+    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.1
   - name: advanced-ratelimit
-    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0.1.0
+    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0.1.1
