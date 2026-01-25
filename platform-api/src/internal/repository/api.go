@@ -1352,8 +1352,8 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			ad.created_at as deployed_at
 		FROM gateways g
 		INNER JOIN api_associations aa ON g.uuid = aa.resource_uuid AND aa.association_type = 'gateway'
-		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ?
-		WHERE aa.api_uuid = ? AND g.organization_uuid = ? AND ad.status = '%s'
+		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ? AND ad.status = '%s'
+		WHERE aa.api_uuid = ? AND g.organization_uuid = ?
 		ORDER BY aa.created_at DESC
 	`, model.DeploymentStatusDeployed)
 
