@@ -294,7 +294,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 		return nil, constants.ErrDeploymentNotFound
 	}
 	if deployment.Status != "DEPLOYED" {
-		return nil, errors.New("deployment is not currently active")
+		return nil, constants.ErrDeploymentNotActive
 	}
 
 	// Update status to UNDEPLOYED
