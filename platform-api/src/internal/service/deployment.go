@@ -248,10 +248,11 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 	}
 
 	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
-	// The gateway will receive the new deployment event and handle the transition
+	// TODO:// The gateway will receive the new deployment event and update the deployment
 	if existingDeployment != nil {
 		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, string(model.DeploymentStatusUndeployed), orgUUID); err != nil {
-			log.Printf("[WARN] Failed to mark existing deployment as undeployed %s: %v", existingDeployment.DeploymentID, err)
+			return nil, fmt.Errorf("failed to undeploy existing deployment %s: %w", existingDeployment.DeploymentID, err)
+
 		}
 	}
 
