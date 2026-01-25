@@ -1230,10 +1230,10 @@ func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gateway
 	query := fmt.Sprintf(`
 		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
 		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status != '%s'
+		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status == '%s'
 		ORDER BY created_at ASC
 		LIMIT 1
-	`, model.DeploymentStatusDeployed)
+	`, model.DeploymentStatusUndeployed)
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
 
