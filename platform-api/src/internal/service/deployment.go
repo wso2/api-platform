@@ -387,11 +387,6 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	return &dto.DeploymentListResponse{
 		Count: len(deploymentDTOs),
 		List:  deploymentDTOs,
-		Pagination: dto.Pagination{
-			Offset: 0,
-			Limit:  len(deploymentDTOs),
-			Total:  len(deploymentDTOs),
-		},
 	}, nil
 }
 
