@@ -232,6 +232,15 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 		return nil, errors.New("deployment is already active")
 	}
 
+	// Validate gateway exists and belongs to organization
+	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+
 	// Check if there's an existing active deployment on this gateway
 	existingDeployment, err := s.apiRepo.GetActiveDeploymentByGateway(apiUUID, deployment.GatewayID, orgUUID)
 	if err != nil {
@@ -253,12 +262,7 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 
 	// Send deployment event to gateway
 	if s.gatewayEventsService != nil {
-		gateway, _ := s.gatewayRepo.GetByUUID(deployment.GatewayID)
-		vhost := ""
-		if gateway != nil {
-			vhost = gateway.Vhost
-		}
-
+		vhost := gateway.Vhost
 		deploymentEvent := &model.APIDeploymentEvent{
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
@@ -297,6 +301,15 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 		return nil, constants.ErrDeploymentNotActive
 	}
 
+	// Validate gateway exists and belongs to organization
+	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+
 	// Update status to UNDEPLOYED
 	if err := s.apiRepo.UpdateDeploymentStatus(deploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
@@ -304,12 +317,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 
 	// Send undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		gateway, _ := s.gatewayRepo.GetByUUID(deployment.GatewayID)
-		vhost := ""
-		if gateway != nil {
-			vhost = gateway.Vhost
-		}
-
+		vhost := gateway.Vhost
 		undeploymentEvent := &model.APIUndeploymentEvent{
 			ApiId:       apiUUID,
 			Vhost:       vhost,
