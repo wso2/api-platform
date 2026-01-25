@@ -3697,12 +3697,12 @@ components:
       type: object
       required:
         - count
-        - deployments
+        - list
       properties:
         count:
           type: integer
           description: Total number of deployments
-        deployments:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/DeploymentResponse'
