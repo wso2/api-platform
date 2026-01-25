@@ -1708,3 +1708,16 @@ func (s *SQLiteStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (in
 
 	return count, nil
 }
+
+// LoadLazyResourcesFromDatabase loads all lazy resources from database into the LazyResourceStore
+// Note: This is a placeholder implementation since lazy resources are not yet persisted in database
+// For now, it's a no-op function that allows the system to start without errors
+func LoadLazyResourcesFromDatabase(storage Storage, lazyResourceStore *LazyResourceStore) error {
+	// TODO: Implement database persistence for lazy resources when needed
+	// For now, lazy resources are only stored in memory and loaded via other means (e.g., API calls)
+
+	// This function exists to maintain consistency with the API key loading pattern
+	// and to provide a place to add database loading when lazy resource persistence is implemented
+
+	return nil
+}

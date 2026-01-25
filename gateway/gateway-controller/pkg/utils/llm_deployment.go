@@ -20,6 +20,7 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -27,10 +28,13 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
+
+const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
@@ -46,6 +50,7 @@ type LLMDeploymentService struct {
 	store               *storage.ConfigStore
 	db                  storage.Storage
 	snapshotManager     *xds.SnapshotManager
+	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
 	templateDefinitions map[string]*api.LLMProviderTemplate
 	deploymentService   *APIDeploymentService
 	parser              *config.Parser
@@ -56,12 +61,15 @@ type LLMDeploymentService struct {
 
 // NewLLMDeploymentService initializes the service
 func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
-	snapshotManager *xds.SnapshotManager, templateDefinitions map[string]*api.LLMProviderTemplate,
+	snapshotManager *xds.SnapshotManager,
+	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
+	templateDefinitions map[string]*api.LLMProviderTemplate,
 	deploymentService *APIDeploymentService, routerConfig *config.RouterConfig) *LLMDeploymentService {
 	service := &LLMDeploymentService{
 		store:               store,
 		db:                  db,
 		snapshotManager:     snapshotManager,
+		lazyResourceManager: lazyResourceManager,
 		templateDefinitions: templateDefinitions,
 		deploymentService:   deploymentService,
 		parser:              config.NewParser(),
@@ -75,6 +83,31 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	}
 
 	return service
+}
+
+func (s *LLMDeploymentService) publishTemplateAsLazyResource(templateID string, tmpl *api.LLMProviderTemplate, correlationID string) error {
+	if s.lazyResourceManager == nil {
+		return nil
+	}
+	if templateID == "" || tmpl == nil {
+		return nil
+	}
+
+	// Convert typed template to map[string]interface{} for the generic lazy resource payload.
+	b, err := json.Marshal(tmpl)
+	if err != nil {
+		return fmt.Errorf("failed to marshal template as JSON: %w", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return fmt.Errorf("failed to unmarshal template JSON into map: %w", err)
+	}
+
+	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
+		ID:           templateID,
+		ResourceType: lazyResourceTypeLLMProviderTemplate,
+		Resource:     m,
+	}, correlationID)
 }
 
 // DeployLLMProviderConfiguration parses, validates, transforms and persists the provider, then triggers xDS
@@ -310,6 +343,17 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	if err := s.store.AddTemplate(stored); err != nil {
 		return nil, fmt.Errorf("failed to add template to memory store: %w", err)
 	}
+
+	// Publish to policy engine via lazy resource xDS (ID = template ID)
+	if err := s.publishTemplateAsLazyResource(stored.ID, tmpl, ""); err != nil {
+		// Don't fail the REST call if xDS publish fails; log for diagnosis.
+		if params.Logger != nil {
+			params.Logger.Warn("Failed to publish LLM provider template to policy engine via lazy resource xDS",
+				slog.String("template_id", stored.ID),
+				err)
+		}
+	}
+
 	return stored, nil
 }
 
@@ -367,6 +411,13 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 				continue
 			}
 
+			// Publish updated template to policy engine via lazy resource xDS (ID = template ID)
+			if err := s.publishTemplateAsLazyResource(updated.ID, tmpl, ""); err != nil {
+				allErrors = append(allErrors,
+					fmt.Sprintf("failed to publish template '%s' to policy engine via lazy resource xDS: %v", tmpl.Metadata.Name, err))
+				continue
+			}
+
 			continue
 		}
 
@@ -402,6 +453,13 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			}
 			allErrors = append(allErrors, fmt.Sprintf("failed to add template '%s' to memory store: %v",
 				tmpl.Metadata.Name, err))
+			continue
+		}
+
+		// Publish new template to policy engine via lazy resource xDS (ID = template ID)
+		if err := s.publishTemplateAsLazyResource(stored.ID, tmpl, ""); err != nil {
+			allErrors = append(allErrors,
+				fmt.Sprintf("failed to publish template '%s' to policy engine via lazy resource xDS: %v", tmpl.Metadata.Name, err))
 			continue
 		}
 	}
@@ -440,6 +498,16 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 	if err := s.store.UpdateTemplate(updated); err != nil {
 		return nil, fmt.Errorf("failed to update template in memory store: %w", err)
 	}
+
+	// Publish updated template to policy engine via lazy resource xDS (ID = template ID)
+	if err := s.publishTemplateAsLazyResource(updated.ID, tmpl, ""); err != nil {
+		if params.Logger != nil {
+			params.Logger.Warn("Failed to publish updated LLM provider template to policy engine via lazy resource xDS",
+				slog.String("template_id", updated.ID),
+				err)
+		}
+	}
+
 	return updated, nil
 }
 
@@ -459,6 +527,17 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 	if err := s.store.DeleteTemplate(tmpl.ID); err != nil {
 		return nil, fmt.Errorf("failed to delete template from memory store: %w", err)
 	}
+
+	// Remove from policy engine via lazy resource xDS (ID = template ID)
+	if s.lazyResourceManager != nil {
+		if err := s.lazyResourceManager.RemoveResource(tmpl.ID, ""); err != nil {
+			// Don't fail deletion if xDS publish fails; just log.
+			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
+				slog.String("template_id", tmpl.ID),
+				err)
+		}
+	}
+
 	return tmpl, nil
 }
 
