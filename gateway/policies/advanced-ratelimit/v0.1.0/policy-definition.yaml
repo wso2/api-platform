@@ -369,7 +369,7 @@ systemParameters:
           type: string
           description: Prefix for all Redis keys to avoid conflicts
           default: "ratelimit:v1:"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.keyprefix}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.key_prefix}"
 
         failureMode:
           type: string
@@ -378,25 +378,25 @@ systemParameters:
             'closed' denies requests. Recommended: 'open' for availability.
           enum: ["open", "closed"]
           default: "open"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.failuremode}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.failure_mode}"
 
         connectionTimeout:
           type: string
           description: Redis connection timeout (Go duration string)
           default: "5s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.connectiontimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.connection_timeout}"
 
         readTimeout:
           type: string
           description: Redis read timeout (Go duration string)
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.readtimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.read_timeout}"
 
         writeTimeout:
           type: string
           description: Redis write timeout (Go duration string)
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.writetimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.write_timeout}"
 
     memory:
       type: object
@@ -411,7 +411,7 @@ systemParameters:
           minimum: 100
           maximum: 10000000
           default: 10000
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.maxentries}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.max_entries}"
 
         cleanupInterval:
           type: string
@@ -419,7 +419,7 @@ systemParameters:
             Interval for cleaning up expired entries (Go duration string).
             Use "0" to disable periodic cleanup.
           default: "5m"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.cleanupinterval}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.cleanup_interval}"
 
     headers:
       type: object
@@ -432,7 +432,7 @@ systemParameters:
             Include X-RateLimit-* headers (de facto industry standard).
             Headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
           default: true
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.includexratelimit}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.include_x_rate_limit}"
 
         includeIETF:
           type: boolean
@@ -440,7 +440,7 @@ systemParameters:
             Include IETF RateLimit headers (draft standard).
             Headers: RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, RateLimit-Policy
           default: true
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.includeietf}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.include_ietf}"
 
         includeRetryAfter:
           type: boolean
@@ -448,4 +448,4 @@ systemParameters:
             Include Retry-After header when rate limited (RFC 7231).
             Only set on 429 responses.
           default: true
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.includeretryafter}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.include_retry_after}"

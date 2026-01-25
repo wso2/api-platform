@@ -818,9 +818,6 @@ To completely disable tracing:
 1. **Update configuration** in `gateway/configs/config.toml`:
 
 ```toml
-[policy_engine.tracing]
-enabled = false
-
 [tracing]
 enabled = false
 ```

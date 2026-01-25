@@ -406,13 +406,13 @@ algorithm = "gcra"
 backend = "memory"
 
 [policy_configurations.ratelimit_v010.memory]
-maxentries = 10000
-cleanupinterval = "5m"
+max_entries = 10000
+cleanup_interval = "5m"
 
 [policy_configurations.ratelimit_v010.headers]
-includexratelimit = true
-includeietf = true
-includeretryafter = true
+include_x_rate_limit = true
+include_ietf = true
+include_retry_after = true
 ```
 
 ### Redis Backend Configuration
@@ -429,16 +429,16 @@ host = "redis.example.com"
 port = 6379
 password = "your-redis-password"
 db = 0
-keyprefix = "ratelimit:v1:"
-failuremode = "open"
-connectiontimeout = "5s"
-readtimeout = "3s"
-writetimeout = "3s"
+key_prefix = "ratelimit:v1:"
+failure_mode = "open"
+connection_timeout = "5s"
+read_timeout = "3s"
+write_timeout = "3s"
 
 [policy_configurations.ratelimit_v010.headers]
-includexratelimit = true
-includeietf = true
-includeretryafter = true
+include_x_rate_limit = true
+include_ietf = true
+include_retry_after = true
 ```
 
 ## API Definition Examples

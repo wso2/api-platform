@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
@@ -368,8 +369,15 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
-	// Unmarshal into Config struct
-	if err := k.Unmarshal("", cfg); err != nil {
+	// Unmarshal into Config struct with DecodeHook for duration strings
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName:          "koanf",
+			WeaklyTypedInput: true,
+			Result:           cfg,
+			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		},
+	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
