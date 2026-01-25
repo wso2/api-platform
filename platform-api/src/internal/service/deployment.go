@@ -109,13 +109,13 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	}
 
 	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
-	// The gateway will receive the new deployment event and handle the transition
+	// TODO:// The gateway will receive the new deployment event and handle the transition
 	if existingDeployment != nil {
 		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
 			return nil, fmt.Errorf("failed to undeploy existing deployment %s: %w", existingDeployment.DeploymentID, err)
 		}
 	}
-
+	// TODO:// Transaction handling for deployment creation and existing deployment update
 	// Check deployment limits
 	apiDeploymentCount, err := s.apiRepo.CountDeploymentsByAPIAndGateway(apiUUID, req.GatewayID, orgUUID)
 	if err != nil {
