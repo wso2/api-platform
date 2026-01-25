@@ -229,7 +229,7 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 		return nil, constants.ErrDeploymentNotFound
 	}
 	if deployment.Status == "DEPLOYED" {
-		return nil, errors.New("deployment is already active")
+		return nil, constants.ErrDeploymentAlreadyActive
 	}
 
 	// Validate gateway exists and belongs to organization
