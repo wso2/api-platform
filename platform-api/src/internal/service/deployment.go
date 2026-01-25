@@ -111,7 +111,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
 	// TODO:// The gateway will receive the new deployment event and handle the transition
 	if existingDeployment != nil {
-		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
+		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, string(model.DeploymentStatusUndeployed), orgUUID); err != nil {
 			return nil, fmt.Errorf("failed to undeploy existing deployment %s: %w", existingDeployment.DeploymentID, err)
 		}
 	}
@@ -176,7 +176,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 		ApiID:            apiUUID,
 		OrganizationID:   orgUUID,
 		GatewayID:        req.GatewayID,
-		Status:           "DEPLOYED",
+		Status:           model.DeploymentStatusDeployed,
 		BaseDeploymentID: baseDeploymentID,
 		Content:          contentBytes,
 		Metadata:         req.Metadata,
@@ -211,7 +211,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
 		GatewayID:        deployment.GatewayID,
-		Status:           deployment.Status,
+		Status:           string(deployment.Status),
 		BaseDeploymentID: deployment.BaseDeploymentID,
 		Metadata:         deployment.Metadata,
 		CreatedAt:        deployment.CreatedAt,
@@ -228,7 +228,7 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 	if deployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if deployment.Status == "DEPLOYED" {
+	if deployment.Status == model.DeploymentStatusDeployed {
 		return nil, constants.ErrDeploymentAlreadyActive
 	}
 
@@ -250,13 +250,13 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 	// If exists, mark it as UNDEPLOYED (but don't send undeployment event yet)
 	// The gateway will receive the new deployment event and handle the transition
 	if existingDeployment != nil {
-		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
+		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, string(model.DeploymentStatusUndeployed), orgUUID); err != nil {
 			log.Printf("[WARN] Failed to mark existing deployment as undeployed %s: %v", existingDeployment.DeploymentID, err)
 		}
 	}
 
 	// Update status to DEPLOYED
-	if err := s.apiRepo.UpdateDeploymentStatus(deploymentID, apiUUID, "DEPLOYED", orgUUID); err != nil {
+	if err := s.apiRepo.UpdateDeploymentStatus(deploymentID, apiUUID, string(model.DeploymentStatusDeployed), orgUUID); err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -275,12 +275,12 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 		}
 	}
 
-	deployment.Status = "DEPLOYED"
+	deployment.Status = model.DeploymentStatusDeployed
 
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
 		GatewayID:        deployment.GatewayID,
-		Status:           deployment.Status,
+		Status:           string(deployment.Status),
 		BaseDeploymentID: deployment.BaseDeploymentID,
 		Metadata:         deployment.Metadata,
 		CreatedAt:        deployment.CreatedAt,
@@ -297,7 +297,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 	if deployment == nil {
 		return nil, constants.ErrDeploymentNotFound
 	}
-	if deployment.Status != "DEPLOYED" {
+	if deployment.Status != model.DeploymentStatusDeployed {
 		return nil, constants.ErrDeploymentNotActive
 	}
 
@@ -311,7 +311,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 	}
 
 	// Update status to UNDEPLOYED
-	if err := s.apiRepo.UpdateDeploymentStatus(deploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
+	if err := s.apiRepo.UpdateDeploymentStatus(deploymentID, apiUUID, string(model.DeploymentStatusUndeployed), orgUUID); err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -329,12 +329,12 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 		}
 	}
 
-	deployment.Status = "UNDEPLOYED"
+	deployment.Status = model.DeploymentStatusUndeployed
 
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
 		GatewayID:        deployment.GatewayID,
-		Status:           deployment.Status,
+		Status:           string(deployment.Status),
 		BaseDeploymentID: deployment.BaseDeploymentID,
 		Metadata:         deployment.Metadata,
 		CreatedAt:        deployment.CreatedAt,
@@ -351,7 +351,7 @@ func (s *DeploymentService) DeleteDeployment(apiUUID, deploymentID, orgUUID stri
 	if deployment == nil {
 		return constants.ErrDeploymentNotFound
 	}
-	if deployment.Status == "DEPLOYED" {
+	if deployment.Status == model.DeploymentStatusDeployed {
 		return constants.ErrDeploymentIsDeployed
 	}
 
@@ -386,7 +386,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 		deploymentDTOs = append(deploymentDTOs, &dto.DeploymentResponse{
 			DeploymentID:     d.DeploymentID,
 			GatewayID:        d.GatewayID,
-			Status:           d.Status,
+			Status:           string(d.Status),
 			BaseDeploymentID: d.BaseDeploymentID,
 			Metadata:         d.Metadata,
 			CreatedAt:        d.CreatedAt,
@@ -423,7 +423,7 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
 		GatewayID:        deployment.GatewayID,
-		Status:           deployment.Status,
+		Status:           string(deployment.Status),
 		BaseDeploymentID: deployment.BaseDeploymentID,
 		Metadata:         deployment.Metadata,
 		CreatedAt:        deployment.CreatedAt,

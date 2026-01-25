@@ -245,7 +245,7 @@ type APIDeployment struct {
 	ApiID            string                 `json:"apiId" db:"api_uuid"`
 	OrganizationID   string                 `json:"organizationId" db:"organization_uuid"`
 	GatewayID        string                 `json:"gatewayId" db:"gateway_uuid"`
-	Status           string                 `json:"status" db:"status"`
+	Status           DeploymentStatus       `json:"status" db:"status"`
 	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" db:"base_deployment_id"`
 	Content          []byte                 `json:"-" db:"content"`
 	Metadata         map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
@@ -272,3 +272,11 @@ type APIAssociation struct {
 func (APIAssociation) TableName() string {
 	return "api_associations"
 }
+
+// DeploymentStatus represents the status of an API deployment
+type DeploymentStatus string
+
+const (
+	DeploymentStatusDeployed   DeploymentStatus = "DEPLOYED"
+	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
+)

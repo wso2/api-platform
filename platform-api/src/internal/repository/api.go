@@ -999,6 +999,17 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 
 // GetDeploymentsByAPIUUID retrieves all deployment records for an API
 func (r *APIRepo) GetDeploymentsByAPIUUID(apiUUID, orgUUID string, gatewayID, status *string) ([]*model.APIDeployment, error) {
+	// Validate status parameter against allowed enum values
+	if status != nil {
+		validStatuses := map[string]bool{
+			string(model.DeploymentStatusDeployed):   true,
+			string(model.DeploymentStatusUndeployed): true,
+		}
+		if !validStatuses[*status] {
+			return nil, fmt.Errorf("invalid deployment status: %s", *status)
+		}
+	}
+
 	var query string
 	var args []interface{}
 
@@ -1176,12 +1187,12 @@ func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string) (*model.APIDeployment, error) {
 	deployment := &model.APIDeployment{}
 
-	query := `
+	query := fmt.Sprintf(`
 		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
 		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = 'DEPLOYED'
+		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = '%s'
 		LIMIT 1
-	`
+	`, model.DeploymentStatusDeployed)
 
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
@@ -1216,13 +1227,13 @@ func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gateway
 	deployment := &model.APIDeployment{}
 
 	// SQL query to select the oldest undeployed deployment
-	query := `
+	query := fmt.Sprintf(`
 		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
 		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status != 'DEPLOYED'
+		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status != '%s'
 		ORDER BY created_at ASC
 		LIMIT 1
-	`
+	`, model.DeploymentStatusDeployed)
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
 
@@ -1313,7 +1324,7 @@ func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) (
 
 // GetAPIGatewaysWithDetails retrieves all gateways associated with an API including deployment details
 func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT 
 			g.uuid as id,
 			g.organization_uuid as organization_id,
@@ -1334,9 +1345,9 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		FROM gateways g
 		INNER JOIN api_associations aa ON g.uuid = aa.resource_uuid AND aa.association_type = 'gateway'
 		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ?
-		WHERE aa.api_uuid = ? AND g.organization_uuid = ? AND ad.status = 'DEPLOYED'
+		WHERE aa.api_uuid = ? AND g.organization_uuid = ? AND ad.status = '%s'
 		ORDER BY aa.created_at DESC
-	`
+	`, model.DeploymentStatusDeployed)
 
 	rows, err := r.db.Query(query, apiUUID, apiUUID, orgUUID)
 	if err != nil {
