@@ -1073,6 +1073,8 @@ func (r *APIRepo) GetDeploymentsByAPIUUID(apiUUID, orgUUID string, gatewayID, st
 			var metadata map[string]interface{}
 			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
 				deployment.Metadata = metadata
+			} else {
+				return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 			}
 		}
 
@@ -1114,6 +1116,8 @@ func (r *APIRepo) GetDeploymentByID(deploymentID, apiID, orgID string) (*model.A
 		var metadata map[string]interface{}
 		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
 			deployment.Metadata = metadata
+		} else {
+			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 		}
 	}
 
@@ -1216,6 +1220,8 @@ func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string)
 		var metadata map[string]interface{}
 		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
 			deployment.Metadata = metadata
+		} else {
+			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 		}
 	}
 
@@ -1256,6 +1262,8 @@ func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gateway
 		var metadata map[string]interface{}
 		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
 			deployment.Metadata = metadata
+		} else {
+			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 		}
 	}
 
