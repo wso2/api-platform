@@ -32,8 +32,8 @@ policies:
     version: v0.1.0
     filePath: ./json-schema-guardrail/v0.1.0
   - name: jwt-auth
-    version: v0.1.0
-    filePath: ./jwt-auth/v0.1.0
+    version: v0.1.1
+    filePath: ./jwt-auth/v0.1.1
   - name: mcp-auth
     version: v0.1.0
     filePath: ./mcp-auth/v0.1.0

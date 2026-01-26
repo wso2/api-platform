@@ -59,7 +59,7 @@ policies:
 ├── cache/
 │   └── policies/
 │       ├── basic-auth-v1.0.0.zip
-│       ├── jwt-auth-v0.1.0.zip
+│       ├── jwt-auth-v0.1.1.zip
 │       └── rate-limit-v1.5.2.zip
 └── .temp/  # Temporary files (cleaned after operation)
 ```
