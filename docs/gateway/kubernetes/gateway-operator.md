@@ -37,7 +37,7 @@ helm upgrade --install \
 ### 2. Install Gateway Operator
 
 ```sh
-helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.3.0
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.4.0
 ```
 
 ## Deploying an API Gateway
