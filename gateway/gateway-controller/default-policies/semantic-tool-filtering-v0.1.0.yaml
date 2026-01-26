@@ -96,4 +96,5 @@ systemParameters:
   required:
     - embeddingProvider
     - embeddingEndpoint
+    - embeddingModel
     - apiKey
