@@ -177,6 +177,11 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 				"Deployment not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"No active deployment found for this API on the gateway"))
+			return
+		}
 		log.Printf("[ERROR] Failed to undeploy: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", err.Error()))
 		return
