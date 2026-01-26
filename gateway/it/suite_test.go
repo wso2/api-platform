@@ -81,6 +81,7 @@ func TestFeatures(t *testing.T) {
 				"features/jwt-auth.feature",
 				"features/cors.feature",
 				"features/llm-provider-templates.feature",
+				"features/analytics-header-filter.feature",
 			},
 			TestingT: t,
 		},
