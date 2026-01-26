@@ -1208,17 +1208,17 @@ func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string) (*model.APIDeployment, error) {
 	deployment := &model.APIDeployment{}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
 		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = '%s'
+		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = ?
 		LIMIT 1
-	`, model.DeploymentStatusDeployed)
+	`
 
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
 
-	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgID, string(model.DeploymentStatusDeployed)).Scan(
 		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
 		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
 
@@ -1250,17 +1250,17 @@ func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gateway
 	deployment := &model.APIDeployment{}
 
 	// SQL query to select the oldest undeployed deployment
-	query := fmt.Sprintf(`
+	query := `
 		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
 		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status == '%s'
+		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = ?
 		ORDER BY created_at ASC
 		LIMIT 1
-	`, model.DeploymentStatusUndeployed)
+	`
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
 
-	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgUUID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgUUID, string(model.DeploymentStatusUndeployed)).Scan(
 		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
 		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
 
@@ -1362,7 +1362,7 @@ func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) (
 
 // GetAPIGatewaysWithDetails retrieves all gateways associated with an API including deployment details
 func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
-	query := fmt.Sprintf(`
+	query := `
 		SELECT 
 			g.uuid as id,
 			g.organization_uuid as organization_id,
@@ -1382,12 +1382,12 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			ad.created_at as deployed_at
 		FROM gateways g
 		INNER JOIN api_associations aa ON g.uuid = aa.resource_uuid AND aa.association_type = 'gateway'
-		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ? AND ad.status = '%s'
+		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ? AND ad.status = ?
 		WHERE aa.api_uuid = ? AND g.organization_uuid = ?
 		ORDER BY aa.created_at DESC
-	`, model.DeploymentStatusDeployed)
+	`
 
-	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, apiUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, string(model.DeploymentStatusDeployed), apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
