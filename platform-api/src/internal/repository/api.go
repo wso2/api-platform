@@ -1400,7 +1400,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 	var gateways []*model.APIGatewayWithDetails
 	for rows.Next() {
 		gateway := &model.APIGatewayWithDetails{}
-		var deployedAt *time.Time
+		var deployedAt sql.NullTime
 
 		err := rows.Scan(
 			&gateway.ID,
@@ -1417,14 +1417,16 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.AssociatedAt,
 			&gateway.AssociationUpdatedAt,
 			&gateway.IsDeployed,
-			&deployedAt,
 			&gateway.DeploymentId,
+			&deployedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		gateway.DeployedAt = deployedAt
+		if deployedAt.Valid {
+			gateway.DeployedAt = &deployedAt.Time
+		}
 		gateways = append(gateways, gateway)
 	}
 
