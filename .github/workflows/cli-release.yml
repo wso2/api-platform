@@ -110,7 +110,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "Release CLI version ${{ steps.version.outputs.version }}"
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -am "Release CLI version ${{ steps.version.outputs.version }}"
+          fi
           git tag -a ap/v${{ steps.version.outputs.version }} -m "CLI (ap) ${{ steps.version.outputs.version }}"
           git push origin ap/v${{ steps.version.outputs.version }}
 
