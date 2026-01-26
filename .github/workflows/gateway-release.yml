@@ -17,6 +17,10 @@ jobs:
         id: version
         run: |
           VERSION=$(cat gateway/VERSION | tr -d '[:space:]' | sed 's/-SNAPSHOT//')
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::VERSION is empty or contains only whitespace. Check gateway/VERSION file." >&2
+            exit 1
+          fi
           echo "Releasing gateway version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
@@ -60,7 +64,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             git commit -am "Release gateway version ${{ steps.version.outputs.version }}"
           fi
           git tag -a gateway/v${{ steps.version.outputs.version }} -m "Gateway ${{ steps.version.outputs.version }}"
@@ -71,7 +75,7 @@ jobs:
         run: |
           make version-bump-next-dev COMPONENT=gateway
           make update-images COMPONENT=gateway VERSION_ARG=$(cat gateway/VERSION)
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             git commit -am "Bump gateway to next dev version"
             git push origin main
           fi

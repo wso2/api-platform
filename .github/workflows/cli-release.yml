@@ -17,6 +17,10 @@ jobs:
         id: version
         run: |
           VERSION=$(cat cli/VERSION | tr -d '[:space:]' | sed 's/-SNAPSHOT//')
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::VERSION is empty or contains only whitespace. Check cli/VERSION file." >&2
+            exit 1
+          fi
           echo "Releasing CLI version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
@@ -110,7 +114,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             git commit -am "Release CLI version ${{ steps.version.outputs.version }}"
           fi
           git tag -a ap/v${{ steps.version.outputs.version }} -m "CLI (ap) ${{ steps.version.outputs.version }}"
