@@ -20,8 +20,8 @@ policies:
     version: v0.1.0
     filePath: ./basic-auth/v0.1.0
   - name: basic-ratelimit
-    version: v0.1.0
-    filePath: ./basic-ratelimit/v0.1.0
+    version: v0.1.1
+    filePath: ./basic-ratelimit/v0.1.1
   - name: content-length-guardrail
     version: v0.1.0
     filePath: ./content-length-guardrail/v0.1.0
