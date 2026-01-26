@@ -185,11 +185,6 @@ spec:
                     type: object
                     x-kubernetes-map-type: atomic
                 type: object
-              gatewayClassName:
-                description: |-
-                  GatewayClassName is an optional identifier for grouping gateways
-                  This can be used to categorize gateways (e.g., "production", "development")
-                type: string
               infrastructure:
                 description: Infrastructure defines the deployment configuration for
                   the gateway
