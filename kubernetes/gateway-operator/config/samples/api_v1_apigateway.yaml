@@ -6,8 +6,6 @@ kind: APIGateway
 metadata:
   name: cluster-gateway
 spec:
-  gatewayClassName: "production"
-  
   apiSelector:
     scope: Cluster
   

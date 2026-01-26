@@ -841,7 +841,6 @@ jobs:
             name: test-gateway
             namespace: default
           spec:
-            gatewayClassName: "test"
             apiSelector:
               scope: Cluster
             configRef:
@@ -1296,7 +1295,6 @@ jobs:
             name: scoped-gateway
             namespace: scoped-test
           spec:
-            gatewayClassName: "test"
             apiSelector:
               scope: Cluster
             configRef:
