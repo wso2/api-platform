@@ -156,10 +156,10 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 		// Use existing deployment as base
 		baseDeployment, err := s.apiRepo.GetDeploymentByID(req.Base, apiUUID, orgUUID)
 		if err != nil {
+			if errors.Is(err, constants.ErrDeploymentNotFound) {
+				return nil, constants.ErrBaseDeploymentNotFound
+			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
-		}
-		if baseDeployment == nil {
-			return nil, constants.ErrDeploymentNotFound
 		}
 
 		// Deployment content is already stored as YAML, reuse it directly
@@ -373,6 +373,10 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	}
 	if apiModel == nil {
 		return nil, constants.ErrAPINotFound
+	}
+
+	if (status != nil) && (*status != string(model.DeploymentStatusDeployed) && *status != string(model.DeploymentStatusUndeployed)) {
+		return nil, constants.ErrInvalidDeploymentStatus
 	}
 
 	// Get deployments

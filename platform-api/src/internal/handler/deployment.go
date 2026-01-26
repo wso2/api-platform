@@ -88,6 +88,11 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 				"Gateway not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrBaseDeploymentNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Base deployment not found"))
+			return
+		}
 		log.Printf("[ERROR] Failed to deploy API: apiId=%s error=%v", apiId, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			err.Error()))
@@ -315,6 +320,11 @@ func (h *DeploymentHandler) GetDeployments(c *gin.Context) {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidDeploymentStatus) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid deployment status"))
 			return
 		}
 		log.Printf("[ERROR] Failed to get deployments: apiId=%s error=%v", apiId, err)
