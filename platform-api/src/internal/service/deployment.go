@@ -382,7 +382,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	}
 
 	// Convert to DTOs
-	var deploymentDTOs []*dto.DeploymentResponse
+	var deploymentDTOs = []*dto.DeploymentResponse{}
 	for _, d := range deployments {
 		deploymentDTOs = append(deploymentDTOs, &dto.DeploymentResponse{
 			DeploymentID:     d.DeploymentID,
