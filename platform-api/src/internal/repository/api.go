@@ -1215,6 +1215,7 @@ func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string)
 		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
 		FROM api_deployments
 		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = ?
+		ORDER BY created_at DESC
 		LIMIT 1
 	`
 
