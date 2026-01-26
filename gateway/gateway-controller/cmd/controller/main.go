@@ -142,13 +142,6 @@ func main() {
 			os.Exit(1)
 		}
 		log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
-
-		// Load lazy resources from database
-		log.Info("Loading lazy resources from database")
-		if err := storage.LoadLazyResourcesFromDatabase(db, lazyResourceStore); err != nil {
-			log.Error("Failed to load lazy resources from database", slog.Any("error", err))
-		}
-		log.Info("Loaded lazy resources", slog.Int("count", lazyResourceStore.Count()))
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -201,18 +194,6 @@ func main() {
 			log.Warn("Failed to generate initial API key snapshot", slog.Any("error", err))
 		} else {
 			log.Info("Initial API key snapshot generated successfully")
-		}
-		cancel()
-	}
-
-	// Generate initial lazy resource snapshot if lazy resources were loaded from database
-	if cfg.IsPersistentMode() && lazyResourceStore.Count() > 0 {
-		log.Info("Generating initial lazy resource snapshot for policy engine(with persistent mode)", slog.Int("lazy_resource_count", lazyResourceStore.Count()))
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := lazyResourceSnapshotManager.UpdateSnapshot(ctx); err != nil {
-			log.Warn("Failed to generate initial lazy resource snapshot",slog.Any("error", err))
-		} else {
-			log.Info("Initial lazy resource snapshot generated successfully")
 		}
 		cancel()
 	}

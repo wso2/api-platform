@@ -85,31 +85,6 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	return service
 }
 
-func (s *LLMDeploymentService) publishTemplateAsLazyResource(templateID string, tmpl *api.LLMProviderTemplate, correlationID string) error {
-	if s.lazyResourceManager == nil {
-		return nil
-	}
-	if templateID == "" || tmpl == nil {
-		return fmt.Errorf("invalid template: id is empty or template is nil")
-	}
-
-	// Convert typed template to map[string]interface{} for the generic lazy resource payload.
-	b, err := json.Marshal(tmpl)
-	if err != nil {
-		return fmt.Errorf("failed to marshal template as JSON: %w", err)
-	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(b, &m); err != nil {
-		return fmt.Errorf("failed to unmarshal template JSON into map: %w", err)
-	}
-
-	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
-		ID:           templateID,
-		ResourceType: lazyResourceTypeLLMProviderTemplate,
-		Resource:     m,
-	}, correlationID)
-}
-
 // DeployLLMProviderConfiguration parses, validates, transforms and persists the provider, then triggers xDS
 func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	var providerConfig api.LLMProviderConfiguration
@@ -364,6 +339,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 	}
 
 	var allErrors []string
+	processedHandles := make(map[string]bool) // Track which templates were processed from files
 
 	for _, tmpl := range templateDefinitions {
 		// Validate the template configuration
@@ -418,6 +394,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 				continue
 			}
 
+			processedHandles[tmpl.Metadata.Name] = true
 			continue
 		}
 
@@ -461,6 +438,21 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			allErrors = append(allErrors,
 				fmt.Sprintf("failed to publish template '%s' to policy engine via lazy resource xDS: %v", tmpl.Metadata.Name, err))
 			continue
+		}
+
+		processedHandles[tmpl.Metadata.Name] = true
+	}
+
+	// Publish all templates from store that weren't processed from files (DB-only templates)
+	allTemplates := s.store.GetAllTemplates()
+	for _, stored := range allTemplates {
+		handle := stored.GetHandle()
+		if !processedHandles[handle] {
+			// This template exists in store but wasn't in file definitions - publish it
+			if err := s.publishTemplateAsLazyResource(stored.ID, &stored.Configuration, ""); err != nil {
+				allErrors = append(allErrors,
+					fmt.Sprintf("failed to publish DB-only template '%s' to policy engine via lazy resource xDS: %v", handle, err))
+			}
 		}
 	}
 
@@ -565,6 +557,31 @@ func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*
 // GetLLMProviderTemplateByHandle returns template by handle
 func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	return s.store.GetTemplateByHandle(handle)
+}
+
+func (s *LLMDeploymentService) publishTemplateAsLazyResource(templateID string, tmpl *api.LLMProviderTemplate, correlationID string) error {
+	if s.lazyResourceManager == nil {
+		return nil
+	}
+	if templateID == "" || tmpl == nil {
+		return fmt.Errorf("invalid template: id is empty or template is nil")
+	}
+
+	// Convert typed template to map[string]interface{} for the generic lazy resource payload.
+	b, err := json.Marshal(tmpl)
+	if err != nil {
+		return fmt.Errorf("failed to marshal template as JSON: %w", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return fmt.Errorf("failed to unmarshal template JSON into map: %w", err)
+	}
+
+	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
+		ID:           tmpl.Metadata.Name,
+		ResourceType: lazyResourceTypeLLMProviderTemplate,
+		Resource:     m,
+	}, correlationID)
 }
 
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers
