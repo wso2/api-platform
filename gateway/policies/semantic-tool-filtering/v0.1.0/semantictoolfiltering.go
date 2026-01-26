@@ -149,8 +149,6 @@ func parseEmbeddingConfig(params map[string]interface{}, p *SemanticToolFilterin
 
 // parseParams parses and validates runtime parameters from the params map
 func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) error {
-func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) error {
-	// Optional: selectionMode (default TOP_K)
 	// Optional: selectionMode (default TOP_K)
 	selectionMode, ok := params["selectionMode"].(string)
 	if !ok || selectionMode == "" {
