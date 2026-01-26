@@ -133,6 +133,11 @@ func (h *DeploymentHandler) RedeployDeployment(c *gin.Context) {
 				"Deployment not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentAlreadyActive) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Deployment is already active"))
+			return
+		}
 		log.Printf("[ERROR] Failed to redeploy: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", err.Error()))
 		return
