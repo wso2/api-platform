@@ -1,0 +1,28 @@
+name: rewrite-resource-path
+version: v0.1.0
+description: |
+  Rewrites the resource path of an incoming request before forwarding to the upstream service.
+  This policy replaces the entire resource path (the part after the hostname and before 
+  query parameters) with a specified path. Query parameters from the original request 
+  are preserved.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    path:
+      type: string
+      description: |
+        The new resource path that will replace the original path in the incoming request.
+        This should be the complete path without the leading slash or hostname.
+        Query parameters from the original request will be preserved.
+      validation:
+        minLength: 1
+        maxLength: 512
+
+  required:
+    - path
+
+systemParameters:
+  type: object
+  properties: {}

@@ -51,6 +51,11 @@ type PolicyExecutionContext struct {
 	// Request ID for correlation
 	requestID string
 
+	// Analytics metadata to be shared across request and response phases
+	// This is for us to share any analyticd related data internally between phases
+	// without currupting the metadata map used by the policies
+	analyticsMetadata map[string]interface{}
+
 	// Reference to server components
 	server *ExternalProcessorServer
 }
@@ -65,6 +70,7 @@ func newPolicyExecutionContext(
 		server:      server,
 		routeKey:    routeKey,
 		policyChain: chain,
+		analyticsMetadata: make(map[string]interface{}),
 	}
 }
 

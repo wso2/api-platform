@@ -22,14 +22,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -43,26 +44,26 @@ const (
 type APIKeySnapshotManager struct {
 	cache      *cache.LinearCache
 	store      *storage.APIKeyStore
-	logger     *zap.Logger
+	logger     *slog.Logger
 	nodeID     string
 	mu         sync.RWMutex
 	translator *APIKeyTranslator
 }
 
 // NewAPIKeySnapshotManager creates a new API key snapshot manager
-func NewAPIKeySnapshotManager(store *storage.APIKeyStore, logger *zap.Logger) *APIKeySnapshotManager {
+func NewAPIKeySnapshotManager(store *storage.APIKeyStore, log *slog.Logger) *APIKeySnapshotManager {
 	// Create a LinearCache for APIKeyState type URL
 	linearCache := cache.NewLinearCache(
 		APIKeyStateTypeURL,
-		cache.WithLogger(logger.Sugar()),
+		cache.WithLogger(logger.NewXDSLogger(log)),
 	)
 
 	return &APIKeySnapshotManager{
 		cache:      linearCache,
 		store:      store,
-		logger:     logger,
+		logger:     log,
 		nodeID:     "policy-node",
-		translator: NewAPIKeyTranslator(logger),
+		translator: NewAPIKeyTranslator(log),
 	}
 }
 
@@ -80,13 +81,13 @@ func (sm *APIKeySnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	apiKeys := sm.store.GetAll()
 
 	sm.logger.Info("Updating API key snapshot",
-		zap.Int("apikey_count", len(apiKeys)),
-		zap.String("node_id", sm.nodeID))
+		slog.Int("apikey_count", len(apiKeys)),
+		slog.String("node_id", sm.nodeID))
 
 	// Translate API keys to xDS resources
 	resourcesMap, err := sm.translator.TranslateAPIKeys(apiKeys)
 	if err != nil {
-		sm.logger.Error("Failed to translate API keys", zap.Error(err))
+		sm.logger.Error("Failed to translate API keys", slog.Any("error", err))
 		return fmt.Errorf("failed to translate API keys: %w", err)
 	}
 
@@ -112,8 +113,8 @@ func (sm *APIKeySnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	sm.cache.SetResources(resourcesById)
 
 	sm.logger.Info("API key snapshot updated successfully",
-		zap.String("version", versionStr),
-		zap.Int("apikey_count", len(apiKeys)))
+		slog.String("version", versionStr),
+		slog.Int("apikey_count", len(apiKeys)))
 
 	return nil
 }
@@ -121,24 +122,30 @@ func (sm *APIKeySnapshotManager) UpdateSnapshot(ctx context.Context) error {
 // StoreAPIKey stores an API key and updates the snapshot
 func (sm *APIKeySnapshotManager) StoreAPIKey(apiKey *models.APIKey) error {
 	sm.logger.Info("Storing API key",
-		zap.String("id", apiKey.ID),
-		zap.String("api_id", apiKey.APIId),
-		zap.String("name", apiKey.Name))
+		slog.String("id", apiKey.ID),
+		slog.String("api_id", apiKey.APIId),
+		slog.String("name", apiKey.Name))
 
 	// Store in the API key store
-	sm.store.Store(apiKey)
+	if err := sm.store.Store(apiKey); err != nil {
+		return fmt.Errorf("failed to store API key in APIKeyStore: %w", err)
+	}
 
 	// Update the snapshot to reflect the new state
 	return sm.UpdateSnapshot(context.Background())
 }
 
 // RevokeAPIKey revokes an API key and updates the snapshot
-func (sm *APIKeySnapshotManager) RevokeAPIKey(apiKeyValue string) error {
-	sm.logger.Info("Revoking API key", zap.String("api_key_value", MaskAPIKey(apiKeyValue)))
+func (sm *APIKeySnapshotManager) RevokeAPIKey(apiId, apiKeyName string) error {
+	sm.logger.Info("Revoking API key",
+		slog.String("api_id", apiId),
+		slog.String("api_key", apiKeyName))
 
 	// Revoke in the API key store
-	if !sm.store.Revoke(apiKeyValue) {
-		return fmt.Errorf("API key not found: %s", MaskAPIKey(apiKeyValue))
+	if !sm.store.Revoke(apiId, apiKeyName) {
+		sm.logger.Warn("API key not found for revocation",
+			slog.String("api_id", apiId),
+			slog.String("api_key", apiKeyName))
 	}
 
 	// Update the snapshot to reflect the new state
@@ -147,14 +154,14 @@ func (sm *APIKeySnapshotManager) RevokeAPIKey(apiKeyValue string) error {
 
 // RemoveAPIKeysByAPI removes all API keys for an API and updates the snapshot
 func (sm *APIKeySnapshotManager) RemoveAPIKeysByAPI(apiId string) error {
-	sm.logger.Info("Removing API keys by API", zap.String("api_id", apiId))
+	sm.logger.Info("Removing API keys by API", slog.String("api_id", apiId))
 
 	// Remove from the API key store
 	count := sm.store.RemoveByAPI(apiId)
 
 	sm.logger.Info("Removed API keys by API",
-		zap.String("api_id", apiId),
-		zap.Int("count", count))
+		slog.String("api_id", apiId),
+		slog.Int("count", count))
 
 	// Update the snapshot to reflect the new state
 	return sm.UpdateSnapshot(context.Background())
@@ -162,11 +169,11 @@ func (sm *APIKeySnapshotManager) RemoveAPIKeysByAPI(apiId string) error {
 
 // APIKeyTranslator converts API key configurations to xDS resources
 type APIKeyTranslator struct {
-	logger *zap.Logger
+	logger *slog.Logger
 }
 
 // NewAPIKeyTranslator creates a new API key translator
-func NewAPIKeyTranslator(logger *zap.Logger) *APIKeyTranslator {
+func NewAPIKeyTranslator(logger *slog.Logger) *APIKeyTranslator {
 	return &APIKeyTranslator{
 		logger: logger,
 	}
@@ -225,15 +232,15 @@ func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[strin
 	// Convert to xDS resource
 	resource, err := t.createAPIKeyStateResource(&stateResource)
 	if err != nil {
-		t.logger.Error("Failed to create API key state resource", zap.Error(err))
+		t.logger.Error("Failed to create API key state resource", slog.Any("error", err))
 		return nil, fmt.Errorf("failed to create API key state resource: %w", err)
 	}
 
 	resources[APIKeyStateTypeURL] = []types.Resource{resource}
 
 	t.logger.Debug("Translated API keys to xDS resources",
-		zap.Int("apikey_count", len(apiKeys)),
-		zap.Int("resource_count", len(resources[APIKeyStateTypeURL])))
+		slog.Int("apikey_count", len(apiKeys)),
+		slog.Int("resource_count", len(resources[APIKeyStateTypeURL])))
 
 	return resources, nil
 }

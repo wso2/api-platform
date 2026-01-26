@@ -20,16 +20,16 @@ package utils
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"go.uber.org/zap"
 )
 
 func TestPolicyLoader_LoadPoliciesFromDirectory(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	loader := NewPolicyLoader(logger)
 
 	// Create a temporary directory for test policies
@@ -101,7 +101,7 @@ description: Test policy 2
 }
 
 func TestPolicyLoader_DuplicatePolicy(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	loader := NewPolicyLoader(logger)
 
 	tempDir := t.TempDir()
@@ -130,7 +130,7 @@ func TestPolicyLoader_DuplicatePolicy(t *testing.T) {
 }
 
 func TestPolicyLoader_InvalidPolicy(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	loader := NewPolicyLoader(logger)
 
 	tempDir := t.TempDir()
@@ -176,7 +176,7 @@ func TestPolicyLoader_InvalidPolicy(t *testing.T) {
 }
 
 func TestPolicyLoader_NonExistentDirectory(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	loader := NewPolicyLoader(logger)
 
 	// Load from non-existent directory - should return empty map without error
@@ -190,7 +190,7 @@ func TestPolicyLoader_NonExistentDirectory(t *testing.T) {
 }
 
 func TestPolicyLoader_InvalidVersionFormat(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	loader := NewPolicyLoader(logger)
 
 	// Create temporary directory

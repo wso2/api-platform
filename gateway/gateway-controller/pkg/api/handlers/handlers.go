@@ -35,6 +35,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"log/slog"
+
 	"github.com/gin-gonic/gin"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -49,7 +51,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
-	"go.uber.org/zap"
 )
 
 // APIServer implements the generated ServerInterface
@@ -62,7 +63,7 @@ type APIServer struct {
 	policyDefMu          sync.RWMutex
 	parser               *config.Parser
 	validator            config.Validator
-	logger               *zap.Logger
+	logger               *slog.Logger
 	deploymentService    *utils.APIDeploymentService
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
@@ -80,7 +81,7 @@ func NewAPIServer(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
-	logger *zap.Logger,
+	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]api.PolicyDefinition,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
@@ -102,7 +103,8 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
 			deploymentService, &systemConfig.GatewayController.Router),
-		apiKeyService:      utils.NewAPIKeyService(store, db, apiKeyXDSManager),
+		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
+			&systemConfig.GatewayController.APIKey),
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       &systemConfig.GatewayController.Router,
@@ -121,12 +123,12 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	// Create a logger with correlation ID if provided
 	log := s.logger
 	if correlationID != "" {
-		log = s.logger.With(zap.String("correlation_id", correlationID))
+		log = s.logger.With(slog.String("correlation_id", correlationID))
 	}
 
 	cfg, err := s.store.Get(configID)
 	if err != nil {
-		log.Warn("Config not found for status update", zap.String("id", configID))
+		log.Warn("Config not found for status update", slog.String("id", configID))
 		return
 	}
 
@@ -136,17 +138,17 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedAt = &now
 		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
-			zap.String("id", configID),
-			zap.String("displayName", cfg.GetDisplayName()),
-			zap.Int64("version", version))
+			slog.String("id", configID),
+			slog.String("displayName", cfg.GetDisplayName()),
+			slog.Int64("version", version))
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
 		cfg.DeployedVersion = 0
 		log.Error("Configuration deployment failed",
-			zap.String("id", configID),
-			zap.String("displayName", cfg.GetDisplayName()),
-			zap.String("kind", cfg.Kind))
+			slog.String("id", configID),
+			slog.String("displayName", cfg.GetDisplayName()),
+			slog.String("kind", cfg.Kind))
 	}
 
 	cfg.UpdatedAt = now
@@ -154,13 +156,13 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	// Update database (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.UpdateConfig(cfg); err != nil {
-			log.Error("Failed to update config status in database", zap.Error(err), zap.String("id", configID))
+			log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
 		}
 	}
 
 	// Update in-memory store
 	if err := s.store.Update(cfg); err != nil {
-		log.Error("Failed to update config status in memory", zap.Error(err), zap.String("id", configID))
+		log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
 	}
 }
 
@@ -185,7 +187,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -208,7 +210,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	})
 
 	if err != nil {
-		log.Error("Failed to deploy API configuration", zap.Error(err))
+		log.Error("Failed to deploy API configuration", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
@@ -248,21 +250,21 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", zap.Error(err))
+				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration added",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		} else if result.IsUpdate {
 			// API was updated and no longer has policies, remove the existing policy configuration
 			policyID := result.StoredConfig.ID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if API never had policies
-				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
 			} else {
 				log.Info("Derived policy configuration removed (API no longer has policies)",
-					zap.String("policy_id", policyID))
+					slog.String("policy_id", policyID))
 			}
 		}
 	}
@@ -342,8 +344,8 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			err := json.Unmarshal(j, &mcp)
 			if err != nil {
 				s.logger.Error("Failed to unmarshal stored MCP configuration",
-					zap.String("id", cfg.ID),
-					zap.String("displayName", cfg.GetDisplayName()))
+					slog.String("id", cfg.ID),
+					slog.String("displayName", cfg.GetDisplayName()))
 				continue
 			}
 
@@ -412,8 +414,8 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	cfg, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
 		log.Warn("API configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
+			slog.String("name", name),
+			slog.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
@@ -459,7 +461,7 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 	cfg, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			zap.String("handle", handle))
+			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
@@ -469,9 +471,9 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 
 	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.Asyncwebsub) {
 		log.Warn("Configuration kind mismatch",
-			zap.String("expected", "RestApi or async/websub"),
-			zap.String("actual", cfg.Kind),
-			zap.String("handle", handle))
+			slog.String("expected", "RestApi or async/websub"),
+			slog.String("actual", cfg.Kind),
+			slog.String("handle", handle))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Configuration with handle '%s' is not an API", handle),
@@ -512,7 +514,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -527,7 +529,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	var apiConfig api.APIConfiguration
 	err = s.parser.Parse(body, contentType, &apiConfig)
 	if err != nil {
-		log.Error("Failed to parse configuration", zap.Error(err))
+		log.Error("Failed to parse configuration", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -541,8 +543,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	if apiConfig.Metadata.Name != "" {
 		if apiConfig.Metadata.Name != handle {
 			log.Warn("Handle mismatch between path and YAML metadata",
-				zap.String("path_handle", handle),
-				zap.String("yaml_handle", apiConfig.Metadata.Name))
+				slog.String("path_handle", handle),
+				slog.String("yaml_handle", apiConfig.Metadata.Name))
 			metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 			metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -557,8 +559,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
 		log.Warn("Configuration validation failed",
-			zap.String("handle", handle),
-			zap.Int("num_errors", len(validationErrors)))
+			slog.String("handle", handle),
+			slog.Int("num_errors", len(validationErrors)))
 
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErrors)))
@@ -591,7 +593,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	existing, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			zap.String("handle", handle))
+			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
@@ -621,7 +623,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
-				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
+				log.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
 				//fmt.Println("Topics Registering Started")
 				var childWg sync.WaitGroup
 				for _, topic := range list {
@@ -630,14 +632,14 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 						defer childWg.Done()
 						if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
 							log.Error("Failed to register topic with WebSubHub",
-								zap.Error(err),
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
+								slog.Any("error", err),
+								slog.String("topic", topic),
+								slog.String("api_id", existing.ID))
 							atomic.AddInt32(&regErrs, 1)
 						} else {
 							log.Info("Successfully registered topic with WebSubHub",
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
+								slog.String("topic", topic),
+								slog.String("api_id", existing.ID))
 						}
 					}(topic)
 				}
@@ -649,7 +651,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
-				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
+				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
 				var childWg sync.WaitGroup
 				for _, topic := range list {
 					childWg.Add(1)
@@ -657,14 +659,14 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 						defer childWg.Done()
 						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
-								zap.Error(err),
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
+								slog.Any("error", err),
+								slog.String("topic", topic),
+								slog.String("api_id", existing.ID))
 							atomic.AddInt32(&deregErrs, 1)
 						} else {
 							log.Info("Successfully deregistered topic from WebSubHub",
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
+								slog.String("topic", topic),
+								slog.String("api_id", existing.ID))
 						}
 					}(topic)
 				}
@@ -674,15 +676,15 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		wg2.Wait()
 
 		log.Info("Topic lifecycle operations completed",
-			zap.String("api_id", existing.ID),
-			zap.Int("registered", len(topicsToRegister)),
-			zap.Int("deregistered", len(topicsToUnregister)),
-			zap.Int("register_errors", int(regErrs)),
-			zap.Int("deregister_errors", int(deregErrs)))
+			slog.String("api_id", existing.ID),
+			slog.Int("registered", len(topicsToRegister)),
+			slog.Int("deregistered", len(topicsToUnregister)),
+			slog.Int("register_errors", int(regErrs)),
+			slog.Int("deregister_errors", int(deregErrs)))
 
 		// Check if topic operations failed and return error
 		if regErrs > 0 || deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", zap.Error(err))
+			log.Error("Failed to register & deregister topics", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Topic lifecycle operations failed",
@@ -695,7 +697,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Update database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.UpdateConfig(existing); err != nil {
-			log.Error("Failed to update config in database", zap.Error(err))
+			log.Error("Failed to update config in database", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to persist configuration update",
@@ -708,14 +710,14 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
 			log.Info("API configuration handle already exists",
-				zap.String("id", existing.ID),
-				zap.String("handle", handle))
+				slog.String("id", existing.ID),
+				slog.String("handle", handle))
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 		} else {
-			log.Error("Failed to update config in memory store", zap.Error(err))
+			log.Error("Failed to update config in memory store", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to update configuration in memory store",
@@ -733,13 +735,13 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		defer cancel()
 
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", zap.Error(err))
+			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
 
 	log.Info("API configuration updated",
-		zap.String("id", existing.ID),
-		zap.String("handle", handle))
+		slog.String("id", existing.ID),
+		slog.String("handle", handle))
 
 	// Record successful operation metrics
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
@@ -758,21 +760,21 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		storedPolicy := s.buildStoredPolicyFromAPI(existing)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", zap.Error(err))
+				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration updated",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		} else {
 			// API no longer has policies, remove the existing policy configuration
 			policyID := existing.ID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if API never had policies
-				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
 			} else {
 				log.Info("Derived policy configuration removed (API no longer has policies)",
-					zap.String("policy_id", policyID))
+					slog.String("policy_id", policyID))
 			}
 		}
 	}
@@ -803,7 +805,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	cfg, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			zap.String("handle", handle))
+			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
@@ -814,7 +816,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.DeleteConfig(cfg.ID); err != nil {
-			log.Error("Failed to delete config from database", zap.Error(err))
+			log.Error("Failed to delete config from database", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to delete configuration",
@@ -826,16 +828,16 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		err := s.db.RemoveAPIKeysAPI(cfg.ID)
 		if err != nil {
 			log.Warn("Failed to remove API keys from database",
-				zap.String("handle", handle),
-				zap.Error(err))
+				slog.String("handle", handle),
+				slog.Any("error", err))
 		}
 	}
 
 	// Remove API keys from ConfigStore
 	if err := s.store.RemoveAPIKeysByAPI(cfg.ID); err != nil {
 		log.Warn("Failed to remove API keys from ConfigStore",
-			zap.String("handle", handle),
-			zap.Error(err))
+			slog.String("handle", handle),
+			slog.Any("error", err))
 	}
 
 	// Remove API keys from policy engine via xDS
@@ -850,24 +852,24 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 
 			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
 				log.Warn("Failed to remove API keys from policy engine",
-					zap.String("api_id", apiId),
-					zap.String("handle", handle),
-					zap.String("api_name", apiName),
-					zap.String("api_version", apiVersion),
-					zap.String("correlation_id", correlationID),
-					zap.Error(err))
+					slog.String("api_id", apiId),
+					slog.String("handle", handle),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion),
+					slog.String("correlation_id", correlationID),
+					slog.Any("error", err))
 			} else {
 				log.Info("Successfully removed API keys from policy engine",
-					zap.String("api_id", apiId),
-					zap.String("handle", handle),
-					zap.String("api_name", apiName),
-					zap.String("api_version", apiVersion),
-					zap.String("correlation_id", correlationID))
+					slog.String("api_id", apiId),
+					slog.String("handle", handle),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion),
+					slog.String("correlation_id", correlationID))
 			}
 		} else {
 			log.Warn("Failed to extract API config data for API key removal",
-				zap.String("handle", handle),
-				zap.Error(err))
+				slog.String("handle", handle),
+				slog.Any("error", err))
 		}
 	}
 
@@ -881,7 +883,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 			wg.Add(1)
 			go func(list []string) {
 				defer wg.Done()
-				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
+				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.ID))
 				var childWg sync.WaitGroup
 				for _, topic := range list {
 					childWg.Add(1)
@@ -889,14 +891,14 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 						defer childWg.Done()
 						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
-								zap.Error(err),
-								zap.String("topic", topic),
-								zap.String("api_id", cfg.ID))
+								slog.Any("error", err),
+								slog.String("topic", topic),
+								slog.String("api_id", cfg.ID))
 							atomic.AddInt32(&deregErrs, 1)
 						} else {
 							log.Info("Successfully deregistered topic from WebSubHub",
-								zap.String("topic", topic),
-								zap.String("api_id", cfg.ID))
+								slog.String("topic", topic),
+								slog.String("api_id", cfg.ID))
 						}
 					}(topic)
 				}
@@ -907,13 +909,13 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		wg.Wait()
 
 		log.Info("Topic lifecycle operations completed",
-			zap.String("api_id", cfg.ID),
-			zap.Int("deregistered", len(topicsToUnregister)),
-			zap.Int("deregister_errors", int(deregErrs)))
+			slog.String("api_id", cfg.ID),
+			slog.Int("deregistered", len(topicsToUnregister)),
+			slog.Int("deregister_errors", int(deregErrs)))
 
 		// Check if topic operations failed and return error
 		if deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", zap.Error(err))
+			log.Error("Failed to register & deregister topics", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Topic lifecycle operations failed",
@@ -924,7 +926,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 
 	// Delete from in-memory store
 	if err := s.store.Delete(cfg.ID); err != nil {
-		log.Error("Failed to delete config from memory store", zap.Error(err))
+		log.Error("Failed to delete config from memory store", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to delete configuration",
@@ -941,13 +943,13 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		defer cancel()
 
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", zap.Error(err))
+			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
 
 	log.Info("API configuration deleted",
-		zap.String("id", cfg.ID),
-		zap.String("handle", handle))
+		slog.String("id", cfg.ID),
+		slog.String("handle", handle))
 
 	// Record successful operation metrics
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
@@ -964,9 +966,9 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	if s.policyManager != nil {
 		policyID := cfg.ID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", zap.Error(err), zap.String("policy_id", policyID))
+			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
-			log.Info("Derived policy configuration removed", zap.String("policy_id", policyID))
+			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
 		}
 	}
 }
@@ -979,7 +981,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -994,7 +996,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	})
 
 	if err != nil {
-		log.Error("Failed to parse template configuration", zap.Error(err))
+		log.Error("Failed to parse template configuration", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Failed to parse template configuration: %v", err),
@@ -1003,8 +1005,8 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	log.Info("LLM provider template created successfully",
-		zap.String("uuid", storedTemplate.ID),
-		zap.String("handle", storedTemplate.GetHandle()))
+		slog.String("uuid", storedTemplate.ID),
+		slog.String("handle", storedTemplate.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
 		Status:    stringPtr("success"),
@@ -1043,7 +1045,7 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 
 	template, err := s.llmDeploymentService.GetLLMProviderTemplateByHandle(id)
 	if err != nil {
-		log.Warn("LLM provider template not found", zap.String("handle", id))
+		log.Warn("LLM provider template not found", slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Template with id '%s' not found", id),
@@ -1075,7 +1077,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -1089,7 +1091,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 		Logger:      log,
 	})
 	if err != nil {
-		log.Error("Failed to parse template configuration", zap.Error(err))
+		log.Error("Failed to parse template configuration", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Failed to parse template configuration: %v", err),
@@ -1098,8 +1100,8 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template updated successfully",
-		zap.String("uuid", updated.ID),
-		zap.String("handle", updated.GetHandle()))
+		slog.String("uuid", updated.ID),
+		slog.String("handle", updated.GetHandle()))
 
 	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
 		Status:    stringPtr("success"),
@@ -1116,7 +1118,7 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 
 	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
 	if err != nil {
-		log.Warn("LLM provider template not found for deletion", zap.String("handle", id))
+		log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Template with id '%s' not found", id),
@@ -1125,8 +1127,8 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template deleted successfully",
-		zap.String("uuid", deleted.ID),
-		zap.String("handle", deleted.GetHandle()))
+		slog.String("uuid", deleted.ID),
+		slog.String("handle", deleted.GetHandle()))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
@@ -1150,7 +1152,7 @@ func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProviders
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &prov); err != nil {
 			log.Error("Failed to unmarshal stored LLM provider configuration",
-				zap.String("uuid", cfg.ID), zap.Error(err))
+				slog.String("uuid", cfg.ID), slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
 				Message: "Failed to get stored LLM provider configuration"})
 			return
@@ -1178,7 +1180,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -1196,7 +1198,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		Logger:      log,
 	})
 	if err != nil {
-		log.Error("Failed to create LLM provider", zap.Error(err))
+		log.Error("Failed to create LLM provider", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
 	}
@@ -1208,8 +1210,8 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	}
 
 	log.Info("LLM provider created successfully",
-		zap.String("uuid", stored.ID),
-		zap.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.ID),
+		slog.String("handle", stored.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
 		Status:  stringPtr("success"),
@@ -1221,11 +1223,11 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		storedPolicy := s.buildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", zap.Error(err))
+				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration added",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		}
 	}
@@ -1239,7 +1241,7 @@ func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
 	if cfg == nil {
 		log.Warn("LLM provider configuration not found",
-			zap.String("handle", id))
+			slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM provider configuration with handle '%s' not found", id),
@@ -1275,7 +1277,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -1294,7 +1296,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		Logger:        log,
 	})
 	if err != nil {
-		log.Error("Failed to update LLM provider configuration", zap.Error(err))
+		log.Error("Failed to update LLM provider configuration", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
 	}
@@ -1311,21 +1313,21 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", zap.Error(err))
+				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration updated",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		} else {
 			// LLM provider no longer has policies, remove the existing policy configuration
 			policyID := updated.ID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
 			} else {
 				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					zap.String("policy_id", policyID))
+					slog.String("policy_id", policyID))
 			}
 		}
 	}
@@ -1339,7 +1341,7 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 
 	cfg, err := s.llmDeploymentService.DeleteLLMProvider(id, correlationID, log)
 	if err != nil {
-		log.Warn("Failed to delete LLM provider configuration", zap.String("handle", id))
+		log.Warn("Failed to delete LLM provider configuration", slog.String("handle", id))
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -1365,9 +1367,9 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	if s.policyManager != nil {
 		policyID := cfg.ID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", zap.Error(err), zap.String("policy_id", policyID))
+			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
-			log.Info("Derived policy configuration removed", zap.String("policy_id", policyID))
+			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
 		}
 	}
 }
@@ -1386,8 +1388,8 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 		var proxy api.LLMProxyConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &proxy); err != nil {
-			log.Error("Failed to unmarshal stored LLM proxy configuration", zap.String("uuid", cfg.ID),
-				zap.Error(err))
+			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.ID),
+				slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status: "error", Message: "Failed to get stored LLM proxy configuration"})
 			return
@@ -1415,7 +1417,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -1433,7 +1435,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Logger:      log,
 	})
 	if err != nil {
-		log.Error("Failed to create LLM proxy", zap.Error(err))
+		log.Error("Failed to create LLM proxy", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
 	}
@@ -1445,8 +1447,8 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	}
 
 	log.Info("LLM proxy created successfully",
-		zap.String("uuid", stored.ID),
-		zap.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.ID),
+		slog.String("handle", stored.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProxyCreateResponse{
 		Status:  stringPtr("success"),
@@ -1458,11 +1460,11 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		storedPolicy := s.buildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", zap.Error(err))
+				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration added",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		}
 	}
@@ -1476,7 +1478,7 @@ func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
 	if cfg == nil {
 		log.Warn("LLM proxy configuration not found",
-			zap.String("handle", id))
+			slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
@@ -1512,7 +1514,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -1531,7 +1533,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		Logger:        log,
 	})
 	if err != nil {
-		log.Error("Failed to update LLM proxy configuration", zap.Error(err))
+		log.Error("Failed to update LLM proxy configuration", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
 	}
@@ -1548,21 +1550,21 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", zap.Error(err))
+				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration updated",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		} else {
 			// LLM proxy no longer has policies, remove the existing policy configuration
 			policyID := updated.ID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
 			} else {
 				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					zap.String("policy_id", policyID))
+					slog.String("policy_id", policyID))
 			}
 		}
 	}
@@ -1576,7 +1578,7 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 
 	cfg, err := s.llmDeploymentService.DeleteLLMProxy(id, correlationID, log)
 	if err != nil {
-		log.Warn("Failed to delete LLM proxy configuration", zap.String("handle", id), zap.Error(err))
+		log.Warn("Failed to delete LLM proxy configuration", slog.String("handle", id), slog.Any("error", err))
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -1602,9 +1604,9 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 	if s.policyManager != nil {
 		policyID := cfg.ID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", zap.Error(err), zap.String("policy_id", policyID))
+			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
-			log.Info("Derived policy configuration removed", zap.String("policy_id", policyID))
+			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
 		}
 	}
 }
@@ -1840,7 +1842,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -1861,7 +1863,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	})
 
 	if err != nil {
-		log.Error("Failed to deploy MCP proxy configuration", zap.Error(err))
+		log.Error("Failed to deploy MCP proxy configuration", slog.Any("error", err))
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
@@ -1895,11 +1897,11 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", zap.Error(err))
+				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration added",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		}
 	}
@@ -1923,8 +1925,8 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		err := json.Unmarshal(j, &mcp)
 		if err != nil {
 			s.logger.Error("Failed to unmarshal stored MCP configuration",
-				zap.String("id", cfg.ID),
-				zap.String("displayName", cfg.GetDisplayName()))
+				slog.String("id", cfg.ID),
+				slog.String("displayName", cfg.GetDisplayName()))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
@@ -1971,7 +1973,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 		}
 		if strings.Contains(err.Error(), "not found") {
 			log.Warn("MCP proxy configuration not found",
-				zap.String("handle", handle))
+				slog.String("handle", handle))
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("MCP proxy configuration with handle '%s' not found", handle),
@@ -1980,8 +1982,8 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 		}
 
 		log.Error("Failed to retrieve MCP proxy configuration",
-			zap.String("handle", handle),
-			zap.Error(err))
+			slog.String("handle", handle),
+			slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to retrieve MCP proxy configuration",
@@ -1993,9 +1995,9 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	// Check deployment kind is MCP
 	if cfg.Kind != string(api.Mcp) {
 		log.Warn("Configuration kind mismatch",
-			zap.String("expected", string(api.Mcp)),
-			zap.String("actual", cfg.Kind),
-			zap.String("handle", handle))
+			slog.String("expected", string(api.Mcp)),
+			slog.String("actual", cfg.Kind),
+			slog.String("handle", handle))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Configuration with handle '%s' is not of kind MCP", handle),
@@ -2034,7 +2036,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", slog.Any("error", err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -2055,7 +2057,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 
 	if err != nil {
 		log.Warn("MCP proxy configuration not found",
-			zap.String("handle", handle))
+			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("MCP configuration with handle '%s' not found", handle),
@@ -2064,29 +2066,29 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	}
 
 	log.Info("MCP proxy configuration updated",
-		zap.String("id", updated.ID),
-		zap.String("handle", handle))
+		slog.String("id", updated.ID),
+		slog.String("handle", handle))
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", zap.Error(err))
+				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
 			} else {
 				log.Info("Derived policy configuration updated",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
 		} else {
 			// MCP proxy no longer has policies, remove the existing policy configuration
 			policyID := updated.ID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if MCP proxy never had policies
-				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
 			} else {
 				log.Info("Derived policy configuration removed (MCP proxy no longer has policies)",
-					zap.String("policy_id", policyID))
+					slog.String("policy_id", policyID))
 			}
 		}
 	}
@@ -2112,7 +2114,7 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 
 	cfg, err := s.mcpDeploymentService.DeleteMCPProxy(handle, correlationID, log)
 	if err != nil {
-		log.Warn("Failed to delete MCP proxy configuration", zap.String("handle", handle), zap.Error(err))
+		log.Warn("Failed to delete MCP proxy configuration", slog.String("handle", handle), slog.Any("error", err))
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -2134,7 +2136,7 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 		defer cancel()
 
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", zap.Error(err))
+			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
 
@@ -2142,15 +2144,15 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	if s.policyManager != nil {
 		policyID := cfg.ID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", zap.Error(err), zap.String("policy_id", policyID))
+			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
-			log.Info("Derived policy configuration removed", zap.String("policy_id", policyID))
+			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
 		}
 	}
 
 	log.Info("MCP proxy configuration deleted",
-		zap.String("id", cfg.ID),
-		zap.String("handle", handle))
+		slog.String("id", cfg.ID),
+		slog.String("handle", handle))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
@@ -2161,10 +2163,10 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 
 // waitForDeploymentAndNotify waits for API deployment to complete and notifies platform API
 // This is only called for APIs created directly via gateway endpoint (not from platform API)
-func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID string, log *zap.Logger) {
+func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID string, log *slog.Logger) {
 	// Create a logger with correlation ID if provided
 	if correlationID != "" {
-		log = log.With(zap.String("correlation_id", correlationID))
+		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
 	// Poll for deployment status with timeout
@@ -2177,22 +2179,22 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 		select {
 		case <-timeout.C:
 			log.Warn("Timeout waiting for API deployment to complete for platform API notification",
-				zap.String("config_id", configID))
+				slog.String("config_id", configID))
 			return
 
 		case <-ticker.C:
 			cfg, err := s.store.Get(configID)
 			if err != nil {
 				log.Warn("Config not found while waiting for deployment completion",
-					zap.String("config_id", configID))
+					slog.String("config_id", configID))
 				return
 			}
 
 			if cfg.Status == models.StatusDeployed {
 				// // API successfully deployed, notify platform API
 				log.Info("API deployed successfully, notifying platform API",
-					zap.String("config_id", configID),
-					zap.String("displayName", cfg.GetDisplayName()))
+					slog.String("config_id", configID),
+					slog.String("displayName", cfg.GetDisplayName()))
 
 				// Extract API ID from stored config (use config ID as API ID)
 				apiID := configID
@@ -2202,18 +2204,18 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 
 				if err := s.controlPlaneClient.NotifyAPIDeployment(apiID, cfg, revisionID); err != nil {
 					log.Error("Failed to notify platform-api of successful deployment",
-						zap.String("api_id", apiID),
-						zap.Error(err))
+						slog.String("api_id", apiID),
+						slog.Any("error", err))
 				} else {
 					log.Info("Successfully notified platform API of deployment",
-						zap.String("api_id", apiID))
+						slog.String("api_id", apiID))
 				}
 				return
 
 			} else if cfg.Status == models.StatusFailed {
 				log.Warn("API deployment failed, skipping platform API notification",
-					zap.String("config_id", configID),
-					zap.String("displayName", cfg.GetDisplayName()))
+					slog.String("config_id", configID),
+					slog.String("displayName", cfg.GetDisplayName()))
 				return
 			}
 			// Continue waiting if status is still pending
@@ -2236,7 +2238,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		// Use handle (metadata.name) as the id in the dump
 		configHandle := cfg.GetHandle()
 		if configHandle == "" {
-			log.Warn("Config missing handle, skipping in dump", zap.String("id", cfg.ID))
+			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.ID))
 			continue
 		}
 
@@ -2292,7 +2294,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	} else {
 		certs, err := s.db.ListCertificates()
 		if err != nil {
-			log.Error("Failed to retrieve certificates", zap.Error(err))
+			log.Error("Failed to retrieve certificates", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to retrieve certificates",
@@ -2346,13 +2348,13 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 	log.Info("Configuration dump retrieved successfully",
-		zap.Int("apis", len(apisSlice)),
-		zap.Int("policies", len(policies)),
-		zap.Int("certificates", len(certificates)))
+		slog.Int("apis", len(apisSlice)),
+		slog.Int("policies", len(policies)),
+		slog.Int("certificates", len(certificates)))
 }
 
 // GenerateAPIKey implements ServerInterface.GenerateAPIKey
-// (POST /apis/{id}/generate-api-key)
+// (POST /apis/{id}/api-keys)
 func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
@@ -2366,17 +2368,17 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	}
 
 	log.Debug("Starting API key generation",
-		zap.String("handle", handle),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
+		slog.String("handle", handle),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Parse and validate request body
 	var request api.APIKeyGenerationRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		log.Warn("Invalid request body for API key generation",
-			zap.Error(err),
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Invalid request body: %v", err),
@@ -2411,18 +2413,18 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	}
 
 	log.Info("API key generation completed",
-		zap.String("handle", handle),
-		zap.String("key name", result.Response.ApiKey.Name),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
+		slog.String("handle", handle),
+		slog.String("key name", result.Response.ApiKey.Name),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
 	c.JSON(http.StatusCreated, result.Response)
 }
 
 // RevokeAPIKey implements ServerInterface.RevokeAPIKey
-// (POST /apis/{id}/revoke-api-key)
-func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
+// (DELETE /apis/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
@@ -2435,28 +2437,14 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
 	}
 
 	log.Debug("Starting API key revocation",
-		zap.String("handle", handle),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
-
-	// Parse and validate request body
-	var request api.APIKeyRevocationRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Warn("Invalid request body for API key revocation",
-			zap.Error(err),
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Invalid request body: %v", err),
-		})
-		return
-	}
+		slog.String("handle", handle),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Prepare parameters
 	params := utils.APIKeyRevocationParams{
 		Handle:        handle,
-		Request:       request,
+		APIKeyName:    apiKeyName,
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -2480,42 +2468,42 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
 	}
 
 	log.Info("API key revoked successfully",
-		zap.String("handle", handle),
-		zap.String("key", s.apiKeyService.MaskAPIKey(request.ApiKey)),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
+		slog.String("handle", handle),
+		slog.String("key", apiKeyName),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
 }
 
-// RotateAPIKey implements ServerInterface.RotateAPIKey
+// RegenerateAPIKey implements ServerInterface.RegenerateAPIKey
 // (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
-func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
+func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "RotateAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(c, "RegenerateAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
 
 	log.Debug("Starting API key rotation",
-		zap.String("handle", handle),
-		zap.String("key name", apiKeyName),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
+		slog.String("handle", handle),
+		slog.String("key name", apiKeyName),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Parse and validate request body
-	var request api.APIKeyRotationRequest
+	var request api.APIKeyRegenerationRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		log.Warn("Invalid request body for API key rotation",
-			zap.Error(err),
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Invalid request body: %v", err),
@@ -2524,7 +2512,7 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	}
 
 	// Prepare parameters
-	params := utils.APIKeyRotationParams{
+	params := utils.APIKeyRegenerationParams{
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
 		Request:       request,
@@ -2533,7 +2521,7 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		Logger:        log,
 	}
 
-	result, err := s.apiKeyService.RotateAPIKey(params)
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
@@ -2551,10 +2539,10 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	}
 
 	log.Info("API key rotation completed",
-		zap.String("handle", handle),
-		zap.String("key name", apiKeyName),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
+		slog.String("handle", handle),
+		slog.String("key name", apiKeyName),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
@@ -2575,9 +2563,9 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	}
 
 	log.Debug("Starting API key listing",
-		zap.String("handle", handle),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
+		slog.String("handle", handle),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Prepare parameters
 	params := utils.ListAPIKeyParams{
@@ -2605,9 +2593,9 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	}
 
 	log.Info("API key listing completed",
-		zap.String("handle", handle),
-		zap.String("user", user.UserID),
-		zap.String("correlation_id", correlationID))
+		slog.String("handle", handle),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
@@ -2622,8 +2610,8 @@ func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName strin
 	authCtxValue, exists := c.Get(constants.AuthContextKey)
 	if !exists {
 		log.Error("Authentication context not found",
-			zap.String("operation", operationName),
-			zap.String("correlation_id", correlationID))
+			slog.String("operation", operationName),
+			slog.String("correlation_id", correlationID))
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
 			Status:  "error",
 			Message: "Authentication context not available",
@@ -2635,8 +2623,8 @@ func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName strin
 	user, ok := authCtxValue.(commonmodels.AuthContext)
 	if !ok {
 		log.Error("Invalid authentication context type",
-			zap.String("operation", operationName),
-			zap.String("correlation_id", correlationID))
+			slog.String("operation", operationName),
+			slog.String("correlation_id", correlationID))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Invalid authentication context",
@@ -2645,10 +2633,10 @@ func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName strin
 	}
 
 	log.Debug("Authenticated user extracted",
-		zap.String("operation", operationName),
-		zap.String("user_id", user.UserID),
-		zap.Strings("roles", user.Roles),
-		zap.String("correlation_id", correlationID))
+		slog.String("operation", operationName),
+		slog.String("user_id", user.UserID),
+		slog.Any("roles", user.Roles),
+		slog.String("correlation_id", correlationID))
 
 	return &user, true
 }
@@ -2696,7 +2684,7 @@ func (s *APIServer) populatePropsForSystemPolicies(srcConfig any, props map[stri
 		if kindStr, ok := kind.(string); ok && kindStr == string(api.LlmProvider) {
 			template, err := s.getLLMProviderTemplate(srcConfig)
 			if err != nil {
-				s.logger.Debug("Failed to get LLM provider template", zap.Error(err))
+				s.logger.Debug("Failed to get LLM provider template", slog.Any("error", err))
 			} else if template != nil {
 				// Pass the template to analytics policy
 				analyticsProps := make(map[string]interface{})

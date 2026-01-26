@@ -21,6 +21,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -29,7 +30,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"go.uber.org/zap"
 )
 
 const (
@@ -37,11 +37,11 @@ const (
 )
 
 type MCPDeploymentParams struct {
-	Data          []byte      // Raw configuration data (YAML/JSON)
-	ContentType   string      // Content type for parsing
-	ID            string      // ID (if provided, used for updates; if empty, generates new UUID)
-	CorrelationID string      // Correlation ID for tracking
-	Logger        *zap.Logger // Logger instance
+	Data          []byte       // Raw configuration data (YAML/JSON)
+	ContentType   string       // Content type for parsing
+	ID            string       // ID (if provided, used for updates; if empty, generates new UUID)
+	CorrelationID string       // Correlation ID for tracking
+	Logger        *slog.Logger // Logger instance
 }
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
@@ -103,16 +103,16 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	// Log success
 	if isUpdate {
 		params.Logger.Info("MCP configuration updated",
-			zap.String("api_id", apiID),
-			zap.String("displayName", mcpConfig.Spec.DisplayName),
-			zap.String("version", mcpConfig.Spec.Version),
-			zap.String("correlation_id", params.CorrelationID))
+			slog.String("api_id", apiID),
+			slog.String("displayName", mcpConfig.Spec.DisplayName),
+			slog.String("version", mcpConfig.Spec.Version),
+			slog.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("MCP configuration created",
-			zap.String("api_id", apiID),
-			zap.String("displayName", mcpConfig.Spec.DisplayName),
-			zap.String("version", mcpConfig.Spec.Version),
-			zap.String("correlation_id", params.CorrelationID))
+			slog.String("api_id", apiID),
+			slog.String("displayName", mcpConfig.Spec.DisplayName),
+			slog.String("version", mcpConfig.Spec.Version),
+			slog.String("correlation_id", params.CorrelationID))
 	}
 
 	// Update xDS snapshot asynchronously
@@ -122,9 +122,9 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 
 		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
 			params.Logger.Error("Failed to update xDS snapshot",
-				zap.Error(err),
-				zap.String("api_id", apiID),
-				zap.String("correlation_id", params.CorrelationID))
+				slog.Any("error", err),
+				slog.String("api_id", apiID),
+				slog.String("correlation_id", params.CorrelationID))
 		}
 	}()
 
@@ -135,16 +135,16 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
-func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *zap.Logger) (bool, error) {
+func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
 	// Try to save to database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
 			// Check if it's a conflict (Configuration already exists)
 			if storage.IsConflictError(err) {
 				logger.Info("MCP configuration already exists in database, updating instead",
-					zap.String("id", storedCfg.ID),
-					zap.String("displayName", storedCfg.GetDisplayName()),
-					zap.String("version", storedCfg.GetVersion()))
+					slog.String("id", storedCfg.ID),
+					slog.String("displayName", storedCfg.GetDisplayName()),
+					slog.String("version", storedCfg.GetVersion()))
 
 				// Try to update instead
 				return s.updateExistingConfig(storedCfg, logger)
@@ -159,9 +159,9 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		// Check if it's a conflict (API already exists)
 		if storage.IsConflictError(err) {
 			logger.Info("MCP configuration already exists in memory, updating instead",
-				zap.String("id", storedCfg.ID),
-				zap.String("displayName", storedCfg.GetDisplayName()),
-				zap.String("version", storedCfg.GetVersion()))
+				slog.String("id", storedCfg.ID),
+				slog.String("displayName", storedCfg.GetDisplayName()),
+				slog.String("version", storedCfg.GetVersion()))
 
 			// Try to update instead
 			return s.updateExistingConfig(storedCfg, logger)
@@ -179,7 +179,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 
 // updateExistingConfig updates an existing API configuration
 func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
-	logger *zap.Logger) (bool, error) {
+	logger *slog.Logger) (bool, error) {
 	// Get existing config
 	existing, err := s.store.GetByNameVersion(newConfig.GetDisplayName(), newConfig.GetVersion())
 	if err != nil {
@@ -211,10 +211,10 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 		if s.db != nil {
 			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
 				logger.Error("Failed to rollback DB after memory update failure",
-					zap.Error(rbErr),
-					zap.String("id", original.ID),
-					zap.String("displayName", original.GetDisplayName()),
-					zap.String("version", original.GetVersion()))
+					slog.Any("error", rbErr),
+					slog.String("id", original.ID),
+					slog.String("displayName", original.GetDisplayName()),
+					slog.String("version", original.GetVersion()))
 			}
 		}
 		return false, fmt.Errorf("failed to update config in memory store: %w", err)
@@ -240,14 +240,14 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 	if len(validationErrors) > 0 {
 		errors := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("Configuration validation failed",
-			zap.String("api_id", params.ID),
-			zap.String("name", mcpConfig.Spec.DisplayName),
-			zap.Int("num_errors", len(validationErrors)))
+			slog.String("api_id", params.ID),
+			slog.String("name", mcpConfig.Spec.DisplayName),
+			slog.Int("num_errors", len(validationErrors)))
 
 		for i, e := range validationErrors {
 			params.Logger.Warn("Validation error",
-				zap.String("field", e.Field),
-				zap.String("message", e.Message))
+				slog.String("field", e.Field),
+				slog.String("message", e.Message))
 			errors = append(errors, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
 
@@ -320,7 +320,7 @@ func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*mode
 }
 
 // UpdateMCPProxy updates an existing MCP proxy identified by its handle
-func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymentParams, logger *zap.Logger) (*models.StoredConfig, error) {
+func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymentParams, logger *slog.Logger) (*models.StoredConfig, error) {
 	existing, err := s.GetMCPProxyByHandle(handle)
 	if err != nil || existing == nil {
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
@@ -328,9 +328,9 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 
 	if existing.Kind != string(api.Mcp) {
 		logger.Warn("Configuration kind mismatch",
-			zap.String("expected", string(api.Mcp)),
-			zap.String("actual", existing.Kind),
-			zap.String("handle", handle))
+			slog.String("expected", string(api.Mcp)),
+			slog.String("actual", existing.Kind),
+			slog.String("handle", handle))
 		return nil, fmt.Errorf("configuration kind mismatch: expected '%s', got '%s' for handle '%s'", string(api.Mcp), existing.Kind, handle)
 	}
 
@@ -349,7 +349,7 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 }
 
 // DeleteMCPProxy deletes an MCP proxy by handle using store/db and updates snapshot
-func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logger *zap.Logger) (*models.StoredConfig, error) {
+func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
 	if s.db == nil {
 		return nil, storage.ErrDatabaseUnavailable
 	}
@@ -358,30 +358,30 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 	cfg, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		logger.Warn("MCP proxy configuration not found",
-			zap.String("handle", handle))
+			slog.String("handle", handle))
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
 	}
 
 	// Ensure existing config is of kind MCP
 	if cfg.Kind != string(api.Mcp) {
 		logger.Warn("Configuration kind mismatch",
-			zap.String("expected", string(api.Mcp)),
-			zap.String("actual", cfg.Kind),
-			zap.String("handle", handle))
+			slog.String("expected", string(api.Mcp)),
+			slog.String("actual", cfg.Kind),
+			slog.String("handle", handle))
 		return nil, fmt.Errorf("configuration kind mismatch: expected '%s', got '%s' for handle '%s'", string(api.Mcp), cfg.Kind, handle)
 	}
 
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.DeleteConfig(cfg.ID); err != nil {
-			logger.Error("Failed to delete config from database", zap.Error(err))
+			logger.Error("Failed to delete config from database", slog.Any("error", err))
 			return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
 	}
 
 	// Delete from in-memory store
 	if err := s.store.Delete(cfg.ID); err != nil {
-		logger.Error("Failed to delete config from memory store", zap.Error(err))
+		logger.Error("Failed to delete config from memory store", slog.Any("error", err))
 		return nil, fmt.Errorf("failed to delete configuration from memory store: %w", err)
 	}
 
@@ -390,7 +390,7 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			logger.Error("Failed to update xDS snapshot", zap.Error(err))
+			logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
 

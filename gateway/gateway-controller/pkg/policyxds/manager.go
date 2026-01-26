@@ -22,22 +22,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
-	"go.uber.org/zap"
+	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
 // PolicyManager manages policy configurations and snapshot updates
 type PolicyManager struct {
 	store           *storage.PolicyStore
 	snapshotManager *SnapshotManager
-	logger          *zap.Logger
+	logger          *slog.Logger
 }
 
 // NewPolicyManager creates a new policy manager
-func NewPolicyManager(store *storage.PolicyStore, snapshotManager *SnapshotManager, logger *zap.Logger) *PolicyManager {
+func NewPolicyManager(store *storage.PolicyStore, snapshotManager *SnapshotManager, logger *slog.Logger) *PolicyManager {
 	return &PolicyManager{
 		store:           store,
 		snapshotManager: snapshotManager,
@@ -53,16 +53,16 @@ func (pm *PolicyManager) AddPolicy(policy *models.StoredPolicyConfig) error {
 	}
 
 	pm.logger.Info("Policy configuration added",
-		zap.String("id", policy.ID),
-		zap.String("api_name", policy.APIName()),
-		zap.String("version", policy.APIVersion()),
-		zap.String("context", policy.Context()))
+		slog.String("id", policy.ID),
+		slog.String("api_name", policy.APIName()),
+		slog.String("version", policy.APIVersion()),
+		slog.String("context", policy.Context()))
 
 	// Update xDS snapshot
 	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
 		pm.logger.Error("Failed to update policy snapshot after adding policy",
-			zap.String("id", policy.ID),
-			zap.Error(err))
+			slog.String("id", policy.ID),
+			slog.Any("error", err))
 		return fmt.Errorf("failed to update snapshot: %w", err)
 	}
 
@@ -75,13 +75,13 @@ func (pm *PolicyManager) RemovePolicy(id string) error {
 		return fmt.Errorf("failed to delete policy: %w", err)
 	}
 
-	pm.logger.Info("Policy configuration removed", zap.String("id", id))
+	pm.logger.Info("Policy configuration removed", slog.String("id", id))
 
 	// Update xDS snapshot
 	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
 		pm.logger.Error("Failed to update policy snapshot after removing policy",
-			zap.String("id", id),
-			zap.Error(err))
+			slog.String("id", id),
+			slog.Any("error", err))
 		return fmt.Errorf("failed to update snapshot: %w", err)
 	}
 

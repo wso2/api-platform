@@ -45,7 +45,7 @@ func (r *OrganizationRepo) CreateOrganization(org *model.Organization) error {
 		INSERT INTO organizations (uuid, handle, name, region, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, org.ID, org.Handle, org.Name, org.Region, org.CreatedAt, org.UpdatedAt)
+	_, err := r.db.Exec(r.db.Rebind(query), org.ID, org.Handle, org.Name, org.Region, org.CreatedAt, org.UpdatedAt)
 	return err
 }
 
@@ -57,7 +57,7 @@ func (r *OrganizationRepo) GetOrganizationByIdOrHandle(id, handle string) (*mode
 		FROM organizations
 		WHERE uuid = ? OR handle = ?
 	`
-	err := r.db.QueryRow(query, id, handle).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), id, handle).Scan(
 		&org.ID, &org.Handle, &org.Name, &org.Region, &org.CreatedAt, &org.UpdatedAt,
 	)
 	if err != nil {
@@ -77,7 +77,7 @@ func (r *OrganizationRepo) GetOrganizationByUUID(orgId string) (*model.Organizat
 		FROM organizations
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, orgId).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), orgId).Scan(
 		&org.ID, &org.Handle, &org.Name, &org.Region, &org.CreatedAt, &org.UpdatedAt,
 	)
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *OrganizationRepo) GetOrganizationByHandle(handle string) (*model.Organi
 		FROM organizations
 		WHERE handle = ?
 	`
-	err := r.db.QueryRow(query, handle).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), handle).Scan(
 		&org.ID, &org.Handle, &org.Name, &org.Region, &org.CreatedAt, &org.UpdatedAt,
 	)
 	if err != nil {
@@ -117,14 +117,14 @@ func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 		SET handle = ?, name = ?, region = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(query, org.Handle, org.Name, org.Region, org.UpdatedAt, org.ID)
+	_, err := r.db.Exec(r.db.Rebind(query), org.Handle, org.Name, org.Region, org.UpdatedAt, org.ID)
 	return err
 }
 
 // DeleteOrganization removes an organization
 func (r *OrganizationRepo) DeleteOrganization(orgId string) error {
 	query := `DELETE FROM organizations WHERE uuid = ?`
-	_, err := r.db.Exec(query, orgId)
+	_, err := r.db.Exec(r.db.Rebind(query), orgId)
 	return err
 }
 
@@ -136,7 +136,7 @@ func (r *OrganizationRepo) ListOrganizations(limit, offset int) ([]*model.Organi
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`
-	rows, err := r.db.Query(query, limit, offset)
+	rows, err := r.db.Query(r.db.Rebind(query), limit, offset)
 	if err != nil {
 		return nil, err
 	}

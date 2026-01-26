@@ -21,6 +21,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -29,16 +30,15 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"go.uber.org/zap"
 )
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
-	Data          []byte      // Raw configuration data (YAML/JSON)
-	ContentType   string      // Content type for parsing
-	ID            string      // Optional ID; if empty, generated
-	CorrelationID string      // Correlation ID for tracking
-	Logger        *zap.Logger // Logger
+	Data          []byte       // Raw configuration data (YAML/JSON)
+	ContentType   string       // Content type for parsing
+	ID            string       // Optional ID; if empty, generated
+	CorrelationID string       // Correlation ID for tracking
+	Logger        *slog.Logger // Logger
 }
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
@@ -71,7 +71,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 
 	// Initialize OOB templates
 	if err := service.InitializeOOBTemplates(templateDefinitions); err != nil {
-		zap.L().Error("Failed to initialize out-of-the-box LLM provider templates", zap.Error(err))
+		slog.Error("Failed to initialize out-of-the-box LLM provider templates", slog.Any("error", err))
 	}
 
 	return service
@@ -92,10 +92,10 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if len(validationErrors) > 0 {
 		errs := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("LLM provider validation failed",
-			zap.String("handle", providerConfig.Metadata.Name),
-			zap.Int("num_errors", len(validationErrors)))
+			slog.String("handle", providerConfig.Metadata.Name),
+			slog.Int("num_errors", len(validationErrors)))
 		for i, e := range validationErrors {
-			params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
+			params.Logger.Warn("Validation error", slog.String("field", e.Field), slog.String("message", e.Message))
 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
 		return nil, fmt.Errorf("provider validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
@@ -136,18 +136,18 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	// Log success
 	if isUpdate {
 		params.Logger.Info("LLM provider configuration updated",
-			zap.String("api_uuid", apiID),
-			zap.String("handle", storedCfg.GetHandle()),
-			zap.String("display_name", storedCfg.GetDisplayName()),
-			zap.String("version", storedCfg.GetVersion()),
-			zap.String("correlation_id", params.CorrelationID))
+			slog.String("api_uuid", apiID),
+			slog.String("handle", storedCfg.GetHandle()),
+			slog.String("display_name", storedCfg.GetDisplayName()),
+			slog.String("version", storedCfg.GetVersion()),
+			slog.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM provider configuration created",
-			zap.String("api_uuid", apiID),
-			zap.String("handle", storedCfg.GetHandle()),
-			zap.String("display_name", storedCfg.GetDisplayName()),
-			zap.String("version", storedCfg.GetVersion()),
-			zap.String("correlation_id", params.CorrelationID))
+			slog.String("api_uuid", apiID),
+			slog.String("handle", storedCfg.GetHandle()),
+			slog.String("display_name", storedCfg.GetDisplayName()),
+			slog.String("version", storedCfg.GetVersion()),
+			slog.String("correlation_id", params.CorrelationID))
 	}
 
 	// Update xDS snapshot asynchronously
@@ -156,9 +156,9 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		defer cancel()
 		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
 			params.Logger.Error("Failed to update xDS snapshot",
-				zap.Error(err),
-				zap.String("api_uuid", apiID),
-				zap.String("correlation_id", params.CorrelationID))
+				slog.Any("error", err),
+				slog.String("api_uuid", apiID),
+				slog.String("correlation_id", params.CorrelationID))
 		}
 	}()
 
@@ -180,10 +180,10 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	if len(validationErrors) > 0 {
 		errs := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("LLM proxy validation failed",
-			zap.String("handle", proxyConfig.Metadata.Name),
-			zap.Int("num_errors", len(validationErrors)))
+			slog.String("handle", proxyConfig.Metadata.Name),
+			slog.Int("num_errors", len(validationErrors)))
 		for i, e := range validationErrors {
-			params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
+			params.Logger.Warn("Validation error", slog.String("field", e.Field), slog.String("message", e.Message))
 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
 		return nil, fmt.Errorf("proxy validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
@@ -223,18 +223,18 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	// Log success
 	if isUpdate {
 		params.Logger.Info("LLM proxy configuration updated",
-			zap.String("api_uuid", apiID),
-			zap.String("handle", storedCfg.GetHandle()),
-			zap.String("display_name", storedCfg.GetDisplayName()),
-			zap.String("version", storedCfg.GetVersion()),
-			zap.String("correlation_id", params.CorrelationID))
+			slog.String("api_uuid", apiID),
+			slog.String("handle", storedCfg.GetHandle()),
+			slog.String("display_name", storedCfg.GetDisplayName()),
+			slog.String("version", storedCfg.GetVersion()),
+			slog.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM proxy configuration created",
-			zap.String("api_uuid", apiID),
-			zap.String("handle", storedCfg.GetHandle()),
-			zap.String("display_name", storedCfg.GetDisplayName()),
-			zap.String("version", storedCfg.GetVersion()),
-			zap.String("correlation_id", params.CorrelationID))
+			slog.String("api_uuid", apiID),
+			slog.String("handle", storedCfg.GetHandle()),
+			slog.String("display_name", storedCfg.GetDisplayName()),
+			slog.String("version", storedCfg.GetVersion()),
+			slog.String("correlation_id", params.CorrelationID))
 	}
 
 	// Update xDS snapshot asynchronously
@@ -243,9 +243,9 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		defer cancel()
 		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
 			params.Logger.Error("Failed to update xDS snapshot",
-				zap.Error(err),
-				zap.String("api_id", apiID),
-				zap.String("correlation_id", params.CorrelationID))
+				slog.Any("error", err),
+				slog.String("api_id", apiID),
+				slog.String("correlation_id", params.CorrelationID))
 		}
 	}()
 
@@ -256,7 +256,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 type LLMTemplateParams struct {
 	Spec        []byte
 	ContentType string
-	Logger      *zap.Logger
+	Logger      *slog.Logger
 }
 
 // parseAndValidateLLMTemplate parses the raw spec and validates it, returning the typed template.
@@ -269,11 +269,11 @@ func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplatePar
 	if len(validationErrors) > 0 {
 		errs := make([]string, 0, len(validationErrors))
 		if params.Logger != nil {
-			params.Logger.Warn("Template validation failed", zap.String("handle", tmpl.Metadata.Name), zap.Int("error_count", len(validationErrors)))
+			params.Logger.Warn("Template validation failed", slog.String("handle", tmpl.Metadata.Name), slog.Int("error_count", len(validationErrors)))
 		}
 		for i, e := range validationErrors {
 			if params.Logger != nil {
-				params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
+				params.Logger.Warn("Validation error", slog.String("field", e.Field), slog.String("message", e.Message))
 			}
 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
@@ -585,7 +585,7 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
-	logger *zap.Logger) (*models.StoredConfig, error) {
+	logger *slog.Logger) (*models.StoredConfig, error) {
 	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
@@ -604,7 +604,7 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			logger.Error("Failed to update xDS snapshot", zap.Error(err))
+			logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
 
@@ -659,7 +659,7 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 }
 
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
-func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *zap.Logger) (*models.StoredConfig, error) {
+func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
 	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
@@ -678,7 +678,7 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			logger.Error("Failed to update xDS snapshot", zap.Error(err))
+			logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
 

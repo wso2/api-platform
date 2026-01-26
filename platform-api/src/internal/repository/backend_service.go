@@ -61,7 +61,7 @@ func (r *BackendServiceRepo) CreateBackendService(service *model.BackendService)
 	timeoutConnect, timeoutRead, timeoutWrite, lbAlgorithm, lbFailover, cbEnabled, maxConnections, maxPendingRequests,
 		maxRequests, maxRetries := r.extractConfigurationForDatabase(service)
 
-	_, err = tx.Exec(serviceQuery, service.ID, service.OrganizationID, service.Name, service.Description,
+	_, err = tx.Exec(r.db.Rebind(serviceQuery), service.ID, service.OrganizationID, service.Name, service.Description,
 		timeoutConnect, timeoutRead, timeoutWrite, service.Retries, lbAlgorithm, lbFailover,
 		cbEnabled, maxConnections, maxPendingRequests, maxRequests, maxRetries,
 		service.CreatedAt, service.UpdatedAt)
@@ -97,7 +97,7 @@ func (r *BackendServiceRepo) GetBackendServiceByUUID(serviceId string) (*model.B
 	var cbEnabled sql.NullBool
 	var maxConnections, maxPendingRequests, maxRequests, maxRetries sql.NullInt64
 
-	err := r.db.QueryRow(query, serviceId).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), serviceId).Scan(
 		&service.ID, &service.OrganizationID, &service.Name, &service.Description,
 		&timeoutConnect, &timeoutRead, &timeoutWrite, &service.Retries,
 		&lbAlgorithm, &lbFailover, &cbEnabled, &maxConnections,
@@ -135,7 +135,7 @@ func (r *BackendServiceRepo) GetBackendServicesByOrganizationID(orgID string) ([
 		FROM backend_services WHERE organization_uuid = ? ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, orgID)
+	rows, err := r.db.Query(r.db.Rebind(query), orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (r *BackendServiceRepo) GetBackendServiceByNameAndOrgID(name, orgID string)
 	var cbEnabled sql.NullBool
 	var maxConnections, maxPendingRequests, maxRequests, maxRetries sql.NullInt64
 
-	err := r.db.QueryRow(query, name, orgID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
 		&service.ID, &service.OrganizationID, &service.Name, &service.Description,
 		&timeoutConnect, &timeoutRead, &timeoutWrite, &service.Retries,
 		&lbAlgorithm, &lbFailover, &cbEnabled, &maxConnections,
@@ -245,7 +245,7 @@ func (r *BackendServiceRepo) UpdateBackendService(service *model.BackendService)
 			max_requests = ?, max_retries = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err = tx.Exec(query, service.Name, service.Description, timeoutConnect, timeoutRead, timeoutWrite,
+	_, err = tx.Exec(r.db.Rebind(query), service.Name, service.Description, timeoutConnect, timeoutRead, timeoutWrite,
 		service.Retries, lbAlgorithm, lbFailover, cbEnabled, maxConnections,
 		maxPendingRequests, maxRequests, maxRetries, service.UpdatedAt, service.ID)
 	if err != nil {
@@ -254,7 +254,7 @@ func (r *BackendServiceRepo) UpdateBackendService(service *model.BackendService)
 
 	// Delete existing endpoints and re-insert using service UUID
 	deleteEndpointsQuery := `DELETE FROM backend_endpoints WHERE backend_service_uuid = ?`
-	_, err = tx.Exec(deleteEndpointsQuery, service.ID)
+	_, err = tx.Exec(r.db.Rebind(deleteEndpointsQuery), service.ID)
 	if err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func (r *BackendServiceRepo) DeleteBackendService(serviceId string) error {
 	// Due to foreign key constraints with CASCADE, deleting the main backend service record
 	// will automatically delete all related endpoints and associations
 	query := `DELETE FROM backend_services WHERE uuid = ?`
-	_, err := r.db.Exec(query, serviceId)
+	_, err := r.db.Exec(r.db.Rebind(query), serviceId)
 	return err
 }
 
@@ -289,7 +289,7 @@ func (r *BackendServiceRepo) AssociateBackendServiceWithAPI(apiId, backendServic
 
 	// First attempt: try to update existing record
 	updateQuery := `UPDATE api_backend_services SET is_default = ? WHERE api_uuid = ? AND backend_service_uuid = ?`
-	result, err := tx.Exec(updateQuery, isDefault, apiId, backendServiceId)
+	result, err := tx.Exec(r.db.Rebind(updateQuery), isDefault, apiId, backendServiceId)
 	if err != nil {
 		return err
 	}
@@ -303,7 +303,7 @@ func (r *BackendServiceRepo) AssociateBackendServiceWithAPI(apiId, backendServic
 	// If no rows were updated, the record doesn't exist, so insert it
 	if rowsAffected == 0 {
 		insertQuery := `INSERT INTO api_backend_services (api_uuid, backend_service_uuid, is_default) VALUES (?, ?, ?)`
-		_, err = tx.Exec(insertQuery, apiId, backendServiceId, isDefault)
+		_, err = tx.Exec(r.db.Rebind(insertQuery), apiId, backendServiceId, isDefault)
 		if err != nil {
 			// If insert fails due to race condition (another thread inserted the same record),
 			// rollback and retry the update operation
@@ -311,7 +311,7 @@ func (r *BackendServiceRepo) AssociateBackendServiceWithAPI(apiId, backendServic
 
 			// Retry with a simple update - if the record now exists due to concurrent insert
 			retryUpdateQuery := `UPDATE api_backend_services SET is_default = ? WHERE api_uuid = ? AND backend_service_uuid = ?`
-			_, retryErr := r.db.Exec(retryUpdateQuery, isDefault, apiId, backendServiceId)
+			_, retryErr := r.db.Exec(r.db.Rebind(retryUpdateQuery), isDefault, apiId, backendServiceId)
 			return retryErr
 		}
 	}
@@ -322,7 +322,7 @@ func (r *BackendServiceRepo) AssociateBackendServiceWithAPI(apiId, backendServic
 // DisassociateBackendServiceFromAPI removes the association between an API and a backend service
 func (r *BackendServiceRepo) DisassociateBackendServiceFromAPI(apiId, backendServiceId string) error {
 	query := `DELETE FROM api_backend_services WHERE api_uuid = ? AND backend_service_uuid = ?`
-	_, err := r.db.Exec(query, apiId, backendServiceId)
+	_, err := r.db.Exec(r.db.Rebind(query), apiId, backendServiceId)
 	return err
 }
 
@@ -339,7 +339,7 @@ func (r *BackendServiceRepo) GetBackendServicesByAPIID(apiId string) ([]*model.B
 		ORDER BY bs.created_at DESC
 	`
 
-	rows, err := r.db.Query(query, apiId)
+	rows, err := r.db.Query(r.db.Rebind(query), apiId)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ func (r *BackendServiceRepo) GetBackendServicesByAPIID(apiId string) ([]*model.B
 func (r *BackendServiceRepo) GetAPIsByBackendServiceID(backendServiceId string) ([]string, error) {
 	query := `SELECT api_uuid FROM api_backend_services WHERE backend_service_uuid = ?`
 
-	rows, err := r.db.Query(query, backendServiceId)
+	rows, err := r.db.Query(r.db.Rebind(query), backendServiceId)
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +435,7 @@ func (r *BackendServiceRepo) insertBackendEndpointByUUID(tx *sql.Tx, serviceUUID
 			client_cert, client_key, ca_cert)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(endpointQuery, serviceUUID, endpoint.URL, endpoint.Description,
+	_, err := tx.Exec(r.db.Rebind(endpointQuery), serviceUUID, endpoint.URL, endpoint.Description,
 		hcEnabled, hcInterval, hcTimeout, unhealthyThreshold, healthyThreshold, endpoint.Weight,
 		mtlsEnabled, enforceIfClientCertPresent, verifyClient, clientCert, clientKey, caCert)
 	return err
@@ -449,7 +449,7 @@ func (r *BackendServiceRepo) loadBackendEndpointsByServiceUUID(serviceUUID strin
 		FROM backend_endpoints be
 		WHERE be.backend_service_uuid = ?
 	`
-	rows, err := r.db.Query(query, serviceUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), serviceUUID)
 	if err != nil {
 		return nil, err
 	}

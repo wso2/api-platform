@@ -296,6 +296,17 @@ func (r *RestApiReconciler) processDeployment(
 	retryCount := 0
 	if hasExisting && existingEntry.Generation == generation {
 		retryCount = existingEntry.RetryCount
+		
+		// Respect backoff if set
+		if !existingEntry.NextRetryTime.IsZero() {
+			wait := time.Until(existingEntry.NextRetryTime)
+			if wait > 0 {
+				r.Logger.Info("Waiting for backoff",
+					zap.String("api", apiConfig.Name),
+					zap.Duration("wait", wait))
+				return ctrl.Result{RequeueAfter: wait}, nil
+			}
+		}
 	}
 
 	// Update tracker to Processing
@@ -866,7 +877,7 @@ func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Requ
 	log := r.Logger.With(zap.String("controller", "RestApi"))
 
 	// Fetch the Gateway CR to access ConfigRef
-	gateway := &apiv1.Gateway{}
+	gateway := &apiv1.APIGateway{}
 	if err := r.Get(ctx, types.NamespacedName{
 		Namespace: gatewayInfo.Namespace,
 		Name:      gatewayInfo.Name,
@@ -909,7 +920,7 @@ func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Requ
 
 // enqueueAPIsForGateway watches for Gateway changes and enqueues affected RestApis
 func (r *RestApiReconciler) enqueueAPIsForGateway(ctx context.Context, obj client.Object) []reconcile.Request {
-	gateway, ok := obj.(*apiv1.Gateway)
+	gateway, ok := obj.(*apiv1.APIGateway)
 	if !ok {
 		return nil
 	}
@@ -957,8 +968,8 @@ func (r *RestApiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return true
 		},
 		UpdateFunc: func(evt event.UpdateEvent) bool {
-			newGateway, okNew := evt.ObjectNew.(*apiv1.Gateway)
-			oldGateway, okOld := evt.ObjectOld.(*apiv1.Gateway)
+			newGateway, okNew := evt.ObjectNew.(*apiv1.APIGateway)
+			oldGateway, okOld := evt.ObjectOld.(*apiv1.APIGateway)
 			if !okNew || !okOld {
 				return true
 			}
@@ -985,7 +996,7 @@ func (r *RestApiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(opts).
 		For(&apiv1.RestApi{}).
-		Watches(&apiv1.Gateway{},
+		Watches(&apiv1.APIGateway{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueAPIsForGateway),
 			builder.WithPredicates(gatewayPred)).
 		Complete(r)

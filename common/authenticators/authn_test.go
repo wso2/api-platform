@@ -18,6 +18,8 @@
 package authenticators
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,7 +28,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
-	"go.uber.org/zap"
 )
 
 func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.T) {
@@ -34,7 +35,7 @@ func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.
 	// Middleware should enable no-auth mode and allow all requests.
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		BasicAuth: &models.BasicAuth{Enabled: false},
@@ -68,7 +69,7 @@ func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.
 func TestAuthMiddleware_JWTEnabled_MissingJWKS_FailsAtCreation(t *testing.T) {
 	// Scenario: JWT is enabled but JWKS URL is not configured.
 	// Should fail at middleware creation time (startup), not per-request.
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
@@ -86,7 +87,7 @@ func TestAuthMiddleware_JWTEnabled_MissingJWKS_FailsAtCreation(t *testing.T) {
 func TestAuthMiddleware_JWTEnabled_NoIssuer_MissingJWKS_FailsAtCreation(t *testing.T) {
 	// Scenario: JWT is enabled, issuer is not provided, but JWKS URL is also missing.
 	// Should fail at middleware creation time, since issuer is required.
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
@@ -104,7 +105,7 @@ func TestAuthMiddleware_JWTEnabled_NoIssuer_MissingJWKS_FailsAtCreation(t *testi
 func TestAuthMiddleware_JWTEnabled_NoIssuer_WithJWKS_FailsAtCreation(t *testing.T) {
 	// Scenario: JWT is enabled and JWKS is configured, but issuer is missing.
 	// Should fail at middleware creation time, since issuer is required.
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
@@ -124,7 +125,7 @@ func TestAuthMiddleware_BasicAuthEnabled_NoCredentials_Unauthorized(t *testing.T
 	// Should return 401 Unauthorized
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		BasicAuth: &models.BasicAuth{
@@ -163,7 +164,7 @@ func TestAuthMiddleware_SkipPaths_NoAuthRequired(t *testing.T) {
 	// Scenario: Path is in SkipPaths, should bypass authentication even if auth is enabled
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{
 		BasicAuth: &models.BasicAuth{
@@ -203,7 +204,7 @@ func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_AllowsAllRequests(t *testing.T
 	// Middleware should enable no-auth mode and allow all requests.
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := models.AuthConfig{BasicAuth: nil, JWTConfig: nil}
 

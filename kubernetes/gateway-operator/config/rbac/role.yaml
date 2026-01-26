@@ -33,7 +33,7 @@ rules:
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways
+  - apigateways
   - restapis
   verbs:
   - create
@@ -46,14 +46,14 @@ rules:
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways/finalizers
+  - apigateways/finalizers
   - restapis/finalizers
   verbs:
   - update
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways/status
+  - apigateways/status
   - restapis/status
   verbs:
   - get

@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	clusterservice "github.com/envoyproxy/go-control-plane/envoy/service/cluster/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -34,7 +36,6 @@ import (
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 )
@@ -45,11 +46,11 @@ type Server struct {
 	xdsServer       server.Server
 	snapshotManager *SnapshotManager
 	port            int
-	logger          *zap.Logger
+	logger          *slog.Logger
 }
 
 // NewServer creates a new xDS server
-func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretManager, port int, logger *zap.Logger) *Server {
+func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretManager, port int, logger *slog.Logger) *Server {
 	grpcServer := grpc.NewServer(
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time:    30 * time.Second,
@@ -95,7 +96,7 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to listen on port %d: %w", s.port, err)
 	}
 
-	s.logger.Info("Starting xDS server", zap.Int("port", s.port))
+	s.logger.Info("Starting xDS server", slog.Int("port", s.port))
 
 	if err := s.grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)
@@ -112,12 +113,12 @@ func (s *Server) Stop() {
 
 // serverCallbacks implements server.Callbacks
 type serverCallbacks struct {
-	logger          *zap.Logger
+	logger          *slog.Logger
 	activeStreams   map[int64]string // stream_id -> node_id
 	activeStreamsMu sync.Mutex
 }
 
-func NewServerCallbacks(logger *zap.Logger) *serverCallbacks {
+func NewServerCallbacks(logger *slog.Logger) *serverCallbacks {
 	return &serverCallbacks{
 		logger:        logger,
 		activeStreams: make(map[int64]string),
@@ -125,12 +126,12 @@ func NewServerCallbacks(logger *zap.Logger) *serverCallbacks {
 }
 
 func (cb *serverCallbacks) OnStreamOpen(ctx context.Context, id int64, typ string) error {
-	cb.logger.Info("xDS stream opened", zap.Int64("stream_id", id), zap.String("type", typ))
+	cb.logger.Info("xDS stream opened", slog.Int64("stream_id", id), slog.String("type", typ))
 	return nil
 }
 
 func (cb *serverCallbacks) OnStreamClosed(id int64, node *core.Node) {
-	cb.logger.Info("xDS stream closed", zap.Int64("stream_id", id))
+	cb.logger.Info("xDS stream closed", slog.Int64("stream_id", id))
 
 	cb.activeStreamsMu.Lock()
 	defer cb.activeStreamsMu.Unlock()
@@ -150,9 +151,9 @@ func (cb *serverCallbacks) OnStreamClosed(id int64, node *core.Node) {
 
 func (cb *serverCallbacks) OnStreamRequest(id int64, req *discoverygrpc.DiscoveryRequest) error {
 	cb.logger.Debug("xDS stream request",
-		zap.Int64("stream_id", id),
-		zap.String("type_url", req.TypeUrl),
-		zap.String("version", req.VersionInfo),
+		slog.Int64("stream_id", id),
+		slog.String("type_url", req.TypeUrl),
+		slog.String("version", req.VersionInfo),
 	)
 
 	// Track the node ID when we first see a request
@@ -188,11 +189,11 @@ func (cb *serverCallbacks) OnStreamResponse(ctx context.Context, id int64, req *
 	}
 
 	cb.logger.Debug("xDS stream response",
-		zap.Int64("stream_id", id),
-		zap.String("type_url", resp.TypeUrl),
-		zap.String("version", resp.VersionInfo),
-		zap.Int("num_resources", len(resp.Resources)),
-		zap.String("status", status),
+		slog.Int64("stream_id", id),
+		slog.String("type_url", resp.TypeUrl),
+		slog.String("version", resp.VersionInfo),
+		slog.Int("num_resources", len(resp.Resources)),
+		slog.String("status", status),
 	)
 
 	metrics.XDSStreamRequestsTotal.WithLabelValues("main", resp.TypeUrl, "response").Inc()
@@ -200,14 +201,14 @@ func (cb *serverCallbacks) OnStreamResponse(ctx context.Context, id int64, req *
 }
 
 func (cb *serverCallbacks) OnFetchRequest(ctx context.Context, req *discoverygrpc.DiscoveryRequest) error {
-	cb.logger.Debug("xDS fetch request", zap.String("type_url", req.TypeUrl))
+	cb.logger.Debug("xDS fetch request", slog.String("type_url", req.TypeUrl))
 	return nil
 }
 
 func (cb *serverCallbacks) OnFetchResponse(req *discoverygrpc.DiscoveryRequest, resp *discoverygrpc.DiscoveryResponse) {
 	cb.logger.Debug("xDS fetch response",
-		zap.String("type_url", resp.TypeUrl),
-		zap.String("version", resp.VersionInfo),
+		slog.String("type_url", resp.TypeUrl),
+		slog.String("version", resp.VersionInfo),
 	)
 }
 

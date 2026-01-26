@@ -12,3 +12,13 @@ const (
 	// AuthContextKey is the context key for packed authentication context
 	AuthContextKey = "auth_context"
 )
+
+const (
+	// Server Header manipulation strategies for HCM Listener
+	APPEND_IF_ABSENT = "APPEND_IF_ABSENT"
+	OVERWRITE        = "OVERWRITE"
+	PASS_THROUGH     = "PASS_THROUGH"
+
+	// ServerName for HCM listener in Gateway
+	ServerName = "WSO2 API Platform"
+)

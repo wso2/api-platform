@@ -259,7 +259,7 @@ func (APIDeployment) TableName() string {
 
 // APIAssociation represents the association between an API and a resource (gateway or dev portal)
 type APIAssociation struct {
-	ID              int       `json:"id" db:"id"`
+	ID              int64     `json:"id" db:"id"`
 	ApiID           string    `json:"apiId" db:"api_uuid"`
 	OrganizationID  string    `json:"organizationId" db:"organization_uuid"`
 	ResourceID      string    `json:"resourceId" db:"resource_uuid"`

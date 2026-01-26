@@ -579,9 +579,9 @@ data:
           affinity: {}
 
 ---
-# Gateway using the custom ConfigMap
+# APIGateway using the custom ConfigMap
 # apiVersion: gateway.api-platform.wso2.com/v1alpha1
-# kind: Gateway
+# kind: APIGateway
 # metadata:
 #   name: custom-gateway
 #   namespace: default
@@ -608,9 +608,9 @@ data:
 #     type: postgres
 
 ---
-# Gateway using default configuration (no ConfigRef)
+# APIGateway using default configuration (no ConfigRef)
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: default-gateway
   namespace: default

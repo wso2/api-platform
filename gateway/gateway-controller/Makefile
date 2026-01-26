@@ -41,7 +41,7 @@ generate: ## Generate API server code from OpenAPI spec
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/openapi.yaml
 test: ## Run unit and integration tests
 	@echo "Running tests..."
-	@go test -v ./... -cover
+	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
 
 copy-policy-definitions: ## Copy policy definitions from policy-manifest.yaml
 	@# Check if yq is installed

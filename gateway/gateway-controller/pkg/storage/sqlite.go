@@ -24,12 +24,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"go.uber.org/zap"
 )
 
 //go:embed gateway-controller-db.sql
@@ -38,11 +38,11 @@ var schemaSQL string
 // SQLiteStorage implements the Storage interface using SQLite
 type SQLiteStorage struct {
 	db     *sql.DB
-	logger *zap.Logger
+	logger *slog.Logger
 }
 
 // NewSQLiteStorage creates a new SQLite storage instance
-func NewSQLiteStorage(dbPath string, logger *zap.Logger) (*SQLiteStorage, error) {
+func NewSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error) {
 	// Build connection string with SQLite pragmas for optimal performance
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=2000&_foreign_keys=ON", dbPath)
 
@@ -68,8 +68,8 @@ func NewSQLiteStorage(dbPath string, logger *zap.Logger) (*SQLiteStorage, error)
 	}
 
 	logger.Info("SQLite storage initialized",
-		zap.String("database_path", dbPath),
-		zap.String("journal_mode", "WAL"))
+		slog.String("database_path", dbPath),
+		slog.String("journal_mode", "WAL"))
 
 	return storage, nil
 }
@@ -85,7 +85,7 @@ func (s *SQLiteStorage) initSchema() error {
 
 	if version == 0 {
 		s.logger.Info("Initializing database schema (version 1)")
-		s.logger.Debug("Creating schema with SQL", zap.String("schema_sql", schemaSQL))
+		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
 		if _, err := s.db.Exec(schemaSQL); err != nil {
@@ -174,11 +174,12 @@ func (s *SQLiteStorage) initSchema() error {
 		}
 
 		if version == 4 {
-			// Add API keys table
+			// Add API keys table with masked_api_key column
 			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS api_keys (
 				id TEXT PRIMARY KEY,
 				name TEXT NOT NULL,
 				api_key TEXT NOT NULL UNIQUE,
+				masked_api_key TEXT NOT NULL,
 				apiId TEXT NOT NULL,
 				operations TEXT NOT NULL DEFAULT '*',
 				status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
@@ -211,11 +212,11 @@ func (s *SQLiteStorage) initSchema() error {
 			if _, err := s.db.Exec("PRAGMA user_version = 5"); err != nil {
 				return fmt.Errorf("failed to set schema version to 5: %w", err)
 			}
-			s.logger.Info("Schema migrated to version 5 (api_keys table)")
+			s.logger.Info("Schema migrated to version 5 (api_keys table with masked_api_key)")
 			version = 5
 		}
 
-		s.logger.Info("Database schema up to date", zap.Int("version", version))
+		s.logger.Debug("Database schema up to date", slog.Int("version", version))
 	}
 
 	return nil
@@ -274,9 +275,9 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	}
 
 	s.logger.Info("Configuration saved",
-		zap.String("id", cfg.ID),
-		zap.String("displayName", displayName),
-		zap.String("version", version))
+		slog.String("id", cfg.ID),
+		slog.String("displayName", displayName),
+		slog.String("version", version))
 
 	return nil
 }
@@ -370,9 +371,9 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("update", table).Observe(time.Since(startTime).Seconds())
 
 	s.logger.Info("Configuration updated",
-		zap.String("id", cfg.ID),
-		zap.String("displayName", displayName),
-		zap.String("version", version))
+		slog.String("id", cfg.ID),
+		slog.String("displayName", displayName),
+		slog.String("version", version))
 
 	return nil
 }
@@ -407,7 +408,7 @@ func (s *SQLiteStorage) DeleteConfig(id string) error {
 	metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "success").Inc()
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("delete", table).Observe(time.Since(startTime).Seconds())
 
-	s.logger.Info("Configuration deleted", zap.String("id", id))
+	s.logger.Info("Configuration deleted", slog.String("id", id))
 
 	return nil
 }
@@ -774,8 +775,8 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 	}
 
 	s.logger.Info("LLM provider template saved",
-		zap.String("uuid", template.ID),
-		zap.String("handle", handle))
+		slog.String("uuid", template.ID),
+		slog.String("handle", handle))
 
 	return nil
 }
@@ -826,8 +827,8 @@ func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProv
 	}
 
 	s.logger.Info("LLM provider template updated",
-		zap.String("uuid", template.ID),
-		zap.String("handle", handle))
+		slog.String("uuid", template.ID),
+		slog.String("handle", handle))
 
 	return nil
 }
@@ -850,7 +851,7 @@ func (s *SQLiteStorage) DeleteLLMProviderTemplate(id string) error {
 		return fmt.Errorf("%w: uuid=%s", ErrNotFound, id)
 	}
 
-	s.logger.Info("LLM provider template deleted", zap.String("uuid", id))
+	s.logger.Info("LLM provider template deleted", slog.String("uuid", id))
 
 	return nil
 }
@@ -1090,11 +1091,11 @@ func (s *SQLiteStorage) DeleteCertificate(id string) error {
 	}
 
 	if rows == 0 {
-		s.logger.Debug("Certificate not found for deletion", zap.String("id", id))
+		s.logger.Debug("Certificate not found for deletion", slog.String("id", id))
 		return ErrNotFound
 	}
 
-	s.logger.Info("Certificate deleted", zap.String("id", id))
+	s.logger.Info("Certificate deleted", slog.String("id", id))
 
 	return nil
 }
@@ -1132,15 +1133,16 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		// No existing record, insert new API key
 		insertQuery := `
 			INSERT INTO api_keys (
-				id, name, api_key, apiId, operations, status,
+				id, name, api_key, masked_api_key, apiId, operations, status,
 				created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 
 		_, err := tx.Exec(insertQuery,
 			apiKey.ID,
 			apiKey.Name,
 			apiKey.APIKey,
+			apiKey.MaskedAPIKey,
 			apiKey.APIId,
 			apiKey.Operations,
 			apiKey.Status,
@@ -1162,20 +1164,21 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		}
 
 		s.logger.Info("API key inserted successfully",
-			zap.String("id", apiKey.ID),
-			zap.String("name", apiKey.Name),
-			zap.String("apiId", apiKey.APIId),
-			zap.String("created_by", apiKey.CreatedBy))
+			slog.String("id", apiKey.ID),
+			slog.String("name", apiKey.Name),
+			slog.String("apiId", apiKey.APIId),
+			slog.String("created_by", apiKey.CreatedBy))
 	} else {
 		// Existing record found, update it with new API key data
 		updateQuery := `
 			UPDATE api_keys 
-			SET api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?
+			SET api_key = ?, masked_api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?
 			WHERE apiId = ? AND name = ?
 		`
 
 		_, err := tx.Exec(updateQuery,
 			apiKey.APIKey,
+			apiKey.MaskedAPIKey,
 			apiKey.Operations,
 			apiKey.Status,
 			apiKey.CreatedBy,
@@ -1197,10 +1200,10 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		}
 
 		s.logger.Info("API key updated successfully",
-			zap.String("existing_id", existingID),
-			zap.String("name", apiKey.Name),
-			zap.String("apiId", apiKey.APIId),
-			zap.String("created_by", apiKey.CreatedBy))
+			slog.String("existing_id", existingID),
+			slog.String("name", apiKey.Name),
+			slog.String("apiId", apiKey.APIId),
+			slog.String("created_by", apiKey.CreatedBy))
 	}
 
 	// Commit the transaction
@@ -1211,10 +1214,51 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	return nil
 }
 
+// GetAPIKeyByID retrieves an API key by its ID
+func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
+	query := `
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at
+		FROM api_keys
+		WHERE id = ?
+	`
+
+	var apiKey models.APIKey
+	var expiresAt sql.NullTime
+
+	err := s.db.QueryRow(query, id).Scan(
+		&apiKey.ID,
+		&apiKey.Name,
+		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
+		&apiKey.APIId,
+		&apiKey.Operations,
+		&apiKey.Status,
+		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
+		&apiKey.UpdatedAt,
+		&expiresAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: key not found", ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed to query API key: %w", err)
+	}
+
+	// Handle nullable expires_at field
+	if expiresAt.Valid {
+		apiKey.ExpiresAt = &expiresAt.Time
+	}
+
+	return &apiKey, nil
+}
+
 // GetAPIKeyByKey retrieves an API key by its key value
 func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE api_key = ?
@@ -1227,6 +1271,7 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 		&apiKey.ID,
 		&apiKey.Name,
 		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
 		&apiKey.Operations,
 		&apiKey.Status,
@@ -1254,7 +1299,7 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 // GetAPIKeysByAPI retrieves all API keys for a specific API
 func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE apiId = ?
@@ -1277,6 +1322,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 			&apiKey.ID,
 			&apiKey.Name,
 			&apiKey.APIKey,
+			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,
 			&apiKey.Operations,
 			&apiKey.Status,
@@ -1308,7 +1354,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 // GetAPIKeysByAPIAndName retrieves an API key by its apiId and name
 func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE apiId = ? AND name = ?
@@ -1322,6 +1368,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIK
 		&apiKey.ID,
 		&apiKey.Name,
 		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
 		&apiKey.Operations,
 		&apiKey.Status,
@@ -1375,8 +1422,8 @@ func (s *SQLiteStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Info("API key updated successfully",
-		zap.String("id", apiKey.ID),
-		zap.String("status", string(apiKey.Status)))
+		slog.String("id", apiKey.ID),
+		slog.String("status", string(apiKey.Status)))
 
 	return nil
 }
@@ -1399,7 +1446,7 @@ func (s *SQLiteStorage) DeleteAPIKey(key string) error {
 		return fmt.Errorf("%w: API key not found", ErrNotFound)
 	}
 
-	s.logger.Info("API key deleted successfully", zap.String("key_prefix", key[:min(8, len(key))]+"***"))
+	s.logger.Info("API key deleted successfully", slog.String("key_prefix", key[:min(8, len(key))]+"***"))
 
 	return nil
 }
@@ -1414,7 +1461,7 @@ func (s *SQLiteStorage) RemoveAPIKeysAPI(apiId string) error {
 	}
 
 	s.logger.Info("API keys removed successfully",
-		zap.String("apiId", apiId))
+		slog.String("apiId", apiId))
 
 	return nil
 }
@@ -1438,8 +1485,8 @@ func (s *SQLiteStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
 	}
 
 	s.logger.Info("API key removed successfully",
-		zap.String("apiId", apiId),
-		zap.String("name", name))
+		slog.String("apiId", apiId),
+		slog.String("name", name))
 
 	return nil
 }
@@ -1569,7 +1616,7 @@ func isAPIKeyUniqueConstraintError(err error) bool {
 // GetAllAPIKeys retrieves all API keys from the database
 func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, apiId, operations, status,
+		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
 		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE status = 'active'
@@ -1592,6 +1639,7 @@ func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 			&apiKey.ID,
 			&apiKey.Name,
 			&apiKey.APIKey,
+			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,
 			&apiKey.Operations,
 			&apiKey.Status,
@@ -1636,8 +1684,27 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 		}
 
 		// Load into APIKeyStore for state-of-the-world updates
-		apiKeyStore.Store(apiKey)
+		if err := apiKeyStore.Store(apiKey); err != nil {
+			return fmt.Errorf("failed to load API key %s into APIKeyStore: %w", apiKey.ID, err)
+		}
 	}
 
 	return nil
+}
+
+// CountActiveAPIKeysByUserAndAPI counts active API keys for a specific user and API
+func (s *SQLiteStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM api_keys 
+		WHERE apiId = ? AND created_by = ? AND status = ?
+	`
+
+	var count int
+	err := s.db.QueryRow(query, apiId, userID, models.APIKeyStatusActive).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count active API keys for user %s and API %s: %w", userID, apiId, err)
+	}
+
+	return count, nil
 }

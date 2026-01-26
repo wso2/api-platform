@@ -71,7 +71,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
-	_, err = tx.Exec(apiQuery, api.ID, api.Handle, api.Name, api.Description,
+	_, err = tx.Exec(r.db.Rebind(apiQuery), api.ID, api.Handle, api.Name, api.Description,
 		api.Context, api.Version, api.Provider, api.ProjectID, api.OrganizationID, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
 	if err != nil {
@@ -129,7 +129,7 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 
 	var transportJSON string
 	var securityEnabled bool
-	err := r.db.QueryRow(query, apiUUID, orgUUID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID).Scan(
 		&api.ID, &api.Handle, &api.Name, &api.Description, &api.Context,
 		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
 		&api.HasThumbnail, &api.IsDefaultVersion, &api.Type, &transportJSON,
@@ -161,7 +161,7 @@ func (r *APIRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMeta
 
 	query := `SELECT uuid, handle, name, context, organization_uuid FROM apis WHERE handle = ? AND organization_uuid = ?`
 
-	err := r.db.QueryRow(query, handle, orgUUID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(
 		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Context, &metadata.OrganizationID)
 
 	if err != nil {
@@ -183,7 +183,7 @@ func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.AP
 		FROM apis WHERE project_uuid = ? AND organization_uuid = ? ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, projectUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), projectUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +248,7 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID *string)
 		args = []interface{}{orgUUID}
 	}
 
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*
 		ORDER BY a.created_at DESC
 	`
 
-	rows, err := r.db.Query(query, gatewayUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +327,7 @@ func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.AP
 		ORDER BY a.created_at DESC
 	`
 
-	rows, err := r.db.Query(query, gatewayUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query APIs associated with gateway: %w", err)
 	}
@@ -369,7 +369,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 			is_default_version = ?, type = ?, transport = ?, security_enabled = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err = tx.Exec(query, api.Description,
+	_, err = tx.Exec(r.db.Rebind(query), api.Description,
 		api.Provider, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.Type, string(transportJSON),
 		securityEnabled, api.UpdatedAt, api.ID)
@@ -448,7 +448,7 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 
 	// Execute all delete statements
 	for _, query := range deleteQueries {
-		if _, err := tx.Exec(query, apiUUID); err != nil {
+		if _, err := tx.Exec(r.db.Rebind(query), apiUUID); err != nil {
 			return err
 		}
 	}
@@ -464,7 +464,7 @@ func (r *APIRepo) CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (
 	`
 
 	var count int
-	err := r.db.QueryRow(query, handle, orgUUID).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -531,7 +531,7 @@ func (r *APIRepo) insertMTLSConfig(tx *sql.Tx, apiId string, mtls *model.MTLSCon
 			verify_client, client_cert, client_key, ca_cert)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(query, apiId, mtls.Enabled, mtls.EnforceIfClientCertPresent,
+	_, err := tx.Exec(r.db.Rebind(query), apiId, mtls.Enabled, mtls.EnforceIfClientCertPresent,
 		mtls.VerifyClient, mtls.ClientCert, mtls.ClientKey, mtls.CACert)
 	return err
 }
@@ -543,7 +543,7 @@ func (r *APIRepo) loadMTLSConfig(apiId string) (*model.MTLSConfig, error) {
 			client_cert, client_key, ca_cert
 		FROM api_mtls_config WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(query, apiId).Scan(&mtls.Enabled,
+	err := r.db.QueryRow(r.db.Rebind(query), apiId).Scan(&mtls.Enabled,
 		&mtls.EnforceIfClientCertPresent, &mtls.VerifyClient,
 		&mtls.ClientCert, &mtls.ClientKey, &mtls.CACert)
 	if err != nil {
@@ -563,7 +563,7 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiId string, security *model
 			INSERT INTO api_key_security (api_uuid, enabled, header, query, cookie)
 			VALUES (?, ?, ?, ?, ?)
 		`
-		_, err := tx.Exec(apiKeyQuery, apiId, security.APIKey.Enabled,
+		_, err := tx.Exec(r.db.Rebind(apiKeyQuery), apiId, security.APIKey.Enabled,
 			security.APIKey.Header, security.APIKey.Query, security.APIKey.Cookie)
 		if err != nil {
 			return err
@@ -604,7 +604,7 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiId string, security *model
 				password_enabled, client_credentials_enabled, scopes)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
-		_, err := tx.Exec(oauth2Query, apiId, true, authCodeEnabled, authCodeCallback,
+		_, err := tx.Exec(r.db.Rebind(oauth2Query), apiId, true, authCodeEnabled, authCodeCallback,
 			implicitEnabled, implicitCallback, passwordEnabled, clientCredEnabled, string(scopesJSON))
 		if err != nil {
 			return err
@@ -623,7 +623,7 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 		SELECT enabled, header, query, cookie 
 		FROM api_key_security WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(apiKeyQuery, apiId).Scan(&apiKey.Enabled,
+	err := r.db.QueryRow(r.db.Rebind(apiKeyQuery), apiId).Scan(&apiKey.Enabled,
 		&apiKey.Header, &apiKey.Query, &apiKey.Cookie)
 	if err == nil {
 		security.APIKey = apiKey
@@ -643,7 +643,7 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 		FROM oauth2_security WHERE api_uuid = ?
 	`
 	var enabled bool
-	err = r.db.QueryRow(oauth2Query, apiId).Scan(&enabled, &authCodeEnabled, &authCodeCallback,
+	err = r.db.QueryRow(r.db.Rebind(oauth2Query), apiId).Scan(&enabled, &authCodeEnabled, &authCodeCallback,
 		&implicitEnabled, &implicitCallback, &passwordEnabled, &clientCredEnabled, &scopesJSON)
 	if err == nil {
 		if scopesJSON != "" {
@@ -691,7 +691,7 @@ func (r *APIRepo) insertCORSConfig(tx *sql.Tx, apiId string, cors *model.CORSCon
 			allow_headers, expose_headers, max_age, allow_credentials)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(query, apiId, cors.Enabled, cors.AllowOrigins,
+	_, err := tx.Exec(r.db.Rebind(query), apiId, cors.Enabled, cors.AllowOrigins,
 		cors.AllowMethods, cors.AllowHeaders, cors.ExposeHeaders,
 		cors.MaxAge, cors.AllowCredentials)
 	return err
@@ -704,7 +704,7 @@ func (r *APIRepo) loadCORSConfig(apiId string) (*model.CORSConfig, error) {
 			expose_headers, max_age, allow_credentials
 		FROM api_cors_config WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(query, apiId).Scan(&cors.Enabled, &cors.AllowOrigins,
+	err := r.db.QueryRow(r.db.Rebind(query), apiId).Scan(&cors.Enabled, &cors.AllowOrigins,
 		&cors.AllowMethods, &cors.AllowHeaders, &cors.ExposeHeaders,
 		&cors.MaxAge, &cors.AllowCredentials)
 	if err != nil {
@@ -723,7 +723,7 @@ func (r *APIRepo) insertRateLimitingConfig(tx *sql.Tx, apiId string, rateLimitin
 			rate_limit_time_unit, stop_on_quota_reach)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(query, apiId, rateLimiting.Enabled, rateLimiting.RateLimitCount,
+	_, err := tx.Exec(r.db.Rebind(query), apiId, rateLimiting.Enabled, rateLimiting.RateLimitCount,
 		rateLimiting.RateLimitTimeUnit, rateLimiting.StopOnQuotaReach)
 	return err
 }
@@ -734,7 +734,7 @@ func (r *APIRepo) loadRateLimitingConfig(apiId string) (*model.RateLimitingConfi
 		SELECT enabled, rate_limit_count, rate_limit_time_unit, stop_on_quota_reach
 		FROM api_rate_limiting WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(query, apiId).Scan(&rateLimiting.Enabled,
+	err := r.db.QueryRow(r.db.Rebind(query), apiId).Scan(&rateLimiting.Enabled,
 		&rateLimiting.RateLimitCount, &rateLimiting.RateLimitTimeUnit,
 		&rateLimiting.StopOnQuotaReach)
 	if err != nil {
@@ -750,6 +750,7 @@ func (r *APIRepo) loadRateLimitingConfig(apiId string) (*model.RateLimitingConfi
 func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId string, operation *model.Operation) error {
 	var authRequired bool
 	var scopesJSON string
+	var err error
 	if operation.Request.Authentication != nil {
 		authRequired = operation.Request.Authentication.Required
 		if len(operation.Request.Authentication.Scopes) > 0 {
@@ -759,19 +760,36 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 	}
 
 	// Insert operation
-	opQuery := `
-		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`
-	result, err := tx.Exec(opQuery, apiId, operation.Name, operation.Description,
-		operation.Request.Method, operation.Request.Path, authRequired, scopesJSON)
-	if err != nil {
-		return err
-	}
+	var operationID int64
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: use RETURNING to get the generated ID
+		opQuery := `
+			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			RETURNING id
+		`
+		if err := tx.QueryRow(r.db.Rebind(opQuery), apiId, operation.Name, operation.Description,
+			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON).Scan(&operationID); err != nil {
+			return err
+		}
+	} else {
+		// SQLite (and other drivers that support LastInsertId)
+		opQuery := `
+			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`
+		result, err := tx.Exec(r.db.Rebind(opQuery), apiId, operation.Name, operation.Description,
+			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON)
+		if err != nil {
+			return err
+		}
 
-	operationID, err := result.LastInsertId()
-	if err != nil {
-		return err
+		var lastID int64
+		lastID, err = result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		operationID = lastID
 	}
 
 	// Insert backend services routing
@@ -779,7 +797,7 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 		// Look up backend service UUID by name and organization ID
 		var backendServiceUUID string
 		lookupQuery := `SELECT uuid FROM backend_services WHERE name = ? AND organization_uuid = ?`
-		err = tx.QueryRow(lookupQuery, backendRouting.Name, organizationId).Scan(&backendServiceUUID)
+		err = tx.QueryRow(r.db.Rebind(lookupQuery), backendRouting.Name, organizationId).Scan(&backendServiceUUID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("backend service with name '%s' not found in organization", backendRouting.Name)
@@ -791,8 +809,7 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 			INSERT INTO operation_backend_services (operation_id, backend_service_uuid, weight)
 			VALUES (?, ?, ?)
 		`
-		_, err = tx.Exec(bsQuery, operationID, backendServiceUUID, backendRouting.Weight)
-		if err != nil {
+		if _, err = tx.Exec(r.db.Rebind(bsQuery), operationID, backendServiceUUID, backendRouting.Weight); err != nil {
 			return err
 		}
 	}
@@ -817,7 +834,7 @@ func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, policy *model.Poli
 		INSERT INTO policies (operation_id, name, params, execution_condition, version)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(policyQuery, operationID, policy.Name, string(paramsJSON),
+	_, err := tx.Exec(r.db.Rebind(policyQuery), operationID, policy.Name, string(paramsJSON),
 		policy.ExecutionCondition, policy.Version)
 	return err
 }
@@ -827,7 +844,7 @@ func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 		SELECT id, name, description, method, path, authentication_required, scopes 
 		FROM api_operations WHERE api_uuid = ?
 	`
-	rows, err := r.db.Query(query, apiId)
+	rows, err := r.db.Query(r.db.Rebind(query), apiId)
 	if err != nil {
 		return nil, err
 	}
@@ -884,7 +901,7 @@ func (r *APIRepo) loadOperationBackendServices(operationID int64) ([]model.Backe
 		JOIN backend_services bs ON bs.uuid = obs.backend_service_uuid
 		WHERE obs.operation_id = ?
 	`
-	rows, err := r.db.Query(query, operationID)
+	rows, err := r.db.Query(r.db.Rebind(query), operationID)
 	if err != nil {
 		return nil, err
 	}
@@ -905,7 +922,7 @@ func (r *APIRepo) loadOperationBackendServices(operationID int64) ([]model.Backe
 
 func (r *APIRepo) loadPolicies(operationID int64) ([]model.Policy, error) {
 	query := `SELECT name, params, execution_condition, version FROM policies WHERE operation_id = ?`
-	rows, err := r.db.Query(query, operationID)
+	rows, err := r.db.Query(r.db.Rebind(query), operationID)
 	if err != nil {
 		return nil, err
 	}
@@ -954,7 +971,7 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 	}
 
 	for _, query := range queries {
-		if _, err := tx.Exec(query, apiId); err != nil {
+		if _, err := tx.Exec(r.db.Rebind(query), apiId); err != nil {
 			return err
 		}
 	}
@@ -991,7 +1008,7 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 		metadataJSON = string(metadataBytes)
 	}
 
-	_, err := r.db.Exec(query, deployment.DeploymentID, deployment.ApiID, deployment.OrganizationID,
+	_, err := r.db.Exec(r.db.Rebind(query), deployment.DeploymentID, deployment.ApiID, deployment.OrganizationID,
 		deployment.GatewayID, deployment.Status, baseDeploymentID, deployment.Content, metadataJSON, deployment.CreatedAt)
 
 	return err
@@ -1047,7 +1064,7 @@ func (r *APIRepo) GetDeploymentsByAPIUUID(apiUUID, orgUUID string, gatewayID, st
 		args = []interface{}{apiUUID, orgUUID}
 	}
 
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1272,22 +1289,35 @@ func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gateway
 
 // CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
-	query := `
-		INSERT INTO api_associations (api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`
-	result, err := r.db.Exec(query, association.ApiID, association.OrganizationID, association.ResourceID,
-		association.AssociationType, association.CreatedAt, association.UpdatedAt)
-	if err != nil {
-		return err
-	}
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: use RETURNING to get the generated ID
+		query := `
+			INSERT INTO api_associations (api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			RETURNING id
+		`
+		if err := r.db.QueryRow(r.db.Rebind(query), association.ApiID, association.OrganizationID, association.ResourceID,
+			association.AssociationType, association.CreatedAt, association.UpdatedAt).Scan(&association.ID); err != nil {
+			return err
+		}
+	} else {
+		// SQLite: use LastInsertId
+		query := `
+			INSERT INTO api_associations (api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`
+		result, err := r.db.Exec(r.db.Rebind(query), association.ApiID, association.OrganizationID, association.ResourceID,
+			association.AssociationType, association.CreatedAt, association.UpdatedAt)
+		if err != nil {
+			return err
+		}
 
-	// Get the auto-generated ID
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
+		lastID, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		association.ID = lastID
 	}
-	association.ID = int(id)
 
 	return nil
 }
@@ -1299,7 +1329,7 @@ func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, org
 		SET updated_at = ?
 		WHERE api_uuid = ? AND resource_uuid = ? AND association_type = ? AND organization_uuid = ?
 	`
-	_, err := r.db.Exec(query, time.Now(), apiUUID, resourceId, associationType, orgUUID)
+	_, err := r.db.Exec(r.db.Rebind(query), time.Now(), apiUUID, resourceId, associationType, orgUUID)
 	return err
 }
 
@@ -1310,7 +1340,7 @@ func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) (
 		FROM api_associations
 		WHERE api_uuid = ? AND association_type = ? AND organization_uuid = ?
 	`
-	rows, err := r.db.Query(query, apiUUID, associationType, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, associationType, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -1357,7 +1387,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		ORDER BY aa.created_at DESC
 	`, model.DeploymentStatusDeployed)
 
-	rows, err := r.db.Query(query, apiUUID, apiUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -1418,7 +1448,7 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	}
 
 	var count int
-	err := r.db.QueryRow(query, args...).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count)
 	if err != nil {
 		return false, err
 	}

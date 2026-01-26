@@ -21,23 +21,23 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
 // PolicyLoader loads policy definitions from files
 type PolicyLoader struct {
-	logger *zap.Logger
+	logger *slog.Logger
 }
 
 // NewPolicyLoader creates a new policy loader
-func NewPolicyLoader(logger *zap.Logger) *PolicyLoader {
+func NewPolicyLoader(logger *slog.Logger) *PolicyLoader {
 	return &PolicyLoader{
 		logger: logger,
 	}
@@ -50,7 +50,7 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 
 	// Check if directory exists
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		pl.logger.Warn("Policy directory does not exist", zap.String("path", dirPath))
+		pl.logger.Warn("Policy directory does not exist", slog.String("path", dirPath))
 		return policies, nil
 	}
 
@@ -68,7 +68,7 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 		// Only process JSON and YAML files
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".json" && ext != ".yaml" && ext != ".yml" {
-			pl.logger.Debug("Skipping non-policy file", zap.String("file", path))
+			pl.logger.Debug("Skipping non-policy file", slog.String("file", path))
 			return nil
 		}
 
@@ -76,16 +76,16 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 		policy, err := pl.loadPolicyFile(path)
 		if err != nil {
 			pl.logger.Error("Failed to load policy file",
-				zap.String("file", path),
-				zap.Error(err))
+				slog.String("file", path),
+				slog.Any("error", err))
 			return err
 		}
 
 		// Validate required fields
 		if err := pl.validatePolicy(policy); err != nil {
 			pl.logger.Error("Invalid policy definition",
-				zap.String("file", path),
-				zap.Error(err))
+				slog.String("file", path),
+				slog.Any("error", err))
 			return err
 		}
 
@@ -97,10 +97,9 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 
 		policies[key] = *policy
 		pl.logger.Info("Loaded policy definition",
-			zap.String("name", policy.Name),
-			zap.String("version", policy.Version),
-			zap.String("file", path))
-
+			slog.String("name", policy.Name),
+			slog.String("version", policy.Version),
+		)
 		return nil
 	})
 
@@ -109,8 +108,8 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 	}
 
 	pl.logger.Info("Successfully loaded policy definitions",
-		zap.Int("count", len(policies)),
-		zap.String("directory", dirPath))
+		slog.Int("count", len(policies)),
+	)
 
 	return policies, nil
 }
@@ -149,17 +148,17 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 		}
 
 		pl.logger.Debug("Parsed policy from YAML",
-			zap.String("file", filePath),
-			zap.String("name", policyDef.Name),
-			zap.String("version", policyDef.Version),
-			zap.Any("parameters", policyDef.Parameters))
+			slog.String("file", filePath),
+			slog.String("name", policyDef.Name),
+			slog.String("version", policyDef.Version),
+			slog.Any("parameters", policyDef.Parameters))
 	}
 
 	// Log serialized JSON to see what will be stored
 	jsonBytes, _ := json.Marshal(policyDef)
 	pl.logger.Debug("Serialized policy to JSON",
-		zap.String("file", filePath),
-		zap.String("json", string(jsonBytes)))
+		slog.String("file", filePath),
+		slog.String("json", string(jsonBytes)))
 
 	return &policyDef, nil
 }

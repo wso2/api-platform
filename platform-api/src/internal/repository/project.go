@@ -45,7 +45,7 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 		INSERT INTO projects (uuid, name, organization_uuid, description, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, project.ID, project.Name, project.OrganizationID, project.Description,
+	_, err := r.db.Exec(r.db.Rebind(query), project.ID, project.Name, project.OrganizationID, project.Description,
 		project.CreatedAt, project.UpdatedAt)
 	if err != nil {
 		return err
@@ -62,7 +62,7 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 		FROM projects
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, projectId).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), projectId).Scan(
 		&project.ID, &project.Name, &project.OrganizationID, &project.Description, &project.CreatedAt, &project.UpdatedAt,
 	)
 	if err != nil {
@@ -82,7 +82,7 @@ func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Proje
 		FROM projects
 		WHERE name = ? AND organization_uuid = ?
 	`
-	err := r.db.QueryRow(query, name, orgID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
 		&project.ID, &project.Name, &project.OrganizationID, &project.Description, &project.CreatedAt, &project.UpdatedAt,
 	)
 	if err != nil {
@@ -102,7 +102,7 @@ func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Projec
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(query, orgID)
+	rows, err := r.db.Query(r.db.Rebind(query), orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,14 +130,14 @@ func (r *ProjectRepo) UpdateProject(project *model.Project) error {
 		SET name = ?, description = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(query, project.Name, project.Description, project.UpdatedAt, project.ID)
+	_, err := r.db.Exec(r.db.Rebind(query), project.Name, project.Description, project.UpdatedAt, project.ID)
 	return err
 }
 
 // DeleteProject removes a project
 func (r *ProjectRepo) DeleteProject(projectId string) error {
 	query := `DELETE FROM projects WHERE uuid = ?`
-	_, err := r.db.Exec(query, projectId)
+	_, err := r.db.Exec(r.db.Rebind(query), projectId)
 	return err
 }
 
@@ -150,7 +150,7 @@ func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Pr
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`
-	rows, err := r.db.Query(query, orgID, limit, offset)
+	rows, err := r.db.Query(r.db.Rebind(query), orgID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

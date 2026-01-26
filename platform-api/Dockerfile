@@ -75,6 +75,7 @@ ARG USER_GID=$USER_UID
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -86,6 +87,8 @@ COPY --from=builder /build/platform-api .
 RUN mkdir -p /app/data && \
     chown -R wso2:appgroup /app
 COPY src/internal/database/schema.sql ./schema.sql
+COPY src/internal/database/schema.postgres.sql ./schema.postgres.sql
+COPY src/internal/database/schema.sqlite.sql ./schema.sqlite.sql
 
 ARG PORT
 EXPOSE ${PORT}
@@ -93,7 +96,8 @@ EXPOSE ${PORT}
 ENV DRIVER=sqlite3
 ENV LOG_LEVEL=INFO
 ENV DB_SCHEMA_PATH=./schema.sql
-ENV DATABASE_PATH=/app/data/api_platform.db
+# For SQLite: configured via DATABASE_DB_PATH to avoid clashing with OS PATH
+ENV DATABASE_DB_PATH=/app/data/api_platform.db
 ENV PORT=${PORT}
 
 USER $USERNAME

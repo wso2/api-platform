@@ -20,6 +20,7 @@ package xds
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -27,6 +28,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	commonconstants "github.com/wso2/api-platform/common/constants"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -57,7 +60,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 	anypb "google.golang.org/protobuf/types/known/anypb"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -73,14 +75,14 @@ const (
 
 // Translator converts API configurations to Envoy xDS resources
 type Translator struct {
-	logger       *zap.Logger
+	logger       *slog.Logger
 	routerConfig *config.RouterConfig
 	certStore    *certstore.CertStore
 	config       *config.Config
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
+func NewTranslator(logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
 	// Initialize certificate store if custom certs path is configured
 	var cs *certstore.CertStore
 	if routerConfig.Upstream.TLS.CustomCertsPath != "" {
@@ -94,8 +96,8 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 		// Load certificates at initialization
 		if _, err := cs.LoadCertificates(); err != nil {
 			logger.Warn("Failed to initialize certificate store, will use system certs only",
-				zap.String("custom_certs_path", routerConfig.Upstream.TLS.CustomCertsPath),
-				zap.Error(err))
+				slog.String("custom_certs_path", routerConfig.Upstream.TLS.CustomCertsPath),
+				slog.Any("error", err))
 			cs = nil // Don't use cert store if initialization failed
 		}
 	}
@@ -105,6 +107,21 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 		routerConfig: routerConfig,
 		certStore:    cs,
 		config:       config,
+	}
+}
+
+// convertServerHeaderTransformation converts string configuration values to Envoy enum values
+func convertServerHeaderTransformation(transformation string) hcm.HttpConnectionManager_ServerHeaderTransformation {
+	switch transformation {
+	case commonconstants.APPEND_IF_ABSENT:
+		return hcm.HttpConnectionManager_APPEND_IF_ABSENT
+	case commonconstants.OVERWRITE:
+		return hcm.HttpConnectionManager_OVERWRITE
+	case commonconstants.PASS_THROUGH:
+		return hcm.HttpConnectionManager_PASS_THROUGH
+	default:
+		// Default to OVERWRITE if unknown value
+		return hcm.HttpConnectionManager_OVERWRITE
 	}
 }
 
@@ -143,7 +160,7 @@ func (t *Translator) TranslateConfigs(
 	// Create a logger with correlation ID if provided
 	log := t.logger
 	if correlationID != "" {
-		log = t.logger.With(zap.String("correlation_id", correlationID))
+		log = t.logger.With(slog.String("correlation_id", correlationID))
 	}
 	resources := make(map[resource.Type][]types.Resource)
 
@@ -167,18 +184,18 @@ func (t *Translator) TranslateConfigs(
 			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg)
 			if err != nil {
 				log.Error("Failed to translate config",
-					zap.String("id", cfg.ID),
-					zap.String("displayName", cfg.GetDisplayName()),
-					zap.Error(err))
+					slog.String("id", cfg.ID),
+					slog.String("displayName", cfg.GetDisplayName()),
+					slog.Any("error", err))
 				continue
 			}
 		} else {
 			routesList, clusterList, err = t.translateAPIConfig(cfg)
 			if err != nil {
 				log.Error("Failed to translate config",
-					zap.String("id", cfg.ID),
-					zap.String("displayName", cfg.GetDisplayName()),
-					zap.Error(err))
+					slog.String("id", cfg.ID),
+					slog.String("displayName", cfg.GetDisplayName()),
+					slog.Any("error", err))
 				continue
 			}
 		}
@@ -229,27 +246,40 @@ func (t *Translator) TranslateConfigs(
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
 
+	// Variable to hold the shared route configuration (created once, used by both listeners)
+	var sharedRouteConfig *route.RouteConfiguration
+
 	// Always create the HTTP listener, even with no APIs deployed
-	httpListener, err := t.createListener(virtualHosts, false)
+	httpListener, routeConfig, err := t.createListener(virtualHosts, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP listener: %w", err)
 	}
 	listeners = append(listeners, httpListener)
+	sharedRouteConfig = routeConfig // Save route config for RDS
 
 	// Create HTTPS listener if enabled
 	if t.routerConfig.HTTPSEnabled {
 		log.Info("HTTPS is enabled, creating HTTPS listener",
-			zap.Int("https_port", t.routerConfig.HTTPSPort))
-		httpsListener, err := t.createListener(virtualHosts, true)
+			slog.Int("https_port", t.routerConfig.HTTPSPort))
+		httpsListener, _, err := t.createListener(virtualHosts, true)
 		if err != nil {
-			log.Error("Failed to create HTTPS listener", zap.Error(err))
+			log.Error("Failed to create HTTPS listener", slog.Any("error", err))
 			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
 		}
 		log.Info("HTTPS listener created successfully",
-			zap.String("listener_name", httpsListener.GetName()))
+			slog.String("listener_name", httpsListener.GetName()))
 		listeners = append(listeners, httpsListener)
 	} else {
 		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
+	}
+
+	// Add route configuration for RDS
+	var routes []types.Resource
+	if sharedRouteConfig != nil {
+		routes = append(routes, sharedRouteConfig)
+		log.Info("Added shared route configuration for RDS",
+			slog.String("route_config_name", sharedRouteConfig.GetName()),
+			slog.Int("num_virtual_hosts", len(sharedRouteConfig.GetVirtualHosts())))
 	}
 
 	// Add all clusters
@@ -264,7 +294,7 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	// Add ALS cluster if gRPC access log is enabled
-	t.logger.Sugar().Debugf("gRPC access log config: %+v", t.config.Analytics.GRPCAccessLogCfg)
+	t.logger.Debug("gRPC access log config", slog.Any("config", t.config.Analytics.GRPCAccessLogCfg))
 	if t.config.Analytics.Enabled {
 		log.Info("gRPC access log is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
@@ -321,19 +351,21 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	resources[resource.ListenerType] = listeners
-	// Don't add empty routes - we use inline route configs in listeners
-	// resources[resource.RouteType] = routes
+	// Add route configuration for RDS (Route Discovery Service)
+	// This allows sharing route config between HTTP and HTTPS listeners
+	resources[resource.RouteType] = routes
 	resources[resource.ClusterType] = clusters
 
 	log.Info("Translated resources ready for snapshot",
-		zap.Int("num_listeners", len(listeners)),
-		zap.Int("num_clusters", len(clusters)))
+		slog.Int("num_listeners", len(listeners)),
+		slog.Int("num_routes", len(routes)),
+		slog.Int("num_clusters", len(clusters)))
 	for i, l := range listeners {
 		if listenerProto, ok := l.(*listener.Listener); ok {
 			log.Info("Listener details",
-				zap.Int("index", i),
-				zap.String("name", listenerProto.GetName()),
-				zap.Uint32("port", listenerProto.GetAddress().GetSocketAddress().GetPortValue()))
+				slog.Int("index", i),
+				slog.String("name", listenerProto.GetName()),
+				slog.Uint64("port", uint64(listenerProto.GetAddress().GetSocketAddress().GetPortValue())))
 		}
 	}
 
@@ -458,16 +490,20 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 	return clusterName, parsedURL, nil
 }
 
+// SharedRouteConfigName is the name of the shared route configuration used by both HTTP and HTTPS listeners
+const SharedRouteConfigName = "shared_route_config"
+
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
-func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, error) {
+// Uses RDS (Route Discovery Service) to share route configuration between listeners
+func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, *route.RouteConfiguration, error) {
 	routeConfig := t.createRouteConfiguration(virtualHosts)
 
 	// Create router filter with typed config
 	routerConfig := &router.Router{}
 	routerAny, err := anypb.New(routerConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create router config: %w", err)
+		return nil, nil, fmt.Errorf("failed to create router config: %w", err)
 	}
 
 	// Build HTTP filters chain
@@ -477,7 +513,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if t.routerConfig.PolicyEngine.Enabled {
 		extProcFilter, err := t.createExtProcFilter()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
+			return nil, nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
 		}
 		httpFilters = append(httpFilters, extProcFilter)
 	}
@@ -490,22 +526,35 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		},
 	})
 
-	// Create HTTP connection manager
+	// Create HTTP connection manager with RDS (Route Discovery Service)
+	// This allows route configuration to be shared between HTTP and HTTPS listeners
 	manager := &hcm.HttpConnectionManager{
 		CodecType:         hcm.HttpConnectionManager_AUTO,
 		StatPrefix:        "http",
 		GenerateRequestId: wrapperspb.Bool(true),
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
-			RouteConfig: routeConfig,
+		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
+			Rds: &hcm.Rds{
+				ConfigSource: &core.ConfigSource{
+					ResourceApiVersion: core.ApiVersion_V3,
+					ConfigSourceSpecifier: &core.ConfigSource_Ads{
+						Ads: &core.AggregatedConfigSource{},
+					},
+					// No timeout - wait indefinitely for route config
+					InitialFetchTimeout: durationpb.New(0),
+				},
+				RouteConfigName: SharedRouteConfigName,
+			},
 		},
-		HttpFilters: httpFilters,
+		HttpFilters:                httpFilters,
+		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
+		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
 	}
 
 	// Add access logs if enabled
 	if t.routerConfig.AccessLogs.Enabled {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create access log config: %w", err)
+			return nil, nil, fmt.Errorf("failed to create access log config: %w", err)
 		}
 		manager.AccessLog = accessLogs
 	}
@@ -513,7 +562,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	// Add tracing if enabled
 	tracingConfig, err := t.createTracingConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tracing config: %w", err)
+		return nil, nil, fmt.Errorf("failed to create tracing config: %w", err)
 	}
 	if tracingConfig != nil {
 		manager.Tracing = tracingConfig
@@ -521,7 +570,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 
 	pbst, err := anypb.New(manager)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Determine listener name and port based on protocol
@@ -549,12 +598,12 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	if isHTTPS {
 		tlsContext, err := t.createDownstreamTLSContext()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+			return nil, nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
 		}
 
 		tlsContextAny, err := anypb.New(tlsContext)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+			return nil, nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
 		}
 
 		filterChain.TransportSocket = &core.TransportSocket{
@@ -579,7 +628,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			},
 		},
 		FilterChains: []*listener.FilterChain{filterChain},
-	}, nil
+	}, routeConfig, nil
 }
 
 func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
@@ -620,6 +669,8 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
 			},
 		},
+		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
+		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
 	}
 
 	// Attach access logs if enabled
@@ -735,6 +786,8 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
 			},
 		},
+		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
+		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
 	}
 
 	// Attach access logs if enabled
@@ -777,9 +830,10 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 }
 
 // createRouteConfiguration creates a route configuration
+// Uses SharedRouteConfigName so it can be discovered via RDS
 func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost) *route.RouteConfiguration {
 	return &route.RouteConfiguration{
-		Name:         "local_route",
+		Name:         SharedRouteConfigName,
 		VirtualHosts: virtualHosts,
 	}
 }
@@ -868,7 +922,6 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	}
 
 	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
-	// TODO: (renuka) Include API ID as well
 	metaMap := map[string]interface{}{
 		"route_name":  routeName,
 		"api_id":      apiId,
@@ -1091,7 +1144,7 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 		// Create transport socket
 		tlsAny, err := anypb.New(tlsContext)
 		if err != nil {
-			t.logger.Error("Failed to marshal TLS context for policy engine cluster", zap.Error(err))
+			t.logger.Error("Failed to marshal TLS context for policy engine cluster", slog.Any("error", err))
 		} else {
 			c.TransportSocket = &core.TransportSocket{
 				Name: wellknown.TransportSocketTls,
@@ -1167,7 +1220,7 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 		portStr := otelEndpoint[colonIdx+1:]
 		if parsedPort, err := strconv.ParseUint(portStr, 10, 16); err != nil {
 			t.logger.Warn("Invalid OTEL collector port, using default 4317",
-				zap.String("endpoint", otelEndpoint))
+				slog.String("endpoint", otelEndpoint))
 			port = 4317
 		} else {
 			port = uint32(parsedPort)
@@ -1216,8 +1269,8 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 	}
 
 	t.logger.Info("Created OTEL collector cluster",
-		zap.String("cluster_name", OTELCollectorClusterName),
-		zap.String("endpoint", otelEndpoint))
+		slog.String("cluster_name", OTELCollectorClusterName),
+		slog.String("endpoint", otelEndpoint))
 
 	return c
 }
@@ -1343,8 +1396,8 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 				},
 			}
 			t.logger.Debug("Using SDS for upstream TLS certificates",
-				zap.String("upstream", address),
-				zap.String("secret_name", SecretNameUpstreamCA))
+				slog.String("upstream", address),
+				slog.String("secret_name", SecretNameUpstreamCA))
 		} else if len(certificate) > 0 {
 			// Use per-upstream certificate if provided
 			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
@@ -1531,7 +1584,7 @@ func (t *Translator) processEndpoint(
 		upstreamtlsContext := t.createUpstreamTLSContext(epCert, upstreamURL.Hostname())
 		marshalledTLSContext, err := anypb.New(upstreamtlsContext)
 		if err != nil {
-			t.logger.Error("internal Error while marshalling the upstream TLS Context", zap.Error(err))
+			t.logger.Error("internal Error while marshalling the upstream TLS Context", slog.Any("error", err))
 			return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
 		}
 
@@ -1582,7 +1635,7 @@ func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
 	}
 	clusterTypeAny, err := anypb.New(clusterConfig)
 	if err != nil {
-		t.logger.Error("Failed to marshal dynamic forward proxy cluster config", zap.Error(err))
+		t.logger.Error("Failed to marshal dynamic forward proxy cluster config", slog.Any("error", err))
 		return nil
 	}
 
@@ -1707,7 +1760,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		grpcAccessLog, err := t.createGRPCAccessLog()
 		if err != nil {
 			t.logger.Warn("Failed to create gRPC access log config, continuing without it",
-				zap.Error(err))
+				slog.Any("error", err))
 		} else {
 			accessLogs = append(accessLogs, grpcAccessLog)
 		}
@@ -1803,9 +1856,9 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 	}
 
 	t.logger.Info("Tracing configuration created",
-		zap.String("service_name", serviceName),
-		zap.Float64("sampling_rate", samplingRate),
-		zap.String("collector_cluster", OTELCollectorClusterName))
+		slog.String("service_name", serviceName),
+		slog.Float64("sampling_rate", samplingRate),
+		slog.String("collector_cluster", OTELCollectorClusterName))
 
 	return tracingConfig, nil
 }

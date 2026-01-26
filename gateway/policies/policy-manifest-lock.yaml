@@ -4,6 +4,9 @@ policies:
   - name: advanced-ratelimit
     version: v0.1.0
     filePath: ./advanced-ratelimit/v0.1.0
+  - name: analytics-header-filter
+    version: v0.1.0
+    filePath: ./analytics-header-filter/v0.1.0
   - name: api-key-auth
     version: v0.1.0
     filePath: ./api-key-auth/v0.1.0
@@ -34,6 +37,9 @@ policies:
   - name: mcp-auth
     version: v0.1.0
     filePath: ./mcp-auth/v0.1.0
+  - name: mcp-authz
+    version: v0.1.0
+    filePath: ./mcp-authz/v0.1.0
   - name: model-round-robin
     version: v0.1.0
     filePath: ./model-round-robin/v0.1.0
@@ -73,3 +79,30 @@ policies:
   - name: word-count-guardrail
     version: v0.1.0
     filePath: ./word-count-guardrail/v0.1.0
+  - name: add-query-parameter
+    version: v0.1.0
+    filePath: ./add-query-parameter/v0.1.0
+  - name: remove-query-parameter
+    version: v0.1.0
+    filePath: ./remove-query-parameter/v0.1.0
+  - name: rewrite-resource-path
+    version: v0.1.0
+    filePath: ./rewrite-resource-path/v0.1.0
+  - name: json-to-xml
+    version: v0.1.0
+    filePath: ./json-to-xml/v0.1.0
+  - name: xml-to-json
+    version: v0.1.0
+    filePath: ./xml-to-json/v0.1.0
+  - name: log-message
+    version: v0.1.0
+    filePath: ./log-message/v0.1.0
+  - name: add-headers
+    version: v0.1.0
+    filePath: ./add-headers/v0.1.0
+  - name: remove-headers
+    version: v0.1.0
+    filePath: ./remove-headers/v0.1.0
+  - name: set-headers
+    version: v0.1.0
+    filePath: ./set-headers/v0.1.0

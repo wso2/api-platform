@@ -31,7 +31,7 @@ func ApplyGatewayInfrastructure(
 	ctx context.Context,
 	client client.Client,
 	scheme *runtime.Scheme,
-	gatewayConfig *apiv1.Gateway,
+	gatewayConfig *apiv1.APIGateway,
 	templatePath string,
 ) error {
 	// Create template data from the Gateway spec
@@ -134,7 +134,7 @@ func ApplyGatewayInfrastructure(
 // Example usage in reconciler:
 //
 // func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-//     gatewayConfig := &apiv1.Gateway{}
+//     gatewayConfig := &apiv1.APIGateway{}
 //     if err := r.Get(ctx, req.NamespacedName, gatewayConfig); err != nil {
 //         return ctrl.Result{}, client.IgnoreNotFound(err)
 //     }
