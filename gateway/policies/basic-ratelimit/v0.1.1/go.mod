@@ -3,8 +3,8 @@ module github.com/policy-engine/policies/basic-ratelimit
 go 1.25.1
 
 require (
-	github.com/policy-engine/policies/advanced-ratelimit v0.1.0
-	github.com/wso2/api-platform/sdk v0.3.1
+	github.com/policy-engine/policies/advanced-ratelimit v0.1.1
+	github.com/wso2/api-platform/sdk v0.3.7
 )
 
 require (
@@ -15,13 +15,15 @@ require (
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/redis/go-redis/v9 v9.17.2 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251213004720-97cd9d5aeac2 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
 replace (
-	github.com/policy-engine/policies/advanced-ratelimit => ../../advanced-ratelimit/v0.1.0
+	github.com/policy-engine/policies/advanced-ratelimit => ../../advanced-ratelimit/v0.1.1
 	github.com/wso2/api-platform/sdk => ../../../../sdk
 )

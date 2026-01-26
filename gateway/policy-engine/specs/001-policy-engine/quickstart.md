@@ -26,15 +26,12 @@ cat > policy-manifest.yaml <<EOF
 version: v1
 policies:
   - name: SetHeader
-    version: v1.0.0
     filePath: ./policies/set-header/v1.0.0
 
   - name: JWTValidation
-    version: v1.0.0
     filePath: ./policies/jwt-validation/v1.0.0
 
   - name: ApiKeyValidation
-    version: v1.0.0
     filePath: ./policies/api-key-validation/v1.0.0
 EOF
 ```
@@ -161,17 +158,19 @@ The `policy-manifest.yaml` manifest is the source of truth for which policies to
 
 - **Explicit declaration**: No directory scanning - you explicitly list what to include
 - **Flexible directory structure**: URIs can point anywhere - no naming conventions required
-- **Version control**: Centralized view of all policy versions
+- **Version resolution**: The Builder extracts policy versions from the policy definition
 - **Validation**: Builder validates manifest entries match actual policy definitions
 
 **Manifest Structure**:
 ```yaml
-version: v1              # Manifest schema version
+version: v1              # Manifest schema version (required)
 policies:
-  - name: PolicyName     # Must match name in policy.yaml at filePath
-    version: v1.0.0      # Must match version in policy.yaml at filePath
+  - name: PolicyName     # Must match name in policy-definition.yaml at filePath
     filePath: ./path/to/policy # Relative or absolute path to policy directory
+  - name: SomeOtherPolicy
+    gomodule: github.com/org/repo/policies/some@v0.1.0 # hub-based policy
 ```
+
 
 ## Building Policy Engine with Custom Policies
 

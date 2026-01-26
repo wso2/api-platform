@@ -54,7 +54,6 @@ func init() {
 	GatewayCmd.AddCommand(currentCmd)
 	GatewayCmd.AddCommand(healthCmd)
 	GatewayCmd.AddCommand(applyCmd)
-	GatewayCmd.AddCommand(buildCmd)
 	GatewayCmd.AddCommand(image.ImageCmd)
 	GatewayCmd.AddCommand(api.APICmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)

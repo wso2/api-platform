@@ -32,7 +32,7 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 		return []ProcessedPolicy{}, nil
 	}
 
-	fmt.Printf("→ Processing %d local policies...\n", len(localPolicies))
+	fmt.Printf("  → Processing %d local policies...\n", len(localPolicies))
 
 	var processed []ProcessedPolicy
 
@@ -41,7 +41,7 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 		// each iteration instead of at function exit (avoids accumulating
 		// temporary zip files when processing many policies).
 		err := func() error {
-			fmt.Printf("  %s %s: ", policy.Name, policy.Version)
+			fmt.Printf("  %s: ", policy.Name)
 
 			// Resolve the file path (can be relative or absolute)
 			policyPath := policy.FilePath
@@ -63,38 +63,22 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 				return fmt.Errorf("failed to stat policy path %s: %w", policy.FilePath, err)
 			}
 
-			var zipPath string
-
-			// Only accept zip files for local policies. Directory inputs are
-			// not supported to avoid ambiguous lifecycle of temporary archives.
-			if info.IsDir() {
-				return fmt.Errorf("local policy '%s' is a directory; only zip files are supported for local policies", policy.FilePath)
+			// Local policies must be directories containing policy-definition.yaml
+			if !info.IsDir() {
+				return fmt.Errorf("local policy '%s' must be a directory containing policy-definition.yaml; zip files are not supported", policy.FilePath)
 			}
 
-			// It's a file: ensure it's a zip and validate structure
-			zipPath = policyPath
-			fmt.Printf("using zip, ")
+			policyDir := policyPath
+			fmt.Printf("using dir, ")
 
-			// Validate zip structure and ensure YAML matches the manifest
-			err = utils.ValidateLocalPolicyZip(zipPath, policy.Name, policy.Version)
-			if err != nil {
-				return fmt.Errorf("policy %s: validation failed: %w\n\nLocal policies must:\n  1. Be a .zip file\n  2. Contain a policy-definition.yaml at the root\n  3. Have 'name' and 'version' in the definition matching the manifest", policy.Name, err)
+			if err := utils.ValidateLocalPolicyDir(policyDir, policy.Name); err != nil {
+				return fmt.Errorf("policy %s: validation failed: %w\n\nLocal policies must:\n  1. Be a directory containing policy-definition.yaml at the root\n  2. Have 'name' that matches the manifest", policy.Name, err)
 			}
-
-			// Calculate checksum
-			checksum, err := utils.CalculateSHA256(zipPath)
-			if err != nil {
-				return fmt.Errorf("failed to calculate checksum for %s: %w", policy.Name, err)
-			}
-
-			fmt.Printf("checksum: %s\n", checksum[:20]+"...")
 
 			processed = append(processed, ProcessedPolicy{
 				Name:      policy.Name,
-				Version:   policy.Version,
-				Checksum:  checksum,
 				Source:    "local",
-				LocalPath: zipPath,
+				LocalPath: policyDir,
 				IsLocal:   true,
 				FilePath:  policy.FilePath,
 			})
