@@ -249,6 +249,7 @@ CREATE TABLE IF NOT EXISTS api_deployments (
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (base_deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE SET NULL,
     CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
 );
 
