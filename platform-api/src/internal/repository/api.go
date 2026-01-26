@@ -997,9 +997,8 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 
 	var baseDeploymentID interface{}
 	baseDeploymentID = *deployment.BaseDeploymentID
-
 	var metadataJSON string
-	if deployment.Metadata != nil {
+	if len(deployment.Metadata) > 0 {
 		metadataBytes, err := json.Marshal(deployment.Metadata)
 		if err != nil {
 			return fmt.Errorf("failed to marshal deployment metadata: %w", err)
