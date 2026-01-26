@@ -1,0 +1,23 @@
+name: prompt-template
+version: v0.1.0
+description: |
+  Dynamically modifies the prompt by applying custom templates using a configured strategy.
+  Only processes request body.
+
+parameters:
+  type: object
+  properties:
+    promptTemplateConfig:
+      type: string
+      description: |
+        The configuration that defines one or more prompt templates to be used during request mediation.
+        Each template includes a unique name and a corresponding formatted prompt.
+        JSON string with array of template objects containing name and prompt.
+        Example: [{"name": "template1", "prompt": "Translate from [[from]] to [[to]]: [[text]]"}]
+      minLength: 1
+  required:
+    - promptTemplateConfig
+
+systemParameters:
+  type: object
+  properties: {}

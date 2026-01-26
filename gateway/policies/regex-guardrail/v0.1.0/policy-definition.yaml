@@ -1,0 +1,73 @@
+name: regex-guardrail
+version: v0.1.0
+description: |
+  Validates request or response body content against a regular expression pattern.
+  Supports JSONPath extraction to validate specific fields within JSON payloads.
+  Can be configured to match or invert the regex pattern.
+  Supports separate configuration for request and response phases.
+
+parameters:
+  type: object
+  properties:
+    request:
+      type: object
+      description: Configuration for request phase validation
+      properties:
+        regex:
+          type: string
+          description: Regular expression pattern to match against the content
+          minLength: 1
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        invert:
+          type: boolean
+          description: |
+            If true, validation passes when regex does NOT match (inverted logic).
+            If false (default), validation passes when regex matches.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - regex
+    response:
+      type: object
+      description: Configuration for response phase validation
+      properties:
+        regex:
+          type: string
+          description: Regular expression pattern to match against the content
+          minLength: 1
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        invert:
+          type: boolean
+          description: |
+            If true, validation passes when regex does NOT match (inverted logic).
+            If false (default), validation passes when regex matches.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - regex
+
+systemParameters:
+  type: object
+  properties: {}

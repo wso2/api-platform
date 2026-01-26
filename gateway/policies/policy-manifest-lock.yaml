@@ -1,0 +1,108 @@
+version: v1
+
+policies:
+  - name: advanced-ratelimit
+    version: v0.1.1
+    filePath: ./advanced-ratelimit/v0.1.1
+  - name: analytics-header-filter
+    version: v0.1.0
+    filePath: ./analytics-header-filter/v0.1.0
+  - name: api-key-auth
+    version: v0.1.0
+    filePath: ./api-key-auth/v0.1.0
+  - name: aws-bedrock-guardrail
+    version: v0.1.0
+    filePath: ./aws-bedrock-guardrail/v0.1.0
+  - name: azure-content-safety-content-moderation
+    version: v0.1.0
+    filePath: ./azure-content-safety-content-moderation/v0.1.0
+  - name: basic-auth
+    version: v0.1.0
+    filePath: ./basic-auth/v0.1.0
+  - name: basic-ratelimit
+    version: v0.1.1
+    filePath: ./basic-ratelimit/v0.1.1
+  - name: content-length-guardrail
+    version: v0.1.0
+    filePath: ./content-length-guardrail/v0.1.0
+  - name: cors
+    version: v0.1.0
+    filePath: ./cors/v0.1.0
+  - name: json-schema-guardrail
+    version: v0.1.0
+    filePath: ./json-schema-guardrail/v0.1.0
+  - name: jwt-auth
+    version: v0.1.1
+    filePath: ./jwt-auth/v0.1.1
+  - name: mcp-auth
+    version: v0.1.0
+    filePath: ./mcp-auth/v0.1.0
+  - name: mcp-authz
+    version: v0.1.0
+    filePath: ./mcp-authz/v0.1.0
+  - name: model-round-robin
+    version: v0.1.0
+    filePath: ./model-round-robin/v0.1.0
+  - name: model-weighted-round-robin
+    version: v0.1.0
+    filePath: ./model-weighted-round-robin/v0.1.0
+  - name: modify-headers
+    version: v0.1.0
+    filePath: ./modify-headers/v0.1.0
+  - name: pii-masking-regex
+    version: v0.1.0
+    filePath: ./pii-masking-regex/v0.1.0
+  - name: prompt-decorator
+    version: v0.1.0
+    filePath: ./prompt-decorator/v0.1.0
+  - name: prompt-template
+    version: v0.1.0
+    filePath: ./prompt-template/v0.1.0
+  - name: regex-guardrail
+    version: v0.1.0
+    filePath: ./regex-guardrail/v0.1.0
+  - name: respond
+    version: v0.1.0
+    filePath: ./respond/v0.1.0
+  - name: semantic-cache
+    version: v0.1.0
+    filePath: ./semantic-cache/v0.1.0
+  - name: semantic-prompt-guard
+    version: v0.1.0
+    filePath: ./semantic-prompt-guard/v0.1.0
+  - name: sentence-count-guardrail
+    version: v0.1.0
+    filePath: ./sentence-count-guardrail/v0.1.0
+  - name: url-guardrail
+    version: v0.1.0
+    filePath: ./url-guardrail/v0.1.0
+  - name: word-count-guardrail
+    version: v0.1.0
+    filePath: ./word-count-guardrail/v0.1.0
+  - name: add-query-parameter
+    version: v0.1.0
+    filePath: ./add-query-parameter/v0.1.0
+  - name: remove-query-parameter
+    version: v0.1.0
+    filePath: ./remove-query-parameter/v0.1.0
+  - name: rewrite-resource-path
+    version: v0.1.0
+    filePath: ./rewrite-resource-path/v0.1.0
+  - name: json-to-xml
+    version: v0.1.0
+    filePath: ./json-to-xml/v0.1.0
+  - name: xml-to-json
+    version: v0.1.0
+    filePath: ./xml-to-json/v0.1.0
+  - name: log-message
+    version: v0.1.0
+    filePath: ./log-message/v0.1.0
+  - name: add-headers
+    version: v0.1.0
+    filePath: ./add-headers/v0.1.0
+  - name: remove-headers
+    version: v0.1.0
+    filePath: ./remove-headers/v0.1.0
+  - name: set-headers
+    version: v0.1.0
+    filePath: ./set-headers/v0.1.0

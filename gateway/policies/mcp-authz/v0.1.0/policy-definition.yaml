@@ -1,0 +1,118 @@
+name: mcp-authz
+version: v0.1.0
+description: |
+  MCP Authorization policy validates access to MCP resources (tools, resources, prompts) 
+  and methods based on JWT claims or OAuth scopes provided by the mcp-auth policy.
+  
+  This policy enforces fine-grained authorization by checking that incoming JWT claims 
+  or scopes satisfy the access requirements for specific MCP attributes. The mcp-auth 
+  policy must be applied before this policy to validate and extract claims from the token.
+  
+  Rules are evaluated in order of specificity (most specific attribute names first). 
+  All matching rules must be satisfied for access to be granted (AND logic). If multiple 
+  rules match the requested MCP attribute, ALL of their conditions must be met for 
+  authorization to succeed. This allows combining specific and wildcard rules to build 
+  layered authorization policies. If no rules are configured or no rule matches the 
+  requested attribute, access is allowed.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    rules:
+      type: array
+      description: |
+        Array of authorization rules defining access to MCP resources.
+        Each rule specifies:
+        - An MCP attribute (with type: tool, resource, prompt, or method, and optional name)
+        - Required claims or scopes that must be satisfied for access
+        
+        Rules are evaluated in specificity order: rules with exact attribute names are checked 
+        before wildcard rules. ALL matching rules must have their conditions satisfied (AND logic).
+        This means if both a specific rule and a wildcard rule match, both must grant access.
+        
+        Example scenario:
+        - Rule 1 (specific): tool="get_weather" requires scope "mcp:tools:invoke"
+        - Rule 2 (wildcard): tool="*" requires claim "role=admin"
+        - Result: To access "get_weather", token must have BOTH "mcp:tools:invoke" scope AND "role=admin" claim
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - attribute
+        properties:
+          attribute:
+            type: object
+            description: |
+              MCP resource attribute to authorize access to. Specifies the attribute type and name.
+            additionalProperties: false
+            required:
+              - type
+            properties:
+              type:
+                type: string
+                enum:
+                  - tool
+                  - resource
+                  - prompt
+                  - method
+                description: |
+                  The type of MCP resource attribute.
+                  
+                  - "tool": Authorize access to MCP tools
+                  - "resource": Authorize access to MCP resources
+                  - "prompt": Authorize access to MCP prompts
+                  - "method": Authorize access to MCP JSON-RPC methods (currently only methods under tools/resources/prompts are evaluated)
+
+              name:
+                type: string
+                description: |
+                  Name of the attribute to authorize access to. Use "*" to apply rule to all 
+                  attributes of the specified type.
+                  
+                  Examples for tool: "get_weather", "send_email", "*"
+                  Examples for resource: "file://documents", "db://users", "*"
+                  Examples for prompt: "summarize", "analyze", "*"
+                  Examples for method: "tools/call", "resources/list", "prompts/get", "*"
+                minLength: 1
+                maxLength: 256
+
+          requiredClaims:
+            type: object
+            description: |
+              Map of JWT claim names to expected values. All specified claims must be present 
+              in the token and match their expected values for the rule to grant access.
+              
+              Claim names must be top-level keys in the JWT (e.g., "sub", "role").
+              Matching is performed as exact string equality.
+              
+              If both requiredClaims and requiredScopes are specified, BOTH must be satisfied 
+              (AND logic). If only one is specified, only that condition is checked.
+              
+              Examples:
+                "sub": "user@example.com" - specific subject
+                "role": "admin" - role claim
+            additionalProperties:
+              type: string
+
+          requiredScopes:
+            type: array
+            description: |
+              List of OAuth scopes that must be present in the token for access.
+              
+              All scopes from this list must be present in the token's "scope" claim 
+              (space-delimited string) or "scp" claim (array). Matching is exact; 
+              each required scope must appear in the token's scope list.
+              
+              If both requiredScopes and requiredClaims are specified, BOTH must be satisfied 
+              (AND logic).
+              
+              Examples:
+                ["mcp:tools:invoke"] - invoke tools
+                ["mcp:resources:read", "mcp:resources:write"]
+                ["mcp:prompts:read"] - read prompts
+            items:
+              type: string
+              minLength: 1
+              maxLength: 256
+      minItems: 1

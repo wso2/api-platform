@@ -1,0 +1,47 @@
+name: api-key-auth
+version: v0.1.0
+description: |
+  Implements API Key Authentication to protect APIs with pre-shared API keys.
+  Validates API keys from request headers or query parameters against a configured
+  list of valid keys and sets authentication metadata in the request context.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    key:
+      type: string
+      description: |
+        The name of the header or query parameter that contains the API key.
+        For headers: case-insensitive matching is used (e.g., "X-API-Key", "Authorization")
+        For query parameters: exact name matching is used (e.g., "api_key", "token")
+      validation:
+        minLength: 1
+        maxLength: 128
+
+    in:
+      type: string
+      description: |
+        Specifies where to look for the API key.
+        Must be either "header" or "query".
+      enum:
+        - "header"
+        - "query"
+
+    value-prefix:
+      type: string
+      description: |
+        Optional prefix that should be stripped from the API key value before validation.
+        Case-insensitive matching and removal. Common use case is "Bearer " for Authorization headers.
+        If specified, the prefix will be removed from the extracted value.
+      validation:
+        minLength: 1
+        maxLength: 64
+
+  required:
+    - key
+    - in
+
+systemParameters:
+  type: object
+  properties: {}
