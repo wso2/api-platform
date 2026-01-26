@@ -996,7 +996,9 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 	`
 
 	var baseDeploymentID interface{}
-	baseDeploymentID = *deployment.BaseDeploymentID
+	if deployment.BaseDeploymentID != nil {
+		baseDeploymentID = *deployment.BaseDeploymentID
+	}
 	var metadataJSON string
 	if len(deployment.Metadata) > 0 {
 		metadataBytes, err := json.Marshal(deployment.Metadata)
@@ -1396,6 +1398,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 	for rows.Next() {
 		gateway := &model.APIGatewayWithDetails{}
 		var deployedAt sql.NullTime
+		var deploymentId sql.NullString
 
 		err := rows.Scan(
 			&gateway.ID,
@@ -1412,13 +1415,16 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.AssociatedAt,
 			&gateway.AssociationUpdatedAt,
 			&gateway.IsDeployed,
-			&gateway.DeploymentID,
+			&deploymentId,
 			&deployedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
+		if deploymentId.Valid {
+			gateway.DeploymentID = &deploymentId.String
+		}
 		if deployedAt.Valid {
 			gateway.DeployedAt = &deployedAt.Time
 		}
