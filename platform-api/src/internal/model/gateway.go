@@ -90,6 +90,6 @@ type APIGatewayWithDetails struct {
 
 	IsDeployed bool `json:"isDeployed" db:"is_deployed"`
 	// Deployment information (nullable if not deployed)
-	DeploymentId *string    `json:"deploymentId,omitempty" db:"deployment_id"`
+	DeploymentID *string    `json:"deploymentId,omitempty" db:"deployment_id"`
 	DeployedAt   *time.Time `json:"deployedAt,omitempty" db:"deployed_at"`
 }

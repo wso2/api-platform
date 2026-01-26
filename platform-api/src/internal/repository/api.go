@@ -996,11 +996,7 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 	`
 
 	var baseDeploymentID interface{}
-	if deployment.BaseDeploymentID != nil {
-		baseDeploymentID = *deployment.BaseDeploymentID
-	} else {
-		baseDeploymentID = nil
-	}
+	baseDeploymentID = *deployment.BaseDeploymentID
 
 	var metadataJSON string
 	if deployment.Metadata != nil {
@@ -1417,7 +1413,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.AssociatedAt,
 			&gateway.AssociationUpdatedAt,
 			&gateway.IsDeployed,
-			&gateway.DeploymentId,
+			&gateway.DeploymentID,
 			&deployedAt,
 		)
 		if err != nil {

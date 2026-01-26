@@ -98,7 +98,7 @@ type AddGatewayToAPIRequest struct {
 
 // APIDeploymentDetails represents deployment details for an API on a gateway
 type APIDeploymentDetails struct {
-	DeploymentId string    `json:"deploymentId"`
+	DeploymentID string    `json:"deploymentId"`
 	DeployedAt   time.Time `json:"deployedAt"`
 }
 
