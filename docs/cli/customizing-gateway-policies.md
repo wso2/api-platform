@@ -20,7 +20,7 @@ ap gateway image build \
 ## Sample Command
 
 ```shell
-ap gateway build
+ap gateway image build
 ```
 
 ## Additional Notes for Users
