@@ -51,14 +51,14 @@ parameters:
       type: boolean
       description: |
         Specifies the format of user query extraction:
-        - true: Extract user query using JSONPath from jsonPath parameter
+        - true: Extract user query using JSONPath from queryJSONPath parameter
         - false: Extract user query from text using <userq>...</userq> tags
       default: true
     toolsIsJson:
       type: boolean
       description: |
         Specifies the format of tools definition:
-        - true: Extract tools using JSONPath from toolsPath parameter (JSON format)
+        - true: Extract tools using JSONPath from toolsJSONPath parameter (JSON format)
         - false: Extract tools from text using <toolname>...</toolname> and <tooldescription>...</tooldescription> tags
         
         Text format example:
