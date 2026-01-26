@@ -22,6 +22,7 @@ services:
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.1
+    command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
@@ -36,7 +37,7 @@ services:
       - GATEWAY_GATEWAY__CONTROLLER_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
     volumes:
       - controller-data:/app/data
-      - ./configs/config.toml:/app/config/config.toml:ro
+      - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
       - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
     extra_hosts:
@@ -46,7 +47,7 @@ services:
 
   policy-engine:
     image: ghcr.io/wso2/api-platform/policy-engine:0.3.0-SNAPSHOT
-    command: ["-xds-server", "gateway-controller:18001"]
+    command: ["-config", "/etc/policy-engine/config.toml", "-xds-server", "gateway-controller:18001"]
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.2
@@ -56,7 +57,7 @@ services:
     environment:
       - PE_POLICY__ENGINE_METRICS_PORT=9003
     volumes:
-      - ./configs/config.toml:/app/configs/config.toml:ro
+      - ./configs/config.toml:/etc/policy-engine/config.toml:ro
     networks:
       - gateway-network
 

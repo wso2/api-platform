@@ -43,10 +43,21 @@ type Config struct {
 
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled              bool                     `koanf:"enabled"`
+	Enabled              bool                    `koanf:"enabled"`
 	Publishers           []map[string]interface{} `koanf:"publishers"`
-	GRPCAccessLogCfg     GRPCAccessLogConfig      `koanf:"grpc_access_logs"`
-	AccessLogsServiceCfg map[string]interface{}   `koanf:"access_logs_service"`
+	GRPCAccessLogCfg     GRPCAccessLogConfig     `koanf:"grpc_access_logs"`
+	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
+}
+
+// AccessLogsServiceConfig holds the access logs service configuration
+type AccessLogsServiceConfig struct {
+	ALSServerPort   int           `koanf:"als_server_port"`
+	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
+	PublicKeyPath   string        `koanf:"public_key_path"`
+	PrivateKeyPath  string        `koanf:"private_key_path"`
+	ALSPlainText    bool          `koanf:"als_plain_text"`
+	MaxMessageSize  int           `koanf:"max_message_size"`
+	MaxHeaderLimit  int           `koanf:"max_header_limit"`
 }
 
 // GatewayController holds the main configuration sections for the gateway-controller
@@ -544,15 +555,14 @@ func defaultConfig() *Config {
 				BufferSizeBytes:     16384,
 				GRPCRequestTimeout:  20000000000,
 			},
-			AccessLogsServiceCfg: map[string]interface{}{
-				"enabled":          false,
-				"als_server_port":  18090,
-				"shutdown_timeout": 600,
-				"public_key_path":  "",
-				"private_key_path": "",
-				"als_plain_text":   true,
-				"max_message_size": 1000000000,
-				"max_header_limit": 8192,
+			AccessLogsServiceCfg: AccessLogsServiceConfig{
+				ALSServerPort:   18090,
+				ShutdownTimeout: 600 * time.Second,
+				PublicKeyPath:   "",
+				PrivateKeyPath:  "",
+				ALSPlainText:    true,
+				MaxMessageSize:  1000000000,
+				MaxHeaderLimit:  8192,
 			},
 		},
 		TracingConfig: TracingConfig{
@@ -1097,15 +1107,7 @@ func (c *Config) validateAnalyticsConfig() error {
 	if c.Analytics.Enabled {
 		// Validate gRPC access log configuration
 		grpcAccessLogCfg := c.Analytics.GRPCAccessLogCfg
-		var alsServerPort int
-		switch v := c.Analytics.AccessLogsServiceCfg["als_server_port"].(type) {
-		case int:
-			alsServerPort = v
-		case float64:
-			alsServerPort = int(v)
-		default:
-			return fmt.Errorf("analytics.access_logs_service.als_server_port must be an integer between 1 and 65535")
-		}
+		alsServerPort := c.Analytics.AccessLogsServiceCfg.ALSServerPort
 		if alsServerPort <= 0 || alsServerPort > 65535 {
 			return fmt.Errorf("analytics.access_logs_service.als_server_port must be an integer between 1 and 65535, got %d", alsServerPort)
 		}

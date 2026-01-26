@@ -104,12 +104,8 @@ WORKDIR /app
 # Copy compiled binary from policy-compiler stage
 COPY --from=policy-compiler /workspace/output/policy-engine/policy-engine /app/policy-engine
 
-# Copy config files
-COPY configs/ /configs/
-
 # Expose ports
 EXPOSE 9001 9002
 
-# Run the binary
+# Run the binary (config must be provided via command line)
 ENTRYPOINT ["/app/policy-engine"]
-CMD ["-config=/configs/config.toml"]

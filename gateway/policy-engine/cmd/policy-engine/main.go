@@ -53,7 +53,7 @@ var (
 )
 
 var (
-	configFile       = flag.String("config", "configs/config.toml", "Path to configuration file")
+	configFile       = flag.String("config", "", "Path to configuration file (required)")
 	policyChainsFile = flag.String("policy-chains-file", "", "Path to policy chains file (enables file mode)")
 	xdsServerAddr    = flag.String("xds-server", "", "xDS server address (e.g., localhost:18000)")
 	xdsNodeID        = flag.String("xds-node-id", "", "xDS node identifier")
@@ -62,10 +62,17 @@ var (
 func main() {
 	flag.Parse()
 
+	// Validate that config file is provided
+	if *configFile == "" {
+		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml>\n", os.Args[0])
+		os.Exit(1)
+	}
+
 	// Load configuration from file
 	cfg, err := config.Load(*configFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to load configuration from %s: %v\n", *configFile, err)
 		os.Exit(1)
 	}
 

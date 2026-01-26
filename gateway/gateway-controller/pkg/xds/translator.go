@@ -1168,7 +1168,7 @@ func (t *Translator) createALSCluster() *cluster.Cluster {
 				Protocol: core.SocketAddress_TCP,
 				Address:  grpcConfig.Host,
 				PortSpecifier: &core.SocketAddress_PortValue{
-					PortValue: uint32(t.config.Analytics.AccessLogsServiceCfg["als_server_port"].(int)),
+					PortValue: uint32(t.config.Analytics.AccessLogsServiceCfg.ALSServerPort),
 				},
 			},
 		},
