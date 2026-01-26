@@ -34,6 +34,8 @@ const (
 	ansiHideCursor  = "\x1b[?25l" // Hide cursor
 	ansiShowCursor  = "\x1b[?25h" // Show cursor
 	ansiCarriageRet = "\r"        // Return to start of line
+	AnsiGray        = "\x1b[90m"  // Gray text color
+	AnsiReset       = "\x1b[0m"   // Reset text formatting
 )
 
 // Default terminal dimensions when detection fails

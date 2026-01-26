@@ -187,13 +187,13 @@ func (s *ScrollingLogger) redraw() {
 	if len(s.lines) < s.maxLines {
 		// Buffer not full yet - lines are in order
 		for i := 0; i < n; i++ {
-			fmt.Printf("%s%s\n", s.prefix, s.lines[i])
+			fmt.Printf("%s%s%s%s\n", AnsiGray, s.prefix, s.lines[i], AnsiReset)
 		}
 	} else {
 		// Buffer is full - need to read in ring order
 		for i := 0; i < n; i++ {
 			idx := (s.lineIndex + i) % s.maxLines
-			fmt.Printf("%s%s\n", s.prefix, s.lines[idx])
+			fmt.Printf("%s%s%s%s\n", AnsiGray, s.prefix, s.lines[idx], AnsiReset)
 		}
 	}
 
@@ -214,4 +214,16 @@ func (s *ScrollingLogger) IsActive() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.active
+}
+
+// ClearDisplay clears the currently displayed scrolling lines from the terminal.
+// This is useful to clean up before printing final status messages.
+func (s *ScrollingLogger) ClearDisplay() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.displayedN > 0 {
+		s.terminal.ClearLines(s.displayedN)
+		s.displayedN = 0
+	}
 }

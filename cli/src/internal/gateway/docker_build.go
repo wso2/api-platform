@@ -122,6 +122,9 @@ func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker command failed: %w", err)
 	}
+
+	// Clear the scrolled logs before returning success
+	scroller.ClearDisplay()
 	return nil
 }
 
@@ -159,6 +162,9 @@ func buildWithBuildx(config DockerBuildConfig, components []string, logFile *os.
 		if err != nil {
 			return fmt.Errorf("failed to build %s: %w\n\nCheck logs at: %s", component, err, config.LogFilePath)
 		}
+
+		// Clear the scrolled logs before printing success message
+		scroller.ClearDisplay()
 		fmt.Printf("    ✓ Built and pushed %s\n", imageTag)
 	}
 
@@ -199,6 +205,9 @@ func buildWithDocker(config DockerBuildConfig, components []string, logFile *os.
 		if err != nil {
 			return fmt.Errorf("failed to build %s: %w\n\nCheck logs at: %s", component, err, config.LogFilePath)
 		}
+
+		// Clear the scrolled logs before printing success message
+		scroller.ClearDisplay()
 		fmt.Printf("    ✓ Built %s\n", imageTag)
 	}
 
@@ -230,6 +239,9 @@ func pushImages(config DockerBuildConfig, components []string, logFile *os.File)
 		if err != nil {
 			return fmt.Errorf("failed to push %s: %w\n\nCheck logs at: %s", component, err, config.LogFilePath)
 		}
+
+		// Clear the scrolled logs before printing success message
+		scroller.ClearDisplay()
 		fmt.Printf("    ✓ Pushed %s\n", imageTag)
 	}
 
