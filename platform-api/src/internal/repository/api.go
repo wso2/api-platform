@@ -1120,7 +1120,7 @@ func (r *APIRepo) GetDeploymentByID(deploymentID, apiID, orgID string) (*model.A
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, constants.ErrDeploymentNotFound
 		}
 		return nil, err
 	}
