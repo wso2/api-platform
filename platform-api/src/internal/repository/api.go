@@ -1114,7 +1114,7 @@ func (r *APIRepo) GetDeploymentByID(deploymentID, apiID, orgID string) (*model.A
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
 
-	err := r.db.QueryRow(query, deploymentID, apiID, orgID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, apiID, orgID).Scan(
 		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
 		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
 
@@ -1147,7 +1147,7 @@ func (r *APIRepo) GetDeploymentContent(deploymentID, apiID, orgID string) ([]byt
 
 	query := `SELECT content FROM api_deployments WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?`
 
-	err := r.db.QueryRow(query, deploymentID, apiID, orgID).Scan(&content)
+	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, apiID, orgID).Scan(&content)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, constants.ErrDeploymentNotFound
@@ -1166,7 +1166,7 @@ func (r *APIRepo) UpdateDeploymentStatus(deploymentID, apiID, status, orgID stri
 		WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?
 	`
 
-	result, err := r.db.Exec(query, status, deploymentID, apiID, orgID)
+	result, err := r.db.Exec(r.db.Rebind(query), status, deploymentID, apiID, orgID)
 	if err != nil {
 		return err
 	}
@@ -1187,7 +1187,7 @@ func (r *APIRepo) UpdateDeploymentStatus(deploymentID, apiID, status, orgID stri
 func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 	query := `DELETE FROM api_deployments WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?`
 
-	result, err := r.db.Exec(query, deploymentID, apiID, orgID)
+	result, err := r.db.Exec(r.db.Rebind(query), deploymentID, apiID, orgID)
 	if err != nil {
 		return err
 	}
@@ -1218,7 +1218,7 @@ func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string)
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
 
-	err := r.db.QueryRow(query, apiUUID, gatewayID, orgID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgID).Scan(
 		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
 		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
 
@@ -1260,7 +1260,7 @@ func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gateway
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
 
-	err := r.db.QueryRow(query, apiUUID, gatewayID, orgUUID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
 		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
 
@@ -1459,11 +1459,12 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 // CountDeploymentsByAPIAndGateway returns the number of deployments for a specific API-Gateway combination
 func (r *APIRepo) CountDeploymentsByAPIAndGateway(apiID, gatewayID, orgID string) (int, error) {
 	var count int
-	err := r.db.QueryRow(`
+	query := `
 		SELECT COUNT(*)
 		FROM api_deployments
 		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
-	`, apiID, gatewayID, orgID).Scan(&count)
+	`
+	err := r.db.QueryRow(r.db.Rebind(query), apiID, gatewayID, orgID).Scan(&count)
 
 	if err != nil {
 		return 0, err
