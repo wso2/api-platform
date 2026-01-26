@@ -985,6 +985,9 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 	if deployment.DeploymentID == "" {
 		deployment.DeploymentID = uuid.New().String()
 	}
+	if deployment.Status == "" {
+		deployment.Status = model.DeploymentStatusDeployed
+	}
 	deployment.CreatedAt = time.Now()
 
 	query := `
