@@ -2,6 +2,8 @@ version: v1
 policies:
   - name: add-headers
     gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0.1.0
+  - name: advanced-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0.1.1
   - name: api-key-auth
     gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0.1.0
   - name: aws-bedrock-guardrail
@@ -20,8 +22,14 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0.1.0
   - name: json-to-xml
     gomodule: github.com/wso2/gateway-controllers/policies/json-to-xml@v0.1.0
+  - name: jwt-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.1
   - name: log-message
     gomodule: github.com/wso2/gateway-controllers/policies/log-message@v0.1.0
+  - name: mcp-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0.1.1
+  - name: mcp-authz
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0.1.0
   - name: model-round-robin
     gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v0.1.0
   - name: model-weighted-round-robin
@@ -54,11 +62,3 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0.1.0
   - name: xml-to-json
     gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0.1.0
-  - name: mcp-auth
-    gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0.1.1
-  - name: mcp-authz
-    gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0.1.0
-  - name: jwt-auth
-    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.1
-  - name: advanced-ratelimit
-    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0.1.1
