@@ -22,6 +22,7 @@ SHELL := /bin/bash
 ROOT_VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 GATEWAY_VERSION := $(shell cat gateway/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+CLI_VERSION := $(shell cat cli/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 
 # Docker registry configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -68,6 +69,7 @@ version: ## Display current versions
 	@echo "Platform Version:     $(ROOT_VERSION)"
 	@echo "Gateway Version:      $(GATEWAY_VERSION)"
 	@echo "Platform API Version: $(PLATFORM_API_VERSION)"
+	@echo "CLI Version:          $(CLI_VERSION)"
 
 .PHONY: version-set
 version-set: ## Set specific version for a component
@@ -86,9 +88,13 @@ version-set: ## Set specific version for a component
 	elif [ "$(COMPONENT)" = "platform-api" ]; then \
 		echo "$(VERSION_ARG)" > platform-api/VERSION; \
 		echo " Set platform-api version to $(VERSION_ARG)"; \
+	elif [ "$(COMPONENT)" = "cli" ]; then \
+		echo "$(VERSION_ARG)" > cli/VERSION; \
+		echo " Set cli version to $(VERSION_ARG)"; \
+
 	else \
 		echo "Error: Unknown component: $(COMPONENT)"; \
-		echo "Valid components: root, gateway, platform-api"; \
+		echo "Valid components: root, gateway, platform-api, cli"; \
 		exit 1; \
 	fi
 
