@@ -1197,29 +1197,6 @@ func updateToolsInRequestBody(requestBody *map[string]interface{}, toolsPath str
 		}
 		curr = nextMap
 	}
-	for i, part := range parts {
-		// If this is the last part, set the value
-		if i == len(parts)-1 {
-			curr[part] = tools
-			return nil
-		}
-
-		// If the next level doesn't exist, create it as a map
-		next, ok := curr[part]
-		if !ok {
-			newMap := make(map[string]interface{})
-			curr[part] = newMap
-			curr = newMap
-			continue
-		}
-
-		// If the next level is a map, descend into it
-		nextMap, ok := next.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("expected map at path %s but found %T", part, next)
-		}
-		curr = nextMap
-	}
 
 	return nil
 }
