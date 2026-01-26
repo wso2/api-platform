@@ -203,7 +203,7 @@ update-images: ## Update docker-compose and Helm chart images
 	@echo "Updating docker-compose and Helm charts..."
 	@bash scripts/update-docker-compose.sh $(COMPONENT) $(VERSION_ARG)
 	@bash scripts/update-helm.sh $(COMPONENT) $(VERSION_ARG)
-	@echo "✅ Updated all image references to version $(VERSION_ARG)"
+	@echo "Updated all image references to version $(VERSION_ARG)"
 
 .PHONY: update-versions
 update-versions: ## Update docker-compose and Helm charts (alias for update-images)

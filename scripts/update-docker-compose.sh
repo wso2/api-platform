@@ -33,6 +33,7 @@ if [ -z "$COMPONENT" ] || [ -z "$VERSION" ]; then
 fi
 
 COMPOSE_FILE="gateway/docker-compose.yaml"
+IT_COMPOSE_FILE="gateway/it/docker-compose.test.yaml"
 
 if [ ! -f "$COMPOSE_FILE" ]; then
     echo "Warning: docker-compose.yaml not found at $COMPOSE_FILE"
@@ -40,19 +41,31 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 fi
 
 if [ "$COMPONENT" = "gateway" ]; then
-    # Update all gateway component images
+    # Update all gateway component images in main docker-compose.yaml
     # Use macOS-compatible sed syntax with pattern matching for any registry
     sed -i -i.bak \
         -e "s|image: .*/gateway-controller:.*|image: ${DOCKER_REGISTRY}/gateway-controller:$VERSION|" \
         -e "s|image: .*/policy-engine:.*|image: ${DOCKER_REGISTRY}/policy-engine:$VERSION|" \
         -e "s|image: .*/gateway-router:.*|image: ${DOCKER_REGISTRY}/gateway-router:$VERSION|" \
         "$COMPOSE_FILE"
-    echo "Updated docker-compose.yaml with gateway version $VERSION"
+    rm -f "$COMPOSE_FILE.bak"
+    echo "Updated $COMPOSE_FILE with gateway version $VERSION"
+
+    # Update integration test docker-compose.yaml if it exists
+    if [ -f "$IT_COMPOSE_FILE" ]; then
+        sed -i -i.bak \
+            -e "s|image: .*/gateway-controller-coverage:.*|image: ${DOCKER_REGISTRY}/gateway-controller-coverage:$VERSION|" \
+            -e "s|image: .*/policy-engine:.*|image: ${DOCKER_REGISTRY}/policy-engine:$VERSION|" \
+            -e "s|image: .*/gateway-router:.*|image: ${DOCKER_REGISTRY}/gateway-router:$VERSION|" \
+            "$IT_COMPOSE_FILE"
+        rm -f "$IT_COMPOSE_FILE.bak"
+        echo "Updated $IT_COMPOSE_FILE with gateway version $VERSION"
+    fi
 elif [ "$COMPONENT" = "platform-api" ]; then
     # Update platform-api image (if present in compose)
     sed -i -i.bak \
         -e "s|image: .*/platform-api:.*|image: ${DOCKER_REGISTRY}/platform-api:$VERSION|" \
         "$COMPOSE_FILE"
     rm -f "$COMPOSE_FILE.bak"
-    echo "Updated docker-compose.yaml with platform-api version $VERSION"
+    echo "Updated $COMPOSE_FILE with platform-api version $VERSION"
 fi
