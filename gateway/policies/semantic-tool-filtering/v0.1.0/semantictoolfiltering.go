@@ -198,7 +198,7 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 				p.queryJSONPath = "$.messages[-1].content" // default from policy-definition.yaml
 			}
 		} else {
-			return fmt.Errorf("'jsonPath' must be a string")
+			return fmt.Errorf("'queryJSONPath' must be a string")
 		}
 	} else {
 		p.queryJSONPath = "$.messages[-1].content" // default from policy-definition.yaml
@@ -213,7 +213,7 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 				p.toolsJSONPath = "$.tools" // default from policy-definition.yaml
 			}
 		} else {
-			return fmt.Errorf("'toolsPath' must be a string")
+			return fmt.Errorf("'toolsJSONPath' must be a string")
 		}
 	} else {
 		p.toolsJSONPath = "$.tools" // default from policy-definition.yaml
