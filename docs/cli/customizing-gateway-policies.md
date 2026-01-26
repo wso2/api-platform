@@ -25,7 +25,7 @@ ap gateway image build
 
 ## Additional Notes for Users
 
-Use `ap gateway build --help` to view detailed usage information for this command.
+Use `ap gateway image build --help` to view detailed usage information for this command.
 
 Docker is a prerequisite for executing this command. If Docker is not available, the command will validate this at the beginning and fail immediately.
 
