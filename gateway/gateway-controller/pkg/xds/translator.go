@@ -226,6 +226,9 @@ func (t *Translator) TranslateConfigs(
 	// Create a virtual host for each vhost
 	var virtualHosts []*route.VirtualHost
 	for vhost, routes := range vhostMap {
+		// Sort routes by priority (highest priority first) before adding to vhost
+		routes = SortRoutesByPriority(routes)
+
 		// Append the catch-all 404 route as the last route for each vhost (lowest priority)
 		routes = append(routes, &route.Route{
 			Match: &route.RouteMatch{
