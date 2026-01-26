@@ -37,7 +37,7 @@ helm upgrade --install \
 ### 2. Install Gateway Operator
 
 ```sh
-helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.2.0
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.3.0
 ```
 
 ## Deploying an API Gateway
@@ -154,7 +154,7 @@ curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main
 
 ```sh
 cert_path="/tmp/test-backend.crt"
-curl -X POST http://localhost:9090/certificates \
+curl -X POST http://localhost:9090/certificates -u "admin:admin" \
   -H "Content-Type: application/json" \
   -d "{\"certificate\":$(jq -Rs . < $cert_path),\"filename\":\"my-cert.pem\", \"name\":\"test\"}"
 ```
@@ -170,6 +170,7 @@ metadata:
   name: gateway-custom-config
 data:
   values.yaml: |
+    ### IMPORTANT you need to provide entire values yaml of the gateway helm. 
     gateway:
       controller:
         logging:
