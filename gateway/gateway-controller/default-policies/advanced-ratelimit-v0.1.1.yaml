@@ -1,5 +1,5 @@
 name: advanced-ratelimit
-version: v0.1.0
+version: v0.1.1
 description: |
   Rate limiting policy supporting multiple algorithms (GCRA, Fixed Window), multi-dimensional quotas,
   weighted rate limiting, flexible key extraction, and both in-memory and Redis backends. Supports
