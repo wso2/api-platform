@@ -18,7 +18,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller:0.4.0
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.1
@@ -45,7 +45,7 @@ services:
       - gateway-network
 
   policy-engine:
-    image: ghcr.io/wso2/api-platform/policy-engine:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/policy-engine:0.4.0
     command: ["-xds-server", "gateway-controller:18001"]
     mem_limit: 128m
     mem_reservation: 128m
@@ -61,7 +61,7 @@ services:
       - gateway-network
 
   router:
-    image: ghcr.io/wso2/api-platform/gateway-router:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-router:0.4.0
     mem_limit: 256m
     mem_reservation: 256m
     cpus: 0.2
