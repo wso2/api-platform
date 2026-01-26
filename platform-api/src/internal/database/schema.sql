@@ -281,34 +281,6 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     CHECK (revoked_at IS NULL OR status = 'revoked')
 );
 
--- API Deployments table
-CREATE TABLE IF NOT EXISTS api_deployments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    gateway_uuid VARCHAR(40) NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    UNIQUE(api_uuid, gateway_uuid)
-);
-
--- API Associations table (for both gateways and dev portals)
-CREATE TABLE IF NOT EXISTS api_associations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid VARCHAR(40) NOT NULL,
-    organization_uuid VARCHAR(40) NOT NULL,
-    resource_uuid VARCHAR(40) NOT NULL,
-    association_type VARCHAR(20) NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(api_uuid, resource_uuid, association_type, organization_uuid),
-    CHECK (association_type IN ('gateway', 'dev_portal'))
-);
-
 -- DevPortals table
 CREATE TABLE IF NOT EXISTS devportals (
     uuid VARCHAR(40) PRIMARY KEY,
