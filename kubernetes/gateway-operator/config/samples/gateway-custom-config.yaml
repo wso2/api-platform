@@ -586,8 +586,6 @@ data:
 #   name: custom-gateway
 #   namespace: default
 # spec:
-#   gatewayClassName: production
-
 #   apiSelector:
 #     scope: LabelSelector
 #     matchLabels:
@@ -615,8 +613,6 @@ metadata:
   name: default-gateway
   namespace: default
 spec:
-  gatewayClassName: development-1
-
   apiSelector:
     scope: Cluster
 
