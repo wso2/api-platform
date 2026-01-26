@@ -90,7 +90,7 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(templateID string, 
 		return nil
 	}
 	if templateID == "" || tmpl == nil {
-		return nil
+		return fmt.Errorf("invalid template: id is empty or template is nil")
 	}
 
 	// Convert typed template to map[string]interface{} for the generic lazy resource payload.

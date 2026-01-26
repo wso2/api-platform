@@ -251,46 +251,6 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 					slog.Int64("watcher_id", watcherID),
 					slog.String("version", version))
 			}
-
-		case response, ok := <-lazyResourceResponseChan:
-			if !ok {
-				c.logger.Debug("Lazy resource response channel closed", slog.Int64("watcher_id", watcherID))
-				return
-			}
-
-			// Handle nil response only if we haven't sent initial response yet
-			if response == nil {
-				// Don't create continuous empty responses - this causes the loop
-				c.logger.Debug("Lazy resource cache has no data, skipping nil response",
-					slog.Int64("watcher_id", watcherID))
-				continue
-			}
-
-			// Check if this is a duplicate response
-			version, err := response.GetVersion()
-			if err != nil {
-				version = "unknown"
-			}
-
-			if version != lastLazyResourceVersion {
-				lastLazyResourceVersion = version
-				c.logger.Debug("Forwarding lazy resource cache response",
-					slog.Int64("watcher_id", watcherID),
-					slog.String("version", version))
-
-				select {
-				case mainResponseChan <- response:
-					// Successfully sent
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending lazy resource response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
-				}
-			} else {
-				c.logger.Debug("Skipping duplicate lazy resource response",
-					slog.Int64("watcher_id", watcherID),
-					slog.String("version", version))
-			}
 		}
 
 		// Check if watcher still exists

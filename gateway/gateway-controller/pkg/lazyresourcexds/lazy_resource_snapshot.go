@@ -102,9 +102,10 @@ func (sm *LazyResourceSnapshotManager) UpdateSnapshot(ctx context.Context) error
 
 	// For LinearCache, convert []types.Resource to map[string]types.Resource
 	resourcesById := make(map[string]types.Resource)
-	for i, res := range lazyResources {
-		// Use index-based key since resources don't have inherent names
-		resourcesById[fmt.Sprintf("lazyresource-%d", i)] = res
+	// Since we bundle all resources into a single state resource,
+	// use a fixed key for the aggregated resource
+	if len(lazyResources) > 0 {
+		resourcesById["lazy-resources-state"] = lazyResources[0]
 	}
 
 	// Update the linear cache with new resources

@@ -80,10 +80,7 @@ func (h *LazyResourceHandler) HandleLazyResourceUpdate(ctx context.Context, reso
 
 		var lazyResourceState LazyResourceStateResource
 		if err := json.Unmarshal(jsonBytes, &lazyResourceState); err != nil {
-			h.logger.Error("Failed to unmarshal lazy resource state",
-				"error", err,
-				"resource_name", resourceName)
-			continue
+			return fmt.Errorf("failed to unmarshal lazy resource state for %s: %w", resourceName, err)
 		}
 
 		h.logger.Info("Processing lazy resource state",
@@ -92,10 +89,7 @@ func (h *LazyResourceHandler) HandleLazyResourceUpdate(ctx context.Context, reso
 
 		// Replace all lazy resources with the new state (state-of-the-world approach)
 		if err := h.replaceAllLazyResources(lazyResourceState.Resources); err != nil {
-			h.logger.Error("Failed to replace lazy resources",
-				"error", err,
-				"resource_name", resourceName)
-			continue
+			return fmt.Errorf("failed to replace lazy resources for %s: %w", resourceName, err)
 		}
 	}
 
@@ -126,8 +120,7 @@ func (h *LazyResourceHandler) replaceAllLazyResources(resourceDataList []LazyRes
 	for _, r := range resources {
 		h.logger.Debug("Lazy resource loaded via xDS",
 			"id", r.ID,
-			"resource_type", r.ResourceType,
-			"resource", r.Resource)
+			"resource_type", r.ResourceType)
 	}
 
 	h.logger.Info("Successfully replaced all lazy resources with new state",
