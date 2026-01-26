@@ -49,8 +49,10 @@ help: ## Show this help message
 	@echo '  make build-gateway                    - Build all gateway Docker images'
 	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
 	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
+	@echo '  make build-cli                        - Build CLI binaries for all platforms'
 	@echo '  make test-gateway                     - Run gateway tests'
 	@echo '  make test-platform-api                - Run platform-api tests'
+	@echo '  make test-cli                         - Run CLI tests'
 	@echo ''
 	@echo 'Push Targets:'
 	@echo '  make push-gateway                     - Push gateway images to registry'
@@ -91,7 +93,6 @@ version-set: ## Set specific version for a component
 	elif [ "$(COMPONENT)" = "cli" ]; then \
 		echo "$(VERSION_ARG)" > cli/VERSION; \
 		echo " Set cli version to $(VERSION_ARG)"; \
-
 	else \
 		echo "Error: Unknown component: $(COMPONENT)"; \
 		echo "Valid components: root, gateway, platform-api, cli"; \
@@ -163,6 +164,17 @@ test-gateway: ## Run gateway tests
 test-platform-api: ## Run platform-api tests
 	@echo "Running platform-api tests..."
 	$(MAKE) -C platform-api test
+
+.PHONY: build-cli
+build-cli: ## Build CLI binaries for all platforms
+	@echo "Building CLI ($(CLI_VERSION))..."
+	$(MAKE) -C cli/src build-all
+	@echo "Successfully built CLI binaries"
+
+.PHONY: test-cli
+test-cli: ## Run CLI tests
+	@echo "Running CLI tests..."
+	$(MAKE) -C cli/src test
 
 # Push Targets
 .PHONY: push-gateway

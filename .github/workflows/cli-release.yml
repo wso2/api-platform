@@ -2,37 +2,34 @@ name: CLI Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (format: x.x.x) (do NOT include leading v)'
-        required: true
-        type: string
 
 jobs:
-  validate-and-build:
-    name: Validate, Build, and Release
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Validate version
+
+      - name: Determine version from VERSION file
+        id: version
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          if [[ -z "$VERSION" ]]; then
-            echo "Error: version must be a non-empty string"
-            exit 1
-          fi
-          echo "Version provided: $VERSION"
-      
+          VERSION=$(cat cli/VERSION | tr -d '[:space:]' | sed 's/-SNAPSHOT//')
+          echo "Releasing CLI version: ${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Set version
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          make version-set COMPONENT=cli VERSION_ARG=${VERSION}
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
-      
+          go-version: '1.25.1'
+
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -42,18 +39,21 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-      
-      - name: Build binaries with version
+
+      - name: Run tests
+        run: make test-cli
+
+      - name: Build binaries for all platforms
         working-directory: ./cli/src
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          make build build-all VERSION=$VERSION
-      
+          make build-all-skip-tests VERSION=$VERSION
+
       - name: Package platform zips
         working-directory: ./cli/src/build
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
@@ -105,14 +105,22 @@ jobs:
           # Remove raw binaries to keep only zip artifacts
           rm -f ap-* || true
           ls -lh "$GITHUB_WORKSPACE/release-artifacts"
-      
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release CLI version ${{ steps.version.outputs.version }}"
+          git tag -a ap/v${{ steps.version.outputs.version }} -m "CLI (ap) ${{ steps.version.outputs.version }}"
+          git push origin ap/v${{ steps.version.outputs.version }}
+
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ap-v${{ github.event.inputs.version }}
-          name: "WSO2 API Platform Controller (ap) v${{ github.event.inputs.version }} is Released!"
+          tag_name: ap/v${{ steps.version.outputs.version }}
+          name: "WSO2 API Platform Controller (ap) v${{ steps.version.outputs.version }} is Released!"
           body: |
             ## Overview
 
@@ -144,15 +152,21 @@ jobs:
           draft: false
           prerelease: true
           files: |
-            release-artifacts/ap-darwin-arm64-v${{ github.event.inputs.version }}.zip
-            release-artifacts/ap-darwin-amd64-v${{ github.event.inputs.version }}.zip
-            release-artifacts/ap-linux-arm64-v${{ github.event.inputs.version }}.zip
-            release-artifacts/ap-linux-amd64-v${{ github.event.inputs.version }}.zip
-            release-artifacts/ap-windows-arm64-v${{ github.event.inputs.version }}.zip
-            release-artifacts/ap-windows-amd64-v${{ github.event.inputs.version }}.zip
+            release-artifacts/ap-darwin-arm64-v${{ steps.version.outputs.version }}.zip
+            release-artifacts/ap-darwin-amd64-v${{ steps.version.outputs.version }}.zip
+            release-artifacts/ap-linux-arm64-v${{ steps.version.outputs.version }}.zip
+            release-artifacts/ap-linux-amd64-v${{ steps.version.outputs.version }}.zip
+            release-artifacts/ap-windows-arm64-v${{ steps.version.outputs.version }}.zip
+            release-artifacts/ap-windows-amd64-v${{ steps.version.outputs.version }}.zip
 
       - name: Upload release zips as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ap-release-zips-${{ github.event.inputs.version }}
+          name: ap-release-zips-${{ steps.version.outputs.version }}
           path: release-artifacts/*.zip
+
+      - name: Set to next dev version
+        run: |
+          make version-bump-next-dev COMPONENT=cli
+          git commit -am "Bump CLI to next dev version"
+          git push origin main
