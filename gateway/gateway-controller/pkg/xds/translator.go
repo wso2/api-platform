@@ -31,7 +31,6 @@ import (
 	"time"
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
-	"go.uber.org/zap"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -339,14 +338,14 @@ func (t *Translator) TranslateConfigs(
 		// Create HTTPS listener for WebSubHub communication if enabled
 		if t.routerConfig.HTTPSEnabled {
 			log.Info("HTTPS is enabled, creating HTTPS listener",
-				zap.Int("https_port", t.routerConfig.HTTPSPort))
+				slog.Int("https_port", t.routerConfig.HTTPSPort))
 			httpsListener, err := t.createInternalListenerForWebSubHub(true)
 			if err != nil {
-				log.Error("Failed to create HTTPS listener", zap.Error(err))
+				log.Error("Failed to create HTTPS listener", slog.Any("error", err))
 				return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
 			}
 			log.Info("HTTPS listener created successfully",
-				zap.String("listener_name", httpsListener.GetName()))
+				slog.String("listener_name", httpsListener.GetName()))
 			listeners = append(listeners, httpsListener)
 		} else {
 			log.Info("HTTPS is disabled, skipping HTTPS listener creation")
