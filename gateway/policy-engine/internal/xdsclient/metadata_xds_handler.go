@@ -58,18 +58,11 @@ func (h *MetadataXDSHandler) HandleMetadataXDSUpdate(ctx context.Context, resour
 			continue
 		}
 
-		// Unmarshal google.protobuf.Struct from the Any
-		// The xDS server double-wraps: res.Value contains serialized Any,
-		// which in turn contains the serialized Struct
-		innerAny := &anypb.Any{}
-		if err := proto.Unmarshal(resource.Value, innerAny); err != nil {
-			return fmt.Errorf("failed to unmarshal inner Any from resource: %w", err)
-		}
-
-		// Now unmarshal the Struct from the inner Any's Value
+		// Unmarshal google.protobuf.Struct directly from the resource Value.
+		// The xDS server sends the serialized Struct inside the resource Value.
 		metadataXDSStruct := &structpb.Struct{}
-		if err := proto.Unmarshal(innerAny.Value, metadataXDSStruct); err != nil {
-			return fmt.Errorf("failed to unmarshal metadata XDS struct from inner Any: %w", err)
+		if err := proto.Unmarshal(resource.Value, metadataXDSStruct); err != nil {
+			return fmt.Errorf("failed to unmarshal metadata XDS struct from resource: %w", err)
 		}
 
 		// Convert Struct to JSON then to MetadataXDSStateResource
