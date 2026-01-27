@@ -244,6 +244,16 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 		return assertProviderTemplateMappingTemplate(body, providerName, expectedTemplate)
 	})
+
+	// Envoy route config assertion for provider_name in route metadata
+	ctx.Step(`^the Envoy route config should contain provider_name "([^"]*)"$`, func(expectedProviderName string) error {
+		body := httpSteps.LastBody()
+		if len(body) == 0 {
+			return fmt.Errorf("expected non-empty response body")
+		}
+
+		return assertEnvoyRouteMetadataContainsProviderName(body, expectedProviderName)
+	})
 }
 
 // ConfigDumpResponse represents the policy engine config dump response structure
@@ -414,4 +424,81 @@ func assertProviderTemplateMappingTemplate(body []byte, providerName, expectedTe
 
 	return fmt.Errorf("provider %q not found in ProviderTemplateMapping resources. Available providers: %v",
 		providerName, providerNames)
+}
+
+// assertEnvoyRouteMetadataContainsProviderName checks that the Envoy route config contains
+// the expected provider_name in route metadata (wso2.route filter metadata)
+func assertEnvoyRouteMetadataContainsProviderName(body []byte, expectedProviderName string) error {
+	// The Envoy config_dump response has a complex nested structure
+	// We need to search through dynamic_route_configs -> route_config -> virtual_hosts -> routes -> metadata
+	bodyStr := string(body)
+
+	// Simple string search for the provider_name in the JSON
+	if !strings.Contains(bodyStr, expectedProviderName) {
+		return fmt.Errorf("provider_name %q not found in Envoy route config", expectedProviderName)
+	}
+
+	// Also verify it's in the context of wso2.route metadata
+	if !strings.Contains(bodyStr, "wso2.route") {
+		return fmt.Errorf("wso2.route metadata not found in Envoy route config")
+	}
+
+	// Parse the JSON to do a more precise check
+	var configDump map[string]interface{}
+	if err := json.Unmarshal(body, &configDump); err != nil {
+		return fmt.Errorf("failed to parse Envoy config dump: %w", err)
+	}
+
+	// Navigate through the config to find provider_name in route metadata
+	found, err := findProviderNameInEnvoyConfig(configDump, expectedProviderName)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("provider_name %q not found in Envoy route metadata (wso2.route)", expectedProviderName)
+	}
+
+	return nil
+}
+
+// findProviderNameInEnvoyConfig recursively searches the Envoy config for provider_name in route metadata
+func findProviderNameInEnvoyConfig(data interface{}, expectedProviderName string) (bool, error) {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		// Check if this is the wso2.route metadata with provider_name
+		if wso2Route, ok := v["wso2.route"]; ok {
+			if routeMap, ok := wso2Route.(map[string]interface{}); ok {
+				if providerName, ok := routeMap["provider_name"]; ok {
+					if providerNameStr, ok := providerName.(string); ok && providerNameStr == expectedProviderName {
+						return true, nil
+					}
+				}
+			}
+		}
+
+		// Recursively search all values
+		for _, value := range v {
+			found, err := findProviderNameInEnvoyConfig(value, expectedProviderName)
+			if err != nil {
+				return false, err
+			}
+			if found {
+				return true, nil
+			}
+		}
+
+	case []interface{}:
+		// Recursively search all array elements
+		for _, item := range v {
+			found, err := findProviderNameInEnvoyConfig(item, expectedProviderName)
+			if err != nil {
+				return false, err
+			}
+			if found {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }

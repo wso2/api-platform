@@ -345,3 +345,43 @@ Feature: Lazy Resources xDS Synchronization
     When I send a GET request to "http://localhost:9002/config_dump"
     Then the response status code should be 200
     And the lazy resources should not contain resource "delete-mapping-provider"
+
+
+  # ========================================
+  # Scenario: Verify provider_name is set in Envoy route metadata
+  # This tests that the provider name flows correctly through Envoy xDS
+  # ========================================
+
+  Scenario: Provider name is set in Envoy route metadata via xDS
+    # Create an LLM provider
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: route-metadata-test-provider
+        spec:
+          displayName: Route Metadata Test Provider
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://api.openai.com
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+
+    # Wait for xDS propagation to Envoy
+    When I wait for 3 seconds
+
+    # Check Envoy's route configuration contains the provider_name in metadata
+    When I send a GET request to "http://localhost:9901/config_dump?resource=dynamic_route_configs"
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the Envoy route config should contain provider_name "route-metadata-test-provider"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "route-metadata-test-provider"
+    Then the response status code should be 200
