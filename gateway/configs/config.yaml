@@ -106,10 +106,10 @@ gateway_controller:
     # Downstream TLS configuration (for HTTPS listener)
     downstream_tls:
       # Path to server certificate (PEM format)
-      cert_path: "./listener-certs/default-listener.crt"
+      cert_path: "/Users/benura/Documents/U2/Repository/Public/api-platform/gateway/gateway-controller/listener-certs/default-listener.crt"
       
       # Path to server private key (PEM format)
-      key_path: "./listener-certs/default-listener.key"
+      key_path: "/Users/benura/Documents/U2/Repository/Public/api-platform/gateway/gateway-controller/listener-certs/default-listener.key"
       
       # Minimum TLS protocol version (TLS1_0, TLS1_1, TLS1_2, TLS1_3)
       minimum_protocol_version: TLS1_2
@@ -146,7 +146,7 @@ gateway_controller:
     # Policy Engine ext_proc filter configuration
     policy_engine:
       # Enable or disable policy engine ext_proc filter
-      enabled: false
+      enabled: true
 
       # Policy engine host (hostname or IP address)
       host: policy-engine
