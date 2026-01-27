@@ -81,6 +81,7 @@ func TestFeatures(t *testing.T) {
 				"features/jwt-auth.feature",
 				"features/cors.feature",
 				"features/content-length-guardrail.feature",
+				"features/azure-content-safety.feature",
 			},
 			TestingT: t,
 		},
@@ -132,12 +133,13 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 
 		// Initialize common step handlers
 		httpSteps = steps.NewHTTPSteps(testState.HTTPClient, map[string]string{
-			"gateway-controller": testState.Config.GatewayControllerURL,
-			"router":             testState.Config.RouterURL,
-			"policy-engine":      testState.Config.PolicyEngineURL,
-			"sample-backend":     testState.Config.SampleBackendURL,
-			"echo-backend":       testState.Config.EchoBackendURL,
-			"mock-jwks":          testState.Config.MockJWKSURL,
+			"gateway-controller":      testState.Config.GatewayControllerURL,
+			"router":                  testState.Config.RouterURL,
+			"policy-engine":           testState.Config.PolicyEngineURL,
+			"sample-backend":          testState.Config.SampleBackendURL,
+			"echo-backend":            testState.Config.EchoBackendURL,
+			"mock-jwks":               testState.Config.MockJWKSURL,
+			"mock-azure-content-safety": testState.Config.MockAzureContentSafetyURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 

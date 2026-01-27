@@ -424,3 +424,8 @@ tracing:
   batch_timeout: 1s
   max_export_batch_size: 512
   sampling_rate: 1.0
+
+# Azure Content Safety Configuration
+azurecontentsafety_endpoint: "http://mock-azure-content-safety:8080"
+azurecontentsafety_key: "test-subscription-key"
+

@@ -134,6 +134,18 @@ services:
     networks:
       - it-gateway-network
 
+  # Mock Azure Content Safety for content moderation policy testing
+  mock-azure-content-safety:
+    container_name: it-mock-azure-content-safety
+    image: ghcr.io/wso2/api-platform/mock-azure-content-safety:latest
+    build:
+      context: ../../tests/mock-servers/mock-azure-content-safety
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+    networks:
+      - it-gateway-network
+
 volumes:
   controller-data-tests:
     driver: local

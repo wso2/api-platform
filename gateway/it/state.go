@@ -33,29 +33,34 @@ type AuthUser struct {
 
 // Config holds configuration for the test suite
 type Config struct {
-	GatewayControllerURL string
-	RouterURL            string
-	PolicyEngineURL      string
-	SampleBackendURL     string
-	EchoBackendURL       string
-	MockJWKSURL          string
-	HTTPTimeout          time.Duration
-	Users                map[string]AuthUser
+	GatewayControllerURL      string
+	RouterURL                 string
+	PolicyEngineURL           string
+	SampleBackendURL          string
+	EchoBackendURL            string
+	MockJWKSURL               string
+	MockAzureContentSafetyURL string
+	HTTPTimeout               time.Duration
+	Users                     map[string]AuthUser
 }
 
 // MockJWKSPort is the port for mock-jwks service
 const MockJWKSPort = "8082"
 
+// MockAzureContentSafetyPort is the port for mock-azure-content-safety service
+const MockAzureContentSafetyPort = "8084"
+
 // DefaultConfig returns the default test configuration
 func DefaultConfig() *Config {
 	return &Config{
-		GatewayControllerURL: fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
-		RouterURL:            fmt.Sprintf("http://localhost:%s", RouterPort),
-		PolicyEngineURL:      "http://localhost:9002",
-		SampleBackendURL:     "http://localhost:9080",
-		EchoBackendURL:       "http://localhost:9081",
-		MockJWKSURL:          fmt.Sprintf("http://localhost:%s", MockJWKSPort),
-		HTTPTimeout:          10 * time.Second,
+		GatewayControllerURL:      fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
+		RouterURL:                 fmt.Sprintf("http://localhost:%s", RouterPort),
+		PolicyEngineURL:           "http://localhost:9002",
+		SampleBackendURL:          "http://localhost:9080",
+		EchoBackendURL:            "http://localhost:9081",
+		MockJWKSURL:               fmt.Sprintf("http://localhost:%s", MockJWKSPort),
+		MockAzureContentSafetyURL: fmt.Sprintf("http://localhost:%s", MockAzureContentSafetyPort),
+		HTTPTimeout:               10 * time.Second,
 		Users: map[string]AuthUser{
 			"admin": {Username: "admin", Password: "admin"},
 		},
