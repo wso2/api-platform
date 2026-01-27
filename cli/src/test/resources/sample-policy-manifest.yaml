@@ -37,6 +37,8 @@ policies:
     version: v0.1.0
   - name: semantic-cache
     version: v0.1.0
+  - name: semantic-tool-filtering
+    version: v0.1.0
   - name: jwt-auth
     version: v0.1.0
   - name: prompt-template
