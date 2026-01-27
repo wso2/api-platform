@@ -102,7 +102,7 @@ const (
 		"  - action: SET\n" +
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
-	PROXY_HOST__HEADER_POLICY_NAME    = "modify-Headers"
+	PROXY_HOST__HEADER_POLICY_NAME    = "modify-headers"
 	PROXY_HOST__HEADER_POLICY_VERSION = "v0.1.0"
 	PROXY_HOST__HEADER_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +

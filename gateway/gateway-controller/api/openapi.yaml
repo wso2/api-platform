@@ -1857,6 +1857,17 @@ components:
         ref:
           type: string
           description: Reference to a predefined upstreamDefinition
+        hostRewrite:
+          type: string
+          enum:
+            - auto
+            - manual
+          default: auto
+          description: >
+            Controls how the Host header is handled when routing to the upstream.
+            `auto` delegates host rewriting to Envoy, which rewrites the Host header
+            using the upstream cluster host. `manual` disables automatic rewriting
+            and expects explicit configuration.
 
     Operation:
       type: object
