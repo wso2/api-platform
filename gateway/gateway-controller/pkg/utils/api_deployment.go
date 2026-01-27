@@ -35,7 +35,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"go.uber.org/zap"
 )
 
 // APIDeploymentParams contains parameters for API deployment operations
@@ -438,17 +437,17 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	return true, nil // Successfully updated existing config
 }
 
-func (s *APIDeploymentService) RegisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+func (s *APIDeploymentService) RegisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *slog.Logger) error {
 	return s.sendTopicRequestToHub(ctx, httpClient, topic, "register", webSubHubHost, webSubPort, logger)
 }
 
 // UnregisterTopicWithHub unregisters a topic from the WebSubHub
-func (s *APIDeploymentService) UnregisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+func (s *APIDeploymentService) UnregisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *slog.Logger) error {
 	return s.sendTopicRequestToHub(ctx, httpClient, topic, "deregister", webSubHubHost, webSubPort, logger)
 }
 
 // sendTopicRequestToHub sends a topic registration/unregistration request to the WebSubHub
-func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpClient *http.Client, topic string, mode string, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpClient *http.Client, topic string, mode string, webSubHubHost string, webSubPort int, logger *slog.Logger) error {
 	// Prepare form data
 	formData := url.Values{}
 	formData.Set("hub.mode", mode)
@@ -487,9 +486,9 @@ func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpCl
 
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				logger.Debug("Topic request sent to WebSubHub",
-					zap.String("topic", topic),
-					zap.String("mode", mode),
-					zap.Int("status", resp.StatusCode))
+					slog.String("topic", topic),
+					slog.String("mode", mode),
+					slog.Int("status", resp.StatusCode))
 			}
 
 			lastStatus = resp.StatusCode

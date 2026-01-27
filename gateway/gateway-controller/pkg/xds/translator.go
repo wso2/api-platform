@@ -31,6 +31,7 @@ import (
 	"time"
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
+	"go.uber.org/zap"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -721,8 +722,17 @@ func (t *Translator) createInternalListenerForWebSubHub(isHTTPS bool) (*listener
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: routerAny,
 		},
-		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
-		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
+	})
+
+	// Create HTTP connection manager
+	manager := &hcm.HttpConnectionManager{
+		CodecType:         hcm.HttpConnectionManager_AUTO,
+		StatPrefix:        "http",
+		GenerateRequestId: wrapperspb.Bool(true),
+		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
+			RouteConfig: routeConfig,
+		},
+		HttpFilters: httpFilters,
 	}
 
 	// Add access logs if enabled
@@ -753,11 +763,11 @@ func (t *Translator) createInternalListenerForWebSubHub(isHTTPS bool) (*listener
 	var listenerName string
 	var port uint32
 	if isHTTPS {
-		listenerName = fmt.Sprintf("listener_https_%d", 8088)
-		port = uint32(8088)
+		listenerName = fmt.Sprintf("listener_https_%d", constants.WEBSUB_HUB_INTERNAL_HTTPS_PORT)
+		port = uint32(constants.WEBSUB_HUB_INTERNAL_HTTPS_PORT)
 	} else {
-		listenerName = fmt.Sprintf("listener_http_%d", 8083)
-		port = uint32(8083)
+		listenerName = fmt.Sprintf("listener_http_%d", constants.WEBSUB_HUB_INTERNAL_HTTP_PORT)
+		port = uint32(constants.WEBSUB_HUB_INTERNAL_HTTP_PORT)
 	}
 
 	// Create filter chain
@@ -944,12 +954,12 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		return nil, fmt.Errorf("failed to marshal dynamic forward proxy config: %w", err)
 	}
 
-	// Router filter
-	routerConfig := &router.Router{}
-	routerAny, err := anypb.New(routerConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal router config: %w", err)
-	}
+	// // Router filter
+	// routerConfig := &router.Router{}
+	// routerAny, err := anypb.New(routerConfig)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to marshal router config: %w", err)
+	// }
 
 	// Add dynamic forward proxy router filter (must be last)
 	httpFilters = append(httpFilters, &hcm.HttpFilter{
@@ -957,8 +967,25 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: dynamicFwdAny,
 		},
-		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
-		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
+	})
+
+	// // Add router filter (must be last)
+	// httpFilters = append(httpFilters, &hcm.HttpFilter{
+	// 	Name: wellknown.Router,
+	// 	ConfigType: &hcm.HttpFilter_TypedConfig{
+	// 		TypedConfig: routerAny,
+	// 	},
+	// })
+
+	// Create HTTP connection manager
+	httpConnManager := &hcm.HttpConnectionManager{
+		CodecType:         hcm.HttpConnectionManager_AUTO,
+		StatPrefix:        "http",
+		GenerateRequestId: wrapperspb.Bool(true),
+		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
+			RouteConfig: dynamicForwardProxyRouteConfig,
+		},
+		HttpFilters: httpFilters,
 	}
 
 	// httpConnManager := &hcm.HttpConnectionManager{
@@ -1010,11 +1037,11 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 	var listenerName string
 	var port uint32
 	if isHTTPS {
-		listenerName = fmt.Sprintf("listener_https_%d", 8082)
-		port = uint32(8082)
+		listenerName = fmt.Sprintf("listener_https_%d", constants.WEBSUB_HUB_DYNAMIC_HTTPS_PORT)
+		port = uint32(constants.WEBSUB_HUB_DYNAMIC_HTTPS_PORT)
 	} else {
-		listenerName = fmt.Sprintf("listener_http_%d", 8087)
-		port = uint32(8087)
+		listenerName = fmt.Sprintf("listener_http_%d", constants.WEBSUB_HUB_DYNAMIC_HTTP_PORT)
+		port = uint32(constants.WEBSUB_HUB_DYNAMIC_HTTP_PORT)
 	}
 
 	// Create filter chain

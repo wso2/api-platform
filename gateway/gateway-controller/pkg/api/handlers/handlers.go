@@ -25,6 +25,7 @@ import (
 
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"go.uber.org/zap"
 
 	"io"
 	"net/http"
@@ -559,7 +560,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	if apiConfig.Kind == api.WebSubApi {
 		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
 		if err != nil {
-			log.Error("Failed to parse configuration", zap.Error(err))
+			log.Error("Failed to parse configuration", slog.Any("error", err))
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to parse configuration",

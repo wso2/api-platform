@@ -456,6 +456,7 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 		`DELETE FROM oauth2_security WHERE api_uuid = ?`,
 		`DELETE FROM api_key_security WHERE api_uuid = ?`,
 		`DELETE FROM api_mtls_config WHERE api_uuid = ?`,
+		`DELETE FROM xhub_signature_security WHERE api_uuid = ?`,
 		// Finally delete the main API record
 		`DELETE FROM apis WHERE uuid = ?`,
 	}
@@ -630,20 +631,19 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiId string, security *model
 		if err != nil {
 			return err
 		}
+	}
 
-		if security.XHubSignature != nil {
-			xHubQuery := `
+	if security.XHubSignature != nil {
+		xHubQuery := `
 				INSERT INTO xhub_signature_security (api_uuid, enabled, secret, algorithm, header)
 				VALUES (?, ?, ?, ?, ?)
 			`
-			_, err := tx.Exec(xHubQuery, apiId, security.XHubSignature.Enabled,
-				security.XHubSignature.Secret, security.XHubSignature.Algorithm, security.XHubSignature.Header)
-			if err != nil {
-				return err
-			}
+		_, err := tx.Exec(xHubQuery, apiId, security.XHubSignature.Enabled,
+			security.XHubSignature.Secret, security.XHubSignature.Algorithm, security.XHubSignature.Header)
+		if err != nil {
+			return err
 		}
 	}
-
 	return nil
 }
 
@@ -660,6 +660,20 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 		&apiKey.Header, &apiKey.Query, &apiKey.Cookie)
 	if err == nil {
 		security.APIKey = apiKey
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	// Load XHub Signature security if present
+	xHub := &model.XHubSignatureSecurity{}
+	xHubQuery := `
+			SELECT enabled, secret, algorithm, header
+			FROM xhub_signature_security WHERE api_uuid = ?
+		`
+	err = r.db.QueryRow(xHubQuery, apiId).Scan(&xHub.Enabled,
+		&xHub.Secret, &xHub.Algorithm, &xHub.Header)
+	if err == nil {
+		security.XHubSignature = xHub
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -705,20 +719,6 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 		}
 		oauth2.GrantTypes = grantTypes
 		security.OAuth2 = oauth2
-
-		// Load XHub Signature security if present
-		xHub := &model.XHubSignatureSecurity{}
-		xHubQuery := `
-			SELECT enabled, secret, algorithm, header
-			FROM xhub_signature_security WHERE api_uuid = ?
-		`
-		err = r.db.QueryRow(xHubQuery, apiId).Scan(&xHub.Enabled,
-			&xHub.Secret, &xHub.Algorithm, &xHub.Header)
-		if err == nil {
-			security.XHubSignature = xHub
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}

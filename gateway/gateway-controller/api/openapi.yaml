@@ -1775,6 +1775,7 @@ components:
         - context
         - upstream
         - operations
+        # - kind
       properties:
         displayName:
           type: string
@@ -1963,6 +1964,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PolicyDefinition"
+
 
     # -----------------------
     # Webhook (Async) API schema
@@ -2162,37 +2164,37 @@ components:
         #   description: Protocol-specific channel bindings (arbitrary key/value structure).
         #   additionalProperties: true
 
-    # # Message schema used within Channel publish/subscribe operations.
-    # ChannelMessage:
-    #   type: object
-    #   description: Event/message definition transported over a channel.
-    #   required:
-    #     - name
-    #     - payload
-    #   properties:
-    #     name:
-    #       type: string
-    #       description: Logical message name.
-    #       example: IssueEvent
-    #     content_type:
-    #       type: string
-    #       description: Content type of the payload.
-    #       example: application/json
-    #     summary:
-    #       type: string
-    #       description: Short description of the message.
-    #       example: Event emitted when an issue is created.
-    #     payload:
-    #       type: object
-    #       description: JSON Schema representation of the message body.
-    #       additionalProperties: true
-    #       example:
-    #         type: object
-    #         properties:
-    #           action:
-    #             type: string
-    #           issue:
-    #             type: object
+    # Message schema used within Channel publish/subscribe operations.
+    ChannelMessage:
+      type: object
+      description: Event/message definition transported over a channel.
+      required:
+        - name
+        - payload
+      properties:
+        name:
+          type: string
+          description: Logical message name.
+          example: IssueEvent
+        content_type:
+          type: string
+          description: Content type of the payload.
+          example: application/json
+        summary:
+          type: string
+          description: Short description of the message.
+          example: Event emitted when an issue is created.
+        payload:
+          type: object
+          description: JSON Schema representation of the message body.
+          additionalProperties: true
+          example:
+            type: object
+            properties:
+              action:
+                type: string
+              issue:
+                type: object
 
     APICreateResponse:
       type: object
