@@ -182,7 +182,7 @@ func (t *Translator) TranslateConfigs(
 		var clusterList []*cluster.Cluster
 		var err error
 		if cfg.Configuration.Kind == api.WebSubApi {
-			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg)
+			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg, configs)
 			if err != nil {
 				log.Error("Failed to translate config",
 					slog.String("id", cfg.ID),
@@ -391,7 +391,7 @@ func (t *Translator) TranslateConfigs(
 }
 
 // translateAsyncAPIConfig translates a single API configuration
-func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
+func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse WebSub config data: %w", err)
@@ -430,7 +430,10 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route
 			mainClusterName, effectiveMainVHost, cfg.Kind)
 		mainRoutesList = append(mainRoutesList, r)
 	}
-	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, "", nil)
+	// Extract template handle and provider name for LLM provider/proxy scenarios
+	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
+	providerName := t.extractProviderName(cfg, allConfigs)
+	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
