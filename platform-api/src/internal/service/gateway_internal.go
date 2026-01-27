@@ -95,6 +95,26 @@ func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[strin
 	return apiYamlMap, nil
 }
 
+// GetActiveDeploymentByGateway retrieves the currently deployed API artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	// Get the active deployment for this API on this gateway
+	deployment, err := s.apiRepo.GetActiveDeploymentByGateway(apiID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, constants.ErrDeploymentNotActive
+	}
+
+	// Deployment content is already stored as YAML, so return it directly
+	apiYaml := string(deployment.Content)
+
+	apiYamlMap := map[string]string{
+		apiID: apiYaml,
+	}
+	return apiYamlMap, nil
+}
+
 // CreateGatewayAPIDeployment handles the registration of an API deployment from a gateway
 func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID, gatewayID string,
 	notification dto.APIDeploymentNotification, revisionID *string) (*dto.GatewayAPIDeploymentResponse, error) {
@@ -177,8 +197,6 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 			Type:             "HTTP",
 			Transport:        []string{"http", "https"},
 			IsDefaultVersion: false,
-			IsRevision:       false,
-			RevisionID:       0,
 			Operations:       operations,
 			CreatedAt:        now,
 			UpdatedAt:        now,
@@ -210,7 +228,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Check if deployment already exists
-	existingDeployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiUUID, orgID)
+	existingDeployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiUUID, orgID, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
 	}
@@ -267,7 +285,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 
 	return &dto.GatewayAPIDeploymentResponse{
 		APIId:        apiUUID,
-		DeploymentId: int64(deployment.ID),
+		DeploymentId: 0, // Legacy field, no longer used with new deployment model
 		Message:      "API deployment registered successfully",
 		Created:      apiCreated,
 	}, nil

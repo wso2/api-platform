@@ -65,6 +65,15 @@ var (
 )
 
 var (
+	ErrDeploymentNotFound      = errors.New("deployment not found")
+	ErrDeploymentNotActive     = errors.New("no active deployment found for this API on the gateway")
+	ErrDeploymentIsDeployed    = errors.New("cannot delete an active deployment - undeploy it first")
+	ErrDeploymentAlreadyActive = errors.New("deployment is already active")
+	ErrBaseDeploymentNotFound  = errors.New("base deployment not found")
+	ErrInvalidDeploymentStatus = errors.New("invalid deployment status")
+)
+
+var (
 	ErrApiPortalSync = errors.New("failed to synchronize with dev portal")
 )
 

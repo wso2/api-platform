@@ -37,9 +37,6 @@ type API struct {
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`
 	HasThumbnail     bool                `json:"hasThumbnail,omitempty" db:"has_thumbnail"`
 	IsDefaultVersion bool                `json:"isDefaultVersion,omitempty" db:"is_default_version"`
-	IsRevision       bool                `json:"isRevision,omitempty" db:"is_revision"`
-	RevisionedAPIID  string              `json:"revisionedApiId,omitempty" db:"revisioned_api_id"`
-	RevisionID       int                 `json:"revisionId,omitempty" db:"revision_id"`
 	Type             string              `json:"type,omitempty" db:"type"`
 	Transport        []string            `json:"transport,omitempty" db:"transport"`
 	MTLS             *MTLSConfig         `json:"mtls,omitempty"`
@@ -242,13 +239,17 @@ type Policy struct {
 	Version            string                  `json:"version"`
 }
 
-// APIDeployment represents an API deployment record
+// APIDeployment represents an immutable API deployment artifact
 type APIDeployment struct {
-	ID             int64     `json:"id,omitempty" db:"id"`
-	ApiID          string    `json:"apiId" db:"api_uuid"`
-	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
-	GatewayID      string    `json:"gatewayId" db:"gateway_uuid"`
-	CreatedAt      time.Time `json:"createdAt,omitempty" db:"created_at"`
+	DeploymentID     string                 `json:"deploymentId" db:"deployment_id"`
+	ApiID            string                 `json:"apiId" db:"api_uuid"`
+	OrganizationID   string                 `json:"organizationId" db:"organization_uuid"`
+	GatewayID        string                 `json:"gatewayId" db:"gateway_uuid"`
+	Status           DeploymentStatus       `json:"status" db:"status"`
+	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" db:"base_deployment_id"`
+	Content          []byte                 `json:"-" db:"content"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
+	CreatedAt        time.Time              `json:"createdAt" db:"created_at"`
 }
 
 // TableName returns the table name for the APIDeployment model
@@ -271,3 +272,11 @@ type APIAssociation struct {
 func (APIAssociation) TableName() string {
 	return "api_associations"
 }
+
+// DeploymentStatus represents the status of an API deployment
+type DeploymentStatus string
+
+const (
+	DeploymentStatusDeployed   DeploymentStatus = "DEPLOYED"
+	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
+)
