@@ -16,9 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: test clean deps check-docker build-images help
+.PHONY: test clean deps check-docker build-cli build-images test-all help
 
-# Gateway IT compose file location
+# Directory locations
+CLI_SRC_DIR=../src
 GATEWAY_COMPOSE_FILE=../../gateway/it/docker-compose.test.yaml
 GATEWAY_DIR=../../gateway
 
@@ -27,17 +28,19 @@ help:
 	@echo "CLI Integration Tests"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make test           - Run integration tests (requires images to be built first)"
-	@echo "  make test-all       - Build gateway images and run integration tests"
+	@echo "  make test           - Run integration tests (requires CLI and images pre-built)"
+	@echo "  make test-all       - Build CLI, gateway images, and run integration tests"
+	@echo "  make build-cli      - Build the CLI binary"
 	@echo "  make build-images   - Build required gateway Docker images"
 	@echo "  make clean          - Clean up containers, volumes, and logs"
 	@echo "  make deps           - Install Go dependencies"
 	@echo ""
 	@echo "Prerequisites:"
 	@echo "  - Docker must be running"
+	@echo "  - CLI must be built (run 'make build-cli' first)"
 	@echo "  - Gateway images must be built (run 'make build-images' first)"
 
-# Run integration tests (assumes images are already built)
+# Run integration tests (assumes CLI and images are already built)
 test: check-docker
 	@mkdir -p logs
 	@pkgs="$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs)" ; \
@@ -46,9 +49,18 @@ test: check-docker
 	else \
 		go test -v -timeout 30m $$pkgs 2>&1 | awk '/^Logs directory:/{print;exit}1' ; \
 	fi
+	go test -v -timeout 30m ./...
 
-# Build images and run tests (full flow)
-test-all: build-images test
+# Build CLI binary
+build-cli:
+	@echo "==============================================="
+	@echo "Building CLI Binary"
+	@echo "==============================================="
+	@$(MAKE) -C $(CLI_SRC_DIR) build-skip-tests
+	@echo "CLI binary built successfully"
+
+# Build CLI, images, and run tests (full flow)
+test-all: build-cli build-images test
 
 # Build required gateway Docker images locally
 build-images: check-docker
