@@ -60,7 +60,12 @@ func (ecs *EmbeddingCacheStore) GetAPICache(apiId string) APIEmbeddingCache {
 	defer ecs.mu.RUnlock()
 
 	if apiCache, exists := ecs.cache[apiId]; exists {
-		return apiCache
+		// Return a shallow copy to prevent data races
+		copyCache := make(APIEmbeddingCache, len(apiCache))
+		for k, v := range apiCache {
+			copyCache[k] = v
+		}
+		return copyCache
 	}
 	return nil
 }
