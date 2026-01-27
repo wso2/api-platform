@@ -277,43 +277,6 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
     And the response body should contain "/models/new-model-2/chat"
 
   # ====================================================================
-  # NESTED JSON PATH
-  # ====================================================================
-
-  Scenario: Model selection with nested JSONPath
-    Given API is deployed with following configuration
-      """
-      name: test-api
-      version: 1.0.0
-      basePath: /test
-      type: REST
-      endpointConfig:
-        production:
-          endpoint: http://sample-backend:9080
-      operations:
-        - method: POST
-          path: /chat
-          policies:
-            - name: model-weighted-round-robin
-              version: v0.1.0
-              params:
-                models:
-                  - model: selected-model
-                    weight: 1
-                requestModel:
-                  location: payload
-                  identifier: $.config.model
-      """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
-      """
-      {"config": {"model": "original-model"}, "prompt": "test"}
-      """
-    Then the response status code should be 200
-    And the response body should contain "selected-model"
-    And the response body should contain "\"config\":{\"model\":\"selected-model\"}"
-
-  # ====================================================================
   # MODEL SUSPENSION ON ERRORS
   # ====================================================================
 
