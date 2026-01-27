@@ -1046,6 +1046,26 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		port = uint32(constants.WEBSUB_HUB_DYNAMIC_HTTP_PORT)
 	}
 
+	//TODO: Add TLS Filter chain for HTTPS
+	// if isHTTPS {
+	// 	tlsContext, err := t.createDownstreamTLSContext()
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+	// 	}
+
+	// 	tlsContextAny, err := anypb.New(tlsContext)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+	// 	}
+
+	// 	filterChain.TransportSocket = &core.TransportSocket{
+	// 		Name: "envoy.transport_sockets.tls",
+	// 		ConfigType: &core.TransportSocket_TypedConfig{
+	// 			TypedConfig: tlsContextAny,
+	// 		},
+	// 	}
+	// }
+
 	// Create filter chain
 	filterChain := &listener.FilterChain{
 		Filters: []*listener.Filter{{

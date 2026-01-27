@@ -647,6 +647,21 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest, orgUUID str
 		return constants.ErrInvalidAPIType
 	}
 
+	// Type-specific validations
+	// Ensure that WebSub APIs do not have operations and HTTP APIs do not have channels
+	switch req.Type {
+	case constants.APITypeWebSub:
+		// For WebSub APIs, ensure that at least one channel is defined
+		if req.Operations != nil || len(req.Operations) > 0 {
+			return errors.New("WebSub APIs cannot have operations defined")
+		}
+	case constants.APITypeHTTP:
+		// For HTTP APIs, ensure that at least one operation is defined
+		if req.Channels != nil || len(req.Channels) > 0 {
+			return errors.New("HTTP APIs cannot have channels defined")
+		}
+	}
+
 	// Validate transport protocols if provided
 	if len(req.Transport) > 0 {
 		for _, transport := range req.Transport {

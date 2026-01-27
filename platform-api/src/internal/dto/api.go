@@ -143,7 +143,7 @@ type Operation struct {
 	Request     *OperationRequest `json:"request,omitempty" yaml:"request,omitempty"`
 }
 
-// Channel represents an API operation
+// Channel represents an API channel
 type Channel struct {
 	Name        string          `json:"name,omitempty" yaml:"name,omitempty"`
 	Description string          `json:"description,omitempty" yaml:"description,omitempty"`
@@ -159,7 +159,7 @@ type OperationRequest struct {
 	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
-// OperationRequest represents operation request details
+// ChannelRequest represents channel request details
 type ChannelRequest struct {
 	Method          string                `json:"method" yaml:"method"`
 	Name            string                `json:"name" yaml:"name"`
