@@ -296,15 +296,7 @@ func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationE
 	// Validate context
 	errors = append(errors, v.validateContext(spec.Context)...)
 
-	// Validate upstream if not WebSub
-	if spec.Upstream.Main != nil {
-		errors = append(errors, v.validateUpstream("main", spec.Upstream.Main)...)
-	}
-	if spec.Upstream.Sandbox != nil {
-		errors = append(errors, v.validateUpstream("sandbox", spec.Upstream.Sandbox)...)
-	}
-
-	// Validate operations
+	// Validate channels
 	errors = append(errors, v.validateChannels(spec.Channels)...)
 
 	return errors

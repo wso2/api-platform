@@ -430,7 +430,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route
 			mainClusterName, effectiveMainVHost, cfg.Kind)
 		mainRoutesList = append(mainRoutesList, r)
 	}
-	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind)
+	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, "", nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 

@@ -1996,14 +1996,6 @@ components:
           minLength: 1
           maxLength: 200
           example: /weather
-        upstream:
-          type: object
-          description: API-level upstream configuration
-          properties:
-            main:
-              $ref: "#/components/schemas/Upstream"
-            sandbox:
-              $ref: "#/components/schemas/Upstream"
         vhosts:
           type: object
           required:
