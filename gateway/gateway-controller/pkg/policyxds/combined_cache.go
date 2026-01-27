@@ -28,19 +28,19 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
 )
 
-// CombinedCache combines policy, API key, and lazy resource caches to provide a unified xDS cache interface
+// CombinedCache combines policy, API key, and metadata XDS caches to provide a unified xDS cache interface
 // It implements cache.Cache interface by delegating to underlying caches
 type CombinedCache struct {
 	policyCache       cache.Cache
 	apiKeyCache       cache.Cache
-	lazyResourceCache cache.Cache
+	metadataXDSCache cache.Cache
 	logger            *slog.Logger
 	mu                sync.RWMutex
 	watchers          map[int64]*combinedWatcher
 	watcherID         int64
 }
 
-// combinedWatcher manages watchers for policy, API key, and lazy resource caches
+// combinedWatcher manages watchers for policy, API key, and metadata XDS caches
 type combinedWatcher struct {
 	id                 int64
 	request            *cache.Request
@@ -48,16 +48,16 @@ type combinedWatcher struct {
 	responseChan       chan cache.Response
 	policyCancel       func()
 	apiKeyCancel       func()
-	lazyResourceCancel func()
+	metadataXDSCancel func()
 	combinedCache      *CombinedCache
 	done               chan struct{} // done channel to signal goroutine cancellation
 }
 
-// NewCombinedCache creates a new combined cache that merges policy, API key, and lazy resource caches
+// NewCombinedCache creates a new combined cache that merges policy, API key, and metadata XDS caches
 // Returns a cache.Cache interface implementation
-func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyResourceCache cache.Cache, logger *slog.Logger) cache.Cache {
-	if policyCache == nil || apiKeyCache == nil || lazyResourceCache == nil {
-		panic("policyCache, apiKeyCache, and lazyResourceCache must not be nil")
+func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, metadataXDSCache cache.Cache, logger *slog.Logger) cache.Cache {
+	if policyCache == nil || apiKeyCache == nil || metadataXDSCache == nil {
+		panic("policyCache, apiKeyCache, and metadataXDSCache must not be nil")
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -65,7 +65,7 @@ func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyReso
 	return &CombinedCache{
 		policyCache:       policyCache,
 		apiKeyCache:       apiKeyCache,
-		lazyResourceCache: lazyResourceCache,
+		metadataXDSCache: metadataXDSCache,
 		logger:            logger,
 		watchers:          make(map[int64]*combinedWatcher),
 		watcherID:         0,
@@ -100,15 +100,15 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 	// Create separate response channels for each cache to avoid recursion
 	policyResponseChan := make(chan cache.Response, 1)
 	apiKeyResponseChan := make(chan cache.Response, 1)
-	lazyResourceResponseChan := make(chan cache.Response, 1)
+	metadataXDSResponseChan := make(chan cache.Response, 1)
 
 	// Create watches on all underlying caches with separate channels
 	watcher.policyCancel = c.policyCache.CreateWatch(request, streamState, policyResponseChan)
 	watcher.apiKeyCancel = c.apiKeyCache.CreateWatch(request, streamState, apiKeyResponseChan)
-	watcher.lazyResourceCancel = c.lazyResourceCache.CreateWatch(request, streamState, lazyResourceResponseChan)
+	watcher.metadataXDSCancel = c.metadataXDSCache.CreateWatch(request, streamState, metadataXDSResponseChan)
 
 	// Start a response multiplexer to handle responses from all caches
-	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, responseChan, watcher.done)
+	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, metadataXDSResponseChan, responseChan, watcher.done)
 
 	// Return cancel function
 	return func() {
@@ -118,13 +118,13 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 
 // handleCombinedResponses multiplexes responses from all caches
 // This prevents recursion and handles response deduplication
-func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan chan cache.Response,
+func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan, metadataXDSResponseChan chan cache.Response,
 	mainResponseChan chan cache.Response, done chan struct{}) {
 	defer func() {
 		c.logger.Debug("Response handler goroutine exiting", slog.Int64("watcher_id", watcherID))
 	}()
 
-	var lastPolicyVersion, lastApiKeyVersion, lastLazyResourceVersion string
+	var lastPolicyVersion, lastApiKeyVersion, lastMetadataXDSVersion string
 
 	for {
 		select {
@@ -212,16 +212,16 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 					slog.String("version", version))
 			}
 
-		case response, ok := <-lazyResourceResponseChan:
+		case response, ok := <-metadataXDSResponseChan:
 			if !ok {
-				c.logger.Debug("Lazy resource response channel closed", slog.Int64("watcher_id", watcherID))
+				c.logger.Debug("Metadata XDS response channel closed", slog.Int64("watcher_id", watcherID))
 				return
 			}
 
 			// Handle nil response only if we haven't sent initial response yet
 			if response == nil {
 				// Don't create continuous empty responses - this causes the loop
-				c.logger.Debug("Lazy resource cache has no data, skipping nil response",
+				c.logger.Debug("Metadata XDS cache has no data, skipping nil response",
 					slog.Int64("watcher_id", watcherID))
 				continue
 			}
@@ -232,9 +232,9 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 				version = "unknown"
 			}
 
-			if version != lastLazyResourceVersion {
-				lastLazyResourceVersion = version
-				c.logger.Debug("Forwarding lazy resource cache response",
+			if version != lastMetadataXDSVersion {
+				lastMetadataXDSVersion = version
+				c.logger.Debug("Forwarding metadata XDS cache response",
 					slog.Int64("watcher_id", watcherID),
 					slog.String("version", version))
 
@@ -242,12 +242,12 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 				case mainResponseChan <- response:
 					// Successfully sent
 				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending lazy resource response, client may be slow",
+					c.logger.Warn("Timeout sending metadata XDS response, client may be slow",
 						slog.Int64("watcher_id", watcherID),
 						slog.String("version", version))
 				}
 			} else {
-				c.logger.Debug("Skipping duplicate lazy resource response",
+				c.logger.Debug("Skipping duplicate metadata XDS response",
 					slog.Int64("watcher_id", watcherID),
 					slog.String("version", version))
 			}
@@ -280,7 +280,7 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		slog.String("node_id", request.Node.GetId()))
 
 	// Create delta watches on all underlying caches
-	var policyCancel, apiKeyCancel, lazyResourceCancel func()
+	var policyCancel, apiKeyCancel, metadataXDSCancel func()
 
 	// Try to create delta watch on policy cache if it supports it
 	if deltaWatcher, ok := c.policyCache.(interface {
@@ -302,19 +302,19 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		c.logger.Debug("API key cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
 	}
 
-	// Try to create delta watch on lazy resource cache if it supports it
-	if deltaWatcher, ok := c.lazyResourceCache.(interface {
+	// Try to create delta watch on metadata XDS cache if it supports it
+	if deltaWatcher, ok := c.metadataXDSCache.(interface {
 		CreateDeltaWatch(*cache.DeltaRequest, stream.StreamState, chan cache.DeltaResponse) func()
 	}); ok {
-		lazyResourceCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "lazyresource", responseChan))
-		c.logger.Debug("Lazy resource cache supports delta watch", slog.Int64("watcher_id", watcherID))
+		metadataXDSCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "metadataxds", responseChan))
+		c.logger.Debug("Metadata XDS cache supports delta watch", slog.Int64("watcher_id", watcherID))
 	} else {
-		c.logger.Debug("Lazy resource cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
+		c.logger.Debug("Metadata XDS cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
 	}
 
 	// If no cache supports delta watch, we could fall back to regular watch
 	// but for now we'll just return a no-op cancel function
-	if policyCancel == nil && apiKeyCancel == nil && lazyResourceCancel == nil {
+	if policyCancel == nil && apiKeyCancel == nil && metadataXDSCancel == nil {
 		c.logger.Warn("No underlying cache supports delta watch",
 			slog.Int64("watcher_id", watcherID),
 			slog.String("type_url", request.TypeUrl))
@@ -331,8 +331,8 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		if apiKeyCancel != nil {
 			apiKeyCancel()
 		}
-		if lazyResourceCancel != nil {
-			lazyResourceCancel()
+		if metadataXDSCancel != nil {
+			metadataXDSCancel()
 		}
 
 		c.logger.Debug("Canceled combined delta watch", slog.Int64("watcher_id", watcherID))
@@ -369,13 +369,13 @@ func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cach
 		return response, nil
 	}
 
-	// If not found in API key cache, try lazy resource cache
-	if response, err := c.lazyResourceCache.Fetch(ctx, request); err == nil {
+	// If not found in API key cache, try metadata XDS cache
+	if response, err := c.metadataXDSCache.Fetch(ctx, request); err == nil {
 		version, versionErr := response.GetVersion()
 		if versionErr != nil {
 			version = "unknown"
 		}
-		c.logger.Debug("Fetched from lazy resource cache",
+		c.logger.Debug("Fetched from metadata XDS cache",
 			slog.String("version", version))
 		return response, nil
 	}
@@ -447,7 +447,7 @@ func (c *CombinedCache) cancelWatch(watcherID int64) {
 	if watcher.apiKeyCancel != nil {
 		watcher.apiKeyCancel()
 	}
-	if watcher.lazyResourceCancel != nil {
-		watcher.lazyResourceCancel()
+	if watcher.metadataXDSCancel != nil {
+		watcher.metadataXDSCancel()
 	}
 }

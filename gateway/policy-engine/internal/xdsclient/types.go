@@ -29,8 +29,8 @@ const (
 	// APIKeyStateTypeURL is the custom type URL for API key state (state-of-the-world approach)
 	APIKeyStateTypeURL = "api-platform.wso2.org/v1.APIKeyState"
 
-	// LazyResourceTypeURL is the custom type URL for lazy resources
-	LazyResourceTypeURL = "api-platform.wso2.org/v1.LazyResources"
+	// MetadataXDSTypeURL is the custom type URL for metadata XDSs
+	MetadataXDSTypeURL = "api-platform.wso2.org/v1.MetadataXDSs"
 
 	// Default configuration values
 	DefaultNodeID                = "policy-engine"

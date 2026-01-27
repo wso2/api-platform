@@ -70,6 +70,98 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		return httpSteps.SendGETToService("gateway-controller", "/llm-provider-templates?"+filterKey+"="+filterValue)
 	})
 
+	// Metadata XDS Steps
+	ctx.Step(`^I create this LLM provider:$`, func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		err := httpSteps.SendPOSTToService("gateway-controller", "/llm-providers", body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
+	ctx.Step(`^I update the LLM provider "([^"]*)" with:$`, func(id string, body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		err := httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+id, body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
+	ctx.Step(`^I delete the LLM provider "([^"]*)"$`, func(id string) error {
+		err := httpSteps.SendDELETEToService("gateway-controller", "/llm-providers/"+id)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
+	ctx.Step(`^the Policy Engine metadata dump should contain "([^"]*)" mapping to "([^"]*)"$`, func(providerName, templateName string) error {
+		err := httpSteps.SendGETToService("policy-engine-admin", "/metadata_dump")
+		if err != nil {
+			return err
+		}
+
+		var response struct {
+			Resources []struct {
+				ID           string                 `json:"id"`
+				ResourceType string                 `json:"resource_type"`
+				Resource     map[string]interface{} `json:"resource"`
+			} `json:"resources"`
+		}
+
+		if err := json.Unmarshal(httpSteps.LastBody(), &response); err != nil {
+			return fmt.Errorf("failed to parse metadata dump: %w", err)
+		}
+
+		// Find the global-llm-provider-map
+		for _, res := range response.Resources {
+			if res.ID == "global-llm-provider-map" {
+				if mappedTemplate, ok := res.Resource[providerName].(string); ok {
+					if mappedTemplate == templateName {
+						return nil
+					}
+					return fmt.Errorf("provider %s mapped to %s, expected %s", providerName, mappedTemplate, templateName)
+				}
+				return fmt.Errorf("provider %s not found in global map", providerName)
+			}
+		}
+
+		return fmt.Errorf("global-llm-provider-map not found in metadata dump")
+	})
+
+	ctx.Step(`^the Policy Engine metadata dump should not contain provider "([^"]*)"$`, func(providerName string) error {
+		err := httpSteps.SendGETToService("policy-engine-admin", "/metadata_dump")
+		if err != nil {
+			return err
+		}
+
+		var response struct {
+			Resources []struct {
+				ID       string                 `json:"id"`
+				Resource map[string]interface{} `json:"resource"`
+			} `json:"resources"`
+		}
+
+		if err := json.Unmarshal(httpSteps.LastBody(), &response); err != nil {
+			return fmt.Errorf("failed to parse metadata dump: %w", err)
+		}
+
+		for _, res := range response.Resources {
+			if res.ID == "global-llm-provider-map" {
+				if _, ok := res.Resource[providerName]; ok {
+					return fmt.Errorf("provider %s still exists in global map", providerName)
+				}
+				return nil
+			}
+		}
+		return nil // Map not found is also acceptable if it's empty
+	})
+
 	ctx.Step(`^the response should contain oob-templates$`, func() error {
 		// This step verifies that out-of-box templates are present in the list response
 		// The actual assertion is done by checking the response body

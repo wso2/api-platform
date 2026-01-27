@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metadataxds"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -42,7 +42,7 @@ type Server struct {
 	xdsServer               server.Server
 	snapshotManager         *SnapshotManager
 	apiKeySnapshotMgr       *apikeyxds.APIKeySnapshotManager
-	lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager
+	metadataXDSSnapshotMgr *metadataxds.MetadataXDSSnapshotManager
 	port                    int
 	tlsConfig               *TLSConfig
 	logger                  *slog.Logger
@@ -70,11 +70,11 @@ func WithTLS(certFile, keyFile string) ServerOption {
 }
 
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, metadataXDSSnapshotMgr *metadataxds.MetadataXDSSnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
 	s := &Server{
 		snapshotManager:         snapshotManager,
 		apiKeySnapshotMgr:       apiKeySnapshotMgr,
-		lazyResourceSnapshotMgr: lazyResourceSnapshotMgr,
+		metadataXDSSnapshotMgr: metadataXDSSnapshotMgr,
 		port:                    port,
 		logger:                  logger,
 		tlsConfig:               &TLSConfig{Enabled: false},
@@ -112,11 +112,11 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	grpcServer := grpc.NewServer(grpcOpts...)
 
-	// Create combined cache that handles policy chains, API key state, and lazy resources
+	// Create combined cache that handles policy chains, API key state, and metadata XDSs
 	policyCache := snapshotManager.GetCache()
 	apiKeyCache := apiKeySnapshotMgr.GetCache()
-	lazyResourceCache := lazyResourceSnapshotMgr.GetCache()
-	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, logger)
+	metadataXDSCache := metadataXDSSnapshotMgr.GetCache()
+	combinedCache := NewCombinedCache(policyCache, apiKeyCache, metadataXDSCache, logger)
 
 	callbacks := &serverCallbacks{logger: logger}
 	xdsServer := server.NewServer(context.Background(), combinedCache, callbacks)

@@ -89,3 +89,24 @@ func dumpPolicySpecs(specs []policy.PolicySpec) []PolicySpec {
 	}
 	return result
 }
+
+// DumpMetadata dumps the current metadata state from the store
+func DumpMetadata() *MetadataDumpResponse {
+	store := policy.GetMetadataXDSStoreInstance()
+	allResources := store.GetAllResources()
+
+	resources := make([]MetadataResourceInfo, 0, len(allResources))
+	for id, res := range allResources {
+		resources = append(resources, MetadataResourceInfo{
+			ID:           id,
+			ResourceType: res.ResourceType,
+			Resource:     res.Resource,
+		})
+	}
+
+	return &MetadataDumpResponse{
+		Timestamp:      time.Now(),
+		TotalResources: len(resources),
+		Resources:      resources,
+	}
+}

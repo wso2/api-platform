@@ -42,7 +42,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metadataxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -81,7 +81,7 @@ func NewAPIServer(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
-	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
+	metadataXDSManager *metadataxds.MetadataXDSStateManager,
 	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]api.PolicyDefinition,
@@ -102,7 +102,7 @@ func NewAPIServer(
 		logger:               logger,
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
-		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
+		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, metadataXDSManager, templateDefinitions,
 			deploymentService, &systemConfig.GatewayController.Router),
 		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
 			&systemConfig.GatewayController.APIKey),

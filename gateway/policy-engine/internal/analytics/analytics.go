@@ -30,8 +30,6 @@ import (
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 )
 
-const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
-
 // EventCategory represents the category of an event.
 type EventCategory string
 

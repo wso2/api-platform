@@ -81,6 +81,7 @@ func TestFeatures(t *testing.T) {
 				"features/jwt-auth.feature",
 				"features/cors.feature",
 				"features/llm-provider-templates.feature",
+				"features/llm-provider-metadata-xds.feature",
 				"features/analytics-header-filter.feature",
 			},
 			TestingT: t,
@@ -133,12 +134,13 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 
 		// Initialize common step handlers
 		httpSteps = steps.NewHTTPSteps(testState.HTTPClient, map[string]string{
-			"gateway-controller": testState.Config.GatewayControllerURL,
-			"router":             testState.Config.RouterURL,
-			"policy-engine":      testState.Config.PolicyEngineURL,
-			"sample-backend":     testState.Config.SampleBackendURL,
-			"echo-backend":       testState.Config.EchoBackendURL,
-			"mock-jwks":          testState.Config.MockJWKSURL,
+			"gateway-controller":  testState.Config.GatewayControllerURL,
+			"router":              testState.Config.RouterURL,
+			"policy-engine":       testState.Config.PolicyEngineURL,
+			"policy-engine-admin": "http://localhost:9002",
+			"sample-backend":      testState.Config.SampleBackendURL,
+			"echo-backend":        testState.Config.EchoBackendURL,
+			"mock-jwks":           testState.Config.MockJWKSURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 

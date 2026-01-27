@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metadataxds"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -117,10 +117,10 @@ func main() {
 	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
 	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
 
-	// Initialize in-memory lazy resource store and components for xDS
-	lazyResourceStore := storage.NewLazyResourceStore(log)
-	lazyResourceSnapshotManager := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, log)
-	lazyResourceXDSManager := lazyresourcexds.NewLazyResourceStateManager(lazyResourceStore, lazyResourceSnapshotManager, log)
+	// Initialize in-memory metadata XDS store and components for xDS
+	metadataXDSStore := storage.NewMetadataXDSStore(log)
+	metadataXDSSnapshotManager := metadataxds.NewMetadataXDSSnapshotManager(metadataXDSStore, log)
+	metadataXDSXDSManager := metadataxds.NewMetadataXDSStateManager(metadataXDSStore, metadataXDSSnapshotManager, log)
 
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
@@ -253,7 +253,7 @@ func main() {
 				cfg.GatewayController.PolicyServer.TLS.KeyFile,
 			))
 		}
-		policyXDSServer = policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
+		policyXDSServer = policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, metadataXDSSnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
 		go func() {
 			if err := policyXDSServer.Start(); err != nil {
 				log.Error("Policy xDS server failed", slog.Any("error", err))
@@ -325,19 +325,19 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, metadataXDSXDSManager, log, cpClient,
 		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg)
 
-	// Ensure initial lazy resource snapshot includes default templates loaded from files.
+	// Ensure initial metadata XDS snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
-	if lazyResourceStore.Count() > 0 {
-		log.Info("Generating initial lazy resource snapshot for policy engine (including templates)",
-			slog.Int("lazy_resource_count", lazyResourceStore.Count()))
+	if metadataXDSStore.Count() > 0 {
+		log.Info("Generating initial metadata XDS snapshot for policy engine (including templates)",
+			slog.Int("metadata_xds_resource_count", metadataXDSStore.Count()))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := lazyResourceSnapshotManager.UpdateSnapshot(ctx); err != nil {
-			log.Warn("Failed to generate initial lazy resource snapshot", slog.Any("error", err))
+		if err := metadataXDSSnapshotManager.UpdateSnapshot(ctx); err != nil {
+			log.Warn("Failed to generate initial metadata XDS snapshot", slog.Any("error", err))
 		} else {
-			log.Info("Initial lazy resource snapshot generated successfully")
+			log.Info("Initial metadata XDS snapshot generated successfully")
 		}
 		cancel()
 	}

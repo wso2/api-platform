@@ -51,19 +51,19 @@ type ResourceHandler struct {
 	registry           *registry.PolicyRegistry
 	configLoader       *kernel.ConfigLoader
 	apiKeyHandler      *APIKeyOperationHandler
-	lazyResourceHandler *LazyResourceHandler
+	metadataXDSHandler *MetadataXDSHandler
 }
 
 // NewResourceHandler creates a new ResourceHandler
 func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *ResourceHandler {
 	apiKeyStore := policy.GetAPIkeyStoreInstance()
-	lazyResourceStore := policy.GetLazyResourceStoreInstance()
+	metadataXDSStore := policy.GetMetadataXDSStoreInstance()
 	return &ResourceHandler{
 		kernel:              k,
 		registry:            reg,
 		configLoader:        kernel.NewConfigLoader(k, reg),
 		apiKeyHandler:       NewAPIKeyOperationHandler(apiKeyStore, slog.Default()),
-		lazyResourceHandler: NewLazyResourceHandler(lazyResourceStore, slog.Default()),
+		metadataXDSHandler: NewMetadataXDSHandler(metadataXDSStore, slog.Default()),
 	}
 }
 

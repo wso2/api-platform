@@ -30,9 +30,6 @@ const (
 	ModelIDMetadataKey               = "aitoken:modelid"
 	AIProviderNameMetadataKey        = "ai:providername"
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
-
-	// Lazy resource type for LLM provider templates
-	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
 )
 
 var (
@@ -105,15 +102,15 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 	return nil
 }
 
-// getTemplateByHandle retrieves a template from the lazy resource cache by its handle
+// getTemplateByHandle retrieves a template from the metadata XDS cache by its handle
 func getTemplateByHandle(templateHandle string) (map[string]interface{}, error) {
 	if templateHandle == "" {
 		return nil, fmt.Errorf("template handle is empty")
 	}
 
-	store := policy.GetLazyResourceStoreInstance()
+	store := policy.GetMetadataXDSStoreInstance()
 	if store == nil {
-		return nil, fmt.Errorf("lazy resource store is not available")
+		return nil, fmt.Errorf("metadata XDS store is not available")
 	}
 
 	// Direct lookup by ID (handle)
@@ -129,7 +126,34 @@ func getTemplateByHandle(templateHandle string) (map[string]interface{}, error) 
 	return resource.Resource, nil
 }
 
-// OnRequest performs Analytics collection process during the response phase
+// getTemplateByProviderName retrieves a template from the metadata XDS cache by its provider name
+func getTemplateByProviderName(providerName string) (map[string]interface{}, error) {
+	if providerName == "" {
+		return nil, fmt.Errorf("provider name is empty")
+	}
+
+	store := policy.GetMetadataXDSStoreInstance()
+	if store == nil {
+		return nil, fmt.Errorf("metadata XDS store is not available")
+	}
+
+	// 1. Fetch the global provider-to-template map
+	resourceMap, err := store.GetResource("global-llm-provider-map")
+	if err != nil {
+		return nil, fmt.Errorf("global LLM provider map not found in cache: %w", err)
+	}
+
+	// 2. Resolve provider name to template handle
+	templateHandle, ok := resourceMap.Resource[providerName].(string)
+	if !ok || templateHandle == "" {
+		return nil, fmt.Errorf("no template mapping found for provider '%s'", providerName)
+	}
+
+	// 3. Fetch the actual template by handle
+	return getTemplateByHandle(templateHandle)
+}
+
+// OnResponse performs Analytics collection process during the response phase
 func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	slog.Debug("Analytics system policy: OnResponse called")
 	// Store tokenInfo in analytics metadata for publishing
@@ -143,60 +167,71 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 		// Collect analytics data for REST API spcific scenario
 	case KindLlmProvider, KindLlmProxy:
 		// Collect the analytics data for the AI API(LLM Provider/Proxy) specific scenario
-		// Get template handle from SharedContext metadata
-		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
-		slog.Info("Template handle(extracted from route metadata): ", "templateHandle", templateHandle)
-		if !ok || templateHandle == "" {
-			slog.Debug("No template handle found in route metadata for LLM API")
+		
+		// 1. Try to get template from provider name (most reliable for proxies)
+		var template map[string]interface{}
+		var err error
+		
+		providerName, ok := ctx.SharedContext.Metadata["provider_name"].(string)
+		if ok && providerName != "" {
+			slog.Info("Resolving template via provider name: ", "providerName", providerName)
+			template, err = getTemplateByProviderName(providerName)
+		}
+
+		// 2. Fallback to template handle if provider resolution failed or wasn't available
+		if template == nil {
+			templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
+			if ok && templateHandle != "" {
+				slog.Info("Falling back to direct template handle: ", "templateHandle", templateHandle)
+				template, err = getTemplateByHandle(templateHandle)
+			}
+		}
+
+		if template == nil {
+			slog.Warn("No template could be resolved for LLM API", "error", err)
 		} else {
-			// Fetch template from lazy resource cache
-			template, err := getTemplateByHandle(templateHandle)
+			tokenInfo, err := extractLLMProviderAnalyticsInfo(template, ctx)
 			if err != nil {
-				slog.Warn("Failed to get template from lazy resource cache", "templateHandle", templateHandle, "error", err)
-			} else {
-				tokenInfo, err := extractLLMProviderAnalyticsInfo(template, ctx)
-				if err != nil {
-					slog.Warn("Failed to extract LLM token info", "error", err)
-				} else if tokenInfo != nil {
-					slog.Debug("Extracted LLM token info",
-						"promptTokens", tokenInfo.PromptTokens,
-						"completionTokens", tokenInfo.CompletionTokens,
-						"totalTokens", tokenInfo.TotalTokens,
-						"remainingTokens", tokenInfo.RemainingTokens,
-						"requestModel", tokenInfo.RequestModel,
-						"responseModel", tokenInfo.ResponseModel,
-						"providerName", tokenInfo.ProviderName,
-						"providerDisplayName", tokenInfo.ProviderDisplayName,
-					)
+				slog.Warn("Failed to extract LLM token info", "error", err)
+			} else if tokenInfo != nil {
+				slog.Debug("Extracted LLM token info",
+					"promptTokens", tokenInfo.PromptTokens,
+					"completionTokens", tokenInfo.CompletionTokens,
+					"totalTokens", tokenInfo.TotalTokens,
+					"remainingTokens", tokenInfo.RemainingTokens,
+					"requestModel", tokenInfo.RequestModel,
+					"responseModel", tokenInfo.ResponseModel,
+					"providerName", tokenInfo.ProviderName,
+					"providerDisplayName", tokenInfo.ProviderDisplayName,
+				)
 
-					// Token-related metadata
-					if tokenInfo.PromptTokens != nil {
-						analyticsMetadata[PromptTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.PromptTokens, 10)
-					}
-					if tokenInfo.CompletionTokens != nil {
-						analyticsMetadata[CompletionTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.CompletionTokens, 10)
-					}
-					if tokenInfo.TotalTokens != nil {
-						analyticsMetadata[TotalTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.TotalTokens, 10)
-					}
-					if tokenInfo.ResponseModel != nil {
-						analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.ResponseModel
-					} else if tokenInfo.RequestModel != nil {
-						// Fallback to request model if response model is not available
-						analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.RequestModel
-					}
-					if tokenInfo.ProviderName != nil {
-						analyticsMetadata[AIProviderNameMetadataKey] = *tokenInfo.ProviderName
-					}
-					if tokenInfo.ProviderDisplayName != nil {
-						analyticsMetadata[AIProviderDisplayNameMetadataKey] = *tokenInfo.ProviderDisplayName
-					}
+				// Token-related metadata
+				if tokenInfo.PromptTokens != nil {
+					analyticsMetadata[PromptTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.PromptTokens, 10)
+				}
+				if tokenInfo.CompletionTokens != nil {
+					analyticsMetadata[CompletionTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.CompletionTokens, 10)
+				}
+				if tokenInfo.TotalTokens != nil {
+					analyticsMetadata[TotalTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.TotalTokens, 10)
+				}
+				if tokenInfo.ResponseModel != nil {
+					analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.ResponseModel
+				} else if tokenInfo.RequestModel != nil {
+					// Fallback to request model if response model is not available
+					analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.RequestModel
+				}
+				if tokenInfo.ProviderName != nil {
+					analyticsMetadata[AIProviderNameMetadataKey] = *tokenInfo.ProviderName
+				}
+				if tokenInfo.ProviderDisplayName != nil {
+					analyticsMetadata[AIProviderDisplayNameMetadataKey] = *tokenInfo.ProviderDisplayName
+				}
 
-					// Return modifications with analytics metadata
-					if len(analyticsMetadata) > 0 {
-						return policy.UpstreamResponseModifications{
-							AnalyticsMetadata: analyticsMetadata,
-						}
+				// Return modifications with analytics metadata
+				if len(analyticsMetadata) > 0 {
+					return policy.UpstreamResponseModifications{
+						AnalyticsMetadata: analyticsMetadata,
 					}
 				}
 			}
@@ -218,8 +253,8 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 	return nil
 }
 
-// extractLLMTokenInfo extracts the LLM token information from the response and request bodies
-// template is expected to be a map[string]interface{} from the lazy resource cache
+// extractLLMProviderAnalyticsInfo extracts the LLM token information from the response and request bodies
+// template is expected to be a map[string]interface{} from the metadata XDS cache
 func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *policy.ResponseContext) (*LLMProviderAnalyticsInfo, error) {
 	if template == nil {
 		return nil, fmt.Errorf("template is nil")

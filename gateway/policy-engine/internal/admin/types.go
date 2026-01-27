@@ -62,3 +62,17 @@ type PolicySpec struct {
 	ExecutionCondition *string                `json:"execution_condition"`
 	Parameters         map[string]interface{} `json:"parameters"`
 }
+
+// MetadataDumpResponse is the response structure for the metadata_dump endpoint
+type MetadataDumpResponse struct {
+	Timestamp      time.Time              `json:"timestamp"`
+	TotalResources int                    `json:"total_resources"`
+	Resources      []MetadataResourceInfo `json:"resources"`
+}
+
+// MetadataResourceInfo contains information about a single metadata resource
+type MetadataResourceInfo struct {
+	ID           string                 `json:"id"`
+	ResourceType string                 `json:"resource_type"`
+	Resource     map[string]interface{} `json:"resource"`
+}

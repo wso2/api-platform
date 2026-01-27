@@ -62,3 +62,32 @@ func (h *ConfigDumpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// MetadataDumpHandler handles GET /metadata_dump requests
+type MetadataDumpHandler struct{}
+
+// NewMetadataDumpHandler creates a new metadata dump handler
+func NewMetadataDumpHandler() *MetadataDumpHandler {
+	return &MetadataDumpHandler{}
+}
+
+// ServeHTTP implements http.Handler
+func (h *MetadataDumpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Only allow GET requests
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Dump the metadata
+	dump := DumpMetadata()
+
+	// Set response headers
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// Encode and send response
+	if err := json.NewEncoder(w).Encode(dump); err != nil {
+		return
+	}
+}

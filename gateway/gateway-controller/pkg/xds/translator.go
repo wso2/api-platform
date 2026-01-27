@@ -434,13 +434,13 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 	}
 
-	// Extract template handle for LLM provider/proxy scenarios
-	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
+	// Extract LLM metadata for LLM provider/proxy scenarios
+	templateHandle, providerName := t.extractLLMMetadata(cfg, allConfigs)
 
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, apiData.Upstream.Main.HostRewrite)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -459,7 +459,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, apiData.Upstream.Sandbox.HostRewrite)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -891,72 +891,119 @@ func getValueFromSourceConfig(sourceConfig any, key string) (any, error) {
 // extractTemplateHandle extracts the template handle from source configuration
 // For LlmProvider: extracts from spec.template
 // For LlmProxy: resolves provider reference to get spec.template
-func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) string {
+// GetValueFromSourceConfig extracts a value from sourceConfig using a key path.
+// The key can be a simple key (e.g., "kind") or a nested path (e.g., "spec.template").
+// Returns the value if found, nil otherwise.
+func GetValueFromSourceConfig(sourceConfig any, key string) (any, error) {
+	if sourceConfig == nil {
+		return nil, fmt.Errorf("sourceConfig is nil")
+	}
+
+	// Convert sourceConfig to a map for easy traversal
+	var configMap map[string]interface{}
+	j, err := json.Marshal(sourceConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal sourceConfig: %w", err)
+	}
+	if err := json.Unmarshal(j, &configMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal sourceConfig: %w", err)
+	}
+
+	// Split the key by dots to handle nested paths
+	keys := strings.Split(key, ".")
+	current := configMap
+
+	// Traverse the nested structure
+	for i, k := range keys {
+		if i == len(keys)-1 {
+			// Last key, return the value
+			if val, ok := current[k]; ok {
+				return val, nil
+			}
+			return nil, fmt.Errorf("key '%s' not found in sourceConfig", key)
+		}
+
+		// Navigate further down the nested structure
+		if next, ok := current[k].(map[string]interface{}); ok {
+			current = next
+		} else {
+			return nil, fmt.Errorf("key path '%s' is invalid: '%s' is not a map", key, strings.Join(keys[:i+1], "."))
+		}
+	}
+
+	return nil, fmt.Errorf("key '%s' not found in sourceConfig", key)
+}
+
+// extractLLMMetadata extracts the template handle and provider name from source configuration
+// For LlmProvider: extracts from spec.template and metadata.name
+// For LlmProxy: resolves provider reference to get spec.template and provider name
+func (t *Translator) extractLLMMetadata(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) (string, string) {
 	if cfg.SourceConfiguration == nil {
-		return ""
+		return "", ""
 	}
 
 	// Get kind from source configuration
-	kind, err := getValueFromSourceConfig(cfg.SourceConfiguration, "kind")
+	kind, err := GetValueFromSourceConfig(cfg.SourceConfiguration, "kind")
 	if err != nil {
-		return ""
+		return "", ""
 	}
 
 	kindStr, ok := kind.(string)
 	if !ok {
-		return ""
+		return "", ""
 	}
 
-	// For LlmProvider: extract template handle directly
+	// For LlmProvider: extract template handle and provider name
 	switch kindStr {
-	case string(api.LlmProvider):
-		templateHandle, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.template")
-		if err != nil {
-			t.logger.Debug("Failed to extract template handle from LlmProvider", slog.Any("error", err))
-			return ""
-		}
-		if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
-			return templateHandleStr
-		}
+		case string(api.LlmProvider):
+			templateHandle, _ := GetValueFromSourceConfig(cfg.SourceConfiguration, "spec.template")
+			providerName, _ := GetValueFromSourceConfig(cfg.SourceConfiguration, "metadata.name")
+			
+			h, _ := templateHandle.(string)
+			p, _ := providerName.(string)
+			return h, p
+		
 
-	// For LlmProxy: resolve provider reference
-	case string(api.LlmProxy):
-		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider")
-		if err != nil {
-			t.logger.Debug("Failed to extract provider name from LlmProxy", slog.Any("error", err))
-			return ""
-		}
-		providerNameStr, ok := providerName.(string)
-		if !ok || providerNameStr == "" {
-			return ""
-		}
+		// For LlmProxy: resolve provider reference
+		case string(api.LlmProxy): 
+			providerName, err := GetValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider")
+			if err != nil {
+				t.logger.Debug("Failed to extract provider name from LlmProxy", slog.Any("error", err))
+				return "", ""
+			}
+			providerNameStr, ok := providerName.(string)
+			if !ok || providerNameStr == "" {
+				return "", ""
+			}
 
-		// Find the provider config
-		for _, providerCfg := range allConfigs {
-			if providerCfg.Kind == string(api.LlmProvider) {
-				// Check if this is the provider we're looking for
-				providerMetadataName, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "metadata.name")
-				if err == nil {
-					if providerMetadataNameStr, ok := providerMetadataName.(string); ok && providerMetadataNameStr == providerNameStr {
-						// Found the provider, extract its template
-						templateHandle, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "spec.template")
-						if err == nil {
-							if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
-								return templateHandleStr
+			// Find the provider config to get its template handle
+			for _, providerCfg := range allConfigs {
+				if providerCfg.Kind == string(api.LlmProvider) {
+					// Check if this is the provider we're looking for
+					providerMetadataName, err := GetValueFromSourceConfig(providerCfg.SourceConfiguration, "metadata.name")
+					if err == nil {
+						if providerMetadataNameStr, ok := providerMetadataName.(string); ok && providerMetadataNameStr == providerNameStr {
+							// Found the provider, extract its template
+							templateHandle, err := GetValueFromSourceConfig(providerCfg.SourceConfiguration, "spec.template")
+							if err == nil {
+								if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
+									return templateHandleStr, providerNameStr
+								}
 							}
+							return "", providerNameStr
 						}
 					}
 				}
 			}
-		}
+			return "", providerNameStr
 	}
 
-	return ""
+	return "", ""
 }
 
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, hostRewrite *api.UpstreamHostRewrite) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 

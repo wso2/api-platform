@@ -28,13 +28,16 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metadataxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
-const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
+const (
+	metadataXDSTypeLLMProviderTemplate = "LlmProviderTemplate"
+	metadataXDSTypeLLMProviderMap      = "LlmProviderMap"
+)
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
@@ -50,7 +53,7 @@ type LLMDeploymentService struct {
 	store               *storage.ConfigStore
 	db                  storage.Storage
 	snapshotManager     *xds.SnapshotManager
-	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
+	metadataXDSManager *metadataxds.MetadataXDSStateManager
 	templateDefinitions map[string]*api.LLMProviderTemplate
 	deploymentService   *APIDeploymentService
 	parser              *config.Parser
@@ -62,14 +65,14 @@ type LLMDeploymentService struct {
 // NewLLMDeploymentService initializes the service
 func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
-	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
+	metadataXDSManager *metadataxds.MetadataXDSStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	deploymentService *APIDeploymentService, routerConfig *config.RouterConfig) *LLMDeploymentService {
 	service := &LLMDeploymentService{
 		store:               store,
 		db:                  db,
 		snapshotManager:     snapshotManager,
-		lazyResourceManager: lazyResourceManager,
+		metadataXDSManager: metadataXDSManager,
 		templateDefinitions: templateDefinitions,
 		deploymentService:   deploymentService,
 		parser:              config.NewParser(),
@@ -156,6 +159,11 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 			slog.String("display_name", storedCfg.GetDisplayName()),
 			slog.String("version", storedCfg.GetVersion()),
 			slog.String("correlation_id", params.CorrelationID))
+	}
+
+	// Update LLM provider map
+	if err := s.publishProviderMapAsMetadataXDS(params.CorrelationID); err != nil {
+		params.Logger.Warn("Failed to update LLM provider map via metadata XDS xDS", slog.Any("error", err))
 	}
 
 	// Update xDS snapshot asynchronously
@@ -333,9 +341,9 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		return nil, fmt.Errorf("failed to add template to memory store: %w", err)
 	}
 
-	// Publish to policy engine via lazy resource xDS
+	// Publish to policy engine via metadata XDS xDS
 	// Following API key pattern: xDS operations are critical
-	if err := s.publishTemplateAsLazyResource(tmpl, ""); err != nil {
+	if err := s.publishTemplateAsMetadataXDS(tmpl, ""); err != nil {
 		// Rollback: Remove from memory store and DB if xDS publish fails
 		if delErr := s.store.DeleteTemplate(stored.ID); delErr != nil {
 			if params.Logger != nil {
@@ -356,7 +364,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 			}
 		}
 		if params.Logger != nil {
-			params.Logger.Error("Failed to publish template to policy engine via lazy resource xDS",
+			params.Logger.Error("Failed to publish template to policy engine via metadata XDS xDS",
 				slog.String("template_handle", tmpl.Metadata.Name),
 				slog.Any("error", err))
 		}
@@ -421,10 +429,10 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 				continue
 			}
 
-			// Publish updated template to policy engine via lazy resource xDS (ID = template ID)
-			if err := s.publishTemplateAsLazyResource(tmpl, ""); err != nil {
+			// Publish updated template to policy engine via metadata XDS xDS (ID = template ID)
+			if err := s.publishTemplateAsMetadataXDS(tmpl, ""); err != nil {
 				allErrors = append(allErrors,
-					fmt.Sprintf("failed to publish template '%s' to policy engine via lazy resource xDS: %v", tmpl.Metadata.Name, err))
+					fmt.Sprintf("failed to publish template '%s' to policy engine via metadata XDS xDS: %v", tmpl.Metadata.Name, err))
 				continue
 			}
 
@@ -467,10 +475,10 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			continue
 		}
 
-		// Publish new template to policy engine via lazy resource xDS (ID = template ID)
-		if err := s.publishTemplateAsLazyResource(tmpl, ""); err != nil {
+		// Publish new template to policy engine via metadata XDS xDS (ID = template ID)
+		if err := s.publishTemplateAsMetadataXDS(tmpl, ""); err != nil {
 			allErrors = append(allErrors,
-				fmt.Sprintf("failed to publish template '%s' to policy engine via lazy resource xDS: %v", tmpl.Metadata.Name, err))
+				fmt.Sprintf("failed to publish template '%s' to policy engine via metadata XDS xDS: %v", tmpl.Metadata.Name, err))
 			continue
 		}
 
@@ -483,9 +491,9 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 		handle := stored.GetHandle()
 		if !processedHandles[handle] {
 			// This template exists in store but wasn't in file definitions - publish it
-			if err := s.publishTemplateAsLazyResource(&stored.Configuration, ""); err != nil {
+			if err := s.publishTemplateAsMetadataXDS(&stored.Configuration, ""); err != nil {
 				allErrors = append(allErrors,
-					fmt.Sprintf("failed to publish DB-only template '%s' to policy engine via lazy resource xDS: %v", handle, err))
+					fmt.Sprintf("failed to publish DB-only template '%s' to policy engine via metadata XDS xDS: %v", handle, err))
 			}
 		}
 	}
@@ -493,6 +501,11 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 	if len(allErrors) > 0 {
 		return fmt.Errorf("failed to initialize %d template(s): %s", len(allErrors),
 			strings.Join(allErrors, "; "))
+	}
+
+	// Update LLM provider map after initializing templates
+	if err := s.publishProviderMapAsMetadataXDS(""); err != nil {
+		slog.Warn("Failed to update LLM provider map via metadata XDS xDS during initialization", slog.Any("error", err))
 	}
 
 	return nil
@@ -547,8 +560,8 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		return nil, fmt.Errorf("failed to update template in memory store: %w", err)
 	}
 
-	// Publish updated template to policy engine via lazy resource xDS
-	if err := s.publishTemplateAsLazyResource(tmpl, ""); err != nil {
+	// Publish updated template to policy engine via metadata XDS xDS
+	if err := s.publishTemplateAsMetadataXDS(tmpl, ""); err != nil {
 		// Rollback: Revert memory store and DB if xDS publish fails
 		if rollbackErr := s.store.UpdateTemplate(existing); rollbackErr != nil {
 			if params.Logger != nil {
@@ -567,7 +580,7 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 			}
 		}
 		if params.Logger != nil {
-			params.Logger.Error("Failed to publish updated template to policy engine via lazy resource xDS",
+			params.Logger.Error("Failed to publish updated template to policy engine via metadata XDS xDS",
 				slog.String("template_handle", handle),
 				slog.Any("error", err))
 		}
@@ -584,11 +597,11 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
 
-	// Remove from policy engine via lazy resource xDS (ID = handle)
-	if s.lazyResourceManager != nil {
-		if err := s.lazyResourceManager.RemoveResource(handle, ""); err != nil {
+	// Remove from policy engine via metadata XDS xDS (ID = handle)
+	if s.metadataXDSManager != nil {
+		if err := s.metadataXDSManager.RemoveResource(handle, ""); err != nil {
 			// Don't fail deletion if xDS publish fails; just log.
-			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
+			slog.Warn("Failed to remove LLM provider template from policy engine via metadata XDS xDS",
 				slog.String("template_id", tmpl.ID),
 				slog.Any("error", err))
 		}
@@ -597,10 +610,10 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 	if s.db != nil {
 		if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
 			if err := sqlite.DeleteLLMProviderTemplate(tmpl.ID); err != nil {
-				// Rollback: Re-add to lazy resource store if memory deletion fails
-				if s.lazyResourceManager != nil {
-					if rollbackErr := s.publishTemplateAsLazyResource(&tmpl.Configuration, ""); rollbackErr != nil {
-						slog.Error("Failed to rollback lazy resource after memory store deletion failure",
+				// Rollback: Re-add to metadata XDS store if memory deletion fails
+				if s.metadataXDSManager != nil {
+					if rollbackErr := s.publishTemplateAsMetadataXDS(&tmpl.Configuration, ""); rollbackErr != nil {
+						slog.Error("Failed to rollback metadata XDS after memory store deletion failure",
 							slog.String("template_handle", handle),
 							slog.Any("rollback_error", rollbackErr))
 					}
@@ -610,7 +623,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 		}
 	}
 	if err := s.store.DeleteTemplate(tmpl.ID); err != nil {
-		// Rollback: Re-add to DB and lazy resource if memory deletion fails
+		// Rollback: Re-add to DB and metadata XDS if memory deletion fails
 		if s.db != nil {
 			if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
 				if rollbackErr := sqlite.SaveLLMProviderTemplate(tmpl); rollbackErr != nil {
@@ -620,9 +633,9 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 						}
 			}
 		}
-		if s.lazyResourceManager != nil {
-			if rollbackErr := s.publishTemplateAsLazyResource(&tmpl.Configuration, ""); rollbackErr != nil {
-				slog.Error("Failed to rollback lazy resource after memory store deletion failure",
+		if s.metadataXDSManager != nil {
+			if rollbackErr := s.publishTemplateAsMetadataXDS(&tmpl.Configuration, ""); rollbackErr != nil {
+				slog.Error("Failed to rollback metadata XDS after memory store deletion failure",
 					slog.String("template_handle", handle),
 					slog.Any("rollback_error", rollbackErr))
 			}
@@ -660,8 +673,8 @@ func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*m
 	return s.store.GetTemplateByHandle(handle)
 }
 
-func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProviderTemplate, correlationID string) error {
-	if s.lazyResourceManager == nil {
+func (s *LLMDeploymentService) publishTemplateAsMetadataXDS(tmpl *api.LLMProviderTemplate, correlationID string) error {
+	if s.metadataXDSManager == nil {
 		return nil
 	}
 	if tmpl == nil {
@@ -671,7 +684,7 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 		return fmt.Errorf("template handle (metadata.name) is empty")
 	}
 
-	// Convert typed template to map[string]interface{} for the generic lazy resource payload.
+	// Convert typed template to map[string]interface{} for the generic metadata XDS payload.
 	b, err := json.Marshal(tmpl)
 	if err != nil {
 		return fmt.Errorf("failed to marshal template as JSON: %w", err)
@@ -681,9 +694,9 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 		return fmt.Errorf("failed to unmarshal template JSON into map: %w", err)
 	}
 
-	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
+	return s.metadataXDSManager.StoreResource(&storage.MetadataXDS{
 		ID:           tmpl.Metadata.Name,
-		ResourceType: lazyResourceTypeLLMProviderTemplate,
+		ResourceType: metadataXDSTypeLLMProviderTemplate,
 		Resource:     m,
 	}, correlationID)
 }
@@ -799,6 +812,11 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
 	}
 
+	// Update LLM provider map after deletion
+	if err := s.publishProviderMapAsMetadataXDS(correlationID); err != nil {
+		logger.Warn("Failed to update LLM provider map via metadata XDS xDS", slog.Any("error", err))
+	}
+
 	// Update xDS snapshot asynchronously
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -873,6 +891,11 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
 	}
 
+	// Update LLM provider map after proxy deletion (just in case)
+	if err := s.publishProviderMapAsMetadataXDS(correlationID); err != nil {
+		logger.Warn("Failed to update LLM provider map via metadata XDS xDS", slog.Any("error", err))
+	}
+
 	// Update xDS snapshot asynchronously
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -883,4 +906,40 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 	}()
 
 	return cfg, nil
+}
+
+
+func (s *LLMDeploymentService) publishProviderMapAsMetadataXDS(correlationID string) error {
+	if s.metadataXDSManager == nil {
+		return nil
+	}
+
+	// Fetch all LLM providers from the store
+	providers := s.store.GetAllByKind(string(api.LlmProvider))
+	
+	// Create map: Provider Name -> Template Name
+	providerToTemplateMap := make(map[string]interface{})
+	for _, p := range providers {
+		// Get provider name from metadata
+		providerName := p.GetHandle()
+		
+		// Extract template handle from source configuration
+		templateHandle, err := xds.GetValueFromSourceConfig(p.SourceConfiguration, "spec.template")
+		if err == nil {
+			if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
+				providerToTemplateMap[providerName] = templateHandleStr
+			}
+		}
+	}
+
+	slog.Info("Publishing LLM provider map as metadata XDS", 
+		slog.Int("provider_count", len(providerToTemplateMap)),
+		slog.String("correlation_id", correlationID))
+
+	// Wrap the map in a generic metadata XDS
+	return s.metadataXDSManager.StoreResource(&storage.MetadataXDS{
+		ID:           "global-llm-provider-map",
+		ResourceType: metadataXDSTypeLLMProviderMap,
+		Resource:     providerToTemplateMap,
+	}, correlationID)
 }

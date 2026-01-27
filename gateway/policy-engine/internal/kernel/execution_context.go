@@ -355,6 +355,10 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 	if routeMetadata.TemplateHandle != "" {
 		sharedCtx.Metadata["template_handle"] = routeMetadata.TemplateHandle
 	}
+	// Add provider name to metadata for LLM provider/proxy scenarios
+	if routeMetadata.ProviderName != "" {
+		sharedCtx.Metadata["provider_name"] = routeMetadata.ProviderName
+	}
 
 	// Build context with Headers wrapper and pseudo-headers
 	ctx := &policy.RequestContext{

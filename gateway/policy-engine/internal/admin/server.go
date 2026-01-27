@@ -44,6 +44,9 @@ func NewServer(cfg *config.AdminConfig, k *kernel.Kernel, reg *registry.PolicyRe
 	configDumpHandler := NewConfigDumpHandler(k, reg)
 	mux.Handle("/config_dump", ipWhitelistMiddleware(cfg.AllowedIPs, configDumpHandler))
 
+	metadataDumpHandler := NewMetadataDumpHandler()
+	mux.Handle("/metadata_dump", ipWhitelistMiddleware(cfg.AllowedIPs, metadataDumpHandler))
+
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: mux,
