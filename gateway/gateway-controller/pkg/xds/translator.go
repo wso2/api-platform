@@ -440,7 +440,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, apiData.Upstream.Main.HostRewrite)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -459,7 +459,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, apiData.Upstream.Sandbox.HostRewrite)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -909,47 +909,46 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 
 	// For LlmProvider: extract template handle directly
 	switch kindStr {
-		case string(api.LlmProvider):
-			templateHandle, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.template")
-			if err != nil {
-				t.logger.Debug("Failed to extract template handle from LlmProvider", slog.Any("error", err))
-				return ""
-			}
-			if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
-				return templateHandleStr
-			}
-		
+	case string(api.LlmProvider):
+		templateHandle, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.template")
+		if err != nil {
+			t.logger.Debug("Failed to extract template handle from LlmProvider", slog.Any("error", err))
+			return ""
+		}
+		if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
+			return templateHandleStr
+		}
 
-		// For LlmProxy: resolve provider reference
-		case string(api.LlmProxy): 
-			providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider")
-			if err != nil {
-				t.logger.Debug("Failed to extract provider name from LlmProxy", slog.Any("error", err))
-				return ""
-			}
-			providerNameStr, ok := providerName.(string)
-			if !ok || providerNameStr == "" {
-				return ""
-			}
+	// For LlmProxy: resolve provider reference
+	case string(api.LlmProxy):
+		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider")
+		if err != nil {
+			t.logger.Debug("Failed to extract provider name from LlmProxy", slog.Any("error", err))
+			return ""
+		}
+		providerNameStr, ok := providerName.(string)
+		if !ok || providerNameStr == "" {
+			return ""
+		}
 
-			// Find the provider config
-			for _, providerCfg := range allConfigs {
-				if providerCfg.Kind == string(api.LlmProvider) {
-					// Check if this is the provider we're looking for
-					providerMetadataName, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "metadata.name")
-					if err == nil {
-						if providerMetadataNameStr, ok := providerMetadataName.(string); ok && providerMetadataNameStr == providerNameStr {
-							// Found the provider, extract its template
-							templateHandle, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "spec.template")
-							if err == nil {
-								if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
-									return templateHandleStr
-								}
+		// Find the provider config
+		for _, providerCfg := range allConfigs {
+			if providerCfg.Kind == string(api.LlmProvider) {
+				// Check if this is the provider we're looking for
+				providerMetadataName, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "metadata.name")
+				if err == nil {
+					if providerMetadataNameStr, ok := providerMetadataName.(string); ok && providerMetadataNameStr == providerNameStr {
+						// Found the provider, extract its template
+						templateHandle, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "spec.template")
+						if err == nil {
+							if templateHandleStr, ok := templateHandle.(string); ok && templateHandleStr != "" {
+								return templateHandleStr
 							}
 						}
 					}
 				}
 			}
+		}
 	}
 
 	return ""
@@ -957,7 +956,7 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, hostRewrite *api.UpstreamHostRewrite) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -999,27 +998,33 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}
 	}
 
-	r := &route.Route{
-		Name:  routeName,
-		Match: &route.RouteMatch{},
-		Action: &route.Route_Route{
-			Route: &route.RouteAction{
-				HostRewriteSpecifier: &route.RouteAction_AutoHostRewrite{
-					AutoHostRewrite: &wrapperspb.BoolValue{
-						Value: true,
-					},
-				},
-				Timeout: durationpb.New(
-					time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInSeconds) * time.Second,
-				),
-				IdleTimeout: durationpb.New(
-					time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInSeconds) * time.Second,
-				),
-				ClusterSpecifier: &route.RouteAction_Cluster{
-					Cluster: clusterName,
-				},
+	routeAction := &route.Route_Route{
+		Route: &route.RouteAction{
+			Timeout: durationpb.New(
+				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInSeconds) * time.Second,
+			),
+			IdleTimeout: durationpb.New(
+				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInSeconds) * time.Second,
+			),
+			ClusterSpecifier: &route.RouteAction_Cluster{
+				Cluster: clusterName,
 			},
 		},
+	}
+
+	// Set host rewrite based on configuration
+	if hostRewrite == nil || *hostRewrite != api.Manual {
+		routeAction.Route.HostRewriteSpecifier = &route.RouteAction_AutoHostRewrite{
+			AutoHostRewrite: &wrapperspb.BoolValue{
+				Value: true,
+			},
+		}
+	}
+
+	r := &route.Route{
+		Name:   routeName,
+		Match:  &route.RouteMatch{},
+		Action: routeAction,
 	}
 
 	// Only add headers if not a wildcard path
