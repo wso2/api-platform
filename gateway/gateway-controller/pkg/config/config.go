@@ -412,7 +412,7 @@ func defaultConfig() *Config {
 			},
 			Router: RouterConfig{
 				EventGateway: EventGatewayConfig{
-					Enabled:               true,
+					Enabled:               false,
 					WebSubHubURL:          "http://host.docker.internal",
 					WebSubHubPort:         9098,
 					RouterHost:            "localhost",
