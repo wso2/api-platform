@@ -185,6 +185,65 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 		return assertLazyResourceDisplayName(body, templateID, expectedDisplayName)
 	})
+
+	// LLM Provider CRUD steps
+	ctx.Step(`^I create this LLM provider:$`, func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		err := httpSteps.SendPOSTToService("gateway-controller", "/llm-providers", body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
+	ctx.Step(`^I update the LLM provider "([^"]*)" with:$`, func(providerID string, body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		err := httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+providerID, body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
+	ctx.Step(`^I delete the LLM provider "([^"]*)"$`, func(providerID string) error {
+		err := httpSteps.SendDELETEToService("gateway-controller", "/llm-providers/"+providerID)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
+	// Generic lazy resource assertions (for both templates and provider mappings)
+	ctx.Step(`^the lazy resources should contain resource "([^"]*)" of type "([^"]*)"$`, func(resourceID, resourceType string) error {
+		body := httpSteps.LastBody()
+		if len(body) == 0 {
+			return fmt.Errorf("expected non-empty response body")
+		}
+
+		return assertLazyResourceExists(body, resourceID, resourceType)
+	})
+
+	ctx.Step(`^the lazy resources should not contain resource "([^"]*)"$`, func(resourceID string) error {
+		body := httpSteps.LastBody()
+		if len(body) == 0 {
+			return fmt.Errorf("expected non-empty response body")
+		}
+
+		return assertLazyResourceNotExists(body, resourceID)
+	})
+
+	// Provider template mapping assertion
+	ctx.Step(`^the provider template mapping "([^"]*)" should map to template "([^"]*)"$`, func(providerName, expectedTemplate string) error {
+		body := httpSteps.LastBody()
+		if len(body) == 0 {
+			return fmt.Errorf("expected non-empty response body")
+		}
+
+		return assertProviderTemplateMappingTemplate(body, providerName, expectedTemplate)
+	})
 }
 
 // ConfigDumpResponse represents the policy engine config dump response structure
@@ -317,4 +376,42 @@ func getResourceTypes(resourcesByType map[string][]LazyResourceInfo) []string {
 		types = append(types, t)
 	}
 	return types
+}
+
+// assertProviderTemplateMappingTemplate checks that a ProviderTemplateMapping resource maps to the expected template
+func assertProviderTemplateMappingTemplate(body []byte, providerName, expectedTemplate string) error {
+	var response ConfigDumpResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("failed to parse config dump JSON: %w", err)
+	}
+
+	resources, exists := response.LazyResources.ResourcesByType["ProviderTemplateMapping"]
+	if !exists {
+		return fmt.Errorf("ProviderTemplateMapping resource type not found in lazy resources. Available types: %v",
+			getResourceTypes(response.LazyResources.ResourcesByType))
+	}
+
+	for _, resource := range resources {
+		if resource.ID == providerName {
+			// The resource.Resource contains provider_name and template_handle
+			templateHandle, ok := resource.Resource["template_handle"].(string)
+			if !ok {
+				return fmt.Errorf("resource %q does not have a valid template_handle field", providerName)
+			}
+			if templateHandle != expectedTemplate {
+				return fmt.Errorf("expected provider %q to map to template %q, but got %q",
+					providerName, expectedTemplate, templateHandle)
+			}
+			return nil
+		}
+	}
+
+	// Collect all provider names for better error message
+	var providerNames []string
+	for _, r := range resources {
+		providerNames = append(providerNames, r.ID)
+	}
+
+	return fmt.Errorf("provider %q not found in ProviderTemplateMapping resources. Available providers: %v",
+		providerName, providerNames)
 }

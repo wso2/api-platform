@@ -177,3 +177,171 @@ Feature: Lazy Resources xDS Synchronization
     When I send a GET request to "http://localhost:9002/config_dump"
     Then the response status code should be 200
     And the lazy resources should not contain template "delete-test-template"
+
+
+  # ========================================
+  # Scenario Group: Provider-to-Template Mapping Tests
+  # These test that LLMProvider CRUD operations result in
+  # ProviderTemplateMapping changes in policy engine lazy resources
+  # ========================================
+
+  Scenario: LLM provider creation creates ProviderTemplateMapping in policy engine
+    # First, ensure the template exists (use OOB template "openai")
+    # Create an LLM provider that references the template
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: test-openai-provider
+        spec:
+          displayName: Test OpenAI Provider
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://api.openai.com
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And the JSON response field "id" should be "test-openai-provider"
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify ProviderTemplateMapping exists in policy engine lazy resources
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the lazy resources should contain resource "test-openai-provider" of type "ProviderTemplateMapping"
+    And the provider template mapping "test-openai-provider" should map to template "openai"
+
+    # Cleanup: delete the provider
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "test-openai-provider"
+    Then the response status code should be 200
+
+
+  Scenario: LLM provider update changes ProviderTemplateMapping in policy engine
+    # Create a custom template first
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProviderTemplate
+        metadata:
+          name: custom-template-for-update
+        spec:
+          displayName: Custom Template for Update Test
+          promptTokens:
+            location: payload
+            identifier: $.usage.prompt_tokens
+        """
+    Then the response status code should be 201
+
+    # Create an LLM provider with the openai template
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: update-mapping-provider
+        spec:
+          displayName: Update Mapping Provider
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://api.openai.com
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify initial mapping
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the lazy resources should contain resource "update-mapping-provider" of type "ProviderTemplateMapping"
+    And the provider template mapping "update-mapping-provider" should map to template "openai"
+
+    # Update the provider to use a different template
+    Given I authenticate using basic auth as "admin"
+    When I update the LLM provider "update-mapping-provider" with:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: update-mapping-provider
+        spec:
+          displayName: Update Mapping Provider
+          version: v1.0
+          template: custom-template-for-update
+          upstream:
+            url: https://api.openai.com
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 200
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify mapping is updated
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the provider template mapping "update-mapping-provider" should map to template "custom-template-for-update"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "update-mapping-provider"
+    Then the response status code should be 200
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider template "custom-template-for-update"
+    Then the response status code should be 200
+
+
+  Scenario: LLM provider deletion removes ProviderTemplateMapping from policy engine
+    # Create an LLM provider
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: delete-mapping-provider
+        spec:
+          displayName: Delete Mapping Provider
+          version: v1.0
+          template: anthropic
+          upstream:
+            url: https://api.anthropic.com
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify mapping exists
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the lazy resources should contain resource "delete-mapping-provider" of type "ProviderTemplateMapping"
+
+    # Delete the provider
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "delete-mapping-provider"
+    Then the response status code should be 200
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify mapping is removed
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the lazy resources should not contain resource "delete-mapping-provider"
