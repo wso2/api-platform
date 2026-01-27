@@ -54,9 +54,10 @@ type Client struct {
 	conn   *grpc.ClientConn
 	stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient
 	// Track versions separately for each resource type to avoid version confusion
-	policyChainVersion string
-	apiKeyVersion      string
-	currentNonce       string
+	policyChainVersion  string
+	apiKeyVersion       string
+	lazyResourceVersion string
+	currentNonce        string
 
 	// Lifecycle management
 	ctx         context.Context
@@ -319,6 +320,7 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 	stream := c.stream
 	policyVersion := c.policyChainVersion
 	apiKeyVersion := c.apiKeyVersion
+	lazyResourceVersion := c.lazyResourceVersion
 	c.mu.RUnlock()
 
 	if stream == nil {
@@ -365,6 +367,26 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		return fmt.Errorf("failed to send API key request: %w", err)
 	}
 
+	// Send lazy resource subscription with its own version
+	lazyResourceReq := &discoveryv3.DiscoveryRequest{
+		TypeUrl:       LazyResourceTypeURL,
+		VersionInfo:   lazyResourceVersion,
+		ResponseNonce: responseNonce,
+		Node: &corev3.Node{
+			Id:      c.config.NodeID,
+			Cluster: c.config.Cluster,
+		},
+	}
+
+	slog.DebugContext(c.ctx, "Sending lazy resource discovery request",
+		"type_url", lazyResourceReq.TypeUrl,
+		"version", lazyResourceVersion,
+		"nonce", responseNonce)
+
+	if err := stream.Send(lazyResourceReq); err != nil {
+		return fmt.Errorf("failed to send lazy resource request: %w", err)
+	}
+
 	return nil
 }
 
@@ -396,6 +418,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 				currentVersion = c.policyChainVersion
 			case APIKeyStateTypeURL:
 				currentVersion = c.apiKeyVersion
+			case LazyResourceTypeURL:
+				currentVersion = c.lazyResourceVersion
 			}
 			c.mu.RUnlock()
 
@@ -415,6 +439,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			c.policyChainVersion = resp.VersionInfo
 		case APIKeyStateTypeURL:
 			c.apiKeyVersion = resp.VersionInfo
+		case LazyResourceTypeURL:
+			c.lazyResourceVersion = resp.VersionInfo
 		}
 		c.currentNonce = resp.Nonce
 		c.mu.Unlock()
@@ -434,6 +460,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			resourceType = "policy_chain"
 		case APIKeyStateTypeURL:
 			resourceType = "api_key_state"
+		case LazyResourceTypeURL:
+			resourceType = "lazy_resource"
 		default:
 			resourceType = "unknown"
 		}
@@ -507,6 +535,14 @@ func (c *Client) handleDiscoveryResponse(resp *discoveryv3.DiscoveryResponse) er
 			resourceMap[fmt.Sprintf("resource_%d", i)] = resource
 		}
 		return c.handler.apiKeyHandler.HandleAPIKeyOperation(c.ctx, resourceMap)
+
+	case LazyResourceTypeURL:
+		// Handle lazy resource updates
+		resourceMap := make(map[string]*anypb.Any)
+		for i, resource := range resp.Resources {
+			resourceMap[fmt.Sprintf("resource_%d", i)] = resource
+		}
+		return c.handler.lazyResourceHandler.HandleLazyResourceUpdate(c.ctx, resourceMap)
 
 	default:
 		return fmt.Errorf("unexpected type URL: %s", resp.TypeUrl)

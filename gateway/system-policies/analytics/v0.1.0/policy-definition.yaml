@@ -9,14 +9,7 @@ description: |
 parameters:
   type: object
   additionalProperties: false
-  properties: 
-    providerTemplate:
-      type: object
-      description: |
-        The LLM provider template configuration containing the json paths for 
-        extracting the vendor specific analytics data (token counts, models, etc.)
-        from LLM provider responses. This is only provided when the API is an LLM provider.
-        The policy will process this template internally to extract the necessary information.
+  properties: {}
 
 systemParameters:
   type: object
