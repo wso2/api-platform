@@ -8,13 +8,8 @@ spec:
   context: /websubnewapi
   vhosts:
     main: "*"
-  security:
-    enabled: true
-    header: x-hub-signature
-    secret: xxxxxxx
-    algorithm: SHA1
   channels:
-    - path: issues
+    - name: issues
       method: SUB
-    - path: pull_requests
+    - name: pull_requests
       method: SUB

@@ -333,14 +333,6 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 			continue
 		}
 
-		// Validate path parameters have balanced braces
-		if !v.validatePathParametersForAsyncAPIs(ch.Name) {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].name", i),
-				Message: "Operation path has braces which is not allowed",
-			})
-		}
-
 		if !v.validatePathParametersForAsyncAPIs(ch.Name) {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("spec.channels[%d].name", i),
