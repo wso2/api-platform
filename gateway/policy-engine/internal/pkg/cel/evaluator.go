@@ -27,6 +27,31 @@ import (
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
+// evalCtxPool is a sync.Pool for reusing evaluation context maps
+// This significantly reduces memory allocations during CEL evaluation
+var evalCtxPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[string]interface{}, 24) // Pre-allocate with expected capacity
+	},
+}
+
+// requestCtxPool is a sync.Pool for reusing request context maps
+var requestCtxPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[string]interface{}, 8)
+	},
+}
+
+// responseCtxPool is a sync.Pool for reusing response context maps
+var responseCtxPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[string]interface{}, 10)
+	},
+}
+
+// emptyHeadersMap is a pre-allocated empty headers map to avoid allocations
+var emptyHeadersMap = map[string][]string{}
+
 // CELEvaluator provides CEL expression evaluation for RequestContext and ResponseContext
 type CELEvaluator interface {
 	// EvaluateRequestCondition evaluates a CEL expression against RequestContext
@@ -102,7 +127,7 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policy.R
 		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
 	}
 
-	// Build body representation for CEL
+	// Build body representation for CEL (only allocate if body is present)
 	var bodyForCEL interface{}
 	if ctx.Body != nil && ctx.Body.Present {
 		bodyForCEL = map[string]interface{}{
@@ -110,53 +135,71 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policy.R
 			"EndOfStream": ctx.Body.EndOfStream,
 			"Present":     ctx.Body.Present,
 		}
-	} else {
-		bodyForCEL = nil
 	}
 
-	// Build evaluation context - flatten to match CEL variable declarations
-	evalCtx := map[string]interface{}{
-		// Processing phase indicator
-		"processing.phase": "request",
-		"request": map[string]interface{}{
-			"Headers":   ctx.Headers,
-			"Body":      bodyForCEL,
-			"Path":      ctx.Path,
-			"Method":    ctx.Method,
-			"RequestID": ctx.RequestID,
-			"Metadata":  ctx.Metadata,
-		},
-		"request.Headers":   ctx.Headers,
-		"request.Body":      bodyForCEL,
-		"request.Path":      ctx.Path,
-		"request.Method":    ctx.Method,
-		"request.RequestID": ctx.RequestID,
-		"request.Metadata":  ctx.Metadata,
-		// Response variables (empty during request phase, for dual-phase policies)
-		"response": map[string]interface{}{
-			"RequestHeaders":  ctx.Headers,
-			"RequestBody":     bodyForCEL,
-			"RequestPath":     ctx.Path,
-			"RequestMethod":   ctx.Method,
-			"ResponseHeaders": map[string][]string{},
-			"ResponseBody":    nil,
-			"ResponseStatus":  0,
-			"RequestID":       ctx.RequestID,
-			"Metadata":        ctx.Metadata,
-		},
-		"response.RequestHeaders":  ctx.Headers,
-		"response.RequestBody":     bodyForCEL,
-		"response.RequestPath":     ctx.Path,
-		"response.RequestMethod":   ctx.Method,
-		"response.ResponseHeaders": map[string][]string{},
-		"response.ResponseBody":    nil,
-		"response.ResponseStatus":  0,
-		"response.RequestID":       ctx.RequestID,
-		"response.Metadata":        ctx.Metadata,
-	}
+	// Get pooled maps for evaluation context
+	evalCtx := evalCtxPool.Get().(map[string]interface{})
+	requestMap := requestCtxPool.Get().(map[string]interface{})
+	responseMap := responseCtxPool.Get().(map[string]interface{})
+
+	// Populate request map
+	requestMap["Headers"] = ctx.Headers
+	requestMap["Body"] = bodyForCEL
+	requestMap["Path"] = ctx.Path
+	requestMap["Method"] = ctx.Method
+	requestMap["RequestID"] = ctx.RequestID
+	requestMap["Metadata"] = ctx.Metadata
+
+	// Populate response map (empty during request phase, for dual-phase policies)
+	responseMap["RequestHeaders"] = ctx.Headers
+	responseMap["RequestBody"] = bodyForCEL
+	responseMap["RequestPath"] = ctx.Path
+	responseMap["RequestMethod"] = ctx.Method
+	responseMap["ResponseHeaders"] = emptyHeadersMap
+	responseMap["ResponseBody"] = nil
+	responseMap["ResponseStatus"] = 0
+	responseMap["RequestID"] = ctx.RequestID
+	responseMap["Metadata"] = ctx.Metadata
+
+	// Populate evaluation context
+	evalCtx["processing.phase"] = "request"
+	evalCtx["request"] = requestMap
+	evalCtx["request.Headers"] = ctx.Headers
+	evalCtx["request.Body"] = bodyForCEL
+	evalCtx["request.Path"] = ctx.Path
+	evalCtx["request.Method"] = ctx.Method
+	evalCtx["request.RequestID"] = ctx.RequestID
+	evalCtx["request.Metadata"] = ctx.Metadata
+	evalCtx["response"] = responseMap
+	evalCtx["response.RequestHeaders"] = ctx.Headers
+	evalCtx["response.RequestBody"] = bodyForCEL
+	evalCtx["response.RequestPath"] = ctx.Path
+	evalCtx["response.RequestMethod"] = ctx.Method
+	evalCtx["response.ResponseHeaders"] = emptyHeadersMap
+	evalCtx["response.ResponseBody"] = nil
+	evalCtx["response.ResponseStatus"] = 0
+	evalCtx["response.RequestID"] = ctx.RequestID
+	evalCtx["response.Metadata"] = ctx.Metadata
 
 	// Evaluate
 	result, _, err := program.Eval(evalCtx)
+
+	// Clear and return maps to pool (must clear to avoid memory leaks from retained references)
+	for k := range requestMap {
+		delete(requestMap, k)
+	}
+	requestCtxPool.Put(requestMap)
+
+	for k := range responseMap {
+		delete(responseMap, k)
+	}
+	responseCtxPool.Put(responseMap)
+
+	for k := range evalCtx {
+		delete(evalCtx, k)
+	}
+	evalCtxPool.Put(evalCtx)
+
 	if err != nil {
 		return false, fmt.Errorf("CEL evaluation failed: %w", err)
 	}
@@ -178,7 +221,7 @@ func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policy.
 		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
 	}
 
-	// Build body representations for CEL
+	// Build body representations for CEL (only allocate if body is present)
 	var requestBodyForCEL interface{}
 	if ctx.RequestBody != nil && ctx.RequestBody.Present {
 		requestBodyForCEL = map[string]interface{}{
@@ -186,8 +229,6 @@ func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policy.
 			"EndOfStream": ctx.RequestBody.EndOfStream,
 			"Present":     ctx.RequestBody.Present,
 		}
-	} else {
-		requestBodyForCEL = nil
 	}
 
 	var responseBodyForCEL interface{}
@@ -197,53 +238,71 @@ func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policy.
 			"EndOfStream": ctx.ResponseBody.EndOfStream,
 			"Present":     ctx.ResponseBody.Present,
 		}
-	} else {
-		responseBodyForCEL = nil
 	}
 
-	// Build evaluation context - flatten to match CEL variable declarations
-	evalCtx := map[string]interface{}{
-		// Processing phase indicator
-		"processing.phase": "response",
-		"response": map[string]interface{}{
-			"RequestHeaders":  ctx.RequestHeaders,
-			"RequestBody":     requestBodyForCEL,
-			"RequestPath":     ctx.RequestPath,
-			"RequestMethod":   ctx.RequestMethod,
-			"ResponseHeaders": ctx.ResponseHeaders,
-			"ResponseBody":    responseBodyForCEL,
-			"ResponseStatus":  ctx.ResponseStatus,
-			"RequestID":       ctx.RequestID,
-			"Metadata":        ctx.Metadata,
-		},
-		"response.RequestHeaders":  ctx.RequestHeaders,
-		"response.RequestBody":     requestBodyForCEL,
-		"response.RequestPath":     ctx.RequestPath,
-		"response.RequestMethod":   ctx.RequestMethod,
-		"response.ResponseHeaders": ctx.ResponseHeaders,
-		"response.ResponseBody":    responseBodyForCEL,
-		"response.ResponseStatus":  ctx.ResponseStatus,
-		"response.RequestID":       ctx.RequestID,
-		"response.Metadata":        ctx.Metadata,
-		// Request variables (aliases to request data for consistency across phases)
-		"request": map[string]interface{}{
-			"Headers":   ctx.RequestHeaders,
-			"Body":      requestBodyForCEL,
-			"Path":      ctx.RequestPath,
-			"Method":    ctx.RequestMethod,
-			"RequestID": ctx.RequestID,
-			"Metadata":  ctx.Metadata,
-		},
-		"request.Headers":   ctx.RequestHeaders,
-		"request.Body":      requestBodyForCEL,
-		"request.Path":      ctx.RequestPath,
-		"request.Method":    ctx.RequestMethod,
-		"request.RequestID": ctx.RequestID,
-		"request.Metadata":  ctx.Metadata,
-	}
+	// Get pooled maps for evaluation context
+	evalCtx := evalCtxPool.Get().(map[string]interface{})
+	requestMap := requestCtxPool.Get().(map[string]interface{})
+	responseMap := responseCtxPool.Get().(map[string]interface{})
+
+	// Populate response map
+	responseMap["RequestHeaders"] = ctx.RequestHeaders
+	responseMap["RequestBody"] = requestBodyForCEL
+	responseMap["RequestPath"] = ctx.RequestPath
+	responseMap["RequestMethod"] = ctx.RequestMethod
+	responseMap["ResponseHeaders"] = ctx.ResponseHeaders
+	responseMap["ResponseBody"] = responseBodyForCEL
+	responseMap["ResponseStatus"] = ctx.ResponseStatus
+	responseMap["RequestID"] = ctx.RequestID
+	responseMap["Metadata"] = ctx.Metadata
+
+	// Populate request map (aliases to request data for consistency across phases)
+	requestMap["Headers"] = ctx.RequestHeaders
+	requestMap["Body"] = requestBodyForCEL
+	requestMap["Path"] = ctx.RequestPath
+	requestMap["Method"] = ctx.RequestMethod
+	requestMap["RequestID"] = ctx.RequestID
+	requestMap["Metadata"] = ctx.Metadata
+
+	// Populate evaluation context
+	evalCtx["processing.phase"] = "response"
+	evalCtx["response"] = responseMap
+	evalCtx["response.RequestHeaders"] = ctx.RequestHeaders
+	evalCtx["response.RequestBody"] = requestBodyForCEL
+	evalCtx["response.RequestPath"] = ctx.RequestPath
+	evalCtx["response.RequestMethod"] = ctx.RequestMethod
+	evalCtx["response.ResponseHeaders"] = ctx.ResponseHeaders
+	evalCtx["response.ResponseBody"] = responseBodyForCEL
+	evalCtx["response.ResponseStatus"] = ctx.ResponseStatus
+	evalCtx["response.RequestID"] = ctx.RequestID
+	evalCtx["response.Metadata"] = ctx.Metadata
+	evalCtx["request"] = requestMap
+	evalCtx["request.Headers"] = ctx.RequestHeaders
+	evalCtx["request.Body"] = requestBodyForCEL
+	evalCtx["request.Path"] = ctx.RequestPath
+	evalCtx["request.Method"] = ctx.RequestMethod
+	evalCtx["request.RequestID"] = ctx.RequestID
+	evalCtx["request.Metadata"] = ctx.Metadata
 
 	// Evaluate
 	result, _, err := program.Eval(evalCtx)
+
+	// Clear and return maps to pool (must clear to avoid memory leaks from retained references)
+	for k := range requestMap {
+		delete(requestMap, k)
+	}
+	requestCtxPool.Put(requestMap)
+
+	for k := range responseMap {
+		delete(responseMap, k)
+	}
+	responseCtxPool.Put(responseMap)
+
+	for k := range evalCtx {
+		delete(evalCtx, k)
+	}
+	evalCtxPool.Put(evalCtx)
+
 	if err != nil {
 		return false, fmt.Errorf("CEL evaluation failed: %w", err)
 	}
