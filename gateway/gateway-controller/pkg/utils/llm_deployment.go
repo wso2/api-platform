@@ -318,7 +318,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
-	
+
 	// Persist to DB if available
 	if s.db != nil {
 		if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
@@ -330,7 +330,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 			}
 		}
 	}
-	
+
 	// Add to memory store (with rollback if it fails)
 	if err := s.store.AddTemplate(stored); err != nil {
 		// Rollback: Remove from DB if memory store fails
@@ -539,14 +539,14 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		CreatedAt:     existing.CreatedAt,
 		UpdatedAt:     time.Now(),
 	}
-	
+
 	// Update DB
 	if s.db != nil {
 		if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
 			return nil, fmt.Errorf("failed to update template in database: %w", err)
 		}
 	}
-	
+
 	// Update memory store (with rollback if it fails)
 	if err := s.store.UpdateTemplate(updated); err != nil {
 		// Rollback: Revert DB update if memory store update fails
@@ -601,7 +601,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 
 	// Remove from policy engine via lazy resource xDS (ID = handle)
 	if s.lazyResourceManager != nil {
-		if err := s.lazyResourceManager.RemoveResource(handle, ""); err != nil {
+		if err := s.lazyResourceManager.RemoveResourceByIDAndType(handle, lazyResourceTypeLLMProviderTemplate, ""); err != nil {
 			// Don't fail deletion if xDS publish fails; just log.
 			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
 				slog.String("template_id", tmpl.ID),
@@ -629,10 +629,10 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 		if s.db != nil {
 			if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
 				if rollbackErr := sqlite.SaveLLMProviderTemplate(tmpl); rollbackErr != nil {
-							slog.Error("Failed to rollback template to database after memory store deletion failure",
-								slog.String("template_handle", handle),
-								slog.Any("rollback_error", rollbackErr))
-						}
+					slog.Error("Failed to rollback template to database after memory store deletion failure",
+						slog.String("template_handle", handle),
+						slog.Any("rollback_error", rollbackErr))
+				}
 			}
 		}
 		if s.lazyResourceManager != nil {
@@ -642,7 +642,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 					slog.Any("rollback_error", rollbackErr))
 			}
 		}
-			
+
 		return nil, fmt.Errorf("failed to delete template from memory store: %w", err)
 	}
 
@@ -735,10 +735,10 @@ func (s *LLMDeploymentService) removeProviderTemplateMappingLazyResource(provide
 		return nil
 	}
 	if providerName == "" {
-		return nil
+		return fmt.Errorf("provider name is empty")
 	}
 
-	return s.lazyResourceManager.RemoveResource(providerName, correlationID)
+	return s.lazyResourceManager.RemoveResourceByIDAndType(providerName, lazyResourceTypeProviderTemplateMapping, correlationID)
 }
 
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers

@@ -254,6 +254,25 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 		return assertEnvoyRouteMetadataContainsProviderName(body, expectedProviderName)
 	})
+
+	// Collision test assertions
+	ctx.Step(`^the lazy resources should have at least (\d+) resources with id "([^"]*)"$`, func(expectedCount int, resourceID string) error {
+		body := httpSteps.LastBody()
+		if len(body) == 0 {
+			return fmt.Errorf("expected non-empty response body")
+		}
+
+		return assertLazyResourceCountWithID(body, resourceID, expectedCount)
+	})
+
+	ctx.Step(`^the lazy resources should not contain resource "([^"]*)" of type "([^"]*)"$`, func(resourceID, resourceType string) error {
+		body := httpSteps.LastBody()
+		if len(body) == 0 {
+			return fmt.Errorf("expected non-empty response body")
+		}
+
+		return assertLazyResourceNotExistsWithType(body, resourceID, resourceType)
+	})
 }
 
 // ConfigDumpResponse represents the policy engine config dump response structure
@@ -501,4 +520,54 @@ func findProviderNameInEnvoyConfig(data interface{}, expectedProviderName string
 	}
 
 	return false, nil
+}
+
+// assertLazyResourceCountWithID counts how many resources have the given ID across all types
+func assertLazyResourceCountWithID(body []byte, resourceID string, expectedMinCount int) error {
+	var response ConfigDumpResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("failed to parse config dump JSON: %w", err)
+	}
+
+	count := 0
+	var foundTypes []string
+
+	for resourceType, resources := range response.LazyResources.ResourcesByType {
+		for _, resource := range resources {
+			if resource.ID == resourceID {
+				count++
+				foundTypes = append(foundTypes, resourceType)
+			}
+		}
+	}
+
+	if count < expectedMinCount {
+		return fmt.Errorf("expected at least %d resources with id %q, found %d (types: %v)",
+			expectedMinCount, resourceID, count, foundTypes)
+	}
+
+	return nil
+}
+
+// assertLazyResourceNotExistsWithType checks that a resource with given ID and type does NOT exist
+func assertLazyResourceNotExistsWithType(body []byte, resourceID, resourceType string) error {
+	var response ConfigDumpResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("failed to parse config dump JSON: %w", err)
+	}
+
+	resources, exists := response.LazyResources.ResourcesByType[resourceType]
+	if !exists {
+		// Type doesn't exist, so resource definitely doesn't exist
+		return nil
+	}
+
+	for _, resource := range resources {
+		if resource.ID == resourceID {
+			return fmt.Errorf("resource with id %q and type %q should not exist but was found",
+				resourceID, resourceType)
+		}
+	}
+
+	return nil
 }

@@ -385,3 +385,108 @@ Feature: Lazy Resources xDS Synchronization
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "route-metadata-test-provider"
     Then the response status code should be 200
+
+
+  # ========================================
+  # Scenario: ID Collision Test
+  # Validates that a template and provider with the same name can coexist
+  # without overwriting each other in the lazy resource store
+  # ========================================
+
+  Scenario: Template and provider with same name coexist without collision
+    # Create a template with name "collision-test"
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProviderTemplate
+        metadata:
+          name: collision-test
+        spec:
+          displayName: Collision Test Template
+          promptTokens:
+            location: payload
+            identifier: $.usage.prompt_tokens
+          completionTokens:
+            location: payload
+            identifier: $.usage.completion_tokens
+        """
+    Then the response status code should be 201
+    And the JSON response field "id" should be "collision-test"
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify template exists in policy engine
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the lazy resources should contain template "collision-test" of type "LlmProviderTemplate"
+    And the lazy resource "collision-test" should have display name "Collision Test Template"
+
+    # Now create a PROVIDER with the SAME name "collision-test"
+    # This should NOT overwrite the template
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: collision-test
+        spec:
+          displayName: Collision Test Provider
+          version: v1.0
+          template: collision-test
+          upstream:
+            url: https://api.example.com
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And the JSON response field "id" should be "collision-test"
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify BOTH resources exist - template should NOT be overwritten
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the response should be valid JSON
+    
+    # Template should still exist with original display name
+    And the lazy resources should contain template "collision-test" of type "LlmProviderTemplate"
+    And the lazy resource "collision-test" should have display name "Collision Test Template"
+    
+    # Provider mapping should also exist
+    And the lazy resources should contain resource "collision-test" of type "ProviderTemplateMapping"
+    And the provider template mapping "collision-test" should map to template "collision-test"
+
+    # Verify total count - should have both resources
+    And the lazy resources should have at least 2 resources with id "collision-test"
+
+    # Delete the provider - should NOT delete the template
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "collision-test"
+    Then the response status code should be 200
+
+    # Wait for xDS propagation
+    When I wait for 3 seconds
+
+    # Verify template still exists after provider deletion
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the lazy resources should contain template "collision-test" of type "LlmProviderTemplate"
+    And the lazy resource "collision-test" should have display name "Collision Test Template"
+    
+    # Provider mapping should be gone
+    And the lazy resources should not contain resource "collision-test" of type "ProviderTemplateMapping"
+
+    # Cleanup: delete the template
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider template "collision-test"
+    Then the response status code should be 200
+
+    # Verify everything is cleaned up
+    When I wait for 3 seconds
+    When I send a GET request to "http://localhost:9002/config_dump"
+    Then the response status code should be 200
+    And the lazy resources should not contain template "collision-test"
