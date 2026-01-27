@@ -51,9 +51,6 @@ CREATE TABLE IF NOT EXISTS apis (
     lifecycle_status VARCHAR(20) DEFAULT 'CREATED',
     has_thumbnail BOOLEAN DEFAULT FALSE,
     is_default_version BOOLEAN DEFAULT FALSE,
-    is_revision BOOLEAN DEFAULT FALSE,
-    revisioned_api_id VARCHAR(40),
-    revision_id INTEGER DEFAULT 0,
     type VARCHAR(20) DEFAULT 'HTTP',
     transport VARCHAR(255), -- JSON array as TEXT
     security_enabled BOOLEAN,
