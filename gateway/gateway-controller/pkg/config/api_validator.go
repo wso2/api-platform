@@ -85,10 +85,10 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	}
 
 	// Validate kind
-	if config.Kind != api.RestApi && config.Kind != api.Asyncwebsub {
+	if config.Kind != api.RestApi && config.Kind != api.WebSubApi {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Unsupported API kind (only 'RestApi' and 'async/websub' are supported)",
+			Message: "Unsupported API kind (only 'RestApi' and 'WebSubApi' are supported)",
 		})
 	}
 
@@ -104,7 +104,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 			// Validate data section
 			errors = append(errors, v.validateRestData(&spec)...)
 		}
-	case api.Asyncwebsub:
+	case api.WebSubApi:
 		spec, err := config.Spec.AsWebhookAPIData()
 		if err != nil {
 			errors = append(errors, ValidationError{
@@ -258,22 +258,22 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	return errors
 }
 
-// validateAsyncData validates the data section of the configuration for RestApi kind
+// validateAsyncData validates the data section of the configuration for http/rest kind
 func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
 	var errors []ValidationError
 
 	// Validate name
-	if spec.Name == "" {
+	if spec.DisplayName == "" {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
 			Message: "API name is required",
 		})
-	} else if len(spec.Name) > 100 {
+	} else if len(spec.DisplayName) > 100 {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
 			Message: "API name must be 1-100 characters",
 		})
-	} else if !v.urlFriendlyNameRegex.MatchString(spec.Name) {
+	} else if !v.urlFriendlyNameRegex.MatchString(spec.DisplayName) {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
 			Message: "API name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
@@ -296,62 +296,8 @@ func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationE
 	// Validate context
 	errors = append(errors, v.validateContext(spec.Context)...)
 
-	// Validate upstream
-	errors = append(errors, v.validateServer(spec.Servers)...)
-
-	// Validate operations
+	// Validate channels
 	errors = append(errors, v.validateChannels(spec.Channels)...)
-
-	return errors
-}
-
-// validateServer validates the server configuration
-func (v *APIValidator) validateServer(server []api.Server) []ValidationError {
-	var errors []ValidationError
-
-	if len(server) == 0 {
-		errors = append(errors, ValidationError{
-			Field:   "data.upstream",
-			Message: "At least one upstream URL is required",
-		})
-		return errors
-	}
-
-	for i, up := range server {
-		if up.Url == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: "Upstream URL is required",
-			})
-			continue
-		}
-
-		// Validate URL format
-		parsedURL, err := url.Parse(up.Url)
-		if err != nil {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: fmt.Sprintf("Invalid URL format: %v", err),
-			})
-			continue
-		}
-
-		// Ensure scheme is http or https
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: "Upstream URL must use http or https scheme",
-			})
-		}
-
-		// Ensure host is present
-		if parsedURL.Host == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: "Upstream URL must include a host",
-			})
-		}
-	}
 
 	return errors
 }
@@ -368,29 +314,21 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 		return errors
 	}
 
-	for i, op := range channels {
+	for i, ch := range channels {
 
 		// Validate path
-		if op.Path == "" {
+		if ch.Name == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].path", i),
-				Message: "Channel path is required",
+				Field:   fmt.Sprintf("spec.channels[%d].name", i),
+				Message: "Channel name is required",
 			})
 			continue
 		}
 
-		// Validate path parameters have balanced braces
-		if !v.validatePathParametersForAsyncAPIs(op.Path) {
+		if !v.validatePathParametersForAsyncAPIs(ch.Name) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].path", i),
-				Message: "Operation path has braces which is not allowed",
-			})
-		}
-
-		if !v.validatePathParametersForAsyncAPIs(op.Path) {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].path", i),
-				Message: "Channel path has unbalanced braces in parameters",
+				Field:   fmt.Sprintf("spec.channels[%d].name", i),
+				Message: "Channel name has {} in parameters",
 			})
 		}
 	}
