@@ -105,7 +105,7 @@ EOF
 
 * Header name matching is case-insensitive.
 * The `operation` field is required and must be either `"allow"` or `"deny"`.
-* The `headers` array is required but can be empty. An empty array with `"allow"` mode results in no headers being included, while an empty array with `"deny"` mode results in all headers being included.
+* The `headers` array is required but can be empty. When the array is empty, all original headers are included(if allowed explicitly) in analytics for both `"allow"` and `"deny"` modes (safe fallback behavior).
 * Request and response headers can use different operation modes independently.
 * This policy does not block requests or responses.
 * Filtering applies only to analytics collection, not to runtime request handling.

@@ -57,7 +57,7 @@ The following example demonstrates how to apply the Analytics Header Filter poli
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -H "Authorization: Basic <base64-credentials>" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
@@ -96,7 +96,6 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
 EOF
-EOF
 ```
 
 ## Use Cases
@@ -114,7 +113,7 @@ EOF
 
 * Header name matching is case-insensitive.
 * The `operation` field is required and must be either `"allow"` or `"deny"`.
-* The `headers` array is required but can be empty. An empty array with `"allow"` mode results in no headers being included, while an empty array with `"deny"` mode results in all headers being included.
+* The `headers` array is required but can be empty. When the array is empty, all original headers are included(if allowed explicitly) in analytics for both `"allow"` and `"deny"` modes (safe fallback behavior).
 * Request and response headers can use different operation modes independently.
 * This policy does not block requests or responses.
 * Filtering applies only to analytics collection, not to runtime request handling.
