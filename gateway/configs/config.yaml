@@ -412,7 +412,6 @@ tracing:
   sampling_rate: 1.0
 
 embedding_provider: "MISTRAL"
-embedding_provider_api_key: ""
+embedding_provider_api_key: "<YOUR_MISTRAL_API_KEY>"
 embedding_provider_model: "mistral-embed"
 embedding_provider_endpoint: "https://api.mistral.ai/v1/embeddings"
-
