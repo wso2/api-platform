@@ -32,6 +32,7 @@ func DumpConfig(k *kernel.Kernel, reg *registry.PolicyRegistry) *ConfigDumpRespo
 		Timestamp:      time.Now(),
 		PolicyRegistry: dumpPolicyRegistry(reg),
 		Routes:         dumpRoutes(k),
+		LazyResources:  dumpLazyResources(),
 	}
 }
 
@@ -88,4 +89,29 @@ func dumpPolicySpecs(specs []policy.PolicySpec) []PolicySpec {
 		})
 	}
 	return result
+}
+
+// dumpLazyResources creates a dump of all lazy resources
+func dumpLazyResources() LazyResourcesDump {
+	// Get the singleton lazy resource store
+	lazyResourceStore := policy.GetLazyResourceStoreInstance()
+
+	// Get all resources
+	allResources := lazyResourceStore.GetAllResources()
+
+	// Group resources by type
+	resourcesByType := make(map[string][]LazyResourceInfo)
+	for _, resource := range allResources {
+		info := LazyResourceInfo{
+			ID:           resource.ID,
+			ResourceType: resource.ResourceType,
+			Resource:     resource.Resource,
+		}
+		resourcesByType[resource.ResourceType] = append(resourcesByType[resource.ResourceType], info)
+	}
+
+	return LazyResourcesDump{
+		TotalResources:  len(allResources),
+		ResourcesByType: resourcesByType,
+	}
 }

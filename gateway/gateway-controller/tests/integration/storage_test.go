@@ -19,6 +19,8 @@
 package integration
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +32,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"go.uber.org/zap"
 )
 
 // setupTestDB creates a temporary SQLite database for testing
@@ -46,8 +47,7 @@ func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	// Create logger
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err, "Failed to create logger")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create SQLite storage
 	db, err := storage.NewSQLiteStorage(dbPath, logger)
@@ -271,8 +271,7 @@ func TestSQLiteStorage_DatabaseFileCreation(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create storage (should create database files)
 	db, err := storage.NewSQLiteStorage(dbPath, logger)

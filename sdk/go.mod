@@ -8,6 +8,7 @@ require (
 	github.com/milvus-io/milvus/client/v2 v2.6.1
 	github.com/milvus-io/milvus/pkg/v2 v2.6.7
 	github.com/redis/go-redis/v9 v9.8.0
+	golang.org/x/crypto v0.46.0
 )
 
 require (
@@ -105,7 +106,6 @@ require (
 	go.uber.org/automaxprocs v1.5.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect

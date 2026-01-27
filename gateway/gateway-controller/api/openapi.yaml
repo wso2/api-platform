@@ -347,7 +347,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/generate-api-key:
+  /apis/{id}/api-keys:
     post:
       summary: Generate API key for an API
       description: |
@@ -402,7 +402,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/api-keys:
     get:
       summary: Get the list of API keys for an API
       description: |
@@ -442,13 +441,13 @@ paths:
 
   /apis/{id}/api-keys/{apiKeyName}/regenerate:
     post:
-      summary: Rotate API key for an API
+      summary: Regenerate API key for an API
       description: |
-        Rotate the given API key for the specified API. The newly rotated key can be
+        Regenerate the given API key for the specified API. The newly generated key can be
         used by clients to authenticate requests to the API if API Key validation
         policy is applied. The key is a 32-byte random value encoded in hexadecimal
         and prefixed with "apip_".
-      operationId: rotateAPIKey
+      operationId: regenerateAPIKey
       tags:
         - API Management
       parameters:
@@ -464,7 +463,7 @@ paths:
           in: path
           required: true
           description: |
-            Name of the API key to rotate
+            Name of the API key to regenerate
           schema:
             type: string
           example: weather-api-key
@@ -473,10 +472,10 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/APIKeyRotationRequest"
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/APIKeyRotationRequest"
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
       responses:
         '200':
           description: API key rotated successfully
@@ -503,8 +502,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/revoke-api-key:
-    post:
+  /apis/{id}/api-keys/{apiKeyName}:
+    delete:
       summary: Revoke an API key
       description: |
         Revoke a previously generated API key for the specified API. Once revoked,
@@ -521,15 +520,14 @@ paths:
           schema:
             type: string
           example: weather-api-v1.0
-      requestBody:
-        required: true
-        content:
-          application/yaml:
-            schema:
-              $ref: "#/components/schemas/APIKeyRevocationRequest"
-          application/json:
-            schema:
-              $ref: "#/components/schemas/APIKeyRevocationRequest"
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to revoke
+          schema:
+            type: string
+          example: weather-api-key
       responses:
         '200':
           description: API key revoked successfully
@@ -1859,6 +1857,17 @@ components:
         ref:
           type: string
           description: Reference to a predefined upstreamDefinition
+        hostRewrite:
+          type: string
+          enum:
+            - auto
+            - manual
+          default: auto
+          description: >
+            Controls how the Host header is handled when routing to the upstream.
+            `auto` delegates host rewriting to Envoy, which rewrites the Host header
+            using the upstream cluster host. `manual` disables automatic rewriting
+            and expects explicit configuration.
 
     Operation:
       type: object
@@ -2243,6 +2252,10 @@ components:
         message:
           type: string
           example: API key generated successfully
+        remaining_api_key_quota:
+          type: integer
+          description: Remaining API key quota for the user
+          example: 9
         api_key:
           $ref: '#/components/schemas/APIKey'
       required:
@@ -2299,7 +2312,7 @@ components:
         - created_at
         - created_by
         - expires_at
-    APIKeyRotationRequest:
+    APIKeyRegenerationRequest:
       type: object
       properties:
         expires_in:
@@ -2329,15 +2342,6 @@ components:
           format: date-time
           description: Expiration timestamp
           example: "2026-12-08T10:30:00Z"
-    APIKeyRevocationRequest:
-      type: object
-      properties:
-        api_key:
-          type: string
-          description: API key to be revoked
-          example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-      required:
-        - api_key
     APIKeyRevocationResponse:
       type: object
       properties:

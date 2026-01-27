@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-VERSION ?= 0.3.0-SNAPSHOT
+VERSION ?= 0.4.0-SNAPSHOT
 IMG ?= ghcr.io/wso2/api-platform/gateway-operator:$(VERSION)
 ## Default debug image name (can be overridden by setting DEBUG_IMG)
 DEBUG_IMG ?= $(IMG)-debug

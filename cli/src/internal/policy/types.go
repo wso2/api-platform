@@ -67,8 +67,6 @@ type LockPolicy struct {
 // ProcessedPolicy represents a policy after processing (downloading, verifying, etc.)
 type ProcessedPolicy struct {
 	Name      string
-	Version   string
-	Checksum  string
 	Source    string // "hub" or "local"
 	LocalPath string // Path to the policy (zip or directory)
 	IsLocal   bool

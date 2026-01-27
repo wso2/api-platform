@@ -19,9 +19,10 @@
 package middleware
 
 import (
+	"log/slog"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
 const (
@@ -40,7 +41,7 @@ const (
 //
 // Header matching is case-insensitive per HTTP/1.1 spec, so 'x-correlation-id',
 // 'X-Correlation-ID', and any case variation will work.
-func CorrelationIDMiddleware(baseLogger *zap.Logger) gin.HandlerFunc {
+func CorrelationIDMiddleware(baseLogger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if correlation ID exists in request header (case-insensitive)
 		correlationID := c.GetHeader(CorrelationIDHeader)
@@ -54,7 +55,7 @@ func CorrelationIDMiddleware(baseLogger *zap.Logger) gin.HandlerFunc {
 		c.Set(CorrelationIDKey, correlationID)
 
 		// Create a logger with correlation ID field
-		logger := baseLogger.With(zap.String("correlation_id", correlationID))
+		logger := baseLogger.With(slog.String("correlation_id", correlationID))
 		c.Set(LoggerKey, logger)
 
 		// Add correlation ID to response header
@@ -67,9 +68,9 @@ func CorrelationIDMiddleware(baseLogger *zap.Logger) gin.HandlerFunc {
 
 // GetLogger retrieves the correlation-aware logger from the Gin context
 // If not found, returns the provided fallback logger
-func GetLogger(c *gin.Context, fallback *zap.Logger) *zap.Logger {
+func GetLogger(c *gin.Context, fallback *slog.Logger) *slog.Logger {
 	if logger, exists := c.Get(LoggerKey); exists {
-		if l, ok := logger.(*zap.Logger); ok {
+		if l, ok := logger.(*slog.Logger); ok {
 			return l
 		}
 	}

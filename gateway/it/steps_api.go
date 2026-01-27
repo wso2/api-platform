@@ -19,22 +19,44 @@
 package it
 
 import (
+	"time"
+
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
+
+// policyPropagationDelay is the time to wait after mutating operations
+// to allow the Policy Engine to receive and apply configuration changes.
+const policyPropagationDelay = 2 * time.Second
 
 // RegisterAPISteps registers all API deployment step definitions
 func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
 	ctx.Step(`^I deploy this API configuration:$`, func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		return httpSteps.SendPOSTToService("gateway-controller", "/apis", body)
+		err := httpSteps.SendPOSTToService("gateway-controller", "/apis", body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
 	})
 
 	ctx.Step(`^I delete the API "([^"]*)"$`, func(name string) error {
-		return httpSteps.SendDELETEToService("gateway-controller", "/apis/"+name)
+		err := httpSteps.SendDELETEToService("gateway-controller", "/apis/"+name)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
 	})
+
 	ctx.Step(`^I update the API "([^"]*)" with this configuration:$`, func(apiName string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		return httpSteps.SendPUTToService("gateway-controller", "/apis/"+apiName, body)
+		err := httpSteps.SendPUTToService("gateway-controller", "/apis/"+apiName, body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
 	})
 }

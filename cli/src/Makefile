@@ -33,7 +33,7 @@ GOMOD=$(GOCMD) mod
 BUILD_DIR=build
 
 # Version information
-VERSION?=0.0.1
+VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 BUILD_TIME=$(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # Linker flags

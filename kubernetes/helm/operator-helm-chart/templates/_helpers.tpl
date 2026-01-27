@@ -117,7 +117,7 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways
+  - apigateways
   verbs:
   - create
   - delete
@@ -129,13 +129,13 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways/finalizers
+  - apigateways/finalizers
   verbs:
   - update
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
-  - gateways/status
+  - apigateways/status
   verbs:
   - get
   - patch

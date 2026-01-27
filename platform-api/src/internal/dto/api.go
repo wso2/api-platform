@@ -36,9 +36,6 @@ type API struct {
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 	HasThumbnail     bool                `json:"hasThumbnail,omitempty" yaml:"hasThumbnail,omitempty"`
 	IsDefaultVersion bool                `json:"isDefaultVersion,omitempty" yaml:"isDefaultVersion,omitempty"`
-	IsRevision       bool                `json:"isRevision,omitempty" yaml:"isRevision,omitempty"`
-	RevisionedAPIID  string              `json:"revisionedApiId,omitempty" yaml:"revisionedApiId,omitempty"`
-	RevisionID       int                 `json:"revisionId,omitempty" yaml:"revisionId,omitempty"`
 	Type             string              `json:"type,omitempty" yaml:"type,omitempty"`
 	Transport        []string            `json:"transport,omitempty" yaml:"transport,omitempty"`
 	MTLS             *MTLSConfig         `json:"mtls,omitempty" yaml:"mtls,omitempty"`
@@ -165,18 +162,27 @@ type Policy struct {
 	Version            string                  `json:"version" yaml:"version"`
 }
 
-// APIRevisionDeployment represents an API revision deployment
-type APIRevisionDeployment struct {
-	RevisionId           string  `json:"revisionId,omitempty" yaml:"revisionId,omitempty"`
-	GatewayID            string  `json:"gatewayId" yaml:"gatewayId"`
-	Status               string  `json:"status" yaml:"status"`
-	VHost                string  `json:"vhost" yaml:"vhost"`
-	DisplayOnDevportal   bool    `json:"displayOnDevportal" yaml:"displayOnDevportal"`
-	DeployedTime         *string `json:"deployedTime,omitempty" yaml:"deployedTime,omitempty"`
-	SuccessDeployedTime  *string `json:"successDeployedTime,omitempty" yaml:"successDeployedTime,omitempty"`
-	LiveGatewayCount     int     `json:"liveGatewayCount,omitempty" yaml:"liveGatewayCount,omitempty"`
-	DeployedGatewayCount int     `json:"deployedGatewayCount,omitempty" yaml:"deployedGatewayCount,omitempty"`
-	FailedGatewayCount   int     `json:"failedGatewayCount,omitempty" yaml:"failedGatewayCount,omitempty"`
+// DeployAPIRequest represents a request to deploy an API
+type DeployAPIRequest struct {
+	Base      string                 `json:"base" yaml:"base" binding:"required"`           // "current" or a deploymentId
+	GatewayID string                 `json:"gatewayId" yaml:"gatewayId" binding:"required"` // Target gateway ID
+	Metadata  map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`  // Flexible key-value metadata
+}
+
+// DeploymentResponse represents a deployment artifact
+type DeploymentResponse struct {
+	DeploymentID     string                 `json:"deploymentId" yaml:"deploymentId"`
+	GatewayID        string                 `json:"gatewayId" yaml:"gatewayId"`
+	Status           string                 `json:"status" yaml:"status"`
+	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" yaml:"baseDeploymentId,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	CreatedAt        time.Time              `json:"createdAt" yaml:"createdAt"`
+}
+
+// DeploymentListResponse represents a list of deployments
+type DeploymentListResponse struct {
+	Count int                   `json:"count" yaml:"count"`
+	List  []*DeploymentResponse `json:"list" yaml:"list"`
 }
 
 // APIDeploymentYAML represents the API deployment YAML structure

@@ -80,6 +80,9 @@ func TestFeatures(t *testing.T) {
 				"features/basic-ratelimit.feature",
 				"features/jwt-auth.feature",
 				"features/cors.feature",
+				"features/llm-provider-templates.feature",
+				"features/analytics-header-filter.feature",
+				"features/lazy-resources-xds.feature",
 				"features/content-length-guardrail.feature",
 				"features/azure-content-safety.feature",
 			},
@@ -238,6 +241,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterMCPSteps(ctx, testState, httpSteps)
+		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 	}
 

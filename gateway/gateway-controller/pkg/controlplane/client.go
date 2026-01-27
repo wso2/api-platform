@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -35,7 +36,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"go.uber.org/zap"
 )
 
 // State represents the connection state
@@ -90,7 +90,7 @@ type ControlPlaneClient interface {
 // Client manages the WebSocket connection to the control plane
 type Client struct {
 	config            config.ControlPlaneConfig
-	logger            *zap.Logger
+	logger            *slog.Logger
 	state             *ConnectionState
 	ctx               context.Context
 	cancel            context.CancelFunc
@@ -109,7 +109,7 @@ type Client struct {
 // NewClient creates a new control plane client
 func NewClient(
 	cfg config.ControlPlaneConfig,
-	logger *zap.Logger,
+	logger *slog.Logger,
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
@@ -160,8 +160,8 @@ func (c *Client) Start() error {
 	}
 
 	c.logger.Info("Starting control plane client",
-		zap.String("host", c.config.Host),
-		zap.String("websocket_url", c.getWebSocketURL()),
+		slog.String("host", c.config.Host),
+		slog.String("websocket_url", c.getWebSocketURL()),
 	)
 
 	// Start connection in background
@@ -201,8 +201,8 @@ func (c *Client) Connect() error {
 	c.setState(Connecting)
 
 	c.logger.Info("Connecting to control plane",
-		zap.String("url", c.getWebSocketURL()),
-		zap.Int("retry_count", c.state.RetryCount),
+		slog.String("url", c.getWebSocketURL()),
+		slog.Int("retry_count", c.state.RetryCount),
 	)
 
 	// Create WebSocket dialer with timeout
@@ -228,20 +228,20 @@ func (c *Client) Connect() error {
 	if err != nil {
 		if resp != nil {
 			c.logger.Error("WebSocket connection failed",
-				zap.Error(err),
-				zap.Int("status_code", resp.StatusCode),
+				slog.Any("error", err),
+				slog.Int("status_code", resp.StatusCode),
 			)
 
 			// Handle authentication failures
 			if resp.StatusCode == http.StatusUnauthorized {
 				c.logger.Error("Authentication failed - invalid or revoked token",
-					zap.String("troubleshooting", "Check GATEWAY_REGISTRATION_TOKEN environment variable"),
+					slog.String("troubleshooting", "Check GATEWAY_REGISTRATION_TOKEN environment variable"),
 				)
 				return fmt.Errorf("authentication failed: %w", err)
 			}
 		} else {
 			c.logger.Error("WebSocket connection failed",
-				zap.Error(err),
+				slog.Any("error", err),
 			)
 		}
 		return err
@@ -277,8 +277,8 @@ func (c *Client) Connect() error {
 	c.state.RetryCount = 0 // Reset retry count on successful connection
 
 	c.logger.Info("Control plane connection established",
-		zap.String("gateway_id", c.state.GatewayID),
-		zap.String("connection_id", c.state.ConnectionID),
+		slog.String("gateway_id", c.state.GatewayID),
+		slog.String("connection_id", c.state.ConnectionID),
 	)
 
 	// Start heartbeat monitor
@@ -315,9 +315,9 @@ func (c *Client) waitForConnectionAck(conn *websocket.Conn) error {
 	c.state.mu.Unlock()
 
 	c.logger.Info("Received connection acknowledgment",
-		zap.String("gateway_id", ack.GatewayID),
-		zap.String("connection_id", ack.ConnectionID),
-		zap.String("timestamp", ack.Timestamp),
+		slog.String("gateway_id", ack.GatewayID),
+		slog.String("connection_id", ack.ConnectionID),
+		slog.String("timestamp", ack.Timestamp),
 	)
 
 	return nil
@@ -359,7 +359,7 @@ func (c *Client) heartbeatMonitor() {
 			// Check if heartbeat timeout exceeded (35s = 30s server timeout + 5s grace)
 			if timeSinceLastHeartbeat > 35*time.Second {
 				c.logger.Warn("Heartbeat timeout detected",
-					zap.Duration("time_since_last_heartbeat", timeSinceLastHeartbeat),
+					slog.Duration("time_since_last_heartbeat", timeSinceLastHeartbeat),
 				)
 
 				// Trigger reconnection
@@ -399,9 +399,9 @@ func (c *Client) connectionLoop() {
 		err := c.Connect()
 		if err != nil {
 			c.logger.Warn("Connection failed, will retry",
-				zap.Error(err),
-				zap.Duration("retry_delay", c.state.NextRetryDelay),
-				zap.Int("retry_count", c.state.RetryCount),
+				slog.Any("error", err),
+				slog.Duration("retry_delay", c.state.NextRetryDelay),
+				slog.Int("retry_count", c.state.RetryCount),
 			)
 
 			c.setState(Reconnecting)
@@ -448,7 +448,7 @@ func (c *Client) waitForDisconnection() {
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			c.logger.Warn("Connection lost",
-				zap.Error(err),
+				slog.Any("error", err),
 			)
 
 			c.state.mu.Lock()
@@ -470,14 +470,14 @@ func (c *Client) waitForDisconnection() {
 func (c *Client) handleMessage(messageType int, message []byte) {
 	// Log the message type
 	c.logger.Debug("Received WebSocket message",
-		zap.Int("message_type", messageType),
-		zap.Int("message_length", len(message)),
+		slog.Int("message_type", messageType),
+		slog.Int("message_length", len(message)),
 	)
 
 	// Only process text messages (JSON events)
 	if messageType != websocket.TextMessage {
 		c.logger.Debug("Ignoring non-text message",
-			zap.Int("message_type", messageType),
+			slog.Int("message_type", messageType),
 		)
 		return
 	}
@@ -486,8 +486,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 	var event map[string]interface{}
 	if err := json.Unmarshal(message, &event); err != nil {
 		c.logger.Error("Failed to parse WebSocket message",
-			zap.Error(err),
-			zap.String("message", string(message)),
+			slog.Any("error", err),
+			slog.String("message", string(message)),
 		)
 		return
 	}
@@ -496,15 +496,15 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 	eventType, ok := event["type"].(string)
 	if !ok {
 		c.logger.Warn("Message missing 'type' field",
-			zap.String("message", string(message)),
+			slog.String("message", string(message)),
 		)
 		return
 	}
 
 	// Log the event to console
 	c.logger.Info("Received WebSocket event",
-		zap.String("type", eventType),
-		zap.String("payload", string(message)),
+		slog.String("type", eventType),
+		slog.String("payload", string(message)),
 	)
 
 	// Handle specific event types
@@ -518,7 +518,7 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleAPIUndeployedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
-			zap.String("type", eventType),
+			slog.String("type", eventType),
 		)
 	}
 }
@@ -526,16 +526,16 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 // handleAPIDeployedEvent handles API deployment events
 func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	c.logger.Info("API Deployment Event",
-		zap.Any("payload", event["payload"]),
-		zap.Any("timestamp", event["timestamp"]),
-		zap.Any("correlationId", event["correlationId"]),
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
 	)
 
 	// Parse the event into structured format
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
 		c.logger.Error("Failed to marshal event for parsing",
-			zap.Error(err),
+			slog.Any("error", err),
 		)
 		return
 	}
@@ -543,7 +543,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	var deployedEvent APIDeployedEvent
 	if err := json.Unmarshal(eventBytes, &deployedEvent); err != nil {
 		c.logger.Error("Failed to parse API deployment event",
-			zap.Error(err),
+			slog.Any("error", err),
 		)
 		return
 	}
@@ -556,19 +556,19 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	}
 
 	c.logger.Info("Processing API deployment",
-		zap.String("api_id", apiID),
-		zap.String("environment", deployedEvent.Payload.Environment),
-		zap.String("revision_id", deployedEvent.Payload.RevisionID),
-		zap.String("vhost", deployedEvent.Payload.VHost),
-		zap.String("correlation_id", deployedEvent.CorrelationID),
+		slog.String("api_id", apiID),
+		slog.String("environment", deployedEvent.Payload.Environment),
+		slog.String("revision_id", deployedEvent.Payload.RevisionID),
+		slog.String("vhost", deployedEvent.Payload.VHost),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
 	)
 
 	// Fetch API definition from control plane
 	zipData, err := c.apiUtilsService.FetchAPIDefinition(apiID)
 	if err != nil {
 		c.logger.Error("Failed to fetch API definition",
-			zap.String("api_id", apiID),
-			zap.Error(err),
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
 		)
 		return
 	}
@@ -577,39 +577,39 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
 	if err != nil {
 		c.logger.Error("Failed to extract YAML from zip",
-			zap.String("api_id", apiID),
-			zap.Error(err),
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
 		)
 		return
 	}
 
 	// log the yaml for debugging
 	c.logger.Debug("Extracted YAML data",
-		zap.String("api_id", apiID),
-		zap.String("yaml_data", string(yamlData)),
+		slog.String("api_id", apiID),
+		slog.String("yaml_data", string(yamlData)),
 	)
 
 	// Create API configuration from YAML using the deployment service
 	if err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.CorrelationID, c.deploymentService); err != nil {
 		c.logger.Error("Failed to create API from YAML",
-			zap.String("api_id", apiID),
-			zap.Error(err),
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
 		)
 		return
 	}
 
 	c.logger.Info("Successfully processed API deployment event",
-		zap.String("api_id", apiID),
-		zap.String("correlation_id", deployedEvent.CorrelationID),
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
 	)
 }
 
 // handleAPIUndeployedEvent handles API undeployment events
 func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("API Undeployment Event",
-		zap.Any("payload", event["payload"]),
-		zap.Any("timestamp", event["timestamp"]),
-		zap.Any("correlationId", event["correlationId"]),
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
 	)
 	// TODO: Implement actual API undeployment logic in Phase 6
 }
@@ -646,8 +646,8 @@ func (c *Client) setState(newState State) {
 
 	if oldState != newState {
 		c.logger.Info("Connection state changed",
-			zap.String("from", oldState.String()),
-			zap.String("to", newState.String()),
+			slog.String("from", oldState.String()),
+			slog.String("to", newState.String()),
 		)
 	}
 }
@@ -683,7 +683,7 @@ func (c *Client) NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfi
 	// Check if connected to control plane
 	if !c.IsConnected() {
 		c.logger.Debug("Not connected to control plane, skipping API deployment notification",
-			zap.String("api_id", apiID))
+			slog.String("api_id", apiID))
 		return nil
 	}
 

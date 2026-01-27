@@ -19,6 +19,8 @@ package authenticators
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -30,7 +32,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
-	"go.uber.org/zap"
 )
 
 type staticKeyfunc struct {
@@ -50,7 +51,7 @@ func (s staticKeyfunc) VerificationKeySet(ctx context.Context) (jwt.Verification
 }
 
 func TestJWTAuthenticator_ResolvePermissions_WildcardMapping(t *testing.T) {
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tests := []struct {
 		name              string
@@ -175,7 +176,7 @@ func TestJWTAuthenticator_ResolvePermissions_WildcardMapping(t *testing.T) {
 }
 
 func TestJWTAuthenticator_ResolvePermissions_NoScopeClaim(t *testing.T) {
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := &models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
@@ -196,7 +197,7 @@ func TestJWTAuthenticator_ResolvePermissions_NoScopeClaim(t *testing.T) {
 }
 
 func TestJWTAuthenticator_ResolvePermissions_ClaimNotPresent(t *testing.T) {
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := &models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
@@ -218,7 +219,7 @@ func TestJWTAuthenticator_ResolvePermissions_ClaimNotPresent(t *testing.T) {
 }
 
 func TestJWTAuthenticator_ResolvePermissions_InvalidClaimType(t *testing.T) {
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := &models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
@@ -241,7 +242,7 @@ func TestJWTAuthenticator_ResolvePermissions_InvalidClaimType(t *testing.T) {
 
 func TestJWTAuthenticator_Authenticate_ExpiredTokenRejected_WithIssuerValidation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logger := zap.NewNop()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	issuer := "https://issuer.example.com"
 
 	secret := []byte("test-secret")

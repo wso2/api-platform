@@ -366,7 +366,7 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 	}
 
 	// Build dynamic metadata structure
-	dynamicMetadata := buildDynamicMetadata(analyticsStruct)
+	dynamicMetadata := buildDynamicMetadata(analyticsStruct, nil)
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -385,14 +385,16 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 
 // RouteMetadata contains metadata about the route
 type RouteMetadata struct {
-	RouteName     string
-	APIId         string
-	APIName       string
-	APIVersion    string
-	Context       string
-	OperationPath string
-	Vhost         string
-	APIKind       string
+	RouteName      string
+	APIId          string
+	APIName        string
+	APIVersion     string
+	Context        string
+	OperationPath  string
+	Vhost          string
+	APIKind        string
+	TemplateHandle string
+	ProviderName   string
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata
@@ -445,6 +447,12 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 					}
 					if originalAPIKindValue, ok := routeStruct.Fields["api_kind"]; ok {
 						metadata.APIKind = originalAPIKindValue.GetStringValue()
+					}
+					if templateHandleValue, ok := routeStruct.Fields["template_handle"]; ok {
+						metadata.TemplateHandle = templateHandleValue.GetStringValue()
+					}
+					if providerNameValue, ok := routeStruct.Fields["provider_name"]; ok {
+						metadata.ProviderName = providerNameValue.GetStringValue()
 					}
 				}
 			}

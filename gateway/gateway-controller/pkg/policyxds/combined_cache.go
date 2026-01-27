@@ -20,52 +20,55 @@ package policyxds
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
-	"go.uber.org/zap"
 )
 
-// CombinedCache combines policy and API key caches to provide a unified xDS cache interface
+// CombinedCache combines policy, API key, and lazy resource caches to provide a unified xDS cache interface
 // It implements cache.Cache interface by delegating to underlying caches
 type CombinedCache struct {
-	policyCache cache.Cache
-	apiKeyCache cache.Cache
-	logger      *zap.Logger
-	mu          sync.RWMutex
-	watchers    map[int64]*combinedWatcher
-	watcherID   int64
+	policyCache       cache.Cache
+	apiKeyCache       cache.Cache
+	lazyResourceCache cache.Cache
+	logger            *slog.Logger
+	mu                sync.RWMutex
+	watchers          map[int64]*combinedWatcher
+	watcherID         int64
 }
 
-// combinedWatcher manages watchers for both policy and API key caches
+// combinedWatcher manages watchers for policy, API key, and lazy resource caches
 type combinedWatcher struct {
-	id            int64
-	request       *cache.Request
-	streamState   stream.StreamState
-	responseChan  chan cache.Response
-	policyCancel  func()
-	apiKeyCancel  func()
-	combinedCache *CombinedCache
-	done          chan struct{} // done channel to signal goroutine cancellation
+	id                 int64
+	request            *cache.Request
+	streamState        stream.StreamState
+	responseChan       chan cache.Response
+	policyCancel       func()
+	apiKeyCancel       func()
+	lazyResourceCancel func()
+	combinedCache      *CombinedCache
+	done               chan struct{} // done channel to signal goroutine cancellation
 }
 
-// NewCombinedCache creates a new combined cache that merges policy and API key caches
+// NewCombinedCache creates a new combined cache that merges policy, API key, and lazy resource caches
 // Returns a cache.Cache interface implementation
-func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, logger *zap.Logger) cache.Cache {
-	if policyCache == nil || apiKeyCache == nil {
-		panic("policyCache and apiKeyCache must not be nil")
+func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyResourceCache cache.Cache, logger *slog.Logger) cache.Cache {
+	if policyCache == nil || apiKeyCache == nil || lazyResourceCache == nil {
+		panic("policyCache, apiKeyCache, and lazyResourceCache must not be nil")
 	}
 	if logger == nil {
-		logger = zap.NewNop()
+		logger = slog.Default()
 	}
 	return &CombinedCache{
-		policyCache: policyCache,
-		apiKeyCache: apiKeyCache,
-		logger:      logger,
-		watchers:    make(map[int64]*combinedWatcher),
-		watcherID:   0,
+		policyCache:       policyCache,
+		apiKeyCache:       apiKeyCache,
+		lazyResourceCache: lazyResourceCache,
+		logger:            logger,
+		watchers:          make(map[int64]*combinedWatcher),
+		watcherID:         0,
 	}
 }
 
@@ -90,20 +93,22 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 	c.watchers[watcherID] = watcher
 
 	c.logger.Debug("Creating combined watch",
-		zap.Int64("watcher_id", watcherID),
-		zap.String("type_url", request.TypeUrl),
-		zap.String("node_id", request.Node.GetId()))
+		slog.Int64("watcher_id", watcherID),
+		slog.String("type_url", request.TypeUrl),
+		slog.String("node_id", request.Node.GetId()))
 
 	// Create separate response channels for each cache to avoid recursion
 	policyResponseChan := make(chan cache.Response, 1)
 	apiKeyResponseChan := make(chan cache.Response, 1)
+	lazyResourceResponseChan := make(chan cache.Response, 1)
 
-	// Create watches on both underlying caches with separate channels
+	// Create watches on all underlying caches with separate channels
 	watcher.policyCancel = c.policyCache.CreateWatch(request, streamState, policyResponseChan)
 	watcher.apiKeyCancel = c.apiKeyCache.CreateWatch(request, streamState, apiKeyResponseChan)
+	watcher.lazyResourceCancel = c.lazyResourceCache.CreateWatch(request, streamState, lazyResourceResponseChan)
 
-	// Start a response multiplexer to handle responses from both caches
-	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, responseChan, watcher.done)
+	// Start a response multiplexer to handle responses from all caches
+	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, responseChan, watcher.done)
 
 	// Return cancel function
 	return func() {
@@ -111,25 +116,25 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 	}
 }
 
-// handleCombinedResponses multiplexes responses from both caches
+// handleCombinedResponses multiplexes responses from all caches
 // This prevents recursion and handles response deduplication
-func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan chan cache.Response,
+func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan chan cache.Response,
 	mainResponseChan chan cache.Response, done chan struct{}) {
 	defer func() {
-		c.logger.Debug("Response handler goroutine exiting", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Response handler goroutine exiting", slog.Int64("watcher_id", watcherID))
 	}()
 
-	var lastPolicyVersion, lastApiKeyVersion string
+	var lastPolicyVersion, lastApiKeyVersion, lastLazyResourceVersion string
 
 	for {
 		select {
 		case <-done:
-			c.logger.Debug("Watcher cancelled, exiting response handler", zap.Int64("watcher_id", watcherID))
+			c.logger.Debug("Watcher cancelled, exiting response handler", slog.Int64("watcher_id", watcherID))
 			return
 
 		case response, ok := <-policyResponseChan:
 			if !ok {
-				c.logger.Debug("Policy response channel closed", zap.Int64("watcher_id", watcherID))
+				c.logger.Debug("Policy response channel closed", slog.Int64("watcher_id", watcherID))
 				return
 			}
 
@@ -137,7 +142,7 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if response == nil {
 				// Don't create continuous empty responses - this causes the loop
 				c.logger.Debug("Policy cache has no data, skipping nil response",
-					zap.Int64("watcher_id", watcherID))
+					slog.Int64("watcher_id", watcherID))
 				continue
 			}
 
@@ -150,26 +155,26 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if version != lastPolicyVersion {
 				lastPolicyVersion = version
 				c.logger.Debug("Forwarding policy cache response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 
 				select {
 				case mainResponseChan <- response:
 					// Successfully sent
 				case <-time.After(100 * time.Millisecond):
 					c.logger.Warn("Timeout sending policy response, client may be slow",
-						zap.Int64("watcher_id", watcherID),
-						zap.String("version", version))
+						slog.Int64("watcher_id", watcherID),
+						slog.String("version", version))
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate policy response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 			}
 
 		case response, ok := <-apiKeyResponseChan:
 			if !ok {
-				c.logger.Debug("API key response channel closed", zap.Int64("watcher_id", watcherID))
+				c.logger.Debug("API key response channel closed", slog.Int64("watcher_id", watcherID))
 				return
 			}
 
@@ -177,7 +182,7 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if response == nil {
 				// Don't create continuous empty responses - this causes the loop
 				c.logger.Debug("API key cache has no data, skipping nil response",
-					zap.Int64("watcher_id", watcherID))
+					slog.Int64("watcher_id", watcherID))
 				continue
 			}
 
@@ -190,21 +195,61 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 			if version != lastApiKeyVersion {
 				lastApiKeyVersion = version
 				c.logger.Debug("Forwarding API key cache response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 
 				select {
 				case mainResponseChan <- response:
 					// Successfully sent
 				case <-time.After(100 * time.Millisecond):
 					c.logger.Warn("Timeout sending API key response, client may be slow",
-						zap.Int64("watcher_id", watcherID),
-						zap.String("version", version))
+						slog.Int64("watcher_id", watcherID),
+						slog.String("version", version))
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate API key response",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("version", version))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
+			}
+
+		case response, ok := <-lazyResourceResponseChan:
+			if !ok {
+				c.logger.Debug("Lazy resource response channel closed", slog.Int64("watcher_id", watcherID))
+				return
+			}
+
+			// Handle nil response only if we haven't sent initial response yet
+			if response == nil {
+				// Don't create continuous empty responses - this causes the loop
+				c.logger.Debug("Lazy resource cache has no data, skipping nil response",
+					slog.Int64("watcher_id", watcherID))
+				continue
+			}
+
+			// Check if this is a duplicate response
+			version, err := response.GetVersion()
+			if err != nil {
+				version = "unknown"
+			}
+
+			if version != lastLazyResourceVersion {
+				lastLazyResourceVersion = version
+				c.logger.Debug("Forwarding lazy resource cache response",
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
+
+				select {
+				case mainResponseChan <- response:
+					// Successfully sent
+				case <-time.After(100 * time.Millisecond):
+					c.logger.Warn("Timeout sending lazy resource response, client may be slow",
+						slog.Int64("watcher_id", watcherID),
+						slog.String("version", version))
+				}
+			} else {
+				c.logger.Debug("Skipping duplicate lazy resource response",
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
 			}
 		}
 
@@ -214,7 +259,7 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 		c.mu.RUnlock()
 
 		if !exists {
-			c.logger.Debug("Watcher removed, exiting response handler", zap.Int64("watcher_id", watcherID))
+			c.logger.Debug("Watcher removed, exiting response handler", slog.Int64("watcher_id", watcherID))
 			return
 		}
 	}
@@ -230,21 +275,21 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 	watcherID := c.watcherID
 
 	c.logger.Debug("Creating combined delta watch",
-		zap.Int64("watcher_id", watcherID),
-		zap.String("type_url", request.TypeUrl),
-		zap.String("node_id", request.Node.GetId()))
+		slog.Int64("watcher_id", watcherID),
+		slog.String("type_url", request.TypeUrl),
+		slog.String("node_id", request.Node.GetId()))
 
-	// Create delta watches on both underlying caches
-	var policyCancel, apiKeyCancel func()
+	// Create delta watches on all underlying caches
+	var policyCancel, apiKeyCancel, lazyResourceCancel func()
 
 	// Try to create delta watch on policy cache if it supports it
 	if deltaWatcher, ok := c.policyCache.(interface {
 		CreateDeltaWatch(*cache.DeltaRequest, stream.StreamState, chan cache.DeltaResponse) func()
 	}); ok {
 		policyCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "policy", responseChan))
-		c.logger.Debug("Policy cache supports delta watch", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Policy cache supports delta watch", slog.Int64("watcher_id", watcherID))
 	} else {
-		c.logger.Debug("Policy cache does not support delta watch, skipping", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Policy cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
 	}
 
 	// Try to create delta watch on API key cache if it supports it
@@ -252,17 +297,27 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		CreateDeltaWatch(*cache.DeltaRequest, stream.StreamState, chan cache.DeltaResponse) func()
 	}); ok {
 		apiKeyCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "apikey", responseChan))
-		c.logger.Debug("API key cache supports delta watch", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("API key cache supports delta watch", slog.Int64("watcher_id", watcherID))
 	} else {
-		c.logger.Debug("API key cache does not support delta watch, skipping", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("API key cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
 	}
 
-	// If neither cache supports delta watch, we could fall back to regular watch
+	// Try to create delta watch on lazy resource cache if it supports it
+	if deltaWatcher, ok := c.lazyResourceCache.(interface {
+		CreateDeltaWatch(*cache.DeltaRequest, stream.StreamState, chan cache.DeltaResponse) func()
+	}); ok {
+		lazyResourceCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "lazyresource", responseChan))
+		c.logger.Debug("Lazy resource cache supports delta watch", slog.Int64("watcher_id", watcherID))
+	} else {
+		c.logger.Debug("Lazy resource cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
+	}
+
+	// If no cache supports delta watch, we could fall back to regular watch
 	// but for now we'll just return a no-op cancel function
-	if policyCancel == nil && apiKeyCancel == nil {
-		c.logger.Warn("Neither underlying cache supports delta watch",
-			zap.Int64("watcher_id", watcherID),
-			zap.String("type_url", request.TypeUrl))
+	if policyCancel == nil && apiKeyCancel == nil && lazyResourceCancel == nil {
+		c.logger.Warn("No underlying cache supports delta watch",
+			slog.Int64("watcher_id", watcherID),
+			slog.String("type_url", request.TypeUrl))
 	}
 
 	// Return cancel function
@@ -276,8 +331,11 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		if apiKeyCancel != nil {
 			apiKeyCancel()
 		}
+		if lazyResourceCancel != nil {
+			lazyResourceCancel()
+		}
 
-		c.logger.Debug("Canceled combined delta watch", zap.Int64("watcher_id", watcherID))
+		c.logger.Debug("Canceled combined delta watch", slog.Int64("watcher_id", watcherID))
 	}
 }
 
@@ -285,9 +343,9 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 // Implements cache.ConfigFetcher interface
 func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cache.Response, error) {
 	c.logger.Debug("Fetching from combined cache",
-		zap.String("type_url", request.TypeUrl),
-		zap.String("node_id", request.Node.GetId()),
-		zap.Strings("resource_names", request.ResourceNames))
+		slog.String("type_url", request.TypeUrl),
+		slog.String("node_id", request.Node.GetId()),
+		slog.Any("resource_names", request.ResourceNames))
 
 	// Try to fetch from policy cache first
 	if response, err := c.policyCache.Fetch(ctx, request); err == nil {
@@ -296,7 +354,7 @@ func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cach
 			version = "unknown"
 		}
 		c.logger.Debug("Fetched from policy cache",
-			zap.String("version", version))
+			slog.String("version", version))
 		return response, nil
 	}
 
@@ -307,14 +365,25 @@ func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cach
 			version = "unknown"
 		}
 		c.logger.Debug("Fetched from API key cache",
-			zap.String("version", version))
+			slog.String("version", version))
 		return response, nil
 	}
 
-	// If not found in either cache, return empty response
-	c.logger.Debug("Resource not found in either cache",
-		zap.String("type_url", request.TypeUrl),
-		zap.Strings("resource_names", request.ResourceNames))
+	// If not found in API key cache, try lazy resource cache
+	if response, err := c.lazyResourceCache.Fetch(ctx, request); err == nil {
+		version, versionErr := response.GetVersion()
+		if versionErr != nil {
+			version = "unknown"
+		}
+		c.logger.Debug("Fetched from lazy resource cache",
+			slog.String("version", version))
+		return response, nil
+	}
+
+	// If not found in any cache, return empty response
+	c.logger.Debug("Resource not found in any cache",
+		slog.String("type_url", request.TypeUrl),
+		slog.Any("resource_names", request.ResourceNames))
 
 	return &cache.RawResponse{
 		Version:   "0",
@@ -330,19 +399,19 @@ func (c *CombinedCache) createDeltaResponseHandler(watcherID int64, cacheType st
 	go func() {
 		for response := range responseChan {
 			c.logger.Debug("Received delta response from cache",
-				zap.Int64("watcher_id", watcherID),
-				zap.String("cache_type", cacheType))
+				slog.Int64("watcher_id", watcherID),
+				slog.String("cache_type", cacheType))
 
 			// Forward the delta response to the main response channel
 			select {
 			case mainResponseChan <- response:
 				c.logger.Debug("Forwarded delta response from combined cache",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("cache_type", cacheType))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("cache_type", cacheType))
 			default:
 				c.logger.Warn("Failed to forward delta response, channel full",
-					zap.Int64("watcher_id", watcherID),
-					zap.String("cache_type", cacheType))
+					slog.Int64("watcher_id", watcherID),
+					slog.String("cache_type", cacheType))
 			}
 		}
 	}()
@@ -358,12 +427,12 @@ func (c *CombinedCache) cancelWatch(watcherID int64) {
 	watcher, exists := c.watchers[watcherID]
 	if !exists {
 		c.logger.Debug("Watcher already removed",
-			zap.Int64("watcher_id", watcherID))
+			slog.Int64("watcher_id", watcherID))
 		return
 	}
 
 	c.logger.Debug("Canceling combined watch",
-		zap.Int64("watcher_id", watcherID))
+		slog.Int64("watcher_id", watcherID))
 
 	// Signal the goroutine to stop by closing the done channel
 	close(watcher.done)
@@ -371,11 +440,14 @@ func (c *CombinedCache) cancelWatch(watcherID int64) {
 	// Remove the watcher from the map first to prevent new responses
 	delete(c.watchers, watcherID)
 
-	// Cancel both underlying watchers if they exist
+	// Cancel all underlying watchers if they exist
 	if watcher.policyCancel != nil {
 		watcher.policyCancel()
 	}
 	if watcher.apiKeyCancel != nil {
 		watcher.apiKeyCancel()
+	}
+	if watcher.lazyResourceCancel != nil {
+		watcher.lazyResourceCancel()
 	}
 }

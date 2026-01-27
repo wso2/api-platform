@@ -2,11 +2,6 @@ name: Gateway Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 0.1.0)'
-        required: true
-        type: string
 
 env:
   DOCKER_REGISTRY: ghcr.io/wso2/api-platform
@@ -18,9 +13,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Determine version from VERSION file
+        id: version
+        run: |
+          VERSION=$(cat gateway/VERSION | tr -d '[:space:]' | sed 's/-SNAPSHOT//')
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::VERSION is empty or contains only whitespace. Check gateway/VERSION file." >&2
+            exit 1
+          fi
+          echo "Releasing gateway version: ${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
       - name: Set version
         run: |
-          VERSION=${{ inputs.version }}
+          VERSION=${{ steps.version.outputs.version }}
           make version-set COMPONENT=gateway VERSION_ARG=${VERSION}
           make update-images COMPONENT=gateway VERSION_ARG=${VERSION}
 
@@ -58,14 +64,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "Release gateway version ${{ inputs.version }}"
-          git tag -a gateway-v${{ inputs.version }} -m "Gateway ${{ inputs.version }}"
-          git push origin gateway-v${{ inputs.version }}
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git commit -am "Release gateway version ${{ steps.version.outputs.version }}"
+          fi
+          git tag -a gateway/v${{ steps.version.outputs.version }} -m "Gateway ${{ steps.version.outputs.version }}"
+          git push origin gateway/v${{ steps.version.outputs.version }}
 
 
       - name: Set to next dev version
         run: |
           make version-bump-next-dev COMPONENT=gateway
           make update-images COMPONENT=gateway VERSION_ARG=$(cat gateway/VERSION)
-          git commit -am "Bump gateway to next dev version"
-          git push origin main
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git commit -am "Bump gateway to next dev version"
+            git push origin main
+          fi

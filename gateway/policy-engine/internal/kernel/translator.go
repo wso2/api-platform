@@ -20,6 +20,8 @@ package kernel
 
 import (
 	"fmt"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/utils"
+	"google.golang.org/protobuf/types/known/structpb"
 	"log/slog"
 	"strings"
 
@@ -27,6 +29,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -49,6 +52,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerMutation *extprocv3.HeaderMutation,
 	bodyMutation *extprocv3.BodyMutation,
 	analyticsData map[string]any,
+	pathMutation *string,
 	immediateResp *extprocv3.ProcessingResponse,
 	err error) {
 
@@ -70,10 +74,10 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 			// Handle analytics metadata for immediate response
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
 			if err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+				return nil, nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
-			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
-			return nil, nil, nil, response, nil
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
+			return nil, nil, nil, nil, response, nil
 		}
 	}
 
@@ -83,6 +87,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerMutation = &extprocv3.HeaderMutation{}
 	var finalBodyLength int
 	bodyModified := false
+
+	path := execCtx.requestContext.Path
 
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
@@ -118,6 +124,20 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					}
 					finalBodyLength = len(mods.Body)
 					bodyModified = true
+				}
+
+				if mods.AddQueryParameters != nil {
+					path = utils.AddQueryParametersToPath(path, mods.AddQueryParameters)
+					pathMutation = &path
+				}
+
+				if mods.RemoveQueryParameters != nil {
+					path = utils.RemoveQueryParametersFromPath(path, mods.RemoveQueryParameters)
+					pathMutation = &path
+				}
+
+				if mods.Path != nil {
+					pathMutation = mods.Path
 				}
 
 				// Collect analytics metadata from policies
@@ -159,12 +179,12 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, nil, nil
+	return headerMutation, bodyMutation, analyticsData, pathMutation, nil, nil
 }
 
 // TranslateRequestHeadersActions converts request headers execution result to ext_proc response
 func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, path, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -190,14 +210,14 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, path)
 
 	return response, nil
 }
 
 // TranslateRequestBodyActions converts request body execution result to ext_proc response
 func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, _, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +243,7 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
 
 	return response, nil
 }
@@ -409,7 +429,7 @@ func TranslateResponseHeadersActions(result *executor.ResponseExecutionResult, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
 
 	return response, nil
 }
@@ -439,10 +459,55 @@ func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, exec
 		if err != nil {
 			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 		}
-		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil)
 	}
 
 	return response, nil
+}
+
+// buildDynamicMetadata creates the dynamic metadata structure for analytics and path rewrite
+func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string) *structpb.Struct {
+	if path != nil {
+		return &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				constants.ExtProcFilterName: {
+					Kind: &structpb.Value_StructValue{
+						StructValue: &structpb.Struct{
+							Fields: map[string]*structpb.Value{
+								"analytics_data": {
+									Kind: &structpb.Value_StructValue{
+										StructValue: analyticsStruct,
+									},
+								},
+								"path": {
+									Kind: &structpb.Value_StringValue{
+										StringValue: *path,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			constants.ExtProcFilterName: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"analytics_data": {
+								Kind: &structpb.Value_StructValue{
+									StructValue: analyticsStruct,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // buildHeaderMutationFromOps builds HeaderMutation from header operations with conflict resolution

@@ -88,8 +88,8 @@ type APIGatewayWithDetails struct {
 	AssociatedAt         time.Time `json:"associatedAt" db:"associated_at"`
 	AssociationUpdatedAt time.Time `json:"associationUpdatedAt" db:"association_updated_at"`
 
+	IsDeployed bool `json:"isDeployed" db:"is_deployed"`
 	// Deployment information (nullable if not deployed)
-	IsDeployed       bool       `json:"isDeployed" db:"is_deployed"`
-	DeployedRevision *string    `json:"deployedRevision,omitempty" db:"deployed_revision"`
-	DeployedAt       *time.Time `json:"deployedAt,omitempty" db:"deployed_at"`
+	DeploymentID *string    `json:"deploymentId,omitempty" db:"deployment_id"`
+	DeployedAt   *time.Time `json:"deployedAt,omitempty" db:"deployed_at"`
 }

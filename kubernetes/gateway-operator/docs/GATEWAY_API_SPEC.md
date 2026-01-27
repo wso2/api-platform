@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the design of `Gateway` and `RestApi` CRDs, which support flexible API deployment strategies across different scoping mechanisms.
+This document describes the design of `APIGateway` and `RestApi` CRDs, which support flexible API deployment strategies across different scoping mechanisms.
 
 ## Design Principles
 
@@ -15,7 +15,7 @@ This document describes the design of `Gateway` and `RestApi` CRDs, which suppor
 
 ### API Selection Strategies
 
-A `Gateway` can select APIs using three strategies:
+A `APIGateway` can select APIs using three strategies:
 
 #### 1. Cluster-Scoped Gateway
 
@@ -23,7 +23,7 @@ Accepts APIs from **any namespace** in the cluster.
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: cluster-gateway
 spec:
@@ -42,7 +42,7 @@ Accepts APIs only from **specific namespaces**.
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: team-gateway
 spec:
@@ -66,7 +66,7 @@ Accepts APIs matching **specific label criteria**.
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: platform-gateway
 spec:
@@ -94,7 +94,7 @@ spec:
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: production-gateway
   namespace: gateway-system
@@ -162,7 +162,7 @@ spec:
 
 ### Status Fields
 
-The `Gateway` status tracks:
+The `APIGateway` status tracks:
 
 ```yaml
 status:
@@ -311,7 +311,7 @@ status:
 ---
 # Production gateway - cluster-scoped for prod namespace
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: prod-gateway
 spec:
@@ -324,7 +324,7 @@ spec:
 ---
 # Staging gateway - cluster-scoped for staging
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: staging-gateway
 spec:
@@ -337,7 +337,7 @@ spec:
 ---
 # Dev gateway - cluster-scoped for all dev namespaces
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: dev-gateway
 spec:
@@ -355,7 +355,7 @@ spec:
 ---
 # Team Platform gateway
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: platform-gateway
 spec:
@@ -366,7 +366,7 @@ spec:
 ---
 # Team Backend gateway
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: backend-gateway
 spec:
@@ -382,7 +382,7 @@ spec:
 ---
 # Premium tier gateway (high resources)
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: premium-gateway
 spec:
@@ -399,7 +399,7 @@ spec:
 ---
 # Standard tier gateway
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: standard-gateway
 spec:
@@ -417,7 +417,7 @@ spec:
 ---
 # Gateway using complex label matching
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: hybrid-gateway
 spec:
@@ -466,7 +466,7 @@ spec:
 
 4. **Verify selection:**
    ```bash
-   kubectl get gateway production-gateway -o jsonpath='{.status.selectedAPIs}'
+   kubectl get apigateway production-gateway -o jsonpath='{.status.selectedAPIs}'
    ```
 
 ## Best Practices
@@ -508,10 +508,10 @@ spec:
 **Debug:**
 ```bash
 # List all gateways
-kubectl get gateways
+kubectl get apigateways
 
 # Check gateway status
-kubectl describe gateway <name>
+kubectl describe apigateway <name>
 
 # Check API status
 kubectl describe apiconfiguration <name> -n <namespace>

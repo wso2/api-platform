@@ -176,7 +176,7 @@ func main() {
 		cfg,
 		zapLog,
 	).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Gateway")
+		setupLog.Error(err, "unable to create controller", "controller", "APIGateway")
 		os.Exit(1)
 	}
 	if err = controller.NewRestApiReconciler(

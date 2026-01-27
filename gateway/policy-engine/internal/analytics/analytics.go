@@ -30,6 +30,9 @@ import (
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 )
 
+const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
+const lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
+
 // EventCategory represents the category of an event.
 type EventCategory string
 
@@ -58,7 +61,7 @@ const (
 	ELKAnalyticsPublisher = "elk"
 
 	// HeaderKeys represents the header keys.
-	RequestHeadersKey = "request_headers"
+	RequestHeadersKey  = "request_headers"
 	ResponseHeadersKey = "response_headers"
 
 	// PromptTokenCountMetadataKey represents the prompt token count metadata key.

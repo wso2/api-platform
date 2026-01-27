@@ -27,7 +27,7 @@ type CreateGatewayRequest struct {
 	DisplayName       string `json:"displayName" binding:"required"`
 	Description       string `json:"description,omitempty"`
 	Vhost             string `json:"vhost" binding:"required"`
-	IsCritical        bool  `json:"isCritical,omitempty"`
+	IsCritical        bool   `json:"isCritical,omitempty"`
 	FunctionalityType string `json:"functionalityType" binding:"required"`
 }
 
@@ -98,9 +98,8 @@ type AddGatewayToAPIRequest struct {
 
 // APIDeploymentDetails represents deployment details for an API on a gateway
 type APIDeploymentDetails struct {
-	RevisionID string    `json:"revisionId"`
-	Status     string    `json:"status"` // CREATED, APPROVED, REJECTED
-	DeployedAt time.Time `json:"deployedAt"`
+	DeploymentID string    `json:"deploymentId"`
+	DeployedAt   time.Time `json:"deployedAt"`
 }
 
 // APIGatewayResponse represents a gateway with API association and deployment details

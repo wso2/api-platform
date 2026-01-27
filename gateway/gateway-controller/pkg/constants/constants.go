@@ -102,7 +102,7 @@ const (
 		"  - action: SET\n" +
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
-	PROXY_HOST__HEADER_POLICY_NAME    = "modify-Headers"
+	PROXY_HOST__HEADER_POLICY_NAME    = "modify-headers"
 	PROXY_HOST__HEADER_POLICY_VERSION = "v0.1.0"
 	PROXY_HOST__HEADER_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +
@@ -124,6 +124,16 @@ const (
 		"  - action: SET\n" +
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
+
+	// API Key constants
+	APIKeyPrefix    = "apip_"
+	APIKeyLen       = 32 // Length of the random part of the API key in bytes
+	APIKeySeparator = "_"
+
+	// HashingAlgorithm constants
+	HashingAlgorithmSHA256   = "sha256"
+	HashingAlgorithmBcrypt   = "bcrypt"
+	HashingAlgorithmArgon2ID = "argon2id"
 
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"

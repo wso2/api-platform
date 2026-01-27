@@ -339,7 +339,7 @@ data:
       controller:
         image:
           repository: ghcr.io/tharsanan1/api-platform/gateway-controller
-          tag: "0.3.0-SNAPSHOT"
+          tag: "0.4.0-SNAPSHOT"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -470,7 +470,7 @@ data:
       router:
         image:
           repository: ghcr.io/tharsanan1/api-platform/gateway-router
-          tag: "0.3.0-SNAPSHOT"
+          tag: "0.4.0-SNAPSHOT"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -527,7 +527,7 @@ data:
       policyEngine:
         image:
           repository: ghcr.io/tharsanan1/api-platform/policy-engine
-          tag: "0.3.0-SNAPSHOT"
+          tag: "0.4.0-SNAPSHOT"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -579,15 +579,13 @@ data:
           affinity: {}
 
 ---
-# Gateway using the custom ConfigMap
+# APIGateway using the custom ConfigMap
 # apiVersion: gateway.api-platform.wso2.com/v1alpha1
-# kind: Gateway
+# kind: APIGateway
 # metadata:
 #   name: custom-gateway
 #   namespace: default
 # spec:
-#   gatewayClassName: production
-
 #   apiSelector:
 #     scope: LabelSelector
 #     matchLabels:
@@ -608,15 +606,13 @@ data:
 #     type: postgres
 
 ---
-# Gateway using default configuration (no ConfigRef)
+# APIGateway using default configuration (no ConfigRef)
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: Gateway
+kind: APIGateway
 metadata:
   name: default-gateway
   namespace: default
 spec:
-  gatewayClassName: development-1
-
   apiSelector:
     scope: Cluster
 
