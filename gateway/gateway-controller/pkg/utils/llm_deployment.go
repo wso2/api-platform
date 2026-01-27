@@ -35,6 +35,7 @@ import (
 )
 
 const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
+const lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
@@ -156,6 +157,20 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 			slog.String("display_name", storedCfg.GetDisplayName()),
 			slog.String("version", storedCfg.GetVersion()),
 			slog.String("correlation_id", params.CorrelationID))
+	}
+
+	// Publish provider-to-template mapping as lazy resource for policy engine
+	if providerConfig.Metadata.Name != "" && providerConfig.Spec.Template != "" {
+		if err := s.publishProviderTemplateMappingAsLazyResource(
+			providerConfig.Metadata.Name,
+			providerConfig.Spec.Template,
+			params.CorrelationID,
+		); err != nil {
+			params.Logger.Warn("Failed to publish provider-to-template mapping",
+				slog.String("provider_name", providerConfig.Metadata.Name),
+				slog.String("template_handle", providerConfig.Spec.Template),
+				slog.Any("error", err))
+		}
 	}
 
 	// Update xDS snapshot asynchronously
@@ -688,6 +703,44 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 	}, correlationID)
 }
 
+// publishProviderTemplateMappingAsLazyResource publishes the provider-to-template mapping
+// as a lazy resource for the policy engine to consume
+func (s *LLMDeploymentService) publishProviderTemplateMappingAsLazyResource(providerName, templateHandle, correlationID string) error {
+	if s.lazyResourceManager == nil {
+		return nil
+	}
+	if providerName == "" {
+		return fmt.Errorf("provider name is empty")
+	}
+	if templateHandle == "" {
+		return fmt.Errorf("template handle is empty")
+	}
+
+	// Create a mapping resource with provider name as ID and template handle as resource data
+	mappingResource := map[string]interface{}{
+		"provider_name":   providerName,
+		"template_handle": templateHandle,
+	}
+
+	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
+		ID:           providerName,
+		ResourceType: lazyResourceTypeProviderTemplateMapping,
+		Resource:     mappingResource,
+	}, correlationID)
+}
+
+// removeProviderTemplateMappingLazyResource removes the provider-to-template mapping lazy resource
+func (s *LLMDeploymentService) removeProviderTemplateMappingLazyResource(providerName, correlationID string) error {
+	if s.lazyResourceManager == nil {
+		return nil
+	}
+	if providerName == "" {
+		return nil
+	}
+
+	return s.lazyResourceManager.RemoveResource(providerName, correlationID)
+}
+
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers
 func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*models.StoredConfig, error) {
 	res, err := s.DeployLLMProviderConfiguration(params)
@@ -797,6 +850,13 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	}
 	if err := s.store.Delete(cfg.ID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
+	}
+
+	// Remove provider-to-template mapping lazy resource
+	if err := s.removeProviderTemplateMappingLazyResource(handle, correlationID); err != nil {
+		logger.Warn("Failed to remove provider-to-template mapping",
+			slog.String("provider_name", handle),
+			slog.Any("error", err))
 	}
 
 	// Update xDS snapshot asynchronously

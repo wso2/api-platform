@@ -434,13 +434,14 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 	}
 
-	// Extract template handle for LLM provider/proxy scenarios
+	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
+	providerName := t.extractProviderName(cfg, allConfigs)
 
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, apiData.Upstream.Main.HostRewrite)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -459,7 +460,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, apiData.Upstream.Sandbox.HostRewrite)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -954,9 +955,55 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 	return ""
 }
 
+// extractProviderName extracts the provider name for LLM provider/proxy scenarios
+// For LlmProvider: returns the provider's own metadata.name
+// For LlmProxy: returns the referenced provider's metadata.name
+func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) string {
+	if cfg.SourceConfiguration == nil {
+		return ""
+	}
+
+	// Get kind from source configuration
+	kind, err := getValueFromSourceConfig(cfg.SourceConfiguration, "kind")
+	if err != nil {
+		return ""
+	}
+
+	kindStr, ok := kind.(string)
+	if !ok {
+		return ""
+	}
+
+	switch kindStr {
+	case string(api.LlmProvider):
+		// For LlmProvider: return its own metadata.name
+		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "metadata.name")
+		if err != nil {
+			t.logger.Debug("Failed to extract provider name from LlmProvider", slog.Any("error", err))
+			return ""
+		}
+		if providerNameStr, ok := providerName.(string); ok && providerNameStr != "" {
+			return providerNameStr
+		}
+
+	case string(api.LlmProxy):
+		// For LlmProxy: return the referenced provider name from spec.provider
+		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider")
+		if err != nil {
+			t.logger.Debug("Failed to extract provider reference from LlmProxy", slog.Any("error", err))
+			return ""
+		}
+		if providerNameStr, ok := providerName.(string); ok && providerNameStr != "" {
+			return providerNameStr
+		}
+	}
+
+	return ""
+}
+
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, hostRewrite *api.UpstreamHostRewrite) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -1058,6 +1105,10 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Add template_handle if available (for LLM provider/proxy scenarios)
 	if templateHandle != "" {
 		metaMap["template_handle"] = templateHandle
+	}
+	// Add provider_name if available (for LLM provider/proxy scenarios)
+	if providerName != "" {
+		metaMap["provider_name"] = providerName
 	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{

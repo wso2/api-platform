@@ -33,6 +33,8 @@ const (
 
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
+	// Lazy resource type for provider-to-template mapping
+	lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
 )
 
 var (
