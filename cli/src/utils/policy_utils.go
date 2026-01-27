@@ -80,16 +80,49 @@ func ValidateLocalPolicyZip(zipPath, expectedName, expectedVersion string) error
 	if pd.Name == "" {
 		return fmt.Errorf("'name' field is required in policy-definition.yaml")
 	}
-	if pd.Version == "" {
-		return fmt.Errorf("'version' field is required in policy-definition.yaml")
-	}
 
 	if expectedName != "" && pd.Name != expectedName {
 		return fmt.Errorf("name mismatch: manifest specifies '%s' but policy-definition.yaml contains '%s'", expectedName, pd.Name)
 	}
 
-	if expectedVersion != "" && pd.Version != expectedVersion {
-		return fmt.Errorf("version mismatch: manifest specifies '%s' but policy-definition.yaml contains '%s'", expectedVersion, pd.Version)
+	return nil
+}
+
+func ValidateLocalPolicyDir(dirPath string, expectedName string) error {
+	info, err := os.Stat(dirPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat policy directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("policy path is not a directory: %s", dirPath)
+	}
+
+	policyDefPath := filepath.Join(dirPath, "policy-definition.yaml")
+	if _, err := os.Stat(policyDefPath); os.IsNotExist(err) {
+		return fmt.Errorf("policy-definition.yaml not found at root of directory")
+	} else if err != nil {
+		return fmt.Errorf("failed to stat policy-definition.yaml: %w", err)
+	}
+
+	data, err := os.ReadFile(policyDefPath)
+	if err != nil {
+		return fmt.Errorf("failed to read policy-definition.yaml: %w", err)
+	}
+
+	var pd struct {
+		Name    string `yaml:"name"`
+		Version string `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(data, &pd); err != nil {
+		return fmt.Errorf("failed to parse policy-definition.yaml: %w", err)
+	}
+
+	if pd.Name == "" {
+		return fmt.Errorf("'name' field is required in policy-definition.yaml")
+	}
+
+	if expectedName != "" && pd.Name != expectedName {
+		return fmt.Errorf("name mismatch: manifest specifies '%s' but policy-definition.yaml contains '%s'", expectedName, pd.Name)
 	}
 
 	return nil
@@ -342,7 +375,7 @@ func GetTempGatewayImageBuildDir() (string, error) {
 }
 
 // SetupTempGatewayImageBuildDir creates the temp "gateway-image-build" directory structure for the build
-// This includes: output/, policies/<name>/<version>/, and policy-manifest-lock.yaml
+// This includes: output/, policies/<name>/<version>/ and a copy of the lock file
 // Location: .wso2ap/.tmp/gateway-image-build
 // If a "gateway-image-build" directory already exists, it will be removed first
 func SetupTempGatewayImageBuildDir(lockFilePath string) error {
@@ -375,59 +408,149 @@ func SetupTempGatewayImageBuildDir(lockFilePath string) error {
 		return fmt.Errorf("failed to create policies directory: %w", err)
 	}
 
-	// Copy lock file to temp gateway image build directory
-	lockFileContent, err := os.ReadFile(lockFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to read lock file: %w", err)
-	}
+	// Copy lock file to temp gateway image build directory if provided
+	if lockFilePath != "" {
+		lockFileContent, err := os.ReadFile(lockFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to read lock file: %w", err)
+		}
 
-	lockPath := filepath.Join(tempGatewayImageBuildDir, "policy-manifest-lock.yaml")
-	if err := os.WriteFile(lockPath, lockFileContent, 0644); err != nil {
-		return fmt.Errorf("failed to write lock file to temp gateway image build directory: %w", err)
+		lockPath := filepath.Join(tempGatewayImageBuildDir, "policy-manifest-lock.yaml")
+		if err := os.WriteFile(lockPath, lockFileContent, 0644); err != nil {
+			return fmt.Errorf("failed to write lock file to temp gateway image build directory: %w", err)
+		}
 	}
 
 	return nil
 }
 
-// CopyPolicyToWorkspace copies a policy to the workspace using the new cache structure
-// For hub policies: reads from cache using kebab-case path
-// For local policies: reads from manifest filePath
-// Final structure: .wso2ap/.tmp/gateway-image-build/policies/<kebab-case-name>/<version>/
-func CopyPolicyToWorkspace(policyName, policyVersion, sourcePath string, isLocal bool, index *PolicyIndex) (string, error) {
+// SetupTempGatewayWorkspace prepares the workspace by creating required folders, copying
+// local policies into the workspace, updating the manifest's filePath entries to point
+// to the workspace paths, and writing the modified manifest as policy-manifest.yaml.
+func SetupTempGatewayWorkspace(manifestFilePath string) (string, error) {
 	tempGatewayImageBuildDir, err := GetTempGatewayImageBuildDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
 	}
 
-	// Generate kebab-case path for workspace
-	kebabPath := GenerateUniqueCachePath(policyName, policyVersion, index)
-
-	// Workspace destination: policies/<kebab-case-name>/<version>/
-	workspacePolicyDir := filepath.Join(tempGatewayImageBuildDir, "policies", kebabPath)
-
-	// Ensure destination directory exists
-	if err := EnsureDir(workspacePolicyDir); err != nil {
-		return "", fmt.Errorf("failed to create workspace policy directory: %w", err)
+	// Remove existing "gateway-image-build" directory if it exists
+	if _, err := os.Stat(tempGatewayImageBuildDir); err == nil {
+		if err := os.RemoveAll(tempGatewayImageBuildDir); err != nil {
+			return "", fmt.Errorf("failed to remove existing temp gateway image build directory: %w", err)
+		}
 	}
 
-	// Extract zip to temporary location
-	tempExtractDir, err := os.MkdirTemp("", "policy-extract-*")
+	// Create the temp gateway image build directory structure
+	if err := EnsureDir(tempGatewayImageBuildDir); err != nil {
+		return "", fmt.Errorf("failed to create temp gateway image build directory: %w", err)
+	}
+
+	// Create output directory
+	outputDir := filepath.Join(tempGatewayImageBuildDir, "output")
+	if err := EnsureDir(outputDir); err != nil {
+		return "", fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Create policies directory
+	policiesDir := filepath.Join(tempGatewayImageBuildDir, "policies")
+	if err := EnsureDir(policiesDir); err != nil {
+		return "", fmt.Errorf("failed to create policies directory: %w", err)
+	}
+
+	// Read and parse manifest YAML (using a lightweight local struct to avoid import cycles)
+	manifestData, err := os.ReadFile(manifestFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp extract directory: %w", err)
-	}
-	defer os.RemoveAll(tempExtractDir)
-
-	if err := Unzip(sourcePath, tempExtractDir); err != nil {
-		return "", fmt.Errorf("failed to extract policy: %w", err)
+		return "", fmt.Errorf("failed to read manifest file: %w", err)
 	}
 
-	// Both hub and local policies have files at root, copy directly
-	if err := CopyDir(tempExtractDir, workspacePolicyDir); err != nil {
-		return "", fmt.Errorf("failed to copy policy contents: %w", err)
+	var manifest struct {
+		Version  string `yaml:"version"`
+		Policies []struct {
+			Name     string `yaml:"name"`
+			Version  string `yaml:"version,omitempty"`
+			FilePath string `yaml:"filePath,omitempty"`
+			Gomodule string `yaml:"gomodule,omitempty"`
+		} `yaml:"policies"`
+	}
+	if err := yaml.Unmarshal(manifestData, &manifest); err != nil {
+		return "", fmt.Errorf("failed to parse manifest YAML: %w", err)
 	}
 
-	// Return the relative path for lock file: policies/<kebab-case-name>/<version>
-	return filepath.Join("policies", kebabPath), nil
+	// For each local policy with a filePath, copy it into the workspace and update the filePath
+	manifestDir := filepath.Dir(manifestFilePath)
+	for i := range manifest.Policies {
+		p := &manifest.Policies[i]
+		if p.FilePath == "" {
+			continue // Skip Gomodule policies
+		}
+
+		// Resolve source path relative to manifest
+		srcPath := p.FilePath
+		if !filepath.IsAbs(srcPath) {
+			srcPath = filepath.Join(manifestDir, srcPath)
+		}
+
+		// Copy into workspace (requires directory)
+		workspaceRel, err := CopyPolicyToWorkspace(p.Name, p.Version, srcPath, true)
+		if err != nil {
+			return "", fmt.Errorf("failed to copy local policy %s v%s into workspace: %w", p.Name, p.Version, err)
+		}
+
+		// Update manifest entry to point to workspace-relative path
+		p.FilePath = workspaceRel
+	}
+
+	// Marshal updated manifest and write into workspace as policy-manifest.yaml
+	newManifestData, err := yaml.Marshal(&manifest)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal updated manifest: %w", err)
+	}
+
+	manifestDst := filepath.Join(tempGatewayImageBuildDir, "policy-manifest.yaml")
+	if err := os.WriteFile(manifestDst, newManifestData, 0644); err != nil {
+		return "", fmt.Errorf("failed to write updated manifest to workspace: %w", err)
+	}
+
+	return tempGatewayImageBuildDir, nil
+}
+
+// CopyPolicyToWorkspace copies a policy to the workspace
+// For local policies: copies the source directory into workspace/policies/<original-dir-name>/
+// Final structure in workspace: .wso2ap/.tmp/gateway-image-build/policies/<original-dir-name>/
+func CopyPolicyToWorkspace(policyName, policyVersion, sourcePath string, isLocal bool) (string, error) {
+	tempGatewayImageBuildDir, err := GetTempGatewayImageBuildDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
+	}
+
+	if isLocal {
+		// Use the original directory name from the source path (e.g., 'my-policy')
+		dirName := filepath.Base(filepath.Clean(sourcePath))
+		workspacePolicyDir := filepath.Join(tempGatewayImageBuildDir, "policies", dirName)
+
+		// Ensure destination directory exists
+		if err := EnsureDir(workspacePolicyDir); err != nil {
+			return "", fmt.Errorf("failed to create workspace policy directory: %w", err)
+		}
+
+		info, err := os.Stat(sourcePath)
+		if err != nil {
+			return "", fmt.Errorf("failed to stat local policy path '%s': %w", sourcePath, err)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("local policy '%s' must be a directory", sourcePath)
+		}
+
+		// Copy the entire local policy directory into workspace/policies/<original-dir-name>/
+		if err := CopyDir(sourcePath, workspacePolicyDir); err != nil {
+			return "", fmt.Errorf("failed to copy local policy directory: %w", err)
+		}
+
+		// Return relative path for manifest: policies/<original-dir-name>
+		return filepath.Join("policies", dirName), nil
+	}
+
+	return "", fmt.Errorf("non-local policies are not supported by CLI workspace copy: %s", sourcePath)
 }
 
 // CopyDir recursively copies a directory

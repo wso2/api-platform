@@ -885,12 +885,11 @@ func (r *GatewayReconciler) registerGateway(ctx context.Context, gatewayConfig *
 
 	// Create gateway info for registry
 	gatewayInfo := &registry.GatewayInfo{
-		Name:             gatewayConfig.Name,
-		Namespace:        namespace,
-		GatewayClassName: gatewayConfig.Spec.GatewayClassName,
-		APISelector:      &gatewayConfig.Spec.APISelector,
-		ServiceName:      service.Name,
-		ServicePort:      restPort,
+		Name:        gatewayConfig.Name,
+		Namespace:   namespace,
+		APISelector: &gatewayConfig.Spec.APISelector,
+		ServiceName: service.Name,
+		ServicePort: restPort,
 	}
 
 	if gatewayConfig.Spec.ControlPlane != nil {
