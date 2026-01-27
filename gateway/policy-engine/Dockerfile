@@ -25,6 +25,7 @@ ARG BUILDARCH
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
+ARG BUILD_DATE
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -64,8 +65,10 @@ FROM builder-base AS policy-compiler
 # Pass build arguments as environment variables
 ARG VERSION
 ARG GIT_COMMIT
+ARG BUILD_DATE
 ENV VERSION=${VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT}
+ENV BUILD_DATE=${BUILD_DATE}
 
 # Copy Policy Engine framework source code
 COPY --from=policy-engine . /api-platform/gateway/policy-engine
