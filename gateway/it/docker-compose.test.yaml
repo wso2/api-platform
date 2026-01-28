@@ -33,9 +33,9 @@ services:
       - "18001:18001"
       - "9091:9091"   # Metrics
     environment:
-      - GATEWAY_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
-      - GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
-      - GATEWAY_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
       - GOCOVERDIR=/coverage
     volumes:
       - controller-data-tests:/app/data

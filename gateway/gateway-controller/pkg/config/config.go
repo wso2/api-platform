@@ -32,6 +32,11 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
+const (
+	// EnvPrefix is the prefix for environment variables used to configure the gateway-controller
+	EnvPrefix = "APIP_GW_"
+)
+
 // Config holds all configuration for the gateway-controller
 type Config struct {
 	GatewayController    GatewayController      `koanf:"gateway_controller"`
@@ -43,10 +48,10 @@ type Config struct {
 
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled              bool                    `koanf:"enabled"`
+	Enabled              bool                     `koanf:"enabled"`
 	Publishers           []map[string]interface{} `koanf:"publishers"`
-	GRPCAccessLogCfg     GRPCAccessLogConfig     `koanf:"grpc_access_logs"`
-	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
+	GRPCAccessLogCfg     GRPCAccessLogConfig      `koanf:"grpc_access_logs"`
+	AccessLogsServiceCfg AccessLogsServiceConfig  `koanf:"access_logs_service"`
 }
 
 // AccessLogsServiceConfig holds the access logs service configuration
@@ -345,11 +350,9 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
-	// Load environment variables with prefix "GATEWAY_"
-	// Example: GATEWAY_SERVER_API_PORT=9090 -> server.api_port
-	//          GATEWAY_CONTROL_PLANE_URL=wss://... -> controlplane.url
-	if err := k.Load(env.Provider("GATEWAY_", ".", func(s string) string {
-		s = strings.TrimPrefix(s, "GATEWAY_")
+	// Load environment variables with prefix
+	if err := k.Load(env.Provider(EnvPrefix, ".", func(s string) string {
+		s = strings.TrimPrefix(s, EnvPrefix)
 		s = strings.ToLower(s)
 
 		// Custom mappings for control plane variables

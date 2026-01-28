@@ -99,9 +99,9 @@ spec:
     spec:
       containers:
         - env:
-            - name: GATEWAY_CONTROLPLANE_HOST
+            - name: APIP_GW_CONTROLPLANE_HOST
               value: {{ .ControlPlaneHost }}
-            - name: GATEWAY_CONTROLPLANE_TOKEN
+            - name: APIP_GW_CONTROLPLANE_TOKEN
               {{- if .ControlPlaneTokenSecret }}
               valueFrom:
                 secretKeyRef:
@@ -110,11 +110,11 @@ spec:
               {{- else }}
               value: ""
               {{- end }}
-            - name: GATEWAY_LOGGING_LEVEL
+            - name: APIP_GW_LOGGING_LEVEL
               value: {{ .LogLevel }}
-            - name: GATEWAY_STORAGE_SQLITE_PATH
+            - name: APIP_GW_STORAGE_SQLITE_PATH
               value: {{ .StorageSQLitePath }}
-            - name: GATEWAY_STORAGE_TYPE
+            - name: APIP_GW_STORAGE_TYPE
               value: {{ .StorageType }}
           image: {{ .GatewayImage }}
           imagePullPolicy: IfNotPresent
@@ -298,13 +298,13 @@ data:
       format: json
 
     # Environment Variables Override
-    # You can override any configuration using environment variables with the prefix GATEWAY_
+    # You can override any configuration using environment variables with the prefix APIP_GW_
     # Examples:
-    #   GATEWAY_SERVER_API_PORT=9091
-    #   GATEWAY_STORAGE_TYPE=memory
-    #   GATEWAY_STORAGE_SQLITE_PATH=/custom/path/gateway.db
-    #   GATEWAY_ROUTER_ACCESS_LOGS_ENABLED=false
-    #   GATEWAY_LOGGING_LEVEL=debug
+    #   APIP_GW_GATEWAY__CONTROLLER_SERVER_API__PORT=9091
+    #   APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=memory
+    #   APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+    #   APIP_GW_GATEWAY__CONTROLLER_ROUTER_ACCESS__LOGS_ENABLED=false
+    #   APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
 kind: ConfigMap
 metadata:
   annotations:

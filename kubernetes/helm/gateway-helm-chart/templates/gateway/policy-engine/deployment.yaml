@@ -69,7 +69,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
-            - name: PE_XDS_SERVER_ADDRESS
+            - name: APIP_GW_XDS_SERVER_ADDRESS
               value: {{ default (printf "%s-controller:18001" (include "gateway-operator.fullname" .)) $deployment.env.xdsServerAddress | quote }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 12 }}

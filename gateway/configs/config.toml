@@ -182,7 +182,7 @@ enabled = false
 path = ""
 
 [policy_engine.logging]
-level = "debug"
+level = "info"
 format = "json"
 
 [policy_engine.metrics]

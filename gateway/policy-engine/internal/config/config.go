@@ -20,15 +20,19 @@ package config
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
-	"github.com/mitchellh/mapstructure"
+)
+
+const (
+	// EnvPrefix is the prefix for environment variables used to configure the policy engine
+	EnvPrefix = "APIP_GW_"
 )
 
 type Config struct {
@@ -210,6 +214,8 @@ type AccessLogsServiceConfig struct {
 // for all duration fields. The DecodeHook automatically converts string durations
 // to time.Duration values before assignment.
 func Load(configPath string) (*Config, error) {
+	cfg := defaultConfig()
+
 	k := koanf.New(".")
 
 	// Load config file if path is provided
@@ -219,11 +225,10 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
-	// Load environment variables with PE_ prefix
+	// Load environment variables with the prefix
 	// Double underscores (__) preserve literal underscores in field names
-	// Example: PE_POLICY__ENGINE_SERVER_EXTPROC__PORT -> policy_engine.server.extproc_port
-	if err := k.Load(env.Provider("PE_", ".", func(s string) string {
-		s = strings.TrimPrefix(s, "PE_")
+	if err := k.Load(env.Provider(EnvPrefix, ".", func(s string) string {
+		s = strings.TrimPrefix(s, EnvPrefix)
 		s = strings.ToLower(s)
 
 		// Step 1: Preserve literal underscores with placeholder
@@ -237,25 +242,18 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
-	// Unmarshal with mapstructure decoder that supports duration string parsing
-	cfg := &Config{}
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           cfg,
-		DecodeHook:       durationStringDecodeHook(),
-		TagName:          "koanf",
-		ErrorUnused:      false,
-		WeaklyTypedInput: true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create decoder: %w", err)
-	}
-
-	if err := decoder.Decode(k.All()); err != nil {
+	// Unmarshal into pre-populated config struct with defaults
+	// Koanf will merge: fields from file/env overwrite defaults, unset fields keep defaults
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName:          "koanf",
+			WeaklyTypedInput: true,
+			Result:           cfg,
+			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		},
+	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-
-	// Merge with defaults for unset values
-	fillDefaults(cfg)
 
 	// Capture complete raw config for CEL ${config} expression resolution
 	cfg.PolicyEngine.RawConfig = k.Raw()
@@ -266,132 +264,6 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
-}
-
-// fillDefaults fills in missing configuration values with sensible defaults
-func fillDefaults(cfg *Config) {
-	defaults := defaultConfig()
-
-	// Only fill in defaults if the field is not already set
-	// We detect "not set" by checking for zero values, but we must be careful
-	// with boolean and numeric fields that might legitimately be zero
-
-	// PolicyEngine
-	if cfg.PolicyEngine.Server.ExtProcPort == 0 {
-		cfg.PolicyEngine.Server.ExtProcPort = defaults.PolicyEngine.Server.ExtProcPort
-	}
-
-	// Admin
-	if cfg.PolicyEngine.Admin.Port == 0 {
-		cfg.PolicyEngine.Admin.Port = defaults.PolicyEngine.Admin.Port
-	}
-	if len(cfg.PolicyEngine.Admin.AllowedIPs) == 0 {
-		cfg.PolicyEngine.Admin.AllowedIPs = defaults.PolicyEngine.Admin.AllowedIPs
-	}
-
-	// Metrics
-	if cfg.PolicyEngine.Metrics.Port == 0 {
-		cfg.PolicyEngine.Metrics.Port = defaults.PolicyEngine.Metrics.Port
-	}
-
-	// ConfigMode
-	if cfg.PolicyEngine.ConfigMode.Mode == "" {
-		cfg.PolicyEngine.ConfigMode.Mode = defaults.PolicyEngine.ConfigMode.Mode
-	}
-
-	// XDS
-	if cfg.PolicyEngine.XDS.ServerAddress == "" {
-		cfg.PolicyEngine.XDS.ServerAddress = defaults.PolicyEngine.XDS.ServerAddress
-	}
-	if cfg.PolicyEngine.XDS.NodeID == "" {
-		cfg.PolicyEngine.XDS.NodeID = defaults.PolicyEngine.XDS.NodeID
-	}
-	if cfg.PolicyEngine.XDS.Cluster == "" {
-		cfg.PolicyEngine.XDS.Cluster = defaults.PolicyEngine.XDS.Cluster
-	}
-	if cfg.PolicyEngine.XDS.ConnectTimeout == 0 {
-		cfg.PolicyEngine.XDS.ConnectTimeout = defaults.PolicyEngine.XDS.ConnectTimeout
-	}
-	if cfg.PolicyEngine.XDS.RequestTimeout == 0 {
-		cfg.PolicyEngine.XDS.RequestTimeout = defaults.PolicyEngine.XDS.RequestTimeout
-	}
-	if cfg.PolicyEngine.XDS.InitialReconnectDelay == 0 {
-		cfg.PolicyEngine.XDS.InitialReconnectDelay = defaults.PolicyEngine.XDS.InitialReconnectDelay
-	}
-	if cfg.PolicyEngine.XDS.MaxReconnectDelay == 0 {
-		cfg.PolicyEngine.XDS.MaxReconnectDelay = defaults.PolicyEngine.XDS.MaxReconnectDelay
-	}
-
-	// FileConfig
-	if cfg.PolicyEngine.FileConfig.Path == "" {
-		cfg.PolicyEngine.FileConfig.Path = defaults.PolicyEngine.FileConfig.Path
-	}
-
-	// Logging
-	if cfg.PolicyEngine.Logging.Level == "" {
-		cfg.PolicyEngine.Logging.Level = defaults.PolicyEngine.Logging.Level
-	}
-	if cfg.PolicyEngine.Logging.Format == "" {
-		cfg.PolicyEngine.Logging.Format = defaults.PolicyEngine.Logging.Format
-	}
-
-	// TracingServiceName
-	if cfg.PolicyEngine.TracingServiceName == "" {
-		cfg.PolicyEngine.TracingServiceName = defaults.PolicyEngine.TracingServiceName
-	}
-
-	// TracingConfig - Only fill defaults if the whole section wasn't configured
-	// We check Endpoint as a marker that the section exists
-	if cfg.TracingConfig.Endpoint == "" {
-		cfg.TracingConfig = defaults.TracingConfig
-	} else {
-		// Partially fill in defaults for unset fields within tracing
-		if cfg.TracingConfig.ServiceVersion == "" {
-			cfg.TracingConfig.ServiceVersion = defaults.TracingConfig.ServiceVersion
-		}
-		if cfg.TracingConfig.BatchTimeout == 0 {
-			cfg.TracingConfig.BatchTimeout = defaults.TracingConfig.BatchTimeout
-		}
-		if cfg.TracingConfig.MaxExportBatchSize == 0 {
-			cfg.TracingConfig.MaxExportBatchSize = defaults.TracingConfig.MaxExportBatchSize
-		}
-		if cfg.TracingConfig.SamplingRate == 0 {
-			cfg.TracingConfig.SamplingRate = defaults.TracingConfig.SamplingRate
-		}
-	}
-
-	// Analytics
-	if len(cfg.Analytics.Publishers) == 0 {
-		cfg.Analytics.Publishers = defaults.Analytics.Publishers
-	}
-	if cfg.Analytics.AccessLogsServiceCfg.ALSServerPort == 0 {
-		cfg.Analytics.AccessLogsServiceCfg = defaults.Analytics.AccessLogsServiceCfg
-	}
-}
-
-// durationStringDecodeHook returns a mapstructure DecodeHook that converts
-// string values to time.Duration using time.ParseDuration.
-// This allows users to specify durations as Go-style strings (e.g., "10s", "5m", "1h")
-// in TOML and environment variable configurations.
-func durationStringDecodeHook() mapstructure.DecodeHookFunc {
-	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
-		if t != reflect.TypeOf((*time.Duration)(nil)).Elem() {
-			return data, nil
-		}
-
-		switch v := data.(type) {
-		case string:
-			return time.ParseDuration(v)
-		case float64:
-			// Handle TOML integer/float nanoseconds for backward compatibility
-			return time.Duration(int64(v)), nil
-		case int64:
-			// Handle integer nanoseconds for backward compatibility
-			return time.Duration(v), nil
-		default:
-			return data, nil
-		}
-	}
 }
 
 // defaultConfig returns a Config struct with default configuration values
