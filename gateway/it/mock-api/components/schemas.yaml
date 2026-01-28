@@ -1,0 +1,8 @@
+ChatMessage:
+  type: object
+  properties:
+    role:
+      type: string
+      enum: [system, user, assistant]
+    content:
+      type: string

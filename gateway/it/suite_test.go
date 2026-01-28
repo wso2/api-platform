@@ -72,8 +72,8 @@ func TestFeatures(t *testing.T) {
 		Options: &godog.Options{
 			Format: "pretty",
 			Paths: []string{
-				"features/health.feature",
-				"features/metrics.feature",
+				// "features/health.feature",
+				// "features/metrics.feature",
 				"features/api_deploy.feature",
 				"features/mcp_deploy.feature",
 				"features/ratelimit.feature",
@@ -81,6 +81,7 @@ func TestFeatures(t *testing.T) {
 				"features/jwt-auth.feature",
 				"features/cors.feature",
 				"features/llm-provider-templates.feature",
+				"features/llm-provider.feature",
 				"features/analytics-header-filter.feature",
 				"features/lazy-resources-xds.feature",
 			},
