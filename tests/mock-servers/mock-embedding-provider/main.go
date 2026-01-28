@@ -33,9 +33,30 @@ const (
 )
 
 // EmbeddingRequest represents the OpenAI-compatible embedding request format
+// Input can be either a string or an array of strings
 type EmbeddingRequest struct {
-	Input string `json:"input"`
-	Model string `json:"model"`
+	Input interface{} `json:"input"`
+	Model string      `json:"model"`
+}
+
+// parseInputs extracts input strings from the request (handles both string and array formats)
+func parseInputs(input interface{}) ([]string, error) {
+	switch v := input.(type) {
+	case string:
+		return []string{v}, nil
+	case []interface{}:
+		inputs := make([]string, len(v))
+		for i, item := range v {
+			str, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("input array element %d is not a string", i)
+			}
+			inputs[i] = str
+		}
+		return inputs, nil
+	default:
+		return nil, fmt.Errorf("input must be a string or array of strings")
+	}
 }
 
 // EmbeddingResponse represents the OpenAI-compatible embedding response format
@@ -61,26 +82,37 @@ type Usage struct {
 
 // generateDeterministicEmbedding generates a deterministic embedding based on input text
 // Same input always produces the same embedding for test reproducibility
-// Similar inputs produce similar embeddings (for semantic similarity testing)
+// Similar inputs (sharing common words) produce similar embeddings for semantic similarity testing
 func generateDeterministicEmbedding(input string) []float32 {
 	// Normalize input: lowercase and trim whitespace
 	normalized := strings.ToLower(strings.TrimSpace(input))
 
-	// Create a hash of the normalized input
-	hash := sha256.Sum256([]byte(normalized))
+	// Split into words and generate word-level embeddings
+	// This allows texts with common words to have similar embeddings
+	words := strings.Fields(normalized)
 
-	// Generate embedding vector from hash
 	embedding := make([]float32, EmbeddingDimension)
 
-	// Use hash bytes to seed the embedding values
-	for i := 0; i < EmbeddingDimension; i++ {
-		// Use different parts of the hash for different dimensions
-		hashIndex := i % 32
-		// Convert hash byte to float in range [-1, 1]
-		embedding[i] = float32(int8(hash[hashIndex])) / 128.0
+	if len(words) == 0 {
+		// Empty input - return zero vector (will be normalized to zeros)
+		return embedding
+	}
 
-		// Add some variation based on position
-		embedding[i] += float32(math.Sin(float64(i)*0.1)) * 0.1
+	// Generate embedding as weighted average of word embeddings
+	for _, word := range words {
+		wordHash := sha256.Sum256([]byte(word))
+		for i := 0; i < EmbeddingDimension; i++ {
+			hashIndex := i % 32
+			// Each word contributes to the embedding
+			embedding[i] += float32(int8(wordHash[hashIndex])) / 128.0
+		}
+	}
+
+	// Average by number of words
+	for i := 0; i < EmbeddingDimension; i++ {
+		embedding[i] /= float32(len(words))
+		// Add position-based variation to make embeddings more distinctive
+		embedding[i] += float32(math.Sin(float64(i)*0.1)) * 0.05
 	}
 
 	// Normalize the vector to unit length for cosine similarity
@@ -123,6 +155,7 @@ func normalizeVector(v []float32) {
 }
 
 // handleEmbeddings handles the /v1/embeddings endpoint (OpenAI-compatible)
+// Supports both single string input and array of strings input
 func handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -147,39 +180,52 @@ func handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for error simulation keyword
-	if strings.Contains(strings.ToLower(req.Input), "error") && strings.Contains(strings.ToLower(req.Input), "simulate") {
-		log.Printf("Mock Embedding Provider: Simulating error for input: %s", req.Input)
-		http.Error(w, "Simulated embedding provider error", http.StatusInternalServerError)
+	// Parse inputs (handles both string and array formats)
+	inputs, err := parseInputs(req.Input)
+	if err != nil {
+		log.Printf("Mock Embedding Provider: Invalid input format: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Generate deterministic embedding
-	embedding := generateDeterministicEmbedding(req.Input)
+	// Check for error simulation keyword in any input
+	for _, input := range inputs {
+		if strings.Contains(strings.ToLower(input), "error") && strings.Contains(strings.ToLower(input), "simulate") {
+			log.Printf("Mock Embedding Provider: Simulating error for input: %s", input)
+			http.Error(w, "Simulated embedding provider error", http.StatusInternalServerError)
+			return
+		}
+	}
 
-	// Calculate approximate token count (rough estimate: 1 token per 4 chars)
-	tokenCount := len(req.Input) / 4
-	if tokenCount < 1 {
-		tokenCount = 1
+	// Generate embeddings for all inputs
+	embeddingData := make([]EmbeddingData, len(inputs))
+	totalTokens := 0
+	for i, input := range inputs {
+		embedding := generateDeterministicEmbedding(input)
+		embeddingData[i] = EmbeddingData{
+			Object:    "embedding",
+			Embedding: embedding,
+			Index:     i,
+		}
+		// Calculate approximate token count (rough estimate: 1 token per 4 chars)
+		tokenCount := len(input) / 4
+		if tokenCount < 1 {
+			tokenCount = 1
+		}
+		totalTokens += tokenCount
 	}
 
 	response := EmbeddingResponse{
 		Object: "list",
-		Data: []EmbeddingData{
-			{
-				Object:    "embedding",
-				Embedding: embedding,
-				Index:     0,
-			},
-		},
-		Model: req.Model,
+		Data:   embeddingData,
+		Model:  req.Model,
 		Usage: Usage{
-			PromptTokens: tokenCount,
-			TotalTokens:  tokenCount,
+			PromptTokens: totalTokens,
+			TotalTokens:  totalTokens,
 		},
 	}
 
-	log.Printf("Mock Embedding Provider: Generated embedding for input (first 50 chars): %.50s...", req.Input)
+	log.Printf("Mock Embedding Provider: Generated %d embeddings", len(inputs))
 	json.NewEncoder(w).Encode(response)
 }
 

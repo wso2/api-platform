@@ -87,6 +87,7 @@ func TestFeatures(t *testing.T) {
 				"features/azure-content-safety.feature",
 				"features/aws-bedrock-guardrail.feature",
 				"features/semantic-cache.feature",
+				"features/semantic-prompt-guard.feature",
 			},
 			TestingT: t,
 		},
