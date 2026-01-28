@@ -40,7 +40,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 		hasLabelError := false
 		for _, err := range errors {
 			if err.Field == "metadata.labels" &&
-				err.Message == "Label key 'Invalid Key' contains spaces. Label keys must not contain spaces." {
+				err.Message == "Label key 'Invalid Key' contains whitespace characters. Label keys must not contain any whitespace." {
 				hasLabelError = true
 				break
 			}
@@ -115,7 +115,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 		hasLabelError := false
 		for _, err := range errors {
 			if err.Field == "metadata.labels" &&
-				err.Message == "Label key 'Invalid Key' contains spaces. Label keys must not contain spaces." {
+				err.Message == "Label key 'Invalid Key' contains whitespace characters. Label keys must not contain any whitespace." {
 				hasLabelError = true
 				break
 			}
@@ -151,7 +151,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 		hasLabelError := false
 		for _, err := range errors {
 			if err.Field == "metadata.labels" &&
-				err.Message == "Label key 'Invalid Key' contains spaces. Label keys must not contain spaces." {
+				err.Message == "Label key 'Invalid Key' contains whitespace characters. Label keys must not contain any whitespace." {
 				hasLabelError = true
 				break
 			}

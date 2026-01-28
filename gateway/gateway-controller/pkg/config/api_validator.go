@@ -35,8 +35,6 @@ type APIValidator struct {
 	versionRegex *regexp.Regexp
 	// urlFriendlyNameRegex matches URL-safe characters for API names
 	urlFriendlyNameRegex *regexp.Regexp
-	// labelKeyRegex matches label keys without spaces
-	labelKeyRegex *regexp.Regexp
 	// policyValidator validates policy references and parameters
 	policyValidator *PolicyValidator
 }
@@ -47,7 +45,6 @@ func NewAPIValidator() *APIValidator {
 		pathParamRegex:       regexp.MustCompile(`\{[a-zA-Z0-9_]+\}`),
 		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
-		labelKeyRegex:        regexp.MustCompile(`^[^\s]+$`),
 	}
 }
 

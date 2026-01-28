@@ -20,7 +20,7 @@ package config
 
 import (
 	"fmt"
-	"strings"
+	"regexp"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
@@ -57,7 +57,7 @@ func ValidateMetadata(metadata *api.Metadata) []ValidationError {
 	return errors
 }
 
-// ValidateLabels validates that label keys do not contain spaces
+// ValidateLabels validates that label keys do not contain any whitespace
 // This is a common validation used across all configuration types
 func ValidateLabels(labels map[string]string) []ValidationError {
 	var errors []ValidationError
@@ -65,11 +65,14 @@ func ValidateLabels(labels map[string]string) []ValidationError {
 		return errors
 	}
 
+	// Regex to match any whitespace character (space, tab, newline, etc.)
+	labelKeyRegex := regexp.MustCompile(`^[^\s]+$`)
+
 	for key := range labels {
-		if strings.Contains(key, " ") {
+		if !labelKeyRegex.MatchString(key) {
 			errors = append(errors, ValidationError{
 				Field:   "metadata.labels",
-				Message: fmt.Sprintf("Label key '%s' contains spaces. Label keys must not contain spaces.", key),
+				Message: fmt.Sprintf("Label key '%s' contains whitespace characters. Label keys must not contain any whitespace.", key),
 			})
 		}
 	}

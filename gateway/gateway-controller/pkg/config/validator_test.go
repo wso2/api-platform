@@ -308,36 +308,48 @@ func TestValidator_LabelsValidation(t *testing.T) {
 			name:        "invalid label key with space",
 			labels:      map[string]string{"My Label": "value"},
 			shouldError: true,
-			errorMsg:    "contains spaces",
+			errorMsg:    "contains whitespace",
 		},
 		{
 			name:        "invalid label key with multiple spaces",
 			labels:      map[string]string{"My Label Key": "value"},
 			shouldError: true,
-			errorMsg:    "contains spaces",
+			errorMsg:    "contains whitespace",
 		},
 		{
 			name:        "invalid label key with leading space",
 			labels:      map[string]string{" label": "value"},
 			shouldError: true,
-			errorMsg:    "contains spaces",
+			errorMsg:    "contains whitespace",
 		},
 		{
 			name:        "invalid label key with trailing space",
 			labels:      map[string]string{"label ": "value"},
 			shouldError: true,
-			errorMsg:    "contains spaces",
+			errorMsg:    "contains whitespace",
 		},
 		{
 			name:        "multiple labels with one invalid",
 			labels:      map[string]string{"valid-key": "value1", "Invalid Key": "value2"},
 			shouldError: true,
-			errorMsg:    "contains spaces",
+			errorMsg:    "contains whitespace",
 		},
 		{
 			name:        "label value can contain spaces",
 			labels:      map[string]string{"key": "value with spaces"},
 			shouldError: false,
+		},
+		{
+			name:        "invalid label key with tab character",
+			labels:      map[string]string{"key\twith\ttab": "value"},
+			shouldError: true,
+			errorMsg:    "contains whitespace",
+		},
+		{
+			name:        "invalid label key with newline character",
+			labels:      map[string]string{"key\nwith\nnewline": "value"},
+			shouldError: true,
+			errorMsg:    "contains whitespace",
 		},
 	}
 
