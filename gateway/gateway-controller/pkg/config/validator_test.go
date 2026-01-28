@@ -19,6 +19,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -272,4 +273,293 @@ func TestValidateWebSubURLConfig_WithoutSchema(t *testing.T) {
 	err := config.validateEventGatewayConfig()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "http or https scheme")
+}
+
+func TestValidator_LabelsValidation(t *testing.T) {
+	validator := NewAPIValidator()
+
+	tests := []struct {
+		name        string
+		labels      map[string]string
+		shouldError bool
+		errorMsg    string
+	}{
+		{
+			name:        "valid labels without spaces",
+			labels:      map[string]string{"environment": "production", "team": "backend"},
+			shouldError: false,
+		},
+		{
+			name:        "valid labels with underscores and hyphens",
+			labels:      map[string]string{"app-name": "test-api", "team_id": "123"},
+			shouldError: false,
+		},
+		{
+			name:        "valid empty labels map",
+			labels:      map[string]string{},
+			shouldError: false,
+		},
+		{
+			name:        "valid nil labels",
+			labels:      nil,
+			shouldError: false,
+		},
+		{
+			name:        "invalid label key with space",
+			labels:      map[string]string{"My Label": "value"},
+			shouldError: true,
+			errorMsg:    "contains spaces",
+		},
+		{
+			name:        "invalid label key with multiple spaces",
+			labels:      map[string]string{"My Label Key": "value"},
+			shouldError: true,
+			errorMsg:    "contains spaces",
+		},
+		{
+			name:        "invalid label key with leading space",
+			labels:      map[string]string{" label": "value"},
+			shouldError: true,
+			errorMsg:    "contains spaces",
+		},
+		{
+			name:        "invalid label key with trailing space",
+			labels:      map[string]string{"label ": "value"},
+			shouldError: true,
+			errorMsg:    "contains spaces",
+		},
+		{
+			name:        "multiple labels with one invalid",
+			labels:      map[string]string{"valid-key": "value1", "Invalid Key": "value2"},
+			shouldError: true,
+			errorMsg:    "contains spaces",
+		},
+		{
+			name:        "label value can contain spaces",
+			labels:      map[string]string{"key": "value with spaces"},
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			specUnion := api.APIConfiguration_Spec{}
+			specUnion.FromAPIConfigData(api.APIConfigData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{Method: "GET", Path: "/test"},
+				},
+			})
+			config := &api.APIConfiguration{
+				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.RestApi,
+				Metadata: api.Metadata{
+					Name:   "test-api-v1.0",
+					Labels: &tt.labels,
+				},
+				Spec: specUnion,
+			}
+
+			errors := validator.Validate(config)
+
+			// Check if we got label validation errors when we expected them
+			hasLabelError := false
+			for _, err := range errors {
+				if err.Field == "metadata.labels" {
+					hasLabelError = true
+					if tt.shouldError && tt.errorMsg != "" {
+						if !strings.Contains(err.Message, tt.errorMsg) {
+							t.Errorf("Expected error message to contain '%s', got '%s'", tt.errorMsg, err.Message)
+						}
+					}
+					break
+				}
+			}
+
+			if tt.shouldError && !hasLabelError {
+				t.Errorf("Expected validation error for labels %v, but got none", tt.labels)
+			}
+
+			if !tt.shouldError && hasLabelError {
+				t.Errorf("Did not expect validation error for labels %v, but got one", tt.labels)
+			}
+		})
+	}
+}
+
+func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
+	validator := NewAPIValidator()
+
+	validLabels := map[string]string{
+		"environment": "production",
+		"team":        "backend",
+		"version":     "v1",
+	}
+
+	// Test RestApi
+	t.Run("RestApi with valid labels", func(t *testing.T) {
+		specUnion := api.APIConfiguration_Spec{}
+		specUnion.FromAPIConfigData(api.APIConfigData{
+			DisplayName: "TestAPI",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://example.com"; return &s }(),
+				},
+			},
+			Operations: []api.Operation{
+				{Method: "GET", Path: "/test"},
+			},
+		})
+		config := &api.APIConfiguration{
+			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.RestApi,
+			Metadata: api.Metadata{
+				Name:   "test-api-v1.0",
+				Labels: &validLabels,
+			},
+			Spec: specUnion,
+		}
+
+		errors := validator.Validate(config)
+		hasLabelError := false
+		for _, err := range errors {
+			if err.Field == "metadata.labels" {
+				hasLabelError = true
+				break
+			}
+		}
+		assert.False(t, hasLabelError, "RestApi should accept valid labels")
+	})
+
+	// Test Asyncwebsub
+	t.Run("Asyncwebsub with valid labels", func(t *testing.T) {
+		specUnion := api.APIConfiguration_Spec{}
+		specUnion.FromWebhookAPIData(api.WebhookAPIData{
+			Name:    "TestAPI",
+			Version: "v1.0",
+			Context: "/test",
+			Servers: []api.Server{
+				{
+					Url:      "http://example.com",
+					Protocol: api.Websub,
+				},
+			},
+			Channels: []api.Channel{
+				{Path: "/events"},
+			},
+		})
+		config := &api.APIConfiguration{
+			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Asyncwebsub,
+			Metadata: api.Metadata{
+				Name:   "test-api-v1.0",
+				Labels: &validLabels,
+			},
+			Spec: specUnion,
+		}
+
+		errors := validator.Validate(config)
+		hasLabelError := false
+		for _, err := range errors {
+			if err.Field == "metadata.labels" {
+				hasLabelError = true
+				break
+			}
+		}
+		assert.False(t, hasLabelError, "Asyncwebsub should accept valid labels")
+	})
+
+	// Test with invalid labels for both types
+	invalidLabels := map[string]string{"Invalid Key": "value"}
+
+	t.Run("RestApi with invalid labels", func(t *testing.T) {
+		specUnion := api.APIConfiguration_Spec{}
+		specUnion.FromAPIConfigData(api.APIConfigData{
+			DisplayName: "TestAPI",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://example.com"; return &s }(),
+				},
+			},
+			Operations: []api.Operation{
+				{Method: "GET", Path: "/test"},
+			},
+		})
+		config := &api.APIConfiguration{
+			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.RestApi,
+			Metadata: api.Metadata{
+				Name:   "test-api-v1.0",
+				Labels: &invalidLabels,
+			},
+			Spec: specUnion,
+		}
+
+		errors := validator.Validate(config)
+		hasLabelError := false
+		for _, err := range errors {
+			if err.Field == "metadata.labels" {
+				hasLabelError = true
+				break
+			}
+		}
+		assert.True(t, hasLabelError, "RestApi should reject labels with spaces in keys")
+	})
+
+	t.Run("Asyncwebsub with invalid labels", func(t *testing.T) {
+		specUnion := api.APIConfiguration_Spec{}
+		specUnion.FromWebhookAPIData(api.WebhookAPIData{
+			Name:    "TestAPI",
+			Version: "v1.0",
+			Context: "/test",
+			Servers: []api.Server{
+				{
+					Url:      "http://example.com",
+					Protocol: api.Websub,
+				},
+			},
+			Channels: []api.Channel{
+				{Path: "/events"},
+			},
+		})
+		config := &api.APIConfiguration{
+			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Asyncwebsub,
+			Metadata: api.Metadata{
+				Name:   "test-api-v1.0",
+				Labels: &invalidLabels,
+			},
+			Spec: specUnion,
+		}
+
+		errors := validator.Validate(config)
+		hasLabelError := false
+		for _, err := range errors {
+			if err.Field == "metadata.labels" {
+				hasLabelError = true
+				break
+			}
+		}
+		assert.True(t, hasLabelError, "Asyncwebsub should reject labels with spaces in keys")
+	})
 }

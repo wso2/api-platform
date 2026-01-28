@@ -18,7 +18,12 @@
 
 package config
 
-import api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+import (
+	"fmt"
+	"strings"
+
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+)
 
 // ValidationError represents a field-level validation error
 type ValidationError struct {
@@ -42,6 +47,31 @@ func ValidateMetadata(metadata *api.Metadata) []ValidationError {
 			Field:   "metadata.name",
 			Message: "Metadata name is required",
 		})
+	}
+
+	// Validate labels
+	if metadata != nil && metadata.Labels != nil {
+		errors = append(errors, ValidateLabels(*metadata.Labels)...)
+	}
+
+	return errors
+}
+
+// ValidateLabels validates that label keys do not contain spaces
+// This is a common validation used across all configuration types
+func ValidateLabels(labels map[string]string) []ValidationError {
+	var errors []ValidationError
+	if labels == nil {
+		return errors
+	}
+
+	for key := range labels {
+		if strings.Contains(key, " ") {
+			errors = append(errors, ValidationError{
+				Field:   "metadata.labels",
+				Message: fmt.Sprintf("Label key '%s' contains spaces. Label keys must not contain spaces.", key),
+			})
+		}
 	}
 	return errors
 }
