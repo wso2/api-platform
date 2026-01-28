@@ -42,84 +42,69 @@ type PackageCoverage struct {
 	Coverage float64 `json:"coverage"`
 }
 
-// MergeAndGenerateReport merges coverage data and generates reports
+// MergeAndGenerateReport generates separate coverage reports for each service
 func (c *CoverageCollector) MergeAndGenerateReport() error {
-	log.Println("Merging coverage data and generating reports...")
-
-	// Wait a moment for coverage files to be flushed
+	log.Println("Generating coverage reports...")
 	time.Sleep(2 * time.Second)
 
-	// Merge coverage data from all services
-	mergedDir := filepath.Join(c.config.OutputDir, "merged")
-	if err := os.MkdirAll(mergedDir, 0755); err != nil {
-		return fmt.Errorf("failed to create merged coverage directory: %w", err)
-	}
+	reportPrefix := c.config.GetReportPrefix()
 
-	// Collect all coverage directories
-	var coverDirs []string
 	for _, service := range c.config.Services {
 		serviceDir := filepath.Join(c.config.OutputDir, service)
-		if _, err := os.Stat(serviceDir); err == nil {
-			// Check if directory has any coverage files
-			entries, _ := os.ReadDir(serviceDir)
-			if len(entries) > 0 {
-				coverDirs = append(coverDirs, serviceDir)
-				log.Printf("Found coverage data for %s", service)
-			} else {
-				log.Printf("No coverage data found for %s", service)
-			}
+		if _, err := os.Stat(serviceDir); err != nil {
+			log.Printf("No coverage directory for %s", service)
+			continue
 		}
+
+		entries, _ := os.ReadDir(serviceDir)
+		if len(entries) == 0 {
+			log.Printf("No coverage data found for %s", service)
+			continue
+		}
+
+		log.Printf("Found coverage data for %s", service)
+		servicePrefix := fmt.Sprintf("%s-%s", reportPrefix, service)
+
+		// Generate text report
+		textReportPath := filepath.Join(c.config.OutputDir, servicePrefix+".txt")
+		if err := c.generateTextReport(serviceDir, textReportPath); err != nil {
+			log.Printf("Warning: Failed to generate text report for %s: %v", service, err)
+		}
+
+		// Generate HTML report
+		htmlReportPath := filepath.Join(c.config.OutputDir, "output", servicePrefix+".html")
+		if err := c.generateHTMLReport(serviceDir, htmlReportPath); err != nil {
+			log.Printf("Warning: Failed to generate HTML report for %s: %v", service, err)
+		}
+
+		// Get per-package coverage and generate JSON report
+		cmd := exec.Command("go", "tool", "covdata", "percent", "-i="+serviceDir)
+		output, err := cmd.Output()
+		if err != nil {
+			log.Printf("Warning: Failed to get coverage percent for %s: %v", service, err)
+			continue
+		}
+
+		packages := c.parseCoverageOutput(string(output))
+		totalCoverage := c.getTotalCoverage(textReportPath)
+		report := CoverageReport{
+			Timestamp:     time.Now().Format(time.RFC3339),
+			TotalCoverage: totalCoverage,
+			TotalPackages: len(packages),
+			Packages:      packages,
+		}
+
+		jsonPath := filepath.Join(c.config.OutputDir, "output", servicePrefix+"-report.json")
+		if err := c.writeCoverageJSON(jsonPath, &report); err != nil {
+			log.Printf("Warning: Failed to write JSON report for %s: %v", service, err)
+		}
+
+		// Print summary for this service
+		fmt.Printf("\n=== Coverage for %s ===\n", service)
+		c.printCoverageTable(&report)
 	}
 
-	if len(coverDirs) == 0 {
-		log.Println("No coverage data found to merge")
-		return nil
-	}
-
-	// Use go tool covdata to merge coverage files
-	if err := c.mergeCoverageData(coverDirs, mergedDir); err != nil {
-		log.Printf("Warning: Failed to merge coverage data: %v", err)
-		// Continue with individual service coverage if merge fails
-	}
-
-	// Generate text report
-	reportPrefix := c.config.GetReportPrefix()
-	textReportPath := filepath.Join(c.config.OutputDir, reportPrefix+".txt")
-	if err := c.generateTextReport(mergedDir, textReportPath); err != nil {
-		log.Printf("Warning: Failed to generate text report: %v", err)
-	}
-
-	// Generate HTML report
-	htmlReportPath := filepath.Join(c.config.OutputDir, "output", reportPrefix+".html")
-	if err := c.generateHTMLReport(mergedDir, htmlReportPath); err != nil {
-		log.Printf("Warning: Failed to generate HTML report: %v", err)
-	}
-
-	// Calculate and log coverage percentage
-	if err := c.logCoveragePercentage(mergedDir); err != nil {
-		log.Printf("Warning: Failed to calculate coverage percentage: %v", err)
-	}
-
-	log.Printf("Coverage reports generated in %s/output", c.config.OutputDir)
-	return nil
-}
-
-// mergeCoverageData merges coverage data from multiple directories
-func (c *CoverageCollector) mergeCoverageData(inputDirs []string, outputDir string) error {
-	args := []string{"tool", "covdata", "merge"}
-	for _, dir := range inputDirs {
-		args = append(args, "-i="+dir)
-	}
-	args = append(args, "-o="+outputDir)
-
-	cmd := exec.Command("go", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go tool covdata merge failed: %w", err)
-	}
-
+	log.Printf("Coverage reports generated in %s", c.config.OutputDir)
 	return nil
 }
 
@@ -175,44 +160,6 @@ func (c *CoverageCollector) generateHTMLReport(coverDir, outputPath string) erro
 	}
 
 	log.Printf("HTML coverage report: %s", outputPath)
-	return nil
-}
-
-// logCoveragePercentage calculates and logs the coverage percentage
-func (c *CoverageCollector) logCoveragePercentage(coverDir string) error {
-	// Get per-package coverage
-	cmd := exec.Command("go", "tool", "covdata", "percent", "-i="+coverDir)
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("go tool covdata percent failed: %w", err)
-	}
-
-	// Parse coverage output
-	packages := c.parseCoverageOutput(string(output))
-
-	// Get total coverage from the text coverage file
-	reportPrefix := c.config.GetReportPrefix()
-	textFile := filepath.Join(c.config.OutputDir, reportPrefix+".txt")
-	totalCoverage := c.getTotalCoverage(textFile)
-
-	// Build coverage report
-	report := CoverageReport{
-		Timestamp:     time.Now().Format(time.RFC3339),
-		TotalCoverage: totalCoverage,
-		TotalPackages: len(packages),
-		Packages:      packages,
-	}
-
-	// Write JSON report
-	jsonPath := filepath.Join(c.config.OutputDir, "output", reportPrefix+"-report.json")
-	if err := c.writeCoverageJSON(jsonPath, &report); err != nil {
-		return err
-	}
-
-	// Print summary table from JSON
-	c.printCoverageTable(&report)
-
-	log.Printf("Coverage report saved to: %s", jsonPath)
 	return nil
 }
 
