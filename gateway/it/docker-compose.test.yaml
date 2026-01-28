@@ -58,9 +58,6 @@ services:
       - "9003:9003"   # Metrics
     volumes:
       - ./test-config.toml:/etc/policy-engine/config.toml:ro
-    depends_on:
-      gateway-controller:
-        condition: service_healthy
     networks:
       - it-gateway-network
 
