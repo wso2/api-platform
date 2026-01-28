@@ -587,3 +587,11 @@ Feature: Secrets Management
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the response body should contain "already exists"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the secret "update-conflict-secret-1"
+    Then the response status code should be 200
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the secret "update-conflict-secret-2"
+    Then the response status code should be 200
