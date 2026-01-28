@@ -98,7 +98,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get backend services: %w", err)
 	}
-	if len(backendServices) == 0 {
+	if apiModel.Type != constants.APITypeWebSub && len(backendServices) == 0 {
 		return nil, errors.New("API must have at least one backend service attached before deployment")
 	}
 
