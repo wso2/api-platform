@@ -53,6 +53,9 @@ var (
 
 	// Coverage collector
 	coverageCollector *CoverageCollector
+
+	// CLI coverage directory path
+	cliCoverDir string
 )
 
 // TestFeatures is the main entry point for BDD tests
@@ -147,6 +150,12 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		coverageCollector = NewCoverageCollector(DefaultCoverageConfig())
 		if err := coverageCollector.Setup(); err != nil {
 			log.Printf("Warning: Failed to setup coverage: %v", err)
+		}
+
+		// Create and store CLI coverage directory path
+		cliCoverDir, _ = filepath.Abs("coverage/cli")
+		if err := os.MkdirAll(cliCoverDir, 0755); err != nil {
+			log.Printf("Warning: Failed to create CLI coverage directory: %v", err)
 		}
 
 		// Initialize infrastructure manager
@@ -269,6 +278,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		// Set CLI binary path
 		if infraManager != nil {
 			testState.SetCLIBinaryPath(infraManager.GetCLIBinaryPath())
+		}
+
+		// Set CLI coverage directory for coverage collection
+		if cliCoverDir != "" {
+			testState.SetCLICoverDir(cliCoverDir)
 		}
 
 		// Initialize step handlers
