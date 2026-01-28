@@ -37,17 +37,6 @@ CREATE TABLE IF NOT EXISTS projects (
     UNIQUE(name, organization_uuid)
 );
 
--- XHub Signature Security Configuration table
-CREATE TABLE IF NOT EXISTS xhub_signature_security (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid VARCHAR(40) NOT NULL,
-    enabled BOOLEAN,
-    header VARCHAR(255),
-    algorithm VARCHAR(50),
-    secret VARCHAR(255),
-    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
-);
-
 -- APIs table
 CREATE TABLE IF NOT EXISTS apis (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -71,6 +60,17 @@ CREATE TABLE IF NOT EXISTS apis (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(handle, organization_uuid),
     UNIQUE(name, version, organization_uuid)
+);
+
+-- XHub Signature Security Configuration table
+CREATE TABLE IF NOT EXISTS xhub_signature_security (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_uuid VARCHAR(40) NOT NULL,
+    enabled BOOLEAN,
+    header VARCHAR(255),
+    algorithm VARCHAR(50),
+    secret VARCHAR(255),
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
 
 -- API MTLS Configuration table
