@@ -71,12 +71,12 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: 'gateway/it/coverage/integration-test-coverage.txt'
+          directory: gateway/it/coverage/output/txt
           flags: integration
 
       - name: Upload CLI integration test coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: 'cli/it/coverage/cli-integration-test-coverage.txt'
+          directory: cli/it/coverage/output/txt
           flags: cli-integration

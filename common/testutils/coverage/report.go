@@ -73,13 +73,14 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 		}
 
 		// Step 2: Rewrite paths directly to final text report location
-		textReportPath := filepath.Join(c.config.OutputDir, servicePrefix+".txt")
+		textReportPath := filepath.Join(c.config.OutputDir, "output", "txt", servicePrefix+".txt")
 		if err := c.rewriteCoveragePaths(rawTextFile, textReportPath); err != nil {
 			log.Printf("Warning: Failed to rewrite coverage paths for %s: %v", service, err)
 			os.Remove(rawTextFile)
 			continue
 		}
 		os.Remove(rawTextFile)
+		log.Printf("Text coverage report: %s", textReportPath)
 
 		// Step 3: Generate HTML report using final text report
 		htmlReportPath := filepath.Join(c.config.OutputDir, "output", servicePrefix+".html")
@@ -132,7 +133,6 @@ func (c *CoverageCollector) generateTextReport(coverDir, outputPath string) erro
 		return fmt.Errorf("go tool covdata textfmt failed: %w", err)
 	}
 
-	log.Printf("Text coverage report: %s", outputPath)
 	return nil
 }
 

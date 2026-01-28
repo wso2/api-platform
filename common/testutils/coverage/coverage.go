@@ -111,6 +111,12 @@ func (c *CoverageCollector) Setup() error {
 		return fmt.Errorf("failed to create coverage output directory: %w", err)
 	}
 
+	// Create txt subdirectory for text reports
+	txtDir := filepath.Join(c.config.OutputDir, "output", "txt")
+	if err := os.MkdirAll(txtDir, 0755); err != nil {
+		return fmt.Errorf("failed to create coverage txt directory: %w", err)
+	}
+
 	// Create per-service directories
 	for _, service := range c.config.Services {
 		serviceDir := filepath.Join(c.config.OutputDir, service)
