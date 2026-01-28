@@ -85,7 +85,7 @@ func TestFeatures(t *testing.T) {
 				"features/lazy-resources-xds.feature",
 				"features/content-length-guardrail.feature",
 				"features/azure-content-safety.feature",
-				// "features/aws-bedrock-guardrail.feature",
+				"features/aws-bedrock-guardrail.feature",
 				"features/semantic-cache.feature",
 			},
 			TestingT: t,
