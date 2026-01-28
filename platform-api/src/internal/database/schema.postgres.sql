@@ -249,13 +249,12 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     CHECK (revoked_at IS NULL OR status = 'revoked')
 );
 
--- API Deployments table
+-- API Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS api_deployments (
     deployment_id VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     base_deployment_id VARCHAR(40),
     content BYTEA NOT NULL,
     metadata TEXT, -- JSON object as TEXT
@@ -263,7 +262,22 @@ CREATE TABLE IF NOT EXISTS api_deployments (
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (base_deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE SET NULL,
+    FOREIGN KEY (base_deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE SET NULL
+);
+
+-- API Deployment Status table (current deployment state per API+Gateway)
+CREATE TABLE IF NOT EXISTS api_deployment_status (
+    api_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    deployment_id VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (api_uuid, organization_uuid, gateway_uuid),
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE CASCADE,
     CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
 );
 
@@ -346,9 +360,10 @@ CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operat
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operation_backend_services(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
-CREATE INDEX IF NOT EXISTS idx_api_deployments_api_gateway_status ON api_deployments(api_uuid, gateway_uuid, status);
-CREATE INDEX IF NOT EXISTS idx_api_deployments_api_status ON api_deployments(api_uuid, status);
-CREATE INDEX IF NOT EXISTS idx_api_deployments_gateway_status ON api_deployments(gateway_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_api_gateway ON api_deployments(api_uuid, gateway_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_created_at ON api_deployments(api_uuid, gateway_uuid, created_at);
+CREATE INDEX IF NOT EXISTS idx_api_deployment_status_deployment ON api_deployment_status(deployment_id);
+CREATE INDEX IF NOT EXISTS idx_api_deployment_status_status ON api_deployment_status(status);
 CREATE INDEX IF NOT EXISTS idx_devportals_org ON devportals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_devportals_active ON devportals(organization_uuid, is_active);
 CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid);
