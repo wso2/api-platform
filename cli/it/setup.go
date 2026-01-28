@@ -48,6 +48,7 @@ const (
 // InfrastructureManager manages the lifecycle of test infrastructure
 type InfrastructureManager struct {
 	composeFile         string
+	composeOverrideFile string
 	cliBinaryPath       string
 	startupTimeout      time.Duration
 	healthCheckInterval time.Duration
@@ -198,9 +199,22 @@ func (m *InfrastructureManager) startGatewayStack() error {
 		return fmt.Errorf("compose file not found: %s", m.composeFile)
 	}
 
-	// Create coverage directory with proper permissions to avoid Docker mount issues
+	// Resolve override file for CLI IT tests (redirects coverage to cli/it/coverage)
+	if m.composeOverrideFile == "" {
+		overrideFile, err := filepath.Abs("docker-compose.override.yaml")
+		if err != nil {
+			return fmt.Errorf("failed to resolve compose override file path: %w", err)
+		}
+		m.composeOverrideFile = overrideFile
+	}
+
+	if _, err := os.Stat(m.composeOverrideFile); os.IsNotExist(err) {
+		return fmt.Errorf("compose override file not found: %s", m.composeOverrideFile)
+	}
+
+	// Create coverage directory in cli/it/coverage with proper permissions to avoid Docker mount issues
 	m.reporter.LogPhase1Detail("Creating coverage directory...")
-	coverageDir := filepath.Join(filepath.Dir(m.composeFile), "coverage", "gateway-controller")
+	coverageDir := filepath.Join(filepath.Dir(m.composeOverrideFile), "coverage", "gateway-controller")
 	if err := os.MkdirAll(coverageDir, 0755); err != nil {
 		log.Printf("Warning: Could not create coverage directory: %v", err)
 	}
@@ -215,13 +229,14 @@ func (m *InfrastructureManager) startGatewayStack() error {
 	m.reporter.LogPhase1Detail("Starting sample-backend container...")
 	m.reporter.LogPhase1Detail("Starting mcp-server-backend container...")
 
-	// Start the compose stack using native docker compose command
+	// Start the compose stack using native docker compose command with override file
 	cmd := exec.CommandContext(m.ctx, "docker", "compose",
 		"-f", m.composeFile,
+		"-f", m.composeOverrideFile,
 		"-p", m.composeProjectName,
 		"up", "-d", "--wait",
 	)
-	cmd.Dir = filepath.Dir(m.composeFile)
+	cmd.Dir = filepath.Dir(m.composeOverrideFile)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		m.reporter.LogPhase1Fail("GATEWAY", "Failed to start stack", string(output))
@@ -253,12 +268,18 @@ func (m *InfrastructureManager) stopGatewayStack() {
 		return
 	}
 
-	cmd := exec.CommandContext(m.ctx, "docker", "compose",
-		"-f", m.composeFile,
-		"-p", m.composeProjectName,
-		"down", "-v", "--remove-orphans",
-	)
-	cmd.Dir = filepath.Dir(m.composeFile)
+	args := []string{"compose", "-f", m.composeFile}
+	if m.composeOverrideFile != "" {
+		args = append(args, "-f", m.composeOverrideFile)
+	}
+	args = append(args, "-p", m.composeProjectName, "down", "-v", "--remove-orphans")
+
+	cmd := exec.CommandContext(m.ctx, "docker", args...)
+	if m.composeOverrideFile != "" {
+		cmd.Dir = filepath.Dir(m.composeOverrideFile)
+	} else {
+		cmd.Dir = filepath.Dir(m.composeFile)
+	}
 	_ = cmd.Run() // Ignore errors during cleanup
 }
 
@@ -312,12 +333,18 @@ func (m *InfrastructureManager) Teardown() error {
 
 	// Stop compose stack using native docker compose
 	if m.composeFile != "" {
-		cmd := exec.Command("docker", "compose",
-			"-f", m.composeFile,
-			"-p", m.composeProjectName,
-			"down", "-v", "--remove-orphans",
-		)
-		cmd.Dir = filepath.Dir(m.composeFile)
+		args := []string{"compose", "-f", m.composeFile}
+		if m.composeOverrideFile != "" {
+			args = append(args, "-f", m.composeOverrideFile)
+		}
+		args = append(args, "-p", m.composeProjectName, "down", "-v", "--remove-orphans")
+
+		cmd := exec.Command("docker", args...)
+		if m.composeOverrideFile != "" {
+			cmd.Dir = filepath.Dir(m.composeOverrideFile)
+		} else {
+			cmd.Dir = filepath.Dir(m.composeFile)
+		}
 		_ = cmd.Run() // Ignore errors during cleanup
 	}
 
