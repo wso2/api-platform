@@ -1709,3 +1709,204 @@ func (s *SQLiteStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (in
 	return count, nil
 }
 
+// SaveSecret persists a new encrypted secret
+func (s *SQLiteStorage) SaveSecret(secret *models.Secret) error {
+	query := `
+	INSERT INTO secrets (id, handle, provider, key_version, ciphertext, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+
+	now := time.Now().UTC()
+	_, err := s.db.Exec(query,
+		secret.ID,
+		secret.Handle,
+		secret.Provider,
+		secret.KeyVersion,
+		secret.Ciphertext,
+		now,
+		now,
+	)
+
+	if err != nil {
+		if err.Error() == "UNIQUE constraint failed: secrets.handle" {
+			return fmt.Errorf("%w: secret with id '%s' already exists", ErrConflict, secret.Handle)
+		}
+		s.logger.Error("Failed to save secret",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("failed to save secret: %w", err)
+	}
+
+	s.logger.Debug("Secret saved successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("provider", secret.Provider),
+		slog.String("key_version", secret.KeyVersion),
+	)
+
+	return nil
+}
+
+// GetSecrets retrieves all secrets
+func (s *SQLiteStorage) GetSecrets() ([]string, error) {
+	query := `SELECT handle FROM secrets`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query secrets: %w", err)
+	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
+
+	var ids []string
+	for rows.Next() {
+		var handle string
+		if err := rows.Scan(&handle); err != nil {
+			return nil, fmt.Errorf("failed to scan handle: %w", err)
+		}
+		ids = append(ids, handle)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating secrets: %w", err)
+	}
+
+	s.logger.Debug("Secrets retrieved successfully",
+		slog.Int("count", len(ids)),
+	)
+
+	return ids, nil
+}
+
+// GetSecret retrieves a secret by Handle
+func (s *SQLiteStorage) GetSecret(handle string) (*models.Secret, error) {
+	query := `
+	SELECT id, handle, provider, key_version, ciphertext, created_at, updated_at
+	FROM secrets
+	WHERE handle = ?
+	`
+
+	var secret models.Secret
+	err := s.db.QueryRow(query, handle).Scan(
+		&secret.ID,
+		&secret.Handle,
+		&secret.Provider,
+		&secret.KeyVersion,
+		&secret.Ciphertext,
+		&secret.CreatedAt,
+		&secret.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("secret %w: id=%s", ErrNotFound, handle)
+	}
+
+	if err != nil {
+		s.logger.Error("Failed to get secret",
+			slog.String("secret_handle", handle),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to get secret: %w", err)
+	}
+
+	s.logger.Debug("Secret retrieved successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("provider", secret.Provider),
+	)
+
+	return &secret, nil
+}
+
+// UpdateSecret updates an existing secret
+func (s *SQLiteStorage) UpdateSecret(secret *models.Secret) error {
+	query := `
+	UPDATE secrets
+	SET handle = ?, provider = ?, key_version = ?, ciphertext = ?, updated_at = ?
+	WHERE handle = ?
+	`
+
+	now := time.Now().UTC()
+	result, err := s.db.Exec(query,
+		secret.Handle,
+		secret.Provider,
+		secret.KeyVersion,
+		secret.Ciphertext,
+		now,
+		secret.Handle,
+	)
+
+	if err != nil {
+		s.logger.Error("Failed to update secret",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("failed to update secret: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("secret %w: id=%s", ErrNotFound, secret.Handle)
+	}
+
+	s.logger.Debug("Secret updated successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("provider", secret.Provider),
+		slog.String("key_version", secret.KeyVersion),
+	)
+
+	return nil
+}
+
+// DeleteSecret permanently removes a secret
+func (s *SQLiteStorage) DeleteSecret(handle string) error {
+	query := `DELETE FROM secrets WHERE handle = ?`
+
+	result, err := s.db.Exec(query, handle)
+	if err != nil {
+		s.logger.Error("Failed to delete secret",
+			slog.String("secret_handle", handle),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("failed to delete secret: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("secret %w: id=%s", ErrNotFound, handle)
+	}
+
+	s.logger.Debug("Secret deleted successfully",
+		slog.String("secret_handle", handle),
+	)
+
+	return nil
+}
+
+// SecretExists checks if a secret with the given ID exists
+func (s *SQLiteStorage) SecretExists(handle string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM secrets WHERE handle = ?)`
+
+	var exists bool
+	err := s.db.QueryRow(query, handle).Scan(&exists)
+	if err != nil {
+		s.logger.Error("Failed to check secret existence",
+			slog.String("secret_handle", handle),
+			slog.Any("error", err),
+		)
+		return false, fmt.Errorf("failed to check secret existence: %w", err)
+	}
+
+	return exists, nil
+}

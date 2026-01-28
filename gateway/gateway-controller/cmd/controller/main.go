@@ -13,7 +13,11 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -122,6 +126,10 @@ func main() {
 	lazyResourceSnapshotManager := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, log)
 	lazyResourceXDSManager := lazyresourcexds.NewLazyResourceStateManager(lazyResourceStore, lazyResourceSnapshotManager, log)
 
+	// Initialize encryption providers for secret management
+	var encryptionProviderManager *encryption.ProviderManager
+	var secretsService *secrets.SecretService
+
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
 		log.Info("Loading configurations from database")
@@ -142,6 +150,43 @@ func main() {
 			os.Exit(1)
 		}
 		log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
+
+		if len(cfg.GatewayController.Encryption.Providers) > 0 {
+			log.Info("Initializing encryption providers", slog.Int("provider_count", len(cfg.GatewayController.Encryption.Providers)))
+
+			// Initialize encryption providers
+			var providers []encryption.EncryptionProvider
+			for _, providerConfig := range cfg.GatewayController.Encryption.Providers {
+				switch providerConfig.Type {
+				case "aesgcm":
+					// Convert config keys to AES-GCM key configs
+					var keyConfigs []aesgcm.KeyConfig
+					for _, keyConf := range providerConfig.Keys {
+						keyConfigs = append(keyConfigs, aesgcm.KeyConfig{
+							Version:  keyConf.Version,
+							FilePath: keyConf.FilePath,
+						})
+					}
+
+					provider, err := aesgcm.NewAESGCMProvider(keyConfigs, log)
+					if err != nil {
+						log.Error("Failed to initialize AES-GCM provider", slog.Any("error", err))
+					}
+					providers = append(providers, provider)
+
+				default:
+					log.Error("Unsupported encryption provider type", slog.String("type", providerConfig.Type))
+				}
+			}
+
+			// Create provider manager
+			encryptionProviderManager, err = encryption.NewProviderManager(providers, db, log)
+			if err != nil {
+				log.Error("Failed to initialize provider manager", slog.Any("error", err))
+			}
+			// Create secrets service
+			secretsService = secrets.NewSecretsService(db, encryptionProviderManager, log)
+		}
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -198,6 +243,20 @@ func main() {
 		cancel()
 	}
 
+	// Load policy definitions from files (must be done before creating validator)
+	policyLoader := utils.NewPolicyLoader(log)
+	policyDir := cfg.GatewayController.Policies.DefinitionsPath
+	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
+	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
+	if err != nil {
+		log.Error("Failed to load policy definitions", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
+
+	// Initialize policy resolver
+	policyResolver := resolver.NewPolicyResolver(policyDefinitions, secretsService)
+
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
 	var policyManager *policyxds.PolicyManager
@@ -220,7 +279,8 @@ func main() {
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
 				if apiConfig.Configuration.Kind == api.RestApi {
-					storedPolicy := derivePolicyFromAPIConfig(apiConfig, cfg)
+					storedPolicy := derivePolicyFromAPIConfig(
+						apiConfig, cfg, policyResolver, log)
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {
 							log.Warn("Failed to load policy from API",
@@ -263,17 +323,6 @@ func main() {
 	} else {
 		log.Info("Policy xDS server is disabled")
 	}
-
-	// Load policy definitions from files (must be done before creating validator)
-	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.GatewayController.Policies.DefinitionsPath
-	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
-	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
-	if err != nil {
-		log.Error("Failed to load policy definitions", slog.Any("error", err))
-		os.Exit(1)
-	}
-	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
 	// Load llm provider templates from files
 	templateLoader := utils.NewLLMTemplateLoader(log)
@@ -326,7 +375,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg)
+		policyDefinitions, templateDefinitions, validator, secretsService, policyResolver, apiKeyXDSManager, cfg)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
@@ -468,6 +517,12 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
+		"POST /secrets":       {"admin"},
+		"GET /secrets":        {"admin"},
+		"GET /secrets/:id":    {"admin"},
+		"PUT /secrets/:id":    {"admin"},
+		"DELETE /secrets/:id": {"admin"},
+
 		"GET /config_dump": {"admin"},
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
@@ -501,9 +556,27 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 
 // derivePolicyFromAPIConfig derives a policy configuration from an API configuration
 // This is a simplified version of the buildStoredPolicyFromAPI function from handlers
-func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Config) *models.StoredPolicyConfig {
-	apiCfg := &cfg.Configuration
+func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Config, policyResolver *resolver.PolicyResolver,
+	log *slog.Logger) *models.StoredPolicyConfig {
+	var apiCfg *api.APIConfiguration
 	routerConfig := &fullConfig.GatewayController.Router
+	resolvedCfg, validationErrors := policyResolver.ResolvePolicies(cfg)
+	if len(validationErrors) > 0 {
+		// Aggregate errors into a single error message
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		log.Error("Policy resolution failed",
+			slog.String("config_id", cfg.ID),
+			slog.String("errors", errMsg),
+		)
+		apiCfg = &cfg.Configuration // Fallback to original config
+	} else {
+		apiCfg = &resolvedCfg.Configuration
+	}
 	apiData, err := apiCfg.Spec.AsAPIConfigData()
 	if err != nil {
 		return nil

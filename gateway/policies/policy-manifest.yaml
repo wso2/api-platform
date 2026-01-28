@@ -35,7 +35,7 @@ policies:
   - name: model-weighted-round-robin
     gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v0.1.0
   - name: modify-headers
-    gomodule: github.com/wso2/gateway-controllers/policies/modify-headers@v0.1.0
+    gomodule: github.com/wso2/gateway-controllers/policies/modify-headers@v0.1.1
   - name: pii-masking-regex
     gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0.1.0
   - name: prompt-decorator

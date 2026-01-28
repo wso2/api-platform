@@ -146,6 +146,20 @@ CREATE TABLE IF NOT EXISTS api_keys (
     UNIQUE (apiId, name)
 );
 
+-- Table for encrypted secrets
+CREATE TABLE IF NOT EXISTS secrets (
+    id TEXT PRIMARY KEY NOT NULL,
+    handle TEXT NOT NULL UNIQUE,        -- secret identifier (e.g., wso2-openai-api-key)
+    provider TEXT NOT NULL,
+    key_version TEXT NOT NULL,
+    ciphertext BLOB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for secrets updates
+CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
+
 -- Indexes for API key lookups
 CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
 CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);

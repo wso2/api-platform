@@ -35,6 +35,8 @@ parameters:
         required:
         - action
         - name
+        resolve:
+        - value
     responseHeaders:
       type: array
       description: Array of header modifications to apply during response phase. At
@@ -62,6 +64,8 @@ parameters:
         required:
         - action
         - name
+        resolve:
+        - value
 
 systemParameters:
   type: object

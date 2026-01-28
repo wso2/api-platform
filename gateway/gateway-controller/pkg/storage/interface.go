@@ -233,6 +233,38 @@ type Storage interface {
 	// Returns an error if the certificate does not exist.
 	DeleteCertificate(id string) error
 
+	// SaveSecret persists a new encrypted secret.
+	//
+	// Returns an error if a secret with the same ID already exists.
+	// Implementations should ensure this operation is atomic.
+	SaveSecret(secret *models.Secret) error
+
+	// GetSecrets retrieves all secrets.
+	//
+	// Returns an empty slice if no secrets exist.
+	GetSecrets() ([]string, error)
+
+	// GetSecret retrieves a secret by ID.
+	//
+	// Returns error if the secret does not exist.
+	GetSecret(handle string) (*models.Secret, error)
+
+	// UpdateSecret updates an existing secret.
+	//
+	// Returns error if the secret does not exist.
+	// Implementations should ensure this operation is atomic.
+	UpdateSecret(secret *models.Secret) error
+
+	// DeleteSecret permanently removes a secret.
+	//
+	// Returns error if the secret does not exist.
+	DeleteSecret(handle string) error
+
+	// SecretExists checks if a secret with the given handle exists.
+	//
+	// Returns true if the secret exists, false otherwise.
+	SecretExists(handle string) (bool, error)
+
 	// Close closes the storage connection and releases resources.
 	//
 	// Should be called during graceful shutdown.
