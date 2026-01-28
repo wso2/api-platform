@@ -34,10 +34,20 @@ jobs:
           cd gateway
           make build-coverage
 
-      - name: Run integration tests
+      - name: Run Gateway integration tests
         run: |
           cd gateway
           make test-integration
+
+      - name: Build CLI binary
+        run: |
+          cd cli/it
+          make build-cli
+
+      - name: Run CLI integration tests
+        run: |
+          cd cli/it
+          make test
 
       - name: List generated coverage files
         run: |
@@ -51,9 +61,16 @@ jobs:
           files: '**/unit-test-coverage.txt'
           flags: unit
 
-      - name: Upload integration test coverage to Codecov
+      - name: Upload Gateway integration test coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: '**/integration-test-coverage.txt'
+          files: 'gateway/it/coverage/integration-test-coverage.txt'
           flags: integration
+
+      - name: Upload CLI integration test coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: 'cli/it/coverage/cli-integration-test-coverage.txt'
+          flags: cli-integration
