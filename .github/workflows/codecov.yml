@@ -2,6 +2,8 @@ name: Codecov Code Coverage
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
   codecov_test:
@@ -20,11 +22,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Gateway Unit Tests
+        continue-on-error: true
         run: |
           cd gateway
           make test
 
       - name: CLI Unit Tests
+        continue-on-error: true
         run: |
           cd cli/src
           make test
@@ -35,6 +39,7 @@ jobs:
           make build-coverage
 
       - name: Run Gateway integration tests
+        continue-on-error: true
         run: |
           cd gateway
           make test-integration
@@ -45,6 +50,7 @@ jobs:
           make build-cli
 
       - name: Run CLI integration tests
+        continue-on-error: true
         run: |
           cd cli/it
           make test
