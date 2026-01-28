@@ -32,19 +32,21 @@ import (
 )
 
 type OrganizationService struct {
-	orgRepo          repository.OrganizationRepository
-	projectRepo      repository.ProjectRepository
-	devPortalService *DevPortalService
-	config           *config.Server
+	orgRepo           repository.OrganizationRepository
+	projectRepo       repository.ProjectRepository
+	devPortalService  *DevPortalService
+	llmTemplateSeeder *LLMTemplateSeeder
+	config            *config.Server
 }
 
 func NewOrganizationService(orgRepo repository.OrganizationRepository,
-	projectRepo repository.ProjectRepository, devPortalService *DevPortalService, cfg *config.Server) *OrganizationService {
+	projectRepo repository.ProjectRepository, devPortalService *DevPortalService, llmTemplateSeeder *LLMTemplateSeeder, cfg *config.Server) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:          orgRepo,
-		projectRepo:      projectRepo,
-		devPortalService: devPortalService,
-		config:           cfg,
+		orgRepo:           orgRepo,
+		projectRepo:       projectRepo,
+		devPortalService:  devPortalService,
+		llmTemplateSeeder: llmTemplateSeeder,
+		config:            cfg,
 	}
 }
 
@@ -84,6 +86,13 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
 		return nil, err
+	}
+
+	// Seed default LLM provider templates for the new organization (best-effort)
+	if s.llmTemplateSeeder != nil {
+		if seedErr := s.llmTemplateSeeder.SeedForOrg(id); seedErr != nil {
+			log.Printf("[OrganizationService] Failed to seed default LLM templates for organization %s: %v", name, seedErr)
+		}
 	}
 
 	// Create default DevPortal if enabled

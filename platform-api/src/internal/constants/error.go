@@ -124,11 +124,20 @@ var (
 )
 
 var (
+	ErrLLMProviderTemplateExists   = errors.New("llm provider template already exists")
+	ErrLLMProviderTemplateNotFound = errors.New("llm provider template not found")
+	ErrLLMProviderExists           = errors.New("llm provider already exists")
+	ErrLLMProviderNotFound         = errors.New("llm provider not found")
+	ErrLLMProxyExists              = errors.New("llm proxy already exists")
+	ErrLLMProxyNotFound            = errors.New("llm proxy not found")
+)
+
+var (
 	// API Key errors
-	ErrAPIKeyNotFound        = errors.New("api key not found")
-	ErrAPIKeyAlreadyExists   = errors.New("api key already exists")
-	ErrInvalidAPIKey         = errors.New("invalid api key")
-	ErrGatewayUnavailable    = errors.New("gateway unavailable")
-	ErrAPIKeyEventDelivery   = errors.New("failed to deliver api key event to gateway")
-	ErrAPIKeyHashingFailed   = errors.New("failed to hash api key")
+	ErrAPIKeyNotFound      = errors.New("api key not found")
+	ErrAPIKeyAlreadyExists = errors.New("api key already exists")
+	ErrInvalidAPIKey       = errors.New("invalid api key")
+	ErrGatewayUnavailable  = errors.New("gateway unavailable")
+	ErrAPIKeyEventDelivery = errors.New("failed to deliver api key event to gateway")
+	ErrAPIKeyHashingFailed = errors.New("failed to hash api key")
 )

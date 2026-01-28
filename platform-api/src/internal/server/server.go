@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"platform-api/src/internal/middleware"
+	"strings"
 	"time"
 
 	"platform-api/src/config"
@@ -80,6 +81,56 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	backendServiceRepo := repository.NewBackendServiceRepo(db)
 	devPortalRepo := repository.NewDevPortalRepository(db)
 	publicationRepo := repository.NewAPIPublicationRepository(db)
+	llmTemplateRepo := repository.NewLLMProviderTemplateRepo(db)
+	llmProviderRepo := repository.NewLLMProviderRepo(db)
+	llmProxyRepo := repository.NewLLMProxyRepo(db)
+
+	// Seed default LLM provider templates into the DB (per organization)
+	defaultTemplates, err := utils.LoadLLMProviderTemplatesFromDirectory(cfg.LLMTemplateDefinitionsPath)
+	if err != nil {
+		cleanPath := filepath.Clean(cfg.LLMTemplateDefinitionsPath)
+		fallbackPath := ""
+		if !filepath.IsAbs(cleanPath) && !strings.HasPrefix(cleanPath, "src"+string(os.PathSeparator)) {
+			fallbackPath = filepath.Join("src", cleanPath)
+		}
+		if fallbackPath != "" {
+			if templates, fallbackErr := utils.LoadLLMProviderTemplatesFromDirectory(fallbackPath); fallbackErr == nil {
+				defaultTemplates = templates
+				cfg.LLMTemplateDefinitionsPath = fallbackPath
+				err = nil
+			} else {
+				log.Printf("[WARN] Failed to load default LLM provider templates from %s: %v", fallbackPath, fallbackErr)
+			}
+		}
+		if err != nil {
+			log.Printf("[WARN] Failed to load default LLM provider templates from %s: %v", cfg.LLMTemplateDefinitionsPath, err)
+		}
+	}
+	llmTemplateSeeder := service.NewLLMTemplateSeeder(llmTemplateRepo, defaultTemplates)
+	if len(defaultTemplates) > 0 {
+		const pageSize = 200
+		offset := 0
+		for {
+			orgs, listErr := orgRepo.ListOrganizations(pageSize, offset)
+			if listErr != nil {
+				log.Printf("[WARN] Failed to list organizations for LLM template seeding: %v", listErr)
+				break
+			}
+			if len(orgs) == 0 {
+				break
+			}
+			for _, org := range orgs {
+				if org == nil || org.ID == "" {
+					continue
+				}
+				if seedErr := llmTemplateSeeder.SeedForOrg(org.ID); seedErr != nil {
+					log.Printf("[WARN] Failed to seed LLM templates for organization %s: %v", org.ID, seedErr)
+				}
+			}
+			offset += pageSize
+		}
+		log.Printf("[INFO] Seeded default LLM provider templates: count=%d", len(defaultTemplates))
+	}
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
@@ -96,7 +147,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, apiRepo, apiUtil, cfg)
 
 	// Initialize services
-	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, cfg)
+	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, llmTemplateSeeder, cfg)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager)
 	upstreamService := service.NewUpstreamService(backendServiceRepo)
@@ -106,7 +157,13 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo, upstreamService, cfg)
 	apiKeyService := service.NewAPIKeyService(apiRepo, gatewayEventsService)
 	gitService := service.NewGitService()
+<<<<<<< HEAD
 	deploymentService := service.NewDeploymentService(apiRepo, gatewayRepo, backendServiceRepo, orgRepo, gatewayEventsService, apiUtil, cfg)
+=======
+	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
+	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder)
+	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo)
+>>>>>>> 4f804b8f (Add backend operations for the AI workspace)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService)
@@ -118,7 +175,11 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	gitHandler := handler.NewGitHandler(gitService)
+<<<<<<< HEAD
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService)
+=======
+	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService)
+>>>>>>> 4f804b8f (Add backend operations for the AI workspace)
 
 	// Setup router
 	router := gin.Default()
@@ -150,7 +211,11 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	internalGatewayHandler.RegisterRoutes(router)
 	apiKeyHandler.RegisterRoutes(router)
 	gitHandler.RegisterRoutes(router)
+<<<<<<< HEAD
 	deploymentHandler.RegisterRoutes(router)
+=======
+	llmHandler.RegisterRoutes(router)
+>>>>>>> 4f804b8f (Add backend operations for the AI workspace)
 
 	log.Printf("[INFO] WebSocket manager initialized: maxConnections=%d heartbeatTimeout=%ds rateLimitPerMin=%d",
 		cfg.WebSocket.MaxConnections, cfg.WebSocket.ConnectionTimeout, cfg.WebSocket.RateLimitPerMin)
