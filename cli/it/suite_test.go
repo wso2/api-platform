@@ -50,6 +50,9 @@ var (
 	// Step handlers
 	cliSteps    *steps.CLISteps
 	assertSteps *steps.AssertSteps
+
+	// Coverage collector
+	coverageCollector *CoverageCollector
 )
 
 // TestFeatures is the main entry point for BDD tests
@@ -140,6 +143,12 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		}
 		fmt.Printf("  %s[PORTS]%s  Required ports free %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
 
+		// Setup coverage collection (before infrastructure so directory is ready)
+		coverageCollector = NewCoverageCollector(DefaultCoverageConfig())
+		if err := coverageCollector.Setup(); err != nil {
+			log.Printf("Warning: Failed to setup coverage: %v", err)
+		}
+
 		// Initialize infrastructure manager
 		infraManager = NewInfrastructureManager(testReporter, testConfig, testConfigPath)
 
@@ -168,6 +177,15 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 				fmt.Printf("%sWarning: Teardown error: %v%s\n", ColorYellow, err, ColorReset)
 			}
 		}
+
+		// Generate coverage reports
+		if coverageCollector != nil {
+			log.Println("Generating coverage reports...")
+			if err := coverageCollector.MergeAndGenerateReport(); err != nil {
+				log.Printf("Warning: Failed to generate coverage report: %v", err)
+			}
+		}
+
 		// Restore user's CLI config that was backed up at test startup.
 		if err := restoreUserConfig(); err != nil {
 			fmt.Printf("%sWarning: Failed to restore user config: %v%s\n", ColorYellow, err, ColorReset)
