@@ -8,7 +8,7 @@ import (
 
 // LazyResource represents a generic lazy resource with ID, Resource_Type, and Actual_Resource
 type LazyResource struct {
-	// ID uniquely identifies this resource
+	// ID uniquely identifies this resource within its type
 	ID string `json:"id" yaml:"id"`
 
 	// ResourceType identifies the type of resource (e.g., "LlmProviderTemplate")
@@ -33,11 +33,16 @@ var (
 	lazyResourceOnce     sync.Once
 )
 
+// compositeKey creates a unique key from resource type and ID
+func compositeKey(resourceType, id string) string {
+	return resourceType + ":" + id
+}
+
 // LazyResourceStore holds all lazy resources in memory for fast access
 // Used for non-frequently changing resources like LlmProviderTemplates
 type LazyResourceStore struct {
 	mu sync.RWMutex // Protects concurrent access
-	// Resources storage: Key: Resource ID → Value: LazyResource
+	// Resources storage: Key: compositeKey(ResourceType, ID) → Value: LazyResource
 	resources map[string]*LazyResource
 	// Resources by type: Key: Resource Type → Value: map of resources by ID
 	resourcesByType map[string]map[string]*LazyResource
@@ -76,37 +81,44 @@ func (lrs *LazyResourceStore) StoreResource(resource *LazyResource) error {
 	lrs.mu.Lock()
 	defer lrs.mu.Unlock()
 
-	// Check if resource with same ID already exists
-	if existing, exists := lrs.resources[resource.ID]; exists {
-		// If resource type changed, remove from old type map
-		if existing.ResourceType != resource.ResourceType {
-			if typeMap, exists := lrs.resourcesByType[existing.ResourceType]; exists {
-				delete(typeMap, resource.ID)
-				if len(typeMap) == 0 {
-					delete(lrs.resourcesByType, existing.ResourceType)
-				}
-			}
-		}
+	key := compositeKey(resource.ResourceType, resource.ID)
+
+	// Remove from type mapping if it already exists (to handle updates)
+	if existing, exists := lrs.resources[key]; exists {
+		lrs.removeFromTypeMapping(existing)
 	}
 
-	// Store in main map
-	lrs.resources[resource.ID] = resource
+	// Store in main map with composite key
+	lrs.resources[key] = resource
 
 	// Store in type-specific map
-	if lrs.resourcesByType[resource.ResourceType] == nil {
-		lrs.resourcesByType[resource.ResourceType] = make(map[string]*LazyResource)
-	}
-	lrs.resourcesByType[resource.ResourceType][resource.ID] = resource
+	lrs.addToTypeMapping(resource)
 
 	return nil
 }
 
-// GetResource retrieves a resource by ID
+// GetResource retrieves a resource by ID (ambiguous if multiple types have same ID)
 func (lrs *LazyResourceStore) GetResource(id string) (*LazyResource, error) {
 	lrs.mu.RLock()
 	defer lrs.mu.RUnlock()
 
-	resource, exists := lrs.resources[id]
+	// Search through all resources for matching ID
+	for _, resource := range lrs.resources {
+		if resource.ID == id {
+			return resource, nil
+		}
+	}
+
+	return nil, ErrLazyResourceNotFound
+}
+
+// GetResourceByIDAndType retrieves a resource by ID and type (precise)
+func (lrs *LazyResourceStore) GetResourceByIDAndType(id, resourceType string) (*LazyResource, error) {
+	lrs.mu.RLock()
+	defer lrs.mu.RUnlock()
+
+	key := compositeKey(resourceType, id)
+	resource, exists := lrs.resources[key]
 	if !exists {
 		return nil, ErrLazyResourceNotFound
 	}
@@ -140,33 +152,58 @@ func (lrs *LazyResourceStore) GetAllResources() map[string]*LazyResource {
 
 	// Return a copy to prevent external modification
 	result := make(map[string]*LazyResource)
-	for id, resource := range lrs.resources {
-		result[id] = resource
+	for key, resource := range lrs.resources {
+		result[key] = resource
 	}
 
 	return result
 }
 
-// RemoveResource removes a resource by ID
+// RemoveResource removes a resource by ID (ambiguous if multiple types have same ID)
 func (lrs *LazyResourceStore) RemoveResource(id string) error {
 	lrs.mu.Lock()
 	defer lrs.mu.Unlock()
 
-	resource, exists := lrs.resources[id]
+	// Search for the resource with matching ID
+	var keyToDelete string
+	var resourceToDelete *LazyResource
+	for key, resource := range lrs.resources {
+		if resource.ID == id {
+			keyToDelete = key
+			resourceToDelete = resource
+			break
+		}
+	}
+
+	if resourceToDelete == nil {
+		return ErrLazyResourceNotFound
+	}
+
+	// Remove from main map
+	delete(lrs.resources, keyToDelete)
+
+	// Remove from type-specific map
+	lrs.removeFromTypeMapping(resourceToDelete)
+
+	return nil
+}
+
+// RemoveResourceByIDAndType removes a resource by ID and type (precise)
+func (lrs *LazyResourceStore) RemoveResourceByIDAndType(id, resourceType string) error {
+	lrs.mu.Lock()
+	defer lrs.mu.Unlock()
+
+	key := compositeKey(resourceType, id)
+	resource, exists := lrs.resources[key]
 	if !exists {
 		return ErrLazyResourceNotFound
 	}
 
 	// Remove from main map
-	delete(lrs.resources, id)
+	delete(lrs.resources, key)
 
 	// Remove from type-specific map
-	if typeMap, exists := lrs.resourcesByType[resource.ResourceType]; exists {
-		delete(typeMap, id)
-		if len(typeMap) == 0 {
-			delete(lrs.resourcesByType, resource.ResourceType)
-		}
-	}
+	lrs.removeFromTypeMapping(resource)
 
 	return nil
 }
@@ -183,7 +220,8 @@ func (lrs *LazyResourceStore) RemoveResourcesByType(resourceType string) error {
 
 	// Remove from main map
 	for id := range typeMap {
-		delete(lrs.resources, id)
+		key := compositeKey(resourceType, id)
+		delete(lrs.resources, key)
 	}
 
 	// Remove from type-specific map
@@ -221,13 +259,29 @@ func (lrs *LazyResourceStore) ReplaceAll(resources []*LazyResource) error {
 			continue // Skip invalid resources
 		}
 
-		lrs.resources[resource.ID] = resource
+		key := compositeKey(resource.ResourceType, resource.ID)
+		lrs.resources[key] = resource
 
-		if lrs.resourcesByType[resource.ResourceType] == nil {
-			lrs.resourcesByType[resource.ResourceType] = make(map[string]*LazyResource)
-		}
-		lrs.resourcesByType[resource.ResourceType][resource.ID] = resource
+		lrs.addToTypeMapping(resource)
 	}
 
 	return nil
+}
+
+// addToTypeMapping adds a resource to the type-specific map (caller must hold lock)
+func (lrs *LazyResourceStore) addToTypeMapping(resource *LazyResource) {
+	if lrs.resourcesByType[resource.ResourceType] == nil {
+		lrs.resourcesByType[resource.ResourceType] = make(map[string]*LazyResource)
+	}
+	lrs.resourcesByType[resource.ResourceType][resource.ID] = resource
+}
+
+// removeFromTypeMapping removes a resource from the type-specific map (caller must hold lock)
+func (lrs *LazyResourceStore) removeFromTypeMapping(resource *LazyResource) {
+	if typeMap, exists := lrs.resourcesByType[resource.ResourceType]; exists {
+		delete(typeMap, resource.ID)
+		if len(typeMap) == 0 {
+			delete(lrs.resourcesByType, resource.ResourceType)
+		}
+	}
 }

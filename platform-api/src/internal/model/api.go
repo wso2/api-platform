@@ -37,9 +37,6 @@ type API struct {
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`
 	HasThumbnail     bool                `json:"hasThumbnail,omitempty" db:"has_thumbnail"`
 	IsDefaultVersion bool                `json:"isDefaultVersion,omitempty" db:"is_default_version"`
-	IsRevision       bool                `json:"isRevision,omitempty" db:"is_revision"`
-	RevisionedAPIID  string              `json:"revisionedApiId,omitempty" db:"revisioned_api_id"`
-	RevisionID       int                 `json:"revisionId,omitempty" db:"revision_id"`
 	Type             string              `json:"type,omitempty" db:"type"`
 	Transport        []string            `json:"transport,omitempty" db:"transport"`
 	MTLS             *MTLSConfig         `json:"mtls,omitempty"`
@@ -48,6 +45,7 @@ type API struct {
 	BackendServices  []BackendService    `json:"backend-services,omitempty"`
 	APIRateLimiting  *RateLimitingConfig `json:"api-rate-limiting,omitempty"`
 	Operations       []Operation         `json:"operations,omitempty"`
+	Channels         []Channel           `json:"channels,omitempty"`
 }
 
 // TableName returns the table name for the API model
@@ -76,9 +74,18 @@ type MTLSConfig struct {
 
 // SecurityConfig represents security configuration
 type SecurityConfig struct {
-	Enabled bool            `json:"enabled,omitempty"`
-	APIKey  *APIKeySecurity `json:"apiKey,omitempty"`
-	OAuth2  *OAuth2Security `json:"oauth2,omitempty"`
+	Enabled       bool                   `json:"enabled,omitempty"`
+	APIKey        *APIKeySecurity        `json:"apiKey,omitempty"`
+	OAuth2        *OAuth2Security        `json:"oauth2,omitempty"`
+	XHubSignature *XHubSignatureSecurity `json:"xHubSignature,omitempty"`
+}
+
+// XHubSignature represents X-Hub-Signature security configuration
+type XHubSignatureSecurity struct {
+	Enabled   bool   `json:"enabled,omitempty"`
+	Header    string `json:"header,omitempty"`
+	Secret    string `json:"secret,omitempty"`
+	Algorithm string `json:"algorithm,omitempty"`
 }
 
 // APIKeySecurity represents API key security configuration
@@ -213,10 +220,26 @@ type Operation struct {
 	Request     *OperationRequest `json:"request,omitempty"`
 }
 
+// Channel represents an API operation
+type Channel struct {
+	Name        string          `json:"name,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Request     *ChannelRequest `json:"request,omitempty"`
+}
+
 // OperationRequest represents operation request details
 type OperationRequest struct {
 	Method          string                `json:"method,omitempty"`
 	Path            string                `json:"path,omitempty"`
+	BackendServices []BackendRouting      `json:"backend-services,omitempty"`
+	Authentication  *AuthenticationConfig `json:"authentication,omitempty"`
+	Policies        []Policy              `json:"policies,omitempty"`
+}
+
+// ChannelRequest represents channel request details
+type ChannelRequest struct {
+	Method          string                `json:"method,omitempty"`
+	Name            string                `json:"name,omitempty"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty"`
 	Authentication  *AuthenticationConfig `json:"authentication,omitempty"`
 	Policies        []Policy              `json:"policies,omitempty"`
@@ -242,13 +265,17 @@ type Policy struct {
 	Version            string                  `json:"version"`
 }
 
-// APIDeployment represents an API deployment record
+// APIDeployment represents an immutable API deployment artifact
 type APIDeployment struct {
-	ID             int64     `json:"id,omitempty" db:"id"`
-	ApiID          string    `json:"apiId" db:"api_uuid"`
-	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
-	GatewayID      string    `json:"gatewayId" db:"gateway_uuid"`
-	CreatedAt      time.Time `json:"createdAt,omitempty" db:"created_at"`
+	DeploymentID     string                 `json:"deploymentId" db:"deployment_id"`
+	ApiID            string                 `json:"apiId" db:"api_uuid"`
+	OrganizationID   string                 `json:"organizationId" db:"organization_uuid"`
+	GatewayID        string                 `json:"gatewayId" db:"gateway_uuid"`
+	Status           DeploymentStatus       `json:"status" db:"status"`
+	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" db:"base_deployment_id"`
+	Content          []byte                 `json:"-" db:"content"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
+	CreatedAt        time.Time              `json:"createdAt" db:"created_at"`
 }
 
 // TableName returns the table name for the APIDeployment model
@@ -271,3 +298,11 @@ type APIAssociation struct {
 func (APIAssociation) TableName() string {
 	return "api_associations"
 }
+
+// DeploymentStatus represents the status of an API deployment
+type DeploymentStatus string
+
+const (
+	DeploymentStatusDeployed   DeploymentStatus = "DEPLOYED"
+	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
+)

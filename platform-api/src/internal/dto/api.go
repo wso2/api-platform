@@ -36,9 +36,6 @@ type API struct {
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 	HasThumbnail     bool                `json:"hasThumbnail,omitempty" yaml:"hasThumbnail,omitempty"`
 	IsDefaultVersion bool                `json:"isDefaultVersion,omitempty" yaml:"isDefaultVersion,omitempty"`
-	IsRevision       bool                `json:"isRevision,omitempty" yaml:"isRevision,omitempty"`
-	RevisionedAPIID  string              `json:"revisionedApiId,omitempty" yaml:"revisionedApiId,omitempty"`
-	RevisionID       int                 `json:"revisionId,omitempty" yaml:"revisionId,omitempty"`
 	Type             string              `json:"type,omitempty" yaml:"type,omitempty"`
 	Transport        []string            `json:"transport,omitempty" yaml:"transport,omitempty"`
 	MTLS             *MTLSConfig         `json:"mtls,omitempty" yaml:"mtls,omitempty"`
@@ -47,6 +44,7 @@ type API struct {
 	BackendServices  []BackendService    `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	APIRateLimiting  *RateLimitingConfig `json:"api-rate-limiting,omitempty" yaml:"api-rate-limiting,omitempty"`
 	Operations       []Operation         `json:"operations,omitempty" yaml:"operations,omitempty"`
+	Channels         []Channel           `json:"channels,omitempty" yaml:"channels,omitempty"`
 }
 
 // MTLSConfig represents mutual TLS configuration
@@ -61,9 +59,18 @@ type MTLSConfig struct {
 
 // SecurityConfig represents security configuration
 type SecurityConfig struct {
-	Enabled bool            `json:"enabled,omitempty" yaml:"enabled,omitempty"`
-	APIKey  *APIKeySecurity `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
-	OAuth2  *OAuth2Security `json:"oauth2,omitempty" yaml:"oauth2,omitempty"`
+	Enabled       bool                   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	APIKey        *APIKeySecurity        `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
+	OAuth2        *OAuth2Security        `json:"oauth2,omitempty" yaml:"oauth2,omitempty"`
+	XHubSignature *XHubSignatureSecurity `json:"xHubSignature,omitempty" yaml:"xHubSignature,omitempty"`
+}
+
+// XHubSignatureSecurity represents X-Hub-Signature security configuration
+type XHubSignatureSecurity struct {
+	Enabled   bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Header    string `json:"header,omitempty" yaml:"header,omitempty"`
+	Secret    string `json:"secret,omitempty" yaml:"secret,omitempty"`
+	Algorithm string `json:"algorithm,omitempty" yaml:"algorithm,omitempty"`
 }
 
 // APIKeySecurity represents API key security configuration
@@ -136,10 +143,26 @@ type Operation struct {
 	Request     *OperationRequest `json:"request,omitempty" yaml:"request,omitempty"`
 }
 
+// Channel represents an API channel
+type Channel struct {
+	Name        string          `json:"name,omitempty" yaml:"name,omitempty"`
+	Description string          `json:"description,omitempty" yaml:"description,omitempty"`
+	Request     *ChannelRequest `json:"request,omitempty" yaml:"request,omitempty"`
+}
+
 // OperationRequest represents operation request details
 type OperationRequest struct {
 	Method          string                `json:"method" yaml:"method"`
 	Path            string                `json:"path" yaml:"path"`
+	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
+	Authentication  *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
+	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// ChannelRequest represents channel request details
+type ChannelRequest struct {
+	Method          string                `json:"method" yaml:"method"`
+	Name            string                `json:"name" yaml:"name"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	Authentication  *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
 	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -165,18 +188,27 @@ type Policy struct {
 	Version            string                  `json:"version" yaml:"version"`
 }
 
-// APIRevisionDeployment represents an API revision deployment
-type APIRevisionDeployment struct {
-	RevisionId           string  `json:"revisionId,omitempty" yaml:"revisionId,omitempty"`
-	GatewayID            string  `json:"gatewayId" yaml:"gatewayId"`
-	Status               string  `json:"status" yaml:"status"`
-	VHost                string  `json:"vhost" yaml:"vhost"`
-	DisplayOnDevportal   bool    `json:"displayOnDevportal" yaml:"displayOnDevportal"`
-	DeployedTime         *string `json:"deployedTime,omitempty" yaml:"deployedTime,omitempty"`
-	SuccessDeployedTime  *string `json:"successDeployedTime,omitempty" yaml:"successDeployedTime,omitempty"`
-	LiveGatewayCount     int     `json:"liveGatewayCount,omitempty" yaml:"liveGatewayCount,omitempty"`
-	DeployedGatewayCount int     `json:"deployedGatewayCount,omitempty" yaml:"deployedGatewayCount,omitempty"`
-	FailedGatewayCount   int     `json:"failedGatewayCount,omitempty" yaml:"failedGatewayCount,omitempty"`
+// DeployAPIRequest represents a request to deploy an API
+type DeployAPIRequest struct {
+	Base      string                 `json:"base" yaml:"base" binding:"required"`           // "current" or a deploymentId
+	GatewayID string                 `json:"gatewayId" yaml:"gatewayId" binding:"required"` // Target gateway ID
+	Metadata  map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`  // Flexible key-value metadata
+}
+
+// DeploymentResponse represents a deployment artifact
+type DeploymentResponse struct {
+	DeploymentID     string                 `json:"deploymentId" yaml:"deploymentId"`
+	GatewayID        string                 `json:"gatewayId" yaml:"gatewayId"`
+	Status           string                 `json:"status" yaml:"status"`
+	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" yaml:"baseDeploymentId,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	CreatedAt        time.Time              `json:"createdAt" yaml:"createdAt"`
+}
+
+// DeploymentListResponse represents a list of deployments
+type DeploymentListResponse struct {
+	Count int                   `json:"count" yaml:"count"`
+	List  []*DeploymentResponse `json:"list" yaml:"list"`
 }
 
 // APIDeploymentYAML represents the API deployment YAML structure
@@ -199,6 +231,7 @@ type APIYAMLData struct {
 	Context     string             `yaml:"context"`
 	Upstream    *UpstreamYAML      `yaml:"upstream,omitempty"`
 	Operations  []OperationRequest `yaml:"operations,omitempty"`
+	Channels    []ChannelRequest   `yaml:"channels,omitempty"`
 }
 
 // UpstreamYAML represents the upstream configuration for API deployment YAML

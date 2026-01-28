@@ -381,65 +381,6 @@ func (h *APIHandler) GetAPIGateways(c *gin.Context) {
 	c.JSON(http.StatusOK, gateways)
 }
 
-// DeployAPIRevision handles POST /api/v1/apis/:apiId/deploy-revision to deploy an API revision
-func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	apiId := c.Param("apiId")
-	if apiId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
-		return
-	}
-
-	// Get optional revision ID from query parameter
-	revisionID := c.Query("revisionId")
-
-	// Parse deployment request body
-	var deploymentRequests []dto.APIRevisionDeployment
-	if err := c.ShouldBindJSON(&deploymentRequests); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			err.Error()))
-		return
-	}
-
-	// Validate that we have at least one deployment request
-	if len(deploymentRequests) == 0 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"At least one deployment configuration is required"))
-		return
-	}
-
-	// Call service to deploy the API
-	deployments, err := h.apiService.DeployAPIRevisionByHandle(apiId, revisionID, deploymentRequests, orgId)
-	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
-		}
-		if strings.Contains(err.Error(), "invalid api deployment") {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid API deployment configuration"))
-			log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
-				apiId, revisionID, err)
-			return
-		}
-		log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
-			apiId, revisionID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to deploy API revision"))
-		return
-	}
-
-	c.JSON(http.StatusOK, deployments)
-}
-
 // PublishToDevPortal handles POST /api/v1/apis/:apiId/devportals/publish
 //
 // This endpoint publishes an API to a specific DevPortal with its metadata and OpenAPI definition.
@@ -972,7 +913,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.PUT("/:apiId", h.UpdateAPI)
 		apiGroup.DELETE("/:apiId", h.DeleteAPI)
 		apiGroup.GET("/validate", h.ValidateAPI)
-		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
 		apiGroup.GET("/:apiId/gateways", h.GetAPIGateways)
 		apiGroup.POST("/:apiId/gateways", h.AddGatewaysToAPI)
 		apiGroup.POST("/:apiId/devportals/publish", h.PublishToDevPortal)

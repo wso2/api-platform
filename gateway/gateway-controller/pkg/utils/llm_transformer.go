@@ -105,6 +105,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			Name:    constants.PROXY_HOST__HEADER_POLICY_NAME,
 			Version: constants.PROXY_HOST__HEADER_POLICY_VERSION, Params: &hParams}
 		spec.Policies = &[]api.Policy{hh}
+
+		// Update spec upstream hostRewrite to Manual
+		hostRewrite := api.Manual
+		spec.Upstream.Main.HostRewrite = &hostRewrite
 	}
 
 	// Set proxy-specific vhost if provided

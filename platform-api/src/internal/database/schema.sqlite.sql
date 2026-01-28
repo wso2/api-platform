@@ -51,9 +51,6 @@ CREATE TABLE IF NOT EXISTS apis (
     lifecycle_status VARCHAR(20) DEFAULT 'CREATED',
     has_thumbnail BOOLEAN DEFAULT FALSE,
     is_default_version BOOLEAN DEFAULT FALSE,
-    is_revision BOOLEAN DEFAULT FALSE,
-    revisioned_api_id VARCHAR(40),
-    revision_id INTEGER DEFAULT 0,
     type VARCHAR(20) DEFAULT 'HTTP',
     transport VARCHAR(255), -- JSON array as TEXT
     security_enabled BOOLEAN,
@@ -63,6 +60,17 @@ CREATE TABLE IF NOT EXISTS apis (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(handle, organization_uuid),
     UNIQUE(name, version, organization_uuid)
+);
+
+-- XHub Signature Security Configuration table
+CREATE TABLE IF NOT EXISTS xhub_signature_security (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_uuid VARCHAR(40) NOT NULL,
+    enabled BOOLEAN,
+    header VARCHAR(255),
+    algorithm VARCHAR(50),
+    secret VARCHAR(255),
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
 
 -- API MTLS Configuration table
@@ -252,17 +260,22 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     CHECK (revoked_at IS NULL OR status = 'revoked')
 );
 
--- API Deployments table
+-- API Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS api_deployments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deployment_id VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
+    base_deployment_id VARCHAR(40), -- Reference to the deployment used as base, NULL if based on "current"
+    content BLOB NOT NULL, -- Immutable deployment artifact (YAML string)
+    metadata TEXT, -- JSON object for flexible key-value metadata    
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    UNIQUE(api_uuid, gateway_uuid)
+    FOREIGN KEY (base_deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE SET NULL,
+    CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
 );
 
 -- API Associations table (for both gateways and dev portals)
@@ -344,6 +357,9 @@ CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operat
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operation_backend_services(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_api_gateway_status ON api_deployments(api_uuid, gateway_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_api_status ON api_deployments (api_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_gateway_status ON api_deployments (gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_devportals_org ON devportals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_devportals_active ON devportals(organization_uuid, is_active);
 CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid);

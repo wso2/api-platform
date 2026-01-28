@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -217,9 +218,12 @@ type RouterConfig struct {
 
 // EventGatewayConfig holds event gateway specific configurations
 type EventGatewayConfig struct {
-	Enabled       bool   `koanf:"enabled"`
-	WebSubHubURL  string `koanf:"websub_hub_url"`
-	WebSubHubPort int    `koanf:"websub_hub_port"`
+	Enabled               bool   `koanf:"enabled"`
+	WebSubHubURL          string `koanf:"websub_hub_url"`
+	WebSubHubPort         int    `koanf:"websub_hub_port"`
+	RouterHost            string `koanf:"router_host"`
+	WebSubHubListenerPort int    `koanf:"websub_hub_listener_port"`
+	TimeoutSeconds        int    `koanf:"timeout_seconds"`
 }
 
 // DownstreamTLS holds downstream (listener) TLS configuration
@@ -430,9 +434,12 @@ func defaultConfig() *Config {
 			},
 			Router: RouterConfig{
 				EventGateway: EventGatewayConfig{
-					Enabled:       true,
-					WebSubHubURL:  "http://host.docker.internal",
-					WebSubHubPort: 9098,
+					Enabled:               false,
+					WebSubHubURL:          "http://host.docker.internal",
+					WebSubHubPort:         9098,
+					RouterHost:            "localhost",
+					WebSubHubListenerPort: 8083,
+					TimeoutSeconds:        30,
 				},
 				AccessLogs: AccessLogsConfig{
 					Enabled: true,
@@ -679,6 +686,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate event gateway configuration if enabled
+	if c.GatewayController.Router.EventGateway.Enabled {
+		if err := c.validateEventGatewayConfig(); err != nil {
+			return err
+		}
+	}
+
 	// Validate control plane configuration
 	if err := c.validateControlPlaneConfig(); err != nil {
 		return err
@@ -722,6 +736,30 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Config) validateEventGatewayConfig() error {
+	if c.GatewayController.Router.EventGateway.WebSubHubPort < 1 || c.GatewayController.Router.EventGateway.WebSubHubPort > 65535 {
+		return fmt.Errorf("router.event_gateway.websub_hub_port must be between 1 and 65535, got: %d", c.GatewayController.Router.EventGateway.WebSubHubPort)
+	}
+	if c.GatewayController.Router.EventGateway.WebSubHubListenerPort < 1 || c.GatewayController.Router.EventGateway.WebSubHubListenerPort > 65535 {
+		return fmt.Errorf("router.event_gateway.websub_hub_listener_port must be between 1 and 65535, got: %d", c.GatewayController.Router.EventGateway.WebSubHubListenerPort)
+	}
+
+	// Validate WebSubHubURL if provided - must be a valid http(s) URL
+	if strings.TrimSpace(c.GatewayController.Router.EventGateway.WebSubHubURL) != "" {
+		u, err := url.Parse(c.GatewayController.Router.EventGateway.WebSubHubURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("router.event_gateway.websub_hub_url must be a valid URL with http or https scheme, got: %s", c.GatewayController.Router.EventGateway.WebSubHubURL)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("router.event_gateway.websub_hub_url must include a valid host, got: %s", c.GatewayController.Router.EventGateway.WebSubHubURL)
+		}
+	}
+	if c.GatewayController.Router.EventGateway.TimeoutSeconds <= 0 {
+		return fmt.Errorf("router.event_gateway.timeout_seconds must be positive, got: %d", c.GatewayController.Router.EventGateway.TimeoutSeconds)
+	}
 	return nil
 }
 

@@ -470,7 +470,7 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 		return
 	}
 
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.Asyncwebsub) {
+	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) {
 		log.Warn("Configuration kind mismatch",
 			slog.String("expected", "RestApi or async/websub"),
 			slog.String("actual", cfg.Kind),
@@ -610,7 +610,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	existing.DeployedAt = nil
 	existing.DeployedVersion = 0
 
-	if apiConfig.Kind == api.Asyncwebsub {
+	if apiConfig.Kind == api.WebSubApi {
 		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -631,7 +631,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to register topic with WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -658,7 +660,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -736,7 +740,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	// Update xDS snapshot asynchronously
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
 		defer cancel()
 
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
@@ -878,7 +882,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		}
 	}
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 
 		var deregErrs int32
@@ -894,7 +898,9 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -1663,7 +1669,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 
 	routes := make([]policyenginev1.PolicyChain, 0)
 	switch apiCfg.Kind {
-	case api.Asyncwebsub:
+	case api.WebSubApi:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsWebhookAPIData()
 		if err != nil {
@@ -1673,7 +1679,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 		for _, ch := range apiData.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			if ch.Policies != nil && len(*ch.Policies) > 0 {
+			if len(*ch.Policies) > 0 {
 				// Operation has policies: use operation policy order as authoritative
 				// This allows operations to reorder, override, or extend API-level policies
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
@@ -1702,7 +1708,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				}
 			}
 
-			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, ch.Name, s.routerConfig.GatewayHost)
 
 			// Inject system policies into the chain
 			props := make(map[string]any)

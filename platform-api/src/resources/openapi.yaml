@@ -540,45 +540,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{apiId}/deploy-revision:
-    post:
-      tags:
-        - API Revisions
-      summary: Deploy API Revision
-      description: |
-        Deploy a revision of an API. Access is validated against the organization 
-        in the JWT token.
-      operationId: DeployAPIRevision
-      parameters:
-        - $ref: '#/components/parameters/apiID'
-        - $ref: '#/components/parameters/revisionId-Q'
-      requestBody:
-        description: Deployment object that needs to be added
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/APIRevisionDeployment'
-      responses:
-        200:
-          description: |
-            Created.
-            Successful response with the newly deployed APIRevisionDeployment List object as the entity in the body.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/APIRevisionDeployment'
-        400:
-          $ref: '#/components/responses/BadRequest'
-        401:
-          $ref: '#/components/responses/Unauthorized'
-        404:
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /apis/{apiId}/gateways:
     get:
@@ -825,6 +786,185 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiId}/deploy:
+    post:
+      summary: Deploy API to gateway
+      description: |
+        Creates an immutable deployment artifact for an API and deploys it to a specified gateway.
+        Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
+        not the UUID. The deployment becomes active immediately on the target gateway. 
+        Access is validated against the organization in the JWT token.
+      operationId: DeployAPI
+      tags:
+        - API Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployAPIRequest'
+      responses:
+        '201':
+          description: API deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiId}/deployments:
+    get:
+      summary: Get deployments for an API
+      description: |
+        Retrieves all deployment artifacts for a specific API. The apiId parameter is the API handle (identifier),
+        not the UUID. Supports filtering by gateway UUID and deployment status. 
+        Access is validated against the organization in the JWT token.
+      operationId: GetDeployments
+      tags:
+        - API Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+        - $ref: '#/components/parameters/gatewayId-Q'
+        - $ref: '#/components/parameters/deploymentStatus-Q'
+      responses:
+        '200':
+          description: Deployments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiId}/deployments/{deploymentId}:
+    get:
+      summary: Get deployment by ID
+      description: |
+        Retrieves metadata for a specific deployment artifact including status, gateway association,
+        and timestamps. Access is validated against the organization in the JWT token.
+      operationId: GetDeployment
+      tags:
+        - API Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete deployment
+      description: |
+        Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteDeployment
+      tags:
+        - API Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '204':
+          description: Deployment deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiId}/deployments/{deploymentId}/redeploy:
+    post:
+      summary: Redeploy deployment
+      description: |
+        Redeploys an existing deployment artifact. If a previous deployment exists on the same gateway,
+        it will be automatically undeployed first. Access is validated against the organization 
+        in the JWT token.
+      operationId: RedeployDeployment
+      tags:
+        - API Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment redeployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiId}/deployments/{deploymentId}/undeploy:
+    post:
+      summary: Undeploy deployment
+      description: |
+        Undeploys an active deployment, stopping the API from being served. The deployment artifact
+        remains in the system with UNDEPLOYED status and can be redeployed later. Returns the updated
+        deployment object with status changed to UNDEPLOYED. Access is validated against the organization 
+        in the JWT token.
+      operationId: UndeployDeployment
+      tags:
+        - API Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1749,17 +1889,6 @@ components:
         isDefaultVersion:
           type: boolean
           example: false
-        isRevision:
-          type: boolean
-          example: false
-        revisionedApiId:
-          type: string
-          description: UUID of the api artifact
-          readOnly: true
-          example: 01234567-0123-0123-0123-012345678901
-        revisionId:
-          type: integer
-          example: 1
         type:
           type: string
           description: The api creation type to be used. Accepted values are HTTP,
@@ -1803,7 +1932,11 @@ components:
           description: List of operations exposed by this API
           items:
             $ref: '#/components/schemas/Operation'
-
+        channels:
+          type: array
+          description: List of channels exposed by this API
+          items:
+            $ref: '#/components/schemas/Channel'
     MTLSConfig:
       title: mTLS Configuration
       type: object
@@ -2156,6 +2289,22 @@ components:
         request:
           $ref: "#/components/schemas/OperationRequest"
 
+    Channel:
+      title: Async API Channel
+      type: object
+      description: Defines a single channel within the Async API
+      properties:
+        name:
+          type: string
+          description: Name of the channel
+          example: "issues"
+        description:
+          type: string
+          description: Description of the channel
+          example: "Channel for order events"
+        request:
+          $ref: "#/components/schemas/ChannelRequest"
+
     OperationRequest:
       title: Operation Request
       type: object
@@ -2177,6 +2326,34 @@ components:
           type: string
           description: Resource path for the operation
           example: "/pet/{petId}"
+        backend-services:
+          type: array
+          description: List of backend services for this operation
+          items:
+            $ref: "#/components/schemas/BackendRouting"
+        authentication:
+          $ref: "#/components/schemas/AuthenticationConfig"
+        policies:
+          type: array
+          description: List of policies to be applied on the operation
+          items:
+            $ref: "#/components/schemas/Policy"
+
+    ChannelRequest:
+      title: Channel Request
+      type: object
+      description: Request details for a channel within the Async API
+      properties:
+        method:
+          type: string
+          description: Async method for the channel
+          enum:
+            - SUB
+          example: "SUB"
+        name:
+          type: string
+          description: Channel name for the event
+          example: "issues"
         backend-services:
           type: array
           description: List of backend services for this operation
@@ -2304,14 +2481,9 @@ components:
       type: object
       description: Details about API deployment to a specific gateway
       required:
-        - revisionId
         - status
         - deployedAt
       properties:
-        revisionId:
-          type: string
-          description: ID of the deployed API revision
-          example: "c26b2b9b-4632-4ca4-b6f3-521c8863990c"
         status:
           description: Current deployment status
           type: string
@@ -2326,65 +2498,6 @@ components:
           format: date-time
           description: Timestamp when the API was deployed
           example: "2025-10-15T11:00:00Z"
-
-    APIRevisionDeployment:
-      title: APIRevisionDeployment Info object with basic API deployment details
-      properties:
-        revisionId:
-          maxLength: 255
-          minLength: 0
-          type: string
-          example: c26b2b9b-4632-4ca4-b6f3-521c8863990c
-        gatewayId:
-          type: string
-          format: uuid
-          example: "987e6543-e21b-45d3-a789-426614174999"
-        status:
-          type: string
-          description: Current deployment status
-          example: CREATED
-          default: CREATED
-          enum:
-            - CREATED
-            - APPROVED
-            - REJECTED
-        vhost:
-          maxLength: 255
-          minLength: 1
-          # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123) and appended *
-          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
-          type: string
-          example: mg.wso2.com
-        displayOnDevportal:
-          type: boolean
-          example: true
-          default: true
-        deployedTime:
-          readOnly: true
-          type: string
-          format: date-time
-        successDeployedTime:
-          readOnly: true
-          type: string
-          format: date-time
-        liveGatewayCount:
-          readOnly: true
-          type: integer
-          description: |
-            The number of gateways that are currently live in the gateway environment
-          example: 1
-        deployedGatewayCount:
-          readOnly: true
-          type: integer
-          description: |
-            The number of gateways in which the API revision is deployed successfully
-          example: 1
-        failedGatewayCount:
-          readOnly: true
-          type: integer
-          description: |
-            The number of gateways where the API revision deployment has failed
-          example: 1
 
     CreateGatewayRequest:
       description: |
@@ -3575,6 +3688,76 @@ components:
             - code
             - message
 
+    DeployAPIRequest:
+      type: object
+      required:
+        - base
+        - gatewayId
+      properties:
+        base:
+          type: string
+          description: The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+          example: "current"
+        gatewayId:
+          type: string
+          format: uuid
+          description: The target gateway UUID for this deployment
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional metadata for the deployment
+
+    DeploymentResponse:
+      type: object
+      required:
+        - deploymentId
+        - gatewayId
+        - status
+        - createdAt
+      properties:
+        deploymentId:
+          type: string
+          format: uuid
+          description: Unique identifier for the deployment
+        gatewayId:
+          type: string
+          format: uuid
+          description: UUID of the gateway
+        status:
+          type: string
+          enum:
+            - DEPLOYED
+            - UNDEPLOYED
+          description: Current deployment status
+        baseDeploymentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID of the previous deployment (if redeployed)
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Metadata associated with the deployment
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the deployment was created
+
+    DeploymentListResponse:
+      type: object
+      required:
+        - count
+        - list
+      properties:
+        count:
+          type: integer
+          description: Total number of deployments
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeploymentResponse'
+          description: List of deployments
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -3661,15 +3844,6 @@ components:
         type: string
         example: my-api-handle
 
-    revisionId-Q:
-      name: revisionId
-      in: query
-      description: |
-        Revision ID of an API
-      schema:
-        type: string
-        format: uuid
-        example: crer4354-jui52345-245vd-93fvk-137063
 
     projectId-Q:
       name: projectId
@@ -3786,6 +3960,26 @@ components:
         format: uuid
         example: "123e4567-e89b-12d3-a456-426614174000"
 
+    deploymentId:
+      name: deploymentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: The UUID of the deployment
+
+    deploymentStatus-Q:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - DEPLOYED
+          - UNDEPLOYED
+      description: Filter deployments by status (DEPLOYED or UNDEPLOYED)
+
 tags:
   - name: Health
     description: Health check endpoints
@@ -3795,8 +3989,8 @@ tags:
     description: Project management operations
   - name: APIs
     description: API management operations
-  - name: API Revisions
-    description: API revision deployment operations
+  - name: API Deployments
+    description: API deployment artifact management and lifecycle operations
   - name: API Portal
     description: API portal publishing and unpublishing operations
   - name: DevPortals
