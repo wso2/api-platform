@@ -350,6 +350,10 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	// Save new config to database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
+			logger.Info("Error saving new API configuration to database",
+				slog.String("api_id", storedCfg.ID),
+				slog.String("displayName", storedCfg.GetDisplayName()),
+				slog.String("version", storedCfg.GetVersion()))
 			return false, fmt.Errorf("failed to save config to database: %w", err)
 		}
 	}
@@ -358,6 +362,10 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if err := s.store.Add(storedCfg); err != nil {
 		// Rollback database write (only if persistent mode)
 		if s.db != nil {
+			logger.Info("Error adding new API configuration to memory store, rolling back database",
+				slog.String("api_id", storedCfg.ID),
+				slog.String("displayName", storedCfg.GetDisplayName()),
+				slog.String("version", storedCfg.GetVersion()))
 			_ = s.db.DeleteConfig(storedCfg.ID)
 		}
 		return false, fmt.Errorf("failed to add config to memory store: %w", err)
