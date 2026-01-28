@@ -58,10 +58,10 @@ Feature: Token-Based Rate Limiting for LLMs
                   duration: "1h"
       """
     Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/mock-provider/v1" to be ready
+    And I wait for the endpoint "http://localhost:8080/mock-provider/" to be ready
 
     # First request: uses 150 tokens. Remaining: 1000 - 150 = 850
-    When I send a POST request to "http://localhost:8080/mock-provider/v1" with body:
+    When I send a POST request to "http://localhost:8080/mock-provider/" with body:
       """
       {"usage": {"total_tokens": 150}}
       """
@@ -69,7 +69,7 @@ Feature: Token-Based Rate Limiting for LLMs
     And the response header "X-RateLimit-Remaining" should be "850"
 
     # Second request: uses 800 tokens. Remaining: 850 - 800 = 50
-    When I send a POST request to "http://localhost:8080/mock-provider/v1" with body:
+    When I send a POST request to "http://localhost:8080/mock-provider/" with body:
       """
       {"usage": {"total_tokens": 800}}
       """
@@ -77,7 +77,7 @@ Feature: Token-Based Rate Limiting for LLMs
     And the response header "X-RateLimit-Remaining" should be "50"
 
     # Third request: tries to use 100 tokens. Quota exhausted!
-    When I send a POST request to "http://localhost:8080/mock-provider/v1" with body:
+    When I send a POST request to "http://localhost:8080/mock-provider/" with body:
       """
       {"usage": {"total_tokens": 100}}
       """
@@ -123,11 +123,11 @@ Feature: Token-Based Rate Limiting for LLMs
                   duration: "1h"
       """
     Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/multi-token-provider/v1" to be ready
+    And I wait for the endpoint "http://localhost:8080/multi-token-provider/" to be ready
 
     # Use 20 prompt, 40 completion. 
     # Remaining: Prompt 80, Completion 10
-    When I send a POST request to "http://localhost:8080/multi-token-provider/v1" with body:
+    When I send a POST request to "http://localhost:8080/multi-token-provider/" with body:
       """
       {"usage": {"prompt": 20, "completion": 40}}
       """
@@ -136,7 +136,7 @@ Feature: Token-Based Rate Limiting for LLMs
     And the response header "RateLimit" should contain "r=10"
 
     # Try 20 completion tokens. Exceeds limit (only 10 left).
-    When I send a POST request to "http://localhost:8080/multi-token-provider/v1" with body:
+    When I send a POST request to "http://localhost:8080/multi-token-provider/" with body:
       """
       {"usage": {"prompt": 10, "completion": 20}}
       """
