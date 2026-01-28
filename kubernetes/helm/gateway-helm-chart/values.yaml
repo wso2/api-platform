@@ -20,7 +20,9 @@ serviceAccount:
 
 gateway:
   # Shared configuration for gateway-controller and policy-engine
-  # This config is mounted to both components as /configs/config.yaml
+  # This config is mounted as:
+  #   - gateway-controller: /etc/gateway-controller/config.toml
+  #   - policy-engine: /etc/policy-engine/config.toml
   config:
     gateway_controller:
       auth:

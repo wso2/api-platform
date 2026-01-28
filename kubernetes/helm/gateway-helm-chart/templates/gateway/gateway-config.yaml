@@ -17,168 +17,206 @@ metadata:
     {{- toYaml $annotations | nindent 4 }}
   {{- end }}
 data:
-  config.yaml: |
-    gateway_controller:
-      server:
-        api_port: {{ $gc.server.api_port }}
-        xds_port: {{ $gc.server.xds_port }}
-        shutdown_timeout: {{ $gc.server.shutdown_timeout }}
-      policyserver:
-        enabled: {{ $gc.policyserver.enabled }}
-        port: {{ $gc.policyserver.port }}
-        tls:
-          enabled: {{ $gc.policyserver.tls.enabled }}
-          cert_file: {{ $gc.policyserver.tls.cert_file | quote }}
-          key_file: {{ $gc.policyserver.tls.key_file | quote }}
-      storage:
-        type: {{ $gc.storage.type }}
-        sqlite:
-          path: {{ $gc.storage.sqlite.path }}
-      policies:
-        definitions_path: {{ $gc.policies.definitions_path }}
-      router:
-        gateway_host: {{ $gc.router.gateway_host | quote }}
-        listener_port: {{ $gc.router.listener_port }}
-        https_enabled: {{ $gc.router.https_enabled }}
-        https_port: {{ $gc.router.https_port }}
-        access_logs:
-          enabled: {{ $gc.router.access_logs.enabled }}
-          format: {{ $gc.router.access_logs.format }}
-          json_fields:
-            {{- $gc.router.access_logs.json_fields | toYaml | nindent 12 }}
-          text_format: |
-            {{- $gc.router.access_logs.text_format | nindent 12 }}
-        downstream_tls:
-          cert_path: {{ $gc.router.downstream_tls.cert_path | quote }}
-          key_path: {{ $gc.router.downstream_tls.key_path | quote }}
-          minimum_protocol_version: {{ $gc.router.downstream_tls.minimum_protocol_version }}
-          maximum_protocol_version: {{ $gc.router.downstream_tls.maximum_protocol_version }}
-          ciphers: {{ $gc.router.downstream_tls.ciphers | quote }}
-        envoy_upstream:
-          tls:
-            minimum_protocol_version: {{ $gc.router.envoy_upstream.tls.minimum_protocol_version }}
-            maximum_protocol_version: {{ $gc.router.envoy_upstream.tls.maximum_protocol_version }}
-            ciphers: {{ $gc.router.envoy_upstream.tls.ciphers | quote }}
-            trusted_cert_path: {{ $gc.router.envoy_upstream.tls.trusted_cert_path }}
-            custom_certs_path: {{ $gc.router.envoy_upstream.tls.custom_certs_path }}
-            verify_host_name: {{ $gc.router.envoy_upstream.tls.verify_host_name }}
-            disable_ssl_verification: {{ $gc.router.envoy_upstream.tls.disable_ssl_verification }}
-          timeouts:
-            route_timeout_in_seconds: {{ $gc.router.envoy_upstream.timeouts.route_timeout_in_seconds }}
-            max_route_timeout_in_seconds: {{ $gc.router.envoy_upstream.timeouts.max_route_timeout_in_seconds }}
-            route_idle_timeout_in_seconds: {{ $gc.router.envoy_upstream.timeouts.route_idle_timeout_in_seconds }}
-        tracing_service_name: {{ $gc.router.tracing_service_name }}
-        policy_engine:
-          enabled: {{ $gc.router.policy_engine.enabled }}
-          host: {{ $policyEngineHost }}
-          port: {{ $gc.router.policy_engine.port }}
-          timeout_ms: {{ $gc.router.policy_engine.timeout_ms }}
-          failure_mode_allow: {{ $gc.router.policy_engine.failure_mode_allow }}
-          route_cache_action: {{ $gc.router.policy_engine.route_cache_action }}
-          allow_mode_override: {{ $gc.router.policy_engine.allow_mode_override }}
-          request_header_mode: {{ $gc.router.policy_engine.request_header_mode }}
-          message_timeout_ms: {{ $gc.router.policy_engine.message_timeout_ms }}
-          tls:
-            enabled: {{ $gc.router.policy_engine.tls.enabled }}
-            cert_path: {{ $gc.router.policy_engine.tls.cert_path | quote }}
-            key_path: {{ $gc.router.policy_engine.tls.key_path | quote }}
-            ca_path: {{ $gc.router.policy_engine.tls.ca_path | quote }}
-            server_name: {{ $gc.router.policy_engine.tls.server_name | quote }}
-            skip_verify: {{ $gc.router.policy_engine.tls.skip_verify }}
-      {{- if $gc.auth }}
-      auth:
-        {{- if $gc.auth.basic }}
-        basic:
-          enabled: {{ $gc.auth.basic.enabled }}
-          {{- if $gc.auth.basic.users }}
-          users:
-            {{- $gc.auth.basic.users | toYaml | nindent 12 }}
-          {{- else }}
-          users: []
-          {{- end }}
-        {{- end }}
-        {{- if $gc.auth.idp }}
-        idp:
-          enabled: {{ $gc.auth.idp.enabled }}
-          jwks_url: {{ $gc.auth.idp.jwks_url | quote }}
-          issuer: {{ $gc.auth.idp.issuer | quote }}
-          roles_claim: {{ $gc.auth.idp.roles_claim | quote }}
-          {{- if $gc.auth.idp.role_mapping }}
-          role_mapping:
-            {{- $gc.auth.idp.role_mapping | toYaml | nindent 12 }}
-          {{- else }}
-          role_mapping: {}
-          {{- end }}
-        {{- end }}
-      {{- end }}
-      logging:
-        level: {{ $gc.logging.level }}
-        format: {{ $gc.logging.format }}
-    policy_engine:
-      server:
-        extproc_port: {{ $pe.server.extproc_port }}
-      admin:
-        enabled: {{ $pe.admin.enabled }}
-        port: {{ $pe.admin.port }}
-        allowed_ips:
-          {{- $pe.admin.allowed_ips | toYaml | nindent 10 }}
-      config_mode:
-        mode: {{ $pe.config_mode.mode }}
-      xds:
-        enabled: {{ $pe.xds.enabled }}
-        server_address: {{ $controllerHost }}:{{ .Values.gateway.controller.service.ports.policy }}
-        node_id: {{ $pe.xds.node_id }}
-        cluster: {{ $pe.xds.cluster }}
-        connect_timeout: {{ $pe.xds.connect_timeout }}
-        request_timeout: {{ $pe.xds.request_timeout }}
-        initial_reconnect_delay: {{ $pe.xds.initial_reconnect_delay }}
-        max_reconnect_delay: {{ $pe.xds.max_reconnect_delay }}
-        tls:
-          enabled: {{ $pe.xds.tls.enabled }}
-      file_config:
-        path: {{ $pe.file_config.path | quote }}
-      logging:
-        level: {{ $pe.logging.level }}
-        format: {{ $pe.logging.format }}
+  config.toml: |
+    [gateway_controller.server]
+    api_port = {{ $gc.server.api_port }}
+    xds_port = {{ $gc.server.xds_port }}
+    shutdown_timeout = {{ $gc.server.shutdown_timeout | quote }}
+
+    [gateway_controller.policyserver]
+    enabled = {{ $gc.policyserver.enabled }}
+    port = {{ $gc.policyserver.port }}
+
+    [gateway_controller.policyserver.tls]
+    enabled = {{ $gc.policyserver.tls.enabled }}
+    cert_file = {{ $gc.policyserver.tls.cert_file | quote }}
+    key_file = {{ $gc.policyserver.tls.key_file | quote }}
+
+    [gateway_controller.storage]
+    type = {{ $gc.storage.type | quote }}
+
+    [gateway_controller.storage.sqlite]
+    path = {{ $gc.storage.sqlite.path | quote }}
+
+    [gateway_controller.policies]
+    definitions_path = {{ $gc.policies.definitions_path | quote }}
+
+    [gateway_controller.router]
+    gateway_host = {{ $gc.router.gateway_host | quote }}
+    listener_port = {{ $gc.router.listener_port }}
+    https_enabled = {{ $gc.router.https_enabled }}
+    https_port = {{ $gc.router.https_port }}
+    tracing_service_name = {{ $gc.router.tracing_service_name | quote }}
+
+    [gateway_controller.router.access_logs]
+    enabled = {{ $gc.router.access_logs.enabled }}
+    format = {{ $gc.router.access_logs.format | quote }}
+    {{- if eq $gc.router.access_logs.format "json" }}
+    json_fields = { {{- $first := true }}{{- range $key, $value := $gc.router.access_logs.json_fields }}{{- if not $first }}, {{ end }}{{- $first = false }}{{ $key }} = {{ $value | quote }}{{- end }} }
+    {{- end }}
+    {{- if eq $gc.router.access_logs.format "text" }}
+    text_format = {{ $gc.router.access_logs.text_format | quote }}
+    {{- end }}
+
+    [gateway_controller.router.downstream_tls]
+    cert_path = {{ $gc.router.downstream_tls.cert_path | quote }}
+    key_path = {{ $gc.router.downstream_tls.key_path | quote }}
+    minimum_protocol_version = {{ $gc.router.downstream_tls.minimum_protocol_version | quote }}
+    maximum_protocol_version = {{ $gc.router.downstream_tls.maximum_protocol_version | quote }}
+    ciphers = {{ $gc.router.downstream_tls.ciphers | quote }}
+
+    [gateway_controller.router.envoy_upstream.tls]
+    minimum_protocol_version = {{ $gc.router.envoy_upstream.tls.minimum_protocol_version | quote }}
+    maximum_protocol_version = {{ $gc.router.envoy_upstream.tls.maximum_protocol_version | quote }}
+    ciphers = {{ $gc.router.envoy_upstream.tls.ciphers | quote }}
+    trusted_cert_path = {{ $gc.router.envoy_upstream.tls.trusted_cert_path | quote }}
+    custom_certs_path = {{ $gc.router.envoy_upstream.tls.custom_certs_path | quote }}
+    verify_host_name = {{ $gc.router.envoy_upstream.tls.verify_host_name }}
+    disable_ssl_verification = {{ $gc.router.envoy_upstream.tls.disable_ssl_verification }}
+
+    [gateway_controller.router.envoy_upstream.timeouts]
+    route_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.route_timeout_in_seconds }}
+    max_route_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.max_route_timeout_in_seconds }}
+    route_idle_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.route_idle_timeout_in_seconds }}
+
+    [gateway_controller.router.policy_engine]
+    enabled = {{ $gc.router.policy_engine.enabled }}
+    host = "{{ $policyEngineHost }}"
+    port = {{ $gc.router.policy_engine.port }}
+    timeout_ms = {{ $gc.router.policy_engine.timeout_ms }}
+    failure_mode_allow = {{ $gc.router.policy_engine.failure_mode_allow }}
+    route_cache_action = {{ $gc.router.policy_engine.route_cache_action | quote }}
+    allow_mode_override = {{ $gc.router.policy_engine.allow_mode_override }}
+    request_header_mode = {{ $gc.router.policy_engine.request_header_mode | quote }}
+    message_timeout_ms = {{ $gc.router.policy_engine.message_timeout_ms }}
+
+    [gateway_controller.router.policy_engine.tls]
+    enabled = {{ $gc.router.policy_engine.tls.enabled }}
+    cert_path = {{ $gc.router.policy_engine.tls.cert_path | quote }}
+    key_path = {{ $gc.router.policy_engine.tls.key_path | quote }}
+    ca_path = {{ $gc.router.policy_engine.tls.ca_path | quote }}
+    server_name = {{ $gc.router.policy_engine.tls.server_name | quote }}
+    skip_verify = {{ $gc.router.policy_engine.tls.skip_verify }}
+
+    {{- if $gc.auth }}
+    {{- if $gc.auth.basic }}
+    [gateway_controller.auth.basic]
+    enabled = {{ $gc.auth.basic.enabled }}
+    {{- if $gc.auth.basic.users }}
+    {{- range $gc.auth.basic.users }}
+    [[gateway_controller.auth.basic.users]]
+    username = {{ .username | quote }}
+    password = {{ .password | quote }}
+    roles = [{{- range $i, $role := .roles }}{{- if gt $i 0 }}, {{ end }}{{ $role | quote }}{{- end }}]
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- if $gc.auth.idp }}
+    [gateway_controller.auth.idp]
+    enabled = {{ $gc.auth.idp.enabled }}
+    jwks_url = {{ $gc.auth.idp.jwks_url | quote }}
+    issuer = {{ $gc.auth.idp.issuer | quote }}
+    roles_claim = {{ $gc.auth.idp.roles_claim | quote }}
+    {{- if $gc.auth.idp.role_mapping }}
+    [gateway_controller.auth.idp.role_mapping]
+    {{- range $key, $value := $gc.auth.idp.role_mapping }}
+    {{ $key }} = {{ $value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    [gateway_controller.logging]
+    level = {{ $gc.logging.level | quote }}
+    format = {{ $gc.logging.format | quote }}
+
+    [policy_engine.server]
+    extproc_port = {{ $pe.server.extproc_port }}
+
+    [policy_engine.admin]
+    enabled = {{ $pe.admin.enabled }}
+    port = {{ $pe.admin.port }}
+    allowed_ips = [{{- range $i, $ip := $pe.admin.allowed_ips }}{{- if gt $i 0 }}, {{ end }}{{ $ip | quote }}{{- end }}]
+
+    [policy_engine.config_mode]
+    mode = {{ $pe.config_mode.mode | quote }}
+
+    [policy_engine.xds]
+    enabled = {{ $pe.xds.enabled }}
+    server_address = "{{ $controllerHost }}:{{ .Values.gateway.controller.service.ports.policy }}"
+    node_id = {{ $pe.xds.node_id | quote }}
+    cluster = {{ $pe.xds.cluster | quote }}
+    connect_timeout = {{ $pe.xds.connect_timeout | quote }}
+    request_timeout = {{ $pe.xds.request_timeout | quote }}
+    initial_reconnect_delay = {{ $pe.xds.initial_reconnect_delay | quote }}
+    max_reconnect_delay = {{ $pe.xds.max_reconnect_delay | quote }}
+
+    [policy_engine.xds.tls]
+    enabled = {{ $pe.xds.tls.enabled }}
+
+    [policy_engine.file_config]
+    path = {{ $pe.file_config.path | quote }}
+
+    [policy_engine.logging]
+    level = {{ $pe.logging.level | quote }}
+    format = {{ $pe.logging.format | quote }}
+
     {{- if .Values.gateway.config.analytics }}
-    analytics:
-      enabled: {{ .Values.gateway.config.analytics.enabled }}
-      {{- if .Values.gateway.config.analytics.publishers }}
-      publishers:
-        {{- .Values.gateway.config.analytics.publishers | toYaml | nindent 8 }}
-      {{- end }}
-      {{- if .Values.gateway.config.analytics.grpc_access_logs }}
-      grpc_access_logs:
-        host: {{ $policyEngineHost }}
-        log_name: {{ .Values.gateway.config.analytics.grpc_access_logs.log_name | quote }}
-        buffer_flush_interval: {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_flush_interval }}
-        buffer_size_bytes: {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_size_bytes }}
-        grpc_request_timeout: {{ .Values.gateway.config.analytics.grpc_access_logs.grpc_request_timeout }}
-      {{- end }}
-      {{- if .Values.gateway.config.analytics.access_logs_service }}
-      access_logs_service:
-        als_server_port: {{ .Values.gateway.config.analytics.access_logs_service.als_server_port }}
-        shutdown_timeout: {{ .Values.gateway.config.analytics.access_logs_service.shutdown_timeout }}
-        public_key_path: {{ .Values.gateway.config.analytics.access_logs_service.public_key_path | quote }}
-        private_key_path: {{ .Values.gateway.config.analytics.access_logs_service.private_key_path | quote }}
-        als_plain_text: {{ .Values.gateway.config.analytics.access_logs_service.als_plain_text }}
-        max_message_size: {{ .Values.gateway.config.analytics.access_logs_service.max_message_size }}
-        max_header_limit: {{ .Values.gateway.config.analytics.access_logs_service.max_header_limit }}
-      {{- end }}
+    [analytics]
+    enabled = {{ .Values.gateway.config.analytics.enabled }}
+    {{- if .Values.gateway.config.analytics.publishers }}
+    {{- range .Values.gateway.config.analytics.publishers }}
+    [[analytics.publishers]]
+    type = {{ .type | quote }}
+    {{- if .config }}
+    [analytics.publishers.config]
+    {{- range $key, $value := .config }}
+    {{ $key }} = {{ $value | quote }}
     {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.gateway.config.analytics.grpc_access_logs }}
+    [analytics.grpc_access_logs]
+    host = "{{ $policyEngineHost }}"
+    log_name = {{ .Values.gateway.config.analytics.grpc_access_logs.log_name | quote }}
+    buffer_flush_interval = {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_flush_interval | quote }}
+    buffer_size_bytes = {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_size_bytes }}
+    grpc_request_timeout = {{ .Values.gateway.config.analytics.grpc_access_logs.grpc_request_timeout | quote }}
+    {{- end }}
+    {{- if .Values.gateway.config.analytics.access_logs_service }}
+    [analytics.access_logs_service]
+    als_server_port = {{ .Values.gateway.config.analytics.access_logs_service.als_server_port }}
+    shutdown_timeout = {{ .Values.gateway.config.analytics.access_logs_service.shutdown_timeout | quote }}
+    public_key_path = {{ .Values.gateway.config.analytics.access_logs_service.public_key_path | quote }}
+    private_key_path = {{ .Values.gateway.config.analytics.access_logs_service.private_key_path | quote }}
+    als_plain_text = {{ .Values.gateway.config.analytics.access_logs_service.als_plain_text }}
+    max_message_size = {{ .Values.gateway.config.analytics.access_logs_service.max_message_size }}
+    max_header_limit = {{ .Values.gateway.config.analytics.access_logs_service.max_header_limit }}
+    {{- end }}
+    {{- end }}
+
     {{- if .Values.gateway.config.tracing }}
-    tracing:
-      enabled: {{ .Values.gateway.config.tracing.enabled }}
-      endpoint: {{ .Values.gateway.config.tracing.endpoint }}
-      insecure: {{ .Values.gateway.config.tracing.insecure }}
-      service_version: {{ .Values.gateway.config.tracing.service_version | quote }}
-      batch_timeout: {{ .Values.gateway.config.tracing.batch_timeout }}
-      max_export_batch_size: {{ .Values.gateway.config.tracing.max_export_batch_size }}
-      sampling_rate: {{ .Values.gateway.config.tracing.sampling_rate }}
+    [tracing]
+    enabled = {{ .Values.gateway.config.tracing.enabled }}
+    endpoint = {{ .Values.gateway.config.tracing.endpoint | quote }}
+    insecure = {{ .Values.gateway.config.tracing.insecure }}
+    service_version = {{ .Values.gateway.config.tracing.service_version | quote }}
+    batch_timeout = {{ .Values.gateway.config.tracing.batch_timeout | quote }}
+    max_export_batch_size = {{ .Values.gateway.config.tracing.max_export_batch_size }}
+    sampling_rate = {{ .Values.gateway.config.tracing.sampling_rate }}
     {{- end }}
+
     {{- if .Values.gateway.config.policy_configurations }}
-    policy_configurations:
-      {{- .Values.gateway.config.policy_configurations | toYaml | nindent 6 }}
+    [policy_configurations]
+    {{- range $key, $value := .Values.gateway.config.policy_configurations }}
+    [policy_configurations.{{ $key }}]
+    {{- range $k, $v := $value }}
+    {{- if or (regexMatch "^(?i)(true|false)$" (toString $v)) (regexMatch "^-?[0-9]+(\\.[0-9]+)?$" (toString $v)) }}
+    {{ $k }} = {{ $v }}
     {{- else }}
-    policy_configurations: {}
+    {{ $k }} = {{ $v | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
     {{- end }}

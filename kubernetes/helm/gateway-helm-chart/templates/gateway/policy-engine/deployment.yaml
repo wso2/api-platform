@@ -68,9 +68,12 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          args:
+            - "-config"
+            - "/etc/policy-engine/config.toml"
+            - "-xds-server"
+            - {{ default (printf "%s-controller:18001" (include "gateway-operator.fullname" .)) $deployment.env.xdsServerAddress | quote }}
           env:
-            - name: APIP_GW_XDS_SERVER_ADDRESS
-              value: {{ default (printf "%s-controller:18001" (include "gateway-operator.fullname" .)) $deployment.env.xdsServerAddress | quote }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -95,8 +98,8 @@ spec:
             {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
           volumeMounts:
             - name: gateway-config
-              mountPath: /configs/config.yaml
-              subPath: config.yaml
+              mountPath: /etc/policy-engine/config.toml
+              subPath: config.toml
       volumes:
         - name: gateway-config
           configMap:

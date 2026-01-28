@@ -1443,6 +1443,10 @@ jobs:
           kubectl describe pods --all-namespaces || true
 
           echo ""
+          echo "=== Gateway Config ConfigMap ==="
+          kubectl get configmap -l app.kubernetes.io/instance=ap-gw -o yaml || true
+
+          echo ""
           echo "=== APIGateway Controller Logs ==="
           kubectl logs -l app.kubernetes.io/component=controller --tail=200 || true
 
