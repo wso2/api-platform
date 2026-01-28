@@ -56,27 +56,15 @@ func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath string) e
 	return nil
 }
 
-// getTotalCoverage calculates total coverage from the integration-test-coverage.txt file
-func (c *CoverageCollector) getTotalCoverage(textFile string) float64 {
+// getTotalCoverageFromFile calculates total coverage from a text coverage file with rewritten paths
+func (c *CoverageCollector) getTotalCoverageFromFile(textFile string) float64 {
 	absTextFile, err := filepath.Abs(textFile)
 	if err != nil {
 		return 0
 	}
 
-	// Rewrite paths for go tool cover
-	rewrittenFile := filepath.Join(c.config.OutputDir, "coverage_total_temp.txt")
-	if err := c.rewriteCoveragePaths(absTextFile, rewrittenFile); err != nil {
-		return 0
-	}
-	defer os.Remove(rewrittenFile)
-
-	absRewrittenFile, err := filepath.Abs(rewrittenFile)
-	if err != nil {
-		return 0
-	}
-
 	// Run go tool cover -func to get total
-	cmd := exec.Command("go", "tool", "cover", "-func="+absRewrittenFile)
+	cmd := exec.Command("go", "tool", "cover", "-func="+absTextFile)
 	cmd.Dir = c.config.SourceDir
 	output, err := cmd.Output()
 	if err != nil {
