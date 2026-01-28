@@ -39,6 +39,9 @@ Feature: Token-Based Rate Limiting for LLMs
           location: payload
           identifier: $.usage.total_tokens
       """
+    Then the response status code should be 201
+    
+    Given I authenticate using basic auth as "admin"
     And I create this LLM provider:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -46,12 +49,15 @@ Feature: Token-Based Rate Limiting for LLMs
       metadata:
         name: mock-provider
       spec:
+        displayName: Mock Provider
         template: mock-llm-template
         upstream:
           url: http://it-echo-backend:80
+        accessControl:
+          mode: allow_all
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0.1.1
             params:
               totalTokenLimits:
                 - count: 1000
@@ -101,6 +107,9 @@ Feature: Token-Based Rate Limiting for LLMs
           location: payload
           identifier: $.usage.completion
       """
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
     And I create this LLM provider:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -108,12 +117,15 @@ Feature: Token-Based Rate Limiting for LLMs
       metadata:
         name: multi-token-provider
       spec:
+        displayName: Multi Token Provider
         template: multi-token-template
         upstream:
           url: http://it-echo-backend:80
+        accessControl:
+          mode: allow_all
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0.1.1
             params:
               promptTokenLimits:
                 - count: 100
