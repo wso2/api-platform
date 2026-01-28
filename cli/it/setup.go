@@ -48,6 +48,7 @@ const (
 // InfrastructureManager manages the lifecycle of test infrastructure
 type InfrastructureManager struct {
 	composeFile         string
+	composeOverrideFile string
 	cliBinaryPath       string
 	startupTimeout      time.Duration
 	healthCheckInterval time.Duration
@@ -120,24 +121,11 @@ func (m *InfrastructureManager) SetupInfrastructure(required []InfrastructureID)
 
 		switch id {
 		case InfraCLI:
-			if err := m.buildCLI(); err != nil {
-				return fmt.Errorf("failed to build CLI: %w", err)
+			if err := m.verifyCLI(); err != nil {
+				return fmt.Errorf("CLI verification failed: %w", err)
 			}
 			m.startedServices[InfraCLI] = true
-		case InfraGatewayImages:
-			if err := m.buildGatewayImages(); err != nil {
-				return fmt.Errorf("failed to build gateway images: %w", err)
-			}
-			m.startedServices[InfraGatewayImages] = true
 		case InfraGateway:
-			// Ensure gateway images are built first
-			if !m.startedServices[InfraGatewayImages] {
-				if err := m.buildGatewayImages(); err != nil {
-					return fmt.Errorf("failed to build gateway images: %w", err)
-				}
-				// Mark images as started so later entries in `required` don't rebuild
-				m.startedServices[InfraGatewayImages] = true
-			}
 			if err := m.startGatewayStack(); err != nil {
 				return fmt.Errorf("failed to start gateway stack: %w", err)
 			}
@@ -165,9 +153,9 @@ func (m *InfrastructureManager) SetupInfrastructure(required []InfrastructureID)
 	return nil
 }
 
-// buildCLI builds the CLI binary
-func (m *InfrastructureManager) buildCLI() error {
-	m.reporter.LogPhase1("CLI", "Building CLI binary...")
+// verifyCLI verifies the CLI binary exists and is functional
+func (m *InfrastructureManager) verifyCLI() error {
+	m.reporter.LogPhase1("CLI", "Verifying CLI binary...")
 
 	// Get the CLI source directory
 	cliSrcDir, err := filepath.Abs("../src")
@@ -175,27 +163,15 @@ func (m *InfrastructureManager) buildCLI() error {
 		return fmt.Errorf("failed to resolve CLI source directory: %w", err)
 	}
 
-	m.reporter.LogPhase1Detail("Compiling Go source files...")
-	m.reporter.LogPhase1Detail("Running: make build-skip-tests")
-
-	// Run make build-skip-tests to build the CLI
-	cmd := exec.CommandContext(m.ctx, "make", "build-skip-tests")
-	cmd.Dir = cliSrcDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		m.reporter.LogPhase1Fail("CLI", "Build failed", string(output))
-		return fmt.Errorf("failed to build CLI: %w\nOutput: %s", err, output)
-	}
-
 	// Set the CLI binary path
 	m.cliBinaryPath = filepath.Join(cliSrcDir, "build", "ap")
 
 	// Verify the binary exists
 	if _, err := os.Stat(m.cliBinaryPath); os.IsNotExist(err) {
-		return fmt.Errorf("CLI binary not found at %s", m.cliBinaryPath)
+		return fmt.Errorf("CLI binary not found at %s. Run 'make build-cli' first", m.cliBinaryPath)
 	}
 
-	m.reporter.LogPhase1Detail("Verifying CLI binary...")
+	m.reporter.LogPhase1Detail("Verifying CLI binary runs...")
 
 	// Verify the binary runs
 	verifyCmd := exec.CommandContext(m.ctx, m.cliBinaryPath, "version")
@@ -204,35 +180,6 @@ func (m *InfrastructureManager) buildCLI() error {
 	}
 
 	m.reporter.LogPhase1Pass("CLI", "CLI binary ready")
-	return nil
-}
-
-// buildGatewayImages builds the gateway Docker images with coverage instrumentation
-func (m *InfrastructureManager) buildGatewayImages() error {
-	m.reporter.LogPhase1("GATEWAY_IMAGES", "Building gateway Docker images...")
-
-	// Get the gateway directory
-	gatewayDir, err := filepath.Abs("../../gateway")
-	if err != nil {
-		return fmt.Errorf("failed to resolve gateway directory: %w", err)
-	}
-
-	m.reporter.LogPhase1Detail("Building gateway-controller-coverage image...")
-	m.reporter.LogPhase1Detail("Building gateway-builder image...")
-	m.reporter.LogPhase1Detail("Building policy-engine image...")
-	m.reporter.LogPhase1Detail("Building router image...")
-	m.reporter.LogPhase1Detail("This may take several minutes on first run...")
-
-	// Run make build-coverage to build the gateway images
-	cmd := exec.CommandContext(m.ctx, "make", "build-coverage")
-	cmd.Dir = gatewayDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		m.reporter.LogPhase1Fail("GATEWAY_IMAGES", "Build failed", string(output))
-		return fmt.Errorf("failed to build gateway images: %w\nOutput: %s", err, output)
-	}
-
-	m.reporter.LogPhase1Pass("GATEWAY_IMAGES", "Docker images ready")
 	return nil
 }
 
@@ -252,9 +199,22 @@ func (m *InfrastructureManager) startGatewayStack() error {
 		return fmt.Errorf("compose file not found: %s", m.composeFile)
 	}
 
-	// Create coverage directory with proper permissions to avoid Docker mount issues
+	// Resolve override file for CLI IT tests (redirects coverage to cli/it/coverage)
+	if m.composeOverrideFile == "" {
+		overrideFile, err := filepath.Abs("docker-compose.override.yaml")
+		if err != nil {
+			return fmt.Errorf("failed to resolve compose override file path: %w", err)
+		}
+		m.composeOverrideFile = overrideFile
+	}
+
+	if _, err := os.Stat(m.composeOverrideFile); os.IsNotExist(err) {
+		return fmt.Errorf("compose override file not found: %s", m.composeOverrideFile)
+	}
+
+	// Create coverage directory in cli/it/coverage with proper permissions to avoid Docker mount issues
 	m.reporter.LogPhase1Detail("Creating coverage directory...")
-	coverageDir := filepath.Join(filepath.Dir(m.composeFile), "coverage", "gateway-controller")
+	coverageDir := filepath.Join(filepath.Dir(m.composeOverrideFile), "coverage", "gateway-controller")
 	if err := os.MkdirAll(coverageDir, 0755); err != nil {
 		log.Printf("Warning: Could not create coverage directory: %v", err)
 	}
@@ -269,13 +229,14 @@ func (m *InfrastructureManager) startGatewayStack() error {
 	m.reporter.LogPhase1Detail("Starting sample-backend container...")
 	m.reporter.LogPhase1Detail("Starting mcp-server-backend container...")
 
-	// Start the compose stack using native docker compose command
+	// Start the compose stack using native docker compose command with override file
 	cmd := exec.CommandContext(m.ctx, "docker", "compose",
 		"-f", m.composeFile,
+		"-f", m.composeOverrideFile,
 		"-p", m.composeProjectName,
 		"up", "-d", "--wait",
 	)
-	cmd.Dir = filepath.Dir(m.composeFile)
+	cmd.Dir = filepath.Dir(m.composeOverrideFile)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		m.reporter.LogPhase1Fail("GATEWAY", "Failed to start stack", string(output))
@@ -307,12 +268,18 @@ func (m *InfrastructureManager) stopGatewayStack() {
 		return
 	}
 
-	cmd := exec.CommandContext(m.ctx, "docker", "compose",
-		"-f", m.composeFile,
-		"-p", m.composeProjectName,
-		"down", "-v", "--remove-orphans",
-	)
-	cmd.Dir = filepath.Dir(m.composeFile)
+	args := []string{"compose", "-f", m.composeFile}
+	if m.composeOverrideFile != "" {
+		args = append(args, "-f", m.composeOverrideFile)
+	}
+	args = append(args, "-p", m.composeProjectName, "down", "-v", "--remove-orphans")
+
+	cmd := exec.CommandContext(m.ctx, "docker", args...)
+	if m.composeOverrideFile != "" {
+		cmd.Dir = filepath.Dir(m.composeOverrideFile)
+	} else {
+		cmd.Dir = filepath.Dir(m.composeFile)
+	}
 	_ = cmd.Run() // Ignore errors during cleanup
 }
 
@@ -366,12 +333,18 @@ func (m *InfrastructureManager) Teardown() error {
 
 	// Stop compose stack using native docker compose
 	if m.composeFile != "" {
-		cmd := exec.Command("docker", "compose",
-			"-f", m.composeFile,
-			"-p", m.composeProjectName,
-			"down", "-v", "--remove-orphans",
-		)
-		cmd.Dir = filepath.Dir(m.composeFile)
+		args := []string{"compose", "-f", m.composeFile}
+		if m.composeOverrideFile != "" {
+			args = append(args, "-f", m.composeOverrideFile)
+		}
+		args = append(args, "-p", m.composeProjectName, "down", "-v", "--remove-orphans")
+
+		cmd := exec.Command("docker", args...)
+		if m.composeOverrideFile != "" {
+			cmd.Dir = filepath.Dir(m.composeOverrideFile)
+		} else {
+			cmd.Dir = filepath.Dir(m.composeFile)
+		}
 		_ = cmd.Run() // Ignore errors during cleanup
 	}
 
