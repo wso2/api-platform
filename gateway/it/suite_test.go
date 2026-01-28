@@ -83,6 +83,7 @@ func TestFeatures(t *testing.T) {
 				"features/llm-provider-templates.feature",
 				"features/analytics-header-filter.feature",
 				"features/lazy-resources-xds.feature",
+				"features/token-based-ratelimit.feature",
 			},
 			TestingT: t,
 		},
