@@ -446,26 +446,23 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 		assert.False(t, hasLabelError, "RestApi should accept valid labels")
 	})
 
-	// Test Asyncwebsub
-	t.Run("Asyncwebsub with valid labels", func(t *testing.T) {
+	// Test WebSubApi
+	t.Run("WebSubApi with valid labels", func(t *testing.T) {
 		specUnion := api.APIConfiguration_Spec{}
 		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			Name:    "TestAPI",
-			Version: "v1.0",
-			Context: "/test",
-			Servers: []api.Server{
-				{
-					Url:      "http://example.com",
-					Protocol: api.Websub,
-				},
-			},
+			DisplayName: "TestAPI",
+			Version:     "v1.0",
+			Context:     "/test",
 			Channels: []api.Channel{
-				{Path: "/events"},
+				{
+					Name:   "/events",
+					Method: api.SUB,
+				},
 			},
 		})
 		config := &api.APIConfiguration{
 			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.Asyncwebsub,
+			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &validLabels,
@@ -481,7 +478,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 				break
 			}
 		}
-		assert.False(t, hasLabelError, "Asyncwebsub should accept valid labels")
+		assert.False(t, hasLabelError, "WebSubApi should accept valid labels")
 	})
 
 	// Test with invalid labels for both types
@@ -526,25 +523,22 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 		assert.True(t, hasLabelError, "RestApi should reject labels with spaces in keys")
 	})
 
-	t.Run("Asyncwebsub with invalid labels", func(t *testing.T) {
+	t.Run("WebSubApi with invalid labels", func(t *testing.T) {
 		specUnion := api.APIConfiguration_Spec{}
 		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			Name:    "TestAPI",
-			Version: "v1.0",
-			Context: "/test",
-			Servers: []api.Server{
-				{
-					Url:      "http://example.com",
-					Protocol: api.Websub,
-				},
-			},
+			DisplayName: "TestAPI",
+			Version:     "v1.0",
+			Context:     "/test",
 			Channels: []api.Channel{
-				{Path: "/events"},
+				{
+					Name:   "/events",
+					Method: api.SUB,
+				},
 			},
 		})
 		config := &api.APIConfiguration{
 			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.Asyncwebsub,
+			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &invalidLabels,
@@ -560,6 +554,6 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 				break
 			}
 		}
-		assert.True(t, hasLabelError, "Asyncwebsub should reject labels with spaces in keys")
+		assert.True(t, hasLabelError, "WebSubApi should reject labels with spaces in keys")
 	})
 }

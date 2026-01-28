@@ -606,20 +606,17 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 		assert.Equal(t, labels, retrieved)
 	})
 
-	t.Run("Asyncwebsub with labels", func(t *testing.T) {
+	t.Run("WebSubApi with labels", func(t *testing.T) {
 		specUnion := api.APIConfiguration_Spec{}
 		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			Name:    "AsyncAPILabel",
-			Version: "v1.0",
-			Context: "/async",
-			Servers: []api.Server{
-				{
-					Url:      "http://example.com",
-					Protocol: api.Websub,
-				},
-			},
+			DisplayName: "AsyncAPILabel",
+			Version:     "v1.0",
+			Context:     "/async",
 			Channels: []api.Channel{
-				{Path: "/events"},
+				{
+					Name:   "/events",
+					Method: api.SUB,
+				},
 			},
 		})
 
@@ -627,7 +624,7 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 			ID: uuid.New().String(),
 			Configuration: api.APIConfiguration{
 				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-				Kind:       api.Asyncwebsub,
+				Kind:       api.WebSubApi,
 				Metadata: api.Metadata{
 					Name:   "async-api-v1.0",
 					Labels: &labels,
