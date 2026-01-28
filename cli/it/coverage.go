@@ -37,6 +37,7 @@ func DefaultCoverageConfig() *coverage.CoverageConfig {
 			"github.com/wso2/api-platform/gateway/",
 			"github.com/wso2/api-platform/",
 		},
+		ReportPrefix: "cli-integration-test-coverage",
 	}
 }
 

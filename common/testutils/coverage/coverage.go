@@ -41,6 +41,17 @@ type CoverageConfig struct {
 
 	// ModulePrefixes are the module prefixes to strip when displaying package names
 	ModulePrefixes []string
+
+	// ReportPrefix is the prefix for output report files (default: "integration-test-coverage")
+	ReportPrefix string
+}
+
+// GetReportPrefix returns the report prefix, defaulting to "integration-test-coverage"
+func (c *CoverageConfig) GetReportPrefix() string {
+	if c.ReportPrefix == "" {
+		return "integration-test-coverage"
+	}
+	return c.ReportPrefix
 }
 
 // CoverageCollector manages coverage data collection and report generation
