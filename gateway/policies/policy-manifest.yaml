@@ -59,7 +59,7 @@ policies:
   - name: url-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0.1.0
   - name: token-based-ratelimit
-    gomodule: github.com/Tharsanan1/gateway-controllers/policies/token-based-ratelimit@v0.1.2
+    gomodule: github.com/Tharsanan1/gateway-controllers/policies/token-based-ratelimit@v0.1.3
   - name: word-count-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0.1.0
   - name: xml-to-json
