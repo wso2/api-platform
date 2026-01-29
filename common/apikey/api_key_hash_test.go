@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package policyv1alpha
+package apikey
 
 import (
 	"crypto/rand"
