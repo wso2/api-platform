@@ -83,6 +83,10 @@ func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 			Content: payload,
 		})
 	})
+
+	ctx.Step(`^I get the MCP proxy "([^"]*)"$`, func(name string) error {
+		return httpSteps.SendGETToService("gateway-controller", "/mcp-proxies/"+name)
+	})
 }
 
 func generateMcpPayload(method string) string {

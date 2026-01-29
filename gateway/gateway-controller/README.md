@@ -74,7 +74,7 @@ docker run -p 9090:9090 -p 18000:18000 \
 
 The Gateway-Controller supports configuration via:
 1. **Configuration file** (YAML)
-2. **Environment variables** (prefix: `GATEWAY_`)
+2. **Environment variables** (prefix: `APIP_GW_`)
 3. **Command-line flags**
 
 Priority: Environment variables > Config file > Defaults
@@ -106,7 +106,7 @@ router:
 # Logging configuration
 logging:
   level: info             # "debug", "info", "warn", "error"
-  format: json            # "json" or "console"
+  format: json            # "json" or "text"
 ```
 
 ### Command-Line Flags
@@ -118,28 +118,28 @@ logging:
 
 ### Environment Variables
 
-Override any configuration value using the `GATEWAY_` prefix:
+Override any configuration value using the `APIP_GW_` prefix:
 
 ```bash
 # Override server API port
-export GATEWAY_SERVER_API_PORT=9091
+export APIP_GW_GATEWAY__CONTROLLER_SERVER_API__PORT=9091
 
 # Set storage type to memory
-export GATEWAY_STORAGE_TYPE=memory
+export APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=memory
 
 # Override SQLite database path
-export GATEWAY_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+export APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=/custom/path/gateway.db
 
 # Disable access logs
-export GATEWAY_ROUTER_ACCESS_LOGS_ENABLED=false
+export APIP_GW_GATEWAY__CONTROLLER_ROUTER_ACCESS__LOGS_ENABLED=false
 
 # Set debug logging
-export GATEWAY_LOGGING_LEVEL=debug
+export APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
 
 ./bin/controller
 ```
 
-Environment variable naming: `GATEWAY_<SECTION>_<KEY>` (uppercase, underscore-separated)
+Environment variable naming: `APIP_GW_<SECTION>_<KEY>` (uppercase, underscore-separated, double underscores preserve literal underscores in field names)
 
 ### Configuration Modes
 
@@ -519,10 +519,10 @@ The Gateway-Controller uses structured logging (Zap) with configurable levels.
 
 ```bash
 # Using environment variable
-GATEWAY_LOGGING_LEVEL=debug ./bin/controller
+APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug ./bin/controller
 
 # Or using config file
-export GATEWAY_LOGGING_LEVEL=debug
+export APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
 ./bin/controller
 ```
 

@@ -1826,6 +1826,15 @@ components:
           type: string
           description: Unique handle for the resource
           example: weather-api-v1.0
+        labels:
+          type: object
+          description: Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.
+          additionalProperties:
+            type: string
+          example:
+            environment: production
+            team: backend
+            version: v1
 
     APIConfigData:
       type: object

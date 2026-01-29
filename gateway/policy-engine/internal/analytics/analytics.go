@@ -57,8 +57,6 @@ const (
 	DefaultAnalyticsPublisher = "default"
 	// MoesifAnalyticsPublisher represents the Moesif analytics publisher.
 	MoesifAnalyticsPublisher = "moesif"
-	// ELKAnalyticsPublisher represents the ELK analytics publisher.
-	ELKAnalyticsPublisher = "elk"
 
 	// HeaderKeys represents the header keys.
 	RequestHeadersKey  = "request_headers"
@@ -190,7 +188,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	extendedAPI.OrganizationID = keyValuePairsFromMetadata[APIOrganizationIDKey]
 	extendedAPI.APIContext = keyValuePairsFromMetadata[APIContextKey]
 	extendedAPI.EnvironmentID = keyValuePairsFromMetadata[APIEnvironmentKey]
-
+	extendedAPI.ProjectID = keyValuePairsFromMetadata[ProjectIDKey]
+	
 	request := logEntry.GetRequest()
 	response := logEntry.GetResponse()
 

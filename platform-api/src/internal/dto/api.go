@@ -221,7 +221,8 @@ type APIDeploymentYAML struct {
 
 // APIDeploymentMetadata represents the metadata section of the API deployment YAML
 type APIDeploymentMetadata struct {
-	Name string `yaml:"name" binding:"required"`
+	Name   string            `yaml:"name" binding:"required"`
+	Labels map[string]string `yaml:"labels,omitempty"`
 }
 
 // APIYAMLData represents a basic spec section of the API deployment YAML

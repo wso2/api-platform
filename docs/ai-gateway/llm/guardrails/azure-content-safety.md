@@ -54,17 +54,17 @@ These parameters are typically configured at the gateway level and automatically
 | `azureContentSafetyEndpoint` | string | Yes | Azure Content Safety API endpoint URL (without trailing slash). Example: `https://your-resource.cognitiveservices.azure.com` |
 | `azureContentSafetyKey` | string | Yes | Azure Content Safety API subscription key for authentication. Found in Azure Portal under your Content Safety resource's "Keys and Endpoint" section. |
 
-### Configuring System Parameters in config.yaml
+### Configuring System Parameters in config.toml
 
-System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all Azure Content Safety guardrail policy instances and can be overridden per-policy in the API configuration if needed.
+System parameters can be configured globally in the gateway's `config.toml` file. These values serve as defaults for all Azure Content Safety guardrail policy instances and can be overridden per-policy in the API configuration if needed.
 
-#### Location in config.yaml
+#### Location in config.toml
 
-Add the following configuration section to your `config.yaml` file:
+Add the following configuration section to your `config.toml` file:
 
-```yaml
-azurecontentsafety_endpoint: "https://your-resource.cognitiveservices.azure.com"
-azurecontentsafety_key: "<your-azure-content-safety-key>"
+```toml
+azurecontentsafety_endpoint = "https://your-resource.cognitiveservices.azure.com"
+azurecontentsafety_key = "<your-azure-content-safety-key>"
 ```
 
 ## Severity Levels

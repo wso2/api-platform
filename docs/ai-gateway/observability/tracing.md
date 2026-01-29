@@ -36,18 +36,18 @@ Distributed tracing tracks a request as it flows through multiple components:
 
 You need to enable tracing in the gateway configuration file and point it to your OTLP collector endpoint.
 
-The tracing configuration is located in `gateway/configs/config.yaml`:
+The tracing configuration is located in `gateway/configs/config.toml`:
 
 #### Policy Engine Tracing Configuration
 
-```yaml
-tracing:
-  enabled: true                          # Set to true to enable tracing
-  endpoint: otel-collector:4317          # OTLP collector gRPC endpoint
-  service_version: "0.2.0"               # Service version
-  batch_timeout: 1s                      # Batch timeout for exporting spans
-  max_export_batch_size: 512             # Maximum spans per batch
-  sampling_rate: 1.0                     # Sample rate (1.0 = 100%, 0.5 = 50%)
+```toml
+[tracing]
+enabled = true                          # Set to true to enable tracing
+endpoint = "otel-collector:4317"        # OTLP collector gRPC endpoint
+service_version = "0.2.0"               # Service version
+batch_timeout = "1s"                    # Batch timeout for exporting spans
+max_export_batch_size = 512             # Maximum spans per batch
+sampling_rate = 1.0                     # Sample rate (1.0 = 100%, 0.5 = 50%)
 ```
 
 ### Demonstrated Tracing Services
@@ -178,9 +178,9 @@ View how services interact:
 
 To reduce trace volume in high-traffic environments, adjust the sampling rate:
 
-```yaml
-tracing:
-  sampling_rate: 0.1  # Sample 10% of requests
+```toml
+[tracing]
+sampling_rate = 0.1  # Sample 10% of requests
 ```
 
 Sampling strategies:
@@ -196,19 +196,19 @@ Sampling strategies:
 
 Customize service names for better identification:
 
-```yaml
-policy_engine:
-  service_name: policy-engine-prod-us-east-1
+```toml
+[policy_engine]
+service_name = "policy-engine-prod-us-east-1"
 ```
 
 ### Batch Configuration
 
 Optimize batch settings for your environment:
 
-```yaml
-tracing:
-  batch_timeout: 5s              # Wait up to 5s before exporting
-  max_export_batch_size: 1024    # Export up to 1024 spans per batch
+```toml
+[tracing]
+batch_timeout = "5s"            # Wait up to 5s before exporting
+max_export_batch_size = 1024    # Export up to 1024 spans per batch
 ```
 
 **Lower timeout**: Faster trace visibility, more network overhead
@@ -729,7 +729,7 @@ Choose sampling based on traffic volume:
 
 **1. Verify tracing is enabled in configuration:**
 ```bash
-cat gateway/configs/config.yaml | grep -A5 "tracing:"
+cat gateway/configs/config.toml | grep -A5 "tracing"
 ```
 
 Ensure `enabled: true`.
@@ -774,16 +774,16 @@ docker logs gateway-controller | grep -i trace
 ### High Trace Export Overhead
 
 **1. Reduce sampling rate:**
-```yaml
-tracing:
-  sampling_rate: 0.1  # Reduce from 1.0 to 0.1
+```toml
+[tracing]
+sampling_rate = 0.1  # Reduce from 1.0 to 0.1
 ```
 
 **2. Increase batch size:**
-```yaml
-tracing:
-  batch_timeout: 5s
-  max_export_batch_size: 2048
+```toml
+[tracing]
+batch_timeout = "5s"
+max_export_batch_size = 2048
 ```
 
 **3. Use tail-based sampling** in OTLP collector to sample only important traces
@@ -815,15 +815,14 @@ curl http://localhost:16686/
 
 To completely disable tracing:
 
-1. **Update configuration** in `gateway/configs/config.yaml`:
+1. **Update configuration** in `gateway/configs/config.toml`:
 
-```yaml
-policy_engine:
-  tracing:
-    enabled: false
+```toml
+[policy_engine.tracing]
+enabled = false
 
-tracing:
-  enabled: false
+[tracing]
+enabled = false
 ```
 
 2. **Restart gateway services:**
