@@ -1,5 +1,5 @@
 name: basic-ratelimit
-version: v0.1.1
+version: v0.1.2
 description: |
   Simple request rate limiting policy that limits the number of requests per time window.
   Uses route name as the rate limit key. For advanced rate limiting with multi-dimensional
@@ -103,7 +103,7 @@ systemParameters:
           type: string
           description: Prefix for all Redis keys to avoid conflicts
           default: "ratelimit:v1:"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.keyprefix}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.key_prefix}"
 
         failureMode:
           type: string
@@ -112,25 +112,25 @@ systemParameters:
             'closed' denies requests. Recommended: 'open' for availability.
           enum: ["open", "closed"]
           default: "open"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.failuremode}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.failure_mode}"
 
         connectionTimeout:
           type: string
           description: Redis connection timeout (Go duration string)
           default: "5s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.connectiontimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.connection_timeout}"
 
         readTimeout:
           type: string
           description: Redis read timeout (Go duration string)
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.readtimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.read_timeout}"
 
         writeTimeout:
           type: string
           description: Redis write timeout (Go duration string)
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.writetimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.write_timeout}"
 
     memory:
       type: object
@@ -145,7 +145,7 @@ systemParameters:
           minimum: 100
           maximum: 10000000
           default: 10000
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.maxentries}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.max_entries}"
 
         cleanupInterval:
           type: string
@@ -153,4 +153,4 @@ systemParameters:
             Interval for cleaning up expired entries (Go duration string).
             Use "0" to disable periodic cleanup.
           default: "5m"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.cleanupinterval}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.cleanup_interval}"
