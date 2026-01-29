@@ -47,7 +47,7 @@ jobs:
       - name: Build CLI binary
         run: |
           cd cli/it
-          make build-cli
+          make build-cli-coverage
 
       - name: Run CLI integration tests
         continue-on-error: true
