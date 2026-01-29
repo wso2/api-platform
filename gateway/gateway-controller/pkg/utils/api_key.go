@@ -212,7 +212,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 						slog.String("handle", params.Handle),
 						slog.String("operation", operationType + "_key"),
 						slog.String("correlation_id", params.CorrelationID))
-					return nil, fmt.Errorf("the provided API key already exists in the system")
+					return nil, fmt.Errorf("%w: provided API key already exists", storage.ErrConflict)
 				}
 
 				// For local keys, retry with a new generated key
@@ -1614,10 +1614,18 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 		return fmt.Errorf("API not found: %s", apiId)
 	}
 
-	// Check if an API key with this name already exists
-	existingKeys, err := s.db.GetAPIKeysByAPI(apiId)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return fmt.Errorf("failed to check existing keys: %w", err)
+	// Check if an API key with this name already exists (db or in-memory store)
+	var existingKeys []*models.APIKey
+	if s.db != nil {
+		existingKeys, err = s.db.GetAPIKeysByAPI(apiId)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return fmt.Errorf("failed to check existing keys: %w", err)
+		}
+	} else {
+		existingKeys, err = s.store.GetAPIKeysByAPI(apiId)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return fmt.Errorf("failed to check existing keys: %w", err)
+		}
 	}
 
 	for _, key := range existingKeys {
@@ -1645,17 +1653,25 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 			key.Source = "external"
 			key.ExternalRefId = externalRefId
 
-			if err := s.db.UpdateAPIKey(key); err != nil {
-				return fmt.Errorf("failed to update API key: %w", err)
+			if s.db != nil {
+				if err := s.db.UpdateAPIKey(key); err != nil {
+					return fmt.Errorf("failed to update API key: %w", err)
+				}
 			}
 
-			// Trigger xDS snapshot update via xdsManager
-			if err := s.xdsManager.StoreAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), key, "external-update"); err != nil {
-				logger.Error("Failed to update xDS snapshot after API key update",
-					slog.String("api_id", apiId),
-					slog.Any("error", err),
-				)
-				return fmt.Errorf("failed to update xDS snapshot: %w", err)
+			// Upsert into in-memory ConfigStore
+			if err := s.store.StoreAPIKey(key); err != nil {
+				return fmt.Errorf("failed to update API key in config store: %w", err)
+			}
+
+			// Trigger xDS snapshot update via xdsManager (log only, do not fail)
+			if s.xdsManager != nil {
+				if err := s.xdsManager.StoreAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), key, "external-update"); err != nil {
+					logger.Error("Failed to update xDS snapshot after API key update",
+						slog.String("api_id", apiId),
+						slog.Any("error", err),
+					)
+				}
 			}
 
 			logger.Info("Successfully updated external API key",
@@ -1666,6 +1682,19 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 
 			return nil
 		}
+	}
+
+	// Enforce API key quota/limit for this API before creating a NEW key.
+	// External events don't carry an end-user identity, so we attribute quota checks to the
+	// external creator ("platform-api") to ensure we never exceed the configured maximum.
+	if err := s.enforceAPIKeyLimit(apiId, "platform-api", logger); err != nil {
+		logger.Warn("API key creation limit exceeded for external event",
+			slog.String("api_id", apiId),
+			slog.String("key_name", keyName),
+			slog.String("created_by", "platform-api"),
+			slog.Any("error", err),
+		)
+		return err
 	}
 
 	// Generate unique ID for the key
@@ -1701,22 +1730,31 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 		ExternalRefId: externalRefId,
 	}
 
-	// Store in database
-	if err := s.db.SaveAPIKey(apiKey); err != nil {
-		if errors.Is(err, storage.ErrConflict) {
-			return fmt.Errorf("API key with name '%s' already exists", keyName)
+	// Store in database (optional)
+	if s.db != nil {
+		if err := s.db.SaveAPIKey(apiKey); err != nil {
+			if errors.Is(err, storage.ErrConflict) {
+				return fmt.Errorf("API key with name '%s' already exists", keyName)
+			}
+			return fmt.Errorf("failed to store API key: %w", err)
 		}
-		return fmt.Errorf("failed to store API key: %w", err)
 	}
 
-	// Trigger xDS snapshot update to propagate to policy engine via xdsManager
-	if err := s.xdsManager.StoreAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), apiKey, "external-create"); err != nil {
-		logger.Error("Failed to update xDS snapshot after API key creation",
-			slog.String("api_id", apiId),
-			slog.Any("error", err),
-		)
-		// Don't return error - key is already stored in DB
-		// Policy engine will get it on next full sync
+	// Upsert into in-memory ConfigStore
+	if err := s.store.StoreAPIKey(apiKey); err != nil {
+		return fmt.Errorf("failed to store API key in config store: %w", err)
+	}
+
+	// Trigger xDS snapshot update to propagate to policy engine via xdsManager (log only, do not fail)
+	if s.xdsManager != nil {
+		if err := s.xdsManager.StoreAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), apiKey, "external-create"); err != nil {
+			logger.Error("Failed to update xDS snapshot after API key creation",
+				slog.String("api_id", apiId),
+				slog.Any("error", err),
+			)
+			// Don't return error - key is already stored in DB/store
+			// Policy engine will get it on next full sync
+		}
 	}
 
 	logger.Info("Successfully created external API key",
@@ -1759,15 +1797,35 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 	}
 
 	// Get API keys for this API
-	apiKeys, err := s.db.GetAPIKeysByAPI(apiId)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			logger.Warn("No API keys found for API, skipping revocation",
+	var apiKeys []*models.APIKey
+	if s.db != nil {
+		apiKeys, err = s.db.GetAPIKeysByAPI(apiId)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				logger.Warn("No API keys found for API, skipping revocation",
+					slog.String("api_id", apiId),
+				)
+				return nil // Idempotent - no keys to revoke
+			}
+			return fmt.Errorf("failed to get API keys: %w", err)
+		}
+	} else {
+		// DB is optional; fall back to in-memory store for idempotent revocation handling
+		apiKeys, err = s.store.GetAPIKeysByAPI(apiId)
+		if err != nil {
+			// Treat errors as non-fatal; absence of keys is idempotent
+			logger.Warn("Failed to get API keys from in-memory store, skipping revocation",
+				slog.String("api_id", apiId),
+				slog.Any("error", err),
+			)
+			return nil
+		}
+		if len(apiKeys) == 0 {
+			logger.Warn("No API keys found for API (in-memory), skipping revocation",
 				slog.String("api_id", apiId),
 			)
 			return nil // Idempotent - no keys to revoke
 		}
-		return fmt.Errorf("failed to get API keys: %w", err)
 	}
 
 	// Find the key by name
@@ -1792,17 +1850,26 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 	targetKey.UpdatedAt = time.Now()
 
 	// Update in database
-	if err := s.db.UpdateAPIKey(targetKey); err != nil {
-		return fmt.Errorf("failed to update API key status: %w", err)
+	if s.db != nil {
+		if err := s.db.UpdateAPIKey(targetKey); err != nil {
+			return fmt.Errorf("failed to update API key status: %w", err)
+		}
 	}
 
-	// Trigger xDS snapshot update to propagate to policy engine via xdsManager
-	if err := s.xdsManager.RevokeAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), keyName, "external-revoke"); err != nil {
-		logger.Error("Failed to update xDS snapshot after API key revocation",
-			slog.String("api_id", apiId),
-			slog.Any("error", err),
-		)
-		// Don't return error - key is already revoked in DB
+	// Remove from in-memory ConfigStore so cache isn't stale
+	if err := s.store.RemoveAPIKeyByID(apiId, targetKey.ID); err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return fmt.Errorf("failed to remove API key from config store: %w", err)
+	}
+
+	// Trigger xDS snapshot update to propagate to policy engine via xdsManager (optional; log only)
+	if s.xdsManager != nil {
+		if err := s.xdsManager.RevokeAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), keyName, "external-revoke"); err != nil {
+			logger.Error("Failed to update xDS snapshot after API key revocation",
+				slog.String("api_id", apiId),
+				slog.Any("error", err),
+			)
+			// Don't return error - key is already revoked in DB/store
+		}
 	}
 
 	logger.Info("Successfully revoked external API key",

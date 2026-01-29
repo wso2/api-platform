@@ -112,7 +112,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	gatewayHandler := handler.NewGatewayHandler(gatewayService)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService)
-	apiKeyInternalHandler := handler.NewAPIKeyInternalHandler(gatewayService, apiKeyService)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	gitHandler := handler.NewGitHandler(gitService)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService)
 
@@ -144,7 +144,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	gatewayHandler.RegisterRoutes(router)
 	wsHandler.RegisterRoutes(router)
 	internalGatewayHandler.RegisterRoutes(router)
-	apiKeyInternalHandler.RegisterRoutes(router)
+	apiKeyHandler.RegisterRoutes(router)
 	gitHandler.RegisterRoutes(router)
 	deploymentHandler.RegisterRoutes(router)
 

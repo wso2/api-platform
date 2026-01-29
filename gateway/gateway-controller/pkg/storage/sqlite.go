@@ -242,12 +242,32 @@ func (s *SQLiteStorage) initSchema() error {
 				}
 			}
 
-			// Add external API key support columns
-			if _, err := s.db.Exec(`ALTER TABLE api_keys ADD COLUMN source TEXT NOT NULL DEFAULT 'local';`); err != nil {
-				return fmt.Errorf("failed to add source column to api_keys: %w", err)
+			// Add external API key support columns (only if missing; fresh DBs may already have them)
+			err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('api_keys') WHERE name = 'source'`).Scan(&columnExists)
+			if err == nil && columnExists == 0 {
+				if _, err := s.db.Exec(`ALTER TABLE api_keys ADD COLUMN source TEXT NOT NULL DEFAULT 'local'`); err != nil {
+					return fmt.Errorf("failed to add source column to api_keys: %w", err)
+				}
 			}
-			if _, err := s.db.Exec(`ALTER TABLE api_keys ADD COLUMN external_ref_id TEXT NULL;`); err != nil {
-				return fmt.Errorf("failed to add external_ref_id column to api_keys: %w", err)
+			err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('api_keys') WHERE name = 'external_ref_id'`).Scan(&columnExists)
+			if err == nil && columnExists == 0 {
+				if _, err := s.db.Exec(`ALTER TABLE api_keys ADD COLUMN external_ref_id TEXT NULL`); err != nil {
+					return fmt.Errorf("failed to add external_ref_id column to api_keys: %w", err)
+				}
+			}
+			// Backfill legacy keys: treat empty or 'null' source as 'local' (DB + local cache consistency)
+			if _, err := s.db.Exec(`
+				UPDATE api_keys
+				SET source = 'local'
+				WHERE source != 'local'
+				AND (
+					source IS NULL
+					OR trim(source) = ''
+					OR lower(trim(source)) = 'null'
+				)
+			`); 
+			err != nil {
+				s.logger.Warn("Failed to backfill api_keys.source for legacy keys", slog.Any("error", err))
 			}
 			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);`); err != nil {
 				return fmt.Errorf("failed to create api_keys source index: %w", err)

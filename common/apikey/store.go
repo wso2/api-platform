@@ -77,6 +77,16 @@ const (
 
 const APIKeySeparator = "_"
 
+// effectiveSource returns the effective source for matching: empty or "null" is treated as "local" for legacy keys.
+// Persisted storage (e.g. gateway-controller SQLite) is migrated to set source = 'local' by default; this
+// fallback covers the in-memory store and any key that arrives with empty/null source (e.g. via xDS/sync).
+func effectiveSource(source string) string {
+	if source == "" {
+		return "local"
+	}
+	return source
+}
+
 // Common storage errors - implementation agnostic
 var (
 	// ErrNotFound is returned when an API key is not found
@@ -170,16 +180,12 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 
 	var targetAPIKey *APIKey
 
-	// Quick check: Does the key contain the separator character?
-	// Local keys have format: key_value_{id} (contains underscore)
-	// External keys are arbitrary strings (may or may not contain underscore)
-
 	// Try to parse as local key (format: key_id)
 	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
 	if ok {
 		// Optimized O(1) lookup for local keys using ID
 		apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
-		if exists && apiKey.Source == "local" && compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
+		if exists && effectiveSource(apiKey.Source) == "local" && compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
 			targetAPIKey = apiKey
 		}
 	}
@@ -191,7 +197,7 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		if exists {
 			for _, apiKey := range apiKeys {
 				// For external keys, compare the full provided key directly (no parsing)
-				if apiKey.Source == "external" && compareAPIKeys(providedAPIKey, apiKey.APIKey) {
+				if effectiveSource(apiKey.Source) == "external" && compareAPIKeys(providedAPIKey, apiKey.APIKey) {
 					targetAPIKey = apiKey
 					break
 				}
@@ -254,19 +260,13 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 
 	var matchedKey *APIKey
 
-	// Quick check: Does the key contain the separator character?
-	// Local keys have format: key_value_{id} (contains underscore)
-	// External keys are arbitrary strings (may or may not contain underscore)
-	hasLocalKeyFormat := strings.Contains(providedAPIKey, APIKeySeparator)
 
-	if hasLocalKeyFormat {
-		// Try to parse as local key (format: key_id)
-		parsedAPIkey, ok := parseAPIKey(providedAPIKey)
-		if ok {
-			apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
-			if exists && apiKey.Source == "local" && compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
-				matchedKey = apiKey
-			}
+	// Try to parse as local key (format: key_id); empty Source treated as "local"
+	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
+	if ok {
+		apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
+		if exists && effectiveSource(apiKey.Source) == "local" && compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
+			matchedKey = apiKey
 		}
 	}
 

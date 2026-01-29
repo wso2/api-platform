@@ -2231,6 +2231,7 @@ components:
           example: my-weather-api-key
         api_key:
           type: string
+          minLength: 16
           description: |
             Optional plain-text API key value for external key injection.
             If provided, this key will be used instead of generating a new one.
