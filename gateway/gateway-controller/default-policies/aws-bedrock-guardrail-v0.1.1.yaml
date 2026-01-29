@@ -100,12 +100,10 @@ systemParameters:
     awsRoleARN:
       type: string
       description: AWS IAM role ARN to assume (for role-based authentication). If specified, runtime assumes this role instead of using static credentials.
-      minLength: 1
       "wso2/defaultValue": "${config.awsbedrock_role_arn}"
     awsRoleRegion:
       type: string
       description: AWS region for role assumption (required if awsRoleARN is specified).
-      minLength: 1
       "wso2/defaultValue": "${config.awsbedrock_role_region}"
     awsRoleExternalID:
       type: string
