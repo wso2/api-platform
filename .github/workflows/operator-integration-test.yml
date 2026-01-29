@@ -472,9 +472,9 @@ jobs:
                       # Log level: "debug", "info", "warn", or "error"
                       level: debug
 
-                      # Log format: "json" or "console"
+                      # Log format: "json" or "text"
                       # - json: Structured JSON format (recommended for production)
-                      # - console: Human-readable console format (recommended for development)
+                      # - text: Human-readable text format (recommended for development)
                       format: json
 
                   policy_engine:
@@ -841,7 +841,6 @@ jobs:
             name: test-gateway
             namespace: default
           spec:
-            gatewayClassName: "test"
             apiSelector:
               scope: Cluster
             configRef:
@@ -975,7 +974,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0.1.0
+                version: v0.1.1
                 params:
                   issuers:
                     - MockKeyManager
@@ -1053,7 +1052,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0.1.0
+                version: v0.1.1
                 params:
                   issuers:
                     - DummyKeyManager
@@ -1296,7 +1295,6 @@ jobs:
             name: scoped-gateway
             namespace: scoped-test
           spec:
-            gatewayClassName: "test"
             apiSelector:
               scope: Cluster
             configRef:
@@ -1330,18 +1328,41 @@ jobs:
           kubectl wait --for=condition=Programmed restapi/scoped-api -n scoped-test --timeout=120s
 
           echo "Invoking scoped API..."
+          
+          # Wait for the router deployment to be fully ready
+          echo "Waiting for scoped gateway router deployment rollout..."
+          kubectl rollout status deployment/scoped-gateway-gateway-router -n scoped-test --timeout=120s
+          
+          # Additional wait for Envoy to initialize and start listening
+          echo "Waiting for router to be ready to accept connections..."
+          sleep 10
+          
           # Port forward the scoped gateway router
           kubectl port-forward svc/scoped-gateway-gateway-router -n scoped-test 9090:8080 &
           PF_PID=$!
           sleep 5
           
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090/scoped/get)
-          echo "Scoped API returned: $CODE"
+          # Retry logic for API invocation
+          MAX_RETRIES=5
+          RETRY_DELAY=5
+          CODE=""
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i of $MAX_RETRIES..."
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 http://localhost:9090/scoped/get 2>/dev/null || echo "000")
+            echo "Scoped API returned: $CODE"
+            if [ "$CODE" = "200" ]; then
+              break
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            fi
+          done
           
           kill $PF_PID || true
           
           if [ "$CODE" != "200" ]; then
-             echo "FAILED: Scoped API invocation failed"
+             echo "FAILED: Scoped API invocation failed after $MAX_RETRIES attempts"
              exit 1
           fi
 
@@ -1420,6 +1441,10 @@ jobs:
           echo ""
           echo "=== All Pods Description ==="
           kubectl describe pods --all-namespaces || true
+
+          echo ""
+          echo "=== Gateway Config ConfigMap ==="
+          kubectl get configmap -l app.kubernetes.io/instance=ap-gw -o yaml || true
 
           echo ""
           echo "=== APIGateway Controller Logs ==="

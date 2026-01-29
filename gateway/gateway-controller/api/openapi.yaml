@@ -1748,9 +1748,7 @@ components:
           example: RestApi
           enum:
             - RestApi
-            - async/websub
-            - async/websocket
-            - async/sse
+            - WebSubApi
         metadata:
           $ref: "#/components/schemas/Metadata"
         spec:
@@ -1768,6 +1766,15 @@ components:
           type: string
           description: Unique handle for the resource
           example: weather-api-v1.0
+        labels:
+          type: object
+          description: Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.
+          additionalProperties:
+            type: string
+          example:
+            environment: production
+            team: backend
+            version: v1
 
     APIConfigData:
       type: object
@@ -1857,6 +1864,17 @@ components:
         ref:
           type: string
           description: Reference to a predefined upstreamDefinition
+        hostRewrite:
+          type: string
+          enum:
+            - auto
+            - manual
+          default: auto
+          description: >
+            Controls how the Host header is handled when routing to the upstream.
+            `auto` delegates host rewriting to Envoy, which rewrites the Host header
+            using the upstream cluster host. `manual` disables automatic rewriting
+            and expects explicit configuration.
 
     Operation:
       type: object
@@ -1956,26 +1974,19 @@ components:
           items:
             $ref: "#/components/schemas/PolicyDefinition"
 
+
     # -----------------------
     # Webhook (Async) API schema
     # -----------------------
     WebhookAPIData:
       type: object
       required:
-        # - kind
-        - name
+        - displayName
         - version
         - context
-        - servers
         - channels
       properties:
-        # kind:
-        #   type: string
-        #   description: API type
-        #   example: async/websub
-        #   enum:
-        #     - async/websub
-        name:
+        displayName:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
           minLength: 1
@@ -1994,15 +2005,25 @@ components:
           minLength: 1
           maxLength: 200
           example: /weather
-        servers:
-          type: array
-          description: List of backend service URLs (for REST APIs) or event hub URLs (for async APIs)
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/Server'
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
         channels:
           type: array
-          description: List of operations - HTTP operations for REST APIs or event/topic operations for async APIs
+          description: List of channels - Async operations(SUB) for WebSub APIs
           minItems: 1
           items:
             $ref: '#/components/schemas/Channel'
@@ -2082,55 +2103,67 @@ components:
       type: object
       description: Channel (topic/event stream) definition for async APIs.
       required:
-        - path
+        - name
+        - method
       properties:
-        path:
+        name:
           type: string
-          description: Channel path or topic identifier relative to API context.
-          example: /issues
-        description:
+          description: Channel name or topic identifier relative to API context.
+          example: issues
+        method:
           type: string
-          description: Human-readable description of the channel.
-          example: GitHub issue events channel.
-        subscribe:
-          type: object
-          description: Consumer (receive) operation definition.
-          properties:
-            summary:
-              type: string
-              example: Receive issue events.
-            message:
-              $ref: '#/components/schemas/ChannelMessage'
-        publish:
-          type: object
-          description: Producer (send) operation definition.
-          properties:
-            summary:
-              type: string
-              example: Publish issue events.
-            message:
-              $ref: '#/components/schemas/ChannelMessage'
-        parameters:
-          type: object
-          description: Path/channel parameters (keyed by parameter name).
-          additionalProperties:
-            type: object
-            properties:
-              description:
-                type: string
-              schema:
-                type: object
-                description: JSON Schema fragment for the parameter value.
-                additionalProperties: true
-        bindings:
-          type: object
-          description: Protocol-specific channel bindings (arbitrary key/value structure).
-          additionalProperties: true
+          description: Operation method type.
+          enum:
+            - SUB
         policies:
           type: array
-          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          description: List of policies applied only to this channel (overrides or adds to API-level policies)
           items:
-            $ref: '#/components/schemas/Policy'
+            $ref: "#/components/schemas/Policy"
+        # subscribe:
+        #   type: object
+        #   description: Consumer (receive) operation definition.
+        #   properties:
+        #     summary:
+        #       type: string
+        #       example: Receive issue events.
+        #     policies:
+        #       type: array
+        #       description: List of policies applied only to this operation (overrides or adds to API-level policies)
+        #       items:
+        #         $ref: "#/components/schemas/Policy"
+        #     message:
+        #       $ref: '#/components/schemas/ChannelMessage'
+        # publish:
+        #   type: object
+        #   description: Producer (send) operation definition.
+        #   properties:
+        #     summary:
+        #       type: string
+        #       example: Publish issue events.
+        #     policies:
+        #       type: array
+        #       description: List of policies applied only to this operation (overrides or adds to API-level policies)
+        #       items:
+        #         $ref: "#/components/schemas/Policy"
+        #     message:
+        #       $ref: '#/components/schemas/ChannelMessage'
+        # parameters:
+        #   type: object
+        #   description: Path/channel parameters (keyed by parameter name).
+        #   additionalProperties:
+        #     type: object
+        #     properties:
+        #       description:
+        #         type: string
+        #       schema:
+        #         type: object
+        #         description: JSON Schema fragment for the parameter value.
+        #         additionalProperties: true
+        # bindings:
+        #   type: object
+        #   description: Protocol-specific channel bindings (arbitrary key/value structure).
+        #   additionalProperties: true
 
     # Message schema used within Channel publish/subscribe operations.
     ChannelMessage:

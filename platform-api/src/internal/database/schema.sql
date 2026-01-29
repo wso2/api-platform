@@ -86,6 +86,17 @@ CREATE TABLE IF NOT EXISTS api_key_security (
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
 
+-- XHub Signature Security Configuration table
+CREATE TABLE IF NOT EXISTS xhub_signature_security (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_uuid VARCHAR(40) NOT NULL,
+    enabled BOOLEAN,
+    header VARCHAR(255),
+    algorithm VARCHAR(50),
+    secret VARCHAR(255),
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
+);
+
 -- OAuth2 Security Configuration table
 CREATE TABLE IF NOT EXISTS oauth2_security (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

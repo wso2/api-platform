@@ -42,13 +42,9 @@ type Policy struct {
 
 // ValidatePolicyManifest validates the policy-manifest structure
 func ValidatePolicyManifest(manifest *PolicyManifest) error {
-	// Validate version field (required)
-	if manifest.Version == "" {
-		return fmt.Errorf("'version' field is required")
-	}
 
 	// Validate policies array
-	if manifest.Policies == nil || len(manifest.Policies) == 0 {
+	if len(manifest.Policies) == 0 {
 		return fmt.Errorf("'policies' array is required and must not be empty")
 	}
 
@@ -67,11 +63,6 @@ func validatePolicy(policy *Policy, index int) error {
 	// Validate name (required)
 	if policy.Name == "" {
 		return fmt.Errorf("policy[%d]: 'name' field is required", index)
-	}
-
-	// Validate version (required)
-	if policy.Version == "" {
-		return fmt.Errorf("policy[%d] (%s): 'version' field is required", index, policy.Name)
 	}
 
 	// Validate filePath if provided (check if file exists)

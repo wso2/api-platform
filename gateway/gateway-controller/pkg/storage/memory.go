@@ -42,6 +42,9 @@ type ConfigStore struct {
 
 	// API Keys storage
 	apiKeysByAPI map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
+
+	// Labels storage
+	labelsByAPI map[string]map[string]string // Key: API handle (metadata.name) → Value: labels map
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -55,6 +58,7 @@ func NewConfigStore() *ConfigStore {
 		templates:          make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle: make(map[string]string),
 		apiKeysByAPI:       make(map[string]map[string]*models.APIKey),
+		labelsByAPI:        make(map[string]map[string]string),
 	}
 }
 
@@ -78,7 +82,16 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	cs.handle[handle] = cfg.ID
 	cs.nameVersion[key] = cfg.ID
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	// Store labels if present
+	if cfg.Configuration.Metadata.Labels != nil {
+		labelsCopy := make(map[string]string)
+		for k, v := range *cfg.Configuration.Metadata.Labels {
+			labelsCopy[k] = v
+		}
+		cs.labelsByAPI[handle] = labelsCopy
+	}
+
+	if cfg.Configuration.Kind == api.WebSubApi {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -125,7 +138,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		cs.nameVersion[newKey] = cfg.ID
 	}
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -133,6 +146,36 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	}
 
 	cs.configs[cfg.ID] = cfg
+
+	// Store labels with new handle
+	// Check if handles are same(because this is the key of the map)
+	// If same, update the labels or remove the entry if labels are nil
+	// If not same and if the labels are not nil, create a new entry with new handle
+	// else we can ignore it
+	if oldHandle != newHandle {
+		// Remove old handle entry
+		delete(cs.labelsByAPI, oldHandle)
+		if cfg.Configuration.Metadata.Labels != nil {
+			labelsCopy := make(map[string]string)
+			for k, v := range *cfg.Configuration.Metadata.Labels {
+				labelsCopy[k] = v
+			}
+			cs.labelsByAPI[newHandle] = labelsCopy
+		}
+	} else {
+		if cfg.Configuration.Metadata.Labels != nil {
+			labelsCopy := make(map[string]string)
+			for k, v := range *cfg.Configuration.Metadata.Labels {
+				labelsCopy[k] = v
+			}
+			cs.labelsByAPI[oldHandle] = labelsCopy
+		} else {
+			// Remove entry if labels are nil
+			delete(cs.labelsByAPI, oldHandle)
+		}
+
+	}
+
 	return nil
 }
 
@@ -147,11 +190,11 @@ func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
 
 	apiTopicsPerRevision := make(map[string]bool)
 	for _, topic := range asyncData.Channels {
-		name := strings.TrimPrefix(asyncData.Name, "/")
-		context := strings.TrimPrefix(asyncData.Context, "/")
-		version := strings.TrimPrefix(asyncData.Version, "/")
-		path := strings.TrimPrefix(topic.Path, "/")
-		modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
+		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
+		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
+		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
+		name := strings.TrimPrefix(topic.Name, "/")
+		modifiedTopic := fmt.Sprintf("%s_%s", contextWithVersion, name)
 		cs.TopicManager.Add(cfg.ID, modifiedTopic)
 		apiTopicsPerRevision[modifiedTopic] = true
 	}
@@ -177,12 +220,14 @@ func (cs *ConfigStore) Delete(id string) error {
 	key := cfg.GetCompositeKey()
 	handle := cfg.GetHandle()
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		cs.TopicManager.RemoveAllForConfig(cfg.ID)
 	}
 	delete(cs.handle, handle)
 	delete(cs.nameVersion, key)
 	delete(cs.configs, id)
+	// Remove from labels map
+	delete(cs.labelsByAPI, handle)
 	return nil
 }
 
@@ -607,4 +652,22 @@ func (cs *ConfigStore) RemoveAPIKeysByAPI(apiId string) error {
 	delete(cs.apiKeysByAPI, apiId)
 
 	return nil
+}
+
+// GetLabels retrieves labels for an API
+func (cs *ConfigStore) GetLabelsMap(handle string) (map[string]string, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	labels, exists := cs.labelsByAPI[handle]
+	if !exists {
+		return nil, ErrNotFound
+	}
+
+	// Return a copy to prevent external modification
+	labelsCopy := make(map[string]string)
+	for k, v := range labels {
+		labelsCopy[k] = v
+	}
+
+	return labelsCopy, nil
 }

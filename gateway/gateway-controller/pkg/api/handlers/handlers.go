@@ -25,7 +25,6 @@ import (
 
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
-	gatewayconstants "github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 
 	"io"
 	"net/http"
@@ -43,6 +42,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -81,6 +81,7 @@ func NewAPIServer(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
+	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]api.PolicyDefinition,
@@ -101,7 +102,7 @@ func NewAPIServer(
 		logger:               logger,
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
-		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
+		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, &systemConfig.GatewayController.Router),
 		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
 			&systemConfig.GatewayController.APIKey),
@@ -469,7 +470,7 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 		return
 	}
 
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.Asyncwebsub) {
+	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) {
 		log.Warn("Configuration kind mismatch",
 			slog.String("expected", "RestApi or async/websub"),
 			slog.String("actual", cfg.Kind),
@@ -609,7 +610,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	existing.DeployedAt = nil
 	existing.DeployedVersion = 0
 
-	if apiConfig.Kind == api.Asyncwebsub {
+	if apiConfig.Kind == api.WebSubApi {
 		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -630,7 +631,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to register topic with WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -657,7 +660,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -684,7 +689,11 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 		// Check if topic operations failed and return error
 		if regErrs > 0 || deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", slog.Any("error", err))
+			log.Error("Failed to register & deregister topics",
+				slog.Int("topics_to_register", len(topicsToRegister)),
+				slog.Int("topics_to_unregister", len(topicsToUnregister)),
+				slog.Int("register_errors", int(regErrs)),
+				slog.Int("deregister_errors", int(deregErrs)))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Topic lifecycle operations failed",
@@ -731,7 +740,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	// Update xDS snapshot asynchronously
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
 		defer cancel()
 
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
@@ -873,7 +882,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		}
 	}
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 
 		var deregErrs int32
@@ -889,7 +898,9 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -1658,7 +1669,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 
 	routes := make([]policyenginev1.PolicyChain, 0)
 	switch apiCfg.Kind {
-	case api.Asyncwebsub:
+	case api.WebSubApi:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsWebhookAPIData()
 		if err != nil {
@@ -1668,7 +1679,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 		for _, ch := range apiData.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			if ch.Policies != nil && len(*ch.Policies) > 0 {
+			if len(*ch.Policies) > 0 {
 				// Operation has policies: use operation policy order as authoritative
 				// This allows operations to reorder, override, or extend API-level policies
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
@@ -1697,7 +1708,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				}
 			}
 
-			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, ch.Name, s.routerConfig.GatewayHost)
 
 			// Inject system policies into the chain
 			props := make(map[string]any)
@@ -2672,25 +2683,11 @@ func (s *APIServer) getLLMProviderTemplate(sourceConfig any) (*api.LLMProviderTe
 
 // populatePropsForSystemPolicies populates the props for system policies
 // based on the source configuration
+// Note: Template handle is now passed via route metadata instead of props
 func (s *APIServer) populatePropsForSystemPolicies(srcConfig any, props map[string]any) {
 	if srcConfig == nil {
 		return
 	}
-
-	// If this is an LLM provider, get the template and pass it to analytics policy
-	// Check if sourceConfig is an LLM provider by checking its kind
-	kind, err := utils.GetValueFromSourceConfig(srcConfig, "kind")
-	if err == nil {
-		if kindStr, ok := kind.(string); ok && kindStr == string(api.LlmProvider) {
-			template, err := s.getLLMProviderTemplate(srcConfig)
-			if err != nil {
-				s.logger.Debug("Failed to get LLM provider template", slog.Any("error", err))
-			} else if template != nil {
-				// Pass the template to analytics policy
-				analyticsProps := make(map[string]interface{})
-				analyticsProps["providerTemplate"] = template
-				props[gatewayconstants.ANALYTICS_SYSTEM_POLICY_NAME] = analyticsProps
-			}
-		}
-	}
+	// Template handle is now extracted and added to route metadata in translator.go
+	// No need to pass template via props anymore
 }

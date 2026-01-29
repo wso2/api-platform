@@ -124,10 +124,37 @@ cd tests/contract
 go test ./...
 ```
 
-## License
+## Benchmarking
 
-[Add License Information]
+Performance benchmarks are located in the following packages:
 
-## Contributing
+- `internal/kernel/` - ExtProc Process() lifecycle benchmarks
+- `internal/executor/` - Policy chain execution benchmarks  
+- `internal/pkg/cel/` - CEL expression evaluation benchmarks
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+### Running Benchmarks
+
+```bash
+# Run all benchmarks with memory allocation stats
+go test -bench=. -benchmem -count=5 ./internal/kernel/ -run=^$
+go test -bench=. -benchmem -count=5 ./internal/executor/ -run=^$
+go test -bench=. -benchmem -count=5 ./internal/pkg/cel/ -run=^$
+
+# Run specific benchmark
+go test -bench=BenchmarkProcess/NoPolicies -benchmem -count=5 ./internal/kernel/ -run=^$
+go test -bench=BenchmarkProcess/1Policy -benchmem -count=5 ./internal/kernel/ -run=^$
+
+# Generate CPU profile for optimization
+go test -bench=BenchmarkProcess -benchmem -cpuprofile=cpu.prof ./internal/kernel/ -run=^$
+go tool pprof -http=:8080 cpu.prof
+
+# Generate memory profile
+go test -bench=BenchmarkProcess -benchmem -memprofile=mem.prof ./internal/kernel/ -run=^$
+go tool pprof -http=:8080 mem.prof
+
+# Compare benchmarks (requires benchstat: go install golang.org/x/perf/cmd/benchstat@latest)
+go test -bench=. -benchmem -count=10 ./internal/kernel/ -run=^$ > old.txt
+# Make changes...
+go test -bench=. -benchmem -count=10 ./internal/kernel/ -run=^$ > new.txt
+benchstat old.txt new.txt
+```

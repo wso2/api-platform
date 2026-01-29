@@ -22,6 +22,7 @@ SHELL := /bin/bash
 ROOT_VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 GATEWAY_VERSION := $(shell cat gateway/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+CLI_VERSION := $(shell cat cli/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 
 # Docker registry configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -48,8 +49,10 @@ help: ## Show this help message
 	@echo '  make build-gateway                    - Build all gateway Docker images'
 	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
 	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
+	@echo '  make build-cli                        - Build CLI binaries for all platforms'
 	@echo '  make test-gateway                     - Run gateway tests'
 	@echo '  make test-platform-api                - Run platform-api tests'
+	@echo '  make test-cli                         - Run CLI tests'
 	@echo ''
 	@echo 'Push Targets:'
 	@echo '  make push-gateway                     - Push gateway images to registry'
@@ -68,6 +71,7 @@ version: ## Display current versions
 	@echo "Platform Version:     $(ROOT_VERSION)"
 	@echo "Gateway Version:      $(GATEWAY_VERSION)"
 	@echo "Platform API Version: $(PLATFORM_API_VERSION)"
+	@echo "CLI Version:          $(CLI_VERSION)"
 
 .PHONY: version-set
 version-set: ## Set specific version for a component
@@ -86,9 +90,12 @@ version-set: ## Set specific version for a component
 	elif [ "$(COMPONENT)" = "platform-api" ]; then \
 		echo "$(VERSION_ARG)" > platform-api/VERSION; \
 		echo " Set platform-api version to $(VERSION_ARG)"; \
+	elif [ "$(COMPONENT)" = "cli" ]; then \
+		echo "$(VERSION_ARG)" > cli/VERSION; \
+		echo " Set cli version to $(VERSION_ARG)"; \
 	else \
 		echo "Error: Unknown component: $(COMPONENT)"; \
-		echo "Valid components: root, gateway, platform-api"; \
+		echo "Valid components: root, gateway, platform-api, cli"; \
 		exit 1; \
 	fi
 
@@ -158,6 +165,17 @@ test-platform-api: ## Run platform-api tests
 	@echo "Running platform-api tests..."
 	$(MAKE) -C platform-api test
 
+.PHONY: build-cli
+build-cli: ## Build CLI binaries for all platforms
+	@echo "Building CLI ($(CLI_VERSION))..."
+	$(MAKE) -C cli/src build-all
+	@echo "Successfully built CLI binaries"
+
+.PHONY: test-cli
+test-cli: ## Run CLI tests
+	@echo "Running CLI tests..."
+	$(MAKE) -C cli/src test
+
 # Push Targets
 .PHONY: push-gateway
 push-gateway: ## Push gateway images to registry
@@ -185,7 +203,7 @@ update-images: ## Update docker-compose and Helm chart images
 	@echo "Updating docker-compose and Helm charts..."
 	@bash scripts/update-docker-compose.sh $(COMPONENT) $(VERSION_ARG)
 	@bash scripts/update-helm.sh $(COMPONENT) $(VERSION_ARG)
-	@echo "✅ Updated all image references to version $(VERSION_ARG)"
+	@echo "Updated all image references to version $(VERSION_ARG)"
 
 .PHONY: update-versions
 update-versions: ## Update docker-compose and Helm charts (alias for update-images)

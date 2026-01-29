@@ -25,6 +25,20 @@ type ConfigDumpResponse struct {
 	Timestamp      time.Time             `json:"timestamp"`
 	PolicyRegistry PolicyRegistryDump    `json:"policy_registry"`
 	Routes         RoutesDump            `json:"routes"`
+	LazyResources  LazyResourcesDump     `json:"lazy_resources"`
+}
+
+// LazyResourcesDump contains information about all lazy resources
+type LazyResourcesDump struct {
+	TotalResources int                         `json:"total_resources"`
+	ResourcesByType map[string][]LazyResourceInfo `json:"resources_by_type"`
+}
+
+// LazyResourceInfo contains information about a single lazy resource
+type LazyResourceInfo struct {
+	ID           string                 `json:"id"`
+	ResourceType string                 `json:"resource_type"`
+	Resource     map[string]interface{} `json:"resource"`
 }
 
 // PolicyRegistryDump contains information about all registered policies

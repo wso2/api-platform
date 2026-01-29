@@ -30,6 +30,9 @@ import (
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 )
 
+const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
+const lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
+
 // EventCategory represents the category of an event.
 type EventCategory string
 
@@ -54,11 +57,9 @@ const (
 	DefaultAnalyticsPublisher = "default"
 	// MoesifAnalyticsPublisher represents the Moesif analytics publisher.
 	MoesifAnalyticsPublisher = "moesif"
-	// ELKAnalyticsPublisher represents the ELK analytics publisher.
-	ELKAnalyticsPublisher = "elk"
 
 	// HeaderKeys represents the header keys.
-	RequestHeadersKey = "request_headers"
+	RequestHeadersKey  = "request_headers"
 	ResponseHeadersKey = "response_headers"
 
 	// PromptTokenCountMetadataKey represents the prompt token count metadata key.
@@ -187,7 +188,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	extendedAPI.OrganizationID = keyValuePairsFromMetadata[APIOrganizationIDKey]
 	extendedAPI.APIContext = keyValuePairsFromMetadata[APIContextKey]
 	extendedAPI.EnvironmentID = keyValuePairsFromMetadata[APIEnvironmentKey]
-
+	extendedAPI.ProjectID = keyValuePairsFromMetadata[ProjectIDKey]
+	
 	request := logEntry.GetRequest()
 	response := logEntry.GetResponse()
 

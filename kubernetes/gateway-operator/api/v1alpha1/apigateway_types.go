@@ -99,11 +99,6 @@ type GatewayInfrastructure struct {
 
 // GatewaySpec defines the desired state of APIGateway
 type GatewaySpec struct {
-	// GatewayClassName is an optional identifier for grouping gateways
-	// This can be used to categorize gateways (e.g., "production", "development")
-	// +optional
-	GatewayClassName string `json:"gatewayClassName,omitempty"`
-
 	// APISelector defines how this gateway selects which APIs to route
 	// +kubebuilder:validation:Required
 	APISelector APISelector `json:"apiSelector"`

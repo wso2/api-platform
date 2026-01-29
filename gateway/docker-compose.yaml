@@ -18,25 +18,26 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller:0.5.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.1
+    command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
       - "9011:9091"   # Metrics
     environment:
-      - GATEWAY_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
-      - GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
-      - GATEWAY_GATEWAY__CONTROLLER_LOGGING_LEVEL=info
-      - GATEWAY_GATEWAY__CONTROLLER_METRICS_PORT=9091
-      - GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
-      - GATEWAY_GATEWAY__CONTROLLER_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=info
+      - APIP_GW_GATEWAY__CONTROLLER_METRICS_PORT=9091
+      - APIP_GW_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
+      - APIP_GW_GATEWAY__CONTROLLER_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
     volumes:
       - controller-data:/app/data
-      - ./configs/config.yaml:/app/config/config.yaml:ro
+      - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
       - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
     extra_hosts:
@@ -45,8 +46,8 @@ services:
       - gateway-network
 
   policy-engine:
-    image: ghcr.io/wso2/api-platform/policy-engine:0.3.0-SNAPSHOT
-    command: ["-xds-server", "gateway-controller:18001"]
+    image: ghcr.io/wso2/api-platform/policy-engine:0.5.0-SNAPSHOT
+    command: ["-config", "/etc/policy-engine/config.toml", "-xds-server", "gateway-controller:18001"]
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.2
@@ -54,14 +55,14 @@ services:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
     environment:
-      - PE_POLICY__ENGINE_METRICS_PORT=9003
+      - APIP_GW_POLICY__ENGINE_METRICS_PORT=9003
     volumes:
-      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - ./configs/config.toml:/etc/policy-engine/config.toml:ro
     networks:
       - gateway-network
 
   router:
-    image: ghcr.io/wso2/api-platform/gateway-router:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-router:0.5.0-SNAPSHOT
     mem_limit: 256m
     mem_reservation: 256m
     cpus: 0.2

@@ -61,3 +61,70 @@ Feature: API Deployment and Invocation
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+
+  Scenario: Deploy an HTTP API with labels and verify they are stored
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: labeled-api-v1.0
+        labels:
+          environment: production
+          team: backend
+          version: v1
+      spec:
+        displayName: Labeled-API
+        version: v1.0
+        context: /labeled/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v2
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And I wait for 2 seconds
+    
+    Given I authenticate using basic auth as "admin"
+    When I get the API "labeled-api-v1.0"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "api.configuration.metadata.labels.environment" should be "production"
+    And the JSON response field "api.configuration.metadata.labels.team" should be "backend"
+    And the JSON response field "api.configuration.metadata.labels.version" should be "v1"
+    
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "labeled-api-v1.0"
+    Then the response should be successful
+
+  Scenario: Deploy an HTTP API with invalid labels (spaces in keys) should fail
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-labels-api-v1.0
+        labels:
+          "My Label": value
+          team: backend
+      spec:
+        displayName: Invalid-Labels-API
+        version: v1.0
+        context: /invalid/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v2
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "configuration validation failed"

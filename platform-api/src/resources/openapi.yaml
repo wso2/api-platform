@@ -1951,7 +1951,11 @@ components:
           description: List of operations exposed by this API
           items:
             $ref: '#/components/schemas/Operation'
-
+        channels:
+          type: array
+          description: List of channels exposed by this API
+          items:
+            $ref: '#/components/schemas/Channel'
     MTLSConfig:
       title: mTLS Configuration
       type: object
@@ -2304,6 +2308,22 @@ components:
         request:
           $ref: "#/components/schemas/OperationRequest"
 
+    Channel:
+      title: Async API Channel
+      type: object
+      description: Defines a single channel within the Async API
+      properties:
+        name:
+          type: string
+          description: Name of the channel
+          example: "issues"
+        description:
+          type: string
+          description: Description of the channel
+          example: "Channel for order events"
+        request:
+          $ref: "#/components/schemas/ChannelRequest"
+
     OperationRequest:
       title: Operation Request
       type: object
@@ -2325,6 +2345,34 @@ components:
           type: string
           description: Resource path for the operation
           example: "/pet/{petId}"
+        backend-services:
+          type: array
+          description: List of backend services for this operation
+          items:
+            $ref: "#/components/schemas/BackendRouting"
+        authentication:
+          $ref: "#/components/schemas/AuthenticationConfig"
+        policies:
+          type: array
+          description: List of policies to be applied on the operation
+          items:
+            $ref: "#/components/schemas/Policy"
+
+    ChannelRequest:
+      title: Channel Request
+      type: object
+      description: Request details for a channel within the Async API
+      properties:
+        method:
+          type: string
+          description: Async method for the channel
+          enum:
+            - SUB
+          example: "SUB"
+        name:
+          type: string
+          description: Channel name for the event
+          example: "issues"
         backend-services:
           type: array
           description: List of backend services for this operation

@@ -30,9 +30,9 @@ This capability allows platform administrators and business stakeholders to gain
 
 ## Configuration
 
-Analytics is configured entirely through the gateway `config.yaml` file and is enabled at a system level.
+Analytics is configured entirely through the gateway `config.toml` file and is enabled at a system level.
 
-### System Parameters (`config.yaml`)
+### System Parameters (`config.toml`)
 
 #### Analytics
 
@@ -86,33 +86,34 @@ For Moesif analytics integration, the following publisher-specific attributes mu
 | `timer_wakeup_seconds` | int     | Yes       | Publisher timer resolution                |
 
 
-```yaml
-analytics:
-  enabled: true
+```toml
+[analytics]
+enabled = true
 
-  publishers:
-    - type: moesif
-      enabled: true
-      settings:
-        application_id: <MOESIF_APPLICATION_ID>
-        publish_interval: 5
-        event_queue_size: 10000
-        batch_size: 50
-        timer_wakeup_seconds: 3
+[[analytics.publishers]]
+type = "moesif"
+enabled = true
 
-  grpc_access_logs:
-    host: policy-engine
-    log_name: "envoy_access_log"
-    buffer_flush_interval: 1000000000
-    buffer_size_bytes: 16384
-    grpc_request_timeout: 20000000000
+[analytics.publishers.settings]
+application_id = "<MOESIF_APPLICATION_ID>"
+publish_interval = 5
+event_queue_size = 10000
+batch_size = 50
+timer_wakeup_seconds = 3
 
-  access_logs_service:
-    als_server_port: 18090
-    shutdown_timeout: 600
-    als_plain_text: true
-    max_message_size: 1000000000
-    max_header_limit: 8192
+[analytics.grpc_access_logs]
+host = "policy-engine"
+log_name = "envoy_access_log"
+buffer_flush_interval = 1000000000
+buffer_size_bytes = 16384
+grpc_request_timeout = 20000000000
+
+[analytics.access_logs_service]
+als_server_port = 18090
+shutdown_timeout = 600
+als_plain_text = true
+max_message_size = 1000000000
+max_header_limit = 8192
 ```
 
 

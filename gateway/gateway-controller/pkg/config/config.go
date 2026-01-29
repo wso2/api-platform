@@ -20,15 +20,22 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
-	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/go-viper/mapstructure/v2"
+	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+)
+
+const (
+	// EnvPrefix is the prefix for environment variables used to configure the gateway-controller
+	EnvPrefix = "APIP_GW_"
 )
 
 // Config holds all configuration for the gateway-controller
@@ -45,7 +52,18 @@ type AnalyticsConfig struct {
 	Enabled              bool                     `koanf:"enabled"`
 	Publishers           []map[string]interface{} `koanf:"publishers"`
 	GRPCAccessLogCfg     GRPCAccessLogConfig      `koanf:"grpc_access_logs"`
-	AccessLogsServiceCfg map[string]interface{}   `koanf:"access_logs_service"`
+	AccessLogsServiceCfg AccessLogsServiceConfig  `koanf:"access_logs_service"`
+}
+
+// AccessLogsServiceConfig holds the access logs service configuration
+type AccessLogsServiceConfig struct {
+	ALSServerPort   int           `koanf:"als_server_port"`
+	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
+	PublicKeyPath   string        `koanf:"public_key_path"`
+	PrivateKeyPath  string        `koanf:"private_key_path"`
+	ALSPlainText    bool          `koanf:"als_plain_text"`
+	MaxMessageSize  int           `koanf:"max_message_size"`
+	MaxHeaderLimit  int           `koanf:"max_header_limit"`
 }
 
 // GatewayController holds the main configuration sections for the gateway-controller
@@ -200,9 +218,12 @@ type RouterConfig struct {
 
 // EventGatewayConfig holds event gateway specific configurations
 type EventGatewayConfig struct {
-	Enabled       bool   `koanf:"enabled"`
-	WebSubHubURL  string `koanf:"websub_hub_url"`
-	WebSubHubPort int    `koanf:"websub_hub_port"`
+	Enabled               bool   `koanf:"enabled"`
+	WebSubHubURL          string `koanf:"websub_hub_url"`
+	WebSubHubPort         int    `koanf:"websub_hub_port"`
+	RouterHost            string `koanf:"router_host"`
+	WebSubHubListenerPort int    `koanf:"websub_hub_listener_port"`
+	TimeoutSeconds        int    `koanf:"timeout_seconds"`
 }
 
 // DownstreamTLS holds downstream (listener) TLS configuration
@@ -329,15 +350,13 @@ func LoadConfig(configPath string) (*Config, error) {
 	k := koanf.New(".")
 
 	// Load config file if path is provided
-	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+	if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
-	// Load environment variables with prefix "GATEWAY_"
-	// Example: GATEWAY_SERVER_API_PORT=9090 -> server.api_port
-	//          GATEWAY_CONTROL_PLANE_URL=wss://... -> controlplane.url
-	if err := k.Load(env.Provider("GATEWAY_", ".", func(s string) string {
-		s = strings.TrimPrefix(s, "GATEWAY_")
+	// Load environment variables with prefix
+	if err := k.Load(env.Provider(EnvPrefix, ".", func(s string) string {
+		s = strings.TrimPrefix(s, EnvPrefix)
 		s = strings.ToLower(s)
 
 		// Custom mappings for control plane variables
@@ -368,8 +387,15 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
-	// Unmarshal into Config struct
-	if err := k.Unmarshal("", cfg); err != nil {
+	// Unmarshal into Config struct with DecodeHook for duration strings
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName:          "koanf",
+			WeaklyTypedInput: true,
+			Result:           cfg,
+			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		},
+	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -408,9 +434,12 @@ func defaultConfig() *Config {
 			},
 			Router: RouterConfig{
 				EventGateway: EventGatewayConfig{
-					Enabled:       true,
-					WebSubHubURL:  "http://host.docker.internal",
-					WebSubHubPort: 9098,
+					Enabled:               false,
+					WebSubHubURL:          "http://host.docker.internal",
+					WebSubHubPort:         9098,
+					RouterHost:            "localhost",
+					WebSubHubListenerPort: 8083,
+					TimeoutSeconds:        30,
 				},
 				AccessLogs: AccessLogsConfig{
 					Enabled: true,
@@ -536,15 +565,14 @@ func defaultConfig() *Config {
 				BufferSizeBytes:     16384,
 				GRPCRequestTimeout:  20000000000,
 			},
-			AccessLogsServiceCfg: map[string]interface{}{
-				"enabled":          false,
-				"als_server_port":  18090,
-				"shutdown_timeout": 600,
-				"public_key_path":  "",
-				"private_key_path": "",
-				"als_plain_text":   true,
-				"max_message_size": 1000000000,
-				"max_header_limit": 8192,
+			AccessLogsServiceCfg: AccessLogsServiceConfig{
+				ALSServerPort:   18090,
+				ShutdownTimeout: 600 * time.Second,
+				PublicKeyPath:   "",
+				PrivateKeyPath:  "",
+				ALSPlainText:    true,
+				MaxMessageSize:  1000000000,
+				MaxHeaderLimit:  8192,
 			},
 		},
 		TracingConfig: TracingConfig{
@@ -658,6 +686,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate event gateway configuration if enabled
+	if c.GatewayController.Router.EventGateway.Enabled {
+		if err := c.validateEventGatewayConfig(); err != nil {
+			return err
+		}
+	}
+
 	// Validate control plane configuration
 	if err := c.validateControlPlaneConfig(); err != nil {
 		return err
@@ -701,6 +736,30 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Config) validateEventGatewayConfig() error {
+	if c.GatewayController.Router.EventGateway.WebSubHubPort < 1 || c.GatewayController.Router.EventGateway.WebSubHubPort > 65535 {
+		return fmt.Errorf("router.event_gateway.websub_hub_port must be between 1 and 65535, got: %d", c.GatewayController.Router.EventGateway.WebSubHubPort)
+	}
+	if c.GatewayController.Router.EventGateway.WebSubHubListenerPort < 1 || c.GatewayController.Router.EventGateway.WebSubHubListenerPort > 65535 {
+		return fmt.Errorf("router.event_gateway.websub_hub_listener_port must be between 1 and 65535, got: %d", c.GatewayController.Router.EventGateway.WebSubHubListenerPort)
+	}
+
+	// Validate WebSubHubURL if provided - must be a valid http(s) URL
+	if strings.TrimSpace(c.GatewayController.Router.EventGateway.WebSubHubURL) != "" {
+		u, err := url.Parse(c.GatewayController.Router.EventGateway.WebSubHubURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("router.event_gateway.websub_hub_url must be a valid URL with http or https scheme, got: %s", c.GatewayController.Router.EventGateway.WebSubHubURL)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("router.event_gateway.websub_hub_url must include a valid host, got: %s", c.GatewayController.Router.EventGateway.WebSubHubURL)
+		}
+	}
+	if c.GatewayController.Router.EventGateway.TimeoutSeconds <= 0 {
+		return fmt.Errorf("router.event_gateway.timeout_seconds must be positive, got: %d", c.GatewayController.Router.EventGateway.TimeoutSeconds)
+	}
 	return nil
 }
 
@@ -1089,15 +1148,7 @@ func (c *Config) validateAnalyticsConfig() error {
 	if c.Analytics.Enabled {
 		// Validate gRPC access log configuration
 		grpcAccessLogCfg := c.Analytics.GRPCAccessLogCfg
-		var alsServerPort int
-		switch v := c.Analytics.AccessLogsServiceCfg["als_server_port"].(type) {
-		case int:
-			alsServerPort = v
-		case float64:
-			alsServerPort = int(v)
-		default:
-			return fmt.Errorf("analytics.access_logs_service.als_server_port must be an integer between 1 and 65535")
-		}
+		alsServerPort := c.Analytics.AccessLogsServiceCfg.ALSServerPort
 		if alsServerPort <= 0 || alsServerPort > 65535 {
 			return fmt.Errorf("analytics.access_logs_service.als_server_port must be an integer between 1 and 65535, got %d", alsServerPort)
 		}

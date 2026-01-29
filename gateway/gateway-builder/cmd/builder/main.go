@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	DefaultManifestLockFile             = "policy-manifest-lock.yaml"
+	DefaultManifestFile                 = "policy-manifest.yaml"
 	DefaultSystemPolicyManifestLockFile = "system-policy-manifest-lock.yaml"
 	DefaultOutputDir                    = "output"
 	DefaultPolicyEngineSrc              = "/api-platform/gateway/policy-engine"
@@ -55,7 +55,7 @@ func main() {
 	defaultRouterBaseImage := "ghcr.io/wso2/api-platform/gateway-router:" + Version
 
 	// Parse command-line flags
-	manifestLockPath := flag.String("manifest-lock", DefaultManifestLockFile, "Path to policy manifest lock file")
+	manifestPath := flag.String("manifest", DefaultManifestFile, "Path to policy manifest file")
 	systemManifestLockPath := flag.String("system-manifest-lock", DefaultSystemPolicyManifestLockFile, "Path to system policy manifest lock file")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
 	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
@@ -75,19 +75,22 @@ func main() {
 	initLogger(*logFormat, *logLevel)
 
 	// Resolve paths to absolute paths
-	absManifestLockPath, err := filepath.Abs(*manifestLockPath)
+	absManifestPath, err := filepath.Abs(*manifestPath)
 	if err != nil {
-		slog.Error("Failed to resolve manifest lock path", "path", *manifestLockPath, "error", err)
+		slog.Error("Failed to resolve manifest path", "path", *manifestPath, "error", err)
 		os.Exit(1)
 	}
-	manifestLockPath = &absManifestLockPath
+	manifestPath = &absManifestPath
 
-	absSystemManifestLockPath, err := filepath.Abs(*systemManifestLockPath)
-	if err != nil {
-		slog.Error("Failed to resolve system manifest lock path", "path", *systemManifestLockPath, "error", err)
-		os.Exit(1)
+	var absSystemManifestLockPath string
+	if *systemManifestLockPath != "" {
+		absSystemManifestLockPath, err = filepath.Abs(*systemManifestLockPath)
+		if err != nil {
+			slog.Error("Failed to resolve system manifest lock path", "path", *systemManifestLockPath, "error", err)
+			os.Exit(1)
+		}
+		systemManifestLockPath = &absSystemManifestLockPath
 	}
-	systemManifestLockPath = &absSystemManifestLockPath
 
 	absPolicyEngineSrc, err := filepath.Abs(*policyEngineSrc)
 	if err != nil {
@@ -107,7 +110,7 @@ func main() {
 		"version", Version,
 		"git_commit", GitCommit,
 		"build_date", BuildDate,
-		"manifest_lock", *manifestLockPath,
+		"manifest", *manifestPath,
 		"system_manifest_lock", *systemManifestLockPath,
 	}
 	slog.Info("Policy Builder starting", logFields...)
@@ -118,7 +121,7 @@ func main() {
 	slog.Info("Starting Phase 1: Discovery", "phase", "discovery")
 
 	// Discover policies from main manifest
-	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestLockPath, "")
+	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestPath, "")
 	if err != nil {
 		errors.FatalError(err)
 	}
@@ -127,19 +130,22 @@ func main() {
 		"phase", "discovery")
 
 	// Discover system policies from system manifest if provided
-	systemPolicies, err := discovery.DiscoverPoliciesFromManifest(absSystemManifestLockPath, "")
-	if err != nil {
-		errors.FatalError(err)
+	if *systemManifestLockPath != "" {
+		systemPolicies, err := discovery.DiscoverPoliciesFromManifest(absSystemManifestLockPath, "")
+		if err != nil {
+			errors.FatalError(err)
+		}
+		slog.Info("Loaded system manifest",
+			"count", len(systemPolicies),
+			"phase", "discovery")
+		// Merge system policies with regular policies
+		policies = append(policies, systemPolicies...)
+		slog.Info("Total policies after merging",
+			"count", len(policies),
+			"phase", "discovery")
+	} else {
+		slog.Info("No system manifest provided; skipping system policies", "phase", "discovery")
 	}
-	slog.Info("Loaded system manifest",
-		"count", len(systemPolicies),
-		"phase", "discovery")
-	// Merge system policies with regular policies
-	policies = append(policies, systemPolicies...)
-	slog.Info("Total policies after merging",
-		"count", len(policies),
-		"phase", "discovery")
-	
 
 	// Print discovered policies
 	for i, p := range policies {
@@ -168,12 +174,43 @@ func main() {
 	// Phase 4: Compilation
 	slog.Info("Starting Phase 4: Compilation", "phase", "compilation")
 
+	// Read version information from environment variables (set by Dockerfile)
+	// Fall back to builder's own version if not set
+	policyEngineVersion := os.Getenv("VERSION")
+	if policyEngineVersion == "" {
+		policyEngineVersion = Version
+	}
+	policyEngineGitCommit := os.Getenv("GIT_COMMIT")
+	if policyEngineGitCommit == "" {
+		policyEngineGitCommit = GitCommit
+	}
+	// Build date can come from environment or use current timestamp
+	buildDateStr := os.Getenv("BUILD_DATE")
+	var buildTimestamp time.Time
+	if buildDateStr != "" {
+		// Try to parse the build date
+		parsedTime, err := time.Parse(time.RFC3339, buildDateStr)
+		if err == nil {
+			buildTimestamp = parsedTime
+		} else {
+			buildTimestamp = time.Now().UTC()
+		}
+	} else {
+		buildTimestamp = time.Now().UTC()
+	}
+
 	buildMetadata := &types.BuildMetadata{
-		Timestamp: time.Now().UTC(),
-		Version:   Version,
-		GitCommit: GitCommit,
+		Timestamp: buildTimestamp,
+		Version:   policyEngineVersion,
+		GitCommit: policyEngineGitCommit,
 		Policies:  make([]types.PolicyInfo, 0, len(policies)),
 	}
+
+	slog.Info("Build metadata for policy engine",
+		"version", policyEngineVersion,
+		"git_commit", policyEngineGitCommit,
+		"build_date", buildTimestamp.Format(time.RFC3339),
+		"phase", "compilation")
 
 	for _, p := range policies {
 		buildMetadata.Policies = append(buildMetadata.Policies, types.PolicyInfo{
@@ -231,6 +268,12 @@ func main() {
 
 	// Print success summary with manifest
 	printDockerfileGenerationSummary(generateResult, buildManifest, outManifestPath)
+
+	if err := manifest.WriteManifestLockWithVersions(*manifestPath, policies); err != nil {
+		slog.Warn("Failed to write policy lock file with versions", "error", err)
+	} else {
+		slog.Info("Policy lock file generated with versions", "path", filepath.Join(filepath.Dir(*manifestPath), "policy-manifest-lock.yaml"))
+	}
 }
 
 // initLogger sets up the slog logger based on format and level

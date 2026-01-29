@@ -343,6 +343,7 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 	// Create shared context that will persist across request/response phases
 	sharedCtx := &policy.SharedContext{
 		RequestID:     requestID,
+		ProjectID:     routeMetadata.ProjectID,
 		APIId:         routeMetadata.APIId,
 		APIName:       routeMetadata.APIName,
 		APIVersion:    routeMetadata.APIVersion,
@@ -350,6 +351,14 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		APIContext:    routeMetadata.Context,
 		OperationPath: routeMetadata.OperationPath,
 		Metadata:      make(map[string]interface{}),
+	}
+	// Add template handle to metadata for LLM provider/proxy scenarios
+	if routeMetadata.TemplateHandle != "" {
+		sharedCtx.Metadata["template_handle"] = routeMetadata.TemplateHandle
+	}
+	// Add provider name to metadata for LLM provider/proxy scenarios
+	if routeMetadata.ProviderName != "" {
+		sharedCtx.Metadata["provider_name"] = routeMetadata.ProviderName
 	}
 
 	// Build context with Headers wrapper and pseudo-headers

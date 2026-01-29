@@ -22,56 +22,48 @@
 services:
   gateway-controller:
     container_name: it-gateway-controller
-    image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.5.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.1
+    command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9010:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
       - "9091:9091"   # Metrics
     environment:
-      - GATEWAY_STORAGE_TYPE=sqlite
-      - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
-      - GATEWAY_LOGGING_LEVEL=info
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
       - GOCOVERDIR=/coverage
     volumes:
       - controller-data-tests:/app/data
-      - ./test-config.yaml:/app/config/config.yaml:ro
+      - ./test-config.toml:/etc/gateway-controller/config.toml:ro
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
       - ./coverage/gateway-controller:/coverage
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "http://localhost:9090/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
     networks:
       - it-gateway-network
 
   policy-engine:
     container_name: it-policy-engine
-    image: ghcr.io/wso2/api-platform/policy-engine:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/policy-engine:0.5.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.2
-    command: ["-xds-server", "it-gateway-controller:18001"]
+    command: ["-config", "/etc/policy-engine/config.toml", "-xds-server", "it-gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
     volumes:
-      - ./test-config.yaml:/app/configs/config.yaml:ro
-    depends_on:
-      gateway-controller:
-        condition: service_healthy
+      - ./test-config.toml:/etc/policy-engine/config.toml:ro
     networks:
       - it-gateway-network
 
   router:
     container_name: it-router
-    image: ghcr.io/wso2/api-platform/gateway-router:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-router:0.5.0-SNAPSHOT
     mem_limit: 256m
     mem_reservation: 256m
     cpus: 0.2
@@ -83,15 +75,6 @@ services:
       - XDS_SERVER_HOST=it-gateway-controller
       - XDS_SERVER_PORT=18000
       - LOG_LEVEL=info
-    depends_on:
-      gateway-controller:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9901"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 15s
     networks:
       - it-gateway-network
 

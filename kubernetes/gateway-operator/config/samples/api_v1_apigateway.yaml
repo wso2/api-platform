@@ -6,8 +6,6 @@ kind: APIGateway
 metadata:
   name: cluster-gateway
 spec:
-  gatewayClassName: "production"
-  
   apiSelector:
     scope: Cluster
   
@@ -249,9 +247,9 @@ data:
             # Log level: "debug", "info", "warn", or "error"
             level: debug
 
-            # Log format: "json" or "console"
+            # Log format: "json" or "text"
             # - json: Structured JSON format (recommended for production)
-            # - console: Human-readable console format (recommended for development)
+            # - text: Human-readable text format (recommended for development)
             format: json
 
         policy_engine:
@@ -336,7 +334,7 @@ data:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "0.2.0"
+          tag: "0.3.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -467,7 +465,7 @@ data:
       router:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-router
-          tag: "0.2.0"
+          tag: "0.3.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -524,7 +522,7 @@ data:
       policyEngine:
         image:
           repository: ghcr.io/wso2/api-platform/policy-engine
-          tag: "0.2.0"
+          tag: "0.3.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:

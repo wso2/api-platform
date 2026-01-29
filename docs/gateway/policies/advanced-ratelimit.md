@@ -18,10 +18,10 @@ The Advanced Rate Limiting policy provides a powerful, multi-dimensional token b
 
 The Advanced Rate Limiting policy uses a structure based on **Quotas**. 
 
-- **System Parameters**: Configured by the administrator in `config.yaml`.
+- **System Parameters**: Configured by the administrator in `config.toml`.
 - **User Parameters**: Configured per-API/route via the `quotas` array.
 
-### System Parameters (config.yaml)
+### System Parameters (config.toml)
 
 These parameters are set globally by the administrator.
 
@@ -98,7 +98,7 @@ Simplest configuration: 10 requests per minute per route.
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.0
+    version: v0.1.1
     params:
       quotas:
         - limits:
@@ -115,7 +115,7 @@ Enforce two independent quotas simultaneously:
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.0
+    version: v0.1.1
     params:
       quotas:
         - name: "user_quota"
@@ -140,7 +140,7 @@ Allow 10 req/sec (bursty) AND 1000 req/hour (sustained) for the same key.
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.0
+    version: v0.1.1
     params:
       quotas:
         - limits:
@@ -161,7 +161,7 @@ Rate limit based on total tokens consumed, extracted from the response body.
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.0
+    version: v0.1.1
     params:
       quotas:
         - limits:
@@ -183,7 +183,7 @@ policies:
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.0
+    version: v0.1.1
     params:
       quotas:
         - limits:
@@ -214,10 +214,10 @@ The Rate Limiting policy controls the rate of requests to your APIs by enforcing
 
 The Rate Limiting policy uses a two-level configuration model:
 
-- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.ratelimit_v010`
+- **System Parameters**: Configured by the administrator in `config.toml` under `policy_configurations.ratelimit_v010`
 - **User Parameters**: Configured per-API/route in the API definition YAML
 
-### System Parameters (config.yaml)
+### System Parameters (config.toml)
 
 These parameters are set by the administrator and apply globally to all rate limiting policies:
 
@@ -398,45 +398,47 @@ The `onRateLimitExceeded` object supports:
 
 ## System Configuration Example
 
-Add the following to your `gateway/configs/config.yaml` file under `policy_configurations`:
+Add the following to your `gateway/configs/config.toml` file under `policy_configurations`:
 
-```yaml
-policy_configurations:
-  ratelimit_v010:
-    algorithm: gcra
-    backend: memory
-    memory:
-      maxentries: 10000
-      cleanupinterval: "5m"
-    headers:
-      includexratelimit: true
-      includeietf: true
-      includeretryafter: true
+```toml
+[policy_configurations.ratelimit_v010]
+algorithm = "gcra"
+backend = "memory"
+
+[policy_configurations.ratelimit_v010.memory]
+max_entries = 10000
+cleanup_interval = "5m"
+
+[policy_configurations.ratelimit_v010.headers]
+include_x_rate_limit = true
+include_ietf = true
+include_retry_after = true
 ```
 
 ### Redis Backend Configuration
 
 For distributed rate limiting across multiple gateway instances:
 
-```yaml
-policy_configurations:
-  ratelimit_v010:
-    algorithm: gcra
-    backend: redis
-    redis:
-      host: redis.example.com
-      port: 6379
-      password: "your-redis-password"
-      db: 0
-      keyprefix: "ratelimit:v1:"
-      failuremode: open
-      connectiontimeout: "5s"
-      readtimeout: "3s"
-      writetimeout: "3s"
-    headers:
-      includexratelimit: true
-      includeietf: true
-      includeretryafter: true
+```toml
+[policy_configurations.ratelimit_v010]
+algorithm = "gcra"
+backend = "redis"
+
+[policy_configurations.ratelimit_v010.redis]
+host = "redis.example.com"
+port = 6379
+password = "your-redis-password"
+db = 0
+key_prefix = "ratelimit:v1:"
+failure_mode = "open"
+connection_timeout = "5s"
+read_timeout = "3s"
+write_timeout = "3s"
+
+[policy_configurations.ratelimit_v010.headers]
+include_x_rate_limit = true
+include_ietf = true
+include_retry_after = true
 ```
 
 ## API Definition Examples
@@ -462,7 +464,7 @@ spec:
       path: /{country_code}/{city}
       policies:
         - name: ratelimit
-          version: v0.1.0
+          version: v0.1.1
           params:
             cost: 1
             limits:
@@ -493,7 +495,7 @@ spec:
       path: /{country_code}/{city}
       policies:
         - name: ratelimit
-          version: v0.1.0
+          version: v0.1.1
           params:
             cost: 1
             limits:
@@ -526,7 +528,7 @@ spec:
       path: /{country_code}/{city}
       policies:
         - name: ratelimit
-          version: v0.1.0
+          version: v0.1.1
           params:
             cost: 1
             limits:
@@ -555,7 +557,7 @@ spec:
       url: https://public-service:8080
   policies:
     - name: ratelimit
-      version: v0.1.0
+      version: v0.1.1
       params:
         limits:
           - limit: 60
@@ -585,7 +587,7 @@ spec:
       url: https://tenant-service:8080
   policies:
     - name: ratelimit
-      version: v0.1.0
+      version: v0.1.1
       params:
         limits:
           - limit: 500
@@ -617,7 +619,7 @@ spec:
       url: https://analytics-service:8080
   policies:
     - name: ratelimit
-      version: v0.1.0
+      version: v0.1.1
       params:
         limits:
           - limit: 1000
@@ -627,7 +629,7 @@ spec:
       path: /simple-query
       policies:
         - name: ratelimit
-          version: v0.1.0
+          version: v0.1.1
           params:
             limits:
               - limit: 1000
@@ -637,7 +639,7 @@ spec:
       path: /complex-report
       policies:
         - name: ratelimit
-          version: v0.1.0
+          version: v0.1.1
           params:
             limits:
               - limit: 1000
@@ -661,7 +663,7 @@ spec:
       url: https://burst-service:8080
   policies:
     - name: ratelimit
-      version: v0.1.0
+      version: v0.1.1
       params:
         limits:
           - limit: 10
@@ -690,7 +692,7 @@ spec:
       url: https://backend-service:8080
   policies:
     - name: ratelimit
-      version: v0.1.0
+      version: v0.1.1
       params:
         limits:
           - limit: 100
@@ -720,7 +722,7 @@ spec:
       url: https://llm-service:8080
   policies:
     - name: ratelimit
-      version: v0.1.0
+      version: v0.1.1
       params:
         limits:
           - limit: 100000
@@ -759,7 +761,7 @@ spec:
       url: https://compute-service:8080
   policies:
     - name: ratelimit
-      version: v0.1.0
+      version: v0.1.1
       params:
         limits:
           - limit: 1000

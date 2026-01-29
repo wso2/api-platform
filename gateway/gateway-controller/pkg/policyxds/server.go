@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -37,13 +38,14 @@ import (
 
 // Server is the policy xDS gRPC server
 type Server struct {
-	grpcServer        *grpc.Server
-	xdsServer         server.Server
-	snapshotManager   *SnapshotManager
-	apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager
-	port              int
-	tlsConfig         *TLSConfig
-	logger            *slog.Logger
+	grpcServer              *grpc.Server
+	xdsServer               server.Server
+	snapshotManager         *SnapshotManager
+	apiKeySnapshotMgr       *apikeyxds.APIKeySnapshotManager
+	lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager
+	port                    int
+	tlsConfig               *TLSConfig
+	logger                  *slog.Logger
 }
 
 // TLSConfig holds TLS configuration for the server
@@ -68,13 +70,14 @@ func WithTLS(certFile, keyFile string) ServerOption {
 }
 
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
 	s := &Server{
-		snapshotManager:   snapshotManager,
-		apiKeySnapshotMgr: apiKeySnapshotMgr,
-		port:              port,
-		logger:            logger,
-		tlsConfig:         &TLSConfig{Enabled: false},
+		snapshotManager:         snapshotManager,
+		apiKeySnapshotMgr:       apiKeySnapshotMgr,
+		lazyResourceSnapshotMgr: lazyResourceSnapshotMgr,
+		port:                    port,
+		logger:                  logger,
+		tlsConfig:               &TLSConfig{Enabled: false},
 	}
 
 	// Apply options
@@ -109,10 +112,11 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	grpcServer := grpc.NewServer(grpcOpts...)
 
-	// Create combined cache that handles both policy chains and API key state
+	// Create combined cache that handles policy chains, API key state, and lazy resources
 	policyCache := snapshotManager.GetCache()
 	apiKeyCache := apiKeySnapshotMgr.GetCache()
-	combinedCache := NewCombinedCache(policyCache, apiKeyCache, logger)
+	lazyResourceCache := lazyResourceSnapshotMgr.GetCache()
+	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, logger)
 
 	callbacks := &serverCallbacks{logger: logger}
 	xdsServer := server.NewServer(context.Background(), combinedCache, callbacks)

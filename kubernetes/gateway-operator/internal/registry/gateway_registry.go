@@ -28,7 +28,6 @@ import (
 type GatewayInfo struct {
 	Name             string
 	Namespace        string
-	GatewayClassName string
 	APISelector      *apiv1.APISelector
 	ServiceName      string // Name of the gateway controller service
 	ServicePort      int32  // Port of the gateway controller API

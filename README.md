@@ -1,5 +1,10 @@
 # WSO2 API Platform
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![GitHub last commit](https://img.shields.io/github/last-commit/wso2/api-platform.svg)](https://github.com/wso2/api-platform/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/wso2/api-platform.svg)](https://github.com/wso2/api-platform/issues)
+[![codecov.io](https://codecov.io/github/wso2/api-platform/coverage.svg?branch=main)](https://app.codecov.io/github/wso2/api-platform?branch=main)
+
 AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments.
 
 ## Overview

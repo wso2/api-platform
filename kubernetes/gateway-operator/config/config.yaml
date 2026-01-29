@@ -55,6 +55,6 @@ logging:
   # Enable development mode (boolean). Replaces the previous `format` field.
   # Deprecated: Use format instead
   development: true
-  # Log format: "json" or "console"
-  # Default is "console" in development, "json" in production
-  format: "console"
+  # Log format: "json" or "text"
+  # Default is "text" in development, "json" in production
+  format: "text"

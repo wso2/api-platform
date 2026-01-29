@@ -21,18 +21,21 @@ func TestDeployAPIConfigurationWebSubKindTopicRegistration(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
-	yamlConfig := `kind: async/websub
-version: api-platform.wso2.com/v1
-spec:
+	yamlConfig := `kind: WebSubApi
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+metadata:
   name: testapi
+spec:
+  displayName: testapi
   context: /test
   version: v1
-  servers:
-    - url: "http://host.docker.internal:9098"
-      protocol: websub
+  vhosts:
+    main: "*"
   channels:
-    - path: /topic1
-    - path: /topic2
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB
 `
 
 	// Build a StoredAPIConfig from the YAML
@@ -56,8 +59,9 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	t.Logf("topics after add: %v", configStore.TopicManager.GetAllForConfig())
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 }
 
 func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
@@ -66,18 +70,21 @@ func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
-	yamlConfig := `kind: async/websub
-version: api-platform.wso2.com/v1
-spec:
+	yamlConfig := `kind: WebSubApi
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+metadata:
   name: testapi
+spec:
+  displayName: testapi
   context: /test
   version: v1
-  servers:
-    - url: "http://host.docker.internal:9098"
-      protocol: websub
+  vhosts:
+    main: "*"
   channels:
-    - path: /topic1
-    - path: /topic2
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB
 `
 
 	// Build a StoredAPIConfig from the YAML
@@ -101,21 +108,23 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 
 	// Second deployment with topic2 removed -> should deregister topic2
-	yamlConfig2 := `kind: async/websub
-version: api-platform.wso2.com/v1
-spec:
+	yamlConfig2 := `kind: WebSubApi
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+metadata:
   name: testapi
+spec:
+  displayName: testapi
   context: /test
   version: v1
-  servers:
-    - url: "http://host.docker.internal:9098"
-      protocol: websub
+  vhosts:
+    main: "*"
   channels:
-    - path: /topic1
+    - name: /topic1
+      method: SUB
 `
 
 	if err := parser.Parse([]byte(yamlConfig2), "application/yaml", &apiCfg); err != nil {
@@ -138,8 +147,8 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 }
 
 func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
@@ -148,37 +157,37 @@ func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Two different API YAMLs
-	yamlA := `kind: async/websub
-apiVersion: api-platform.wso2.com/v1
+	yamlA := `kind: WebSubApi
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 metadata:
-  name: apiA
+  name: testapiA
 spec:
-  context: /a
-  name: apiA # TODO: (renuka) This should be displayName
+  displayName: testapiA
+  context: /testA
   version: v1
-  servers:
-    - url: "http://host.docker.internal:9098"
-      protocol: websub
+  vhosts:
+    main: "*"
   channels:
-    - path: /t1
-    - path: /t2
-`
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB`
 
-	yamlB := `kind: async/websub
-apiVersion: api-platform.wso2.com/v1
+	yamlB := `kind: WebSubApi
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 metadata:
-  name: apiB
+  name: testapiB
 spec:
-  context: /b
-  name: apiB # TODO: (renuka) This should be displayName
+  displayName: testapiB
+  context: /testB
   version: v1
-  servers:
-    - url: "http://host.docker.internal:9098"
-      protocol: websub
+  vhosts:
+    main: "*"
   channels:
-    - path: /t3
-    - path: /t4
-`
+    - name: /topic3
+      method: SUB
+    - name: /topic4
+      method: SUB`
 
 	var apiCfgA, apiCfgB api.APIConfiguration
 	parser := config.NewParser()
@@ -238,12 +247,12 @@ spec:
 	}
 
 	// Verify topics for cfgA
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "apiA_a_v1_t1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "apiA_a_v1_t2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testA_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testA_topic2"))
 
 	// Verify topics for cfgB
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "apiB_b_v1_t3"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "apiB_b_v1_t4"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testB_topic3"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testB_topic4"))
 }
 
 func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
@@ -252,19 +261,21 @@ func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
-	yamlConfig := `kind: async/websub
-version: api-platform.wso2.com/v1
-spec:
+	yamlConfig := `kind: WebSubApi
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+metadata:
   name: testapi
+spec:
+  displayName: testapi
   context: /test
   version: v1
-  servers:
-    - url: "http://host.docker.internal:9098"
-      protocol: websub
+  vhosts:
+    main: "*"
   channels:
-    - path: /topic1
-    - path: /topic2
-`
+    - name: /topic1
+      method: SUB
+    - name: /topic2
+      method: SUB`
 
 	// Build a StoredAPIConfig from the YAML
 	var apiCfg api.APIConfiguration
@@ -287,14 +298,14 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 
 	err = service.store.Delete(cfg.ID)
 	if err != nil {
 		t.Fatalf("failed to delete config from store: %v", err)
 	}
 
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic1"))
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
 }
