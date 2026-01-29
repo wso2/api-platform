@@ -422,7 +422,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 
 	apiProjectID := ""
 	if cfg.Configuration.Metadata.Labels != nil {
-		if pid, exists := (*cfg.Configuration.Metadata.Labels)["projectID"]; exists {
+		if pid, exists := (*cfg.Configuration.Metadata.Labels)["project-id"]; exists {
 			apiProjectID = pid
 		}
 	}
