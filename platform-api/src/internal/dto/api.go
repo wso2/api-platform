@@ -173,10 +173,11 @@ type DeployAPIRequest struct {
 type DeploymentResponse struct {
 	DeploymentID     string                 `json:"deploymentId" yaml:"deploymentId"`
 	GatewayID        string                 `json:"gatewayId" yaml:"gatewayId"`
-	Status           string                 `json:"status" yaml:"status"`
+	Status           string                 `json:"status" yaml:"status"` // DEPLOYED, UNDEPLOYED, or ARCHIVED
 	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" yaml:"baseDeploymentId,omitempty"`
 	Metadata         map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	CreatedAt        time.Time              `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt        *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"` // When status last changed (nil for ARCHIVED)
 }
 
 // DeploymentListResponse represents a list of deployments

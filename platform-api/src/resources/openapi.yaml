@@ -3680,7 +3680,12 @@ components:
           enum:
             - DEPLOYED
             - UNDEPLOYED
-          description: Current deployment status
+            - ARCHIVED
+          description: |
+            Current deployment lifecycle state:
+            - DEPLOYED: Currently active on the gateway
+            - UNDEPLOYED: Suspended but can be redeployed
+            - ARCHIVED: Historical deployment, cannot be redeployed
         baseDeploymentId:
           type: string
           format: uuid
@@ -3693,7 +3698,12 @@ components:
         createdAt:
           type: string
           format: date-time
-          description: Timestamp when the deployment was created
+          description: Timestamp when the deployment artifact was created
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the deployment status last changed (null for ARCHIVED deployments)
 
     DeploymentListResponse:
       type: object

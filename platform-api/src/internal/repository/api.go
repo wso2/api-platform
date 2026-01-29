@@ -979,20 +979,34 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 	return nil
 }
 
-// CreateDeployment inserts a new API deployment record
-func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
+// CreateDeploymentWithStatus atomically creates a deployment artifact and sets it as active
+// This ensures both operations succeed or both fail (transactional)
+func (r *APIRepo) CreateDeploymentWithStatus(deployment *model.APIDeployment) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // Safe to call even after commit
+
 	// Generate UUID for deployment if not already set
 	if deployment.DeploymentID == "" {
 		deployment.DeploymentID = uuid.New().String()
 	}
-	if deployment.Status == "" {
-		deployment.Status = model.DeploymentStatusDeployed
-	}
 	deployment.CreatedAt = time.Now()
 
-	query := `
-		INSERT INTO api_deployments (deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	// Status must be provided and should be DEPLOYED for new deployments
+	if deployment.Status == nil {
+		deployed := model.DeploymentStatusDeployed
+		deployment.Status = &deployed
+	}
+
+	updatedAt := time.Now()
+	deployment.UpdatedAt = &updatedAt
+
+	// 1. Insert deployment artifact
+	deploymentQuery := `
+		INSERT INTO api_deployments (deployment_id, api_uuid, organization_uuid, gateway_uuid, base_deployment_id, content, metadata, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var baseDeploymentID interface{}
@@ -1008,105 +1022,51 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 		metadataJSON = string(metadataBytes)
 	}
 
-	_, err := r.db.Exec(r.db.Rebind(query), deployment.DeploymentID, deployment.ApiID, deployment.OrganizationID,
-		deployment.GatewayID, deployment.Status, baseDeploymentID, deployment.Content, metadataJSON, deployment.CreatedAt)
-
-	return err
-}
-
-// GetDeploymentsByAPIUUID retrieves all deployment records for an API
-func (r *APIRepo) GetDeploymentsByAPIUUID(apiUUID, orgUUID string, gatewayID, status *string) ([]*model.APIDeployment, error) {
-	// Validate status parameter against allowed enum values
-	if status != nil {
-		validStatuses := map[string]bool{
-			string(model.DeploymentStatusDeployed):   true,
-			string(model.DeploymentStatusUndeployed): true,
-		}
-		if !validStatuses[*status] {
-			return nil, fmt.Errorf("invalid deployment status: %s", *status)
-		}
-	}
-
-	var query string
-	var args []interface{}
-
-	if gatewayID != nil && status != nil {
-		query = `
-			SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
-			FROM api_deployments
-			WHERE api_uuid = ? AND organization_uuid = ? AND gateway_uuid = ? AND status = ?
-			ORDER BY created_at DESC
-		`
-		args = []interface{}{apiUUID, orgUUID, *gatewayID, *status}
-	} else if gatewayID != nil {
-		query = `
-			SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
-			FROM api_deployments
-			WHERE api_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
-			ORDER BY created_at DESC
-		`
-		args = []interface{}{apiUUID, orgUUID, *gatewayID}
-	} else if status != nil {
-		query = `
-			SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
-			FROM api_deployments
-			WHERE api_uuid = ? AND organization_uuid = ? AND status = ?
-			ORDER BY created_at DESC
-		`
-		args = []interface{}{apiUUID, orgUUID, *status}
-	} else {
-		query = `
-			SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
-			FROM api_deployments
-			WHERE api_uuid = ? AND organization_uuid = ?
-			ORDER BY created_at DESC
-		`
-		args = []interface{}{apiUUID, orgUUID}
-	}
-
-	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	_, err = tx.Exec(r.db.Rebind(deploymentQuery), deployment.DeploymentID, deployment.ApiID, deployment.OrganizationID,
+		deployment.GatewayID, baseDeploymentID, deployment.Content, metadataJSON, deployment.CreatedAt)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var deployments []*model.APIDeployment
-	for rows.Next() {
-		deployment := &model.APIDeployment{}
-		var baseDeploymentID sql.NullString
-		var metadataJSON string
-
-		err := rows.Scan(&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
-			&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-
-		if baseDeploymentID.Valid {
-			deployment.BaseDeploymentID = &baseDeploymentID.String
-		}
-
-		if metadataJSON != "" {
-			var metadata map[string]interface{}
-			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
-				deployment.Metadata = metadata
-			} else {
-				return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
-			}
-		}
-
-		deployments = append(deployments, deployment)
+		return err
 	}
 
-	return deployments, rows.Err()
+	// 2. Insert or update deployment status to set as active
+	var statusQuery string
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: Use ON CONFLICT
+		statusQuery = `
+			INSERT INTO api_deployment_status (api_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT (api_uuid, organization_uuid, gateway_uuid)
+			DO UPDATE SET deployment_id = EXCLUDED.deployment_id, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at
+		`
+	} else {
+		// SQLite: Use REPLACE
+		statusQuery = `
+			REPLACE INTO api_deployment_status (api_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`
+	}
+
+	_, err = tx.Exec(r.db.Rebind(statusQuery),
+		deployment.ApiID,
+		deployment.OrganizationID,
+		deployment.GatewayID,
+		deployment.DeploymentID,
+		*deployment.Status,
+		*deployment.UpdatedAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
-// GetDeploymentByID retrieves a specific deployment by deployment ID for a given API
+// GetDeploymentByID retrieves a specific deployment by deployment ID for a given API (without status)
 func (r *APIRepo) GetDeploymentByID(deploymentID, apiID, orgID string) (*model.APIDeployment, error) {
 	deployment := &model.APIDeployment{}
 
 	query := `
-		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
+		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, base_deployment_id, content, metadata, created_at
 		FROM api_deployments
 		WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?
 	`
@@ -1116,7 +1076,7 @@ func (r *APIRepo) GetDeploymentByID(deploymentID, apiID, orgID string) (*model.A
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, apiID, orgID).Scan(
 		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
-		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
+		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1158,31 +1118,6 @@ func (r *APIRepo) GetDeploymentContent(deploymentID, apiID, orgID string) ([]byt
 	return content, nil
 }
 
-// UpdateDeploymentStatus updates the status of a deployment
-func (r *APIRepo) UpdateDeploymentStatus(deploymentID, apiID, status, orgID string) error {
-	query := `
-		UPDATE api_deployments
-		SET status = ?
-		WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?
-	`
-
-	result, err := r.db.Exec(r.db.Rebind(query), status, deploymentID, apiID, orgID)
-	if err != nil {
-		return err
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return constants.ErrDeploymentNotFound
-	}
-
-	return nil
-}
-
 // DeleteDeployment deletes a deployment record
 func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 	query := `DELETE FROM api_deployments WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?`
@@ -1204,24 +1139,35 @@ func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 	return nil
 }
 
-// GetActiveDeploymentByGateway retrieves the currently deployed artifact for an API on a gateway
+// GetActiveDeploymentByGateway retrieves the currently deployed artifact for an API on a gateway with status populated
 func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string) (*model.APIDeployment, error) {
 	deployment := &model.APIDeployment{}
 
 	query := `
-		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
-		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = ?
-		ORDER BY created_at DESC
+		SELECT 
+			d.deployment_id, d.api_uuid, d.organization_uuid, d.gateway_uuid, 
+			d.base_deployment_id, d.content, d.metadata, d.created_at,
+			s.status, s.updated_at AS status_updated_at
+		FROM api_deployments d
+		INNER JOIN api_deployment_status s 
+			ON d.deployment_id = s.deployment_id
+			AND d.api_uuid = s.api_uuid
+			AND d.organization_uuid = s.organization_uuid
+			AND d.gateway_uuid = s.gateway_uuid
+		WHERE d.api_uuid = ? AND d.gateway_uuid = ? AND d.organization_uuid = ?
+		ORDER BY d.created_at DESC
 		LIMIT 1
 	`
 
 	var baseDeploymentID sql.NullString
 	var metadataJSON string
+	var statusStr string
+	var updatedAt time.Time
 
-	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgID, string(model.DeploymentStatusDeployed)).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgID).Scan(
 		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
-		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
+		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt,
+		&statusStr, &updatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1241,51 +1187,309 @@ func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string)
 		} else {
 			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 		}
+	}
+
+	// Populate status fields
+	status := model.DeploymentStatus(statusStr)
+	deployment.Status = &status
+	deployment.UpdatedAt = &updatedAt
+
+	return deployment, nil
+}
+
+// SetActiveDeployment inserts or updates the deployment status record to set the specified deployment as active (DEPLOYED)
+func (r *APIRepo) SetActiveDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) error {
+	updatedAt := time.Now()
+
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: Use ON CONFLICT
+		query := `
+			INSERT INTO api_deployment_status (api_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT (api_uuid, organization_uuid, gateway_uuid)
+			DO UPDATE SET deployment_id = ?, status = ?, updated_at = ?
+		`
+		_, err := r.db.Exec(r.db.Rebind(query),
+			apiUUID, orgUUID, gatewayID, deploymentID, status, updatedAt,
+			deploymentID, status, updatedAt)
+		return err
+	} else {
+		// SQLite: Use REPLACE
+		query := `
+			REPLACE INTO api_deployment_status (api_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`
+		_, err := r.db.Exec(r.db.Rebind(query),
+			apiUUID, orgUUID, gatewayID, deploymentID, status, updatedAt)
+		return err
+	}
+}
+
+// GetDeploymentStatus retrieves the current deployment status for an API on a gateway (lightweight - no content)
+func (r *APIRepo) GetDeploymentStatus(apiUUID, orgUUID, gatewayID string) (string, model.DeploymentStatus, *time.Time, error) {
+	query := `
+		SELECT deployment_id, status, updated_at
+		FROM api_deployment_status
+		WHERE api_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
+	`
+
+	var deploymentID string
+	var statusStr string
+	var updatedAt time.Time
+
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID, gatewayID).Scan(
+		&deploymentID, &statusStr, &updatedAt)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// No status row means no active deployment (all ARCHIVED)
+			return "", "", nil, nil
+		}
+		return "", "", nil, err
+	}
+
+	return deploymentID, model.DeploymentStatus(statusStr), &updatedAt, nil
+}
+
+// UpdateDeploymentStatusState updates only the status field for an existing deployment status
+func (r *APIRepo) UpdateDeploymentStatusState(apiUUID, orgUUID, gatewayID string, status model.DeploymentStatus) error {
+	query := `
+		UPDATE api_deployment_status
+		SET status = ?, updated_at = ?
+		WHERE api_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
+	`
+
+	result, err := r.db.Exec(r.db.Rebind(query), status, time.Now(), apiUUID, orgUUID, gatewayID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return constants.ErrDeploymentNotFound
+	}
+
+	return nil
+}
+
+// DeleteDeploymentStatus deletes the status entry for an API on a gateway
+func (r *APIRepo) DeleteDeploymentStatus(apiUUID, orgUUID, gatewayID string) error {
+	query := `
+		DELETE FROM api_deployment_status
+		WHERE api_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
+	`
+
+	_, err := r.db.Exec(r.db.Rebind(query), apiUUID, orgUUID, gatewayID)
+	return err
+}
+
+// GetDeploymentWithState retrieves a deployment with its lifecycle state populated
+func (r *APIRepo) GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error) {
+	deployment := &model.APIDeployment{}
+
+	query := `
+		SELECT 
+			d.deployment_id, d.api_uuid, d.organization_uuid, d.gateway_uuid, 
+			d.base_deployment_id, d.content, d.metadata, d.created_at,
+			s.status, s.updated_at AS status_updated_at
+		FROM api_deployments d
+		LEFT JOIN api_deployment_status s 
+			ON d.deployment_id = s.deployment_id
+			AND d.api_uuid = s.api_uuid
+			AND d.organization_uuid = s.organization_uuid
+			AND d.gateway_uuid = s.gateway_uuid
+		WHERE d.deployment_id = ? AND d.api_uuid = ? AND d.organization_uuid = ?
+	`
+
+	var baseDeploymentID sql.NullString
+	var metadataJSON string
+	var statusStr sql.NullString
+	var updatedAtVal sql.NullTime
+
+	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, apiUUID, orgUUID).Scan(
+		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID, &deployment.GatewayID,
+		&baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt,
+		&statusStr, &updatedAtVal)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, constants.ErrDeploymentNotFound
+		}
+		return nil, err
+	}
+
+	// Set nullable fields
+	if baseDeploymentID.Valid {
+		deployment.BaseDeploymentID = &baseDeploymentID.String
+	}
+
+	if metadataJSON != "" {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
+			deployment.Metadata = metadata
+		} else {
+			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
+		}
+	}
+
+	// Populate status fields from JOIN (nil if ARCHIVED)
+	if statusStr.Valid {
+		st := model.DeploymentStatus(statusStr.String)
+		deployment.Status = &st
+		if updatedAtVal.Valid {
+			deployment.UpdatedAt = &updatedAtVal.Time
+		}
+	} else {
+		// ARCHIVED state - Status and UpdatedAt remain nil
+		archived := model.DeploymentStatusArchived
+		deployment.Status = &archived
 	}
 
 	return deployment, nil
 }
 
-// GetOldestUndeployedDeploymentByGateway implements [APIRepository].
-func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gatewayID string, orgUUID string) (*model.APIDeployment, error) {
-	deployment := &model.APIDeployment{}
-
-	// SQL query to select the oldest undeployed deployment
-	query := `
-		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
-		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status = ?
-		ORDER BY created_at ASC
-		LIMIT 1
-	`
-	var baseDeploymentID sql.NullString
-	var metadataJSON string
-
-	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgUUID, string(model.DeploymentStatusUndeployed)).Scan(
-		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
-		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+// GetDeploymentsWithState retrieves deployments with their lifecycle states populated
+func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error) {
+	// Validate status parameter
+	if status != nil {
+		validStatuses := map[string]bool{
+			string(model.DeploymentStatusDeployed):   true,
+			string(model.DeploymentStatusUndeployed): true,
+			string(model.DeploymentStatusArchived):   true,
 		}
+		if !validStatuses[*status] {
+			return nil, fmt.Errorf("invalid deployment status: %s", *status)
+		}
+	}
+
+	var query string
+	var args []interface{}
+
+	baseQuery := `
+		SELECT 
+			d.deployment_id, d.api_uuid, d.organization_uuid, d.gateway_uuid,
+			d.base_deployment_id, d.content, d.metadata, d.created_at,
+			s.status, s.updated_at AS status_updated_at
+		FROM api_deployments d
+		LEFT JOIN api_deployment_status s 
+			ON d.deployment_id = s.deployment_id
+			AND d.api_uuid = s.api_uuid
+			AND d.organization_uuid = s.organization_uuid
+			AND d.gateway_uuid = s.gateway_uuid
+		WHERE d.api_uuid = ? AND d.organization_uuid = ?
+	`
+	args = append(args, apiUUID, orgUUID)
+
+	if gatewayID != nil {
+		baseQuery += " AND d.gateway_uuid = ?"
+		args = append(args, *gatewayID)
+	}
+
+	// Filter by status (including ARCHIVED)
+	if status != nil {
+		if *status == string(model.DeploymentStatusArchived) {
+			// ARCHIVED: status table row doesn't exist
+			baseQuery += " AND s.deployment_id IS NULL"
+		} else {
+			// DEPLOYED or UNDEPLOYED: status table row exists with matching status
+			baseQuery += " AND s.status = ?"
+			args = append(args, *status)
+		}
+	}
+
+	query = baseQuery + " ORDER BY d.created_at DESC"
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []*model.APIDeployment
+
+	for rows.Next() {
+		deployment := &model.APIDeployment{}
+		var baseDeploymentID sql.NullString
+		var metadataJSON string
+		var statusStr sql.NullString
+		var updatedAtVal sql.NullTime
+
+		err := rows.Scan(
+			&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID, &deployment.GatewayID,
+			&baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt,
+			&statusStr, &updatedAtVal)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// Set nullable fields
+		if baseDeploymentID.Valid {
+			deployment.BaseDeploymentID = &baseDeploymentID.String
+		}
+
+		if metadataJSON != "" {
+			var metadata map[string]interface{}
+			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
+				deployment.Metadata = metadata
+			}
+		}
+
+		// Populate status fields from JOIN (nil if ARCHIVED)
+		if statusStr.Valid {
+			st := model.DeploymentStatus(statusStr.String)
+			deployment.Status = &st
+			if updatedAtVal.Valid {
+				deployment.UpdatedAt = &updatedAtVal.Time
+			}
+		} else {
+			// ARCHIVED state - Status and UpdatedAt remain nil
+			archived := model.DeploymentStatusArchived
+			deployment.Status = &archived
+		}
+
+		deployments = append(deployments, deployment)
+	}
+
+	if err = rows.Err(); err != nil {
 		return nil, err
 	}
 
-	if baseDeploymentID.Valid {
-		deployment.BaseDeploymentID = &baseDeploymentID.String
-	}
+	return deployments, nil
+}
 
-	if metadataJSON != "" {
-		var metadata map[string]interface{}
-		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
-			deployment.Metadata = metadata
-		} else {
-			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
+// GetOldestArchivedDeployments retrieves the oldest ARCHIVED deployment IDs for cleanup
+func (r *APIRepo) GetOldestArchivedDeployments(apiUUID, gatewayID, orgUUID string, limit int) ([]string, error) {
+	query := `
+		SELECT d.deployment_id
+		FROM api_deployments d
+		LEFT JOIN api_deployment_status s ON d.deployment_id = s.deployment_id
+		WHERE d.api_uuid = ? AND d.gateway_uuid = ? AND d.organization_uuid = ?
+			AND s.deployment_id IS NULL
+		ORDER BY d.created_at ASC
+		LIMIT ?
+	`
+
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, gatewayID, orgUUID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
 		}
+		ids = append(ids, id)
 	}
 
-	return deployment, nil
+	return ids, rows.Err()
 }
 
 // CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
