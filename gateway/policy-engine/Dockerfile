@@ -38,6 +38,9 @@ WORKDIR /workspace
 # Copy SDK components
 COPY --from=sdk . /api-platform/sdk
 
+# Copy common (needed for go.mod replace directive)
+COPY --from=common . /api-platform/common
+
 # Copy Gateway Builder application
 COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
 
@@ -70,6 +73,7 @@ ENV GIT_COMMIT=${GIT_COMMIT}
 # Copy Policy Engine framework source code
 COPY --from=policy-engine . /api-platform/gateway/policy-engine
 COPY --from=sdk . /api-platform/sdk
+COPY --from=common . /api-platform/common
 
 # Pre-download Go dependencies for runtime
 WORKDIR /api-platform/gateway/policy-engine

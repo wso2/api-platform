@@ -43,17 +43,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// APIKeyGenerationParams contains parameters for API key generation operations
-type APIKeyGenerationParams struct {
+// APIKeyCreationParams contains parameters for API key creation operations.
+// Handles both local key generation and external key injection.
+type APIKeyCreationParams struct {
 	Handle        string                      // API handle/ID
-	Request       api.APIKeyGenerationRequest // Request body with API key generation details
+	Request       api.APIKeyCreationRequest // Request body with API key creation details
 	User          *commonmodels.AuthContext   // User who initiated the request
 	CorrelationID string                      // Correlation ID for tracking
 	Logger        *slog.Logger                // Logger instance
 }
 
-// APIKeyGenerationResult contains the result of API key generation
-type APIKeyGenerationResult struct {
+// APIKeyCreationResult contains the result of API key creation.
+// Used for both locally generated keys and externally injected keys.
+type APIKeyCreationResult struct {
 	Response api.APIKeyGenerationResponse // Response following the generated schema
 	IsRetry  bool                         // Whether this was a retry due to collision
 }
@@ -148,16 +150,26 @@ const (
 	sha256SaltLen = 32 // Length of salt in bytes for SHA-256
 )
 
-// GenerateAPIKey handles the complete API key generation process
-func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGenerationResult, error) {
+// CreateAPIKey handles the complete API key creation process.
+// Supports both local key generation by generating a new random key and external key injection
+// (accepts key from external systems like Cloud APIM).
+func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreationResult, error) {
 	logger := params.Logger
 	user := params.User
+
+	// Determine operation type for context-aware messaging
+	isExternalKeyInjection := params.Request.ApiKey != nil && strings.TrimSpace(*params.Request.ApiKey) != ""
+	operationType := "generate"
+	if isExternalKeyInjection {
+		operationType = "register"
+	}
 
 	// Validate that API exists
 	config, err := s.store.GetByHandle(params.Handle)
 	if err != nil {
 		logger.Warn("API configuration not found for API Key generation",
 			slog.String("handle", params.Handle),
+			slog.String("operation", operationType),
 			slog.String("correlation_id", params.CorrelationID))
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 	}
@@ -168,22 +180,24 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 			slog.String("user_id", user.UserID),
 			slog.String("api_id", config.ID),
 			slog.String("handle", params.Handle),
+			slog.String("operation", operationType + "_key"),
 			slog.Any("error", err),
 			slog.String("correlation_id", params.CorrelationID))
 		return nil, err
 	}
 
-	// Generate the API key from request
-	apiKey, err := s.generateAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
+	// Create the API key from request (generate new or register external)
+	apiKey, err := s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
 	if err != nil {
-		logger.Error("Failed to generate API key",
+		logger.Error(fmt.Sprintf("Failed to %s API key", operationType),
 			slog.Any("error", err),
 			slog.String("handle", params.Handle),
+			slog.String("operation", operationType + "_key"),
 			slog.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("failed to generate API key: %w", err)
+		return nil, fmt.Errorf("failed to %s API key: %w", operationType, err)
 	}
 
-	result := &APIKeyGenerationResult{
+	result := &APIKeyCreationResult{
 		IsRetry: false,
 	}
 
@@ -191,18 +205,29 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	if s.db != nil {
 		if err := s.db.SaveAPIKey(apiKey); err != nil {
 			if errors.Is(err, storage.ErrConflict) {
-				// Handle collision by retrying once with a new key
-				logger.Warn("API key collision detected, retrying",
+				// Handle collision - only retry for locally generated keys
+				if isExternalKeyInjection {
+					// For external keys, collision means the key already exists
+					logger.Error("External API key already exists in the system",
+						slog.String("handle", params.Handle),
+						slog.String("operation", operationType + "_key"),
+						slog.String("correlation_id", params.CorrelationID))
+					return nil, fmt.Errorf("the provided API key already exists in the system")
+				}
+
+				// For local keys, retry with a new generated key
+				logger.Warn("API key collision detected, generating new key",
 					slog.String("handle", params.Handle),
+					slog.String("operation", operationType + "_key"),
 					slog.String("correlation_id", params.CorrelationID))
 
 				// Generate a new key
-				apiKey, err = s.generateAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
+				apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
 				if err != nil {
-					logger.Error("Failed to regenerate API key after collision",
+					logger.Error("Failed to generate API key after collision",
 						slog.Any("error", err),
 						slog.String("correlation_id", params.CorrelationID))
-					return nil, fmt.Errorf("failed to regenerate API key after collision: %w", err)
+					return nil, fmt.Errorf("failed to generate API key after collision: %w", err)
 				}
 
 				// Try saving again
@@ -218,6 +243,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 				logger.Error("Failed to save API key to database",
 					slog.Any("error", err),
 					slog.String("handle", params.Handle),
+					slog.String("operation", operationType + "_key"),
 					slog.String("correlation_id", params.CorrelationID))
 				return nil, fmt.Errorf("failed to save API key to database: %w", err)
 			}
@@ -227,11 +253,12 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	plainAPIKey := apiKey.PlainAPIKey // Store plain API key for response
 	apiKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
 
-	// Store the generated API key in the ConfigStore
+	// Store the API key in the ConfigStore (for both generated and registered keys)
 	if err := s.store.StoreAPIKey(apiKey); err != nil {
 		logger.Error("Failed to store API key in ConfigStore",
 			slog.Any("error", err),
 			slog.String("handle", params.Handle),
+			slog.String("operation", operationType + "_key"),
 			slog.String("correlation_id", params.CorrelationID))
 
 		// Rollback database save to maintain consistency
@@ -262,6 +289,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		slog.String("name", apiKey.Name),
 		slog.String("api_name", apiName),
 		slog.String("api_version", apiVersion),
+		slog.String("operation", operationType + "_key"),
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", params.CorrelationID))
 
@@ -270,17 +298,19 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, apiKey, params.CorrelationID); err != nil {
 			logger.Error("Failed to send API key to policy engine",
 				slog.Any("error", err),
+				slog.String("operation", operationType + "_key"),
 				slog.String("correlation_id", params.CorrelationID))
 			return nil, fmt.Errorf("failed to send API key to policy engine: %w", err)
 		}
 	}
 
 	// Build response following the generated schema
-	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle, plainAPIKey)
+	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle, plainAPIKey, isExternalKeyInjection)
 
-	logger.Info("API key generated successfully",
+	logger.Info("API key successfully created",
 		slog.String("handle", params.Handle),
 		slog.String("name", apiKey.Name),
+		slog.String("operation", operationType + "_key"),
 		slog.String("user", user.UserID),
 		slog.Bool("is_retry", result.IsRetry),
 		slog.String("correlation_id", params.CorrelationID))
@@ -604,7 +634,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	}
 
 	// Build and return the response
-	result.Response = s.buildAPIKeyResponse(regeneratedKey, params.Handle, plainAPIKey)
+	result.Response = s.buildAPIKeyResponse(regeneratedKey, params.Handle, plainAPIKey, false)
 
 	logger.Info("API key regeneration completed successfully",
 		slog.String("handle", params.Handle),
@@ -691,6 +721,7 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 			CreatedAt:  key.CreatedAt,
 			CreatedBy:  key.CreatedBy,
 			ExpiresAt:  key.ExpiresAt,
+			Source:     api.APIKeySource(key.Source),
 		}
 		responseAPIKeys = append(responseAPIKeys, responseAPIKey)
 	}
@@ -716,23 +747,54 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	return result, nil
 }
 
-// generateAPIKeyFromRequest creates a new API key based on the APIKeyGenerationRequest
-func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.APIKeyGenerationRequest, user string,
+// createAPIKeyFromRequest creates a new API key from a request.
+// Handles both local key generation (creates new random key) and external key injection
+// (uses provided key from external platforms).
+func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIKeyCreationRequest, user string,
 	config *models.StoredConfig) (*models.APIKey, error) {
 
 	// Generate short unique ID (22 characters, URL-safe)
+	// This is an internal ID for tracking and is always generated regardless of source
 	id, err := s.generateShortUniqueID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate unique ID: %w", err)
 	}
 
-	// Generate 32 random bytes for the API key
-	plainAPIKeyValue, err := s.generateAPIKeyValue()
-	if err != nil {
-		return nil, err
+	// Determine if this is an external key injection or local key generation
+	var plainAPIKeyValue string // The key value to be hashed
+	var source string
+	var isExternalKey bool
+
+	if request.ApiKey != nil {
+		// External key injection: use provided key AS-IS
+		providedKey := strings.TrimSpace(*request.ApiKey)
+
+		if providedKey == "" {
+			return nil, fmt.Errorf("provided API key is empty")
+		}
+
+		// Basic validation: ensure reasonable length (not too short)
+		if len(providedKey) < 16 {
+			return nil, fmt.Errorf("provided API key is too short (minimum 16 characters required)")
+		}
+
+		// Use the key as-is - we don't dictate format for external keys
+		plainAPIKeyValue = providedKey
+		source = "external"
+		isExternalKey = true
+	} else {
+		// Local key generation: generate new random key with our standard format
+		// Format: apip_{64_hex_chars} (32 bytes → hex encoded)
+		plainAPIKeyValue, err = s.generateAPIKeyValue()
+		if err != nil {
+			return nil, err
+		}
+		source = "local"
+		isExternalKey = false
 	}
 
 	// Hash the API key for storage and policy engine
+	// Works for any format - we just hash whatever we receive
 	hashedAPIKeyValue, err := s.hashAPIKey(plainAPIKeyValue)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash API key: %w", err)
@@ -769,17 +831,17 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		duration = &request.ExpiresIn.Duration
 		timeDuration := time.Duration(request.ExpiresIn.Duration)
 		switch request.ExpiresIn.Unit {
-		case api.APIKeyGenerationRequestExpiresInUnitSeconds:
+		case api.APIKeyCreationRequestExpiresInUnitSeconds:
 			timeDuration *= time.Second
-		case api.APIKeyGenerationRequestExpiresInUnitMinutes:
+		case api.APIKeyCreationRequestExpiresInUnitMinutes:
 			timeDuration *= time.Minute
-		case api.APIKeyGenerationRequestExpiresInUnitHours:
+		case api.APIKeyCreationRequestExpiresInUnitHours:
 			timeDuration *= time.Hour
-		case api.APIKeyGenerationRequestExpiresInUnitDays:
+		case api.APIKeyCreationRequestExpiresInUnitDays:
 			timeDuration *= 24 * time.Hour
-		case api.APIKeyGenerationRequestExpiresInUnitWeeks:
+		case api.APIKeyCreationRequestExpiresInUnitWeeks:
 			timeDuration *= 7 * 24 * time.Hour
-		case api.APIKeyGenerationRequestExpiresInUnitMonths:
+		case api.APIKeyCreationRequestExpiresInUnitMonths:
 			timeDuration *= 30 * 24 * time.Hour // Approximate month as 30 days
 		default:
 			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
@@ -808,11 +870,22 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		ExpiresAt:    expiresAt,
 		Unit:         unit,
 		Duration:     duration,
+		Source:       source,                        // "local" or "external"
+	}
+
+	// Set external reference fields if provided
+	// external_ref_id is optional and used for tracing purposes only
+	if request.ExternalRefId != nil && strings.TrimSpace(*request.ExternalRefId) != "" {
+		externalRefId := strings.TrimSpace(*request.ExternalRefId)
+		apiKey.ExternalRefId = &externalRefId
 	}
 
 	// Temporarily store the plain key for response generation
 	// This field is not persisted and only used for returning to user
-	apiKey.PlainAPIKey = plainAPIKeyValue
+	// For external keys, we do NOT store the plain key (caller already has it)
+	if !isExternalKey {
+		apiKey.PlainAPIKey = plainAPIKeyValue
+	}
 
 	return apiKey, nil
 }
@@ -843,12 +916,20 @@ func (s *APIKeyService) generateOperationsString(operations []api.Operation) str
 }
 
 // buildAPIKeyResponse builds the response following the generated schema
-func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle, plainAPIKey string) api.APIKeyGenerationResponse {
+func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string, plainAPIKey string, isExternalKeyInjection bool) api.APIKeyGenerationResponse {
 	if key == nil {
 		return api.APIKeyGenerationResponse{
 			Status:  "error",
 			Message: "API key is nil",
 		}
+	}
+
+	// Use provided message or default
+	var message string
+	if isExternalKeyInjection {
+		message = "API key registered successfully"
+	} else {
+		message = "API key generated successfully"
 	}
 
 	// Calculate remaining API key quota
@@ -865,8 +946,8 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle, plainAPI
 
 	// Use plainAPIKey for response if available, otherwise mask the hashed key
 	var responseAPIKey *string
-	if plainAPIKey != "" {
-		// Format: apip_{key}_{base64url_encoded_id}
+	if plainAPIKey != "" && !isExternalKeyInjection {
+		// Format: apip_{64_hex_chars}.{hex_encoded_id}
 		// Since the ID is already base64url encoded (22 chars), we can use it directly
 		formattedAPIKey := plainAPIKey + constants.APIKeySeparator + key.ID
 		responseAPIKey = &formattedAPIKey
@@ -877,17 +958,18 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle, plainAPI
 
 	return api.APIKeyGenerationResponse{
 		Status:               "success",
-		Message:              "API key generated successfully",
+		Message:              message,
 		RemainingApiKeyQuota: remainingQuota,
 		ApiKey: &api.APIKey{
 			Name:       key.Name,
-			ApiKey:     responseAPIKey, // Return plain key only during generation/regeneration
+			ApiKey:     responseAPIKey, // Return plain key only for locally generated keys
 			ApiId:      handle,
 			Operations: key.Operations,
 			Status:     api.APIKeyStatus(key.Status),
 			CreatedAt:  key.CreatedAt,
 			CreatedBy:  key.CreatedBy,
 			ExpiresAt:  key.ExpiresAt,
+			Source:     api.APIKeySource(key.Source),
 		},
 	}
 }
@@ -1012,6 +1094,7 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 		ExpiresAt:    expiresAt,
 		Unit:         unit,
 		Duration:     duration,
+		Source:       existingKey.Source,          // Preserve source from original key
 	}
 
 	// Temporarily store the plain key for response generation
@@ -1489,4 +1572,244 @@ func (s *APIKeyService) generateShortUniqueID() (string, error) {
 	id = strings.ReplaceAll(id, "_", "~")
 
 	return id, nil
+}
+
+// CreateExternalAPIKeyFromEvent creates an API key from an external event (websocket).
+// This is used when platform-api broadcasts an apikey.created event.
+// The plain API key is hashed before storage.
+func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
+	apiId string,
+	keyName string,
+	plainAPIKey string,
+	externalRefId *string,
+	operations string,
+	expiresAt *time.Time,
+	logger *slog.Logger,
+) error {
+	logger.Info("Creating external API key from event",
+		slog.String("api_id", apiId),
+		slog.String("key_name", keyName),
+		slog.Bool("has_expiry", expiresAt != nil),
+	)
+
+	// Validate inputs
+	if apiId == "" {
+		return fmt.Errorf("API ID cannot be empty")
+	}
+	if keyName == "" {
+		return fmt.Errorf("key name cannot be empty")
+	}
+	if plainAPIKey == "" {
+		return fmt.Errorf("API key cannot be empty")
+	}
+
+	// Validate API key length
+	if len(plainAPIKey) < 16 {
+		return fmt.Errorf("API key is too short (minimum 16 characters required)")
+	}
+
+	// Check if API exists
+	config, err := s.store.Get(apiId)
+	if err != nil {
+		return fmt.Errorf("API not found: %s", apiId)
+	}
+
+	// Check if an API key with this name already exists
+	existingKeys, err := s.db.GetAPIKeysByAPI(apiId)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return fmt.Errorf("failed to check existing keys: %w", err)
+	}
+
+	for _, key := range existingKeys {
+		if key.Name == keyName {
+			// Key with same name exists - update it instead of creating new one
+			logger.Info("API key with same name already exists, updating it",
+				slog.String("api_id", apiId),
+				slog.String("key_name", keyName),
+				slog.String("existing_id", key.ID),
+			)
+
+			// Hash the new API key
+			hashedAPIKey, err := s.hashAPIKey(plainAPIKey)
+			if err != nil {
+				return fmt.Errorf("failed to hash API key: %w", err)
+			}
+
+			// Update existing key
+			key.APIKey = hashedAPIKey
+			key.MaskedAPIKey = s.MaskAPIKey(plainAPIKey)
+			key.Operations = operations
+			key.Status = models.APIKeyStatusActive
+			key.UpdatedAt = time.Now()
+			key.ExpiresAt = expiresAt
+			key.Source = "external"
+			key.ExternalRefId = externalRefId
+
+			if err := s.db.UpdateAPIKey(key); err != nil {
+				return fmt.Errorf("failed to update API key: %w", err)
+			}
+
+			// Trigger xDS snapshot update via xdsManager
+			if err := s.xdsManager.StoreAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), key, "external-update"); err != nil {
+				logger.Error("Failed to update xDS snapshot after API key update",
+					slog.String("api_id", apiId),
+					slog.Any("error", err),
+				)
+				return fmt.Errorf("failed to update xDS snapshot: %w", err)
+			}
+
+			logger.Info("Successfully updated external API key",
+				slog.String("api_id", apiId),
+				slog.String("key_name", keyName),
+				slog.String("key_id", key.ID),
+			)
+
+			return nil
+		}
+	}
+
+	// Generate unique ID for the key
+	id, err := s.generateShortUniqueID()
+	if err != nil {
+		return fmt.Errorf("failed to generate unique ID: %w", err)
+	}
+
+	// Hash the API key
+	hashedAPIKey, err := s.hashAPIKey(plainAPIKey)
+	if err != nil {
+		return fmt.Errorf("failed to hash API key: %w", err)
+	}
+
+	// Generate masked API key for display
+	maskedAPIKey := s.MaskAPIKey(plainAPIKey)
+
+	// Create API key model
+	now := time.Now()
+	apiKey := &models.APIKey{
+		ID:            id,
+		Name:          keyName,
+		APIKey:        hashedAPIKey,
+		MaskedAPIKey:  maskedAPIKey,
+		APIId:         apiId,
+		Operations:    operations,
+		Status:        models.APIKeyStatusActive,
+		CreatedAt:     now,
+		CreatedBy:     "platform-api", // External keys are created by platform-api
+		UpdatedAt:     now,
+		ExpiresAt:     expiresAt,
+		Source:        "external",
+		ExternalRefId: externalRefId,
+	}
+
+	// Store in database
+	if err := s.db.SaveAPIKey(apiKey); err != nil {
+		if errors.Is(err, storage.ErrConflict) {
+			return fmt.Errorf("API key with name '%s' already exists", keyName)
+		}
+		return fmt.Errorf("failed to store API key: %w", err)
+	}
+
+	// Trigger xDS snapshot update to propagate to policy engine via xdsManager
+	if err := s.xdsManager.StoreAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), apiKey, "external-create"); err != nil {
+		logger.Error("Failed to update xDS snapshot after API key creation",
+			slog.String("api_id", apiId),
+			slog.Any("error", err),
+		)
+		// Don't return error - key is already stored in DB
+		// Policy engine will get it on next full sync
+	}
+
+	logger.Info("Successfully created external API key",
+		slog.String("api_id", apiId),
+		slog.String("key_name", keyName),
+		slog.String("key_id", id),
+		slog.String("source", "external"),
+	)
+
+	return nil
+}
+
+// RevokeExternalAPIKeyFromEvent revokes an API key from an external event (websocket).
+// This is used when platform-api broadcasts an apikey.revoked event.
+func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
+	apiId string,
+	keyName string,
+	logger *slog.Logger,
+) error {
+	logger.Info("Revoking external API key from event",
+		slog.String("api_id", apiId),
+		slog.String("key_name", keyName),
+	)
+
+	// Validate inputs
+	if apiId == "" {
+		return fmt.Errorf("API ID cannot be empty")
+	}
+	if keyName == "" {
+		return fmt.Errorf("key name cannot be empty")
+	}
+
+	// Check if API exists
+	config, err := s.store.Get(apiId)
+	if err != nil {
+		logger.Warn("API not found, skipping revocation",
+			slog.String("api_id", apiId),
+		)
+		return nil // Idempotent - already gone
+	}
+
+	// Get API keys for this API
+	apiKeys, err := s.db.GetAPIKeysByAPI(apiId)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			logger.Warn("No API keys found for API, skipping revocation",
+				slog.String("api_id", apiId),
+			)
+			return nil // Idempotent - no keys to revoke
+		}
+		return fmt.Errorf("failed to get API keys: %w", err)
+	}
+
+	// Find the key by name
+	var targetKey *models.APIKey
+	for _, key := range apiKeys {
+		if key.Name == keyName {
+			targetKey = key
+			break
+		}
+	}
+
+	if targetKey == nil {
+		logger.Warn("API key not found, skipping revocation (idempotent)",
+			slog.String("api_id", apiId),
+			slog.String("key_name", keyName),
+		)
+		return nil // Idempotent - key doesn't exist
+	}
+
+	// Mark as revoked
+	targetKey.Status = models.APIKeyStatusRevoked
+	targetKey.UpdatedAt = time.Now()
+
+	// Update in database
+	if err := s.db.UpdateAPIKey(targetKey); err != nil {
+		return fmt.Errorf("failed to update API key status: %w", err)
+	}
+
+	// Trigger xDS snapshot update to propagate to policy engine via xdsManager
+	if err := s.xdsManager.RevokeAPIKey(apiId, config.GetDisplayName(), config.GetVersion(), keyName, "external-revoke"); err != nil {
+		logger.Error("Failed to update xDS snapshot after API key revocation",
+			slog.String("api_id", apiId),
+			slog.Any("error", err),
+		)
+		// Don't return error - key is already revoked in DB
+	}
+
+	logger.Info("Successfully revoked external API key",
+		slog.String("api_id", apiId),
+		slog.String("key_name", keyName),
+		slog.String("key_id", targetKey.ID),
+	)
+
+	return nil
 }

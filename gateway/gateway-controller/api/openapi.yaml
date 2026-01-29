@@ -349,13 +349,13 @@ paths:
 
   /apis/{id}/api-keys:
     post:
-      summary: Generate API key for an API
+      summary: Create a new API key for an API
       description: |
-        Generate a new API key for the specified API. The generated key can be
+        Create a new API key for the specified API. The created key can be
         used by clients to authenticate requests to the API if API Key validation
         policy is applied. The key is a 32-byte random value encoded in hexadecimal
-        and prefixed with "apip_".
-      operationId: generateAPIKey
+        and prefixed with "apip_" for local keys, or the provided key for external keys.
+      operationId: createAPIKey
       tags:
         - API Management
       parameters:
@@ -372,13 +372,13 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/APIKeyGenerationRequest"
+              $ref: "#/components/schemas/APIKeyCreationRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/APIKeyGenerationRequest"
+              $ref: "#/components/schemas/APIKeyCreationRequest"
       responses:
         '201':
-          description: API key generated successfully
+          description: API key created successfully
           content:
             application/json:
               schema:
@@ -2222,13 +2222,22 @@ components:
           format: date-time
           example: 2025-10-11T11:45:00Z
 
-    APIKeyGenerationRequest:
+    APIKeyCreationRequest:
       type: object
       properties:
         name:
           type: string
           description: Name of the API key
           example: my-weather-api-key
+        api_key:
+          type: string
+          description: |
+            Optional plain-text API key value for external key injection.
+            If provided, this key will be used instead of generating a new one.
+            The key will be hashed before storage. The key can be in any format
+            (minimum 16 characters). Use this for injecting externally generated
+            API keys (e.g., from Cloud APIM).
+          example: "cloud-apim-key-abc123xyz789"
         expires_in:
           type: object
           description: Expiration duration for the API key
@@ -2256,6 +2265,13 @@ components:
           format: date-time
           description: Expiration timestamp. If both expires_in and expires_at are provided, expires_at takes precedence.
           example: "2026-12-08T10:30:00Z"
+        external_ref_id:
+          type: string
+          description: |
+            External reference ID for the API key (e.g., Cloud APIM key ID).
+            This field is optional and used for tracing purposes only.
+            The gateway generates its own internal ID for tracking.
+          example: "cloud-apim-key-98765"
     APIKeyGenerationResponse:
       type: object
       properties:
@@ -2317,6 +2333,13 @@ components:
           nullable: true
           description: Expiration timestamp (null if no expiration)
           example: "2025-12-08T10:30:00Z"
+        source:
+          type: string
+          description: Source of the API key (local or external)
+          enum:
+            - local
+            - external
+          example: local
       required:
         - name
         - apiId
@@ -2325,6 +2348,7 @@ components:
         - created_at
         - created_by
         - expires_at
+        - source
     APIKeyRegenerationRequest:
       type: object
       properties:

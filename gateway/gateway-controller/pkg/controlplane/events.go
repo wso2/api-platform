@@ -42,3 +42,36 @@ type APIDeployedEvent struct {
 	Timestamp     string                  `json:"timestamp"`
 	CorrelationID string                  `json:"correlationId"`
 }
+
+// APIKeyCreatedEventPayload represents the payload of an API key created event
+type APIKeyCreatedEventPayload struct {
+	ApiId         string  `json:"apiId"`
+	KeyName       string  `json:"keyName"`
+	ApiKey        string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
+	ExternalRefId *string `json:"externalRefId,omitempty"`
+	Operations    string  `json:"operations"`
+	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
+	// TODO: Support expires in field
+}
+
+// APIKeyCreatedEvent represents the complete API key created event
+type APIKeyCreatedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       APIKeyCreatedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
+}
+
+// APIKeyRevokedEventPayload represents the payload of an API key revoked event
+type APIKeyRevokedEventPayload struct {
+	ApiId   string `json:"apiId"`
+	KeyName string `json:"keyName"`
+}
+
+// APIKeyRevokedEvent represents the complete API key revoked event
+type APIKeyRevokedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       APIKeyRevokedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
+}

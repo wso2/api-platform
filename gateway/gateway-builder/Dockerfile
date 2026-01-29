@@ -37,6 +37,9 @@ WORKDIR /workspace
 # Copy SDK (needed for go.mod replace directive)
 COPY --from=sdk . /workspace/sdk
 
+# Copy common (needed for go.mod replace directive)
+COPY --from=common . /workspace/common
+
 # Pre-download Go dependencies for SDK
 WORKDIR /workspace/sdk
 RUN go mod download

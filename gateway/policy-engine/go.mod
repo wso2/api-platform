@@ -13,6 +13,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.0
 	github.com/moesif/moesifapi-go v1.1.5
 	github.com/prometheus/client_golang v1.23.2
+	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/sdk v0.3.1
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
@@ -61,3 +62,5 @@ require (
 
 // Local module replacements for Docker builds
 replace github.com/wso2/api-platform/sdk => ../../sdk
+
+replace github.com/wso2/api-platform/common => ../../common

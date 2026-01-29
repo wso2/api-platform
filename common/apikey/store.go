@@ -1,4 +1,22 @@
-package policyv1alpha
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package apikey
 
 import (
 	"crypto/sha256"
@@ -8,12 +26,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/bcrypt"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type APIKey struct {
@@ -37,6 +55,8 @@ type APIKey struct {
 	UpdatedAt time.Time `json:"updated_at" yaml:"updated_at"`
 	// ExpiresAt Expiration timestamp (null if no expiration)
 	ExpiresAt *time.Time `json:"expires_at" yaml:"expires_at"`
+	// Source tracking for external key support ("local" | "external")
+	Source string `json:"source" yaml:"source"`
 }
 
 // APIKeyStatus Status of the API key
@@ -77,12 +97,16 @@ type APIkeyStore struct {
 	mu sync.RWMutex // Protects concurrent access
 	// API Keys storage
 	apiKeysByAPI map[string]map[string]*APIKey // Key: "API ID" → Value: map[API key ID]*APIKey
+	// Fast lookup index for external keys: Key: "API ID:SHA256(plain key)" → Value: API key ID
+	// This avoids O(n) iteration through all keys for external key validation
+	externalKeyIndex map[string]string
 }
 
 // NewAPIkeyStore creates a new in-memory API key store
 func NewAPIkeyStore() *APIkeyStore {
 	return &APIkeyStore{
-		apiKeysByAPI: make(map[string]map[string]*APIKey),
+		apiKeysByAPI:     make(map[string]map[string]*APIKey),
+		externalKeyIndex: make(map[string]string),
 	}
 }
 
@@ -139,26 +163,39 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 }
 
 // ValidateAPIKey validates the provided API key against the internal APIkey store
+// Supports both local keys (with format: key_id) and external keys (any format)
 func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string) (bool, error) {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
-	if !ok {
-		return false, ErrNotFound
-	}
-
 	var targetAPIKey *APIKey
 
-	apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
-	if !exists {
-		return false, ErrNotFound
+	// Quick check: Does the key contain the separator character?
+	// Local keys have format: key_value_{id} (contains underscore)
+	// External keys are arbitrary strings (may or may not contain underscore)
+
+	// Try to parse as local key (format: key_id)
+	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
+	if ok {
+		// Optimized O(1) lookup for local keys using ID
+		apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
+		if exists && apiKey.Source == "local" && compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
+			targetAPIKey = apiKey
+		}
 	}
 
-	// Find the API key that matches the provided plain text key (by comparing against hashed values)
-	if apiKey != nil {
-		if compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
-			targetAPIKey = apiKey
+
+	// If not found via local key lookup, check all keys (handles both external keys and edge cases)
+	if targetAPIKey == nil {
+		apiKeys, exists := aks.apiKeysByAPI[apiId]
+		if exists {
+			for _, apiKey := range apiKeys {
+				// For external keys, compare the full provided key directly (no parsing)
+				if apiKey.Source == "external" && compareAPIKeys(providedAPIKey, apiKey.APIKey) {
+					targetAPIKey = apiKey
+					break
+				}
+			}
 		}
 	}
 
@@ -177,7 +214,7 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	}
 
 	// Check if the API key has expired
-	if targetAPIKey.Status == Expired || targetAPIKey.ExpiresAt != nil && time.Now().After(*targetAPIKey.ExpiresAt) {
+	if targetAPIKey.Status == Expired || (targetAPIKey.ExpiresAt != nil && time.Now().After(*targetAPIKey.ExpiresAt)) {
 		targetAPIKey.Status = Expired
 		return false, nil
 	}
@@ -210,26 +247,41 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 }
 
 // RevokeAPIKey revokes a specific API key by plain text API key value
+// Supports both local keys (with format: key_id) and external keys (any format)
 func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
-	if !ok {
-		return nil
-	}
-
 	var matchedKey *APIKey
 
-	apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
-	if !exists {
-		return nil
+	// Quick check: Does the key contain the separator character?
+	// Local keys have format: key_value_{id} (contains underscore)
+	// External keys are arbitrary strings (may or may not contain underscore)
+	hasLocalKeyFormat := strings.Contains(providedAPIKey, APIKeySeparator)
+
+	if hasLocalKeyFormat {
+		// Try to parse as local key (format: key_id)
+		parsedAPIkey, ok := parseAPIKey(providedAPIKey)
+		if ok {
+			apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
+			if exists && apiKey.Source == "local" && compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
+				matchedKey = apiKey
+			}
+		}
 	}
 
-	// Find the API key that matches the provided plain text key
-	if apiKey != nil {
-		if compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
-			matchedKey = apiKey
+	// If not found via local key lookup, check all keys
+	if matchedKey == nil {
+		apiKeys, exists := aks.apiKeysByAPI[apiId]
+		if exists {
+			for _, apiKey := range apiKeys {
+				// For external keys, compare the full provided key directly
+				// Also catches local keys that failed parsing (edge case)
+				if compareAPIKeys(providedAPIKey, apiKey.APIKey) {
+					matchedKey = apiKey
+					break
+				}
+			}
 		}
 	}
 
@@ -241,7 +293,7 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 	// Set status to revoked
 	matchedKey.Status = Revoked
 
-	aks.removeFromAPIMapping(apiKey)
+	aks.removeFromAPIMapping(matchedKey)
 
 	return nil
 }

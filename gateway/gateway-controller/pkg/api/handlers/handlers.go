@@ -2360,29 +2360,30 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		slog.Int("certificates", len(certificates)))
 }
 
-// GenerateAPIKey implements ServerInterface.GenerateAPIKey
+// CreateAPIKey implements ServerInterface.CreateAPIKey
 // (POST /apis/{id}/api-keys)
-func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
+// Handles both local key generation and external key injection based on request payload
+func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "GenerateAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(c, "CreateAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
 
-	log.Debug("Starting API key generation",
+	log.Debug("Starting API key creation by generating or injecting a new key",
 		slog.String("handle", handle),
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", correlationID))
 
 	// Parse and validate request body
-	var request api.APIKeyGenerationRequest
+	var request api.APIKeyCreationRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Warn("Invalid request body for API key generation",
+		log.Warn("Invalid request body for API key creation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
@@ -2394,7 +2395,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	}
 
 	// Prepare parameters
-	params := utils.APIKeyGenerationParams{
+	params := utils.APIKeyCreationParams{
 		Handle:        handle,
 		Request:       request,
 		User:          user,
@@ -2402,7 +2403,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 		Logger:        log,
 	}
 
-	result, err := s.apiKeyService.GenerateAPIKey(params)
+	result, err := s.apiKeyService.CreateAPIKey(params)
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
@@ -2419,7 +2420,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 		return
 	}
 
-	log.Info("API key generation completed",
+	log.Info("API key creation completed",
 		slog.String("handle", handle),
 		slog.String("key name", result.Response.ApiKey.Name),
 		slog.String("user", user.UserID),

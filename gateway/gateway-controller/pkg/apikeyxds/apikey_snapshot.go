@@ -198,6 +198,7 @@ type APIKeyData struct {
 	CreatedBy  string     `json:"createdBy"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
 	ExpiresAt  *time.Time `json:"expiresAt"`
+	Source     string     `json:"source"` // "local" | "external"
 }
 
 // TranslateAPIKeys translates API key configurations to xDS resources
@@ -218,6 +219,7 @@ func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[strin
 			CreatedBy:  apiKey.CreatedBy,
 			UpdatedAt:  apiKey.UpdatedAt,
 			ExpiresAt:  apiKey.ExpiresAt,
+			Source:     apiKey.Source,
 		}
 		apiKeyData = append(apiKeyData, data)
 	}

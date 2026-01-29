@@ -110,10 +110,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
     -- Human-readable name for the API key
     name TEXT NOT NULL,
-    
+
     -- The generated API key (hashed)
     api_key TEXT NOT NULL UNIQUE,
-    
+
     -- Masked version of the API key for display purposes
     masked_api_key TEXT NOT NULL,
 
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
     -- Key status
     status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
-    
+
     -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -138,7 +138,11 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Expiration policy fields
     expires_in_unit TEXT NULL,
     expires_in_duration INTEGER NULL,
-    
+
+    -- External API key support (added in schema version 6)
+    source TEXT NOT NULL DEFAULT 'local',  -- 'local' or 'external'
+    external_ref_id TEXT NULL,  -- Cloud APIM key ID or other external reference
+
     -- Foreign key relationship to deployments
     FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
 
@@ -152,6 +156,8 @@ CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);
 CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
+CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
+CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 
--- Set schema version to 5
-PRAGMA user_version = 5;
+-- Set schema version to 6
+PRAGMA user_version = 6;

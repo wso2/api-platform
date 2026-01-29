@@ -22,25 +22,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"log/slog"
 	"time"
 
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	"github.com/wso2/api-platform/common/apikey"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // APIKeyOperationHandler handles API key operations received via xDS
 type APIKeyOperationHandler struct {
-	apiKeyStore *policy.APIkeyStore
+	apiKeyStore *apikey.APIkeyStore
 	logger      *slog.Logger
 }
 
 // NewAPIKeyOperationHandler creates a new API key operation handler
-func NewAPIKeyOperationHandler(apiKeyStore *policy.APIkeyStore, logger *slog.Logger) *APIKeyOperationHandler {
+func NewAPIKeyOperationHandler(apiKeyStore *apikey.APIkeyStore, logger *slog.Logger) *APIKeyOperationHandler {
 	return &APIKeyOperationHandler{
 		apiKeyStore: apiKeyStore,
 		logger:      logger,
@@ -128,18 +128,19 @@ func (h *APIKeyOperationHandler) handleStoreOperation(operation policyenginev1.A
 		"api_key_name", operation.APIKey.Name,
 		"correlation_id", operation.CorrelationID)
 
-	// Convert APIKeyData to policy.APIKey
-	apiKey := &policy.APIKey{
+	// Convert APIKeyData to apikey.APIKey
+	apiKey := &apikey.APIKey{
 		ID:         operation.APIKey.ID,
 		Name:       operation.APIKey.Name,
 		APIKey:     operation.APIKey.APIKey,
 		APIId:      operation.APIKey.APIId,
 		Operations: operation.APIKey.Operations,
-		Status:     policy.APIKeyStatus(operation.APIKey.Status),
+		Status:     apikey.APIKeyStatus(operation.APIKey.Status),
 		CreatedAt:  operation.APIKey.CreatedAt,
 		CreatedBy:  operation.APIKey.CreatedBy,
 		UpdatedAt:  operation.APIKey.UpdatedAt,
 		ExpiresAt:  operation.APIKey.ExpiresAt,
+		Source:     operation.APIKey.Source,
 	}
 
 	// Store the API key
@@ -206,18 +207,19 @@ func (h *APIKeyOperationHandler) replaceAllAPIKeys(apiKeyDataList []APIKeyData) 
 
 	// Then, add all API keys from the new state
 	for i, apiKeyData := range apiKeyDataList {
-		// Convert APIKeyData to policy.APIKey
-		apiKey := &policy.APIKey{
+		// Convert APIKeyData to apikey.APIKey
+		apiKey := &apikey.APIKey{
 			ID:         apiKeyData.ID,
 			Name:       apiKeyData.Name,
 			APIKey:     apiKeyData.APIKey,
 			APIId:      apiKeyData.APIId,
 			Operations: apiKeyData.Operations,
-			Status:     policy.APIKeyStatus(apiKeyData.Status),
+			Status:     apikey.APIKeyStatus(apiKeyData.Status),
 			CreatedAt:  apiKeyData.CreatedAt,
 			CreatedBy:  apiKeyData.CreatedBy,
 			UpdatedAt:  apiKeyData.UpdatedAt,
 			ExpiresAt:  apiKeyData.ExpiresAt,
+			Source:     apiKeyData.Source,
 		}
 
 		// Store the API key
@@ -256,4 +258,5 @@ type APIKeyData struct {
 	CreatedBy  string     `json:"createdBy"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
 	ExpiresAt  *time.Time `json:"expiresAt"`
+	Source     string     `json:"source"` // "local" | "external"
 }
