@@ -31,7 +31,7 @@ The only configuration required is the list of limits.
 | `limit` | integer | **Yes** | Maximum number of requests allowed. |
 | `duration` | string | **Yes** | Time window (e.g., "1s", "1m", "1h"). |
 
-### System Parameters (config.yaml)
+### System Parameters (config.toml)
 
 These parameters are shared with the Advanced Rate Limit policy and configured globally.
 

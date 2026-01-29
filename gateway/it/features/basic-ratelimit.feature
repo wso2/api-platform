@@ -45,7 +45,7 @@ Feature: Basic Rate Limiting
             path: /limited
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 5
@@ -83,7 +83,7 @@ Feature: Basic Rate Limiting
             path: /check
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 100
@@ -120,7 +120,7 @@ Feature: Basic Rate Limiting
             path: /resource
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 10
@@ -163,7 +163,7 @@ Feature: Basic Rate Limiting
             path: /route1
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 3
@@ -172,7 +172,7 @@ Feature: Basic Rate Limiting
             path: /route2
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 3
@@ -220,7 +220,7 @@ Feature: Basic Rate Limiting
             path: /resource
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 3
@@ -255,7 +255,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0.1.1
+            version: v0.1.2
             params:
               limits:
                 - limit: 5
@@ -265,7 +265,7 @@ Feature: Basic Rate Limiting
             path: /health
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 100
@@ -276,7 +276,7 @@ Feature: Basic Rate Limiting
             path: /resource-b
             policies:
               - name: basic-ratelimit
-                version: v0.1.1
+                version: v0.1.2
                 params:
                   limits:
                     - limit: 3

@@ -1,0 +1,22 @@
+# Local development values for the Gateway Helm chart.
+# Usage: helm install gateway ./gateway-helm-chart -f values-local.yaml
+#
+# This file overrides default values for local development:
+# - Uses IfNotPresent pullPolicy to use locally built images
+# - Uses latest tag for local builds
+
+gateway:
+  controller:
+    image:
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
+  router:
+    image:
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
+  policyEngine:
+    image:
+      tag: "latest"
+      pullPolicy: IfNotPresent
