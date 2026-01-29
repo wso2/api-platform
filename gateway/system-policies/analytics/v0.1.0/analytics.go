@@ -77,7 +77,7 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 	// For now analytics will go through all the headers and body to collect the analytics data.
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
+		RequestBodyMode:    policy.BodyModeBuffer,
 		ResponseHeaderMode: policy.HeaderModeProcess,
 		ResponseBodyMode:   policy.BodyModeBuffer,
 	}
@@ -86,6 +86,17 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 // OnRequest performs Analytics collection process during the request phase
 func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("Analytics system policy: OnRequest called")
+	allowPayloads := getAllowPayloadsFlag(params)
+    // Store tokenInfo in analytics metadata for publishing
+	analyticsMetadata := make(map[string]any)
+	
+	// When allow_payloads is enabled, capture the raw request body into analytics metadata.
+	if allowPayloads && ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
+		slog.Debug("Capturing request payload for analytics")
+		analyticsMetadata["request_payload"] = string(ctx.Body.Content)
+	}
+	
+
 	// Extract common analytics data from the request
 	// Based on the API kind, collect the analytics data
 	apiKind := ctx.SharedContext.APIKind
@@ -104,7 +115,12 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 	default:
 		slog.Error("Invalid API kind")
 	}
-	return nil
+	if len(analyticsMetadata) > 0 {
+		return policy.UpstreamRequestModifications{
+			AnalyticsMetadata: analyticsMetadata,
+		}
+	}
+    return nil
 }
 
 // getTemplateByHandle retrieves a template from the lazy resource cache by its handle
@@ -134,6 +150,8 @@ func getTemplateByHandle(templateHandle string) (map[string]interface{}, error) 
 // OnRequest performs Analytics collection process during the response phase
 func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	slog.Debug("Analytics system policy: OnResponse called")
+	allowPayloads := getAllowPayloadsFlag(params)
+
 	// Store tokenInfo in analytics metadata for publishing
 	analyticsMetadata := make(map[string]any)
 
@@ -194,12 +212,6 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 						analyticsMetadata[AIProviderDisplayNameMetadataKey] = *tokenInfo.ProviderDisplayName
 					}
 
-					// Return modifications with analytics metadata
-					if len(analyticsMetadata) > 0 {
-						return policy.UpstreamResponseModifications{
-							AnalyticsMetadata: analyticsMetadata,
-						}
-					}
 				}
 			}
 		}
@@ -208,6 +220,14 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 		// Currently no data is collected
 	default:
 		slog.Error("Invalid API kind")
+	}
+
+	// Optionally capture request and response payloads when enabled.
+	if allowPayloads {
+		if ctx != nil && ctx.ResponseBody != nil && len(ctx.ResponseBody.Content) > 0 {
+			slog.Debug("Capturing response payload for analytics")
+			analyticsMetadata["response_payload"] = string(ctx.ResponseBody.Content)
+		}
 	}
 
 	// Return modifications with analytics metadata (including headers if available)
@@ -364,5 +384,26 @@ func convertToInt64(value interface{}) (int64, error) {
 		return 0, fmt.Errorf("cannot convert string %q to int64", s)
 	default:
 		return 0, fmt.Errorf("cannot convert type %T to int64", value)
+	}
+}
+
+// getAllowPayloadsFlag safely extracts the allow_payloads boolean from policy parameters.
+// Falls back to false when the parameter is missing or of an unexpected type.
+func getAllowPayloadsFlag(params map[string]interface{}) bool {
+	if params == nil {
+		return false
+	}
+	raw, ok := params["allow_payloads"]
+	if !ok {
+		return false
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v
+	case string:
+		lower := strings.ToLower(strings.TrimSpace(v))
+		return lower == "true" || lower == "1" || lower == "yes"
+	default:
+		return false
 	}
 }

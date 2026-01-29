@@ -224,6 +224,14 @@ func (m *Moesif) Publish(event *dto.Event) {
 		}
 	}
 
+	// Attach request/response payloads to metadata when present in event properties.
+	if requestPayload, ok := event.Properties["request_payload"]; ok && requestPayload != nil {
+		metadataMap["request_payload"] = requestPayload
+	}
+	if responsePayload, ok := event.Properties["response_payload"]; ok && responsePayload != nil {
+		metadataMap["response_payload"] = responsePayload
+	}
+
 	userID := anonymous
 	eventModel := &models.EventModel{
 		Request:  req,

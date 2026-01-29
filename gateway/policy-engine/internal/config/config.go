@@ -50,6 +50,9 @@ type AnalyticsConfig struct {
 	Publishers           []PublisherConfig       `koanf:"publishers"`
 	GRPCAccessLogCfg     map[string]interface{}  `koanf:"grpc_access_logs"`
 	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
+	// AllowPayloads controls whether request and response bodies are captured
+	// into analytics metadata and forwarded to analytics publishers.
+	AllowPayloads 		 bool 					 `koanf:"allow_payloads"`
 }
 
 // PublisherConfig holds publisher configuration
@@ -328,6 +331,7 @@ func defaultConfig() *Config {
 				ExtProcMaxMessageSize: 1000000000,
 				ExtProcMaxHeaderLimit: 8192,
 			},
+			AllowPayloads: false,
 		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,

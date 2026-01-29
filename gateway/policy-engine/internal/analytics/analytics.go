@@ -77,7 +77,7 @@ const (
 	AIProviderAPIVersionMetadataKey string = "ai:providerversion"
 )
 
-// Analytics represents Choreo analytics.
+// Analytics represents analytics collector service.
 type Analytics struct {
 	// cfg represents the server configuration.
 	cfg *config.Config
@@ -189,7 +189,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	extendedAPI.APIContext = keyValuePairsFromMetadata[APIContextKey]
 	extendedAPI.EnvironmentID = keyValuePairsFromMetadata[APIEnvironmentKey]
 	extendedAPI.ProjectID = keyValuePairsFromMetadata[ProjectIDKey]
-	
+
 	request := logEntry.GetRequest()
 	response := logEntry.GetResponse()
 
@@ -339,6 +339,19 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
 		event.Properties["responseHeaders"] = responseHeaders
 	}
+
+	// Optionally attach request and response payloads when enabled via configuration.
+	if c.cfg.Analytics.AllowPayloads {
+		if requestPayload, ok := keyValuePairsFromMetadata["request_payload"]; ok && requestPayload != "" {
+			event.Properties["request_payload"] = requestPayload
+			slog.Debug("Analytics request payload", "request_payload", requestPayload)
+		}
+		if responsePayload, ok := keyValuePairsFromMetadata["response_payload"]; ok && responsePayload != "" {
+			event.Properties["response_payload"] = responsePayload
+			slog.Debug("Analytics response payload", "response_payload", responsePayload)
+		}
+	}
+	
 
 	return event
 }

@@ -53,6 +53,9 @@ type AnalyticsConfig struct {
 	Publishers           []map[string]interface{} `koanf:"publishers"`
 	GRPCAccessLogCfg     GRPCAccessLogConfig      `koanf:"grpc_access_logs"`
 	AccessLogsServiceCfg AccessLogsServiceConfig  `koanf:"access_logs_service"`
+	// AllowPayloads controls whether request and response bodies are captured
+	// into analytics metadata and forwarded to analytics publishers.
+	AllowPayloads        bool 					  `koanf:"allow_payloads"`
 }
 
 // AccessLogsServiceConfig holds the access logs service configuration
@@ -564,8 +567,8 @@ func defaultConfig() *Config {
 			},
 		},
 		Analytics: AnalyticsConfig{
-			Enabled:    false,
-			Publishers: make([]map[string]interface{}, 0),
+			Enabled:       false,
+			Publishers:    make([]map[string]interface{}, 0),
 			GRPCAccessLogCfg: GRPCAccessLogConfig{
 				Host:                "policy-engine",
 				LogName:             "envoy_access_log",
@@ -582,6 +585,7 @@ func defaultConfig() *Config {
 				MaxMessageSize:  1000000000,
 				MaxHeaderLimit:  8192,
 			},
+			AllowPayloads: false,
 		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
