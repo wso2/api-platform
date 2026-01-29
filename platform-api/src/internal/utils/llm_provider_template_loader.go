@@ -104,7 +104,7 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 
 		res = append(res, &model.LLMProviderTemplate{
 			ID:               doc.Metadata.Name,
-			DisplayName:      doc.Spec.DisplayName,
+			Name:             doc.Spec.DisplayName,
 			Metadata:         mapTemplateMetadata(doc.Spec.Metadata),
 			PromptTokens:     mapExtractionIdentifier(doc.Spec.PromptTokens),
 			CompletionTokens: mapExtractionIdentifier(doc.Spec.CompletionTokens),

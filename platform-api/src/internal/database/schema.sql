@@ -353,7 +353,9 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
-    display_name VARCHAR(253) NOT NULL,
+    name VARCHAR(253) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
     configuration TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -366,7 +368,9 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
-    display_name VARCHAR(100) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
     version VARCHAR(30) NOT NULL,
     context VARCHAR(200) DEFAULT '/',
     vhost VARCHAR(253),
@@ -391,7 +395,9 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     organization_uuid VARCHAR(40) NOT NULL,
     project_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
-    display_name VARCHAR(253) NOT NULL,
+    name VARCHAR(253) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
     version VARCHAR(30) NOT NULL,
     context VARCHAR(200) DEFAULT '/',
     vhost VARCHAR(253),
@@ -418,6 +424,7 @@ CREATE TABLE IF NOT EXISTS llm_policies (
     name VARCHAR(255) NOT NULL,
     version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
     paths TEXT, -- JSON array as TEXT
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     CHECK (target_type IN ('provider', 'proxy'))
 );
 

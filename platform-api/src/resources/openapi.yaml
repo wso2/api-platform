@@ -1970,51 +1970,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/llm-proxies:
-    get:
-      summary: List LLM proxies by provider
-      description: Retrieve a list of LLM proxies that use the specified LLM provider.
-      operationId: listLLMProxiesByProvider
-      tags:
-        - LLM Proxies
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Unique identifier of the LLM provider
-          schema:
-            type: string
-        - name: limit
-          in: query
-          description: Maximum number of LLM proxies to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM proxies to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-      responses:
-        '200':
-          description: List of LLM proxies
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LLMProxyListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
     put:
       summary: Update an existing LLM provider
       description: Update the configuration of an existing LLM provider.
@@ -2066,6 +2021,51 @@ paths:
       responses:
         '204':
           description: LLM provider deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{id}/llm-proxies:
+    get:
+      summary: List LLM proxies by provider
+      description: Retrieve a list of LLM proxies that use the specified LLM provider.
+      operationId: listLLMProxiesByProvider
+      tags:
+        - LLM Providers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of LLM proxies to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of LLM proxies to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of LLM proxies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4415,18 +4415,28 @@ components:
       type: object
       required:
         - id
-        - displayName
+        - name
       properties:
         id:
           type: string
           description: Unique handle for the template
           example: openai
-        displayName:
+        name:
           type: string
           description: Human-readable LLM Template name
           minLength: 1
           maxLength: 253
           example: OpenAI
+        description:
+          type: string
+          description: Description of the LLM provider template
+          maxLength: 1023
+          example: Default OpenAI template
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
         promptTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
         completionTokens:
@@ -4458,14 +4468,20 @@ components:
         id:
           type: string
           example: openai
-        displayName:
+        name:
           type: string
           example: OpenAI
-        created_at:
+        description:
+          type: string
+          example: Default OpenAI template
+        createdBy:
+          type: string
+          example: jane.doe
+        createdAt:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
@@ -4569,7 +4585,7 @@ components:
       type: object
       required:
         - id
-        - displayName
+        - name
         - version
         - template
         - upstream
@@ -4579,13 +4595,23 @@ components:
           type: string
           description: Unique handle for the provider
           example: wso2-openai-provider
-        displayName:
+        name:
           type: string
           description: Human-readable LLM Provider name
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
           example: WSO2 OpenAI Provider
+        description:
+          type: string
+          description: Description of the LLM provider
+          maxLength: 1023
+          example: Primary OpenAI provider
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
         version:
           type: string
           description: Semantic version of the LLM Provider
@@ -4652,9 +4678,15 @@ components:
         id:
           type: string
           example: wso2-openai-provider
-        displayName:
+        name:
           type: string
           example: WSO2 OpenAI Provider
+        description:
+          type: string
+          example: Primary OpenAI provider
+        createdBy:
+          type: string
+          example: jane.doe
         version:
           type: string
           example: v1.0
@@ -4668,11 +4700,11 @@ components:
             - deployed
             - failed
           example: deployed
-        created_at:
+        createdAt:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
@@ -4698,7 +4730,7 @@ components:
       type: object
       required:
         - id
-        - displayName
+        - name
         - version
         - projectId
         - provider
@@ -4707,13 +4739,23 @@ components:
           type: string
           description: Unique handle for the proxy
           example: wso2-con-assistant
-        displayName:
+        name:
           type: string
           description: Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
           minLength: 1
           maxLength: 253
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
           example: wso2-con-assistant
+        description:
+          type: string
+          description: Description of the LLM proxy
+          maxLength: 1023
+          example: Customer support assistant
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
         version:
           type: string
           description: Semantic version of the LLM proxy
@@ -4780,9 +4822,15 @@ components:
         id:
           type: string
           example: wso2-con-assistant
-        displayName:
+        name:
           type: string
           example: WSO2 Con Assistant
+        description:
+          type: string
+          example: Customer support assistant
+        createdBy:
+          type: string
+          example: jane.doe
         version:
           type: string
           example: v1.0
@@ -4801,11 +4849,11 @@ components:
             - deployed
             - failed
           example: deployed
-        created_at:
+        createdAt:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
