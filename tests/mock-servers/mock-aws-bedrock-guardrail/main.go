@@ -212,8 +212,8 @@ func handleApplyGuardrail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check for PII with redaction (any @example.com without mask- or ssn keyword)
-	if strings.Contains(lowerText, "@example.com") || strings.Contains(lowerText, "ssn") {
+	// Check for PII with redaction (any @example.com email)
+	if strings.Contains(lowerText, "@example.com") {
 		email := extractEmail(text)
 		if email != "" {
 			redactedText := strings.ReplaceAll(text, email, "*****")
