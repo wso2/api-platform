@@ -21,7 +21,7 @@
 # Run integration tests (always with coverage)
 # Requires: make build-coverage-image (run once before tests)
 test:
-	go test -v ./...
+	go test -v -timeout 20m ./...
 
 # Build all coverage-instrumented gateway components
 build-coverage:
@@ -32,7 +32,7 @@ test-all: build-coverage test
 
 # Run tests with verbose output
 test-verbose:
-	go test -v -count=1 ./...
+	go test -v -count=1 -timeout 20m ./...
 
 # Clean up test artifacts
 clean:
