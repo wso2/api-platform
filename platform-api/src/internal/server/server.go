@@ -86,11 +86,12 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 
 	// Seed default LLM provider templates into the DB (per organization)
+	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
 	defaultTemplates, err := utils.LoadLLMProviderTemplatesFromDirectory(cfg.LLMTemplateDefinitionsPath)
 	if err != nil {
 		cleanPath := filepath.Clean(cfg.LLMTemplateDefinitionsPath)
 		fallbackPath := ""
-		if !filepath.IsAbs(cleanPath) && !strings.HasPrefix(cleanPath, "src"+string(os.PathSeparator)) {
+		if cleanPath != "" && cleanPath != "." && cleanPath != "src" && !filepath.IsAbs(cleanPath) && !strings.HasPrefix(cleanPath, "src"+string(os.PathSeparator)) {
 			fallbackPath = filepath.Join("src", cleanPath)
 		}
 		if fallbackPath != "" {

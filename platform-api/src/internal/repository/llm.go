@@ -265,7 +265,13 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err = r.db.Exec(query,
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(query,
 		p.UUID, p.OrganizationUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Template,
 		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec,
 		string(accessControlJSON), policiesColumn, p.Status,
@@ -275,7 +281,10 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		return err
 	}
 
-	if err := r.replaceProviderPolicies(p.OrganizationUUID, p.ID, p.Policies); err != nil {
+	if err := r.replaceProviderPoliciesTx(tx, p.OrganizationUUID, p.ID, p.Policies); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
@@ -394,7 +403,13 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 			upstream_url = ?, upstream_auth = ?, openapi_spec = ?, access_control = ?, policies = ?, status = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
-	result, err := r.db.Exec(query,
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(query,
 		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Template,
 		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec,
 		string(accessControlJSON), policiesColumn, p.Status, p.UpdatedAt,
@@ -410,14 +425,27 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
-	if err := r.replaceProviderPolicies(p.OrganizationUUID, p.ID, p.Policies); err != nil {
+	if err := r.replaceProviderPoliciesTx(tx, p.OrganizationUUID, p.ID, p.Policies); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (r *LLMProviderRepo) Delete(providerID, orgUUID string) error {
-	result, err := r.db.Exec(`DELETE FROM llm_providers WHERE handle = ? AND organization_uuid = ?`, providerID, orgUUID)
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM llm_policies WHERE organization_uuid = ? AND target_type = ? AND target_handle = ?`, orgUUID, "provider", providerID); err != nil {
+		return err
+	}
+
+	result, err := tx.Exec(`DELETE FROM llm_providers WHERE handle = ? AND organization_uuid = ?`, providerID, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -427,6 +455,10 @@ func (r *LLMProviderRepo) Delete(providerID, orgUUID string) error {
 	}
 	if affected == 0 {
 		return sql.ErrNoRows
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -469,7 +501,13 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err = r.db.Exec(query,
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(query,
 		p.UUID, p.OrganizationUUID, p.ProjectUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Provider,
 		p.OpenAPISpec, string(accessControlJSON), policiesColumn, p.Status,
 		p.CreatedAt, p.UpdatedAt,
@@ -478,7 +516,10 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		return err
 	}
 
-	if err := r.replaceProxyPolicies(p.OrganizationUUID, p.ID, p.Policies); err != nil {
+	if err := r.replaceProxyPoliciesTx(tx, p.OrganizationUUID, p.ID, p.Policies); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
@@ -678,7 +719,13 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 			openapi_spec = ?, access_control = ?, policies = ?, status = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
-	result, err := r.db.Exec(query,
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(query,
 		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Provider,
 		p.OpenAPISpec, string(accessControlJSON), policiesColumn, p.Status, p.UpdatedAt,
 		p.ID, p.OrganizationUUID,
@@ -693,14 +740,27 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
-	if err := r.replaceProxyPolicies(p.OrganizationUUID, p.ID, p.Policies); err != nil {
+	if err := r.replaceProxyPoliciesTx(tx, p.OrganizationUUID, p.ID, p.Policies); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {
-	result, err := r.db.Exec(`DELETE FROM llm_proxies WHERE handle = ? AND organization_uuid = ?`, proxyID, orgUUID)
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM llm_policies WHERE organization_uuid = ? AND target_type = ? AND target_handle = ?`, orgUUID, "proxy", proxyID); err != nil {
+		return err
+	}
+
+	result, err := tx.Exec(`DELETE FROM llm_proxies WHERE handle = ? AND organization_uuid = ?`, proxyID, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -710,6 +770,10 @@ func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {
 	}
 	if affected == 0 {
 		return sql.ErrNoRows
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -754,6 +818,26 @@ func (r *LLMProviderRepo) replaceProviderPolicies(orgUUID, providerHandle string
 	return nil
 }
 
+func (r *LLMProviderRepo) replaceProviderPoliciesTx(tx *sql.Tx, orgUUID, providerHandle string, policies []model.LLMPolicy) error {
+	if _, err := tx.Exec(`DELETE FROM llm_policies WHERE organization_uuid = ? AND target_type = ? AND target_handle = ?`, orgUUID, "provider", providerHandle); err != nil {
+		return err
+	}
+	if len(policies) == 0 {
+		return nil
+	}
+	query := `
+		INSERT INTO llm_policies (organization_uuid, target_type, target_handle, name, version, paths)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	for _, p := range policies {
+		pathsJSON, _ := json.Marshal(p.Paths)
+		if _, err := tx.Exec(query, orgUUID, "provider", providerHandle, p.Name, p.Version, string(pathsJSON)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *LLMProviderRepo) listProviderPolicies(orgUUID, providerHandle string) ([]model.LLMPolicy, error) {
 	rows, err := r.db.Query(`
 		SELECT name, version, paths
@@ -782,6 +866,26 @@ func (r *LLMProxyRepo) replaceProxyPolicies(orgUUID, proxyHandle string, policie
 	for _, p := range policies {
 		pathsJSON, _ := json.Marshal(p.Paths)
 		if _, err := r.db.Exec(query, orgUUID, "proxy", proxyHandle, p.Name, p.Version, string(pathsJSON)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *LLMProxyRepo) replaceProxyPoliciesTx(tx *sql.Tx, orgUUID, proxyHandle string, policies []model.LLMPolicy) error {
+	if _, err := tx.Exec(`DELETE FROM llm_policies WHERE organization_uuid = ? AND target_type = ? AND target_handle = ?`, orgUUID, "proxy", proxyHandle); err != nil {
+		return err
+	}
+	if len(policies) == 0 {
+		return nil
+	}
+	query := `
+		INSERT INTO llm_policies (organization_uuid, target_type, target_handle, name, version, paths)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	for _, p := range policies {
+		pathsJSON, _ := json.Marshal(p.Paths)
+		if _, err := tx.Exec(query, orgUUID, "proxy", proxyHandle, p.Name, p.Version, string(pathsJSON)); err != nil {
 			return err
 		}
 	}

@@ -29,10 +29,10 @@ spec:
     logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/azure.openai/icon.png
   promptTokens:
     location: payload
-    identifier: $.usage.input_tokens
+    identifier: $.usage.prompt_tokens
   completionTokens:
     location: payload
-    identifier: $.usage.output_tokens
+    identifier: $.usage.completion_tokens
   totalTokens:
     location: payload
     identifier: $.usage.total_tokens

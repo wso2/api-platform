@@ -35,7 +35,7 @@ spec:
     identifier: $.usage.totalTokens
   requestModel:
     location: pathParam
-    identifier: (?<=model/)[a-zA-Z0-9.:-]+(?=/)
+    identifier: model/([A-Za-z0-9.:-]+)/
   responseModel:
     location: pathParam
-    identifier: (?<=model/)[a-zA-Z0-9.:-]+(?=/)
+    identifier: model/([A-Za-z0-9.:-]+)/
