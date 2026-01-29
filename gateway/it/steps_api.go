@@ -59,4 +59,8 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		time.Sleep(policyPropagationDelay)
 		return nil
 	})
+
+	ctx.Step(`^I get the API "([^"]*)"$`, func(name string) error {
+		return httpSteps.SendGETToService("gateway-controller", "/apis/"+name)
+	})
 }

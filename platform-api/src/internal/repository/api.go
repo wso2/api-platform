@@ -638,7 +638,7 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiId string, security *model
 				INSERT INTO xhub_signature_security (api_uuid, enabled, secret, algorithm, header)
 				VALUES (?, ?, ?, ?, ?)
 			`
-		_, err := tx.Exec(xHubQuery, apiId, security.XHubSignature.Enabled,
+		_, err := tx.Exec(r.db.Rebind(xHubQuery), apiId, security.XHubSignature.Enabled,
 			security.XHubSignature.Secret, security.XHubSignature.Algorithm, security.XHubSignature.Header)
 		if err != nil {
 			return err
@@ -670,7 +670,7 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 			SELECT enabled, secret, algorithm, header
 			FROM xhub_signature_security WHERE api_uuid = ?
 		`
-	err = r.db.QueryRow(xHubQuery, apiId).Scan(&xHub.Enabled,
+	err = r.db.QueryRow(r.db.Rebind(xHubQuery), apiId).Scan(&xHub.Enabled,
 		&xHub.Secret, &xHub.Algorithm, &xHub.Header)
 	if err == nil {
 		security.XHubSignature = xHub
@@ -882,19 +882,32 @@ func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel
 		}
 	}
 	// Insert channel
-	channelQuery := `
+	var channelID int64
+	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+		// PostgreSQL: use RETURNING to get the generated ID
+		channelQuery := `
+		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		RETURNING id`
+		if err := tx.QueryRow(r.db.Rebind(channelQuery), apiId, channel.Name, channel.Description,
+			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON).Scan(&channelID); err != nil {
+			return err
+		}
+	} else {
+		// SQLite (and other drivers that support LastInsertId)
+		channelQuery := `
 		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`
-	result, err := tx.Exec(channelQuery, apiId, channel.Name, channel.Description,
-		channel.Request.Method, channel.Request.Name, authRequired, scopesJSON)
+		result, err := tx.Exec(r.db.Rebind(channelQuery), apiId, channel.Name, channel.Description,
+			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON)
+		if err != nil {
+			return err
+		}
 
-	if err != nil {
-		return err
-	}
-
-	channelID, err := result.LastInsertId()
-	if err != nil {
-		return err
+		channelID, err = result.LastInsertId()
+		if err != nil {
+			return err
+		}
 	}
 
 	// Insert policies
@@ -927,7 +940,7 @@ func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
 		SELECT id, name, description, method, path, authentication_required, scopes 
 		FROM api_operations WHERE api_uuid = ?
 	`
-	rows, err := r.db.Query(query, apiId)
+	rows, err := r.db.Query(r.db.Rebind(query), apiId)
 	if err != nil {
 		return nil, err
 	}
