@@ -91,15 +91,6 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 		cs.labelsByAPI[handle] = labelsCopy
 	}
 
-	// Store labels if present
-	if cfg.Configuration.Metadata.Labels != nil {
-		labelsCopy := make(map[string]string)
-		for k, v := range *cfg.Configuration.Metadata.Labels {
-			labelsCopy[k] = v
-		}
-		cs.labelsByAPI[handle] = labelsCopy
-	}
-
 	if cfg.Configuration.Kind == api.WebSubApi {
 		err := cs.updateTopics(cfg)
 		if err != nil {
