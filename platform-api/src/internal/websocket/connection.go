@@ -36,6 +36,10 @@ type Connection struct {
 	// Used to distinguish between multiple connections from the same gateway (clustering).
 	ConnectionID string
 
+	// OrganizationID identifies the organization that owns this gateway connection.
+	// Used for per-organization connection limit tracking and cleanup.
+	OrganizationID string
+
 	// ConnectedAt records when the connection was established
 	ConnectedAt time.Time
 
@@ -68,19 +72,21 @@ type Connection struct {
 //   - connectionID: Unique identifier for this connection instance
 //   - transport: Transport implementation (e.g., WebSocketTransport)
 //   - authToken: API key used for authentication
+//   - orgID: UUID of the organization that owns the gateway
 //
 // Returns a fully initialized Connection ready for message delivery.
-func NewConnection(gatewayID, connectionID string, transport Transport, authToken string) *Connection {
+func NewConnection(gatewayID, connectionID string, transport Transport, authToken string, orgID string) *Connection {
 	now := time.Now()
 	return &Connection{
-		GatewayID:     gatewayID,
-		ConnectionID:  connectionID,
-		ConnectedAt:   now,
-		LastHeartbeat: now,
-		Transport:     transport,
-		AuthToken:     authToken,
-		DeliveryStats: &DeliveryStats{},
-		closed:        false,
+		GatewayID:      gatewayID,
+		ConnectionID:   connectionID,
+		OrganizationID: orgID,
+		ConnectedAt:    now,
+		LastHeartbeat:  now,
+		Transport:      transport,
+		AuthToken:      authToken,
+		DeliveryStats:  &DeliveryStats{},
+		closed:         false,
 	}
 }
 
