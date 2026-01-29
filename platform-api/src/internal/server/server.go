@@ -157,13 +157,10 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo, upstreamService, cfg)
 	apiKeyService := service.NewAPIKeyService(apiRepo, gatewayEventsService)
 	gitService := service.NewGitService()
-<<<<<<< HEAD
 	deploymentService := service.NewDeploymentService(apiRepo, gatewayRepo, backendServiceRepo, orgRepo, gatewayEventsService, apiUtil, cfg)
-=======
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo)
->>>>>>> 4f804b8f (Add backend operations for the AI workspace)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService)
@@ -175,11 +172,8 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	gitHandler := handler.NewGitHandler(gitService)
-<<<<<<< HEAD
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService)
-=======
 	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService)
->>>>>>> 4f804b8f (Add backend operations for the AI workspace)
 
 	// Setup router
 	router := gin.Default()
@@ -211,11 +205,8 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	internalGatewayHandler.RegisterRoutes(router)
 	apiKeyHandler.RegisterRoutes(router)
 	gitHandler.RegisterRoutes(router)
-<<<<<<< HEAD
 	deploymentHandler.RegisterRoutes(router)
-=======
 	llmHandler.RegisterRoutes(router)
->>>>>>> 4f804b8f (Add backend operations for the AI workspace)
 
 	log.Printf("[INFO] WebSocket manager initialized: maxConnections=%d heartbeatTimeout=%ds rateLimitPerMin=%d",
 		cfg.WebSocket.MaxConnections, cfg.WebSocket.ConnectionTimeout, cfg.WebSocket.RateLimitPerMin)
