@@ -213,7 +213,7 @@ func (s *GatewayEventsService) BroadcastUndeploymentEvent(gatewayID string, unde
 // - Looking up gateway connections by gateway ID
 // - Serializing event to JSON
 // - Broadcasting to all connections for the gateway (clustering support)
-// - Retry logic for critical API key events (up to 3 attempts)
+// - Current API key events are not retried
 // - Payload size validation
 // - Delivery statistics tracking
 func (s *GatewayEventsService) BroadcastAPIKeyCreatedEvent(gatewayID string, event *model.APIKeyCreatedEvent) error {
@@ -254,7 +254,7 @@ func (s *GatewayEventsService) BroadcastAPIKeyCreatedEvent(gatewayID string, eve
 // - Looking up gateway connections by gateway ID
 // - Serializing event to JSON
 // - Broadcasting to all connections for the gateway (clustering support)
-// - Retry logic for critical API key events (up to 3 attempts)
+// - Current API key events are not retried
 // - Payload size validation
 // - Delivery statistics tracking
 func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID string, event *model.APIKeyRevokedEvent) error {
