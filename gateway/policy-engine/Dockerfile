@@ -36,21 +36,22 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /workspace
 
-# Copy SDK components
-COPY --from=sdk . /api-platform/sdk
-
-# Copy Gateway Builder application
-COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
-
-# Pre-download Go dependencies for SDK
+# Copy SDK mod files first to cache dependencies
+COPY --from=sdk go.mod go.sum /api-platform/sdk/
 WORKDIR /api-platform/sdk
 RUN go mod download
 
-# Pre-download Go dependencies for gateway-builder
+# Copy Gateway Builder mod files first to cache dependencies
+COPY --from=gateway-builder go.mod go.sum /api-platform/gateway/gateway-builder/
 WORKDIR /api-platform/gateway/gateway-builder
 RUN go mod download
 
+# Copy full SDK and Gateway Builder source code
+COPY --from=sdk . /api-platform/sdk
+COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
+
 # Build the Gateway Builder binary (CGO disabled for static binary)
+WORKDIR /api-platform/gateway/gateway-builder
 RUN CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=${BUILDARCH} \
@@ -70,13 +71,15 @@ ENV VERSION=${VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV BUILD_DATE=${BUILD_DATE}
 
-# Copy Policy Engine framework source code
-COPY --from=policy-engine . /api-platform/gateway/policy-engine
-COPY --from=sdk . /api-platform/sdk
-
-# Pre-download Go dependencies for runtime
+# Copy Policy Engine mod files and SDK mod files for dependency resolution
+COPY --from=sdk go.mod go.sum /api-platform/sdk/
+COPY go.mod go.sum /api-platform/gateway/policy-engine/
 WORKDIR /api-platform/gateway/policy-engine
 RUN go mod download
+
+# Copy full Policy Engine and SDK source code
+COPY . /api-platform/gateway/policy-engine
+COPY --from=sdk . /api-platform/sdk
 
 # Copy policy implementations
 COPY --from=policies . /workspace/policies/
