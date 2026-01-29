@@ -54,8 +54,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -am "Release platform-api version ${{ inputs.version }}"
-          git tag -a platform-api-v${{ inputs.version }} -m "Platform API ${{ inputs.version }}"
-          git push origin platform-api-v${{ inputs.version }}
+          git tag -a platform-api/v${{ inputs.version }} -m "Platform API ${{ inputs.version }}"
+          git push origin platform-api/v${{ inputs.version }}
 
 
       # - name: Set to next dev version

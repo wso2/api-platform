@@ -956,12 +956,12 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		return nil, fmt.Errorf("failed to marshal dynamic forward proxy config: %w", err)
 	}
 
-	// // Router filter
-	// routerConfig := &router.Router{}
-	// routerAny, err := anypb.New(routerConfig)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to marshal router config: %w", err)
-	// }
+	// Router filter
+	routerConfig := &router.Router{}
+	routerAny, err := anypb.New(routerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal router config: %w", err)
+	}
 
 	// Add dynamic forward proxy router filter (must be last)
 	httpFilters = append(httpFilters, &hcm.HttpFilter{
@@ -971,13 +971,13 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		},
 	})
 
-	// // Add router filter (must be last)
-	// httpFilters = append(httpFilters, &hcm.HttpFilter{
-	// 	Name: wellknown.Router,
-	// 	ConfigType: &hcm.HttpFilter_TypedConfig{
-	// 		TypedConfig: routerAny,
-	// 	},
-	// })
+	// Add router filter (must be last)
+	httpFilters = append(httpFilters, &hcm.HttpFilter{
+		Name: wellknown.Router,
+		ConfigType: &hcm.HttpFilter_TypedConfig{
+			TypedConfig: routerAny,
+		},
+	})
 
 	// Create HTTP connection manager
 	httpConnManager := &hcm.HttpConnectionManager{

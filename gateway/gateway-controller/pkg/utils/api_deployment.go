@@ -336,54 +336,47 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	// Try to save to database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.SaveConfig(storedCfg); err != nil {
-			// Check if it's a conflict (API already exists)
-			if storage.IsConflictError(err) {
-				logger.Info("API configuration already exists in database, updating instead",
-					slog.String("api_id", storedCfg.ID),
-					slog.String("displayName", storedCfg.GetDisplayName()),
-					slog.String("version", storedCfg.GetVersion()))
+	existing, _ := s.store.Get(storedCfg.ID)
 
-				// Try to update instead
-				return s.updateExistingConfig(storedCfg, logger)
-			} else {
-				return false, fmt.Errorf("failed to save config to database: %w", err)
-			}
-		}
+	// If config already exists, update it
+	if existing != nil {
+		logger.Info("API configuration already exists, updating",
+			slog.String("api_id", storedCfg.ID),
+			slog.String("displayName", storedCfg.GetDisplayName()),
+			slog.String("version", storedCfg.GetVersion()))
+		return s.updateExistingConfig(storedCfg, existing, logger)
 	}
 
-	// Try to add to in-memory store
-	if err := s.store.Add(storedCfg); err != nil {
-		// Check if it's a conflict (API already exists)
-		if storage.IsConflictError(err) {
-			logger.Info("API configuration already exists in memory, updating instead",
+	// Save new config to database first (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.SaveConfig(storedCfg); err != nil {
+			logger.Info("Error saving new API configuration to database",
 				slog.String("api_id", storedCfg.ID),
 				slog.String("displayName", storedCfg.GetDisplayName()),
 				slog.String("version", storedCfg.GetVersion()))
-
-			// Try to update instead
-			return s.updateExistingConfig(storedCfg, logger)
-		} else {
-			// Rollback database write (only if persistent mode)
-			if s.db != nil {
-				_ = s.db.DeleteConfig(storedCfg.ID)
-			}
-			return false, fmt.Errorf("failed to add config to memory store: %w", err)
+			return false, fmt.Errorf("failed to save config to database: %w", err)
 		}
+	}
+
+	// Add to in-memory store
+	if err := s.store.Add(storedCfg); err != nil {
+		// Rollback database write (only if persistent mode)
+		if s.db != nil {
+			logger.Info("Error adding new API configuration to memory store, rolling back database",
+				slog.String("api_id", storedCfg.ID),
+				slog.String("displayName", storedCfg.GetDisplayName()),
+				slog.String("version", storedCfg.GetVersion()))
+			_ = s.db.DeleteConfig(storedCfg.ID)
+		}
+		return false, fmt.Errorf("failed to add config to memory store: %w", err)
 	}
 
 	return false, nil // Successfully created new config
 }
 
 // updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetDisplayName(), newConfig.GetVersion())
-	if err != nil {
-		return false, fmt.Errorf("failed to get existing config: %w", err)
-	}
+func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
+	existing *models.StoredConfig, logger *slog.Logger) (bool, error) {
 
 	// Backup original state for potential rollback
 	original := *existing
@@ -391,6 +384,7 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	// Update the existing configuration
 	now := time.Now()
 	existing.Configuration = newConfig.Configuration
+	existing.SourceConfiguration = newConfig.SourceConfiguration
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil

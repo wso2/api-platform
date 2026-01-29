@@ -123,6 +123,9 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 		errors = append(errors, policyErrors...)
 	}
 
+	// Validate metadata (including labels)
+	errors = append(errors, ValidateMetadata(&config.Metadata)...)
+
 	return errors
 }
 
