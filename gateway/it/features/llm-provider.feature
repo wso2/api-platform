@@ -257,7 +257,7 @@ Feature: LLM Provider Management
           template: openai
           context: /allow-all
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: http://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
