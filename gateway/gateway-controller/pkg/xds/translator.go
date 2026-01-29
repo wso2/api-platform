@@ -419,7 +419,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 			effectiveMainVHost = apiData.Vhosts.Main
 		}
 	}
-
+	// Extract project ID from labels
 	apiProjectID := ""
 	if cfg.Configuration.Metadata.Labels != nil {
 		if pid, exists := (*cfg.Configuration.Metadata.Labels)["project-id"]; exists {
@@ -434,7 +434,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 		}
 		// Use mainClusterName by default; path rewrite based on main upstream path
 		r := t.createRoutePerTopic(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
-			mainClusterName, effectiveMainVHost, cfg.Kind)
+			mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	// Extract template handle and provider name for LLM provider/proxy scenarios
@@ -484,7 +484,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-
+	
+	// Extract project ID from labels
 	apiProjectID := ""
 	if cfg.Configuration.Metadata.Labels != nil {
 		if pid, exists := (*cfg.Configuration.Metadata.Labels)["project-id"]; exists {
@@ -1435,7 +1436,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 }
 
 // createRoutePerTopic creates a route for an operation
-func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, method, channelName, clusterName, vhost, apiKind string) *route.Route {
+func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, method, channelName, clusterName, vhost, apiKind, projectID string) *route.Route {
 	routeName := GenerateRouteName(method, context, apiVersion, channelName, vhost)
 	r := &route.Route{
 		Name: routeName,
@@ -1470,6 +1471,11 @@ func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, me
 		"method":      method,
 		"vhost":       vhost,
 		"api_kind":    apiKind,
+	}
+
+	// Add projectID if available
+	if projectID != "" {
+		metaMap["project_id"] = projectID
 	}
 
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
