@@ -68,6 +68,7 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 		BackendServices:  u.BackendServicesDTOToModel(dto.BackendServices),
 		APIRateLimiting:  u.RateLimitingDTOToModel(dto.APIRateLimiting),
 		Operations:       u.OperationsDTOToModel(dto.Operations),
+		Channels:         u.ChannelsDTOToModel(dto.Channels),
 	}
 }
 
@@ -101,6 +102,7 @@ func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 		BackendServices:  u.BackendServicesModelToDTO(model.BackendServices),
 		APIRateLimiting:  u.RateLimitingModelToDTO(model.APIRateLimiting),
 		Operations:       u.OperationsModelToDTO(model.Operations),
+		Channels:         u.ChannelsModelToDTO(model.Channels),
 	}
 }
 
@@ -125,9 +127,22 @@ func (u *APIUtil) SecurityDTOToModel(dto *dto.SecurityConfig) *model.SecurityCon
 		return nil
 	}
 	return &model.SecurityConfig{
-		Enabled: dto.Enabled,
-		APIKey:  u.APIKeyDTOToModel(dto.APIKey),
-		OAuth2:  u.OAuth2DTOToModel(dto.OAuth2),
+		Enabled:       dto.Enabled,
+		APIKey:        u.APIKeyDTOToModel(dto.APIKey),
+		OAuth2:        u.OAuth2DTOToModel(dto.OAuth2),
+		XHubSignature: u.XHubSignatureDTOToModel(dto.XHubSignature),
+	}
+}
+
+func (u *APIUtil) XHubSignatureDTOToModel(dto *dto.XHubSignatureSecurity) *model.XHubSignatureSecurity {
+	if dto == nil {
+		return nil
+	}
+	return &model.XHubSignatureSecurity{
+		Enabled:   dto.Enabled,
+		Header:    dto.Header,
+		Secret:    dto.Secret,
+		Algorithm: dto.Algorithm,
 	}
 }
 
@@ -337,6 +352,28 @@ func (u *APIUtil) OperationsDTOToModel(dtos []dto.Operation) []model.Operation {
 	return operationsModels
 }
 
+func (u *APIUtil) ChannelsDTOToModel(dtos []dto.Channel) []model.Channel {
+	if dtos == nil {
+		return nil
+	}
+	channelsModels := make([]model.Channel, 0)
+	for _, channelDTO := range dtos {
+		channelsModels = append(channelsModels, *u.ChannelDTOToModel(&channelDTO))
+	}
+	return channelsModels
+}
+
+func (u *APIUtil) ChannelDTOToModel(dto *dto.Channel) *model.Channel {
+	if dto == nil {
+		return nil
+	}
+	return &model.Channel{
+		Name:        dto.Name,
+		Description: dto.Description,
+		Request:     u.ChannelRequestDTOToModel(dto.Request),
+	}
+}
+
 func (u *APIUtil) OperationDTOToModel(dto *dto.Operation) *model.Operation {
 	if dto == nil {
 		return nil
@@ -355,6 +392,19 @@ func (u *APIUtil) OperationRequestDTOToModel(dto *dto.OperationRequest) *model.O
 	return &model.OperationRequest{
 		Method:          dto.Method,
 		Path:            dto.Path,
+		BackendServices: u.BackendRoutingDTOsToModel(dto.BackendServices),
+		Authentication:  u.AuthConfigDTOToModel(dto.Authentication),
+		Policies:        u.PoliciesDTOToModel(dto.Policies),
+	}
+}
+
+func (u *APIUtil) ChannelRequestDTOToModel(dto *dto.ChannelRequest) *model.ChannelRequest {
+	if dto == nil {
+		return nil
+	}
+	return &model.ChannelRequest{
+		Method:          dto.Method,
+		Name:            dto.Name,
 		BackendServices: u.BackendRoutingDTOsToModel(dto.BackendServices),
 		Authentication:  u.AuthConfigDTOToModel(dto.Authentication),
 		Policies:        u.PoliciesDTOToModel(dto.Policies),
@@ -436,9 +486,22 @@ func (u *APIUtil) SecurityModelToDTO(model *model.SecurityConfig) *dto.SecurityC
 		return nil
 	}
 	return &dto.SecurityConfig{
-		Enabled: model.Enabled,
-		APIKey:  u.APIKeyModelToDTO(model.APIKey),
-		OAuth2:  u.OAuth2ModelToDTO(model.OAuth2),
+		Enabled:       model.Enabled,
+		APIKey:        u.APIKeyModelToDTO(model.APIKey),
+		OAuth2:        u.OAuth2ModelToDTO(model.OAuth2),
+		XHubSignature: u.XHubSignatureModelToDTO(model.XHubSignature),
+	}
+}
+
+func (u *APIUtil) XHubSignatureModelToDTO(model *model.XHubSignatureSecurity) *dto.XHubSignatureSecurity {
+	if model == nil {
+		return nil
+	}
+	return &dto.XHubSignatureSecurity{
+		Enabled:   model.Enabled,
+		Header:    model.Header,
+		Secret:    model.Secret,
+		Algorithm: model.Algorithm,
 	}
 }
 
@@ -648,6 +711,17 @@ func (u *APIUtil) OperationsModelToDTO(models []model.Operation) []dto.Operation
 	return operationsDTOs
 }
 
+func (u *APIUtil) ChannelsModelToDTO(models []model.Channel) []dto.Channel {
+	if models == nil {
+		return nil
+	}
+	channelsDTOs := make([]dto.Channel, 0)
+	for _, channelModel := range models {
+		channelsDTOs = append(channelsDTOs, *u.ChannelModelToDTO(&channelModel))
+	}
+	return channelsDTOs
+}
+
 func (u *APIUtil) OperationModelToDTO(model *model.Operation) *dto.Operation {
 	if model == nil {
 		return nil
@@ -656,6 +730,30 @@ func (u *APIUtil) OperationModelToDTO(model *model.Operation) *dto.Operation {
 		Name:        model.Name,
 		Description: model.Description,
 		Request:     u.OperationRequestModelToDTO(model.Request),
+	}
+}
+
+func (u *APIUtil) ChannelModelToDTO(model *model.Channel) *dto.Channel {
+	if model == nil {
+		return nil
+	}
+	return &dto.Channel{
+		Name:        model.Name,
+		Description: model.Description,
+		Request:     u.ChannelRequestModelToDTO(model.Request),
+	}
+}
+
+func (u *APIUtil) ChannelRequestModelToDTO(model *model.ChannelRequest) *dto.ChannelRequest {
+	if model == nil {
+		return nil
+	}
+	return &dto.ChannelRequest{
+		Method:          model.Method,
+		Name:            model.Name,
+		BackendServices: u.BackendRoutingModelsToDTO(model.BackendServices),
+		Authentication:  u.AuthConfigModelToDTO(model.Authentication),
+		Policies:        u.PoliciesModelToDTO(model.Policies),
 	}
 }
 
@@ -750,6 +848,10 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	for _, op := range api.Operations {
 		operationList = append(operationList, *op.Request)
 	}
+	channelList := make([]dto.ChannelRequest, 0)
+	for _, ch := range api.Channels {
+		channelList = append(channelList, *ch.Request)
+	}
 
 	// Get the main upstream URL from the first backend service endpoint
 	var upstreamYAML *dto.UpstreamYAML
@@ -769,18 +871,41 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 		}
 	}
 
-	// Create API deployment YAML structure
-	apiYAMLData := dto.APIYAMLData{
-		DisplayName: api.Name,
-		Version:     api.Version,
-		Context:     api.Context,
-		Upstream:    upstreamYAML,
-		Operations:  operationList,
+	apiYAMLData := dto.APIYAMLData{}
+	apiYAMLData.DisplayName = api.Name
+	apiYAMLData.Version = api.Version
+	apiYAMLData.Context = api.Context
+
+	// Only set upstream and operations for HTTP APIs
+	switch api.Type {
+	case constants.APITypeHTTP:
+		apiYAMLData.Upstream = upstreamYAML
+		apiYAMLData.Operations = operationList
+	case constants.APITypeWebSub:
+		apiYAMLData.Channels = channelList
+	}
+
+	// // Create API deployment YAML structure
+	// apiYAMLData = dto.APIYAMLData{
+	// 	DisplayName: api.Name,
+	// 	Version:     api.Version,
+	// 	Context:     api.Context,
+	// 	Upstream:    upstreamYAML,
+	// 	Operations:  operationList,
+	// 	Channels:    channelList,
+	// }
+
+	apiType := ""
+	switch api.Type {
+	case constants.APITypeHTTP:
+		apiType = "RestApi"
+	case constants.APITypeWebSub:
+		apiType = "WebSubApi"
 	}
 
 	apiDeployment := dto.APIDeploymentYAML{
 		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
-		Kind:       "RestApi",
+		Kind:       apiType,
 		Metadata: dto.APIDeploymentMetadata{
 			Name: api.ID,
 		},

@@ -91,6 +91,8 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		return nil, constants.ErrProjectNotFound
 	}
 
+	fmt.Println("Project Created")
+
 	// Handle the API handle (user-facing identifier)
 	var handle string
 	if req.ID != "" {
@@ -100,6 +102,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		var err error
 		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgUUID))
 		if err != nil {
+			fmt.Println("Error generating handle:", err)
 			return nil, err
 		}
 	}
@@ -117,11 +120,16 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 	if req.LifeCycleStatus == "" {
 		req.LifeCycleStatus = "CREATED"
 	}
-	if len(req.Operations) == 0 {
+	if len(req.Operations) == 0 && constants.APITypeHTTP == req.Type {
 		// generate default get, post, patch and delete operations with path /*
 		defaultOperations := s.generateDefaultOperations()
 		req.Operations = defaultOperations
+	} else if constants.APITypeWebSub == req.Type && len(req.Channels) == 0 {
+		defaultChannels := s.generateDefaultChannels(req.Type)
+		req.Channels = defaultChannels
 	}
+
+	fmt.Println("Channels Created")
 
 	// Create API DTO - ID field holds the handle (user-facing identifier)
 	api := &dto.API{
@@ -144,6 +152,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		BackendServices:  req.BackendServices,
 		APIRateLimiting:  req.APIRateLimiting,
 		Operations:       req.Operations,
+		Channels:         req.Channels,
 	}
 
 	// Process backend services: check if they exist, create or update them
@@ -156,11 +165,16 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		backendServiceIdList = append(backendServiceIdList, backendServiceId)
 	}
 
+	fmt.Println("Backend Services Created")
+
 	apiModel := s.apiUtil.DTOToModel(api)
+	fmt.Println("Got API Model")
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
+
+	fmt.Println("Created API in Repository: ", apiModel.ID)
 
 	// Get the generated UUID from the model (set by CreateAPI)
 	apiUUID := apiModel.ID
@@ -181,11 +195,15 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		}
 	}
 
+	fmt.Println("Associated Backends")
+
 	// Automatically create DevPortal association for default DevPortal (use internal UUID)
 	if err := s.createDefaultDevPortalAssociation(apiUUID, orgUUID); err != nil {
 		// Log error but don't fail API creation if default DevPortal association fails
 		log.Printf("[APIService] Failed to create default DevPortal association for API %s: %v", apiUUID, err)
 	}
+
+	fmt.Println("Associated Devportal")
 
 	return api, nil
 }
@@ -629,6 +647,21 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest, orgUUID str
 		return constants.ErrInvalidAPIType
 	}
 
+	// Type-specific validations
+	// Ensure that WebSub APIs do not have operations and HTTP APIs do not have channels
+	switch req.Type {
+	case constants.APITypeWebSub:
+		// For WebSub APIs, ensure that at least one channel is defined
+		if req.Operations != nil || len(req.Operations) > 0 {
+			return errors.New("WebSub APIs cannot have operations defined")
+		}
+	case constants.APITypeHTTP:
+		// For HTTP APIs, ensure that at least one operation is defined
+		if req.Channels != nil || len(req.Channels) > 0 {
+			return errors.New("HTTP APIs cannot have channels defined")
+		}
+	}
+
 	// Validate transport protocols if provided
 	if len(req.Transport) > 0 {
 		for _, transport := range req.Transport {
@@ -692,6 +725,9 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPI
 	}
 	if req.Operations != nil {
 		existingAPI.Operations = *req.Operations
+	}
+	if req.Channels != nil {
+		existingAPI.Channels = *req.Channels
 	}
 
 	return existingAPI, nil
@@ -819,6 +855,7 @@ type CreateAPIRequest struct {
 	CORS             *dto.CORSConfig         `json:"cors,omitempty"`
 	BackendServices  []dto.BackendService    `json:"backend-services,omitempty"`
 	APIRateLimiting  *dto.RateLimitingConfig `json:"api-rate-limiting,omitempty"`
+	Channels         []dto.Channel           `json:"channels,omitempty"`
 	Operations       []dto.Operation         `json:"operations,omitempty"`
 }
 
@@ -838,6 +875,7 @@ type UpdateAPIRequest struct {
 	BackendServices  *[]dto.BackendService   `json:"backend-services,omitempty"`
 	APIRateLimiting  *dto.RateLimitingConfig `json:"api-rate-limiting,omitempty"`
 	Operations       *[]dto.Operation        `json:"operations,omitempty"`
+	Channels         *[]dto.Channel          `json:"channels,omitempty"`
 }
 
 // generateDefaultOperations creates default CRUD operations for an API
@@ -888,6 +926,55 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			Request: &dto.OperationRequest{
 				Method: "DELETE",
 				Path:   "/*",
+				Authentication: &dto.AuthenticationConfig{
+					Required: false,
+					Scopes:   []string{},
+				},
+				Policies: []dto.Policy{},
+			},
+		},
+	}
+}
+
+// getDefaultChannels creates default PUB/SUB operations for an API
+func (s *APIService) generateDefaultChannels(asyncAPIType string) []dto.Channel {
+	if asyncAPIType == "WEBSUB" {
+		return []dto.Channel{
+			{
+				Name:        "Default",
+				Description: "Default SUB Channel",
+				Request: &dto.ChannelRequest{
+					Method: "SUB",
+					Name:   "/_default",
+					Authentication: &dto.AuthenticationConfig{
+						Required: false,
+						Scopes:   []string{},
+					},
+					Policies: []dto.Policy{},
+				},
+			},
+		}
+	}
+	return []dto.Channel{
+		{
+			Name:        "Default",
+			Description: "Default SUB Channel",
+			Request: &dto.ChannelRequest{
+				Method: "SUB",
+				Name:   "/_default",
+				Authentication: &dto.AuthenticationConfig{
+					Required: false,
+					Scopes:   []string{},
+				},
+				Policies: []dto.Policy{},
+			},
+		},
+		{
+			Name:        "Default PUB Channel",
+			Description: "Default PUB Channel",
+			Request: &dto.ChannelRequest{
+				Method: "PUB",
+				Name:   "/_default",
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},

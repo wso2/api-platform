@@ -113,6 +113,13 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 		}
 	}
 
+	// Insert Channels
+	for _, channel := range api.Channels {
+		if err := r.insertChannel(tx, api.ID, &channel); err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -414,6 +421,13 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 		}
 	}
 
+	// Re-insert channels
+	for _, channel := range api.Channels {
+		if err := r.insertChannel(tx, api.ID, &channel); err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -442,6 +456,7 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 		`DELETE FROM oauth2_security WHERE api_uuid = ?`,
 		`DELETE FROM api_key_security WHERE api_uuid = ?`,
 		`DELETE FROM api_mtls_config WHERE api_uuid = ?`,
+		`DELETE FROM xhub_signature_security WHERE api_uuid = ?`,
 		// Finally delete the main API record
 		`DELETE FROM apis WHERE uuid = ?`,
 	}
@@ -519,6 +534,13 @@ func (r *APIRepo) loadAPIConfigurations(api *model.API) error {
 		return err
 	} else {
 		api.Operations = operations
+	}
+
+	// Load Channels
+	if channels, err := r.loadChannels(api.ID); err != nil {
+		return err
+	} else {
+		api.Channels = channels
 	}
 
 	return nil
@@ -611,6 +633,17 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiId string, security *model
 		}
 	}
 
+	if security.XHubSignature != nil {
+		xHubQuery := `
+				INSERT INTO xhub_signature_security (api_uuid, enabled, secret, algorithm, header)
+				VALUES (?, ?, ?, ?, ?)
+			`
+		_, err := tx.Exec(xHubQuery, apiId, security.XHubSignature.Enabled,
+			security.XHubSignature.Secret, security.XHubSignature.Algorithm, security.XHubSignature.Header)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -627,6 +660,20 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 		&apiKey.Header, &apiKey.Query, &apiKey.Cookie)
 	if err == nil {
 		security.APIKey = apiKey
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	// Load XHub Signature security if present
+	xHub := &model.XHubSignatureSecurity{}
+	xHubQuery := `
+			SELECT enabled, secret, algorithm, header
+			FROM xhub_signature_security WHERE api_uuid = ?
+		`
+	err = r.db.QueryRow(xHubQuery, apiId).Scan(&xHub.Enabled,
+		&xHub.Secret, &xHub.Algorithm, &xHub.Header)
+	if err == nil {
+		security.XHubSignature = xHub
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -676,8 +723,8 @@ func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error
 		return nil, err
 	}
 
-	// Return security config only if we have API key or OAuth2 config
-	if security.APIKey == nil && security.OAuth2 == nil {
+	// Return security config only if we have API key or OAuth2 config or XHubSignature config
+	if security.APIKey == nil && security.OAuth2 == nil && security.XHubSignature == nil {
 		return nil, nil
 	}
 
@@ -824,6 +871,42 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 	return nil
 }
 
+func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel) error {
+	var authRequired bool
+	var scopesJSON string
+	if channel.Request != nil && channel.Request.Authentication != nil {
+		authRequired = channel.Request.Authentication.Required
+		if len(channel.Request.Authentication.Scopes) > 0 {
+			scopesBytes, _ := json.Marshal(channel.Request.Authentication.Scopes)
+			scopesJSON = string(scopesBytes)
+		}
+	}
+	// Insert channel
+	channelQuery := `
+		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	result, err := tx.Exec(channelQuery, apiId, channel.Name, channel.Description,
+		channel.Request.Method, channel.Request.Name, authRequired, scopesJSON)
+
+	if err != nil {
+		return err
+	}
+
+	channelID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	// Insert policies
+	for _, policy := range channel.Request.Policies {
+		if err := r.insertPolicy(tx, channelID, &policy); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, policy *model.Policy) error {
 	var paramsJSON []byte
 	if policy.Params != nil {
@@ -837,6 +920,54 @@ func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, policy *model.Poli
 	_, err := tx.Exec(r.db.Rebind(policyQuery), operationID, policy.Name, string(paramsJSON),
 		policy.ExecutionCondition, policy.Version)
 	return err
+}
+
+func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
+	query := `
+		SELECT id, name, description, method, path, authentication_required, scopes 
+		FROM api_operations WHERE api_uuid = ?
+	`
+	rows, err := r.db.Query(query, apiId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var channels []model.Channel
+	for rows.Next() {
+		var operationID int64
+		channel := model.Channel{
+			Request: &model.ChannelRequest{},
+		}
+		var authRequired bool
+		var scopesJSON string
+
+		err := rows.Scan(&operationID, &channel.Name, &channel.Description,
+			&channel.Request.Method, &channel.Request.Name, &authRequired, &scopesJSON)
+		if err != nil {
+			return nil, err
+		}
+
+		// Build authentication config
+		if authRequired || scopesJSON != "" {
+			auth := &model.AuthenticationConfig{Required: authRequired}
+			if scopesJSON != "" {
+				json.Unmarshal([]byte(scopesJSON), &auth.Scopes)
+			}
+			channel.Request.Authentication = auth
+		}
+
+		// Load policies
+		if policies, err := r.loadPolicies(operationID); err != nil {
+			return nil, err
+		} else {
+			channel.Request.Policies = policies
+		}
+
+		channels = append(channels, channel)
+	}
+
+	return channels, rows.Err()
 }
 
 func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
@@ -968,6 +1099,7 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 		`DELETE FROM oauth2_security WHERE api_uuid = ?`,
 		`DELETE FROM api_key_security WHERE api_uuid = ?`,
 		`DELETE FROM api_mtls_config WHERE api_uuid = ?`,
+		`DELETE FROM xhub_signature_security WHERE api_uuid = ?`,
 	}
 
 	for _, query := range queries {

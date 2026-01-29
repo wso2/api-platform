@@ -92,6 +92,7 @@ func TestFeatures(t *testing.T) {
 				"features/json-schema-guardrail.feature",
 				"features/llm-provider-templates.feature",
 				"features/analytics-header-filter.feature",
+				"features/lazy-resources-xds.feature",
 				"features/modify-headers.feature",
 				"features/respond.feature",
 			},

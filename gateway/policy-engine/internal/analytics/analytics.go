@@ -31,6 +31,7 @@ import (
 )
 
 const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
+const lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
 
 // EventCategory represents the category of an event.
 type EventCategory string

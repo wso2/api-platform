@@ -78,7 +78,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	cs.handle[handle] = cfg.ID
 	cs.nameVersion[key] = cfg.ID
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -125,7 +125,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		cs.nameVersion[newKey] = cfg.ID
 	}
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -147,11 +147,11 @@ func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
 
 	apiTopicsPerRevision := make(map[string]bool)
 	for _, topic := range asyncData.Channels {
-		name := strings.TrimPrefix(asyncData.Name, "/")
-		context := strings.TrimPrefix(asyncData.Context, "/")
-		version := strings.TrimPrefix(asyncData.Version, "/")
-		path := strings.TrimPrefix(topic.Path, "/")
-		modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
+		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
+		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
+		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
+		name := strings.TrimPrefix(topic.Name, "/")
+		modifiedTopic := fmt.Sprintf("%s_%s", contextWithVersion, name)
 		cs.TopicManager.Add(cfg.ID, modifiedTopic)
 		apiTopicsPerRevision[modifiedTopic] = true
 	}
@@ -177,7 +177,7 @@ func (cs *ConfigStore) Delete(id string) error {
 	key := cfg.GetCompositeKey()
 	handle := cfg.GetHandle()
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		cs.TopicManager.RemoveAllForConfig(cfg.ID)
 	}
 	delete(cs.handle, handle)

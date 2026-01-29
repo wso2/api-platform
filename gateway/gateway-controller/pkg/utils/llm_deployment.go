@@ -35,6 +35,7 @@ import (
 )
 
 const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
+const lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
@@ -156,6 +157,20 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 			slog.String("display_name", storedCfg.GetDisplayName()),
 			slog.String("version", storedCfg.GetVersion()),
 			slog.String("correlation_id", params.CorrelationID))
+	}
+
+	// Publish provider-to-template mapping as lazy resource for policy engine
+	if providerConfig.Metadata.Name != "" && providerConfig.Spec.Template != "" {
+		if err := s.publishProviderTemplateMappingAsLazyResource(
+			providerConfig.Metadata.Name,
+			providerConfig.Spec.Template,
+			params.CorrelationID,
+		); err != nil {
+			params.Logger.Warn("Failed to publish provider-to-template mapping",
+				slog.String("provider_name", providerConfig.Metadata.Name),
+				slog.String("template_handle", providerConfig.Spec.Template),
+				slog.Any("error", err))
+		}
 	}
 
 	// Update xDS snapshot asynchronously
@@ -303,7 +318,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
-	
+
 	// Persist to DB if available
 	if s.db != nil {
 		if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
@@ -315,7 +330,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 			}
 		}
 	}
-	
+
 	// Add to memory store (with rollback if it fails)
 	if err := s.store.AddTemplate(stored); err != nil {
 		// Rollback: Remove from DB if memory store fails
@@ -524,14 +539,14 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		CreatedAt:     existing.CreatedAt,
 		UpdatedAt:     time.Now(),
 	}
-	
+
 	// Update DB
 	if s.db != nil {
 		if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
 			return nil, fmt.Errorf("failed to update template in database: %w", err)
 		}
 	}
-	
+
 	// Update memory store (with rollback if it fails)
 	if err := s.store.UpdateTemplate(updated); err != nil {
 		// Rollback: Revert DB update if memory store update fails
@@ -586,7 +601,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 
 	// Remove from policy engine via lazy resource xDS (ID = handle)
 	if s.lazyResourceManager != nil {
-		if err := s.lazyResourceManager.RemoveResource(handle, ""); err != nil {
+		if err := s.lazyResourceManager.RemoveResourceByIDAndType(handle, lazyResourceTypeLLMProviderTemplate, ""); err != nil {
 			// Don't fail deletion if xDS publish fails; just log.
 			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
 				slog.String("template_id", tmpl.ID),
@@ -614,10 +629,10 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 		if s.db != nil {
 			if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
 				if rollbackErr := sqlite.SaveLLMProviderTemplate(tmpl); rollbackErr != nil {
-							slog.Error("Failed to rollback template to database after memory store deletion failure",
-								slog.String("template_handle", handle),
-								slog.Any("rollback_error", rollbackErr))
-						}
+					slog.Error("Failed to rollback template to database after memory store deletion failure",
+						slog.String("template_handle", handle),
+						slog.Any("rollback_error", rollbackErr))
+				}
 			}
 		}
 		if s.lazyResourceManager != nil {
@@ -627,7 +642,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 					slog.Any("rollback_error", rollbackErr))
 			}
 		}
-			
+
 		return nil, fmt.Errorf("failed to delete template from memory store: %w", err)
 	}
 
@@ -686,6 +701,44 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 		ResourceType: lazyResourceTypeLLMProviderTemplate,
 		Resource:     m,
 	}, correlationID)
+}
+
+// publishProviderTemplateMappingAsLazyResource publishes the provider-to-template mapping
+// as a lazy resource for the policy engine to consume
+func (s *LLMDeploymentService) publishProviderTemplateMappingAsLazyResource(providerName, templateHandle, correlationID string) error {
+	if s.lazyResourceManager == nil {
+		return nil
+	}
+	if providerName == "" {
+		return fmt.Errorf("provider name is empty")
+	}
+	if templateHandle == "" {
+		return fmt.Errorf("template handle is empty")
+	}
+
+	// Create a mapping resource with provider name as ID and template handle as resource data
+	mappingResource := map[string]interface{}{
+		"provider_name":   providerName,
+		"template_handle": templateHandle,
+	}
+
+	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
+		ID:           providerName,
+		ResourceType: lazyResourceTypeProviderTemplateMapping,
+		Resource:     mappingResource,
+	}, correlationID)
+}
+
+// removeProviderTemplateMappingLazyResource removes the provider-to-template mapping lazy resource
+func (s *LLMDeploymentService) removeProviderTemplateMappingLazyResource(providerName, correlationID string) error {
+	if s.lazyResourceManager == nil {
+		return nil
+	}
+	if providerName == "" {
+		return fmt.Errorf("provider name is empty")
+	}
+
+	return s.lazyResourceManager.RemoveResourceByIDAndType(providerName, lazyResourceTypeProviderTemplateMapping, correlationID)
 }
 
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers
@@ -797,6 +850,13 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	}
 	if err := s.store.Delete(cfg.ID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
+	}
+
+	// Remove provider-to-template mapping lazy resource
+	if err := s.removeProviderTemplateMappingLazyResource(handle, correlationID); err != nil {
+		logger.Warn("Failed to remove provider-to-template mapping",
+			slog.String("provider_name", handle),
+			slog.Any("error", err))
 	}
 
 	// Update xDS snapshot asynchronously

@@ -17,16 +17,17 @@
 # --------------------------------------------------------------------
 
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: async/websub
+kind: WebSubApi
 metadata:
-  name: websub-api-v1.0
+  name: WebSubHub-API
 spec:
   displayName: WebSub-API-New-API
   version: v1.0
   context: /websubnewapi
-  servers:
-    - url: http://host.docker.internal:9098
-      protocol: websub
+  vhosts:
+    main: "*"
   channels:
-    - path: /pull-requests
-    - path: /issues
+    - name: issues
+      method: SUB
+    - name: pull_requests
+      method: SUB

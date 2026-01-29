@@ -27,12 +27,12 @@ import (
 
 // LazyResource represents a generic lazy resource with ID, Resource_Type, and Actual_Resource
 type LazyResource struct {
-	// ID uniquely identifies this resource
+	// ID uniquely identifies this resource within its type
 	ID string `json:"id" yaml:"id"`
-	
+
 	// ResourceType identifies the type of resource (e.g., "LlmProviderTemplate")
 	ResourceType string `json:"resource_type" yaml:"resource_type"`
-	
+
 	// Resource contains the actual resource data as a map
 	Resource map[string]interface{} `json:"resource" yaml:"resource"`
 }
@@ -40,7 +40,6 @@ type LazyResource struct {
 // LazyResourceStore manages lazy resources in memory with thread-safe operations
 type LazyResourceStore struct {
 	mu              sync.RWMutex
-	resources       map[string]*LazyResource   // key: resource ID
 	resourcesByType map[string]map[string]*LazyResource // key: resource type -> map of ID -> resource
 	resourceVersion int64
 	logger          *slog.Logger
@@ -49,7 +48,6 @@ type LazyResourceStore struct {
 // NewLazyResourceStore creates a new lazy resource store
 func NewLazyResourceStore(logger *slog.Logger) *LazyResourceStore {
 	return &LazyResourceStore{
-		resources:       make(map[string]*LazyResource),
 		resourcesByType: make(map[string]map[string]*LazyResource),
 		logger:          logger,
 	}
@@ -60,15 +58,6 @@ func (s *LazyResourceStore) Store(resource *LazyResource) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Remove old entry if updating and type changed
-	if existing, exists := s.resources[resource.ID]; exists {
-		if existing.ResourceType != resource.ResourceType {
-			s.removeFromTypeMapping(existing)
-		}
-	}
-
-	// Store the resource
-	s.resources[resource.ID] = resource
 	s.addToTypeMapping(resource)
 
 	s.logger.Debug("Stored lazy resource",
@@ -76,13 +65,16 @@ func (s *LazyResourceStore) Store(resource *LazyResource) {
 		slog.String("resource_type", resource.ResourceType))
 }
 
-// GetByID retrieves a resource by its ID
-func (s *LazyResourceStore) GetByID(id string) (*LazyResource, bool) {
+// GetByIDAndType retrieves a resource by its ID and type (precise lookup)
+func (s *LazyResourceStore) GetByIDAndType(id, resourceType string) (*LazyResource, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	resource, exists := s.resources[id]
-	return resource, exists
+	if typeMap, exists := s.resourcesByType[resourceType]; exists {
+		resource, exists := typeMap[id]
+		return resource, exists
+	}
+	return nil, false
 }
 
 // GetByType retrieves all resources of a specific type
@@ -108,31 +100,37 @@ func (s *LazyResourceStore) GetAll() []*LazyResource {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make([]*LazyResource, 0, len(s.resources))
-	for _, resource := range s.resources {
-		result = append(result, resource)
+	result := make([]*LazyResource, 0)
+	for _, typeMap := range s.resourcesByType {
+		for _, resource := range typeMap {
+			result = append(result, resource)
+		}
 	}
 	return result
 }
 
-// RemoveByID removes a resource by its ID
-func (s *LazyResourceStore) RemoveByID(id string) bool {
+// RemoveByIDAndType removes a resource by its ID and type (precise removal)
+func (s *LazyResourceStore) RemoveByIDAndType(id, resourceType string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	resource, exists := s.resources[id]
+	typeMap, exists := s.resourcesByType[resourceType]
 	if !exists {
 		return false
 	}
 
-	delete(s.resources, id)
-	s.removeFromTypeMapping(resource)
+	if _, exists := typeMap[id]; exists {
+		delete(typeMap, id)
+		if len(typeMap) == 0 {
+			delete(s.resourcesByType, resourceType)
+		}
+		s.logger.Debug("Removed lazy resource by ID and type",
+			slog.String("id", id),
+			slog.String("resource_type", resourceType))
+		return true
+	}
 
-	s.logger.Debug("Removed lazy resource",
-		slog.String("id", id),
-		slog.String("resource_type", resource.ResourceType))
-
-	return true
+	return false
 }
 
 // RemoveByType removes all resources of a specific type
@@ -146,13 +144,6 @@ func (s *LazyResourceStore) RemoveByType(resourceType string) int {
 	}
 
 	count := len(typeMap)
-
-	// Remove from main map
-	for id := range typeMap {
-		delete(s.resources, id)
-	}
-
-	// Remove from type mapping
 	delete(s.resourcesByType, resourceType)
 
 	s.logger.Debug("Removed lazy resources by type",
@@ -166,7 +157,12 @@ func (s *LazyResourceStore) RemoveByType(resourceType string) int {
 func (s *LazyResourceStore) Count() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return len(s.resources)
+
+	count := 0
+	for _, typeMap := range s.resourcesByType {
+		count += len(typeMap)
+	}
+	return count
 }
 
 // IncrementResourceVersion increments and returns the resource version
@@ -186,19 +182,3 @@ func (s *LazyResourceStore) addToTypeMapping(resource *LazyResource) {
 	}
 	s.resourcesByType[resource.ResourceType][resource.ID] = resource
 }
-
-// removeFromTypeMapping removes a resource from the type mapping
-func (s *LazyResourceStore) removeFromTypeMapping(resource *LazyResource) {
-	typeMap, exists := s.resourcesByType[resource.ResourceType]
-	if !exists {
-		return
-	}
-
-	delete(typeMap, resource.ID)
-
-	// If no resources left for this type, remove the mapping
-	if len(typeMap) == 0 {
-		delete(s.resourcesByType, resource.ResourceType)
-	}
-}
-

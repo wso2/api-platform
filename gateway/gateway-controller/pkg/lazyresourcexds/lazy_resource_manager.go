@@ -65,22 +65,25 @@ func (lrm *LazyResourceStateManager) StoreResource(resource *storage.LazyResourc
 	return nil
 }
 
-// RemoveResource removes a lazy resource and updates the policy engine with the complete state
-func (lrm *LazyResourceStateManager) RemoveResource(id, correlationID string) error {
-	lrm.logger.Info("Removing lazy resource with state-of-the-world update",
+// RemoveResourceByIDAndType removes a lazy resource by ID and type and updates the policy engine
+func (lrm *LazyResourceStateManager) RemoveResourceByIDAndType(id, resourceType, correlationID string) error {
+	lrm.logger.Info("Removing lazy resource by ID and type with state-of-the-world update",
 		slog.String("id", id),
+		slog.String("resource_type", resourceType),
 		slog.String("correlation_id", correlationID))
 
-	// Remove the lazy resource and update the snapshot
-	if err := lrm.snapshotManager.RemoveResource(id); err != nil {
-		lrm.logger.Error("Failed to remove lazy resource and update snapshot",
+	// Remove the lazy resource by ID and type, then update the snapshot
+	if err := lrm.snapshotManager.RemoveResourceByIDAndType(id, resourceType); err != nil {
+		lrm.logger.Error("Failed to remove lazy resource by ID and type",
 			slog.String("resource_id", id),
+			slog.String("resource_type", resourceType),
 			slog.Any("error", err))
 		return fmt.Errorf("failed to remove lazy resource: %w", err)
 	}
 
-	lrm.logger.Info("Successfully removed lazy resource and updated policy engine state",
+	lrm.logger.Info("Successfully removed lazy resource by ID and type",
 		slog.String("resource_id", id),
+		slog.String("resource_type", resourceType),
 		slog.String("correlation_id", correlationID))
 
 	return nil
@@ -107,9 +110,9 @@ func (lrm *LazyResourceStateManager) RemoveResourcesByType(resourceType, correla
 	return nil
 }
 
-// GetResourceByID retrieves a lazy resource by its ID
-func (lrm *LazyResourceStateManager) GetResourceByID(id string) (*storage.LazyResource, bool) {
-	return lrm.store.GetByID(id)
+// GetResourceByIDAndType retrieves a lazy resource by its ID and type
+func (lrm *LazyResourceStateManager) GetResourceByIDAndType(id, resourceType string) (*storage.LazyResource, bool) {
+	return lrm.store.GetByIDAndType(id, resourceType)
 }
 
 // GetResourcesByType retrieves all lazy resources of a specific type

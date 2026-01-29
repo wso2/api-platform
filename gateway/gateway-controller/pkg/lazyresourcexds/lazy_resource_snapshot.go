@@ -22,8 +22,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"log/slog"
+	"sync"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
@@ -131,13 +131,15 @@ func (sm *LazyResourceSnapshotManager) StoreResource(resource *storage.LazyResou
 	return sm.UpdateSnapshot(context.Background())
 }
 
-// RemoveResource removes a lazy resource and updates the snapshot
-func (sm *LazyResourceSnapshotManager) RemoveResource(id string) error {
-	sm.logger.Info("Removing lazy resource", slog.String("id", id))
+// RemoveResourceByIDAndType removes a lazy resource by ID and type and updates the snapshot
+func (sm *LazyResourceSnapshotManager) RemoveResourceByIDAndType(id, resourceType string) error {
+	sm.logger.Info("Removing lazy resource by ID and type",
+		slog.String("id", id),
+		slog.String("resource_type", resourceType))
 
-	// Remove from the lazy resource store
-	if !sm.store.RemoveByID(id) {
-		return fmt.Errorf("lazy resource not found: %s", id)
+	// Remove from the lazy resource store only if type matches
+	if !sm.store.RemoveByIDAndType(id, resourceType) {
+		return fmt.Errorf("lazy resource not found with id %q and type %q", id, resourceType)
 	}
 
 	// Update the snapshot to reflect the new state
