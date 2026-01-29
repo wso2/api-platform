@@ -250,6 +250,11 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 		})
 	}
 
+	// Validate labels
+	if provider.Metadata.Labels != nil {
+		errors = append(errors, ValidateLabels(*provider.Metadata.Labels)...)
+	}
+
 	// Validate spec section
 	errors = append(errors, v.validateProviderSpec(&provider.Spec)...)
 
@@ -425,6 +430,11 @@ func (v *LLMValidator) validateLLMProxy(proxy *api.LLMProxyConfiguration) []Vali
 			Field:   "metadata.name",
 			Message: "metadata.name must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
 		})
+	}
+
+	// Validate labels
+	if proxy.Metadata.Labels != nil {
+		errors = append(errors, ValidateLabels(*proxy.Metadata.Labels)...)
 	}
 
 	// Validate spec section

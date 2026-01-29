@@ -96,3 +96,71 @@ Feature: Test MCP CRUD and connectivity
         And the JSON response field "status" should be "success"
         And the JSON response field "count" should be 0
 
+    Scenario: Deploy an MCP Proxy with labels and verify they are stored
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: labeled-mcp-v1.0
+              labels:
+                environment: production
+                team: mcp-team
+                service: mcp-proxy
+            spec:
+              displayName: Labeled MCP
+              version: v1.0
+              context: /labeled-mcp
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+        
+        Given I authenticate using basic auth as "admin"
+        When I get the MCP proxy "labeled-mcp-v1.0"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "mcp.configuration.metadata.labels.environment" should be "production"
+        And the JSON response field "mcp.configuration.metadata.labels.team" should be "mcp-team"
+        And the JSON response field "mcp.configuration.metadata.labels.service" should be "mcp-proxy"
+        
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "labeled-mcp-v1.0"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+
+    Scenario: Deploy an MCP Proxy with invalid labels (spaces in keys) should fail
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: invalid-mcp-labels-v1.0
+              labels:
+                "Invalid Key": value
+            spec:
+              displayName: Invalid MCP Labels
+              version: v1.0
+              context: /invalid-mcp
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be a client error
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+        And the response body should contain "configuration validation failed"
+
