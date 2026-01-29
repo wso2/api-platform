@@ -98,7 +98,7 @@ func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[strin
 // GetActiveDeploymentByGateway retrieves the currently deployed API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
 	// Get the active deployment for this API on this gateway
-	deployment, err := s.apiRepo.GetActiveDeploymentByGateway(apiID, gatewayID, orgID)
+	deployment, err := s.apiRepo.GetCurrentDeploymentByGateway(apiID, gatewayID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
@@ -228,7 +228,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Check if deployment already exists
-	existingDeployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiUUID, orgID, nil, nil)
+	existingDeployments, err := s.apiRepo.GetDeploymentsWithState(apiUUID, orgID, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
 	}
@@ -271,14 +271,19 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Create deployment record
+	deploymentName := fmt.Sprintf("deployment-%d", now.Unix())
+	deployed := model.DeploymentStatusDeployed
 	deployment := &model.APIDeployment{
+		Name:           deploymentName,
 		ApiID:          apiUUID,
 		GatewayID:      gatewayID,
 		OrganizationID: orgID,
+		Status:         &deployed,
 		CreatedAt:      now,
 	}
 
-	err = s.apiRepo.CreateDeployment(deployment)
+	// Use a hardLimit of 25 (20 + 5 buffer) - ideally this should come from config
+	err = s.apiRepo.CreateDeploymentWithLimitEnforcement(deployment, 25)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create deployment record: %w", err)
 	}

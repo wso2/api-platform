@@ -57,16 +57,13 @@ type APIRepository interface {
 	DeleteAPI(apiUUID, orgUUID string) error
 
 	// Deployment artifact methods (immutable deployments)
-	CreateDeploymentWithLimitEnforcement(deployment *model.APIDeployment, hardLimit int) error // Atomic: count, cleanup if needed, create
-	GetDeploymentByID(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)        // Without content (lightweight)
+	CreateDeploymentWithLimitEnforcement(deployment *model.APIDeployment, hardLimit int) error    // Atomic: count, cleanup if needed, create
 	GetDeploymentWithContent(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error) // With content (for rollback/base deployment)
-	GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)
+	GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)   // With status derived (without content - lightweight)
 	GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error)
-	GetDeploymentContent(deploymentID, apiUUID, orgUUID string) ([]byte, error)
 	DeleteDeployment(deploymentID, apiUUID, orgUUID string) error
 	GetCurrentDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
 	CountDeploymentsByAPIAndGateway(apiUUID, gatewayID, orgUUID string) (int, error)
-	GetOldestArchivedDeployments(apiUUID, gatewayID, orgUUID string, limit int) ([]string, error)
 
 	// Deployment status methods (mutable state tracking)
 	SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) error

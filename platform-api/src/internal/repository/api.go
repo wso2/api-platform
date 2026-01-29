@@ -1116,46 +1116,6 @@ func (r *APIRepo) CreateDeploymentWithLimitEnforcement(deployment *model.APIDepl
 	return tx.Commit()
 }
 
-// GetDeploymentByID retrieves a specific deployment by deployment ID for a given API (without content - lightweight)
-func (r *APIRepo) GetDeploymentByID(deploymentID, apiID, orgID string) (*model.APIDeployment, error) {
-	deployment := &model.APIDeployment{}
-
-	query := `
-		SELECT deployment_id, name, api_uuid, organization_uuid, gateway_uuid, base_deployment_id, metadata, created_at
-		FROM api_deployments
-		WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?
-	`
-
-	var baseDeploymentID sql.NullString
-	var metadataJSON string
-
-	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, apiID, orgID).Scan(
-		&deployment.DeploymentID, &deployment.Name, &deployment.ApiID, &deployment.OrganizationID,
-		&deployment.GatewayID, &baseDeploymentID, &metadataJSON, &deployment.CreatedAt)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrDeploymentNotFound
-		}
-		return nil, err
-	}
-
-	if baseDeploymentID.Valid {
-		deployment.BaseDeploymentID = &baseDeploymentID.String
-	}
-
-	if metadataJSON != "" {
-		var metadata map[string]interface{}
-		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
-			deployment.Metadata = metadata
-		} else {
-			return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
-		}
-	}
-
-	return deployment, nil
-}
-
 // GetDeploymentWithContent retrieves a deployment including its content (for rollback/base deployment scenarios)
 func (r *APIRepo) GetDeploymentWithContent(deploymentID, apiID, orgID string) (*model.APIDeployment, error) {
 	deployment := &model.APIDeployment{}
@@ -1196,23 +1156,6 @@ func (r *APIRepo) GetDeploymentWithContent(deploymentID, apiID, orgID string) (*
 	return deployment, nil
 }
 
-// GetDeploymentContent retrieves the content blob for a deployment
-func (r *APIRepo) GetDeploymentContent(deploymentID, apiID, orgID string) ([]byte, error) {
-	var content []byte
-
-	query := `SELECT content FROM api_deployments WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?`
-
-	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, apiID, orgID).Scan(&content)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrDeploymentNotFound
-		}
-		return nil, err
-	}
-
-	return content, nil
-}
-
 // DeleteDeployment deletes a deployment record
 func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 	query := `DELETE FROM api_deployments WHERE deployment_id = ? AND api_uuid = ? AND organization_uuid = ?`
@@ -1234,8 +1177,8 @@ func (r *APIRepo) DeleteDeployment(deploymentID, apiID, orgID string) error {
 	return nil
 }
 
-// GetCurrentDeploymentByGateway retrieves the current deployment for an API on a gateway (DEPLOYED or UNDEPLOYED)
-// Returns the deployment referenced in api_deployment_status table with its status populated
+// GetCurrentDeploymentByGateway retrieves the currently DEPLOYED deployment for an API on a gateway
+// Returns only deployments with DEPLOYED status (filters out UNDEPLOYED/suspended deployments)
 func (r *APIRepo) GetCurrentDeploymentByGateway(apiUUID, gatewayID, orgID string) (*model.APIDeployment, error) {
 	deployment := &model.APIDeployment{}
 
@@ -1251,6 +1194,7 @@ func (r *APIRepo) GetCurrentDeploymentByGateway(apiUUID, gatewayID, orgID string
 			AND d.organization_uuid = s.organization_uuid
 			AND d.gateway_uuid = s.gateway_uuid
 		WHERE d.api_uuid = ? AND d.gateway_uuid = ? AND d.organization_uuid = ?
+			AND s.status = ?
 		ORDER BY d.created_at DESC
 		LIMIT 1
 	`
@@ -1260,7 +1204,7 @@ func (r *APIRepo) GetCurrentDeploymentByGateway(apiUUID, gatewayID, orgID string
 	var statusStr string
 	var updatedAt time.Time
 
-	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgID).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, gatewayID, orgID, string(model.DeploymentStatusDeployed)).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ApiID, &deployment.OrganizationID,
 		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt,
 		&statusStr, &updatedAt)
@@ -1358,14 +1302,14 @@ func (r *APIRepo) DeleteDeploymentStatus(apiUUID, orgUUID, gatewayID string) err
 	return err
 }
 
-// GetDeploymentWithState retrieves a deployment with its lifecycle state populated
+// GetDeploymentWithState retrieves a deployment with its lifecycle state populated (without content - lightweight)
 func (r *APIRepo) GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error) {
 	deployment := &model.APIDeployment{}
 
 	query := `
 		SELECT 
 			d.deployment_id, d.name, d.api_uuid, d.organization_uuid, d.gateway_uuid, 
-			d.base_deployment_id, d.content, d.metadata, d.created_at,
+			d.base_deployment_id, d.metadata, d.created_at,
 			s.status, s.updated_at AS status_updated_at
 		FROM api_deployments d
 		LEFT JOIN api_deployment_status s 
@@ -1383,7 +1327,7 @@ func (r *APIRepo) GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) 
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, apiUUID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ApiID, &deployment.OrganizationID, &deployment.GatewayID,
-		&baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt,
+		&baseDeploymentID, &metadataJSON, &deployment.CreatedAt,
 		&statusStr, &updatedAtVal)
 
 	if err != nil {
@@ -1423,7 +1367,7 @@ func (r *APIRepo) GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) 
 	return deployment, nil
 }
 
-// GetDeploymentsWithState retrieves deployments with their lifecycle states populated
+// GetDeploymentsWithState retrieves deployments with their lifecycle states populated (without content - lightweight)
 func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error) {
 	// Validate status parameter
 	if status != nil {
@@ -1443,7 +1387,7 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 	baseQuery := `
 		SELECT 
 			d.deployment_id, d.name, d.api_uuid, d.organization_uuid, d.gateway_uuid,
-			d.base_deployment_id, d.content, d.metadata, d.created_at,
+			d.base_deployment_id, d.metadata, d.created_at,
 			s.status, s.updated_at AS status_updated_at
 		FROM api_deployments d
 		LEFT JOIN api_deployment_status s 
@@ -1491,7 +1435,7 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 
 		err := rows.Scan(
 			&deployment.DeploymentID, &deployment.Name, &deployment.ApiID, &deployment.OrganizationID, &deployment.GatewayID,
-			&baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt,
+			&baseDeploymentID, &metadataJSON, &deployment.CreatedAt,
 			&statusStr, &updatedAtVal)
 
 		if err != nil {
@@ -1531,36 +1475,6 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 	}
 
 	return deployments, nil
-}
-
-// GetOldestArchivedDeployments retrieves the oldest ARCHIVED deployment IDs for cleanup
-func (r *APIRepo) GetOldestArchivedDeployments(apiUUID, gatewayID, orgUUID string, limit int) ([]string, error) {
-	query := `
-		SELECT d.deployment_id
-		FROM api_deployments d
-		LEFT JOIN api_deployment_status s ON d.deployment_id = s.deployment_id
-		WHERE d.api_uuid = ? AND d.gateway_uuid = ? AND d.organization_uuid = ?
-			AND s.deployment_id IS NULL
-		ORDER BY d.created_at ASC
-		LIMIT ?
-	`
-
-	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, gatewayID, orgUUID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-
-	return ids, rows.Err()
 }
 
 // CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
