@@ -114,7 +114,6 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	c.JSON(http.StatusCreated, dto.CreateAPIKeyResponse{
 		Status:  "success",
 		Message: "API key registered and broadcasted to gateways successfully",
-		KeyId:   req.Name,
 	})
 }
 

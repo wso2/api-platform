@@ -1651,7 +1651,10 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 			key.UpdatedAt = time.Now()
 			key.ExpiresAt = expiresAt
 			key.Source = "external"
-			key.ExternalRefId = externalRefId
+			// Only update ExternalRefId when a new value is provided; avoid clearing an existing reference on nil
+			if externalRefId != nil {
+				key.ExternalRefId = externalRefId
+			}
 
 			if s.db != nil {
 				if err := s.db.UpdateAPIKey(key); err != nil {

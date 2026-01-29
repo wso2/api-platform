@@ -255,18 +255,15 @@ func (s *SQLiteStorage) initSchema() error {
 					return fmt.Errorf("failed to add external_ref_id column to api_keys: %w", err)
 				}
 			}
-			// Backfill legacy keys: treat empty or 'null' source as 'local' (DB + local cache consistency)
+			// Backfill legacy keys: treat NULL, empty, or 'null' source as 'local' (DB + local cache consistency)
 			if _, err := s.db.Exec(`
 				UPDATE api_keys
 				SET source = 'local'
-				WHERE source != 'local'
-				AND (
+				WHERE
 					source IS NULL
 					OR trim(source) = ''
 					OR lower(trim(source)) = 'null'
-				)
-			`); 
-			err != nil {
+			`); err != nil {
 				s.logger.Warn("Failed to backfill api_keys.source for legacy keys", slog.Any("error", err))
 			}
 			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);`); err != nil {
