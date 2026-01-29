@@ -304,7 +304,13 @@ gateway:
         # Log format: json, text
         format: json
 
-    policy_configurations: {}
+  # Raw TOML string to append to the generated config.toml
+  # Use this for additional configuration not covered by the structured values above
+  # Example:
+  #   config_toml: |
+  #     [custom_section]
+  #     key = "value"
+  config_toml: ""
 
   # metadata for the generated shared ConfigMap (annotations / labels)
   configMap:

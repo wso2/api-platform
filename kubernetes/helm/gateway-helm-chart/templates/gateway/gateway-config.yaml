@@ -46,7 +46,7 @@ data:
     listener_port = {{ $gc.router.listener_port }}
     https_enabled = {{ $gc.router.https_enabled }}
     https_port = {{ $gc.router.https_port }}
-    tracing_service_name = {{ $gc.router.tracing_service_name | quote }}
+    tracing_service_name = {{ $gc.router.tracing_service_name | default "" | quote }}
 
     [gateway_controller.router.access_logs]
     enabled = {{ $gc.router.access_logs.enabled }}
@@ -208,15 +208,9 @@ data:
     {{- end }}
 
     {{- if .Values.gateway.config.policy_configurations }}
-    [policy_configurations]
-    {{- range $key, $value := .Values.gateway.config.policy_configurations }}
-    [policy_configurations.{{ $key }}]
-    {{- range $k, $v := $value }}
-    {{- if or (regexMatch "^(?i)(true|false)$" (toString $v)) (regexMatch "^-?[0-9]+(\\.[0-9]+)?$" (toString $v)) }}
-    {{ $k }} = {{ $v }}
-    {{- else }}
-    {{ $k }} = {{ $v | quote }}
+{{ dict "policy_configurations" .Values.gateway.config.policy_configurations | toToml | indent 4 }}
     {{- end }}
-    {{- end }}
-    {{- end }}
+
+    {{- if .Values.gateway.config_toml }}
+{{ .Values.gateway.config_toml | indent 4 }}
     {{- end }}
