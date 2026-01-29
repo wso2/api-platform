@@ -439,3 +439,119 @@ func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID string, event *m
 
 	return nil
 }
+
+// BroadcastAPIKeyUpdatedEvent sends an API key updated event to target gateway with retries.
+// This method handles:
+// - Looking up gateway connections by gateway ID
+// - Serializing event to JSON
+// - Broadcasting to all connections for the gateway (clustering support)
+// - Current API key events are not retried
+// - Payload size validation
+// - Delivery statistics tracking
+func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID string, event *model.APIKeyUpdatedEvent) error {
+	const maxRetries = 1
+	const retryDelay = 1 * time.Second
+
+	var lastError error
+
+	// Retry loop for critical API key events
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			log.Printf("[INFO] Retrying API key updated event broadcast: gatewayID=%s attempt=%d/%d",
+				gatewayID, attempt+1, maxRetries)
+			time.Sleep(retryDelay * time.Duration(attempt)) // Linear backoff
+		}
+
+		err := s.broadcastAPIKeyUpdated(gatewayID, event)
+		if err == nil {
+			if attempt > 0 {
+				log.Printf("[INFO] API key updated event delivered after retry: gatewayID=%s attempts=%d",
+					gatewayID, attempt+1)
+			}
+			return nil
+		}
+
+		lastError = err
+		log.Printf("[WARN] API key updated event delivery failed: gatewayID=%s attempt=%d/%d error=%v",
+			gatewayID, attempt+1, maxRetries, err)
+	}
+
+	log.Printf("[ERROR] API key updated event delivery failed after all retries: gatewayID=%s retries=%d error=%v",
+		gatewayID, maxRetries, lastError)
+	return fmt.Errorf("failed to deliver API key updated event after %d retries: %w", maxRetries, lastError)
+}
+
+// broadcastAPIKeyUpdated is the internal implementation for broadcasting API key updated events
+func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID string, event *model.APIKeyUpdatedEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[ERROR] Failed to serialize API key updated event: gatewayID=%s error=%v", gatewayID, err)
+		return fmt.Errorf("failed to serialize API key updated event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		log.Printf("[ERROR] Payload size validation failed: gatewayID=%s size=%d error=%v", gatewayID, len(payloadJSON), err)
+		return err
+	}
+
+	// Create gateway event DTO
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "apikey.updated",
+		Payload:       event,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal API key updated event DTO: gatewayID=%s correlationId=%s error=%v",
+			gatewayID, correlationID, err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		log.Printf("[WARN] No active connections for gateway: gatewayID=%s correlationId=%s", gatewayID, correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			log.Printf("[ERROR] Failed to send API key updated event: gatewayID=%s connectionID=%s correlationId=%s error=%v",
+				gatewayID, conn.ConnectionID, correlationID, err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			log.Printf("[INFO] API key updated event sent: gatewayID=%s connectionID=%s correlationId=%s keyName=%s",
+				gatewayID, conn.ConnectionID, correlationID, event.KeyName)
+			conn.DeliveryStats.IncrementTotalSent()
+		}
+	}
+
+	// Log broadcast summary
+	log.Printf("[INFO] Broadcast summary: gatewayID=%s correlationId=%s type=apikey.updated total=%d success=%d failed=%d",
+		gatewayID, correlationID, len(connections), successCount, failureCount)
+
+	// Return error if all deliveries failed
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver event to any connection: %w", lastError)
+	}
+
+	return nil
+}

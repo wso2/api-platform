@@ -117,6 +117,82 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	})
 }
 
+// UpdateAPIKey handles PUT /api/v1/apis/{apiId}/api-keys/{keyName}
+// This endpoint allows Cloud APIM to update/regenerate external API keys on hybrid gateways
+func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
+	// Extract organization from JWT token
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	// Extract API ID and key name from path parameters
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	keyName := c.Param("keyName")
+	if keyName == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API key name is required"))
+		return
+	}
+
+	// Parse and validate request body
+	var req dto.UpdateAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[WARN] Invalid API key update request: orgId=%s apiId=%s keyName=%s error=%v",
+			orgId, apiID, keyName, err)
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Invalid request body: "+err.Error()))
+		return
+	}
+
+	// Validate new API key value
+	if req.ApiKey == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API key value is required"))
+		return
+	}
+
+	// Update the API key and broadcast to gateways
+	err := h.apiKeyService.UpdateAPIKey(c.Request.Context(), apiID, orgId, keyName, &req)
+	if err != nil {
+		// Handle specific error cases
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrGatewayUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
+				"No gateway connections available for API"))
+			return
+		}
+
+		log.Printf("[ERROR] Failed to update API key: apiId=%s orgId=%s keyName=%s error=%v",
+			apiID, orgId, keyName, err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to update API key"))
+		return
+	}
+
+	log.Printf("[INFO] Successfully updated API key: apiId=%s orgId=%s keyName=%s",
+		apiID, orgId, keyName)
+
+	// Return success response
+	c.JSON(http.StatusOK, dto.UpdateAPIKeyResponse{
+		Status:  "success",
+		Message: "API key updated and broadcasted to gateways successfully",
+		KeyId:   keyName,
+	})
+}
+
 // RevokeAPIKey handles DELETE /api/v1/apis/{apiId}/api-keys/{keyName}
 // This endpoint allows Cloud APIM to revoke external API keys on hybrid gateways
 func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
@@ -177,6 +253,7 @@ func (h *APIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	apiKeyGroup := r.Group("/api/v1/apis/:apiId/api-keys")
 	{
 		apiKeyGroup.POST("", h.CreateAPIKey)
+		apiKeyGroup.PUT("/:keyName", h.UpdateAPIKey)
 		apiKeyGroup.DELETE("/:keyName", h.RevokeAPIKey)
 	}
 }

@@ -503,6 +503,66 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /apis/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key with a new regenerated value
+      description: |
+        Update an existing API key with a new regenerated value. This allows
+        rotating API keys with a predetermined value instead of auto-generating one.
+        The new key must be at least 16 characters long.
+      operationId: updateAPIKey
+      tags:
+        - API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API
+          schema:
+            type: string
+          example: weather-api-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to update
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyGenerationResponse"
+        "400":
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Revoke an API key
       description: |
@@ -2353,6 +2413,11 @@ components:
     APIKeyRegenerationRequest:
       type: object
       properties:
+        api_key:
+          type: string
+          description: The new API key value to set (minimum 16 characters)
+          example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+          minLength: 16
         expires_in:
           type: object
           description: Expiration duration for the API key
@@ -2423,7 +2488,6 @@ components:
           type: string
           format: date-time
           example: 2025-10-11T10:30:00Z
-
     APIDetailResponse:
       type: object
       properties:

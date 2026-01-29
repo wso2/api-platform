@@ -121,6 +121,81 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, r
 	return nil
 }
 
+// UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
+// This method is used when Cloud APIM rotates/regenerates API keys on hybrid gateways.
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiId, orgId, keyName string, req *dto.UpdateAPIKeyRequest) error {
+	// Validate API exists and get its deployments
+	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get API for API key update: apiId=%s error=%v", apiId, err)
+		return fmt.Errorf("failed to get API: %w", err)
+	}
+	if api == nil {
+		log.Printf("[WARN] API not found for API key update: apiId=%s", apiId)
+		return constants.ErrAPINotFound
+	}
+
+	// Get all deployments for this API to find target gateways
+	deployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiId, orgId, nil, nil)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get deployments for API key update: apiId=%s error=%v", apiId, err)
+		return fmt.Errorf("failed to get API deployments: %w", err)
+	}
+
+	if len(deployments) == 0 {
+		log.Printf("[WARN] No gateway deployments found for API: apiId=%s", apiId)
+		return constants.ErrGatewayUnavailable
+	}
+
+	// Build the API key updated event
+	// Note: API key is sent as plain text - hashing happens in the gateway/policy-engine
+	event := &model.APIKeyUpdatedEvent{
+		ApiId:     apiId,
+		KeyName:   keyName,
+		ApiKey:    req.ApiKey, // Send plain API key (no hashing in platform-api)
+		ExpiresAt: req.ExpiresAt,
+	}
+
+	// Track delivery statistics
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	// Broadcast event to all gateways where API is deployed
+	for _, deployment := range deployments {
+		gatewayID := deployment.GatewayID
+
+		log.Printf("[INFO] Broadcasting API key updated event: apiId=%s gatewayId=%s keyName=%s",
+			apiId, gatewayID, keyName)
+
+		// Broadcast with retries
+		err := s.gatewayEventsService.BroadcastAPIKeyUpdatedEvent(gatewayID, event)
+		if err != nil {
+			failureCount++
+			lastError = err
+			log.Printf("[ERROR] Failed to broadcast API key updated event: apiId=%s gatewayId=%s keyName=%s error=%v",
+				apiId, gatewayID, keyName, err)
+		} else {
+			successCount++
+			log.Printf("[INFO] Successfully broadcast API key updated event: apiId=%s gatewayId=%s keyName=%s",
+				apiId, gatewayID, keyName)
+		}
+	}
+
+	// Log summary
+	log.Printf("[INFO] API key update broadcast summary: apiId=%s keyName=%s total=%d success=%d failed=%d",
+		apiId, keyName, len(deployments), successCount, failureCount)
+
+	// Return error if all deliveries failed
+	if successCount == 0 {
+		log.Printf("[ERROR] Failed to deliver API key update to any gateway: apiId=%s keyName=%s", apiId, keyName)
+		return fmt.Errorf("failed to deliver API key update event to any gateway: %w", lastError)
+	}
+
+	// Partial success is still considered success (some gateways received the event)
+	return nil
+}
+
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
 func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiId, orgId, keyName string) error {
 	// Validate API exists and get its deployments

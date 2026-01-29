@@ -75,3 +75,19 @@ type APIKeyRevokedEvent struct {
 	Timestamp     string                    `json:"timestamp"`
 	CorrelationID string                    `json:"correlationId"`
 }
+
+// APIKeyUpdatedEventPayload represents the payload of an API key updated event
+type APIKeyUpdatedEventPayload struct {
+	ApiId     string  `json:"apiId"`
+	KeyName   string  `json:"keyName"`
+	ApiKey    string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
+	ExpiresAt *string `json:"expiresAt,omitempty"` // ISO 8601 format
+}
+
+// APIKeyUpdatedEvent represents the complete API key updated event
+type APIKeyUpdatedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       APIKeyUpdatedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
+}

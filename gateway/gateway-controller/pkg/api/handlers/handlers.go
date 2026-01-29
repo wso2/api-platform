@@ -2485,6 +2485,77 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 	c.JSON(http.StatusOK, result.Response)
 }
 
+// UpdateAPIKey implements ServerInterface.UpdateAPIKey
+// (PUT /apis/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "UpdateAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
+	}
+
+	log.Debug("Starting API key rotation",
+		slog.String("handle", handle),
+		slog.String("key name", apiKeyName),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
+
+	// Parse and validate request body
+	var request api.APIKeyRegenerationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Warn("Invalid request body for API key rotation",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	// Prepare parameters
+	params := utils.APIKeyUpdateParams{
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key rotation completed",
+		slog.String("handle", handle),
+		slog.String("key_name", apiKeyName),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusOK, result.Response)
+}
+
 // RegenerateAPIKey implements ServerInterface.RegenerateAPIKey
 // (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
 func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName string) {

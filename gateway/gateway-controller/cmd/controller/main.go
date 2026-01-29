@@ -465,6 +465,7 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 
 		"POST /apis/:id/api-keys":                        {"admin", "consumer"},
 		"GET /apis/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
 		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 

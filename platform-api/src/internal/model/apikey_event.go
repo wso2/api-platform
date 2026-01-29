@@ -48,3 +48,19 @@ type APIKeyRevokedEvent struct {
 	// KeyName is the unique name of the API key that was revoked
 	KeyName string `json:"keyName"`
 }
+
+// APIKeyUpdatedEvent represents the payload for "apikey.updated" event type.
+// This event is sent when an API key is updated/regenerated on hybrid gateways.
+type APIKeyUpdatedEvent struct {
+	// ApiId identifies the API this key belongs to
+	ApiId string `json:"apiId"`
+
+	// KeyName is the unique name of the API key being updated
+	KeyName string `json:"keyName"`
+
+	// ApiKey is the new plain API key value (hashing happens in the gateway)
+	ApiKey string `json:"apiKey"`
+
+	// ExpiresAt is the optional new expiration time in ISO 8601 format
+	ExpiresAt *string `json:"expiresAt,omitempty"`
+}

@@ -48,6 +48,28 @@ type CreateAPIKeyResponse struct {
 	KeyId string `json:"key_id,omitempty"`
 }
 
+// UpdateAPIKeyRequest represents the request to update/regenerate an API key.
+// This is used when Cloud APIM rotates API keys on hybrid gateways.
+type UpdateAPIKeyRequest struct {
+	// ApiKey is the new plain text API key value that will be hashed before storage
+	ApiKey string `json:"api_key" binding:"required"`
+
+	// ExpiresAt is the optional expiration time in ISO 8601 format
+	ExpiresAt *string `json:"expires_at,omitempty"`
+}
+
+// UpdateAPIKeyResponse represents the response after updating an API key.
+type UpdateAPIKeyResponse struct {
+	// Status indicates the result of the operation ("success" or "error")
+	Status string `json:"status"`
+
+	// Message provides additional details about the operation result
+	Message string `json:"message"`
+
+	// KeyId is the internal ID of the updated key
+	KeyId string `json:"key_id,omitempty"`
+}
+
 // RevokeAPIKeyResponse represents the response after revoking an API key.
 type RevokeAPIKeyResponse struct {
 	// Status indicates the result of the operation ("success" or "error")
