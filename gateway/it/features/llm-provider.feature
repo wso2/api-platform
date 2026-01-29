@@ -42,7 +42,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi-https:9443/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -137,7 +137,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: allow_all
         """
@@ -157,7 +157,7 @@ Feature: LLM Provider Management
           context: /openai
           vhost: api.openai.local
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: deny_all
         """
@@ -192,14 +192,14 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: allow_all
         """
     Then the response status code should be 201
 
     Given I authenticate using basic auth as "admin"
-    When I list LLM providers with filter "displayName" as "Test Provider Alpha"
+    When I list LLM providers with filter "displayName" as "Test%20Provider%20Alpha"
     Then the response status code should be 200
     And the JSON response field "count" should be 1
     And the JSON response field "providers[0].displayName" should be "Test Provider Alpha"
@@ -222,7 +222,7 @@ Feature: LLM Provider Management
           version: v2.5
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: allow_all
         """
@@ -266,10 +266,11 @@ Feature: LLM Provider Management
             mode: allow_all
         """
     Then the response status code should be 201
-    And I wait for 2 seconds
+    And I wait for 5 seconds
 
     # Test that any path is accessible
-    When I send a POST request to "http://localhost:8080/allow-all/chat/completions" with body:
+    When I set header "content-type" to "Bearer sk-test"
+    When I send a POST request to "http://localhost:8080/allow-all/chat/completions" with header "Authorization" value "Bearer sk-test" with body:
         """
         {
           "model": "gpt-4",
@@ -300,7 +301,7 @@ Feature: LLM Provider Management
           template: openai
           context: /deny-all
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -355,7 +356,7 @@ Feature: LLM Provider Management
           template: openai
           context: /apikey-test
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -399,7 +400,7 @@ Feature: LLM Provider Management
           template: openai
           context: /bearer-test
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: bearer
               header: Authorization
@@ -432,7 +433,7 @@ Feature: LLM Provider Management
           template: openai
           context: /custom/openai/v1
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -475,7 +476,7 @@ Feature: LLM Provider Management
           vhost: api.openai.local
           context: /v1
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -513,7 +514,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -551,7 +552,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -615,7 +616,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: allow_all
         """
@@ -633,7 +634,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: allow_all
         """
@@ -664,7 +665,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: allow_all
         """
@@ -695,7 +696,7 @@ Feature: LLM Provider Management
           template: openai
           context: /e2e-openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -751,7 +752,7 @@ Feature: LLM Provider Management
           template: openai
           context: /embeddings-test
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
             auth:
               type: api-key
               header: Authorization
@@ -795,7 +796,7 @@ Feature: LLM Provider Management
           version: v1.0
           template: openai
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: https://mock-openapi-https:9443/openai/v1
           accessControl:
             mode: allow_all
         """
