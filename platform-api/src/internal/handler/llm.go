@@ -86,8 +86,9 @@ func (h *LLMHandler) CreateLLMProviderTemplate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
+	createdBy, _ := middleware.GetUsernameFromContext(c)
 
-	created, err := h.templateService.Create(orgID, &req)
+	created, err := h.templateService.Create(orgID, createdBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderTemplateExists):
@@ -236,8 +237,9 @@ func (h *LLMHandler) CreateLLMProvider(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
+	createdBy, _ := middleware.GetUsernameFromContext(c)
 
-	created, err := h.providerService.Create(orgID, &req)
+	created, err := h.providerService.Create(orgID, createdBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProviderExists):
@@ -394,8 +396,9 @@ func (h *LLMHandler) CreateLLMProxy(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
 		return
 	}
+	createdBy, _ := middleware.GetUsernameFromContext(c)
 
-	created, err := h.proxyService.Create(orgID, &req)
+	created, err := h.proxyService.Create(orgID, createdBy, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrLLMProxyExists):

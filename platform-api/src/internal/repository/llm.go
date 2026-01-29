@@ -71,13 +71,13 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 
 	query := `
 		INSERT INTO llm_provider_templates (
-			uuid, organization_uuid, handle, display_name,
+			uuid, organization_uuid, handle, name, description, created_by,
 			configuration, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(query,
-		t.UUID, t.OrganizationUUID, t.ID, t.DisplayName,
+		t.UUID, t.OrganizationUUID, t.ID, t.Name, t.Description, t.CreatedBy,
 		string(configJSON),
 		t.CreatedAt, t.UpdatedAt,
 	)
@@ -86,7 +86,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 
 func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
 	row := r.db.QueryRow(`
-		SELECT uuid, organization_uuid, handle, display_name, configuration, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, name, description, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE handle = ? AND organization_uuid = ?
 	`, templateID, orgUUID)
@@ -94,7 +94,7 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 	var t model.LLMProviderTemplate
 	var configJSON sql.NullString
 	if err := row.Scan(
-		&t.UUID, &t.OrganizationUUID, &t.ID, &t.DisplayName, &configJSON,
+		&t.UUID, &t.OrganizationUUID, &t.ID, &t.Name, &t.Description, &t.CreatedBy, &configJSON,
 		&t.CreatedAt, &t.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -122,7 +122,7 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 
 func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
 	rows, err := r.db.Query(`
-		SELECT uuid, organization_uuid, handle, display_name, configuration, created_at, updated_at
+		SELECT uuid, organization_uuid, handle, name, description, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -138,7 +138,7 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 		var t model.LLMProviderTemplate
 		var configJSON sql.NullString
 		err := rows.Scan(
-			&t.UUID, &t.OrganizationUUID, &t.ID, &t.DisplayName, &configJSON,
+			&t.UUID, &t.OrganizationUUID, &t.ID, &t.Name, &t.Description, &t.CreatedBy, &configJSON,
 			&t.CreatedAt, &t.UpdatedAt,
 		)
 		if err != nil {
@@ -177,11 +177,11 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 
 	query := `
 		UPDATE llm_provider_templates
-		SET display_name = ?, configuration = ?, updated_at = ?
+		SET name = ?, description = ?, configuration = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(query,
-		t.DisplayName,
+		t.Name, t.Description,
 		string(configJSON),
 		t.UpdatedAt,
 		t.ID, t.OrganizationUUID,
@@ -260,13 +260,13 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 
 	query := `
 		INSERT INTO llm_providers (
-			uuid, organization_uuid, handle, display_name, version, context, vhost, template,
+			uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
 			upstream_url, upstream_auth, openapi_spec, access_control, policies, status, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(query,
-		p.UUID, p.OrganizationUUID, p.ID, p.DisplayName, p.Version, p.Context, p.VHost, p.Template,
+		p.UUID, p.OrganizationUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Template,
 		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec,
 		string(accessControlJSON), policiesColumn, p.Status,
 		p.CreatedAt, p.UpdatedAt,
@@ -283,7 +283,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 
 func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
 	row := r.db.QueryRow(`
-		SELECT uuid, organization_uuid, handle, display_name, version, context, vhost, template,
+		SELECT uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
 			upstream_url, upstream_auth, openapi_spec, access_control, status, created_at, updated_at
 		FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?
@@ -293,7 +293,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	var upstreamURL, openAPISpec sql.NullString
 	var upstreamAuthJSON, accessControlJSON sql.NullString
 	if err := row.Scan(
-		&p.UUID, &p.OrganizationUUID, &p.ID, &p.DisplayName, &p.Version, &p.Context, &p.VHost, &p.Template,
+		&p.UUID, &p.OrganizationUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Template,
 		&upstreamURL, &upstreamAuthJSON, &openAPISpec,
 		&accessControlJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
@@ -325,7 +325,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
 	rows, err := r.db.Query(`
-		SELECT uuid, organization_uuid, handle, display_name, version, context, vhost, template,
+		SELECT uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
 			upstream_url, upstream_auth, openapi_spec, access_control, status, created_at, updated_at
 		FROM llm_providers
 		WHERE organization_uuid = ?
@@ -343,7 +343,7 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		var upstreamURL, openAPISpec sql.NullString
 		var upstreamAuthJSON, accessControlJSON sql.NullString
 		err := rows.Scan(
-			&p.UUID, &p.OrganizationUUID, &p.ID, &p.DisplayName, &p.Version, &p.Context, &p.VHost, &p.Template,
+			&p.UUID, &p.OrganizationUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Template,
 			&upstreamURL, &upstreamAuthJSON, &openAPISpec,
 			&accessControlJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
@@ -390,12 +390,12 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 
 	query := `
 		UPDATE llm_providers
-		SET display_name = ?, version = ?, context = ?, vhost = ?, template = ?,
+		SET name = ?, description = ?, version = ?, context = ?, vhost = ?, template = ?,
 			upstream_url = ?, upstream_auth = ?, openapi_spec = ?, access_control = ?, policies = ?, status = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(query,
-		p.DisplayName, p.Version, p.Context, p.VHost, p.Template,
+		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Template,
 		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec,
 		string(accessControlJSON), policiesColumn, p.Status, p.UpdatedAt,
 		p.ID, p.OrganizationUUID,
@@ -464,13 +464,13 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 
 	query := `
 		INSERT INTO llm_proxies (
-			uuid, organization_uuid, project_uuid, handle, display_name, version, context, vhost, provider,
+			uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 			openapi_spec, access_control, policies, status, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(query,
-		p.UUID, p.OrganizationUUID, p.ProjectUUID, p.ID, p.DisplayName, p.Version, p.Context, p.VHost, p.Provider,
+		p.UUID, p.OrganizationUUID, p.ProjectUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Provider,
 		p.OpenAPISpec, string(accessControlJSON), policiesColumn, p.Status,
 		p.CreatedAt, p.UpdatedAt,
 	)
@@ -486,7 +486,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 
 func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error) {
 	row := r.db.QueryRow(`
-		SELECT uuid, organization_uuid, project_uuid, handle, display_name, version, context, vhost, provider,
+		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 			openapi_spec, access_control, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?
@@ -495,7 +495,7 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	var p model.LLMProxy
 	var accessControlJSON, openAPISpec sql.NullString
 	if err := row.Scan(
-		&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.DisplayName, &p.Version, &p.Context, &p.VHost, &p.Provider,
+		&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
 		&openAPISpec, &accessControlJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -521,7 +521,7 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 
 func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	rows, err := r.db.Query(`
-		SELECT uuid, organization_uuid, project_uuid, handle, display_name, version, context, vhost, provider,
+		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 			openapi_spec, access_control, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ?
@@ -538,7 +538,7 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 		var p model.LLMProxy
 		var accessControlJSON, openAPISpec sql.NullString
 		err := rows.Scan(
-			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.DisplayName, &p.Version, &p.Context, &p.VHost, &p.Provider,
+			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
 			&openAPISpec, &accessControlJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
@@ -562,7 +562,7 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 
 func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	rows, err := r.db.Query(`
-		SELECT uuid, organization_uuid, project_uuid, handle, display_name, version, context, vhost, provider,
+		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 			openapi_spec, access_control, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
@@ -579,7 +579,7 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 		var p model.LLMProxy
 		var accessControlJSON, openAPISpec sql.NullString
 		err := rows.Scan(
-			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.DisplayName, &p.Version, &p.Context, &p.VHost, &p.Provider,
+			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
 			&openAPISpec, &accessControlJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
@@ -603,7 +603,7 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 
 func (r *LLMProxyRepo) ListByProvider(orgUUID, providerID string, limit, offset int) ([]*model.LLMProxy, error) {
 	rows, err := r.db.Query(`
-		SELECT uuid, organization_uuid, project_uuid, handle, display_name, version, context, vhost, provider,
+		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 			openapi_spec, access_control, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND provider = ?
@@ -620,7 +620,7 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerID string, limit, offset 
 		var p model.LLMProxy
 		var accessControlJSON, openAPISpec sql.NullString
 		err := rows.Scan(
-			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.DisplayName, &p.Version, &p.Context, &p.VHost, &p.Provider,
+			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
 			&openAPISpec, &accessControlJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
@@ -674,12 +674,12 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 
 	query := `
 		UPDATE llm_proxies
-		SET display_name = ?, version = ?, context = ?, vhost = ?, provider = ?,
+		SET name = ?, description = ?, version = ?, context = ?, vhost = ?, provider = ?,
 			openapi_spec = ?, access_control = ?, policies = ?, status = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(query,
-		p.DisplayName, p.Version, p.Context, p.VHost, p.Provider,
+		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Provider,
 		p.OpenAPISpec, string(accessControlJSON), policiesColumn, p.Status, p.UpdatedAt,
 		p.ID, p.OrganizationUUID,
 	)

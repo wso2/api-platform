@@ -68,7 +68,9 @@ type LLMProviderTemplate struct {
 	UUID             string                `json:"uuid" db:"uuid"`
 	OrganizationUUID string                `json:"organizationId" db:"organization_uuid"`
 	ID               string                `json:"id" db:"handle"`
-	DisplayName      string                `json:"displayName" db:"display_name"`
+	Name             string                `json:"name" db:"name"`
+	Description      string                `json:"description,omitempty" db:"description"`
+	CreatedBy        string                `json:"createdBy,omitempty" db:"created_by"`
 	Metadata         *LLMProviderTemplateMetadata `json:"metadata,omitempty" db:"-"`
 	PromptTokens     *ExtractionIdentifier `json:"promptTokens,omitempty" db:"-"`
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" db:"-"`
@@ -84,7 +86,9 @@ type LLMProvider struct {
 	UUID             string            `json:"uuid" db:"uuid"`
 	OrganizationUUID string            `json:"organizationId" db:"organization_uuid"`
 	ID               string            `json:"id" db:"handle"`
-	DisplayName      string            `json:"displayName" db:"display_name"`
+	Name             string            `json:"name" db:"name"`
+	Description      string            `json:"description,omitempty" db:"description"`
+	CreatedBy        string            `json:"createdBy,omitempty" db:"created_by"`
 	Version          string            `json:"version" db:"version"`
 	Context          string            `json:"context,omitempty" db:"context"`
 	VHost            string            `json:"vhost,omitempty" db:"vhost"`
@@ -104,7 +108,9 @@ type LLMProxy struct {
 	OrganizationUUID string            `json:"organizationId" db:"organization_uuid"`
 	ProjectUUID      string            `json:"projectId" db:"project_uuid"`
 	ID               string            `json:"id" db:"handle"`
-	DisplayName      string            `json:"displayName" db:"display_name"`
+	Name             string            `json:"name" db:"name"`
+	Description      string            `json:"description,omitempty" db:"description"`
+	CreatedBy        string            `json:"createdBy,omitempty" db:"created_by"`
 	Version          string            `json:"version" db:"version"`
 	Context          string            `json:"context,omitempty" db:"context"`
 	VHost            string            `json:"vhost,omitempty" db:"vhost"`

@@ -64,11 +64,11 @@ func NewLLMProxyService(repo repository.LLMProxyRepository, providerRepo reposit
 	return &LLMProxyService{repo: repo, providerRepo: providerRepo, projectRepo: projectRepo}
 }
 
-func (s *LLMProviderTemplateService) Create(orgUUID string, req *dto.LLMProviderTemplate) (*dto.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *dto.LLMProviderTemplate) (*dto.LLMProviderTemplate, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.ID == "" || req.DisplayName == "" {
+	if req.ID == "" || req.Name == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -83,7 +83,9 @@ func (s *LLMProviderTemplateService) Create(orgUUID string, req *dto.LLMProvider
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               req.ID,
-		DisplayName:      req.DisplayName,
+		Name:             req.Name,
+		Description:      req.Description,
+		CreatedBy:        createdBy,
 		Metadata:         mapTemplateMetadata(req.Metadata),
 		PromptTokens:     mapExtractionIdentifier(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifier(req.CompletionTokens),
@@ -123,7 +125,9 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*d
 	for _, t := range items {
 		resp.List = append(resp.List, dto.LLMProviderTemplateListItem{
 			ID:          t.ID,
-			DisplayName: t.DisplayName,
+			Name:        t.Name,
+			Description: t.Description,
+			CreatedBy:   t.CreatedBy,
 			CreatedAt:   t.CreatedAt,
 			UpdatedAt:   t.UpdatedAt,
 		})
@@ -152,14 +156,15 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *dto.LLM
 	if req.ID != "" && req.ID != handle {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.DisplayName == "" {
+	if req.Name == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
 	m := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		DisplayName:      req.DisplayName,
+		Name:             req.Name,
+		Description:      req.Description,
 		Metadata:         mapTemplateMetadata(req.Metadata),
 		PromptTokens:     mapExtractionIdentifier(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifier(req.CompletionTokens),
@@ -199,11 +204,11 @@ func (s *LLMProviderTemplateService) Delete(orgUUID, handle string) error {
 	return nil
 }
 
-func (s *LLMProviderService) Create(orgUUID string, req *dto.LLMProvider) (*dto.LLMProvider, error) {
+func (s *LLMProviderService) Create(orgUUID, createdBy string, req *dto.LLMProvider) (*dto.LLMProvider, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.ID == "" || req.DisplayName == "" || req.Version == "" || req.Template == "" {
+	if req.ID == "" || req.Name == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if s.orgRepo != nil {
@@ -250,7 +255,9 @@ func (s *LLMProviderService) Create(orgUUID string, req *dto.LLMProvider) (*dto.
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               req.ID,
-		DisplayName:      req.DisplayName,
+		Name:             req.Name,
+		Description:      req.Description,
+		CreatedBy:        createdBy,
 		Version:          req.Version,
 		Context:          defaultString(req.Context, "/"),
 		VHost:            req.VHost,
@@ -301,7 +308,9 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*dto.LLMPr
 	for _, p := range items {
 		resp.List = append(resp.List, dto.LLMProviderListItem{
 			ID:          p.ID,
-			DisplayName: p.DisplayName,
+			Name:        p.Name,
+			Description: p.Description,
+			CreatedBy:   p.CreatedBy,
 			Version:     p.Version,
 			Template:    p.Template,
 			Status:      p.Status,
@@ -333,7 +342,7 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *dto.LLMProvider
 	if req.ID != "" && req.ID != handle {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
+	if req.Name == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if err := validateUpstream(req.Upstream); err != nil {
@@ -352,7 +361,8 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *dto.LLMProvider
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		DisplayName:      req.DisplayName,
+		Name:             req.Name,
+		Description:      req.Description,
 		Version:          req.Version,
 		Context:          defaultString(req.Context, "/"),
 		VHost:            req.VHost,
@@ -395,11 +405,11 @@ func (s *LLMProviderService) Delete(orgUUID, handle string) error {
 	return nil
 }
 
-func (s *LLMProxyService) Create(orgUUID string, req *dto.LLMProxy) (*dto.LLMProxy, error) {
+func (s *LLMProxyService) Create(orgUUID, createdBy string, req *dto.LLMProxy) (*dto.LLMProxy, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.ID == "" || req.DisplayName == "" || req.Version == "" || req.Provider == "" || req.ProjectID == "" {
+	if req.ID == "" || req.Name == "" || req.Version == "" || req.Provider == "" || req.ProjectID == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if s.projectRepo != nil {
@@ -433,7 +443,9 @@ func (s *LLMProxyService) Create(orgUUID string, req *dto.LLMProxy) (*dto.LLMPro
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectID,
 		ID:               req.ID,
-		DisplayName:      req.DisplayName,
+		Name:             req.Name,
+		Description:      req.Description,
+		CreatedBy:        createdBy,
 		Version:          req.Version,
 		Context:          defaultString(req.Context, "/"),
 		VHost:            req.VHost,
@@ -503,7 +515,9 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 	for _, p := range items {
 		resp.List = append(resp.List, dto.LLMProxyListItem{
 			ID:          p.ID,
-			DisplayName: p.DisplayName,
+			Name:        p.Name,
+			Description: p.Description,
+			CreatedBy:   p.CreatedBy,
 			Version:     p.Version,
 			ProjectID:   p.ProjectUUID,
 			Provider:    p.Provider,
@@ -549,7 +563,9 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 	for _, p := range items {
 		resp.List = append(resp.List, dto.LLMProxyListItem{
 			ID:          p.ID,
-			DisplayName: p.DisplayName,
+			Name:        p.Name,
+			Description: p.Description,
+			CreatedBy:   p.CreatedBy,
 			Version:     p.Version,
 			ProjectID:   p.ProjectUUID,
 			Provider:    p.Provider,
@@ -582,7 +598,7 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *dto.LLMProxy) (*dt
 	if req.ID != "" && req.ID != handle {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.DisplayName == "" || req.Version == "" || req.Provider == "" {
+	if req.Name == "" || req.Version == "" || req.Provider == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
@@ -598,7 +614,8 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *dto.LLMProxy) (*dt
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
-		DisplayName:      req.DisplayName,
+		Name:             req.Name,
+		Description:      req.Description,
 		Version:          req.Version,
 		Context:          defaultString(req.Context, "/"),
 		VHost:            req.VHost,
@@ -710,7 +727,9 @@ func mapTemplateModelToDTO(m *model.LLMProviderTemplate) *dto.LLMProviderTemplat
 	}
 	return &dto.LLMProviderTemplate{
 		ID:               m.ID,
-		DisplayName:      m.DisplayName,
+		Name:             m.Name,
+		Description:      m.Description,
+		CreatedBy:        m.CreatedBy,
 		Metadata:         mapTemplateMetadataDTO(m.Metadata),
 		PromptTokens:     mapExtractionIdentifierDTO(m.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierDTO(m.CompletionTokens),
@@ -778,7 +797,9 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 	}
 	out := &dto.LLMProvider{
 		ID:          m.ID,
-		DisplayName: m.DisplayName,
+		Name:        m.Name,
+		Description: m.Description,
+		CreatedBy:   m.CreatedBy,
 		Version:     m.Version,
 		Context:     m.Context,
 		VHost:       m.VHost,
@@ -824,7 +845,9 @@ func mapProxyModelToDTO(m *model.LLMProxy) *dto.LLMProxy {
 	}
 	out := &dto.LLMProxy{
 		ID:          m.ID,
-		DisplayName: m.DisplayName,
+		Name:        m.Name,
+		Description: m.Description,
+		CreatedBy:   m.CreatedBy,
 		Version:     m.Version,
 		ProjectID:   m.ProjectUUID,
 		Context:     m.Context,

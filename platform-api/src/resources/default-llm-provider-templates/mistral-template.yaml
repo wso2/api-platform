@@ -21,7 +21,7 @@ kind: LlmProviderTemplate
 metadata:
   name: mistralai
 spec:
-  displayName: MistralAI
+  displayName: Mistral
   metadata:
     endpointUrl: https://api.mistral.ai
     auth:

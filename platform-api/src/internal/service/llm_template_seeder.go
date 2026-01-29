@@ -75,8 +75,8 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			current := existingByHandle[tpl.ID]
 			if current != nil && current.Metadata == nil && tpl.Metadata != nil {
 				current.Metadata = tpl.Metadata
-				if current.DisplayName == "" {
-					current.DisplayName = tpl.DisplayName
+				if current.Name == "" {
+					current.Name = tpl.Name
 				}
 				if err := s.repo.Update(current); err != nil {
 					return fmt.Errorf("failed to update template metadata for %s: %w", tpl.ID, err)
@@ -88,7 +88,9 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 		toCreate := &model.LLMProviderTemplate{
 			OrganizationUUID: orgUUID,
 			ID:               tpl.ID,
-			DisplayName:      tpl.DisplayName,
+			Name:             tpl.Name,
+			Description:      tpl.Description,
+			CreatedBy:        tpl.CreatedBy,
 			Metadata:         tpl.Metadata,
 			PromptTokens:     tpl.PromptTokens,
 			CompletionTokens: tpl.CompletionTokens,

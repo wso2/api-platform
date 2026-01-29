@@ -71,7 +71,9 @@ type LLMProviderTemplateMetadata struct {
 
 type LLMProviderTemplate struct {
 	ID               string                `json:"id" yaml:"id" binding:"required"`
-	DisplayName      string                `json:"displayName" yaml:"displayName" binding:"required"`
+	Name             string                `json:"name" yaml:"name" binding:"required"`
+	Description      string                `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy        string                `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Metadata         *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	PromptTokens     *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
@@ -85,9 +87,11 @@ type LLMProviderTemplate struct {
 
 type LLMProviderTemplateListItem struct {
 	ID          string    `json:"id" yaml:"id"`
-	DisplayName string    `json:"displayName" yaml:"displayName"`
-	CreatedAt   time.Time `json:"created_at" yaml:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" yaml:"updated_at"`
+	Name        string    `json:"name" yaml:"name"`
+	Description string    `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy   string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
 }
 
 type LLMProviderTemplateListResponse struct {
@@ -98,7 +102,9 @@ type LLMProviderTemplateListResponse struct {
 
 type LLMProvider struct {
 	ID            string           `json:"id" yaml:"id" binding:"required"`
-	DisplayName   string           `json:"displayName" yaml:"displayName" binding:"required"`
+	Name          string           `json:"name" yaml:"name" binding:"required"`
+	Description   string           `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy     string           `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Version       string           `json:"version" yaml:"version" binding:"required"`
 	Context       string           `json:"context,omitempty" yaml:"context,omitempty"`
 	VHost         string           `json:"vhost,omitempty" yaml:"vhost,omitempty"`
@@ -113,12 +119,14 @@ type LLMProvider struct {
 
 type LLMProviderListItem struct {
 	ID          string    `json:"id" yaml:"id"`
-	DisplayName string    `json:"displayName" yaml:"displayName"`
+	Name        string    `json:"name" yaml:"name"`
+	Description string    `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy   string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Version     string    `json:"version" yaml:"version"`
 	Template    string    `json:"template" yaml:"template"`
 	Status      string    `json:"status" yaml:"status"`
-	CreatedAt   time.Time `json:"created_at" yaml:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" yaml:"updated_at"`
+	CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
 }
 
 type LLMProviderListResponse struct {
@@ -129,7 +137,9 @@ type LLMProviderListResponse struct {
 
 type LLMProxy struct {
 	ID            string            `json:"id" yaml:"id" binding:"required"`
-	DisplayName   string            `json:"displayName" yaml:"displayName" binding:"required"`
+	Name          string            `json:"name" yaml:"name" binding:"required"`
+	Description   string            `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy     string            `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Version       string            `json:"version" yaml:"version" binding:"required"`
 	ProjectID     string            `json:"projectId" yaml:"projectId"`
 	Context       string            `json:"context,omitempty" yaml:"context,omitempty"`
@@ -144,13 +154,15 @@ type LLMProxy struct {
 
 type LLMProxyListItem struct {
 	ID          string    `json:"id" yaml:"id"`
-	DisplayName string    `json:"displayName" yaml:"displayName"`
+	Name        string    `json:"name" yaml:"name"`
+	Description string    `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy   string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Version     string    `json:"version" yaml:"version"`
 	ProjectID   string    `json:"projectId" yaml:"projectId"`
 	Provider    string    `json:"provider" yaml:"provider"`
 	Status      string    `json:"status" yaml:"status"`
-	CreatedAt   time.Time `json:"created_at" yaml:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" yaml:"updated_at"`
+	CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
 }
 
 type LLMProxyListResponse struct {
