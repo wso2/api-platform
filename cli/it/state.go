@@ -57,6 +57,9 @@ type TestState struct {
 	MCPName    string
 	MCPVersion string
 
+	// Coverage directory for CLI coverage collection
+	CLICoverDir string
+
 	// Timing
 	StartTime time.Time
 	EndTime   time.Time
@@ -158,6 +161,11 @@ func (s *TestState) ExecuteCLI(args ...string) error {
 
 	cmd.Env = append(os.Environ(), "AP_NO_COLOR=true")
 
+	// Add GOCOVERDIR for coverage collection if configured
+	if s.CLICoverDir != "" {
+		cmd.Env = append(cmd.Env, "GOCOVERDIR="+s.CLICoverDir)
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -237,6 +245,13 @@ func (s *TestState) SetCLIBinaryPath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.CLIBinaryPath = path
+}
+
+// SetCLICoverDir sets the directory for CLI coverage data
+func (s *TestState) SetCLICoverDir(dir string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CLICoverDir = dir
 }
 
 // SetGatewayInfo sets the gateway information

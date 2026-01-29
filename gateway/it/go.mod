@@ -5,6 +5,7 @@ go 1.25.1
 require (
 	github.com/cucumber/godog v0.15.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
+	github.com/wso2/api-platform/common v0.0.0
 )
 
 require (

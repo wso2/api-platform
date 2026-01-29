@@ -46,7 +46,7 @@ const (
 	HealthCheckInterval = 2 * time.Second
 
 	// GatewayControllerPort is the REST API port for gateway-controller
-	GatewayControllerPort = "9010"
+	GatewayControllerPort = "9090"
 
 	// RouterPort is the HTTP traffic port for the router
 	RouterPort = "8080"
@@ -176,7 +176,6 @@ func (cm *ComposeManager) WaitForHealthy(ctx context.Context) error {
 	}{
 		{"gateway-controller", fmt.Sprintf("http://localhost:%s/health", GatewayControllerPort)},
 		{"router", fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)},
-		
 	}
 
 	client := &http.Client{

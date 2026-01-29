@@ -50,6 +50,12 @@ var (
 	// Step handlers
 	cliSteps    *steps.CLISteps
 	assertSteps *steps.AssertSteps
+
+	// Coverage collector
+	coverageCollector *CoverageCollector
+
+	// CLI coverage directory path
+	cliCoverDir string
 )
 
 // TestFeatures is the main entry point for BDD tests
@@ -140,6 +146,18 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		}
 		fmt.Printf("  %s[PORTS]%s  Required ports free %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
 
+		// Setup coverage collection (before infrastructure so directory is ready)
+		coverageCollector = NewCoverageCollector(DefaultCoverageConfig())
+		if err := coverageCollector.Setup(); err != nil {
+			log.Printf("Warning: Failed to setup coverage: %v", err)
+		}
+
+		// Create and store CLI coverage directory path
+		cliCoverDir, _ = filepath.Abs("coverage/cli")
+		if err := os.MkdirAll(cliCoverDir, 0755); err != nil {
+			log.Printf("Warning: Failed to create CLI coverage directory: %v", err)
+		}
+
 		// Initialize infrastructure manager
 		infraManager = NewInfrastructureManager(testReporter, testConfig, testConfigPath)
 
@@ -168,6 +186,15 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 				fmt.Printf("%sWarning: Teardown error: %v%s\n", ColorYellow, err, ColorReset)
 			}
 		}
+
+		// Generate coverage reports
+		if coverageCollector != nil {
+			log.Println("Generating coverage reports...")
+			if err := coverageCollector.MergeAndGenerateReport(); err != nil {
+				log.Printf("Warning: Failed to generate coverage report: %v", err)
+			}
+		}
+
 		// Restore user's CLI config that was backed up at test startup.
 		if err := restoreUserConfig(); err != nil {
 			fmt.Printf("%sWarning: Failed to restore user config: %v%s\n", ColorYellow, err, ColorReset)
@@ -251,6 +278,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		// Set CLI binary path
 		if infraManager != nil {
 			testState.SetCLIBinaryPath(infraManager.GetCLIBinaryPath())
+		}
+
+		// Set CLI coverage directory for coverage collection
+		if cliCoverDir != "" {
+			testState.SetCLICoverDir(cliCoverDir)
 		}
 
 		// Initialize step handlers
