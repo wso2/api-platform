@@ -371,6 +371,18 @@ policy_configurations:
       includeIETF: true
       includeRetryAfter: true
 
+  # Model Weighted Round-Robin Policy Configuration
+  modelweightedroundrobin_v010:
+    requestModel:
+      location: payload
+      identifier: $.model
+
+  # Model Round-Robin Policy Configuration
+  modelroundrobin_v010:
+    requestModel:
+      location: payload
+      identifier: $.model
+
 analytics:
   enabled: true
   # Publishers specific configuration

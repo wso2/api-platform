@@ -79,6 +79,18 @@ func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, a.jsonFieldShouldBeInt)
 	ctx.Step(`^the JSON response field "([^"]*)" should be (true|false)$`, a.jsonFieldShouldBeBool)
 	ctx.Step(`^the JSON response should have (\d+) items$`, a.jsonShouldHaveItems)
+
+	// Echoed header assertions (for sample-backend /echo endpoint)
+	ctx.Step(`^the response should contain echoed header "([^"]*)" with value "([^"]*)"$`, a.echoedHeaderShouldBe)
+	ctx.Step(`^the response should contain echoed header "([^"]*)" with both values "([^"]*)" and "([^"]*)"$`, a.echoedHeaderShouldHaveBothValues)
+	ctx.Step(`^the response should not contain echoed header "([^"]*)"$`, a.echoedHeaderShouldNotExist)
+	ctx.Step(`^the response should contain echoed header "([^"]*)" containing "([^"]*)"$`, a.echoedHeaderShouldContain)
+
+	// Response header assertions (alternative to existing headerShouldBe)
+	ctx.Step(`^the response should have header "([^"]*)" with value "([^"]*)"$`, a.headerShouldBe)
+	ctx.Step(`^the response should have header "([^"]*)" with values "([^"]*)" and "([^"]*)"$`, a.headerShouldHaveBothValues)
+	ctx.Step(`^the response should not have header "([^"]*)"$`, a.headerShouldNotExist)
+	ctx.Step(`^the response should have header "([^"]*)" containing "([^"]*)"$`, a.headerShouldContain)
 }
 
 // statusCodeShouldBe asserts the response status code
@@ -418,4 +430,218 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+// echoedHeaderShouldBe asserts an echoed header value from sample-backend JSON response
+// Sample-backend returns headers in the JSON response under the "headers" field
+func (a *AssertSteps) echoedHeaderShouldBe(headerName, expected string) error {
+	body := a.provider.LastBody()
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	headers, ok := data["headers"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("response does not contain headers field or is not a map")
+	}
+
+	// Headers are case-insensitive, normalize to lowercase
+	normalizedName := strings.ToLower(headerName)
+	var actualValue interface{}
+	var found bool
+
+	// Find header with case-insensitive matching
+	for key, value := range headers {
+		if strings.ToLower(key) == normalizedName {
+			actualValue = value
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("expected echoed header %q to exist in response", headerName)
+	}
+
+	// Handle both string and array values
+	switch v := actualValue.(type) {
+	case string:
+		if v != expected {
+			return fmt.Errorf("expected echoed header %q to be %q, got %q", headerName, expected, v)
+		}
+	case []interface{}:
+		if len(v) == 0 {
+			return fmt.Errorf("expected echoed header %q to be %q, got empty array", headerName, expected)
+		}
+		firstVal := fmt.Sprintf("%v", v[0])
+		if firstVal != expected {
+			return fmt.Errorf("expected echoed header %q to be %q, got %q", headerName, expected, firstVal)
+		}
+	default:
+		return fmt.Errorf("expected echoed header %q to be string or array, got %T", headerName, actualValue)
+	}
+
+	return nil
+}
+
+// echoedHeaderShouldHaveBothValues asserts an echoed header has both values (multi-value header)
+func (a *AssertSteps) echoedHeaderShouldHaveBothValues(headerName, value1, value2 string) error {
+	body := a.provider.LastBody()
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	headers, ok := data["headers"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("response does not contain headers field or is not a map")
+	}
+
+	normalizedName := strings.ToLower(headerName)
+	var actualValue interface{}
+	var found bool
+
+	for key, value := range headers {
+		if strings.ToLower(key) == normalizedName {
+			actualValue = value
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("expected echoed header %q to exist in response", headerName)
+	}
+
+	// Check if it's an array with both values
+	arr, ok := actualValue.([]interface{})
+	if !ok {
+		// Could be a single comma-separated string
+		if strVal, ok := actualValue.(string); ok {
+			if !strings.Contains(strVal, value1) || !strings.Contains(strVal, value2) {
+				return fmt.Errorf("expected echoed header %q to contain both %q and %q, got %q", headerName, value1, value2, strVal)
+			}
+			return nil
+		}
+		return fmt.Errorf("expected echoed header %q to be an array, got %T", headerName, actualValue)
+	}
+
+	foundValue1 := false
+	foundValue2 := false
+
+	for _, item := range arr {
+		itemStr := fmt.Sprintf("%v", item)
+		if itemStr == value1 {
+			foundValue1 = true
+		}
+		if itemStr == value2 {
+			foundValue2 = true
+		}
+	}
+
+	if !foundValue1 {
+		return fmt.Errorf("expected echoed header %q to contain value %q", headerName, value1)
+	}
+	if !foundValue2 {
+		return fmt.Errorf("expected echoed header %q to contain value %q", headerName, value2)
+	}
+
+	return nil
+}
+
+// echoedHeaderShouldNotExist asserts an echoed header does not exist
+func (a *AssertSteps) echoedHeaderShouldNotExist(headerName string) error {
+	body := a.provider.LastBody()
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	headers, ok := data["headers"].(map[string]interface{})
+	if !ok {
+		// No headers field means header doesn't exist
+		return nil
+	}
+
+	normalizedName := strings.ToLower(headerName)
+
+	for key := range headers {
+		if strings.ToLower(key) == normalizedName {
+			return fmt.Errorf("expected echoed header %q to not exist, but it does", headerName)
+		}
+	}
+
+	return nil
+}
+
+// echoedHeaderShouldContain asserts an echoed header contains a value
+func (a *AssertSteps) echoedHeaderShouldContain(headerName, expected string) error {
+	body := a.provider.LastBody()
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	headers, ok := data["headers"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("response does not contain headers field or is not a map")
+	}
+
+	normalizedName := strings.ToLower(headerName)
+	var actualValue interface{}
+	var found bool
+
+	for key, value := range headers {
+		if strings.ToLower(key) == normalizedName {
+			actualValue = value
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("expected echoed header %q to exist in response", headerName)
+	}
+
+	actualStr := fmt.Sprintf("%v", actualValue)
+	if !strings.Contains(actualStr, expected) {
+		return fmt.Errorf("expected echoed header %q to contain %q, got %q", headerName, expected, actualStr)
+	}
+
+	return nil
+}
+
+// headerShouldHaveBothValues asserts a response header has both values (multi-value header)
+func (a *AssertSteps) headerShouldHaveBothValues(headerName, value1, value2 string) error {
+	resp := a.provider.LastResponse()
+	if resp == nil {
+		return fmt.Errorf("no response received")
+	}
+
+	values := resp.Header.Values(headerName)
+	if len(values) == 0 {
+		return fmt.Errorf("expected header %q to exist", headerName)
+	}
+
+	foundValue1 := false
+	foundValue2 := false
+
+	for _, val := range values {
+		if val == value1 {
+			foundValue1 = true
+		}
+		if val == value2 {
+			foundValue2 = true
+		}
+	}
+
+	if !foundValue1 {
+		return fmt.Errorf("expected header %q to contain value %q, got %v", headerName, value1, values)
+	}
+	if !foundValue2 {
+		return fmt.Errorf("expected header %q to contain value %q, got %v", headerName, value2, values)
+	}
+
+	return nil
 }

@@ -72,6 +72,8 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I send a GET request to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\"$`, h.iSendGETRequestWithHeader)
 	ctx.Step(`^I send (\d+) GET requests to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\"$`, h.iSendManyGETRequestsWithHeader)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\" with body:$`, h.iSendPOSTRequestWithHeaderAndBody)
+	ctx.Step(`^I send a GET request to \"([^\"]*)\" with header \"([^\"]*)\"$`, h.iSendGETRequestWithHeaderPair)
+	ctx.Step(`^I send a POST request to \"([^\"]*)\" with header \"([^\"]*)\" and body:$`, h.iSendPOSTRequestWithHeaderPairAndBody)
 
 	// Service-specific shortcuts
 	ctx.Step(`^I send a GET request to the "([^"]*)" service at "([^"]*)"$`, h.iSendGETToService)
@@ -442,4 +444,30 @@ func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 func isEventStream(resp *http.Response) bool {
 	contentType := resp.Header.Get("Content-Type")
 	return bytes.Contains([]byte(contentType), []byte("text/event-stream"))
+}
+
+// iSendGETRequestWithHeaderPair sends a GET request with a header in "Name: Value" format
+func (h *HTTPSteps) iSendGETRequestWithHeaderPair(url, headerPair string) error {
+	// Parse "Name: Value" format
+	parts := strings.SplitN(headerPair, ":", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid header format, expected 'Name: Value', got: %s", headerPair)
+	}
+	headerName := strings.TrimSpace(parts[0])
+	headerValue := strings.TrimSpace(parts[1])
+
+	return h.sendRequestWithTempHeader(http.MethodGet, url, nil, headerName, headerValue)
+}
+
+// iSendPOSTRequestWithHeaderPairAndBody sends a POST request with a header in "Name: Value" format and body
+func (h *HTTPSteps) iSendPOSTRequestWithHeaderPairAndBody(url, headerPair string, body *godog.DocString) error {
+	// Parse "Name: Value" format
+	parts := strings.SplitN(headerPair, ":", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid header format, expected 'Name: Value', got: %s", headerPair)
+	}
+	headerName := strings.TrimSpace(parts[0])
+	headerValue := strings.TrimSpace(parts[1])
+
+	return h.sendRequestWithTempHeader(http.MethodPost, url, []byte(body.Content), headerName, headerValue)
 }
