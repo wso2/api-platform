@@ -36,6 +36,9 @@ type Server struct {
 	Database     Database `envconfig:"DATABASE"`
 	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
 
+	// LLM provider template bootstrap (used to seed defaults into the DB)
+	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
+
 	// JWT Authentication configurations
 	JWT JWT `envconfig:"JWT"`
 

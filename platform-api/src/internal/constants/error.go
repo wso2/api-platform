@@ -116,3 +116,12 @@ var (
 	ErrOpenAPIFileNotFound  = errors.New("OpenAPI definition file not found")
 	ErrWSO2ArtifactNotFound = errors.New("WSO2 API artifact not found")
 )
+
+var (
+	ErrLLMProviderTemplateExists   = errors.New("llm provider template already exists")
+	ErrLLMProviderTemplateNotFound = errors.New("llm provider template not found")
+	ErrLLMProviderExists           = errors.New("llm provider already exists")
+	ErrLLMProviderNotFound         = errors.New("llm provider not found")
+	ErrLLMProxyExists              = errors.New("llm proxy already exists")
+	ErrLLMProxyNotFound            = errors.New("llm proxy not found")
+)
