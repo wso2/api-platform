@@ -244,6 +244,7 @@ type Policy struct {
 // If Status is nil, the deployment is ARCHIVED (not currently active or undeployed)
 type APIDeployment struct {
 	DeploymentID     string                 `json:"deploymentId" db:"deployment_id"`
+	Name             string                 `json:"name" db:"name"`
 	ApiID            string                 `json:"apiId" db:"api_uuid"`
 	OrganizationID   string                 `json:"organizationId" db:"organization_uuid"`
 	GatewayID        string                 `json:"gatewayId" db:"gateway_uuid"`

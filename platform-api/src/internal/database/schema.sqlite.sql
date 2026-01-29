@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 -- API Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS api_deployments (
     deployment_id VARCHAR(40) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,

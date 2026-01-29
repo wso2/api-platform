@@ -57,20 +57,20 @@ type APIRepository interface {
 	DeleteAPI(apiUUID, orgUUID string) error
 
 	// Deployment artifact methods (immutable deployments)
-	CreateDeploymentWithStatus(deployment *model.APIDeployment) error
-	GetDeploymentByID(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)
+	CreateDeploymentWithLimitEnforcement(deployment *model.APIDeployment, hardLimit int) error // Atomic: count, cleanup if needed, create
+	GetDeploymentByID(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)        // Without content (lightweight)
+	GetDeploymentWithContent(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error) // With content (for rollback/base deployment)
 	GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)
 	GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error)
 	GetDeploymentContent(deploymentID, apiUUID, orgUUID string) ([]byte, error)
 	DeleteDeployment(deploymentID, apiUUID, orgUUID string) error
-	GetActiveDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
+	GetCurrentDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
 	CountDeploymentsByAPIAndGateway(apiUUID, gatewayID, orgUUID string) (int, error)
 	GetOldestArchivedDeployments(apiUUID, gatewayID, orgUUID string, limit int) ([]string, error)
 
 	// Deployment status methods (mutable state tracking)
-	SetActiveDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) error
+	SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) error
 	GetDeploymentStatus(apiUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, error error)
-	UpdateDeploymentStatusState(apiUUID, orgUUID, gatewayID string, status model.DeploymentStatus) error
 	DeleteDeploymentStatus(apiUUID, orgUUID, gatewayID string) error
 
 	// API-Gateway association methods
