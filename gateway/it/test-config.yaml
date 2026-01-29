@@ -392,6 +392,8 @@ analytics:
       settings: 
         # Moesif application ID
         application_id: <MOESIF_APPLICATION_ID>
+        # Moesif API endpoint; optional, defaults to https://api.moesif.net
+        moesif_base_url: "https://api.moesif.net"
         # Publish interval in seconds
         publish_interval: 5
         # Max number of events held in memory before dropping

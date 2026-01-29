@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -523,6 +524,15 @@ func (c *Config) validateAnalyticsConfig() error {
 						}
 					default:
 						return fmt.Errorf("analytics.publishers[%d].settings.publish_interval must be an integer (seconds) when set", i)
+					}
+				}
+
+				if rawBaseURL, ok := pub.Settings["moesif_base_url"]; ok && rawBaseURL != nil {
+					baseURL, okStr := rawBaseURL.(string)
+					if okStr && baseURL != "" {
+						if u, err := url.Parse(baseURL); err != nil || u.Scheme == "" || u.Host == "" {
+							return fmt.Errorf("analytics.publishers[%d].settings.moesif_base_url must be a valid URL (e.g. https://api.moesif.net), got %q", i, baseURL)
+						}
 					}
 				}
 			default:

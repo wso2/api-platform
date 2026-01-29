@@ -47,6 +47,7 @@ type Moesif struct {
 // MoesifConfig holds the configs specific for the Moesif publisher.
 type MoesifConfig struct {
 	ApplicationID      string `mapstructure:"application_id" default:""`
+	BaseURL            string `mapstructure:"moesif_base_url"`
 	PublishInterval    int    `mapstructure:"publish_interval" default:"5"`
 	EventQueueSize     int    `mapstructure:"event_queue_size" default:"10000"`
 	BatchSize          int    `mapstructure:"batch_size" default:"50"`
@@ -69,13 +70,23 @@ func NewMoesif(pubCfg *config.PublisherConfig) *Moesif {
 		moesifApplicationId = moesifCfg.ApplicationID
 	}
 
+	// Apply default for BaseURL if not set
+	if moesifCfg.BaseURL == "" {
+		slog.Debug("No Moesif base URL provided, backing off to the default URL")
+		moesifCfg.BaseURL = "https://api.moesif.net"
+	}
+
 	// Moesif Client Configs
 	eventQueueSize, batchSize, timerWakeupSeconds :=
 		moesifCfg.EventQueueSize,
 		moesifCfg.BatchSize,
 		moesifCfg.TimerWakeupSeconds
 
-	apiClient := moesifapi.NewAPI(moesifApplicationId, nil, eventQueueSize, batchSize, timerWakeupSeconds)
+	var apiEndpoint *string
+	if moesifCfg.BaseURL != "" {
+		apiEndpoint = &moesifCfg.BaseURL
+	}
+	apiClient := moesifapi.NewAPI(moesifApplicationId, apiEndpoint, eventQueueSize, batchSize, timerWakeupSeconds)
 	moesif := &Moesif{
 		cfg:    pubCfg,
 		events: []*models.EventModel{},
