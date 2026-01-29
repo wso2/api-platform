@@ -27,7 +27,6 @@ spec:
     auth:
       type: apiKey
       header: x-goog-api-key
-    logoUrl: https://example.com/logos/gemini.svg
   promptTokens:
     location: payload
     identifier: $.usageMetadata.promptTokenCount
@@ -42,7 +41,7 @@ spec:
     identifier: x-ratelimit-remaining-tokens
   requestModel:
     location: pathParam
-    identifier: (?<=models/)[a-zA-Z0-9.\-]+
+    identifier: models/([A-Za-z0-9.-]+)
   responseModel:
     location: payload
     identifier: $.modelVersion
