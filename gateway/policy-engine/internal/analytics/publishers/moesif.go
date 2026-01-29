@@ -182,7 +182,8 @@ func (m *Moesif) Publish(event *dto.Event) {
 	metadataMap["apiVersion"] = event.API.APIVersion
 	metadataMap["apiType"] = event.API.APIType
 	metadataMap["apiId"] = event.API.APIID
-
+	metadataMap["projectId"] = event.API.ProjectID
+	
 	// AI Metadata
 	if event.API.APIType == "LlmProvider" {
 		// Safely extract aiMetadata with nil check

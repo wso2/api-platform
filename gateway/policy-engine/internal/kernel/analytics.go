@@ -35,6 +35,7 @@ const (
 	APIContextKey      = Wso2MetadataPrefix + "api-context"
 	OperationPathKey   = Wso2MetadataPrefix + "operation-path"
 	APIKindKey         = Wso2MetadataPrefix + "api-kind"
+	ProjectIDKey       = Wso2MetadataPrefix + "project-id"
 )
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
@@ -92,6 +93,9 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		if sharedCtx.APIKind != "" {
 			fields[APIKindKey] = structpb.NewStringValue(sharedCtx.APIKind)
 		}
+		if sharedCtx.ProjectID != "" {
+			fields[ProjectIDKey] = structpb.NewStringValue(sharedCtx.ProjectID)
+		}
 	}
 
 	return &structpb.Struct{Fields: fields}, nil
@@ -114,6 +118,9 @@ func extractMetadataFromRouteMetadata(routeMeta RouteMetadata) map[string]interf
 	}
 	if routeMeta.APIKind != "" {
 		metadata[APIKindKey] = routeMeta.APIKind
+	}
+	if routeMeta.ProjectID != "" {
+		metadata[ProjectIDKey] = routeMeta.ProjectID
 	}
 	return metadata
 }

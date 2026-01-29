@@ -105,6 +105,8 @@ const (
 	APICreatorTenantDomainKey = Wso2MetadataPrefix + "api-creator-tenant-domain"
 	// APIOrganizationIDKey is the key for the API organization ID.
 	APIOrganizationIDKey = Wso2MetadataPrefix + "api-organization-id"
+	// ProjectIDKey is the key for the project ID.
+	ProjectIDKey = Wso2MetadataPrefix + "project-id"
 
 	// AppIDKey is the key for the application ID.
 	AppIDKey = Wso2MetadataPrefix + "application-id"

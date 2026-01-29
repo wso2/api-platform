@@ -908,6 +908,9 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 		Kind:       apiType,
 		Metadata: dto.APIDeploymentMetadata{
 			Name: api.ID,
+			Labels: map[string]string{
+				"project-id": api.ProjectID,
+			},
 		},
 		Spec: apiYAMLData,
 	}

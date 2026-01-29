@@ -21,6 +21,7 @@ package dto
 type ExtendedAPI struct {
 	API
 	OrganizationID string `json:"organizationId"`
+	ProjectID      string `json:"projectId"`
 	EnvironmentID  string `json:"environmentId"`
 	APIContext     string `json:"apiContext"`
 }
