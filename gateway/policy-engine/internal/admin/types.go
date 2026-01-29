@@ -22,15 +22,15 @@ import "time"
 
 // ConfigDumpResponse is the top-level response structure for the config_dump endpoint
 type ConfigDumpResponse struct {
-	Timestamp      time.Time          `json:"timestamp"`
-	PolicyRegistry PolicyRegistryDump `json:"policy_registry"`
-	Routes         RoutesDump         `json:"routes"`
-	LazyResources  LazyResourcesDump  `json:"lazy_resources"`
+	Timestamp      time.Time             `json:"timestamp"`
+	PolicyRegistry PolicyRegistryDump    `json:"policy_registry"`
+	Routes         RoutesDump            `json:"routes"`
+	LazyResources  LazyResourcesDump     `json:"lazy_resources"`
 }
 
 // LazyResourcesDump contains information about all lazy resources
 type LazyResourcesDump struct {
-	TotalResources  int                           `json:"total_resources"`
+	TotalResources int                         `json:"total_resources"`
 	ResourcesByType map[string][]LazyResourceInfo `json:"resources_by_type"`
 }
 
@@ -43,8 +43,8 @@ type LazyResourceInfo struct {
 
 // PolicyRegistryDump contains information about all registered policies
 type PolicyRegistryDump struct {
-	TotalPolicies int          `json:"total_policies"`
-	Policies      []PolicyInfo `json:"policies"`
+	TotalPolicies int                  `json:"total_policies"`
+	Policies      []PolicyInfo         `json:"policies"`
 }
 
 // PolicyInfo contains information about a single policy

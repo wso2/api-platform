@@ -67,9 +67,9 @@ func newPolicyExecutionContext(
 	chain *registry.PolicyChain,
 ) *PolicyExecutionContext {
 	return &PolicyExecutionContext{
-		server:            server,
-		routeKey:          routeKey,
-		policyChain:       chain,
+		server:      server,
+		routeKey:    routeKey,
+		policyChain: chain,
 		analyticsMetadata: make(map[string]interface{}),
 	}
 }
