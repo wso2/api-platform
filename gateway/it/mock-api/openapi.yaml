@@ -1,0 +1,27 @@
+openapi: 3.0.3
+info:
+  title: Mock API Server
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:4010
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Simple health check endpoint to verify service availability
+      responses:
+        "200":
+          description: Service is healthy
+  # Mock OpenAI
+  /openai/v1/chat/completions:
+    $ref: ./paths/openai/chat.yaml
+  /openai/v1/embeddings:
+    $ref: ./paths/openai/embeddings.yaml
+
+components:
+  schemas:
+    $ref: ./components/schemas.yaml
+  securitySchemes:
+    $ref: ./components/security_schemes.yaml

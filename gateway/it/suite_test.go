@@ -95,6 +95,7 @@ func TestFeatures(t *testing.T) {
 				"features/lazy-resources-xds.feature",
 				"features/modify-headers.feature",
 				"features/respond.feature",
+				"features/llm-provider.feature",
 			},
 			TestingT: t,
 		},

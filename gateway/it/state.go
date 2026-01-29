@@ -19,6 +19,7 @@
 package it
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"sync"
@@ -89,10 +90,15 @@ type TestState struct {
 // NewTestState creates a new TestState with default configuration
 func NewTestState() *TestState {
 	config := DefaultConfig()
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true, // ⚠️ test/dev only
+	}
 	return &TestState{
 		Config: config,
 		HTTPClient: &http.Client{
-			Timeout: config.HTTPTimeout,
+			Timeout:   config.HTTPTimeout,
+			Transport: transport,
 		},
 		Context: make(map[string]interface{}),
 	}
