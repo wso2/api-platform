@@ -395,6 +395,7 @@ type RouteMetadata struct {
 	APIKind        string
 	TemplateHandle string
 	ProviderName   string
+	ProjectID      string
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata
@@ -453,6 +454,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 					}
 					if providerNameValue, ok := routeStruct.Fields["provider_name"]; ok {
 						metadata.ProviderName = providerNameValue.GetStringValue()
+					}
+					if projectIDValue, ok := routeStruct.Fields["project_id"]; ok {
+						metadata.ProjectID = projectIDValue.GetStringValue()
 					}
 				}
 			}

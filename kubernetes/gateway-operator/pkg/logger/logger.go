@@ -29,7 +29,7 @@ import (
 // Config holds logger configuration
 type Config struct {
 	Level  string // "debug", "info", "warn", "error"
-	Format string // "json" or "console"
+	Format string // "json" or "text"
 }
 
 // NewLogger creates a new Zap logger with configurable log level and format
@@ -37,7 +37,7 @@ func NewLogger(cfg Config) (*zap.Logger, error) {
 	logLevel := parseLogLevel(cfg.Level)
 
 	var config zap.Config
-	if cfg.Format == "console" {
+	if cfg.Format == "text" {
 		config = zap.NewDevelopmentConfig()
 	} else {
 		config = zap.NewProductionConfig()

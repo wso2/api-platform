@@ -23,10 +23,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/go-viper/mapstructure/v2"
+	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+)
+
+const (
+	// EnvPrefix is the prefix for environment variables used to configure the policy engine
+	EnvPrefix = "APIP_GW_"
 )
 
 type Config struct {
@@ -203,22 +209,26 @@ type AccessLogsServiceConfig struct {
 
 // Load loads configuration from file, environment variables, and defaults
 // Priority: Environment variables > Config file > Defaults
+//
+// The configuration supports Go-style duration strings (e.g., "10s", "5m", "1h")
+// for all duration fields. The DecodeHook automatically converts string durations
+// to time.Duration values before assignment.
 func Load(configPath string) (*Config, error) {
 	cfg := defaultConfig()
+
 	k := koanf.New(".")
 
 	// Load config file if path is provided
 	if configPath != "" {
-		if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
 			return nil, fmt.Errorf("failed to load config file: %w", err)
 		}
 	}
 
-	// Load environment variables with PE_ prefix
+	// Load environment variables with the prefix
 	// Double underscores (__) preserve literal underscores in field names
-	// Example: PE_POLICY__ENGINE_SERVER_EXTPROC__PORT -> policy_engine.server.extproc_port
-	if err := k.Load(env.Provider("PE_", ".", func(s string) string {
-		s = strings.TrimPrefix(s, "PE_")
+	if err := k.Load(env.Provider(EnvPrefix, ".", func(s string) string {
+		s = strings.TrimPrefix(s, EnvPrefix)
 		s = strings.ToLower(s)
 
 		// Step 1: Preserve literal underscores with placeholder
@@ -232,8 +242,16 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
-	// Unmarshal into Config struct
-	if err := k.Unmarshal("", cfg); err != nil {
+	// Unmarshal into pre-populated config struct with defaults
+	// Koanf will merge: fields from file/env overwrite defaults, unset fields keep defaults
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName:          "koanf",
+			WeaklyTypedInput: true,
+			Result:           cfg,
+			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		},
+	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
