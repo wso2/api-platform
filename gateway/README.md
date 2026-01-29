@@ -70,15 +70,16 @@ make clean
 
 ## Configuration
 
-### Gateway-Controller
+### Gateway-Controller & Policy-Engine
 
-Environment variables use `GATEWAY_` prefix:
+Environment variables use `APIP_GW_` prefix:
 
 | Variable | Description |
 |----------|-------------|
-| `GATEWAY_GATEWAY__CONTROLLER_STORAGE_TYPE` | `sqlite` or `memory` |
-| `GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH` | Path to SQLite database |
-| `GATEWAY_GATEWAY__CONTROLLER_LOGGING_LEVEL` | `debug`, `info`, `warn`, `error` |
+| `APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE` | `sqlite` or `memory` |
+| `APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH` | Path to SQLite database |
+| `APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL` | `debug`, `info`, `warn`, `error` |
+| `APIP_GW_POLICY__ENGINE_METRICS_PORT` | Policy engine metrics port |
 
 See [gateway-controller/README.md](gateway-controller/README.md) for full configuration options.
 

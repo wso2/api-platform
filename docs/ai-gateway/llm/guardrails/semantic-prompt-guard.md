@@ -51,20 +51,20 @@ These parameters are typically configured at the gateway level and automatically
 | `embeddingModel` | string | Conditional | - | Embedding model name. **Required for OPENAI and MISTRAL**, not required for AZURE_OPENAI (deployment name is in endpoint URL). Examples: OpenAI: `text-embedding-ada-002` or `text-embedding-3-small`, Mistral: `mistral-embed` |
 | `apiKey` | string | Yes | API key for the embedding service authentication |
 
-### Configuring System Parameters in config.yaml
+### Configuring System Parameters in config.toml
 
-System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all Semantic Prompt Guard policy instances and can be overridden per-policy in the API configuration if needed.
+System parameters can be configured globally in the gateway's `config.toml` file. These values serve as defaults for all Semantic Prompt Guard policy instances and can be overridden per-policy in the API configuration if needed.
 
-#### Location in config.yaml
+#### Location in config.toml
 
-Add the following configuration section to your `config.yaml` file:
+Add the following configuration section to your `config.toml` file:
 
-```yaml
-embedding_provider: "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
-embedding_provider_endpoint: "https://api.mistral.ai/v1/embeddings"
-embedding_provider_model: "mistral-embed"
-embedding_provider_dimension: 1024
-embedding_provider_api_key: ""
+```toml
+embedding_provider = "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
+embedding_provider_endpoint = "https://api.mistral.ai/v1/embeddings"
+embedding_provider_model = "mistral-embed"
+embedding_provider_dimension = 1024
+embedding_provider_api_key = ""
 ```
 
 ## Similarity Threshold Guidelines

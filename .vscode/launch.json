@@ -20,15 +20,15 @@
             "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller/main.go",
             "args": [
                 "-config",
-                "${workspaceFolder}/gateway/configs/config.yaml",
+                "${workspaceFolder}/gateway/configs/config.toml",
             ],
             "env": {
-                "GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
-                "GATEWAY_GATEWAY__CONTROLLER_CONTROLPLANE_TOKEN": "",
-                "GATEWAY_GATEWAY__CONTROLLER_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
-                "GATEWAY_GATEWAY__CONTROLLER_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
-                "GATEWAY_GATEWAY__CONTROLLER_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
-                "GATEWAY_GATEWAY__CONTROLLER_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-policies",
+                "APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+                "APIP_GW_GATEWAY__CONTROLLER_CONTROLPLANE_TOKEN": "",
+                "APIP_GW_GATEWAY__CONTROLLER_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
+                "APIP_GW_GATEWAY__CONTROLLER_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "APIP_GW_GATEWAY__CONTROLLER_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
+                "APIP_GW_GATEWAY__CONTROLLER_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-policies",
             }
         },
         {
@@ -51,7 +51,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/policy-engine/cmd/policy-engine",
             "args": [
-                "-config", "${workspaceFolder}/gateway/configs/config.yaml" ,
+                "-config", "${workspaceFolder}/gateway/configs/config.toml" ,
                 "-xds-server", "localhost:18001",
                 "-xds-node-id", "node-1",
             ],
@@ -63,7 +63,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/policy-engine/cmd/policy-engine",
             "args": [
-                "-config", "${workspaceFolder}/gateway/configs/config.yaml",
+                "-config", "${workspaceFolder}/gateway/configs/config.toml",
                 "-policy-chains-file", "${workspaceFolder}/gateway/policy-engine/configs/policy-chains.yaml",
             ],
         },

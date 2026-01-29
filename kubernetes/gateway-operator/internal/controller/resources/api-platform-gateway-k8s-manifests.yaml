@@ -85,14 +85,14 @@ spec:
     spec:
       containers:
         - env:
-            - name: GATEWAY_CONTROLPLANE_HOST
+            - name: APIP_GW_CONTROLPLANE_HOST
               value: host.docker.internal:8443
-            - name: GATEWAY_CONTROLPLANE_TOKEN
-            - name: GATEWAY_LOGGING_LEVEL
+            - name: APIP_GW_CONTROLPLANE_TOKEN
+            - name: APIP_GW_LOGGING_LEVEL
               value: info
-            - name: GATEWAY_STORAGE_SQLITE_PATH
+            - name: APIP_GW_STORAGE_SQLITE_PATH
               value: ./data/gateway.db
-            - name: GATEWAY_STORAGE_TYPE
+            - name: APIP_GW_STORAGE_TYPE
               value: sqlite
           image: wso2/gateway-controller:latest
           imagePullPolicy: IfNotPresent
@@ -227,19 +227,19 @@ data:
       # Log level: "debug", "info", "warn", or "error"
       level: info
 
-      # Log format: "json" or "console"
+      # Log format: "json" or "text"
       # - json: Structured JSON format (recommended for production)
-      # - console: Human-readable console format (recommended for development)
+      # - text: Human-readable text format (recommended for development)
       format: json
 
     # Environment Variables Override
-    # You can override any configuration using environment variables with the prefix GATEWAY_
+    # You can override any configuration using environment variables with the prefix APIP_GW_
     # Examples:
-    #   GATEWAY_SERVER_API_PORT=9091
-    #   GATEWAY_STORAGE_TYPE=memory
-    #   GATEWAY_STORAGE_SQLITE_PATH=/custom/path/gateway.db
-    #   GATEWAY_ROUTER_ACCESS_LOGS_ENABLED=false
-    #   GATEWAY_LOGGING_LEVEL=debug
+    #   APIP_GW_GATEWAY__CONTROLLER_SERVER_API__PORT=9091
+    #   APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=memory
+    #   APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+    #   APIP_GW_GATEWAY__CONTROLLER_ROUTER_ACCESS__LOGS_ENABLED=false
+    #   APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
 kind: ConfigMap
 metadata:
   annotations:

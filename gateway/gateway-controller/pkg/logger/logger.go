@@ -53,8 +53,10 @@ func NewLogger(cfg Config) *slog.Logger {
 		},
 	}
 
+	format := strings.ToLower(cfg.Format)
+
 	var handler slog.Handler
-	if cfg.Format == "text" {
+	if format == "text" {
 		handler = slog.NewTextHandler(os.Stdout, opts)
 	} else {
 		// Default to JSON

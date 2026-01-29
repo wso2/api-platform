@@ -70,28 +70,28 @@ These parameters are typically configured at the gateway level and automatically
 | `ttl` | integer | No | Time-to-live for cache entries in seconds. Default is 3600 (1 hour). Set to 0 for no expiration. |
 
 
-### Configuring System Parameters in config.yaml
+### Configuring System Parameters in config.toml
 
-System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all Semantic Cache policy instances and can be overridden per-policy in the API configuration if needed.
+System parameters can be configured globally in the gateway's `config.toml` file. These values serve as defaults for all Semantic Cache policy instances and can be overridden per-policy in the API configuration if needed.
 
-#### Location in config.yaml
+#### Location in config.toml
 
-Add the following configuration section to your `config.yaml` file:
+Add the following configuration section to your `config.toml` file:
 
-```yaml
-embedding_provider: "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
-embedding_provider_endpoint: "https://api.mistral.ai/v1/embeddings"
-embedding_provider_model: "mistral-embed"
-embedding_provider_dimension: 1024
-embedding_provider_api_key: ""
+```toml
+embedding_provider = "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
+embedding_provider_endpoint = "https://api.mistral.ai/v1/embeddings"
+embedding_provider_model = "mistral-embed"
+embedding_provider_dimension = 1024
+embedding_provider_api_key = ""
 
-vector_db_provider: "REDIS" # Supported: REDIS, MILVUS
-vector_db_provider_host: "redis"
-vector_db_provider_port: 6379
-vector_db_provider_database: "0"
-vector_db_provider_username: "default"
-vector_db_provider_password: "default"
-vector_db_provider_ttl: 3600
+vector_db_provider = "REDIS" # Supported: REDIS, MILVUS
+vector_db_provider_host = "redis"
+vector_db_provider_port = 6379
+vector_db_provider_database = "0"
+vector_db_provider_username = "default"
+vector_db_provider_password = "default"
+vector_db_provider_ttl = 3600
 ```
 
 ## JSONPath Support

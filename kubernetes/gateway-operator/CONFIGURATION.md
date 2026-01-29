@@ -50,7 +50,7 @@ reconciliation:
 # Logging configuration
 logging:
   level: "info"   # debug, info, warn, error
-  format: "json"  # json, console
+  format: "json"  # json, text
 ```
 
 ## Configuration Fields
@@ -85,7 +85,7 @@ logging:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `logging.level` | string | `info` | Log level (debug/info/warn/error) |
-| `logging.format` | string | `json` | Log format (json/console) |
+| `logging.format` | string | `json` | Log format (json/text) |
 
 ## Environment Variable Overrides
 
@@ -255,7 +255,7 @@ Common validation errors:
 - **Missing chart name**: `gateway.helm.chartName` is required when Helm is enabled
 - **Missing values file path**: `gateway.helm.valuesFilePath` is required when Helm is enabled
 - **Invalid log level**: Must be one of: debug, info, warn, error
-- **Invalid log format**: Must be one of: json, console
+- **Invalid log format**: Must be one of: json, text
 
 ## Migration from Environment-Only Configuration
 

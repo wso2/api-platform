@@ -174,12 +174,43 @@ func main() {
 	// Phase 4: Compilation
 	slog.Info("Starting Phase 4: Compilation", "phase", "compilation")
 
+	// Read version information from environment variables (set by Dockerfile)
+	// Fall back to builder's own version if not set
+	policyEngineVersion := os.Getenv("VERSION")
+	if policyEngineVersion == "" {
+		policyEngineVersion = Version
+	}
+	policyEngineGitCommit := os.Getenv("GIT_COMMIT")
+	if policyEngineGitCommit == "" {
+		policyEngineGitCommit = GitCommit
+	}
+	// Build date can come from environment or use current timestamp
+	buildDateStr := os.Getenv("BUILD_DATE")
+	var buildTimestamp time.Time
+	if buildDateStr != "" {
+		// Try to parse the build date
+		parsedTime, err := time.Parse(time.RFC3339, buildDateStr)
+		if err == nil {
+			buildTimestamp = parsedTime
+		} else {
+			buildTimestamp = time.Now().UTC()
+		}
+	} else {
+		buildTimestamp = time.Now().UTC()
+	}
+
 	buildMetadata := &types.BuildMetadata{
-		Timestamp: time.Now().UTC(),
-		Version:   Version,
-		GitCommit: GitCommit,
+		Timestamp: buildTimestamp,
+		Version:   policyEngineVersion,
+		GitCommit: policyEngineGitCommit,
 		Policies:  make([]types.PolicyInfo, 0, len(policies)),
 	}
+
+	slog.Info("Build metadata for policy engine",
+		"version", policyEngineVersion,
+		"git_commit", policyEngineGitCommit,
+		"build_date", buildTimestamp.Format(time.RFC3339),
+		"phase", "compilation")
 
 	for _, p := range policies {
 		buildMetadata.Policies = append(buildMetadata.Policies, types.PolicyInfo{

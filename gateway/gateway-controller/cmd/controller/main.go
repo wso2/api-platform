@@ -43,13 +43,20 @@ var (
 
 func main() {
 	// Parse command-line flags
-	configPath := flag.String("config", "config/config.yaml", "Path to configuration file")
+	configPath := flag.String("config", "", "Path to configuration file (required)")
 	flag.Parse()
+
+	// Validate that config file is provided
+	if *configPath == "" {
+		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml>\n", os.Args[0])
+		os.Exit(1)
+	}
 
 	// Load configuration
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to load configuration from %s: %v\n", *configPath, err)
 		os.Exit(1)
 	}
 

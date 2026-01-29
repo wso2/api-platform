@@ -20,7 +20,9 @@ serviceAccount:
 
 gateway:
   # Shared configuration for gateway-controller and policy-engine
-  # This config is mounted to both components as /configs/config.yaml
+  # This config is mounted as:
+  #   - gateway-controller: /etc/gateway-controller/config.toml
+  #   - policy-engine: /etc/policy-engine/config.toml
   config:
     gateway_controller:
       auth:
@@ -225,9 +227,9 @@ gateway:
         # Log level: "debug", "info", "warn", or "error"
         level: debug
 
-        # Log format: "json" or "console"
+        # Log format: "json" or "text"
         # - json: Structured JSON format (recommended for production)
-        # - console: Human-readable console format (recommended for development)
+        # - text: Human-readable text format (recommended for development)
         format: json
 
     policy_engine:
@@ -302,7 +304,13 @@ gateway:
         # Log format: json, text
         format: json
 
-    policy_configurations: {}
+  # Raw TOML string to append to the generated config.toml
+  # Use this for additional configuration not covered by the structured values above
+  # Example:
+  #   config_toml: |
+  #     [custom_section]
+  #     key = "value"
+  config_toml: ""
 
   # metadata for the generated shared ConfigMap (annotations / labels)
   configMap:

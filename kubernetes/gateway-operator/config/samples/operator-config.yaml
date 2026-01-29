@@ -13,8 +13,8 @@ data:
   GATEWAY_CONTROLPLANE_TOKEN: ""
   
   # Storage configuration
-  GATEWAY_STORAGE_TYPE: "sqlite"
-  GATEWAY_STORAGE_SQLITE_PATH: "./data/gateway.db"
+  APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE: "sqlite"
+  APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH: "./data/gateway.db"
   
   # Default images
   GATEWAY_DEFAULT_IMAGE: "wso2/gateway-controller:latest"

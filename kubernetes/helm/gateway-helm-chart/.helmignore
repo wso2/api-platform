@@ -11,3 +11,6 @@ Thumbs.db
 
 # Examples and documentation
 examples/
+
+# Local development overrides (not shipped)
+values-local.yaml

@@ -57,24 +57,24 @@ These parameters are typically configured at the gateway level and automatically
 | `awsRoleExternalID` | string | No | External ID for role assumption (optional, for cross-account access security). |
 
 
-### Configuring System Parameters in config.yaml
+### Configuring System Parameters in config.toml
 
-System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all AWS Bedrock Guardrail policy instances and can be overridden per-policy in the API configuration if needed.
+System parameters can be configured globally in the gateway's `config.toml` file. These values serve as defaults for all AWS Bedrock Guardrail policy instances and can be overridden per-policy in the API configuration if needed.
 
-#### Location in config.yaml
+#### Location in config.toml
 
-Add the following configuration section to your `config.yaml` file:
+Add the following configuration section to your `config.toml` file:
 
-```yaml
-awsbedrock_guardrail_region: "us-east-1" 
-awsbedrock_guardrail_id: "your-guardrail-id"
-awsbedrock_guardrail_version: "DRAFT"
-awsbedrock_access_key_id: ""
-awsbedrock_secret_access_key: "" 
-awsbedrock_session_token: ""
-awsbedrock_role_arn: ""
-awsbedrock_role_region: ""
-awsbedrock_role_external_id: ""
+```toml
+awsbedrock_guardrail_region = "us-east-1" 
+awsbedrock_guardrail_id = "your-guardrail-id"
+awsbedrock_guardrail_version = "DRAFT"
+awsbedrock_access_key_id = ""
+awsbedrock_secret_access_key = "" 
+awsbedrock_session_token = ""
+awsbedrock_role_arn = ""
+awsbedrock_role_region = ""
+awsbedrock_role_external_id = ""
 ```
 
 ## JSONPath Support

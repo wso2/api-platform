@@ -67,12 +67,15 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          args:
+            - "-config"
+            - "/etc/gateway-controller/config.toml"
           env:
-            - name: GATEWAY_CONTROLPLANE_HOST
+            - name: APIP_GW_CONTROLPLANE_HOST
               value: {{ $controller.controlPlane.host | quote }}
-            - name: GATEWAY_CONTROLPLANE_PORT
+            - name: APIP_GW_CONTROLPLANE_PORT
               value: {{ printf "%d" (int $controller.controlPlane.port) | quote }}
-            - name: GATEWAY_CONTROLPLANE_TOKEN
+            - name: APIP_GW_CONTROLPLANE_TOKEN
               {{- if $controller.controlPlane.token.secretName }}
               valueFrom:
                 secretKeyRef:
@@ -81,11 +84,11 @@ spec:
               {{- else }}
               value: {{ $controller.controlPlane.token.value | quote }}
               {{- end }}
-            - name: GATEWAY_LOGGING_LEVEL
+            - name: APIP_GW_LOGGING_LEVEL
               value: {{ $controller.logging.level | quote }}
-            - name: GATEWAY_STORAGE_TYPE
+            - name: APIP_GW_STORAGE_TYPE
               value: {{ $controller.storage.type | quote }}
-            - name: GATEWAY_STORAGE_SQLITE_PATH
+            - name: APIP_GW_STORAGE_SQLITE_PATH
               value: {{ $controller.storage.sqlitePath | quote }}
             - name: XDS_SERVER_HOST
               value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.xdsServerHost | quote }}
@@ -116,8 +119,8 @@ spec:
             - name: controller-data
               mountPath: {{ $deployment.volumeMountPath }}
             - name: controller-config
-              mountPath: /app/config/config.yaml
-              subPath: config.yaml
+              mountPath: /etc/gateway-controller/config.toml
+              subPath: config.toml
             {{- if $controller.tls.enabled }}
             - name: listener-certs
               mountPath: /app/listener-certs
@@ -149,8 +152,8 @@ spec:
           configMap:
             name: {{ include "gateway-operator.fullname" . }}-config
             items:
-              - key: config.yaml
-                path: config.yaml
+              - key: config.toml
+                path: config.toml
         {{- if $controller.tls.enabled }}
         - name: listener-certs
           secret:

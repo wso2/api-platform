@@ -52,9 +52,9 @@ spec:
             secretKeyRef:
               name: gateway-credentials
               key: token
-        - name: GATEWAY_STORAGE_TYPE
+        - name: APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE
           value: "sqlite"
-        - name: GATEWAY_STORAGE_SQLITE_PATH
+        - name: APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH
           value: "./data/gateway.db"
         - name: GATEWAY_DEFAULT_IMAGE
           value: "wso2/gateway-controller:latest"
@@ -98,8 +98,8 @@ spec:
 | `GATEWAY_MANIFEST_PATH` | `--gateway-manifest-path` | `internal/controller/resources/api-platform-gateway-k8s-manifests.yaml` | Path to gateway Kubernetes manifest file |
 | `GATEWAY_CONTROLPLANE_HOST` | - | `host.docker.internal:8443` | Gateway control plane host address |
 | `GATEWAY_CONTROLPLANE_TOKEN` | - | `""` | Authentication token for control plane |
-| `GATEWAY_STORAGE_TYPE` | - | `sqlite` | Storage backend type |
-| `GATEWAY_STORAGE_SQLITE_PATH` | - | `./data/gateway.db` | SQLite database file path |
+| `APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE` | - | `sqlite` | Storage backend type |
+| `APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH` | - | `./data/gateway.db` | SQLite database file path |
 | `GATEWAY_DEFAULT_IMAGE` | - | `wso2/gateway-controller:latest` | Default gateway controller image |
 | `GATEWAY_ROUTER_IMAGE` | - | `envoyproxy/envoy:v1.28-latest` | Default router/proxy image |
 

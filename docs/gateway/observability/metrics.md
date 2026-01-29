@@ -37,30 +37,28 @@ Metrics are numerical measurements tracked over time:
 
 You need to enable metrics in the gateway configuration file. By default, metrics are enabled in the production configuration but you can customize the settings.
 
-The metrics configuration is located in `gateway/configs/config.yaml`:
+The metrics configuration is located in `gateway/configs/config.toml`:
 
 #### Gateway Controller Metrics Configuration
 
-```yaml
-gateway_controller:
-  metrics:
-    # Enable or disable Prometheus metrics endpoint
-    enabled: true
+```toml
+[gateway_controller.metrics]
+# Enable or disable Prometheus metrics endpoint
+enabled = true
 
-    # Port for metrics HTTP server
-    port: 9091
+# Port for metrics HTTP server
+port = 9091
 ```
 
 #### Policy Engine Metrics Configuration
 
-```yaml
-policy_engine:
-  metrics:
-    # Enable or disable Prometheus metrics endpoint
-    enabled: true
+```toml
+[policy_engine.metrics]
+# Enable or disable Prometheus metrics endpoint
+enabled = true
 
-    # Port for metrics HTTP server
-    port: 9003
+# Port for metrics HTTP server
+port = 9003
 ```
 
 **Note**: When metrics are enabled, each component starts an HTTP server on the specified port to expose metrics in Prometheus format.
@@ -893,7 +891,7 @@ rate(gateway_controller_http_request_duration_seconds_sum[5m])
 
 **1. Verify metrics are enabled in configuration:**
 ```bash
-grep -A5 "metrics:" gateway/configs/config.yaml
+grep -A5 "metrics" gateway/configs/config.toml
 ```
 
 Ensure `enabled: true`.
@@ -1075,16 +1073,14 @@ rate(gateway_controller_api_operations_total[5m]) > 0
 
 To completely disable metrics:
 
-1. **Update configuration** in `gateway/configs/config.yaml`:
+1. **Update configuration** in `gateway/configs/config.toml`:
 
-```yaml
-gateway_controller:
-  metrics:
-    enabled: false
+```toml
+[gateway_controller.metrics]
+enabled = false
 
-policy_engine:
-  metrics:
-    enabled: false
+[policy_engine.metrics]
+enabled = false
 ```
 
 2. **Restart gateway services:**

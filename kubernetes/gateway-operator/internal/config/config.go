@@ -112,7 +112,7 @@ type LoggingConfig struct {
 	// Deprecated: Use Format instead
 	Development bool `koanf:"development"`
 
-	// Format specifies the log format: "json" or "console"
+	// Format specifies the log format: "json" or "text"
 	Format string `koanf:"format"`
 }
 
@@ -134,7 +134,7 @@ func getDefaults() map[string]interface{} {
 		"logging": map[string]interface{}{
 			"level":       "info",
 			"development": true,
-			"format":      "console",
+			"format":      "text",
 		},
 	}
 }
@@ -220,8 +220,8 @@ func (c *OperatorConfig) Validate() error {
 	}
 
 	// Validate log format
-	if c.Logging.Format != "" && c.Logging.Format != "json" && c.Logging.Format != "console" {
-		return fmt.Errorf("invalid log format: %s (must be json or console)", c.Logging.Format)
+	if c.Logging.Format != "" && c.Logging.Format != "json" && c.Logging.Format != "text" {
+		return fmt.Errorf("invalid log format: %s (must be json or text)", c.Logging.Format)
 	}
 
 	// Validate reconciliation config

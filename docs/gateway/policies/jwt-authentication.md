@@ -19,10 +19,10 @@ The JWT Authentication policy validates JWT (JSON Web Token) access tokens using
 
 The JWT Authentication policy uses a two-level configuration model:
 
-- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.jwtauth_v010`
+- **System Parameters**: Configured by the administrator in `config.toml` under `policy_configurations.jwtauth_v010`
 - **User Parameters**: Configured per-API/route in the API definition YAML
 
-### System Parameters (config.yaml)
+### System Parameters (config.toml)
 
 These parameters are set by the administrator and apply globally to all JWT authentication policies:
 
@@ -73,38 +73,38 @@ These parameters are configured per-API/route by the API developer:
 
 ## System Configuration Example
 
-Add the following to your `gateway/configs/config.yaml` file under `policy_configurations`:
+Add the following to your `gateway/configs/config.toml` file under `policy_configurations`:
 
-```yaml
-policy_configurations:
-  jwtauth_v010:
-    keymanagers:
-    - name: PrimaryIDP
-      issuer: https://idp.example.com/oauth2/token
-      jwks:
-        remote:
-          uri: https://idp.example.com/oauth2/jwks
-          skipTlsVerify: false
-    - name: SecondaryIDP
-      issuer: https://auth.example.org/oauth2/token
-      jwks:
-        remote:
-          uri: https://auth.example.org/oauth2/jwks
-          skipTlsVerify: false
-    jwkscachettl: "5m"
-    jwksfetchtimeout: "5s"
-    jwksfetchretrycount: 3
-    jwksfetchretryinterval: "2s"
-    allowedalgorithms:
-      - RS256
-      - ES256
-    leeway: "30s"
-    authheaderscheme: Bearer
-    headername: Authorization
-    onfailurestatuscode: 401
-    errormessageformat: json
-    errormessage: "Authentication failed."
-    validateissuer: true
+```toml
+[policy_configurations.jwtauth_v010]
+jwkscachettl = "5m"
+jwksfetchtimeout = "5s"
+jwksfetchretrycount = 3
+jwksfetchretryinterval = "2s"
+allowedalgorithms = ["RS256", "ES256"]
+leeway = "30s"
+authheaderscheme = "Bearer"
+headername = "Authorization"
+onfailurestatuscode = 401
+errormessageformat = "json"
+errormessage = "Authentication failed."
+validateissuer = true
+
+[[policy_configurations.jwtauth_v010.keymanagers]]
+name = "PrimaryIDP"
+issuer = "https://idp.example.com/oauth2/token"
+
+[policy_configurations.jwtauth_v010.keymanagers.jwks.remote]
+uri = "https://idp.example.com/oauth2/jwks"
+skipTlsVerify = false
+
+[[policy_configurations.jwtauth_v010.keymanagers]]
+name = "SecondaryIDP"
+issuer = "https://auth.example.org/oauth2/token"
+
+[policy_configurations.jwtauth_v010.keymanagers.jwks.remote]
+uri = "https://auth.example.org/oauth2/jwks"
+skipTlsVerify = false
 ```
 
 
