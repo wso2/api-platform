@@ -93,6 +93,11 @@ func TestFeatures(t *testing.T) {
 				"features/llm-provider-templates.feature",
 				"features/analytics-header-filter.feature",
 				"features/lazy-resources-xds.feature",
+				"features/content-length-guardrail.feature",
+				"features/azure-content-safety.feature",
+				"features/aws-bedrock-guardrail.feature",
+				"features/semantic-cache.feature",
+				"features/semantic-prompt-guard.feature",
 				"features/modify-headers.feature",
 				"features/respond.feature",
 			},
@@ -146,12 +151,15 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 
 		// Initialize common step handlers
 		httpSteps = steps.NewHTTPSteps(testState.HTTPClient, map[string]string{
-			"gateway-controller": testState.Config.GatewayControllerURL,
-			"router":             testState.Config.RouterURL,
-			"policy-engine":      testState.Config.PolicyEngineURL,
-			"sample-backend":     testState.Config.SampleBackendURL,
-			"echo-backend":       testState.Config.EchoBackendURL,
-			"mock-jwks":          testState.Config.MockJWKSURL,
+			"gateway-controller":         testState.Config.GatewayControllerURL,
+			"router":                     testState.Config.RouterURL,
+			"policy-engine":              testState.Config.PolicyEngineURL,
+			"sample-backend":             testState.Config.SampleBackendURL,
+			"echo-backend":               testState.Config.EchoBackendURL,
+			"mock-jwks":                  testState.Config.MockJWKSURL,
+			"mock-azure-content-safety":  testState.Config.MockAzureContentSafetyURL,
+			"mock-aws-bedrock-guardrail": testState.Config.MockAWSBedrockGuardrailURL,
+			"mock-embedding-provider":    testState.Config.MockEmbeddingProviderURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 

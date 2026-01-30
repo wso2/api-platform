@@ -29,10 +29,12 @@ jobs:
           cd gateway
           make build-coverage
 
-      - name: Build mock-jwks image
+      - name: Build mock server images
         run: |
-          cd tests/mock-servers/mock-jwks
-          docker build -t ghcr.io/wso2/api-platform/mock-jwks:latest .
+          for mock in mock-jwks mock-azure-content-safety mock-aws-bedrock-guardrail mock-embedding-provider; do
+            echo "Building $mock..."
+            docker build -t ghcr.io/wso2/api-platform/$mock:latest tests/mock-servers/$mock
+          done
 
       - name: Run integration tests
         run: |
