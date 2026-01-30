@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -24,21 +24,25 @@ import (
 	"github.com/wso2/api-platform/common/testutils/coverage"
 )
 
-// DefaultCoverageConfig returns the default coverage configuration for gateway/it
+// DefaultCoverageConfig returns the default coverage configuration for cli/it
 func DefaultCoverageConfig() *coverage.CoverageConfig {
-	sourceDir, _ := filepath.Abs("../gateway-controller")
+	gatewayControllerDir, _ := filepath.Abs("../../gateway/gateway-controller")
+	cliDir, _ := filepath.Abs("../src")
 	return &coverage.CoverageConfig{
 		OutputDir: "coverage",
-		Services:  []string{"gateway-controller"},
+		Services:  []string{"gateway-controller", "cli"},
 		ServiceSourceDirs: map[string]string{
-			"gateway-controller": sourceDir,
+			"gateway-controller": gatewayControllerDir,
+			"cli":                cliDir,
 		},
 		ContainerPath: "/build/",
 		ModulePrefixes: []string{
 			"github.com/wso2/api-platform/gateway/gateway-controller/",
 			"github.com/wso2/api-platform/gateway/",
+			"github.com/wso2/api-platform/cli/",
 			"github.com/wso2/api-platform/",
 		},
+		ReportPrefix: "cli-integration-test-coverage",
 	}
 }
 

@@ -22,17 +22,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fi \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy SDK (needed for go.mod replace directive)
-COPY --from=sdk . /sdk
+# Copy go mod files for dependencies (needed for go.mod replace directive)
+# Copying only the mod files first ensures that the go mod download cache 
+# is only invalidated when dependencies change, not when source code changes.
+COPY --from=sdk go.mod go.sum /sdk/
+COPY --from=common go.mod go.sum /common/
 
-# Copy common (needed for go.mod replace directive)
-COPY --from=common . /common
-
-# Copy go mod files
+# Copy main component go mod files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
+# Copy full source code for SDK and Common
+COPY --from=sdk . /sdk
+COPY --from=common . /common
+
+# Copy component source code
 COPY . ./
 
 # Build the binary with CGO enabled (required for mattn/go-sqlite3)

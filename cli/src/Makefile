@@ -60,6 +60,13 @@ build-skip-tests:
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
+## build-coverage: Build the binary with coverage instrumentation (skipping tests)
+build-coverage:
+	@echo "Building $(BINARY_NAME) with coverage instrumentation..."
+	@mkdir -p $(BUILD_DIR)
+	$(GOBUILD) $(LDFLAGS) -cover -o $(BUILD_DIR)/$(BINARY_NAME) main.go
+	@echo "Coverage-instrumented build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+
 ## build-all: Build binaries for all platforms (macOS, Linux, Windows) - runs tests first
 build-all: test build-macos build-linux build-windows
 	@echo "All platform builds complete"
