@@ -459,3 +459,296 @@ func createTestStoredConfigWithVhosts(name, version, context string, apiPolicies
 func stringPtr(s string) *string {
 	return &s
 }
+
+// Tests for generateAuthConfig function
+
+func TestGenerateAuthConfig(t *testing.T) {
+	t.Run("No authentication enabled", func(t *testing.T) {
+		cfg := &config.Config{
+			GatewayController: config.GatewayController{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{
+						Enabled: false,
+					},
+					IDP: config.IDPConfig{
+						Enabled: false,
+					},
+				},
+			},
+		}
+
+		authConfig := generateAuthConfig(cfg)
+
+		assert.False(t, authConfig.BasicAuth.Enabled)
+		assert.False(t, authConfig.JWTConfig.Enabled)
+		assert.NotNil(t, authConfig.ResourceRoles)
+		assert.Contains(t, authConfig.SkipPaths, "/health")
+	})
+
+	t.Run("Basic auth enabled with users", func(t *testing.T) {
+		cfg := &config.Config{
+			GatewayController: config.GatewayController{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{
+						Enabled: true,
+						Users: []config.AuthUser{
+							{
+								Username:       "admin",
+								Password:       "admin123",
+								PasswordHashed: false,
+								Roles:          []string{"admin"},
+							},
+							{
+								Username:       "developer",
+								Password:       "dev123",
+								PasswordHashed: true,
+								Roles:          []string{"developer"},
+							},
+						},
+					},
+					IDP: config.IDPConfig{
+						Enabled: false,
+					},
+				},
+			},
+		}
+
+		authConfig := generateAuthConfig(cfg)
+
+		assert.True(t, authConfig.BasicAuth.Enabled)
+		assert.Len(t, authConfig.BasicAuth.Users, 2)
+		assert.Equal(t, "admin", authConfig.BasicAuth.Users[0].Username)
+		assert.Equal(t, "admin123", authConfig.BasicAuth.Users[0].Password)
+		assert.False(t, authConfig.BasicAuth.Users[0].PasswordHashed)
+		assert.Equal(t, []string{"admin"}, authConfig.BasicAuth.Users[0].Roles)
+		assert.Equal(t, "developer", authConfig.BasicAuth.Users[1].Username)
+		assert.True(t, authConfig.BasicAuth.Users[1].PasswordHashed)
+	})
+
+	t.Run("IDP auth enabled", func(t *testing.T) {
+		roleMapping := map[string][]string{
+			"admin":     {"gateway-admin"},
+			"developer": {"gateway-dev"},
+		}
+		cfg := &config.Config{
+			GatewayController: config.GatewayController{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{
+						Enabled: false,
+					},
+					IDP: config.IDPConfig{
+						Enabled:     true,
+						Issuer:      "https://idp.example.com",
+						JWKSURL:     "https://idp.example.com/.well-known/jwks.json",
+						RolesClaim:  "roles",
+						RoleMapping: roleMapping,
+					},
+				},
+			},
+		}
+
+		authConfig := generateAuthConfig(cfg)
+
+		assert.False(t, authConfig.BasicAuth.Enabled)
+		assert.True(t, authConfig.JWTConfig.Enabled)
+		assert.Equal(t, "https://idp.example.com", authConfig.JWTConfig.IssuerURL)
+		assert.Equal(t, "https://idp.example.com/.well-known/jwks.json", authConfig.JWTConfig.JWKSUrl)
+		assert.Equal(t, "roles", authConfig.JWTConfig.ScopeClaim)
+		assert.NotNil(t, authConfig.JWTConfig.PermissionMapping)
+	})
+
+	t.Run("Both basic and IDP auth enabled", func(t *testing.T) {
+		cfg := &config.Config{
+			GatewayController: config.GatewayController{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{
+						Enabled: true,
+						Users: []config.AuthUser{
+							{Username: "admin", Password: "admin123", Roles: []string{"admin"}},
+						},
+					},
+					IDP: config.IDPConfig{
+						Enabled:    true,
+						Issuer:     "https://idp.example.com",
+						JWKSURL:    "https://idp.example.com/.well-known/jwks.json",
+						RolesClaim: "roles",
+					},
+				},
+			},
+		}
+
+		authConfig := generateAuthConfig(cfg)
+
+		assert.True(t, authConfig.BasicAuth.Enabled)
+		assert.True(t, authConfig.JWTConfig.Enabled)
+	})
+
+	t.Run("Resource roles are populated correctly", func(t *testing.T) {
+		cfg := &config.Config{
+			GatewayController: config.GatewayController{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{Enabled: false},
+					IDP:   config.IDPConfig{Enabled: false},
+				},
+			},
+		}
+
+		authConfig := generateAuthConfig(cfg)
+
+		// Check some expected resource roles
+		assert.Contains(t, authConfig.ResourceRoles, "POST /apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /policies")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /config_dump")
+
+		// Check role assignments
+		assert.Contains(t, authConfig.ResourceRoles["POST /apis"], "admin")
+		assert.Contains(t, authConfig.ResourceRoles["POST /apis"], "developer")
+		assert.Contains(t, authConfig.ResourceRoles["GET /config_dump"], "admin")
+	})
+}
+
+// Additional edge case tests for derivePolicyFromAPIConfig
+
+func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
+	fullConfig := &config.Config{
+		GatewayController: config.GatewayController{
+			Router: config.RouterConfig{
+				VHosts: config.VHostsConfig{
+					Main: config.VHostEntry{
+						Default: "api.example.com",
+					},
+					Sandbox: config.VHostEntry{
+						Default: "sandbox.example.com",
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("API with empty vhost main uses default", func(t *testing.T) {
+		apiPolicies := []api.Policy{
+			{Name: "cors", Version: "v0.1.0"},
+		}
+		emptyMain := ""
+		cfg := createTestStoredConfigWithVhosts("test-api", "v1.0.0", "/test", apiPolicies, emptyMain, nil)
+
+		result := derivePolicyFromAPIConfig(cfg, fullConfig)
+
+		require.NotNil(t, result)
+		// Should fall back to default vhost
+		assert.NotEmpty(t, result.Configuration.Routes)
+	})
+
+	t.Run("API with empty sandbox vhost uses default", func(t *testing.T) {
+		apiPolicies := []api.Policy{
+			{Name: "cors", Version: "v0.1.0"},
+		}
+		emptySandbox := ""
+		cfg := createTestStoredConfigWithVhosts("test-api", "v1.0.0", "/test", apiPolicies, "custom.example.com", &emptySandbox)
+
+		result := derivePolicyFromAPIConfig(cfg, fullConfig)
+
+		require.NotNil(t, result)
+		assert.NotEmpty(t, result.Configuration.Routes)
+	})
+
+	t.Run("Operation policy overrides same-named API policy", func(t *testing.T) {
+		// Both API and operation have 'cors' policy - operation should take precedence
+		apiPolicies := []api.Policy{
+			{Name: "cors", Version: "v0.1.0", Params: &map[string]interface{}{"api": true}},
+			{Name: "rate-limit", Version: "v1.0.0"},
+		}
+		opPolicies := []api.Policy{
+			{Name: "cors", Version: "v0.2.0", Params: &map[string]interface{}{"operation": true}},
+		}
+		cfg := createTestStoredConfigWithOpPolicies("test-api", "v1.0.0", "/test", apiPolicies, opPolicies)
+
+		result := derivePolicyFromAPIConfig(cfg, fullConfig)
+
+		require.NotNil(t, result)
+		// The result should have routes with policies
+		assert.NotEmpty(t, result.Configuration.Routes)
+	})
+
+	t.Run("Multiple operations create multiple routes", func(t *testing.T) {
+		apiPolicies := []api.Policy{
+			{Name: "cors", Version: "v0.1.0"},
+		}
+		cfg := createTestStoredConfigMultipleOps("test-api", "v1.0.0", "/test", apiPolicies)
+
+		result := derivePolicyFromAPIConfig(cfg, fullConfig)
+
+		require.NotNil(t, result)
+		// Should have routes for each operation
+		assert.GreaterOrEqual(t, len(result.Configuration.Routes), 2)
+	})
+
+	t.Run("Metadata is set correctly", func(t *testing.T) {
+		apiPolicies := []api.Policy{
+			{Name: "cors", Version: "v0.1.0"},
+		}
+		cfg := createTestStoredConfig("my-test-api", "v2.0.0", "/mycontext", apiPolicies, nil)
+
+		result := derivePolicyFromAPIConfig(cfg, fullConfig)
+
+		require.NotNil(t, result)
+		assert.Equal(t, "Test API", result.Configuration.Metadata.APIName)
+		assert.Equal(t, "v2.0.0", result.Configuration.Metadata.Version)
+		assert.Equal(t, "/mycontext", result.Configuration.Metadata.Context)
+		assert.NotZero(t, result.Configuration.Metadata.CreatedAt)
+		assert.NotZero(t, result.Configuration.Metadata.UpdatedAt)
+	})
+}
+
+// Helper function to create config with multiple operations
+func createTestStoredConfigMultipleOps(name, version, context string, apiPolicies []api.Policy) *models.StoredConfig {
+	var policiesPtr *[]api.Policy
+	if apiPolicies != nil {
+		policiesPtr = &apiPolicies
+	}
+
+	apiData := api.APIConfigData{
+		DisplayName: "Test API",
+		Version:     version,
+		Context:     context,
+		Policies:    policiesPtr,
+		Operations: []api.Operation{
+			{
+				Method: api.OperationMethodGET,
+				Path:   "/resource",
+			},
+			{
+				Method: api.OperationMethodPOST,
+				Path:   "/resource",
+			},
+			{
+				Method: api.OperationMethodGET,
+				Path:   "/other",
+			},
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: stringPtr("http://backend:8080"),
+			},
+		},
+	}
+
+	spec := api.APIConfiguration_Spec{}
+	_ = spec.FromAPIConfigData(apiData)
+
+	return &models.StoredConfig{
+		ID:   name + "-id",
+		Kind: string(api.RestApi),
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: name,
+			},
+			Spec: spec,
+		},
+	}
+}
