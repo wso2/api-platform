@@ -414,3 +414,139 @@ Feature: API Management Handler Operations
     When I delete the API "second-api"
     Then the response should be successful
 
+  # ==================== CREATE API - VALIDATION ERROR CASES ====================
+
+  Scenario: Create API with missing context returns error
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: missing-context-api
+      spec:
+        displayName: Missing-Context-Api
+        version: v1.0
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+
+  Scenario: Create API with missing version returns error
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: missing-version-api
+      spec:
+        displayName: Missing-Version-Api
+        context: /missing-version
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  Scenario: Create API with missing upstream returns error
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: missing-upstream-api
+      spec:
+        displayName: Missing-Upstream-Api
+        version: v1.0
+        context: /missing-upstream
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  Scenario: Create API with empty operations returns error
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: empty-ops-api
+      spec:
+        displayName: Empty-Ops-Api
+        version: v1.0
+        context: /empty-ops
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations: []
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  Scenario: Create API with invalid labels (spaces in keys) should fail
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-labels-api
+        labels:
+          "Invalid Key": value
+      spec:
+        displayName: Invalid-Labels-Api
+        version: v1.0
+        context: /invalid-labels
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+
+  Scenario: Create API with labels and verify they are stored
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: labeled-api
+        labels:
+          environment: production
+          team: api-team
+          version: v1
+      spec:
+        displayName: Labeled-API
+        version: v1.0
+        context: /labeled
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /data
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    When I send a GET request to the "gateway-controller" service at "/apis/labeled-api"
+    Then the response should be successful
+    And the response body should contain "environment"
+    And the response body should contain "production"
+    # Cleanup
+    When I delete the API "labeled-api"
+    Then the response should be successful
+

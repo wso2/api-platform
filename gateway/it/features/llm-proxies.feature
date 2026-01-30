@@ -76,3 +76,42 @@ Feature: LLM Proxy Management Operations
     And the response should be valid JSON
 
   # ==================== UPDATE LLM PROXY ====================
+
+  Scenario: Update non-existent LLM proxy returns 400
+    When I send a PUT request to the "gateway-controller" service at "/llm-proxies/non-existent-proxy-update" with body:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "kind": "LlmProxy",
+        "metadata": {
+          "name": "non-existent-proxy-update"
+        },
+        "spec": {
+          "displayName": "Test",
+          "version": "v1.0",
+          "context": "/test"
+        }
+      }
+      """
+    Then the response status should be 400
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+
+  # ==================== CREATE LLM PROXY - VALIDATION ====================
+
+  Scenario: Create LLM proxy with missing required fields returns error
+    When I send a POST request to the "gateway-controller" service at "/llm-proxies" with body:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "kind": "LlmProxy",
+        "metadata": {
+          "name": "invalid-proxy"
+        },
+        "spec": {
+          "displayName": "Invalid Proxy"
+        }
+      }
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
