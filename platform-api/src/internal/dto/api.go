@@ -232,6 +232,7 @@ type APIYAMLData struct {
 	Version     string             `yaml:"version"`
 	Context     string             `yaml:"context"`
 	Upstream    *UpstreamYAML      `yaml:"upstream,omitempty"`
+	Policies    []Policy           `yaml:"policies,omitempty"`
 	Operations  []OperationRequest `yaml:"operations,omitempty"`
 	Channels    []ChannelRequest   `yaml:"channels,omitempty"`
 }

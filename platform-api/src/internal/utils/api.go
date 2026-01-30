@@ -877,6 +877,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	apiYAMLData.DisplayName = api.Name
 	apiYAMLData.Version = api.Version
 	apiYAMLData.Context = api.Context
+	apiYAMLData.Policies = api.Policies
 
 	// Only set upstream and operations for HTTP APIs
 	switch api.Type {
@@ -1273,6 +1274,7 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 		Version:         yamlData.Version,
 		BackendServices: backendServices,
 		Operations:      operations,
+		Policies:        yamlData.Policies,
 
 		// Set reasonable defaults for required fields that aren't in APIYAMLData
 		LifeCycleStatus:  "CREATED",
