@@ -146,19 +146,25 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 
 	// Handle endpoint URL override from metadata (Phase 5)
 	if req.Metadata != nil {
-		if endpointURL, ok := req.Metadata["endpointUrl"].(string); ok && endpointURL != "" {
-			// Validate endpoint URL format
-			if err := validateEndpointURL(endpointURL); err != nil {
-				return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
+		if v, exists := req.Metadata["endpointUrl"]; exists {
+			endpointURL, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid endpoint URL in metadata: expected string, got %T", v)
 			}
+			if endpointURL != "" {
+				// Validate endpoint URL format
+				if err := validateEndpointURL(endpointURL); err != nil {
+					return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
+				}
 
-			// Override endpoint URL in deployment content
-			modifiedContent, err := overrideEndpointURL(contentBytes, endpointURL)
-			if err != nil {
-				return nil, fmt.Errorf("failed to override endpoint URL: %w", err)
+				// Override endpoint URL in deployment content
+				modifiedContent, err := overrideEndpointURL(contentBytes, endpointURL)
+				if err != nil {
+					return nil, fmt.Errorf("failed to override endpoint URL: %w", err)
+				}
+				contentBytes = modifiedContent
+				log.Printf("[INFO] Endpoint URL overridden to: %s for deployment %s", endpointURL, deploymentID)
 			}
-			contentBytes = modifiedContent
-			log.Printf("[INFO] Endpoint URL overridden to: %s for deployment %s", endpointURL, deploymentID)
 		}
 	}
 
