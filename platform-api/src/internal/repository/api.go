@@ -1246,6 +1246,7 @@ func (r *APIRepo) CreateDeploymentWithLimitEnforcement(deployment *model.APIDepl
 		`
 	}
 
+	// Status and UpdatedAt are guaranteed to be non-nil by initialization at function start
 	_, err = tx.Exec(r.db.Rebind(statusQuery),
 		deployment.ApiID,
 		deployment.OrganizationID,

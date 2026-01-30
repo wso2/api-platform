@@ -454,6 +454,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	// Convert to DTOs
 	var deploymentDTOs = []*dto.DeploymentResponse{}
 	for _, d := range deployments {
+		// Status is guaranteed non-nil by repository (set to ARCHIVED if no status row exists)
 		deploymentDTOs = append(deploymentDTOs, &dto.DeploymentResponse{
 			DeploymentID:     d.DeploymentID,
 			Name:             d.Name,
@@ -493,6 +494,7 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 	}
 
 	// Convert to DTO
+	// Status is guaranteed non-nil by repository (set to ARCHIVED if no status row exists)
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
 		Name:             deployment.Name,
