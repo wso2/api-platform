@@ -190,10 +190,10 @@ type Policy struct {
 
 // DeployAPIRequest represents a request to deploy an API
 type DeployAPIRequest struct {
-	Name      string                 `json:"name" yaml:"name" binding:"required"`             // Deployment name
-	Base      string                 `json:"base" yaml:"base" binding:"required"`           // "current" or a deploymentId
-	GatewayID string                 `json:"gatewayId" yaml:"gatewayId" binding:"required"` // Target gateway ID
-	Metadata  map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`  // Flexible key-value metadata
+	Name      string                 `json:"name" yaml:"name"`                              // Deployment name
+	Base      string                 `json:"base" yaml:"base"`                              // "current" or a deploymentId
+	GatewayID string                 `json:"gatewayId" yaml:"gatewayId"`                    // Target gateway ID
+	Metadata  map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"` // Flexible key-value metadata
 }
 
 // DeploymentResponse represents a deployment artifact

@@ -65,6 +65,11 @@ func (h *DeploymentHandler) DeployAPI(c *gin.Context) {
 	}
 
 	// Validate required fields
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"name is required"))
+		return
+	}
 	if req.Base == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"base is required (use 'current' or a deploymentId)"))
