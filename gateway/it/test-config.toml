@@ -36,9 +36,9 @@ redis_db = 0
 vector_db_provider = "REDIS"
 vector_db_provider_host = "redis"
 vector_db_provider_port = 6379
-vector_db_provider_username = ""
+vector_db_provider_username = "default"
 vector_db_provider_password = "redis"
-vector_db_provider_database = 0
+vector_db_provider_database = "0"
 vector_db_provider_ttl = 3600  # 1 hour in seconds
 
 # =============================================================================
