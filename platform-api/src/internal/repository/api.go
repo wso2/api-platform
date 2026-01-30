@@ -1194,6 +1194,11 @@ func (r *APIRepo) CreateDeploymentWithLimitEnforcement(deployment *model.APIDepl
 		}
 		rows.Close()
 
+		// Check for iteration errors
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
 		// Delete one-by-one to use row-level locks (prevents over-deletion in concurrent scenarios)
 		deleteQuery := `DELETE FROM api_deployments WHERE deployment_id = ?`
 		for _, id := range idsToDelete {
