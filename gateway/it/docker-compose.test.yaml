@@ -62,6 +62,9 @@ services:
     ports:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
+    environment:
+      # Override AWS Bedrock Runtime endpoint for testing with mock service
+      - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
     volumes:
       - ./test-config.toml:/etc/policy-engine/config.toml:ro
     networks:
@@ -172,6 +175,59 @@ services:
       - ../gateway-controller/listener-certs:/etc/nginx/certs:ro
     networks:
       - it-gateway-network
+
+  # Mock Azure Content Safety for content moderation policy testing
+  mock-azure-content-safety:
+    container_name: it-mock-azure-content-safety
+    image: ghcr.io/wso2/api-platform/mock-azure-content-safety:latest
+    build:
+      context: ../../tests/mock-servers/mock-azure-content-safety
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+    networks:
+      - it-gateway-network
+
+  # Mock AWS Bedrock Guardrail for guardrail policy testing
+  mock-aws-bedrock-guardrail:
+    container_name: it-mock-aws-bedrock-guardrail
+    image: ghcr.io/wso2/api-platform/mock-aws-bedrock-guardrail:latest
+    build:
+      context: ../../tests/mock-servers/mock-aws-bedrock-guardrail
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
+    networks:
+      - it-gateway-network
+
+  # Mock Embedding Provider for semantic cache testing
+  mock-embedding-provider:
+    container_name: it-mock-embedding-provider
+    image: ghcr.io/wso2/api-platform/mock-embedding-provider:latest
+    build:
+      context: ../../tests/mock-servers/mock-embedding-provider
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8080"
+    networks:
+      - it-gateway-network
+
+  # Redis with RediSearch for semantic cache vector storage
+  redis:
+    container_name: it-redis
+    image: redis/redis-stack-server:latest
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_ARGS=--requirepass redis
+    networks:
+      - it-gateway-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
 volumes:
   controller-data-tests:
