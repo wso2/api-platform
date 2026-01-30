@@ -67,7 +67,7 @@ type APIRepository interface {
 
 	// Deployment status methods (mutable state tracking)
 	SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (updatedAt time.Time, err error)
-	GetDeploymentStatus(apiUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, error error)
+	GetDeploymentStatus(apiUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
 	DeleteDeploymentStatus(apiUUID, orgUUID, gatewayID string) error
 
 	// API-Gateway association methods
