@@ -66,9 +66,10 @@ type JWT struct {
 
 // WebSocket holds WebSocket-specific configuration
 type WebSocket struct {
-	MaxConnections    int `envconfig:"WS_MAX_CONNECTIONS" default:"1000"`
-	ConnectionTimeout int `envconfig:"WS_CONNECTION_TIMEOUT" default:"30"` // seconds
-	RateLimitPerMin   int `envconfig:"WS_RATE_LIMIT_PER_MINUTE" default:"10"`
+	MaxConnections       int `envconfig:"WS_MAX_CONNECTIONS" default:"1000"`
+	ConnectionTimeout    int `envconfig:"WS_CONNECTION_TIMEOUT" default:"30"` // seconds
+	RateLimitPerMin      int `envconfig:"WS_RATE_LIMIT_PER_MINUTE" default:"10"`
+	MaxConnectionsPerOrg int `envconfig:"WS_MAX_CONNECTIONS_PER_ORG" default:"3"`
 }
 
 // Database holds database-specific configuration
