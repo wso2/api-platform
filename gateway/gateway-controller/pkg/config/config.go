@@ -427,7 +427,7 @@ func defaultConfig() *Config {
 				TemplateDefinitionsPath: "./default-llm-provider-templates",
 			},
 			Storage: StorageConfig{
-				Type: "memory",
+				Type: "sqlite",
 				SQLite: SQLiteConfig{
 					Path: "./data/gateway.db",
 				},
@@ -469,7 +469,7 @@ func defaultConfig() *Config {
 						"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 				},
 				ListenerPort: 8080,
-				HTTPSEnabled: false,
+				HTTPSEnabled: true,
 				HTTPSPort:    8443,
 				DownstreamTLS: DownstreamTLS{
 					CertPath:               "./listener-certs/server.crt",
@@ -478,7 +478,7 @@ func defaultConfig() *Config {
 					MaximumProtocolVersion: "TLS1_3",
 					Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
 				},
-				GatewayHost: "localhost",
+				GatewayHost: "*",
 				Upstream: envoyUpstream{
 					TLS: upstreamTLS{
 						MinimumProtocolVersion: "TLS1_2",
@@ -493,15 +493,15 @@ func defaultConfig() *Config {
 					},
 				},
 				PolicyEngine: PolicyEngineConfig{
-					Enabled:           false,
-					Host:              "localhost",
+					Enabled:           true,
+					Host:              "policy-engine",
 					Port:              9001,
-					TimeoutMs:         250,
+					TimeoutMs:         60000,
 					FailureModeAllow:  false,
 					RouteCacheAction:  "RETAIN",
 					AllowModeOverride: true,
 					RequestHeaderMode: "SEND",
-					MessageTimeoutMs:  250,
+					MessageTimeoutMs:  60000,
 					TLS: PolicyEngineTLS{
 						Enabled:    false,
 						CertPath:   "",
