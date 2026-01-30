@@ -33,29 +33,49 @@ type AuthUser struct {
 
 // Config holds configuration for the test suite
 type Config struct {
-	GatewayControllerURL string
-	RouterURL            string
-	PolicyEngineURL      string
-	SampleBackendURL     string
-	EchoBackendURL       string
-	MockJWKSURL          string
-	HTTPTimeout          time.Duration
-	Users                map[string]AuthUser
+	GatewayControllerURL         string
+	RouterURL                    string
+	PolicyEngineURL              string
+	SampleBackendURL             string
+	EchoBackendURL               string
+	MockJWKSURL                  string
+	MockAzureContentSafetyURL    string
+	MockAWSBedrockGuardrailURL   string
+	MockEmbeddingProviderURL     string
+	RedisURL                     string
+	HTTPTimeout                  time.Duration
+	Users                        map[string]AuthUser
 }
 
 // MockJWKSPort is the port for mock-jwks service
 const MockJWKSPort = "8082"
 
+// MockAzureContentSafetyPort is the port for mock-azure-content-safety service
+const MockAzureContentSafetyPort = "8084"
+
+// MockAWSBedrockGuardrailPort is the port for mock-aws-bedrock-guardrail service
+const MockAWSBedrockGuardrailPort = "8083"
+
+// MockEmbeddingProviderPort is the port for mock-embedding-provider service
+const MockEmbeddingProviderPort = "8085"
+
+// RedisPort is the port for redis service
+const RedisPort = "6379"
+
 // DefaultConfig returns the default test configuration
 func DefaultConfig() *Config {
 	return &Config{
-		GatewayControllerURL: fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
-		RouterURL:            fmt.Sprintf("http://localhost:%s", RouterPort),
-		PolicyEngineURL:      "http://localhost:9002",
-		SampleBackendURL:     "http://localhost:9080",
-		EchoBackendURL:       "http://localhost:9081",
-		MockJWKSURL:          fmt.Sprintf("http://localhost:%s", MockJWKSPort),
-		HTTPTimeout:          10 * time.Second,
+		GatewayControllerURL:        fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
+		RouterURL:                   fmt.Sprintf("http://localhost:%s", RouterPort),
+		PolicyEngineURL:             "http://localhost:9002",
+		SampleBackendURL:            "http://localhost:9080",
+		EchoBackendURL:              "http://localhost:9081",
+		MockJWKSURL:                 fmt.Sprintf("http://localhost:%s", MockJWKSPort),
+		MockAzureContentSafetyURL:   fmt.Sprintf("http://localhost:%s", MockAzureContentSafetyPort),
+		MockAWSBedrockGuardrailURL:  fmt.Sprintf("http://localhost:%s", MockAWSBedrockGuardrailPort),
+		MockEmbeddingProviderURL:    fmt.Sprintf("http://localhost:%s", MockEmbeddingProviderPort),
+		RedisURL:                    fmt.Sprintf("localhost:%s", RedisPort),
+		HTTPTimeout:                 10 * time.Second,
 		Users: map[string]AuthUser{
 			"admin": {Username: "admin", Password: "admin"},
 		},
