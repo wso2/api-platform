@@ -1,8 +1,12 @@
+
+[analytics]
+enabled = false
+
+[analytics.publishers.settings]
+application_id = "<MOESIF_APPLICATION_ID>"
+
 [gateway_controller.router]
 gateway_host = "*"
-listener_port = 8080
-https_enabled = true
-https_port = 8443
 
 [gateway_controller.router.access_logs]
 enabled = true
@@ -13,13 +17,9 @@ enabled = true
 [[gateway_controller.auth.basic.users]]
 username = "admin"
 password = "admin"
-password_hashed = false
 roles = ["admin"]
 
-[gateway_controller.api_key]
-api_keys_per_user_per_api = 10
-algorithm = "sha256"
-
+# Remove policy_configurations once the issue is resolved: https://github.com/wso2/api-platform/issues/564
 [policy_configurations.ratelimit_v010]
 algorithm = "fixed-window"
 backend = "memory"
@@ -32,23 +32,3 @@ cleanup_interval = "5m"
 include_x_rate_limit = true
 include_ietf = true
 include_retry_after = true
-
-[analytics]
-enabled = false
-
-[[analytics.publishers]]
-type = "moesif"
-enabled = true
-
-[analytics.publishers.settings]
-application_id = "<MOESIF_APPLICATION_ID>"
-publish_interval = 5
-
-[tracing]
-enabled = false
-endpoint = "otel-collector:4317"
-insecure = true
-service_version = "1.0.0"
-batch_timeout = "1s"
-max_export_batch_size = 512
-sampling_rate = 1.0
