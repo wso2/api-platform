@@ -253,6 +253,7 @@ include_retry_after = true
 
 [analytics]
 enabled = true
+allow_payloads = false
 
 [[analytics.publishers]]
 type = "moesif"
