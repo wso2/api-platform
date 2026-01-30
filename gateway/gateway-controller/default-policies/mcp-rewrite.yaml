@@ -1,0 +1,115 @@
+name: mcp-rewrite
+version: v0.1.0
+description: |
+  MCP Rewrite policy defines user-facing tools, resources, and prompts and maps
+  them to backend capability names using optional "target" fields. Request payloads
+  are rewritten to the backend capability name when configured, and list responses
+  rewrite capability names in-place to return user-facing values. When a list is
+  provided, only the configured capabilities are included in list responses.
+
+  - Null or omitted: Allow all capabilities of that type without rewriting
+  - Empty array []: Deny all capabilities of that type
+  - Non-empty array: Allow only the specified capabilities and apply rewrites
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    tools:
+      type: array
+      description: |
+        List of tools to rewrite. When provided (non-empty), only these tools are
+        included in tools/list responses. Each entry must include "name" and may
+        include "target" plus any additional fields to be returned in tools/list.
+      items:
+        type: object
+        additionalProperties: true
+        required:
+          - name
+          - description
+          - inputSchema
+        properties:
+          name:
+            type: string
+            description: User-facing tool name exposed to clients.
+            minLength: 1
+            maxLength: 256
+          description:
+            type: string
+            description: User-facing tool description returned in tools/list.
+            minLength: 1
+          inputSchema:
+            type: string
+            description: Tool input schema returned in tools/list.
+            minLength: 1
+          outputSchema:
+            type: string
+            description: Tool output schema returned in tools/list.
+            minLength: 1
+          target:
+            type: string
+            description: Backend tool name to use when forwarding requests.
+            minLength: 1
+            maxLength: 256
+    resources:
+      type: array
+      description: |
+        List of resources to rewrite. When provided (non-empty), only these resources are
+        included in resources/list responses. Each entry must include "name" and may
+        include "target" plus any additional fields to be returned in resources/list.
+      items:
+        type: object
+        additionalProperties: true
+        required:
+          - name
+          - uri
+        properties:
+          name:
+            type: string
+            description: User-facing resource identifier (URI) exposed to clients.
+            minLength: 1
+            maxLength: 1024
+          description:
+            type: string
+            description: User-facing resource description returned in resources/list.
+            minLength: 1
+          uri:
+            type: string
+            description: User-facing resource URI returned in resources/list.
+            minLength: 1
+            maxLength: 2048
+          target:
+            type: string
+            description: Backend resource identifier (URI) to use when forwarding requests.
+            minLength: 1
+            maxLength: 1024
+    prompts:
+      type: array
+      description: |
+        List of prompts to rewrite. When provided (non-empty), only these prompts are
+        included in prompts/list responses. Each entry must include "name" and may
+        include "target" plus any additional fields to be returned in prompts/list.
+      items:
+        type: object
+        additionalProperties: true
+        required:
+          - name
+        properties:
+          name:
+            type: string
+            description: User-facing prompt name exposed to clients.
+            minLength: 1
+            maxLength: 256
+          description:
+            type: string
+            description: User-facing prompt description returned in prompts/list.
+            minLength: 1
+          target:
+            type: string
+            description: Backend prompt name to use when forwarding requests.
+            minLength: 1
+            maxLength: 256
+
+systemParameters:
+  type: object
+  properties: {}
