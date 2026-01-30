@@ -28,7 +28,7 @@ policies:
   - name: azure-content-safety-content-moderation
     version: v0.1.0
   - name: modify-headers
-    version: v0.1.0
+    version: v0.1.1
   - name: content-length-guardrail
     version: v0.1.0
   - name: respond

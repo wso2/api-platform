@@ -22,7 +22,7 @@
 - route_key: my_upstream_service_route
   policies:
     - name: modify-headers
-      version: v0.1.0
+      version: v0.1.1
       enabled: true
       parameters:
         requestHeaders:
@@ -63,14 +63,14 @@
         allowUnauthenticated: true
         realm: "Admin API"
     - name: modify-headers
-      version: v0.1.0
+      version: v0.1.1
       enabled: true
       parameters:
         requestHeaders:
           - action: DELETE
             name: authorization  # Remove auth header after validation
     - name: modify-headers
-      version: v0.1.0
+      version: v0.1.1
       enabled: true
       executionCondition: request.Metadata['auth.success'] == false
       parameters:
@@ -79,7 +79,7 @@
             name: auth-failed
             value: "true"
     - name: modify-headers
-      version: v0.1.0
+      version: v0.1.1
       enabled: true
       executionCondition: request.Metadata['auth.success'] == true
       parameters:

@@ -16,9 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: test clean deps check-docker build-images help
+.PHONY: test clean deps check-docker build-cli build-cli-coverage build-images test-all help
 
-# Gateway IT compose file location
+# Directory locations
+CLI_SRC_DIR=../src
 GATEWAY_COMPOSE_FILE=../../gateway/it/docker-compose.test.yaml
 GATEWAY_DIR=../../gateway
 
@@ -27,17 +28,20 @@ help:
 	@echo "CLI Integration Tests"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make test           - Run integration tests (requires images to be built first)"
-	@echo "  make test-all       - Build gateway images and run integration tests"
+	@echo "  make test           - Run integration tests (requires CLI and images pre-built)"
+	@echo "  make test-all       - Build CLI (with coverage), gateway images, and run tests"
+	@echo "  make build-cli      - Build the CLI binary (without coverage)"
+	@echo "  make build-cli-coverage - Build the CLI binary with coverage instrumentation"
 	@echo "  make build-images   - Build required gateway Docker images"
 	@echo "  make clean          - Clean up containers, volumes, and logs"
 	@echo "  make deps           - Install Go dependencies"
 	@echo ""
 	@echo "Prerequisites:"
 	@echo "  - Docker must be running"
+	@echo "  - CLI must be built (run 'make build-cli' first)"
 	@echo "  - Gateway images must be built (run 'make build-images' first)"
 
-# Run integration tests (assumes images are already built)
+# Run integration tests (assumes CLI and images are already built)
 test: check-docker
 	@mkdir -p logs
 	@pkgs="$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs)" ; \
@@ -47,8 +51,16 @@ test: check-docker
 		go test -v -timeout 30m $$pkgs 2>&1 | awk '/^Logs directory:/{print;exit}1' ; \
 	fi
 
-# Build images and run tests (full flow)
-test-all: build-images test
+# Build CLI binary
+build-cli:
+	@echo "==============================================="
+	@echo "Building CLI Binary"
+	@echo "==============================================="
+	@$(MAKE) -C $(CLI_SRC_DIR) build-skip-tests
+	@echo "CLI binary built successfully"
+
+# Build CLI (with coverage), images, and run tests (full flow)
+test-all: build-cli-coverage build-images test
 
 # Build required gateway Docker images locally
 build-images: check-docker
@@ -76,3 +88,11 @@ deps:
 check-docker:
 	@docker info > /dev/null 2>&1 || (echo "\033[31m✗ Error: Docker is not running. Please start Docker and try again.\033[0m" && exit 1)
 	@echo "\033[32m✓ Docker is available\033[0m"
+
+# Build CLI binary with coverage instrumentation
+build-cli-coverage:
+	@echo "==============================================="
+	@echo "Building CLI Binary (with coverage)"
+	@echo "==============================================="
+	@$(MAKE) -C $(CLI_SRC_DIR) build-coverage
+	@echo "Coverage-instrumented CLI binary built successfully"

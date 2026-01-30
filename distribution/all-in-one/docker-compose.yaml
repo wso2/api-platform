@@ -70,6 +70,7 @@ services:
       - DATABASE_MAX_IDLE_CONNS=10
       - DATABASE_CONN_MAX_LIFETIME=300
       - DB_SCHEMA_PATH=./schema.postgres.sql
+      - DATABASE_EXECUTE_SCHEMA_DDL=true
     depends_on:
       postgres:
         condition: service_healthy
