@@ -1123,24 +1123,26 @@ func TestValidate_AnalyticsPublishers(t *testing.T) {
 // TestLoad_ValidConfigFile tests loading a valid configuration file
 func TestLoad_ValidConfigFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
+	configPath := filepath.Join(tmpDir, "config.toml")
 
 	configContent := `
-policy_engine:
-  server:
-    extproc_port: 9001
-  admin:
-    enabled: true
-    port: 9002
-    allowed_ips:
-      - "127.0.0.1"
-  config_mode:
-    mode: file
-  file_config:
-    path: "configs/policy-chains.yaml"
-  logging:
-    level: info
-    format: json
+[policy_engine.server]
+extproc_port = 9001
+
+[policy_engine.admin]
+enabled = true
+port = 9002
+allowed_ips = ["127.0.0.1"]
+
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "configs/policy-chains.yaml"
+
+[policy_engine.logging]
+level = "info"
+format = "json"
 `
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
 	require.NoError(t, err)
@@ -1194,24 +1196,26 @@ policy_engine:
 // TestLoad_InvalidConfig tests loading a file with invalid configuration
 func TestLoad_InvalidConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
+	configPath := filepath.Join(tmpDir, "config.toml")
 
 	invalidConfig := `
-policy_engine:
-  server:
-    extproc_port: 0  # Invalid port
-  admin:
-    enabled: true
-    port: 9002
-    allowed_ips:
-      - "127.0.0.1"
-  config_mode:
-    mode: file
-  file_config:
-    path: "configs/policy-chains.yaml"
-  logging:
-    level: info
-    format: json
+[policy_engine.server]
+extproc_port = 0
+
+[policy_engine.admin]
+enabled = true
+port = 9002
+allowed_ips = ["127.0.0.1"]
+
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "configs/policy-chains.yaml"
+
+[policy_engine.logging]
+level = "info"
+format = "json"
 `
 	err := os.WriteFile(configPath, []byte(invalidConfig), 0644)
 	require.NoError(t, err)
@@ -1225,26 +1229,29 @@ policy_engine:
 // TestLoad_RawConfigPopulated tests that RawConfig is populated after loading
 func TestLoad_RawConfigPopulated(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
+	configPath := filepath.Join(tmpDir, "config.toml")
 
 	configContent := `
-policy_engine:
-  server:
-    extproc_port: 9001
-  admin:
-    enabled: true
-    port: 9002
-    allowed_ips:
-      - "127.0.0.1"
-  config_mode:
-    mode: file
-  file_config:
-    path: "configs/policy-chains.yaml"
-  logging:
-    level: info
-    format: json
-policy_configurations:
-  custom_key: custom_value
+[policy_engine.server]
+extproc_port = 9001
+
+[policy_engine.admin]
+enabled = true
+port = 9002
+allowed_ips = ["127.0.0.1"]
+
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "configs/policy-chains.yaml"
+
+[policy_engine.logging]
+level = "info"
+format = "json"
+
+[policy_configurations]
+custom_key = "custom_value"
 `
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
 	require.NoError(t, err)

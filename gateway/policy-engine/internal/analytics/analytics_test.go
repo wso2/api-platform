@@ -205,7 +205,6 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, "OTHER", string(FaultCategoryOther))
 	assert.Equal(t, "default", DefaultAnalyticsPublisher)
 	assert.Equal(t, "moesif", MoesifAnalyticsPublisher)
-	assert.Equal(t, "elk", ELKAnalyticsPublisher)
 }
 
 func TestMetadataKeys(t *testing.T) {
