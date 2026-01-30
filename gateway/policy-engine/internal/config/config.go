@@ -283,11 +283,11 @@ func defaultConfig() *Config {
 				Port:    9003,
 			},
 			ConfigMode: ConfigModeConfig{
-				Mode: "file",
+				Mode: "xds",
 			},
 			XDS: XDSConfig{
-				Enabled:               false,
-				ServerAddress:         "localhost:18000",
+				Enabled:               true,
+				ServerAddress:         "gateway-controller:18001",
 				NodeID:                "policy-engine",
 				Cluster:               "policy-engine-cluster",
 				ConnectTimeout:        10 * time.Second,
@@ -299,7 +299,7 @@ func defaultConfig() *Config {
 				},
 			},
 			FileConfig: FileConfigConfig{
-				Path: "configs/policy-chains.yaml",
+				Path: "",
 			},
 			Logging: LoggingConfig{
 				Level:  "info",
