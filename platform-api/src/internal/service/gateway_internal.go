@@ -19,6 +19,7 @@ package service
 
 import (
 	"fmt"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -37,12 +38,13 @@ type GatewayInternalAPIService struct {
 	projectRepo     repository.ProjectRepository
 	upstreamService *UpstreamService
 	apiUtil         *utils.APIUtil
+	cfg             *config.Server
 }
 
 // NewGatewayInternalAPIService creates a new gateway internal API service
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository,
-	upstreamSvc *UpstreamService) *GatewayInternalAPIService {
+	upstreamSvc *UpstreamService, cfg *config.Server) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
 		apiRepo:         apiRepo,
 		gatewayRepo:     gatewayRepo,
@@ -50,6 +52,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, gatewayRepo 
 		projectRepo:     projectRepo,
 		upstreamService: upstreamSvc,
 		apiUtil:         &utils.APIUtil{},
+		cfg:             cfg,
 	}
 }
 
@@ -292,8 +295,9 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 		CreatedAt:      now,
 	}
 
-	// Use a hardLimit of 25 (20 + 5 buffer) - ideally this should come from config
-	err = s.apiRepo.CreateDeploymentWithLimitEnforcement(deployment, 25)
+	// Use same limit computation as DeploymentService: MaxPerAPIGateway + buffer
+	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
+	err = s.apiRepo.CreateDeploymentWithLimitEnforcement(deployment, hardLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create deployment record: %w", err)
 	}

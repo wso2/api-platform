@@ -176,7 +176,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	}
 
 	// Use CreateDeploymentWithLimitEnforcement - handles count, cleanup, insert, and status update atomically
-	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + 5
+	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
 	if err := s.apiRepo.CreateDeploymentWithLimitEnforcement(deployment, hardLimit); err != nil {
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}

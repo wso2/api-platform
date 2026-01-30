@@ -99,7 +99,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, devPortalRepo, publicationRepo,
 		backendServiceRepo, upstreamService, gatewayEventsService, devPortalService, apiUtil)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo, upstreamService)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo, upstreamService, cfg)
 	gitService := service.NewGitService()
 	deploymentService := service.NewDeploymentService(apiRepo, gatewayRepo, backendServiceRepo, orgRepo, gatewayEventsService, apiUtil, cfg)
 
