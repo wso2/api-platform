@@ -261,6 +261,7 @@ enabled = true
 
 [analytics.publishers.settings]
 application_id = "<MOESIF_APPLICATION_ID>"
+moesif_base_url = "https://api.moesif.net"
 publish_interval = 5
 event_queue_size = 10000
 batch_size = 50
