@@ -299,7 +299,7 @@ func defaultConfig() *Config {
 				},
 			},
 			FileConfig: FileConfigConfig{
-				Path: "configs/policy-chains.yaml",
+				Path: "",
 			},
 			Logging: LoggingConfig{
 				Level:  "info",

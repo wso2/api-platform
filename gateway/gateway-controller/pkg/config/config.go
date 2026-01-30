@@ -419,6 +419,11 @@ func defaultConfig() *Config {
 			PolicyServer: PolicyServerConfig{
 				Enabled: true,
 				Port:    18001,
+				TLS: PolicyServerTLS{
+					Enabled:  false,
+					CertFile: "./certs/server.crt",
+					KeyFile:  "./certs/server.key",
+				},
 			},
 			Policies: PoliciesConfig{
 				DefinitionsPath: "./default-policies",
@@ -472,8 +477,8 @@ func defaultConfig() *Config {
 				HTTPSEnabled: true,
 				HTTPSPort:    8443,
 				DownstreamTLS: DownstreamTLS{
-					CertPath:               "./listener-certs/server.crt",
-					KeyPath:                "./listener-certs/server.key",
+					CertPath:               "./listener-certs/default-listener.crt",
+					KeyPath:                "./listener-certs/default-listener.key",
 					MinimumProtocolVersion: "TLS1_2",
 					MaximumProtocolVersion: "TLS1_3",
 					Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
@@ -483,6 +488,9 @@ func defaultConfig() *Config {
 					TLS: upstreamTLS{
 						MinimumProtocolVersion: "TLS1_2",
 						MaximumProtocolVersion: "TLS1_3",
+						Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+						TrustedCertPath:        "/etc/ssl/certs/ca-certificates.crt",
+						CustomCertsPath:        "./certificates",
 						VerifyHostName:         true,
 						DisableSslVerification: false,
 					},
