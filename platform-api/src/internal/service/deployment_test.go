@@ -1502,6 +1502,7 @@ func TestGetDeployments_MixedStates(t *testing.T) {
 	testGatewayID := "gateway-789"
 	deployedStatus := model.DeploymentStatusDeployed
 	undeployedStatus := model.DeploymentStatusUndeployed
+	archivedStatus := model.DeploymentStatusArchived
 
 	mockAPIRepo := &mockDeploymentAPIRepository{
 		api: &model.API{ID: testAPIUUID, OrganizationID: testOrgUUID},
@@ -1527,7 +1528,7 @@ func TestGetDeployments_MixedStates(t *testing.T) {
 				Name:         "archived-version",
 				ApiID:        testAPIUUID,
 				GatewayID:    testGatewayID,
-				Status:       nil, // ARCHIVED
+				Status:       &archivedStatus, // ARCHIVED - repository sets this, not nil
 				CreatedAt:    time.Now().Add(-2 * time.Hour),
 			},
 		},
@@ -1535,6 +1536,7 @@ func TestGetDeployments_MixedStates(t *testing.T) {
 
 	service := &DeploymentService{
 		apiRepo: mockAPIRepo,
+		cfg:     &testConfig,
 	}
 
 	result, err := service.GetDeployments(testAPIUUID, testOrgUUID, nil, nil)
@@ -1576,6 +1578,7 @@ func TestGetDeployments_EmptyList(t *testing.T) {
 
 	service := &DeploymentService{
 		apiRepo: mockAPIRepo,
+		cfg:     &testConfig,
 	}
 
 	result, err := service.GetDeployments(testAPIUUID, testOrgUUID, nil, nil)
@@ -1733,14 +1736,16 @@ func TestGetDeployment_ArchivedDeployment(t *testing.T) {
 	testAPIUUID := "api-456"
 	testGatewayID := "gateway-789"
 	testDeploymentID := "archived-deploy"
+	archivedStatus := model.DeploymentStatusArchived
 
 	mockAPIRepo := &mockDeploymentAPIRepository{
+		api: &model.API{ID: testAPIUUID, OrganizationID: testOrgUUID},
 		deploymentWithState: &model.APIDeployment{
 			DeploymentID: testDeploymentID,
 			Name:         "archived-deployment",
 			ApiID:        testAPIUUID,
 			GatewayID:    testGatewayID,
-			Status:       nil, // ARCHIVED (no status row)
+			Status:       &archivedStatus, // ARCHIVED - repository sets this
 			CreatedAt:    time.Now().Add(-24 * time.Hour),
 		},
 	}
