@@ -44,6 +44,7 @@ type API struct {
 	CORS             *CORSConfig         `json:"cors,omitempty"`
 	BackendServices  []BackendService    `json:"backend-services,omitempty"`
 	APIRateLimiting  *RateLimitingConfig `json:"api-rate-limiting,omitempty"`
+	Policies         []Policy            `json:"policies,omitempty"`
 	Operations       []Operation         `json:"operations,omitempty"`
 	Channels         []Channel           `json:"channels,omitempty"`
 }

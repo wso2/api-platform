@@ -43,6 +43,7 @@ type API struct {
 	CORS             *CORSConfig         `json:"cors,omitempty" yaml:"cors,omitempty"`
 	BackendServices  []BackendService    `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	APIRateLimiting  *RateLimitingConfig `json:"api-rate-limiting,omitempty" yaml:"api-rate-limiting,omitempty"`
+	Policies         []Policy            `json:"policies,omitempty" yaml:"policies,omitempty"`
 	Operations       []Operation         `json:"operations,omitempty" yaml:"operations,omitempty"`
 	Channels         []Channel           `json:"channels,omitempty" yaml:"channels,omitempty"`
 }

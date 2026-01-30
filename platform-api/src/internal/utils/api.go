@@ -67,6 +67,7 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 		CORS:             u.CORSDTOToModel(dto.CORS),
 		BackendServices:  u.BackendServicesDTOToModel(dto.BackendServices),
 		APIRateLimiting:  u.RateLimitingDTOToModel(dto.APIRateLimiting),
+		Policies:         u.PoliciesDTOToModel(dto.Policies),
 		Operations:       u.OperationsDTOToModel(dto.Operations),
 		Channels:         u.ChannelsDTOToModel(dto.Channels),
 	}
@@ -101,6 +102,7 @@ func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 		CORS:             u.CORSModelToDTO(model.CORS),
 		BackendServices:  u.BackendServicesModelToDTO(model.BackendServices),
 		APIRateLimiting:  u.RateLimitingModelToDTO(model.APIRateLimiting),
+		Policies:         u.PoliciesModelToDTO(model.Policies),
 		Operations:       u.OperationsModelToDTO(model.Operations),
 		Channels:         u.ChannelsModelToDTO(model.Channels),
 	}
