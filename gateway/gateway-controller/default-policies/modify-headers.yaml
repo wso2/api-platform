@@ -1,5 +1,5 @@
 name: modify-headers
-version: v0.1.0
+version: v0.1.1
 description: |
   Comprehensive header manipulation policy for both request and response flows.
   Supports SET (replace), APPEND (add), and DELETE (remove) operations on headers.
