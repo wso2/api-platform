@@ -1597,6 +1597,8 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 			var metadata map[string]interface{}
 			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
 				deployment.Metadata = metadata
+			} else {
+				return nil, fmt.Errorf("failed to unmarshal deployment metadata: %w", err)
 			}
 		}
 
