@@ -143,6 +143,12 @@ CREATE TABLE IF NOT EXISTS api_keys (
     source TEXT NOT NULL DEFAULT 'local',  -- 'local' or 'external'
     external_ref_id TEXT NULL,  -- Cloud APIM key ID or other external reference
 
+    -- O(1) lookup optimization for external keys
+    index_key TEXT NULL,  -- Pre-computed SHA-256 hash for fast lookup
+
+    -- Human-readable display name for the API key
+    display_name TEXT NOT NULL DEFAULT '',
+
     -- Foreign key relationship to deployments
     FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
 
@@ -158,6 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
+CREATE INDEX IF NOT EXISTS idx_api_key_index_key ON api_keys(index_key);
 
--- Set schema version to 6
+-- Set schema version to 6 (api_keys with external ref, index_key, display_name)
 PRAGMA user_version = 6;

@@ -52,19 +52,16 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, r
 		return fmt.Errorf("failed to get API: %w", err)
 	}
 	if api == nil {
-		log.Printf("[WARN] API not found for API key creation: apiId=%s", apiId)
 		return constants.ErrAPINotFound
 	}
 
 	// Get all deployments for this API to find target gateways
 	deployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiId, orgId, nil, nil)
 	if err != nil {
-		log.Printf("[ERROR] Failed to get deployments for API key creation: apiId=%s error=%v", apiId, err)
-		return fmt.Errorf("failed to get API deployments: %w", err)
+		return fmt.Errorf("failed to get API deployments for API ID: %s: %w", apiId, err)
 	}
 
 	if len(deployments) == 0 {
-		log.Printf("[WARN] No gateway deployments found for API: apiId=%s", apiId)
 		return constants.ErrGatewayUnavailable
 	}
 
@@ -201,23 +198,19 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiId, orgId, keyName 
 	// Validate API exists and get its deployments
 	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
 	if err != nil {
-		log.Printf("[ERROR] Failed to get API for API key revocation: apiId=%s error=%v", apiId, err)
 		return fmt.Errorf("failed to get API: %w", err)
 	}
 	if api == nil {
-		log.Printf("[WARN] API not found for API key revocation: apiId=%s", apiId)
 		return constants.ErrAPINotFound
 	}
 
 	// Get all deployments for this API to find target gateways
 	deployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiId, orgId, nil, nil)
 	if err != nil {
-		log.Printf("[ERROR] Failed to get deployments for API key revocation: apiId=%s error=%v", apiId, err)
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
 
 	if len(deployments) == 0 {
-		log.Printf("[WARN] No gateway deployments found for API: apiId=%s", apiId)
 		return constants.ErrGatewayUnavailable
 	}
 
@@ -257,12 +250,12 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiId, orgId, keyName 
 	log.Printf("[INFO] API key revocation broadcast summary: apiId=%s keyName=%s total=%d success=%d failed=%d",
 		apiId, keyName, len(deployments), successCount, failureCount)
 
-	// Return error if all deliveries failed
-	if successCount == 0 {
-		log.Printf("[ERROR] Failed to deliver API key revocation to any gateway: apiId=%s keyName=%s", apiId, keyName)
-		return fmt.Errorf("failed to deliver API key revocation event to any gateway: %w", lastError)
+	if failureCount > 0 {
+		log.Printf("[ERROR] Failed to deliver API key revocation to all gateways: apiId=%s keyName=%s failed=%d total=%d",
+			apiId, keyName, failureCount, len(deployments))
+		return fmt.Errorf("failed to deliver API key revocation to %d of %d gateways: %w",
+			failureCount, len(deployments), lastError)
 	}
 
-	// Partial success is still considered success
 	return nil
 }

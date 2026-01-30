@@ -89,6 +89,9 @@ type APIKeyData struct {
 
 	// Source tracking for external key support ("local" | "external")
 	Source string `json:"source" yaml:"source"`
+
+	// IndexKey Pre-computed hash for O(1) lookup (external plain text keys only)
+	IndexKey string `json:"index_key" yaml:"index_key"`
 }
 
 // APIKeyOperationBatch represents a batch of API key operations

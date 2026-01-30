@@ -84,7 +84,7 @@ func (s *SQLiteStorage) initSchema() error {
 	}
 
 	if version == 0 {
-		s.logger.Info("Initializing database schema (version 1)")
+		s.logger.Info("Initializing database schema (version 6)")
 		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
@@ -272,10 +272,31 @@ func (s *SQLiteStorage) initSchema() error {
 			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);`); err != nil {
 				return fmt.Errorf("failed to create api_keys external_ref_id index: %w", err)
 			}
+			// Add index_key column for O(1) external API key lookup optimization
+			err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('api_keys') WHERE name = 'index_key'`).Scan(&columnExists)
+			if err == nil && columnExists == 0 {
+				if _, err := s.db.Exec(`ALTER TABLE api_keys ADD COLUMN index_key TEXT NULL`); err != nil {
+					return fmt.Errorf("failed to add index_key column to api_keys: %w", err)
+				}
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_index_key ON api_keys(index_key);`); err != nil {
+				return fmt.Errorf("failed to create api_keys index_key index: %w", err)
+			}
+			// Add display_name column for human-readable API key names
+			err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('api_keys') WHERE name = 'display_name'`).Scan(&columnExists)
+			if err == nil && columnExists == 0 {
+				if _, err := s.db.Exec(`ALTER TABLE api_keys ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`); err != nil {
+					return fmt.Errorf("failed to add display_name column to api_keys: %w", err)
+				}
+				// Backfill existing rows: set display_name = name for existing API keys
+				if _, err := s.db.Exec(`UPDATE api_keys SET display_name = name WHERE display_name = ''`); err != nil {
+					s.logger.Warn("Failed to backfill api_keys.display_name", slog.Any("error", err))
+				}
+			}
 			if _, err := s.db.Exec("PRAGMA user_version = 6"); err != nil {
 				return fmt.Errorf("failed to set schema version to 6: %w", err)
 			}
-			s.logger.Info("Schema migrated to version 6 (external API key support)")
+			s.logger.Info("Schema migrated to version 6 (api_keys: external ref, index_key, display_name)")
 			version = 6
 		}
 
@@ -1168,6 +1189,7 @@ func (s *SQLiteStorage) DeleteCertificate(id string) error {
 // SaveAPIKey persists a new API key to the database or updates existing one
 // if an API key with the same apiId and name already exists
 func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
+
 	// Begin transaction to ensure atomicity
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1181,6 +1203,22 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 			panic(p) // Re-throw panic after rollback
 		}
 	}()
+
+	// Before inserting, check for duplicates if this is an external key                                
+	if apiKey.Source == "external" && apiKey.IndexKey != nil {   
+		var count int                                                                                 
+		checkQuery := `SELECT COUNT(*) FROM api_keys                                                  
+						WHERE apiId = ? AND index_key = ? AND source = 'external'`                     
+		err := tx.QueryRow(checkQuery, apiKey.APIId, apiKey.IndexKey).Scan(&count)                    
+		if err != nil {                                                                               
+				tx.Rollback()                                                                         
+				return fmt.Errorf("failed to check for duplicate API key: %w", err)                   
+		}                                                                                             
+		if count > 0 {                                                                                
+				tx.Rollback()                                                                         
+				return fmt.Errorf("%w: API key value already exists for this API", ErrConflict)       
+		}  
+	}
 
 	// First, check if an API key with the same apiId and name exists
 	checkQuery := `SELECT id FROM api_keys WHERE apiId = ? AND name = ?`
@@ -1196,15 +1234,16 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		// No existing record, insert new API key
 		insertQuery := `
 			INSERT INTO api_keys (
-				id, name, api_key, masked_api_key, apiId, operations, status,
+				id, name, display_name, api_key, masked_api_key, apiId, operations, status,
 				created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
-				source, external_ref_id
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				source, external_ref_id, index_key
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 
 		_, err := tx.Exec(insertQuery,
 			apiKey.ID,
 			apiKey.Name,
+			apiKey.DisplayName,
 			apiKey.APIKey,
 			apiKey.MaskedAPIKey,
 			apiKey.APIId,
@@ -1218,6 +1257,7 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 			apiKey.Duration,
 			apiKey.Source,
 			apiKey.ExternalRefId,
+			apiKey.IndexKey,
 		)
 
 		if err != nil {
@@ -1235,44 +1275,13 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 			slog.String("apiId", apiKey.APIId),
 			slog.String("created_by", apiKey.CreatedBy))
 	} else {
-		// Existing record found, update it with new API key data
-		updateQuery := `
-			UPDATE api_keys
-			SET api_key = ?, masked_api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?,
-			    source = ?, external_ref_id = ?
-			WHERE apiId = ? AND name = ?
-		`
-
-		_, err := tx.Exec(updateQuery,
-			apiKey.APIKey,
-			apiKey.MaskedAPIKey,
-			apiKey.Operations,
-			apiKey.Status,
-			apiKey.CreatedBy,
-			apiKey.UpdatedAt,
-			apiKey.ExpiresAt,
-			apiKey.Unit,
-			apiKey.Duration,
-			apiKey.Source,
-			apiKey.ExternalRefId,
-			apiKey.APIId,
-			apiKey.Name,
-		)
-
-		if err != nil {
-			tx.Rollback()
-			// Check for unique constraint violation on api_key field
-			if isAPIKeyUniqueConstraintError(err) {
-				return fmt.Errorf("%w: API key value already exists", ErrConflict)
-			}
-			return fmt.Errorf("failed to update API key: %w", err)
-		}
-
-		s.logger.Info("API key updated successfully",
-			slog.String("existing_id", existingID),
+		// Existing record found, return conflict error that API Key name already exists
+		tx.Rollback()
+		s.logger.Error("API key name already exists for the API",
 			slog.String("name", apiKey.Name),
 			slog.String("apiId", apiKey.APIId),
-			slog.String("created_by", apiKey.CreatedBy))
+			slog.Any("error", ErrConflict))
+		return fmt.Errorf("%w: API key name already exists for the API: %s", ErrConflict, apiKey.Name)
 	}
 
 	// Commit the transaction
@@ -1286,8 +1295,8 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 // GetAPIKeyByID retrieves an API key by its ID
 func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT id, name, display_name, api_key, masked_api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id, index_key
 		FROM api_keys
 		WHERE id = ?
 	`
@@ -1295,10 +1304,12 @@ func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
+	var indexKey sql.NullString
 
 	err := s.db.QueryRow(query, id).Scan(
 		&apiKey.ID,
 		&apiKey.Name,
+		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
@@ -1310,6 +1321,7 @@ func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		&expiresAt,
 		&apiKey.Source,
 		&externalRefId,
+		&indexKey,
 	)
 
 	if err != nil {
@@ -1325,6 +1337,9 @@ func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	}
 	if externalRefId.Valid {
 		apiKey.ExternalRefId = &externalRefId.String
+	}
+	if indexKey.Valid {
+		apiKey.IndexKey = &indexKey.String
 	}
 
 	return &apiKey, nil
@@ -1333,8 +1348,8 @@ func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 // GetAPIKeyByKey retrieves an API key by its key value
 func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT id, name, display_name, api_key, masked_api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id, index_key
 		FROM api_keys
 		WHERE api_key = ?
 	`
@@ -1342,10 +1357,12 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
+	var indexKey sql.NullString
 
 	err := s.db.QueryRow(query, key).Scan(
 		&apiKey.ID,
 		&apiKey.Name,
+		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
@@ -1357,6 +1374,7 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 		&expiresAt,
 		&apiKey.Source,
 		&externalRefId,
+		&indexKey,
 	)
 
 	if err != nil {
@@ -1373,6 +1391,9 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	if externalRefId.Valid {
 		apiKey.ExternalRefId = &externalRefId.String
 	}
+	if indexKey.Valid {
+		apiKey.IndexKey = &indexKey.String
+	}
 
 	return &apiKey, nil
 }
@@ -1380,8 +1401,8 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 // GetAPIKeysByAPI retrieves all API keys for a specific API
 func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT id, name, display_name, api_key, masked_api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id, index_key
 		FROM api_keys
 		WHERE apiId = ?
 		ORDER BY created_at DESC
@@ -1399,10 +1420,12 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 		var apiKey models.APIKey
 		var expiresAt sql.NullTime
 		var externalRefId sql.NullString
+		var indexKey sql.NullString
 
 		err := rows.Scan(
 			&apiKey.ID,
 			&apiKey.Name,
+			&apiKey.DisplayName,
 			&apiKey.APIKey,
 			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,
@@ -1414,6 +1437,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 			&expiresAt,
 			&apiKey.Source,
 			&externalRefId,
+			&indexKey,
 		)
 
 		if err != nil {
@@ -1426,6 +1450,9 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 		}
 		if externalRefId.Valid {
 			apiKey.ExternalRefId = &externalRefId.String
+		}
+		if indexKey.Valid {
+			apiKey.IndexKey = &indexKey.String
 		}
 
 		apiKeys = append(apiKeys, &apiKey)
@@ -1441,8 +1468,8 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) 
 // GetAPIKeysByAPIAndName retrieves an API key by its apiId and name
 func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT id, name, display_name, api_key, masked_api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id, index_key
 		FROM api_keys
 		WHERE apiId = ? AND name = ?
 		LIMIT 1
@@ -1451,10 +1478,12 @@ func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIK
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
+	var indexKey sql.NullString
 
 	err := s.db.QueryRow(query, apiId, name).Scan(
 		&apiKey.ID,
 		&apiKey.Name,
+		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
@@ -1466,6 +1495,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIK
 		&expiresAt,
 		&apiKey.Source,
 		&externalRefId,
+		&indexKey,
 	)
 
 	if err != nil {
@@ -1482,41 +1512,93 @@ func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIK
 	if externalRefId.Valid {
 		apiKey.ExternalRefId = &externalRefId.String
 	}
+	if indexKey.Valid {
+		apiKey.IndexKey = &indexKey.String
+	}
 
 	return &apiKey, nil
 }
 
 // UpdateAPIKey updates an existing API key
 func (s *SQLiteStorage) UpdateAPIKey(apiKey *models.APIKey) error {
-	query := `
-		UPDATE api_keys
-		SET status = ?, updated_at = ?, expires_at = ?
-		WHERE api_key = ?
-	`
 
-	result, err := s.db.Exec(query,
+	// Begin transaction to ensure atomicity
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Ensure transaction is properly handled
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p) // Re-throw panic after rollback
+		}
+	}()
+
+	if apiKey.Source == "external" && apiKey.IndexKey != nil {
+		// Check for duplicate API key value within the same API (same value, different name)
+		duplicateCheckQuery := `
+			SELECT id, name FROM api_keys
+			WHERE apiId = ? AND index_key = ? AND name != ?
+			LIMIT 1
+		`
+		var duplicateID, duplicateName string
+		err := s.db.QueryRow(duplicateCheckQuery, apiKey.APIId, apiKey.IndexKey, apiKey.Name).Scan(&duplicateID, &duplicateName)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			tx.Rollback()
+			return fmt.Errorf("failed to check for duplicate API key: %w", err)
+		}
+		if err == nil {
+			// Row found: same key value already exists for this API under a different name
+			tx.Rollback()
+			return fmt.Errorf("%w: API key value already exists for this API", ErrConflict)
+		}
+	}
+
+	updateQuery := `
+			UPDATE api_keys
+			SET api_key = ?, masked_api_key = ?, display_name = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?,
+			    source = ?, external_ref_id = ?, index_key = ?
+			WHERE apiId = ? AND name = ?
+		`
+
+	_, err = tx.Exec(updateQuery,
+		apiKey.APIKey,
+		apiKey.MaskedAPIKey,
+		apiKey.DisplayName,
+		apiKey.Operations,
 		apiKey.Status,
+		apiKey.CreatedBy,
 		apiKey.UpdatedAt,
 		apiKey.ExpiresAt,
-		apiKey.APIKey,
+		apiKey.Unit,
+		apiKey.Duration,
+		apiKey.Source,
+		apiKey.ExternalRefId,
+		apiKey.IndexKey,
+		apiKey.APIId,
+		apiKey.Name,
 	)
 
 	if err != nil {
+		tx.Rollback()
+		// Check for unique constraint violation on api_key field
+		if isAPIKeyUniqueConstraintError(err) {
+			return fmt.Errorf("%w: API key value already exists", ErrConflict)
+		}
 		return fmt.Errorf("failed to update API key: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rows == 0 {
-		return fmt.Errorf("%w: API key not found", ErrNotFound)
-	}
-
 	s.logger.Info("API key updated successfully",
-		slog.String("id", apiKey.ID),
-		slog.String("status", string(apiKey.Status)))
+		slog.String("name", apiKey.Name),
+		slog.String("apiId", apiKey.APIId),
+		slog.String("created_by", apiKey.CreatedBy))
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
 
 	return nil
 }
@@ -1703,14 +1785,15 @@ func isCertificateUniqueConstraintError(err error) bool {
 func isAPIKeyUniqueConstraintError(err error) bool {
 	return err != nil &&
 		(err.Error() == "UNIQUE constraint failed: api_keys.api_key" ||
-			err.Error() == "UNIQUE constraint failed: api_keys.id")
+			err.Error() == "UNIQUE constraint failed: api_keys.id" ||
+			err.Error() == "UNIQUE constraint failed: index 'idx_unique_external_api_key'")
 }
 
 // GetAllAPIKeys retrieves all API keys from the database
 func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, api_key, masked_api_key, apiId, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT id, name, display_name, api_key, masked_api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id, index_key
 		FROM api_keys
 		WHERE status = 'active'
 		ORDER BY created_at DESC
@@ -1728,10 +1811,12 @@ func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 		var apiKey models.APIKey
 		var expiresAt sql.NullTime
 		var externalRefId sql.NullString
+		var indexKey sql.NullString
 
 		err := rows.Scan(
 			&apiKey.ID,
 			&apiKey.Name,
+			&apiKey.DisplayName,
 			&apiKey.APIKey,
 			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,
@@ -1743,6 +1828,7 @@ func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 			&expiresAt,
 			&apiKey.Source,
 			&externalRefId,
+			&indexKey,
 		)
 
 		if err != nil {
@@ -1755,6 +1841,9 @@ func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 		}
 		if externalRefId.Valid {
 			apiKey.ExternalRefId = &externalRefId.String
+		}
+		if indexKey.Valid {
+			apiKey.IndexKey = &indexKey.String
 		}
 
 		apiKeys = append(apiKeys, &apiKey)
@@ -1795,7 +1884,7 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 func (s *SQLiteStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
 	query := `
 		SELECT COUNT(*)
-		FROM api_keys 
+		FROM api_keys
 		WHERE apiId = ? AND created_by = ? AND status = ?
 	`
 
@@ -1807,4 +1896,3 @@ func (s *SQLiteStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (in
 
 	return count, nil
 }
-

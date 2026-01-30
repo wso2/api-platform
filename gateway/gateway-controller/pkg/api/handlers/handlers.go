@@ -2386,8 +2386,8 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 
 	// Parse and validate request body
 	var request api.APIKeyCreationRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Warn("Invalid request body for API key creation",
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Error("Failed to parse request body for API key creation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
@@ -2412,6 +2412,11 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -2503,22 +2508,31 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		return // Error response already sent by extractAuthenticatedUser
 	}
 
-	log.Debug("Starting API key rotation",
+	log.Debug("Starting API key update",
 		slog.String("handle", handle),
-		slog.String("key name", apiKeyName),
+		slog.String("key_name", apiKeyName),
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", correlationID))
 
 	// Parse and validate request body
-	var request api.APIKeyRegenerationRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Warn("Invalid request body for API key rotation",
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Warn("Invalid request body for API key update",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	// If API key is not provided, return an error
+	if request.ApiKey == nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "API key value is required",
 		})
 		return
 	}
@@ -2541,6 +2555,11 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 				Status:  "error",
 				Message: err.Error(),
 			})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
 		} else {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
@@ -2550,13 +2569,12 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		return
 	}
 
-	log.Info("API key rotation completed",
+	log.Info("API key updated successfully",
 		slog.String("handle", handle),
 		slog.String("key_name", apiKeyName),
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", correlationID))
 
-	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
 }
 
@@ -2582,7 +2600,7 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 
 	// Parse and validate request body
 	var request api.APIKeyRegenerationRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := s.bindRequestBody(c, &request); err != nil {
 		log.Warn("Invalid request body for API key rotation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
@@ -2623,11 +2641,10 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 
 	log.Info("API key rotation completed",
 		slog.String("handle", handle),
-		slog.String("key name", apiKeyName),
+		slog.String("key_name", apiKeyName),
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", correlationID))
 
-	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
 }
 
@@ -2722,6 +2739,29 @@ func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName strin
 		slog.String("correlation_id", correlationID))
 
 	return &user, true
+}
+
+// bindRequestBody binds the request body based on Content-Type header.
+// Supports both JSON and YAML content types.
+// Handles Content-Type headers case-insensitively and strips parameters (e.g., charset).
+func (s *APIServer) bindRequestBody(c *gin.Context, request interface{}) error {
+	contentType := c.GetHeader("Content-Type")
+
+	// Normalize the Content-Type: trim whitespace, split off parameters, and convert to lowercase
+	contentType = strings.TrimSpace(contentType)
+	if idx := strings.Index(contentType, ";"); idx != -1 {
+		contentType = contentType[:idx]
+	}
+	contentType = strings.TrimSpace(contentType)
+	contentType = strings.ToLower(contentType)
+
+	// Check for YAML content types (case-insensitive, normalized)
+	if contentType == "application/yaml" || contentType == "text/yaml" {
+		return c.ShouldBindYAML(request)
+	}
+
+	// Default to JSON for application/json or when no content type is specified
+	return c.ShouldBindJSON(request)
 }
 
 // getLLMProviderTemplate extracts the template name from sourceConfig and retrieves the template.

@@ -30,10 +30,11 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
+	// TODO: Migrate to common/apikey for better architecture
+	// Currently using policy/v1alpha store to ensure validation and xDS use the same instance
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
@@ -57,7 +58,9 @@ type ResourceHandler struct {
 
 // NewResourceHandler creates a new ResourceHandler
 func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *ResourceHandler {
-	apiKeyStore := apikey.GetAPIkeyStoreInstance()
+	// TODO: Migrate to common/apikey.GetAPIkeyStoreInstance() for better architecture
+	// Currently using policy/v1alpha store to ensure validation and xDS use the same singleton instance
+	apiKeyStore := policy.GetAPIkeyStoreInstance()
 	lazyResourceStore := policy.GetLazyResourceStoreInstance()
 	return &ResourceHandler{
 		kernel:              k,

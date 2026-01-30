@@ -44,7 +44,7 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 }
 
 // CreateAPIKey handles POST /api/v1/apis/{apiId}/api-keys
-// This endpoint allows Cloud APIM to inject external API keys to hybrid gateways
+// This endpoint allows users to inject external API keys to all the gateways where the API is deployed
 func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	// Extract organization from JWT token
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -65,23 +65,21 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	// Parse and validate request body
 	var req dto.CreateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("[WARN] Invalid API key creation request: orgId=%s apiId=%s error=%v",
-			orgId, apiID, err)
+		utils.LogError("Invalid API key creation request", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
-		return
-	}
-
-	// Validate request fields
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API key name is required"))
+			"Invalid request body"))
 		return
 	}
 
 	if req.ApiKey == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API key value is required"))
+		return
+	}
+
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API key name is required"))
 		return
 	}
 
@@ -237,7 +235,7 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		log.Printf("[ERROR] Failed to revoke API key: apiId=%s orgId=%s keyName=%s error=%v",
 			apiID, orgId, keyName, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to revoke API key"))
+			"Failed to revoke API key in one or more gateways"))
 		return
 	}
 

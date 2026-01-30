@@ -36,6 +36,11 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /workspace
 
+# Copy Common mod files first to cache dependencies
+COPY --from=common go.mod go.sum /api-platform/common/
+WORKDIR /api-platform/common
+RUN go mod download
+
 # Copy SDK mod files first to cache dependencies
 COPY --from=sdk go.mod go.sum /api-platform/sdk/
 WORKDIR /api-platform/sdk
@@ -46,15 +51,10 @@ COPY --from=gateway-builder go.mod go.sum /api-platform/gateway/gateway-builder/
 WORKDIR /api-platform/gateway/gateway-builder
 RUN go mod download
 
-# Copy Common mod files first to cache dependencies
-COPY --from=common go.mod go.sum /api-platform/common/
-WORKDIR /api-platform/common
-RUN go mod download
-
 # Copy full SDK and Gateway Builder and Common source code
+COPY --from=common . /api-platform/common
 COPY --from=sdk . /api-platform/sdk
 COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
-COPY --from=common . /api-platform/common
 
 # Build the Gateway Builder binary (CGO disabled for static binary)
 WORKDIR /api-platform/gateway/gateway-builder
@@ -77,19 +77,17 @@ ENV VERSION=${VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV BUILD_DATE=${BUILD_DATE}
 
-# Copy Common mod files first to cache dependencies
+# Copy Policy Engine mod files and SDK and Common mod files for dependency resolution
 COPY --from=common go.mod go.sum /api-platform/common/
-WORKDIR /api-platform/common
-RUN go mod download
-
-# Copy Policy Engine mod files and SDK mod files for dependency resolution
 COPY --from=sdk go.mod go.sum /api-platform/sdk/
 COPY go.mod go.sum /api-platform/gateway/policy-engine/
 WORKDIR /api-platform/gateway/policy-engine
 RUN go mod download
 
-# Copy full Policy Engine and SDK source code
+
+# Copy full Policy Engine and SDK and Common source code
 COPY . /api-platform/gateway/policy-engine
+COPY --from=common . /api-platform/common
 COPY --from=sdk . /api-platform/sdk
 
 # Copy policy implementations
@@ -97,9 +95,6 @@ COPY --from=policies . /workspace/policies/
 
 # Copy system policy implementations
 COPY --from=system-policies . /workspace/policies/
-
-# Copy Common mod files first to cache dependencies
-COPY --from=common . /api-platform/common
 
 # Create output directory
 RUN mkdir -p /workspace/output

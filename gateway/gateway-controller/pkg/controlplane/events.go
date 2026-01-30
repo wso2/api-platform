@@ -43,15 +43,18 @@ type APIDeployedEvent struct {
 	CorrelationID string                  `json:"correlationId"`
 }
 
-// APIKeyCreatedEventPayload represents the payload of an API key created event
+// APIKeyCreatedEventPayload represents the payload of an API key created event.
 type APIKeyCreatedEventPayload struct {
 	ApiId         string  `json:"apiId"`
-	KeyName       string  `json:"keyName"`
 	ApiKey        string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 	Operations    string  `json:"operations"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
-	// TODO: Support expires in field
+	ExpiresIn     *struct {
+		Duration int    `json:"duration,omitempty"`
+		Unit     string `json:"unit,omitempty"`
+	} `json:"expiresIn,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
 }
 
 // APIKeyCreatedEvent represents the complete API key created event
@@ -60,6 +63,30 @@ type APIKeyCreatedEvent struct {
 	Payload       APIKeyCreatedEventPayload `json:"payload"`
 	Timestamp     string                    `json:"timestamp"`
 	CorrelationID string                    `json:"correlationId"`
+	UserId        string                    `json:"userId"`
+}
+
+type APIKeyUpdatedEventPayload struct {
+	ApiId         string  `json:"apiId"`
+	KeyName       string  `json:"keyName"`
+	ApiKey        string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
+	ExternalRefId string `json:"externalRefId"`
+	Operations    string  `json:"operations"`
+	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
+	ExpiresIn     *struct {
+		Duration int    `json:"duration,omitempty"`
+		Unit     string `json:"unit,omitempty"`
+	} `json:"expiresIn,omitempty"`
+	DisplayName string `json:"displayName"`
+}
+
+// APIKeyUpdatedEvent represents the complete API key updated event
+type APIKeyUpdatedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       APIKeyUpdatedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
+	UserId        string                    `json:"userId"`
 }
 
 // APIKeyRevokedEventPayload represents the payload of an API key revoked event
@@ -74,20 +101,5 @@ type APIKeyRevokedEvent struct {
 	Payload       APIKeyRevokedEventPayload `json:"payload"`
 	Timestamp     string                    `json:"timestamp"`
 	CorrelationID string                    `json:"correlationId"`
-}
-
-// APIKeyUpdatedEventPayload represents the payload of an API key updated event
-type APIKeyUpdatedEventPayload struct {
-	ApiId     string  `json:"apiId"`
-	KeyName   string  `json:"keyName"`
-	ApiKey    string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
-	ExpiresAt *string `json:"expiresAt,omitempty"` // ISO 8601 format
-}
-
-// APIKeyUpdatedEvent represents the complete API key updated event
-type APIKeyUpdatedEvent struct {
-	Type          string                    `json:"type"`
-	Payload       APIKeyUpdatedEventPayload `json:"payload"`
-	Timestamp     string                    `json:"timestamp"`
-	CorrelationID string                    `json:"correlationId"`
+	UserId        string                    `json:"userId"`
 }

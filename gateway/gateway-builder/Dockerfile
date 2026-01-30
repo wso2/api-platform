@@ -34,11 +34,15 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /workspace
 
-# Copy SDK (needed for go.mod replace directive)
-COPY --from=sdk . /workspace/sdk
-
 # Copy common (needed for go.mod replace directive)
 COPY --from=common . /workspace/common
+
+# Pre-download Go dependencies for common
+WORKDIR /workspace/common
+RUN go mod download
+
+# Copy SDK (needed for go.mod replace directive)
+COPY --from=sdk . /workspace/sdk
 
 # Pre-download Go dependencies for SDK
 WORKDIR /workspace/sdk
@@ -79,6 +83,7 @@ COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builde
 # Copy Policy Engine framework source code
 COPY --from=policy-engine . /api-platform/gateway/policy-engine
 COPY --from=system-policies . /api-platform/gateway/system-policies
+COPY --from=common . /api-platform/common
 COPY --from=sdk . /api-platform/sdk
 
 # Set working directory

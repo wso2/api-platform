@@ -8,7 +8,6 @@ require (
 	github.com/milvus-io/milvus/client/v2 v2.6.1
 	github.com/milvus-io/milvus/pkg/v2 v2.6.7
 	github.com/redis/go-redis/v9 v9.8.0
-	github.com/wso2/api-platform/common v0.0.0
 	golang.org/x/crypto v0.46.0
 )
 
@@ -126,5 +125,3 @@ require (
 	k8s.io/apimachinery v0.32.3 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
-
-replace github.com/wso2/api-platform/common => ../common
