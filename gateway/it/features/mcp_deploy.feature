@@ -96,6 +96,60 @@ Feature: Test MCP CRUD and connectivity
         And the JSON response field "status" should be "success"
         And the JSON response field "count" should be 0
 
+    # ==================== MCP PROXY ERROR CASES ====================
+    
+    Scenario: List MCP proxies when none exist
+        Given I authenticate using basic auth as "admin"
+        When I list all MCP proxies
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And the JSON response field "count" should be 0
+
+    Scenario: List MCP proxies with pagination parameters
+        Given I authenticate using basic auth as "admin"
+        When I send a GET request to the "gateway-controller" service at "/mcp-proxies?limit=10&offset=0"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+
+    Scenario: Get non-existent MCP proxy returns 404
+        Given I authenticate using basic auth as "admin"
+        When I send a GET request to the "gateway-controller" service at "/mcp-proxies/non-existent-mcp-id"
+        Then the response status should be 404
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+
+    Scenario: Get MCP proxy with invalid ID format returns 404
+        Given I authenticate using basic auth as "admin"
+        When I send a GET request to the "gateway-controller" service at "/mcp-proxies/invalid@mcp#id"
+        Then the response status should be 404
+        And the response should be valid JSON
+
+    Scenario: Delete non-existent MCP proxy returns 404
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "non-existent-mcp-delete"
+        Then the response status should be 404
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+
+    Scenario: Update non-existent MCP proxy returns 404
+        Given I authenticate using basic auth as "admin"
+        When I update the MCP proxy "non-existent-mcp-update" with:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: non-existent-mcp-update
+            spec:
+              version: v1.0
+              context: /test
+              upstream:
+                url: http://test:3001
+            """
+        Then the response status should be 404
+        And the response should be valid JSON
+
     Scenario: Deploy an MCP Proxy with labels and verify they are stored
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:

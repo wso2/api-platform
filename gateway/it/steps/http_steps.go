@@ -78,6 +78,8 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	// Service-specific shortcuts
 	ctx.Step(`^I send a GET request to the "([^"]*)" service at "([^"]*)"$`, h.iSendGETToService)
 	ctx.Step(`^I send a POST request to the "([^"]*)" service at "([^"]*)" with body:$`, h.iSendPOSTToServiceWithBody)
+	ctx.Step(`^I send a DELETE request to the "([^"]*)" service at "([^"]*)"$`, h.iSendDELETEToService)
+	ctx.Step(`^I send a PUT request to the "([^"]*)" service at "([^"]*)" with body:$`, h.iSendPUTToServiceWithBody)
 
 	// Utility steps
 	ctx.Step(`^I wait for (\d+) seconds$`, h.iWaitForSeconds)
@@ -229,6 +231,26 @@ func (h *HTTPSteps) iSendPOSTToServiceWithBody(serviceName, path string, body *g
 	}
 	url := baseURL + path
 	return h.sendRequest(http.MethodPost, url, []byte(body.Content))
+}
+
+// iSendDELETEToService sends a DELETE request to a named service
+func (h *HTTPSteps) iSendDELETEToService(serviceName, path string) error {
+	baseURL, ok := h.baseURLs[serviceName]
+	if !ok {
+		return fmt.Errorf("unknown service: %s", serviceName)
+	}
+	url := baseURL + path
+	return h.sendRequest(http.MethodDelete, url, nil)
+}
+
+// iSendPUTToServiceWithBody sends a PUT request to a named service with body
+func (h *HTTPSteps) iSendPUTToServiceWithBody(serviceName, path string, body *godog.DocString) error {
+	baseURL, ok := h.baseURLs[serviceName]
+	if !ok {
+		return fmt.Errorf("unknown service: %s", serviceName)
+	}
+	url := baseURL + path
+	return h.sendRequest(http.MethodPut, url, []byte(body.Content))
 }
 
 // iWaitForSeconds waits for the specified number of seconds

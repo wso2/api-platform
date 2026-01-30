@@ -179,6 +179,26 @@ Feature: LLM Provider Management
     When I delete the LLM provider "provider-2"
     Then the response status code should be 200
 
+  Scenario: List all LLM providers when none exist
+    Given I authenticate using basic auth as "admin"
+    When I send a GET request to the "gateway-controller" service at "/llm-providers"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+
+  Scenario: List LLM providers with pagination parameters
+    Given I authenticate using basic auth as "admin"
+    When I send a GET request to the "gateway-controller" service at "/llm-providers?limit=10&offset=0"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+
+  Scenario: Get LLM provider with invalid ID format returns 404
+    Given I authenticate using basic auth as "admin"
+    When I send a GET request to the "gateway-controller" service at "/llm-providers/invalid@provider#id"
+    Then the response status should be 404
+    And the response should be valid JSON
+
   Scenario: Filter LLM providers by displayName
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:

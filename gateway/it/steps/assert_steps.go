@@ -51,6 +51,7 @@ func NewAssertSteps(provider ResponseProvider) *AssertSteps {
 func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 	// Status code assertions
 	ctx.Step(`^the response status code should be (\d+)$`, a.statusCodeShouldBe)
+	ctx.Step(`^the response status should be (\d+)$`, a.statusCodeShouldBe) // Alias
 	ctx.Step(`^the response status should be "([^"]*)"$`, a.statusShouldBe)
 	ctx.Step(`^the response should be successful$`, a.responseShouldBeSuccessful)
 	ctx.Step(`^the response should be a client error$`, a.responseShouldBeClientError)
@@ -82,6 +83,9 @@ func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 
 	// Echoed header assertions (for sample-backend /echo endpoint)
 	ctx.Step(`^the response should contain echoed header "([^"]*)" with value "([^"]*)"$`, a.echoedHeaderShouldBe)
+
+	// Debug helper
+	ctx.Step(`^I print the response body$`, a.printResponseBody)
 	ctx.Step(`^the response should contain echoed header "([^"]*)" with both values "([^"]*)" and "([^"]*)"$`, a.echoedHeaderShouldHaveBothValues)
 	ctx.Step(`^the response should not contain echoed header "([^"]*)"$`, a.echoedHeaderShouldNotExist)
 	ctx.Step(`^the response should contain echoed header "([^"]*)" containing "([^"]*)"$`, a.echoedHeaderShouldContain)
@@ -643,5 +647,15 @@ func (a *AssertSteps) headerShouldHaveBothValues(headerName, value1, value2 stri
 		return fmt.Errorf("expected header %q to contain value %q, got %v", headerName, value2, values)
 	}
 
+	return nil
+}
+
+// printResponseBody prints the response body for debugging
+func (a *AssertSteps) printResponseBody() error {
+	body := string(a.provider.LastBody())
+	fmt.Printf("\n═══════════════════════════════════════════════════════════════\n")
+	fmt.Printf("DEBUG: Response Status: %d\n", a.provider.LastResponse().StatusCode)
+	fmt.Printf("DEBUG: Response Body:\n%s\n", body)
+	fmt.Printf("═══════════════════════════════════════════════════════════════\n\n")
 	return nil
 }
