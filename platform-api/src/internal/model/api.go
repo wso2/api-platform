@@ -266,16 +266,23 @@ type Policy struct {
 }
 
 // APIDeployment represents an immutable API deployment artifact
+// Status and UpdatedAt are populated from api_deployment_status table via JOIN
+// If Status is nil, the deployment is ARCHIVED (not currently active or undeployed)
 type APIDeployment struct {
 	DeploymentID     string                 `json:"deploymentId" db:"deployment_id"`
+	Name             string                 `json:"name" db:"name"`
 	ApiID            string                 `json:"apiId" db:"api_uuid"`
 	OrganizationID   string                 `json:"organizationId" db:"organization_uuid"`
 	GatewayID        string                 `json:"gatewayId" db:"gateway_uuid"`
-	Status           DeploymentStatus       `json:"status" db:"status"`
 	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" db:"base_deployment_id"`
 	Content          []byte                 `json:"-" db:"content"`
 	Metadata         map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
 	CreatedAt        time.Time              `json:"createdAt" db:"created_at"`
+	
+	// Lifecycle state fields (from api_deployment_status table via JOIN)
+	// nil values indicate ARCHIVED state (no record in status table)
+	Status    *DeploymentStatus `json:"status,omitempty" db:"status"`
+	UpdatedAt *time.Time        `json:"updatedAt,omitempty" db:"status_updated_at"`
 }
 
 // TableName returns the table name for the APIDeployment model
@@ -300,9 +307,11 @@ func (APIAssociation) TableName() string {
 }
 
 // DeploymentStatus represents the status of an API deployment
+// Note: ARCHIVED is a derived state (not stored in database)
 type DeploymentStatus string
 
 const (
 	DeploymentStatusDeployed   DeploymentStatus = "DEPLOYED"
 	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
+	DeploymentStatusArchived   DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )

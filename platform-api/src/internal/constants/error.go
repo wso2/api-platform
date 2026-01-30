@@ -65,12 +65,17 @@ var (
 )
 
 var (
-	ErrDeploymentNotFound      = errors.New("deployment not found")
-	ErrDeploymentNotActive     = errors.New("no active deployment found for this API on the gateway")
-	ErrDeploymentIsDeployed    = errors.New("cannot delete an active deployment - undeploy it first")
-	ErrDeploymentAlreadyActive = errors.New("deployment is already active")
-	ErrBaseDeploymentNotFound  = errors.New("base deployment not found")
-	ErrInvalidDeploymentStatus = errors.New("invalid deployment status")
+	ErrDeploymentNotFound              = errors.New("deployment not found")
+	ErrDeploymentNotActive             = errors.New("no active deployment found for this API on the gateway")
+	ErrDeploymentIsDeployed            = errors.New("cannot delete an active deployment - undeploy it first")
+	ErrDeploymentAlreadyActive         = errors.New("deployment is already active")
+	ErrBaseDeploymentNotFound          = errors.New("base deployment not found")
+	ErrInvalidDeploymentStatus         = errors.New("invalid deployment status")
+	ErrDeploymentNameRequired          = errors.New("deployment name is required")
+	ErrDeploymentBaseRequired          = errors.New("base is required")
+	ErrDeploymentGatewayIDRequired     = errors.New("gatewayId is required")
+	ErrAPINoBackendServices            = errors.New("API must have at least one backend service attached before deployment")
+	ErrDeploymentAlreadyDeployed       = errors.New("cannot rollback to currently deployed deployment")
 )
 
 var (

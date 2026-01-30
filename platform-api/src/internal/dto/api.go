@@ -190,19 +190,22 @@ type Policy struct {
 
 // DeployAPIRequest represents a request to deploy an API
 type DeployAPIRequest struct {
-	Base      string                 `json:"base" yaml:"base" binding:"required"`           // "current" or a deploymentId
-	GatewayID string                 `json:"gatewayId" yaml:"gatewayId" binding:"required"` // Target gateway ID
-	Metadata  map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`  // Flexible key-value metadata
+	Name      string                 `json:"name" yaml:"name"`                              // Deployment name
+	Base      string                 `json:"base" yaml:"base"`                              // "current" or a deploymentId
+	GatewayID string                 `json:"gatewayId" yaml:"gatewayId"`                    // Target gateway ID
+	Metadata  map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"` // Flexible key-value metadata
 }
 
 // DeploymentResponse represents a deployment artifact
 type DeploymentResponse struct {
 	DeploymentID     string                 `json:"deploymentId" yaml:"deploymentId"`
+	Name             string                 `json:"name" yaml:"name"`
 	GatewayID        string                 `json:"gatewayId" yaml:"gatewayId"`
-	Status           string                 `json:"status" yaml:"status"`
+	Status           string                 `json:"status" yaml:"status"` // DEPLOYED, UNDEPLOYED, or ARCHIVED
 	BaseDeploymentID *string                `json:"baseDeploymentId,omitempty" yaml:"baseDeploymentId,omitempty"`
 	Metadata         map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	CreatedAt        time.Time              `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt        *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"` // When status last changed (nil for ARCHIVED)
 }
 
 // DeploymentListResponse represents a list of deployments
