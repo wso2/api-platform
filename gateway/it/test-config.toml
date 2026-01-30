@@ -39,7 +39,7 @@ vector_db_provider_port = 6379
 vector_db_provider_username = ""
 vector_db_provider_password = "redis"
 vector_db_provider_database = 0
-vector_db_provider_ttl = "1h"
+vector_db_provider_ttl = 3600  # 1 hour in seconds
 
 # =============================================================================
 # GATEWAY CONTROLLER CONFIGURATION

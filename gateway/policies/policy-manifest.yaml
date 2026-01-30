@@ -7,7 +7,7 @@ policies:
   - name: api-key-auth
     gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
   - name: aws-bedrock-guardrail
-    gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v0.1.1 
+    gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v0
   - name: azure-content-safety-content-moderation
     gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v0
   - name: basic-auth
