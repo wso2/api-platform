@@ -1384,7 +1384,7 @@ func (r *APIRepo) GetCurrentDeploymentByGateway(apiUUID, gatewayID, orgID string
 }
 
 // SetCurrentDeployment inserts or updates the deployment status record to set the current deployment for an API on a gateway
-func (r *APIRepo) SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) error {
+func (r *APIRepo) SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (time.Time, error) {
 	updatedAt := time.Now()
 
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
@@ -1398,7 +1398,7 @@ func (r *APIRepo) SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID
 		_, err := r.db.Exec(r.db.Rebind(query),
 			apiUUID, orgUUID, gatewayID, deploymentID, status, updatedAt,
 			deploymentID, status, updatedAt)
-		return err
+		return updatedAt, err
 	} else {
 		// SQLite: Use REPLACE
 		query := `
@@ -1407,7 +1407,7 @@ func (r *APIRepo) SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID
 		`
 		_, err := r.db.Exec(r.db.Rebind(query),
 			apiUUID, orgUUID, gatewayID, deploymentID, status, updatedAt)
-		return err
+		return updatedAt, err
 	}
 }
 

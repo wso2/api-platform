@@ -66,7 +66,7 @@ type APIRepository interface {
 	CountDeploymentsByAPIAndGateway(apiUUID, gatewayID, orgUUID string) (int, error)
 
 	// Deployment status methods (mutable state tracking)
-	SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) error
+	SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (updatedAt time.Time, err error)
 	GetDeploymentStatus(apiUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, error error)
 	DeleteDeploymentStatus(apiUUID, orgUUID, gatewayID string) error
 

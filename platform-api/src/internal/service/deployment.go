@@ -244,7 +244,8 @@ func (s *DeploymentService) RollbackDeployment(apiUUID, deploymentID, orgUUID st
 	}
 
 	// Use SetCurrentDeployment to activate the target deployment with status='DEPLOYED'
-	if err := s.apiRepo.SetCurrentDeployment(apiUUID, orgUUID, targetDeployment.GatewayID, deploymentID, model.DeploymentStatusDeployed); err != nil {
+	updatedAt, err := s.apiRepo.SetCurrentDeployment(apiUUID, orgUUID, targetDeployment.GatewayID, deploymentID, model.DeploymentStatusDeployed)
+	if err != nil {
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
 
@@ -262,9 +263,6 @@ func (s *DeploymentService) RollbackDeployment(apiUUID, deploymentID, orgUUID st
 		}
 	}
 
-	// Get updated timestamp
-	_, _, updatedAt, _ := s.apiRepo.GetDeploymentStatus(apiUUID, orgUUID, targetDeployment.GatewayID)
-
 	deployedStatus := model.DeploymentStatusDeployed
 	return &dto.DeploymentResponse{
 		DeploymentID:     targetDeployment.DeploymentID,
@@ -274,7 +272,7 @@ func (s *DeploymentService) RollbackDeployment(apiUUID, deploymentID, orgUUID st
 		BaseDeploymentID: targetDeployment.BaseDeploymentID,
 		Metadata:         targetDeployment.Metadata,
 		CreatedAt:        targetDeployment.CreatedAt,
-		UpdatedAt:        updatedAt,
+		UpdatedAt:        &updatedAt,
 	}, nil
 }
 
@@ -304,7 +302,8 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 	}
 
 	// Update status to UNDEPLOYED using SetCurrentDeployment
-	if err := s.apiRepo.SetCurrentDeployment(apiUUID, orgUUID, deployment.GatewayID, deploymentID, model.DeploymentStatusUndeployed); err != nil {
+	newUpdatedAt, err := s.apiRepo.SetCurrentDeployment(apiUUID, orgUUID, deployment.GatewayID, deploymentID, model.DeploymentStatusUndeployed)
+	if err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -322,9 +321,6 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 		}
 	}
 
-	// Get updated timestamp from SetCurrentDeployment operation
-	_, _, newUpdatedAt, _ := s.apiRepo.GetDeploymentStatus(apiUUID, orgUUID, deployment.GatewayID)
-
 	undeployedStatus := model.DeploymentStatusUndeployed
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
@@ -334,7 +330,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 		BaseDeploymentID: deployment.BaseDeploymentID,
 		Metadata:         deployment.Metadata,
 		CreatedAt:        deployment.CreatedAt,
-		UpdatedAt:        newUpdatedAt,
+		UpdatedAt:        &newUpdatedAt,
 	}, nil
 }
 
