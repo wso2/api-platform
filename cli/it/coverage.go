@@ -26,11 +26,15 @@ import (
 
 // DefaultCoverageConfig returns the default coverage configuration for cli/it
 func DefaultCoverageConfig() *coverage.CoverageConfig {
-	sourceDir, _ := filepath.Abs("../../gateway/gateway-controller")
+	gatewayControllerDir, _ := filepath.Abs("../../gateway/gateway-controller")
+	cliDir, _ := filepath.Abs("../src")
 	return &coverage.CoverageConfig{
-		OutputDir:     "coverage",
-		Services:      []string{"gateway-controller", "cli"},
-		SourceDir:     sourceDir,
+		OutputDir: "coverage",
+		Services:  []string{"gateway-controller", "cli"},
+		ServiceSourceDirs: map[string]string{
+			"gateway-controller": gatewayControllerDir,
+			"cli":                cliDir,
+		},
 		ContainerPath: "/build/",
 		ModulePrefixes: []string{
 			"github.com/wso2/api-platform/gateway/gateway-controller/",

@@ -28,9 +28,11 @@ import (
 func DefaultCoverageConfig() *coverage.CoverageConfig {
 	sourceDir, _ := filepath.Abs("../gateway-controller")
 	return &coverage.CoverageConfig{
-		OutputDir:     "coverage",
-		Services:      []string{"gateway-controller"},
-		SourceDir:     sourceDir,
+		OutputDir: "coverage",
+		Services:  []string{"gateway-controller"},
+		ServiceSourceDirs: map[string]string{
+			"gateway-controller": sourceDir,
+		},
 		ContainerPath: "/build/",
 		ModulePrefixes: []string{
 			"github.com/wso2/api-platform/gateway/gateway-controller/",

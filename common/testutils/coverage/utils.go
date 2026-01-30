@@ -28,7 +28,7 @@ import (
 )
 
 // rewriteCoveragePaths rewrites container paths to local absolute paths
-func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath string) error {
+func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath, sourceDir string) error {
 	input, err := os.Open(inputPath)
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
@@ -45,7 +45,7 @@ func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath string) e
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Replace container path with absolute path to source directory
-		line = strings.Replace(line, c.config.ContainerPath, c.config.SourceDir+"/", 1)
+		line = strings.Replace(line, c.config.ContainerPath, sourceDir+"/", 1)
 		fmt.Fprintln(output, line)
 	}
 
@@ -57,7 +57,7 @@ func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath string) e
 }
 
 // getTotalCoverageFromFile calculates total coverage from a text coverage file with rewritten paths
-func (c *CoverageCollector) getTotalCoverageFromFile(textFile string) float64 {
+func (c *CoverageCollector) getTotalCoverageFromFile(textFile, sourceDir string) float64 {
 	absTextFile, err := filepath.Abs(textFile)
 	if err != nil {
 		return 0
@@ -65,7 +65,7 @@ func (c *CoverageCollector) getTotalCoverageFromFile(textFile string) float64 {
 
 	// Run go tool cover -func to get total
 	cmd := exec.Command("go", "tool", "cover", "-func="+absTextFile)
-	cmd.Dir = c.config.SourceDir
+	cmd.Dir = sourceDir
 	output, err := cmd.Output()
 	if err != nil {
 		return 0

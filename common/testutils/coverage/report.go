@@ -50,6 +50,12 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 	reportPrefix := c.config.GetReportPrefix()
 
 	for _, service := range c.config.Services {
+		sourceDir := c.config.GetSourceDir(service)
+		if sourceDir == "" {
+			log.Printf("Warning: No source directory configured for service %s, skipping", service)
+			continue
+		}
+
 		serviceDir := filepath.Join(c.config.OutputDir, service)
 		if _, err := os.Stat(serviceDir); err != nil {
 			log.Printf("No coverage directory for %s", service)
@@ -74,7 +80,7 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 
 		// Step 2: Rewrite paths directly to final text report location
 		textReportPath := filepath.Join(c.config.OutputDir, "output", "txt", servicePrefix+".txt")
-		if err := c.rewriteCoveragePaths(rawTextFile, textReportPath); err != nil {
+		if err := c.rewriteCoveragePaths(rawTextFile, textReportPath, sourceDir); err != nil {
 			log.Printf("Warning: Failed to rewrite coverage paths for %s: %v", service, err)
 			os.Remove(rawTextFile)
 			continue
@@ -84,7 +90,7 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 
 		// Step 3: Generate HTML report using final text report
 		htmlReportPath := filepath.Join(c.config.OutputDir, "output", servicePrefix+".html")
-		if err := c.generateHTMLReportFromTextFile(textReportPath, htmlReportPath); err != nil {
+		if err := c.generateHTMLReportFromTextFile(textReportPath, htmlReportPath, sourceDir); err != nil {
 			log.Printf("Warning: Failed to generate HTML report for %s: %v", service, err)
 		}
 
@@ -98,7 +104,7 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 
 		// Step 4: Get total coverage using final text report (already has rewritten paths)
 		packages := c.parseCoverageOutput(string(output))
-		totalCoverage := c.getTotalCoverageFromFile(textReportPath)
+		totalCoverage := c.getTotalCoverageFromFile(textReportPath, sourceDir)
 		report := CoverageReport{
 			Timestamp:     time.Now().Format(time.RFC3339),
 			TotalCoverage: totalCoverage,
@@ -137,7 +143,7 @@ func (c *CoverageCollector) generateTextReport(coverDir, outputPath string) erro
 }
 
 // generateHTMLReportFromTextFile generates an HTML coverage report from a pre-rewritten text file
-func (c *CoverageCollector) generateHTMLReportFromTextFile(textFile, outputPath string) error {
+func (c *CoverageCollector) generateHTMLReportFromTextFile(textFile, outputPath, sourceDir string) error {
 	// Get absolute paths for the command
 	absTextFile, err := filepath.Abs(textFile)
 	if err != nil {
@@ -150,7 +156,7 @@ func (c *CoverageCollector) generateHTMLReportFromTextFile(textFile, outputPath 
 
 	// Run go tool cover from source directory so it can resolve module paths
 	cmd := exec.Command("go", "tool", "cover", "-html="+absTextFile, "-o="+absOutputPath)
-	cmd.Dir = c.config.SourceDir
+	cmd.Dir = sourceDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

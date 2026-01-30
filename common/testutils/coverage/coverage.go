@@ -33,8 +33,8 @@ type CoverageConfig struct {
 	// Services lists the services to collect coverage from
 	Services []string
 
-	// SourceDir is the absolute path to the source code directory
-	SourceDir string
+	// ServiceSourceDirs maps service names to their absolute source directory paths
+	ServiceSourceDirs map[string]string
 
 	// ContainerPath is the path prefix used inside the container (e.g., "/build/")
 	ContainerPath string
@@ -44,6 +44,14 @@ type CoverageConfig struct {
 
 	// ReportPrefix is the prefix for output report files (default: "integration-test-coverage")
 	ReportPrefix string
+}
+
+// GetSourceDir returns the source directory for a given service
+func (c *CoverageConfig) GetSourceDir(service string) string {
+	if c.ServiceSourceDirs == nil {
+		return ""
+	}
+	return c.ServiceSourceDirs[service]
 }
 
 // GetReportPrefix returns the report prefix, defaulting to "integration-test-coverage"

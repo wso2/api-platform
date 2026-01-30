@@ -50,7 +50,6 @@ test: check-docker
 	else \
 		go test -v -timeout 30m $$pkgs 2>&1 | awk '/^Logs directory:/{print;exit}1' ; \
 	fi
-	go test -v -timeout 30m ./...
 
 # Build CLI binary
 build-cli:
