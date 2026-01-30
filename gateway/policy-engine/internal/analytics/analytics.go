@@ -76,6 +76,9 @@ const (
 	AIProviderNameMetadataKey string = "ai:providername"
 	// AIProviderAPIVersionMetadataKey represents the AI provider API version metadata key.
 	AIProviderAPIVersionMetadataKey string = "ai:providerversion"
+
+	// UserIDMetadataKey represents the user ID metadata key for analytics.
+	UserIDMetadataKey string = "x-wso2-user-id"
 )
 
 // Analytics represents analytics collector service.
@@ -277,6 +280,12 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	event.ProxyResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
 	event.RequestTimestamp = logEntry.GetCommonProperties().GetStartTime().AsTime()
 	event.Properties = make(map[string]interface{}, 0)
+
+	// Set user ID from metadata if available (for analytics/Moesif integration)
+	if userID, exists := keyValuePairsFromMetadata[UserIDMetadataKey]; exists && userID != "" {
+		event.Properties[UserIDMetadataKey] = userID
+		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
+	}
 
 	// Process AI related metadata only if all the required metadata are present
 	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" ||

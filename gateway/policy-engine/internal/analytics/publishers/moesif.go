@@ -33,7 +33,8 @@ import (
 )
 
 const (
-	anonymous = "anonymous"
+	anonymous         = "anonymous"
+	userIDPropertyKey = "x-wso2-user-id"
 )
 
 // Moesif represents a Moesif publisher.
@@ -239,7 +240,15 @@ func (m *Moesif) Publish(event *dto.Event) {
 		metadataMap["response_payload"] = responsePayload
 	}
 
+	// Determine user ID - use from event properties if available, otherwise anonymous
 	userID := anonymous
+	if userIDVal, ok := event.Properties[userIDPropertyKey]; ok {
+		if uid, ok := userIDVal.(string); ok && uid != "" {
+			userID = uid
+			slog.Debug("Moesif: Using authenticated user ID", "userID", userID)
+		}
+	}
+
 	eventModel := &models.EventModel{
 		Request:  req,
 		Response: rsp,
