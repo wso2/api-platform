@@ -108,8 +108,6 @@ Feature: API Management Handler Operations
     When I delete the API "get-by-id-test-api"
     Then the response should be successful
 
-  # ==================== GET API BY NAME AND VERSION ====================
-  
   # ==================== DELETE API ====================
   
   Scenario: Delete non-existent API returns 404
