@@ -224,6 +224,13 @@ func (m *Moesif) Publish(event *dto.Event) {
 		}
 	}
 
+	// MCP Analytics
+	if event.API.APIType == "Mcp" {
+		if mcpAnalytics, ok := event.Properties["mcpAnalytics"]; ok && mcpAnalytics != nil {
+			metadataMap["mcpAnalytics"] = mcpAnalytics
+		}
+	}
+
 	// Attach request/response payloads to metadata when present in event properties.
 	if requestPayload, ok := event.Properties["request_payload"]; ok && requestPayload != nil {
 		metadataMap["request_payload"] = requestPayload

@@ -46,10 +46,43 @@ var (
 	ClientNameJsonPath        = "$.params.clientInfo.name"
 	ClientVersionJsonPath     = "$.params.clientInfo.version"
 	JsonRpcErrorCodeJsonPath  = "$.error.code"
+
+	ServerProtocolVersionJsonPath = "$.result.protocolVersion"
+	ServerInfoNameJsonPath        = "$.result.serverInfo.name"
+	ServerInfoVersionJsonPath     = "$.result.serverInfo.version"
 )
 
 // AnalyticsPolicy implements the default analytics data collection process.
 type AnalyticsPolicy struct{}
+
+type McpRequestAnalyticsProperties struct {
+    JsonRpcMethod  string         `json:"jsonRpcMethod,omitempty"`
+    Capability     string         `json:"capability,omitempty"`
+    CapabilityName string         `json:"capabilityName,omitempty"`
+    ClientInfo     *McpClientInfo `json:"clientInfo,omitempty"`
+	ServerInfo     *McpServerInfo `json:"serverInfo,omitempty"`
+}
+
+type McpClientInfo struct {
+    RequestedProtocolVersion string `json:"requestedProtocolVersion"`
+    Name                     string `json:"name"`
+    Version                  string `json:"version"`
+}
+
+type McpServerInfo struct {
+	ProtocolVersion string                 `json:"protocolVersion,omitempty"`
+	ServerInfo      *McpServerInfoDetails  `json:"serverInfo,omitempty"`
+}
+
+type McpServerInfoDetails struct {
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+type McpResponseAnalyticsProperties struct {
+    IsError   bool `json:"isError,omitempty"`
+    ErrorCode int  `json:"errorCode,omitempty"`
+}
 
 // LLMTokenInfo holds extracted token-related information from LLM provider responses
 type LLMProviderAnalyticsInfo struct {
@@ -89,13 +122,13 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 	allowPayloads := getAllowPayloadsFlag(params)
     // Store tokenInfo in analytics metadata for publishing
 	analyticsMetadata := make(map[string]any)
-	
+
 	// When allow_payloads is enabled, capture the raw request body into analytics metadata.
 	if allowPayloads && ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
 		slog.Debug("Capturing request payload for analytics")
 		analyticsMetadata["request_payload"] = string(ctx.Body.Content)
 	}
-	
+
 
 	// Extract common analytics data from the request
 	// Based on the API kind, collect the analytics data
@@ -111,7 +144,59 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 		// Currently no data is collected
 	case KindMCP:
 		// Collect analytics data specific for MCP scenario from request
-		// Currently no data is collected
+		if ctx.Headers != nil  && len(ctx.Headers.GetAll()) > 0 {
+			// Need to get the mcp-session-id from headers
+			sessionIDs := ctx.Headers.Get("mcp-session-id")
+			if len(sessionIDs) > 0 {
+				analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+			}
+		}
+
+		if ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
+			// slog.Debug("MCP Request Body:", "body", string(ctx.Body.Content))
+			var mcpPayload map[string]interface{}
+			if err := json.Unmarshal(ctx.Body.Content, &mcpPayload); err != nil {
+				slog.Error("Failed to unmarshal MCP request body for analytics", "error", err)
+				break
+			}
+
+			props := McpRequestAnalyticsProperties{}
+
+			// Helper to extract string values via JSONPath
+			extractString := func(path string) string {
+				val, err := utils.ExtractValueFromJsonpath(mcpPayload, path)
+				if err != nil || val == nil {
+					return ""
+				}
+				if s, ok := val.(string); ok {
+					return s
+				}
+				return ""
+			}
+
+			// Populate top-level MCP request analytics properties
+			props.JsonRpcMethod = extractString(JsonRpcMethodJsonPath)
+			props.CapabilityName = extractString(McpCapabilityNameJsonPath)
+			props.Capability = extractString(McpResourceUriJsonPath)
+
+			// Populate client info
+			clientInfo := McpClientInfo{
+				RequestedProtocolVersion: extractStringFromJsonpath(mcpPayload,ProtocolVersionJsonPath),
+				Name:                     extractStringFromJsonpath(mcpPayload,ClientNameJsonPath),
+				Version:                  extractStringFromJsonpath(mcpPayload,ClientVersionJsonPath),
+			}
+			// Only set ClientInfo pointer if at least one field is non-empty so that omitempty can exclude it from JSON
+			if clientInfo.RequestedProtocolVersion != "" || clientInfo.Name != "" || clientInfo.Version != "" {
+				props.ClientInfo = &clientInfo
+			}
+
+			// Marshal to JSON string for transmission through metadata
+			if data, err := json.Marshal(props); err != nil {
+				slog.Error("Failed to marshal MCP request analytics properties", "error", err)
+			} else {
+				analyticsMetadata["mcp_request_properties"] = string(data)
+			}
+		}
 	default:
 		slog.Error("Invalid API kind")
 	}
@@ -120,7 +205,7 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 			AnalyticsMetadata: analyticsMetadata,
 		}
 	}
-    return nil
+	return nil
 }
 
 // getTemplateByHandle retrieves a template from the lazy resource cache by its handle
@@ -217,7 +302,74 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 		}
 	case KindMCP:
 		// Collect the analytics data specific for MCP specific scenario
-		// Currently no data is collected
+		if ctx.ResponseHeaders != nil  && len(ctx.ResponseHeaders.GetAll()) > 0 {
+			if analyticsMetadata["mcp_session_id"] == nil {
+				sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")
+				if len(sessionIDs) > 0 {
+					analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+				}
+			}
+		}
+
+		// Extract server info from response body
+		if ctx != nil && ctx.ResponseBody != nil && len(ctx.ResponseBody.Content) > 0 {
+			var mcpResponsePayload map[string]interface{}
+			responseContent := ctx.ResponseBody.Content
+			
+			// Check if response is in SSE format by inspecting content-type or content structure
+			isSSE := false
+			if ctx.ResponseHeaders != nil {
+				contentTypes := ctx.ResponseHeaders.Get("content-type")
+				if len(contentTypes) > 0 && strings.Contains(strings.ToLower(contentTypes[0]), "text/event-stream") {
+					isSSE = true
+				}
+			}
+			
+			// Also check content structure if header check didn't confirm SSE
+			if !isSSE && (strings.HasPrefix(string(responseContent), "event:") || strings.Contains(string(responseContent), "\ndata:")) {
+				isSSE = true
+			}
+			
+			// Parse SSE format if detected
+			if isSSE {
+				jsonData, err := parseSSEResponse(responseContent)
+				if err != nil {
+					slog.Error("Failed to parse SSE response", "error", err)
+				} else {
+					responseContent = jsonData
+				}
+			}
+			
+			// Unmarshal the JSON (either from SSE data field or direct response)
+			if err := json.Unmarshal(responseContent, &mcpResponsePayload); err != nil {
+				slog.Error("Failed to unmarshal MCP response body for server info analytics", "error", err)
+			} else {
+				// Populate server info details
+				serverInfoDetails := McpServerInfoDetails{
+					Name:    extractStringFromJsonpath(mcpResponsePayload, ServerInfoNameJsonPath),
+					Version: extractStringFromJsonpath(mcpResponsePayload, ServerInfoVersionJsonPath),
+				}
+				
+				// Populate server info
+				serverInfo := McpServerInfo{
+					ProtocolVersion: extractStringFromJsonpath(mcpResponsePayload, ServerProtocolVersionJsonPath),
+				}
+				
+				// Only set ServerInfo pointer if at least one field is non-empty
+				if serverInfoDetails.Name != "" || serverInfoDetails.Version != "" {
+					serverInfo.ServerInfo = &serverInfoDetails
+				}
+
+				// Only attach server info if at least one field is non-empty
+				if serverInfo.ProtocolVersion != "" || serverInfo.ServerInfo != nil {
+					if data, err := json.Marshal(serverInfo); err != nil {
+						slog.Error("Failed to marshal MCP server info", "error", err)
+					} else {
+						analyticsMetadata["mcp_server_info"] = string(data)
+					}
+				}
+			}
+		}
 	default:
 		slog.Error("Invalid API kind")
 	}
@@ -238,6 +390,19 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 	}
 
 	return nil
+}
+
+// parseSSEResponse parses Server-Sent Events format and extracts the JSON from the data field
+func parseSSEResponse(sseContent []byte) ([]byte, error) {
+	lines := strings.Split(string(sseContent), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data: ") {
+			jsonData := strings.TrimPrefix(line, "data: ")
+			return []byte(jsonData), nil
+		}
+	}
+	return nil, fmt.Errorf("no data field found in SSE response")
 }
 
 // extractLLMTokenInfo extracts the LLM token information from the response and request bodies
@@ -406,4 +571,16 @@ func getAllowPayloadsFlag(params map[string]interface{}) bool {
 	default:
 		return false
 	}
+}
+
+// Helper to extract string values via JSONPath
+func extractStringFromJsonpath(mcpResponsePayload map[string]interface{}, path string) string {
+	val, err := utils.ExtractValueFromJsonpath(mcpResponsePayload, path)
+	if err != nil || val == nil {
+		return ""
+	}
+	if s, ok := val.(string); ok {
+		return s
+	}
+	return ""
 }

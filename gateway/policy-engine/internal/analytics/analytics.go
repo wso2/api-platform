@@ -18,6 +18,7 @@
 package analytics
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -352,6 +353,35 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		}
 	}
 	
+	if keyValuePairsFromMetadata[APITypeKey] != "" && keyValuePairsFromMetadata[APITypeKey] == "Mcp" {
+		mcpAnalytics := make(map[string]interface{})
+		if mcpSessionID, ok := keyValuePairsFromMetadata["mcp_session_id"]; ok && mcpSessionID != "" {
+			mcpAnalytics["mcp_session_id"] = mcpSessionID
+		}
+		if mcpRequestProps, ok := keyValuePairsFromMetadata["mcp_request_properties"]; ok && mcpRequestProps != "" {
+			// Parse the JSON string into a map
+			var propsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(mcpRequestProps), &propsMap); err == nil {
+				mcpAnalytics["mcp_analytics"] = propsMap
+			} else {
+				slog.Debug("Failed to unmarshal MCP request properties", "error", err)
+				// Fallback to raw string if parsing fails
+				mcpAnalytics["mcp_analytics"] = mcpRequestProps
+			}
+		}
+		if mcpServerInfo, ok := keyValuePairsFromMetadata["mcp_server_info"]; ok && mcpServerInfo != "" {
+			// Parse the JSON string into a map
+			var serverInfoMap map[string]interface{}
+			if err := json.Unmarshal([]byte(mcpServerInfo), &serverInfoMap); err == nil {
+				mcpAnalytics["mcp_server_info"] = serverInfoMap
+			} else {
+				slog.Debug("Failed to unmarshal MCP server info", "error", err)
+				// Fallback to raw string if parsing fails
+				mcpAnalytics["mcp_server_info"] = mcpServerInfo
+			}
+		}
+		event.Properties["mcpAnalytics"] = mcpAnalytics
+	}
 
 	return event
 }
