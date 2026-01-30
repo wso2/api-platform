@@ -25,6 +25,8 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // GatewayInternalAPIService handles internal gateway API operations
@@ -273,11 +275,19 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	// Create deployment record
 	deploymentName := fmt.Sprintf("deployment-%d", now.Unix())
 	deployed := model.DeploymentStatusDeployed
+
+	// Generate deployment content YAML from notification configuration
+	deploymentContent, err := yaml.Marshal(notification.Configuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize deployment content: %w", err)
+	}
+
 	deployment := &model.APIDeployment{
 		Name:           deploymentName,
 		ApiID:          apiUUID,
 		GatewayID:      gatewayID,
 		OrganizationID: orgID,
+		Content:        deploymentContent,
 		Status:         &deployed,
 		CreatedAt:      now,
 	}
