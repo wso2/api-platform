@@ -19,8 +19,12 @@
 package certstore
 
 import (
+	"bytes"
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -230,4 +234,229 @@ func TestCertStore_MultipleCertificatesInChain(t *testing.T) {
 	count, err := cs.validateCertificateData("chain.pem", []byte(certChain))
 	assert.NoError(t, err)
 	assert.Equal(t, 2, count)
+}
+
+func TestCertStore_LoadCustomCertificates_DirNotExist(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	cs := NewCertStore(logger, nil, "/nonexistent/path/to/certs", "")
+
+	// loadCustomCertificates is private, so we test via LoadCertificates
+	// When directory doesn't exist, it should not fail
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	assert.Nil(t, data)
+	assert.Equal(t, 0, count)
+}
+
+func TestCertStore_LoadCustomCertificates_WithValidCerts(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory for test certs
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create a valid certificate file
+	certPath := filepath.Join(tempDir, "test.pem")
+	err = os.WriteFile(certPath, []byte(validCertPEM), 0644)
+	assert.NoError(t, err)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count)
+	assert.Contains(t, string(data), "BEGIN CERTIFICATE")
+}
+
+func TestCertStore_LoadCustomCertificates_MultipleCertFiles(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory for test certs
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create multiple certificate files with different extensions
+	extensions := []string{".pem", ".crt", ".cer", ".cert"}
+	for i, ext := range extensions {
+		certPath := filepath.Join(tempDir, fmt.Sprintf("test%d%s", i, ext))
+		err = os.WriteFile(certPath, []byte(validCertPEM), 0644)
+		assert.NoError(t, err)
+	}
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	assert.Equal(t, 4, count) // 4 valid certificate files
+	assert.NotEmpty(t, data)
+}
+
+func TestCertStore_LoadCustomCertificates_SkipNonCertFiles(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory for test certs
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create a valid certificate file
+	certPath := filepath.Join(tempDir, "valid.pem")
+	err = os.WriteFile(certPath, []byte(validCertPEM), 0644)
+	assert.NoError(t, err)
+
+	// Create non-certificate files that should be skipped
+	txtPath := filepath.Join(tempDir, "readme.txt")
+	err = os.WriteFile(txtPath, []byte("readme content"), 0644)
+	assert.NoError(t, err)
+
+	jsonPath := filepath.Join(tempDir, "config.json")
+	err = os.WriteFile(jsonPath, []byte(`{"key": "value"}`), 0644)
+	assert.NoError(t, err)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count) // Only the .pem file should be counted
+	assert.Contains(t, string(data), "BEGIN CERTIFICATE")
+}
+
+func TestCertStore_LoadCustomCertificates_InvalidCertContent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory for test certs
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create a .pem file with invalid content
+	invalidPath := filepath.Join(tempDir, "invalid.pem")
+	err = os.WriteFile(invalidPath, []byte("not a valid certificate"), 0644)
+	assert.NoError(t, err)
+
+	// Also create a valid certificate
+	validPath := filepath.Join(tempDir, "valid.pem")
+	err = os.WriteFile(validPath, []byte(validCertPEM), 0644)
+	assert.NoError(t, err)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	// Should continue processing other files even if one is invalid
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count) // Only the valid certificate
+	assert.Contains(t, string(data), "BEGIN CERTIFICATE")
+}
+
+func TestCertStore_LoadCustomCertificates_SubDirectories(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory for test certs
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create a subdirectory
+	subDir := filepath.Join(tempDir, "subdir")
+	err = os.Mkdir(subDir, 0755)
+	assert.NoError(t, err)
+
+	// Create certificate files in both directories
+	certPath1 := filepath.Join(tempDir, "root.pem")
+	err = os.WriteFile(certPath1, []byte(validCertPEM), 0644)
+	assert.NoError(t, err)
+
+	certPath2 := filepath.Join(subDir, "nested.pem")
+	err = os.WriteFile(certPath2, []byte(validCertPEM), 0644)
+	assert.NoError(t, err)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	// Should load certs from both root and subdirectory
+	assert.Equal(t, 2, count)
+	assert.NotEmpty(t, data)
+}
+
+func TestCertStore_LoadCustomCertificates_CertWithoutNewline(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory for test certs
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create cert without trailing newline
+	certNoNewline := strings.TrimSuffix(validCertPEM, "\n")
+	certPath := filepath.Join(tempDir, "nonewline.pem")
+	err = os.WriteFile(certPath, []byte(certNoNewline), 0644)
+	assert.NoError(t, err)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count)
+	// Should have trailing newline added
+	assert.True(t, bytes.HasSuffix(data, []byte("\n")))
+}
+
+func TestCertStore_LoadCustomCertificates_PrivateKeySkipped(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory for test certs
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create a private key file (should be skipped)
+	keyPath := filepath.Join(tempDir, "key.pem")
+	err = os.WriteFile(keyPath, []byte(nonCertPEM), 0644)
+	assert.NoError(t, err)
+
+	// Create a valid certificate
+	certPath := filepath.Join(tempDir, "cert.pem")
+	err = os.WriteFile(certPath, []byte(validCertPEM), 0644)
+	assert.NoError(t, err)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	// Private key file should be processed but no certs extracted
+	assert.Equal(t, 1, count) // Only the actual certificate
+	assert.Contains(t, string(data), "BEGIN CERTIFICATE")
+	assert.NotContains(t, string(data), "PRIVATE KEY")
+}
+
+func TestCertStore_LoadCustomCertificates_EmptyDirectory(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory with no files
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, count)
+	assert.Empty(t, data)
+}
+
+func TestCertStore_LoadCustomCertificates_CertChainInFile(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// Create temp directory
+	tempDir, err := os.MkdirTemp("", "certstore_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create a certificate chain (2 certs in one file)
+	certChain := validCertPEM + "\n" + validCertPEM
+	chainPath := filepath.Join(tempDir, "chain.pem")
+	err = os.WriteFile(chainPath, []byte(certChain), 0644)
+	assert.NoError(t, err)
+
+	cs := NewCertStore(logger, nil, tempDir, "")
+	data, count, err := cs.loadCustomCertificates()
+	assert.NoError(t, err)
+	assert.Equal(t, 2, count) // Two certificates in the chain
+	assert.NotEmpty(t, data)
 }
