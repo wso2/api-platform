@@ -385,7 +385,7 @@ policy_configurations:
 
 analytics:
   enabled: true
-  # Allow capturing andforwarding request/response bodies into analytics pipeline (including publishers like Moesif).
+  # Allow capturing and forwarding request/response bodies into analytics pipeline (including publishers like Moesif).
   allow_payloads: false
   # Publishers specific configuration
   publishers:
