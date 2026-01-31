@@ -9,7 +9,15 @@ description: |
 parameters:
   type: object
   additionalProperties: false
-  properties: {}
+  properties:
+    allow_payloads:
+      type: boolean
+      default: false
+      description: >
+        When true, the analytics system policy will capture request and response
+        bodies into analytics metadata as request_payload and response_payload,
+        which are then forwarded through the analytics pipeline (including
+        publishers like Moesif). When false, payloads are not captured.
 
 systemParameters:
   type: object

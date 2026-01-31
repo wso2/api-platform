@@ -1,83 +1,59 @@
-# Integration Test Configuration
-
-# =============================================================================
-# ROOT-LEVEL POLICY CONFIGURATIONS (accessed via ${config.xxx})
-# =============================================================================
-
-# AWS Bedrock Guardrail Policy Configuration
-awsbedrock_guardrail_region = "us-east-1"
-awsbedrock_guardrail_id = "test-guardrail-id"
-awsbedrock_guardrail_version = "DRAFT"
-awsbedrock_access_key_id = "test-access-key"
-awsbedrock_secret_access_key = "test-secret-key"
-awsbedrock_session_token = ""
-awsbedrock_role_arn = ""
-awsbedrock_role_region = ""
-awsbedrock_role_external_id = ""
-
-# Azure Content Safety Policy Configuration
-azurecontentsafety_endpoint = "http://mock-azure-content-safety:8080"
-azurecontentsafety_key = "test-subscription-key"
-
-# Embedding Provider Configuration (for semantic-cache and semantic-prompt-guard)
-embedding_provider = "OPENAI"
-embedding_provider_endpoint = "http://mock-embedding-provider:8080/v1/embeddings"
-embedding_provider_model = "text-embedding-ada-002"
-embedding_provider_dimension = 1536
-embedding_provider_api_key = "test-api-key"
-
-# Redis Configuration (for semantic-cache)
-redis_host = "redis"
-redis_port = 6379
-redis_password = "redis"
-redis_db = 0
-
-# Vector DB Provider Configuration (for semantic-cache)
-vector_db_provider = "REDIS"
-vector_db_provider_host = "redis"
-vector_db_provider_port = 6379
-vector_db_provider_username = "default"
-vector_db_provider_password = "redis"
-vector_db_provider_database = "0"
-vector_db_provider_ttl = 3600  # 1 hour in seconds
+# Gateway Controller and Policy Engine Configuration
 
 # =============================================================================
 # GATEWAY CONTROLLER CONFIGURATION
 # =============================================================================
 
 [gateway_controller.server]
+# REST API port for gateway management
 api_port = 9090
+# xDS gRPC port for Envoy communication
 xds_port = 18000
+# Graceful shutdown timeout
 shutdown_timeout = "15s"
 
 [gateway_controller.policyserver]
+# Enable or disable the policy xDS server
 enabled = true
+# Policy xDS gRPC port for policy distribution
 port = 18001
 
 [gateway_controller.policyserver.tls]
+# Enable or disable TLS
 enabled = false
+# Path to TLS certificate file (required if TLS is enabled)
 cert_file = "./certs/server.crt"
+# Path to TLS private key file (required if TLS is enabled)
 key_file = "./certs/server.key"
 
 [gateway_controller.storage]
+# Storage type: "sqlite", "postgres" (future), or "memory"
 type = "sqlite"
 
 [gateway_controller.storage.sqlite]
 path = "./data/gateway.db"
 
 [gateway_controller.policies]
+# Directory containing policy definitions
 definitions_path = "./default-policies"
 
 [gateway_controller.router]
+# Gateway host for incoming requests
 gateway_host = "*"
+# Listener port for incoming HTTP traffic (Envoy proxy port)
 listener_port = 8080
+# HTTPS listener configuration
 https_enabled = true
 https_port = 8443
+# Tracing service name
 tracing_service_name = "router"
 
 [gateway_controller.router.access_logs]
+# Enable or disable access logs
 enabled = true
+# Log format: "json" or "text"
 format = "json"
+# Text format template
 text_format = """
 [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
 """
@@ -122,6 +98,10 @@ route_timeout_in_seconds = 60
 max_route_timeout_in_seconds = 60
 route_idle_timeout_in_seconds = 300
 
+[gateway_controller.router.http_listener]
+server_header_transformation = "OVERWRITE"
+server_header_value = "WSO2 API Platform"
+
 [gateway_controller.router.policy_engine]
 enabled = true
 host = "policy-engine"
@@ -155,8 +135,12 @@ enabled = false
 jwks_url = ""
 issuer = ""
 
+[gateway_controller.api_key]
+api_keys_per_user_per_api = 10
+algorithm = "sha256"
+
 [gateway_controller.logging]
-level = "debug"
+level = "info"
 format = "json"
 
 [gateway_controller.metrics]
@@ -190,12 +174,15 @@ max_reconnect_delay = "60s"
 
 [policy_engine.xds.tls]
 enabled = false
+# cert_path = "/path/to/client-cert.pem"
+# key_path = "/path/to/client-key.pem"
+# ca_path = "/path/to/ca-cert.pem"
 
 [policy_engine.file_config]
 path = ""
 
 [policy_engine.logging]
-level = "debug"
+level = "info"
 format = "json"
 
 [policy_engine.metrics]
@@ -205,34 +192,6 @@ port = 9003
 # =============================================================================
 # POLICY CONFIGURATIONS
 # =============================================================================
-
-[policy_configurations.jwtauth_v010]
-jwkscachettl = "5m"
-jwksfetchtimeout = "5s"
-jwksfetchretrycount = 3
-jwksfetchretryinterval = "2s"
-allowedalgorithms = ["RS256", "ES256"]
-leeway = "30s"
-authheaderscheme = "Bearer"
-headername = "Authorization"
-onfailurestatuscode = 401
-errormessageformat = "json"
-errormessage = "Authentication failed"
-validateissuer = true
-
-[[policy_configurations.jwtauth_v010.keymanagers]]
-name = "mock-jwks"
-issuer = "http://mock-jwks:8080/token"
-
-[policy_configurations.jwtauth_v010.keymanagers.jwks.remote]
-uri = "http://mock-jwks:8080/jwks"
-
-[[policy_configurations.jwtauth_v010.keymanagers]]
-name = "wrong-issuer-km"
-issuer = "http://expected-issuer.com"
-
-[policy_configurations.jwtauth_v010.keymanagers.jwks.remote]
-uri = "http://mock-jwks:8080/jwks"
 
 [policy_configurations.ratelimit_v010]
 algorithm = "fixed-window"
@@ -252,7 +211,7 @@ include_retry_after = true
 # =============================================================================
 
 [analytics]
-enabled = true
+enabled = false
 allow_payloads = false
 
 [[analytics.publishers]]
@@ -276,7 +235,7 @@ grpc_request_timeout = 20000000000
 
 [analytics.access_logs_service]
 als_server_port = 18090
-shutdown_timeout = 600
+shutdown_timeout = "600s"
 public_key_path = ""
 private_key_path = ""
 als_plain_text = true
