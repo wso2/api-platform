@@ -1073,6 +1073,9 @@ func (r *APIRepo) loadOperationBackendServices(operationID int64) ([]model.Backe
 }
 
 func serializePolicies(policies []model.Policy) (any, error) {
+	if policies == nil {
+		policies = []model.Policy{}
+	}
 	policiesJSON, err := json.Marshal(policies)
 	if err != nil {
 		return nil, err
