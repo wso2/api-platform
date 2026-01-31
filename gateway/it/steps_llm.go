@@ -163,6 +163,19 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		return httpSteps.SendGETToService("gateway-controller", "/llm-providers?"+filterKey+"="+filterValue)
 	})
 
+	// ========================================
+	// LLM Proxy Steps
+	// ========================================
+	ctx.Step(`^I deploy this LLM proxy configuration:$`, func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPOSTToService("gateway-controller", "/llm-proxies", body)
+	})
+
+	ctx.Step(`^I update the LLM proxy "([^"]*)" with:$`, func(proxyID string, body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPUTToService("gateway-controller", "/llm-proxies/"+proxyID, body)
+	})
+
 	// Lazy resource assertion steps for config_dump
 	ctx.Step(`^the JSON response field "([^"]*)" should be greater than (\d+)$`, func(field string, expected int) error {
 		body := httpSteps.LastBody()

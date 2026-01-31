@@ -550,3 +550,97 @@ Feature: API Management Handler Operations
     When I delete the API "labeled-api"
     Then the response should be successful
 
+  # ==================== UPDATE API - ERROR CASES ====================
+
+  Scenario: Update API with handle mismatch returns error
+    # First create an API
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: handle-mismatch-api
+      spec:
+        displayName: Handle-Mismatch-Api
+        version: v1.0
+        context: /handle-mismatch
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    # Try to update with mismatched handle in YAML
+    When I update the API "handle-mismatch-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: different-handle-name
+      spec:
+        displayName: Handle-Mismatch-Api
+        version: v1.0
+        context: /handle-mismatch
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "mismatch"
+    # Cleanup
+    When I delete the API "handle-mismatch-api"
+    Then the response should be successful
+
+  Scenario: Update API with validation errors returns error
+    # First create an API
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: update-validation-api
+      spec:
+        displayName: Update-Validation-Api
+        version: v1.0
+        context: /update-validation
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    # Try to update with missing context
+    When I update the API "update-validation-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: update-validation-api
+      spec:
+        displayName: Update-Validation-Api
+        version: v1.0
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    # Cleanup
+    When I delete the API "update-validation-api"
+    Then the response should be successful
+
+
+

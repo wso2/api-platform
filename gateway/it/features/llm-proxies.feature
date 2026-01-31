@@ -115,3 +115,126 @@ Feature: LLM Proxy Management Operations
       """
     Then the response should be a client error
     And the response should be valid JSON
+
+  # ==================== COMPLETE LLM PROXY LIFECYCLE ====================
+
+  Scenario: Complete LLM proxy lifecycle - create, get, update, and delete
+    # First, create the LLM provider that the proxy will reference
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: lifecycle-test-provider
+      spec:
+        displayName: Lifecycle Test Provider
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    # Create LLM proxy referencing the provider
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: lifecycle-llm-proxy
+      spec:
+        displayName: Lifecycle LLM Proxy
+        version: v1.0
+        provider: lifecycle-test-provider
+      """
+    Then the response status should be 201
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Get the LLM proxy
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies/lifecycle-llm-proxy"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And the response body should contain "Lifecycle LLM Proxy"
+    # Update the LLM proxy
+    When I update the LLM proxy "lifecycle-llm-proxy" with:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: lifecycle-llm-proxy
+      spec:
+        displayName: Updated Lifecycle LLM Proxy
+        version: v1.1
+        provider: lifecycle-test-provider
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Verify update
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies/lifecycle-llm-proxy"
+    Then the response should be successful
+    And the response body should contain "Updated Lifecycle LLM Proxy"
+    # Delete the LLM proxy
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/lifecycle-llm-proxy"
+    Then the response should be successful
+    And the JSON response field "status" should be "success"
+    # Verify deletion
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies/lifecycle-llm-proxy"
+    Then the response status should be 404
+    # Cleanup: delete the provider
+    When I delete the LLM provider "lifecycle-test-provider"
+    Then the response status code should be 200
+
+  Scenario: List LLM proxies after creating one
+    # First, create the LLM provider
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: list-test-provider
+      spec:
+        displayName: List Test Provider
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    # Create LLM proxy
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: list-test-llm-proxy
+      spec:
+        displayName: List Test LLM Proxy
+        version: v1.0
+        provider: list-test-provider
+      """
+    Then the response status should be 201
+    # List LLM proxies
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And the response body should contain "list-test-llm-proxy"
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/list-test-llm-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "list-test-provider"
+    Then the response status code should be 200
+
