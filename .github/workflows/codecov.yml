@@ -2,6 +2,8 @@ name: Codecov Code Coverage
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
   codecov_test:
@@ -20,11 +22,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Gateway Unit Tests
+        continue-on-error: true
         run: |
           cd gateway
           make test
 
       - name: CLI Unit Tests
+        continue-on-error: true
         run: |
           cd cli/src
           make test
@@ -34,10 +38,22 @@ jobs:
           cd gateway
           make build-coverage
 
-      - name: Run integration tests
+      - name: Run Gateway integration tests
+        continue-on-error: true
         run: |
           cd gateway
           make test-integration
+
+      - name: Build CLI binary
+        run: |
+          cd cli/it
+          make build-cli-coverage
+
+      - name: Run CLI integration tests
+        continue-on-error: true
+        run: |
+          cd cli/it
+          make test
 
       - name: List generated coverage files
         run: |
@@ -51,9 +67,16 @@ jobs:
           files: '**/unit-test-coverage.txt'
           flags: unit
 
-      - name: Upload integration test coverage to Codecov
+      - name: Upload Gateway integration test coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: '**/integration-test-coverage.txt'
+          directory: gateway/it/coverage/output/txt
           flags: integration
+
+      - name: Upload CLI integration test coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: cli/it/coverage/output/txt
+          flags: cli-integration

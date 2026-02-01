@@ -63,9 +63,13 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 		return nil, err
 	}
 
-	// Initialize schema
-	if err := db.InitSchema(cfg.DBSchemaPath); err != nil {
-		return nil, err
+	// Initialize schema (skip when ExecuteSchemaDDL is false, e.g. deployed Postgres without DDL access)
+	if cfg.Database.ExecuteSchemaDDL {
+		if err := db.InitSchema(cfg.DBSchemaPath); err != nil {
+			return nil, err
+		}
+	} else {
+		log.Printf("Skipping schema DDL execution (DATABASE_EXECUTE_SCHEMA_DDL=false)\n")
 	}
 
 	// Initialize repositories

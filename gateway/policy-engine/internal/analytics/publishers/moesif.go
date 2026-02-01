@@ -33,7 +33,8 @@ import (
 )
 
 const (
-	anonymous = "anonymous"
+	anonymous         = "anonymous"
+	userIDPropertyKey = "x-wso2-user-id"
 )
 
 // Moesif represents a Moesif publisher.
@@ -47,6 +48,7 @@ type Moesif struct {
 // MoesifConfig holds the configs specific for the Moesif publisher.
 type MoesifConfig struct {
 	ApplicationID      string `mapstructure:"application_id" default:""`
+	BaseURL            string `mapstructure:"moesif_base_url"`
 	PublishInterval    int    `mapstructure:"publish_interval" default:"5"`
 	EventQueueSize     int    `mapstructure:"event_queue_size" default:"10000"`
 	BatchSize          int    `mapstructure:"batch_size" default:"50"`
@@ -69,13 +71,23 @@ func NewMoesif(pubCfg *config.PublisherConfig) *Moesif {
 		moesifApplicationId = moesifCfg.ApplicationID
 	}
 
+	// Apply default for BaseURL if not set
+	if moesifCfg.BaseURL == "" {
+		slog.Debug("No Moesif base URL provided, backing off to the default URL")
+		moesifCfg.BaseURL = "https://api.moesif.net"
+	}
+
 	// Moesif Client Configs
 	eventQueueSize, batchSize, timerWakeupSeconds :=
 		moesifCfg.EventQueueSize,
 		moesifCfg.BatchSize,
 		moesifCfg.TimerWakeupSeconds
 
-	apiClient := moesifapi.NewAPI(moesifApplicationId, nil, eventQueueSize, batchSize, timerWakeupSeconds)
+	var apiEndpoint *string
+	if moesifCfg.BaseURL != "" {
+		apiEndpoint = &moesifCfg.BaseURL
+	}
+	apiClient := moesifapi.NewAPI(moesifApplicationId, apiEndpoint, eventQueueSize, batchSize, timerWakeupSeconds)
 	moesif := &Moesif{
 		cfg:    pubCfg,
 		events: []*models.EventModel{},
@@ -213,7 +225,30 @@ func (m *Moesif) Publish(event *dto.Event) {
 		}
 	}
 
+	// MCP Analytics
+	if event.API.APIType == "Mcp" {
+		if mcpAnalytics, ok := event.Properties["mcpAnalytics"]; ok && mcpAnalytics != nil {
+			metadataMap["mcpAnalytics"] = mcpAnalytics
+		}
+	}
+
+	// Attach request/response payloads to metadata when present in event properties.
+	if requestPayload, ok := event.Properties["request_payload"]; ok && requestPayload != nil {
+		metadataMap["request_payload"] = requestPayload
+	}
+	if responsePayload, ok := event.Properties["response_payload"]; ok && responsePayload != nil {
+		metadataMap["response_payload"] = responsePayload
+	}
+
+	// Determine user ID - use from event properties if available, otherwise anonymous
 	userID := anonymous
+	if userIDVal, ok := event.Properties[userIDPropertyKey]; ok {
+		if uid, ok := userIDVal.(string); ok && uid != "" {
+			userID = uid
+			slog.Debug("Moesif: Using authenticated user ID", "userID", userID)
+		}
+	}
+
 	eventModel := &models.EventModel{
 		Request:  req,
 		Response: rsp,

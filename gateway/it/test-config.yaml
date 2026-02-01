@@ -371,8 +371,22 @@ policy_configurations:
       includeIETF: true
       includeRetryAfter: true
 
+  # Model Weighted Round-Robin Policy Configuration
+  modelweightedroundrobin_v010:
+    requestModel:
+      location: payload
+      identifier: $.model
+
+  # Model Round-Robin Policy Configuration
+  modelroundrobin_v010:
+    requestModel:
+      location: payload
+      identifier: $.model
+
 analytics:
   enabled: true
+  # Allow capturing and forwarding request/response bodies into analytics pipeline (including publishers like Moesif).
+  allow_payloads: false
   # Publishers specific configuration
   publishers:
     - type: moesif
@@ -380,6 +394,8 @@ analytics:
       settings: 
         # Moesif application ID
         application_id: <MOESIF_APPLICATION_ID>
+        # Moesif API endpoint; optional, defaults to https://api.moesif.net
+        moesif_base_url: "https://api.moesif.net"
         # Publish interval in seconds
         publish_interval: 5
         # Max number of events held in memory before dropping
@@ -431,3 +447,33 @@ tracing:
   batch_timeout: 1s
   max_export_batch_size: 512
   sampling_rate: 1.0
+
+# Azure Content Safety Configuration
+azurecontentsafety_endpoint: "http://mock-azure-content-safety:8080"
+azurecontentsafety_key: "test-subscription-key"
+
+# AWS Bedrock Guardrail Configuration
+awsbedrock_guardrail_region: "us-east-1"
+awsbedrock_guardrail_id: "test-guardrail-id"
+awsbedrock_guardrail_version: "DRAFT"
+awsbedrock_access_key_id: "test-access-key"
+awsbedrock_secret_access_key: "test-secret-key"
+awsbedrock_session_token: ""
+awsbedrock_role_arn: ""
+awsbedrock_role_region: ""
+awsbedrock_role_external_id: ""
+
+# Semantic Cache Policy Configuration
+embedding_provider: "OPENAI"
+embedding_provider_endpoint: "http://mock-embedding-provider:8080/v1/embeddings"
+embedding_provider_model: "text-embedding-ada-002"
+embedding_provider_dimension: 1536
+embedding_provider_api_key: "test-api-key"
+vector_db_provider: "REDIS"
+vector_db_provider_host: "redis"
+vector_db_provider_port: 6379
+vector_db_provider_username: "default"
+vector_db_provider_password: "redis"
+vector_db_provider_database: "0"
+vector_db_provider_ttl: 3600
+

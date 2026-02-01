@@ -86,6 +86,11 @@ type Database struct {
 	MaxOpenConns    int    `envconfig:"MAX_OPEN_CONNS" default:"25"`
 	MaxIdleConns    int    `envconfig:"MAX_IDLE_CONNS" default:"10"`
 	ConnMaxLifetime int    `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
+
+	// ExecuteSchemaDDL controls whether to run the schema DDL (CREATE TABLE, etc.) on startup.
+	// Set to false when the DB user lacks DDL privileges (e.g. deployed Postgres with restricted role).
+	// Env: DATABASE_EXECUTE_SCHEMA_DDL (default: true)
+	ExecuteSchemaDDL bool `envconfig:"EXECUTE_SCHEMA_DDL" default:"true"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations

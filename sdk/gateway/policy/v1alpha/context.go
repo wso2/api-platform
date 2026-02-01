@@ -53,6 +53,10 @@ type SharedContext struct {
 	// This differs from RequestContext.Path which contains the actual request path
 	// with resolved parameters (e.g., "/petstore/v1.0.0/pets/123")
 	OperationPath string
+
+	// AuthContext stores authentication-related information
+	// Policies can read/write this map to share auth data (e.g., user ID)
+	AuthContext map[string]string
 }
 
 // RequestContext is mutable context for request phase containing current request state

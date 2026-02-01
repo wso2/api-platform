@@ -22,14 +22,14 @@ docker compose version
 Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway-v0.4.0/ai-gateway-v0.4.0.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v0.5.0/ai-gateway-v0.5.0.zip
 
 # Unzip the downloaded distribution.
-unzip ai-gateway-v0.4.0.zip
+unzip ai-gateway-v0.5.0.zip
 
 
 # Start the complete stack
-cd ai-gateway-v0.4.0/
+cd ai-gateway-v0.5.0/
 docker compose up -d
 
 # Verify gateway controller is running
