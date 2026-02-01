@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"platform-api/src/internal/database"
@@ -314,7 +313,9 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 
 	p.UpstreamURL = upstreamURL.String
 	if upstreamAuthJSON.Valid && upstreamAuthJSON.String != "" {
-		_ = json.Unmarshal([]byte(upstreamAuthJSON.String), &p.UpstreamAuth)
+		if err := json.Unmarshal([]byte(upstreamAuthJSON.String), &p.UpstreamAuth); err != nil {
+			return nil, fmt.Errorf("unmarshal upstreamAuth for provider %s: %w", p.ID, err)
+		}
 	}
 	if openAPISpec.Valid {
 		p.OpenAPISpec = openAPISpec.String
@@ -326,7 +327,9 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	}
 
 	if accessControlJSON.Valid && accessControlJSON.String != "" {
-		_ = json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl)
+		if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
+			return nil, fmt.Errorf("unmarshal accessControl for provider %s: %w", p.ID, err)
+		}
 	}
 
 	return &p, nil
@@ -546,7 +549,9 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	}
 
 	if accessControlJSON.Valid && accessControlJSON.String != "" {
-		_ = json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl)
+		if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
+			return nil, fmt.Errorf("unmarshal accessControl for proxy %s: %w", p.ID, err)
+		}
 	}
 	if openAPISpec.Valid {
 		p.OpenAPISpec = openAPISpec.String
@@ -586,7 +591,9 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 			return nil, err
 		}
 		if accessControlJSON.Valid && accessControlJSON.String != "" {
-			_ = json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl)
+			if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
+				return nil, fmt.Errorf("unmarshal accessControl for proxy %s: %w", p.ID, err)
+			}
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
@@ -627,7 +634,9 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 			return nil, err
 		}
 		if accessControlJSON.Valid && accessControlJSON.String != "" {
-			_ = json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl)
+			if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
+				return nil, fmt.Errorf("unmarshal accessControl for proxy %s (project %s): %w", p.ID, projectUUID, err)
+			}
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
@@ -668,7 +677,9 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerID string, limit, offset 
 			return nil, err
 		}
 		if accessControlJSON.Valid && accessControlJSON.String != "" {
-			_ = json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl)
+			if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
+				return nil, fmt.Errorf("unmarshal accessControl for proxy %s (provider %s): %w", p.ID, providerID, err)
+			}
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
@@ -785,17 +796,6 @@ func (r *LLMProxyRepo) Exists(proxyID, orgUUID string) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
-}
-
-func mapUniqueConstraintError(err error) error {
-	if err == nil {
-		return nil
-	}
-	// SQLite unique constraint errors include this text.
-	if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-		return fmt.Errorf("unique constraint violated: %w", err)
-	}
-	return err
 }
 
 func (r *LLMProviderRepo) replaceProviderPolicies(orgUUID, providerHandle string, policies []model.LLMPolicy) error {
@@ -916,7 +916,9 @@ func scanPolicies(rows *sql.Rows) ([]model.LLMPolicy, error) {
 		}
 		policy := model.LLMPolicy{Name: name, Version: version}
 		if pathsJSON.Valid && pathsJSON.String != "" {
-			_ = json.Unmarshal([]byte(pathsJSON.String), &policy.Paths)
+			if err := json.Unmarshal([]byte(pathsJSON.String), &policy.Paths); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal policy paths: %w", err)
+			}
 		}
 		res = append(res, policy)
 	}
