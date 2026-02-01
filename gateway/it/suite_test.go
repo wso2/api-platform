@@ -101,6 +101,7 @@ func TestFeatures(t *testing.T) {
 				"features/modify-headers.feature",
 				"features/respond.feature",
 				"features/policy-engine-admin.feature",
+				"features/cel-conditions.feature",
 			},
 			TestingT: t,
 		},

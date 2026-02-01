@@ -137,3 +137,72 @@ Feature: Policy Engine Admin API
   Scenario: POST request to config dump returns 405 Method Not Allowed
     When I send a POST request to the policy-engine config dump endpoint
     Then the response status code should be 405
+
+  # ============================================================
+  # xDS Synchronization Tests
+  # ============================================================
+
+  Scenario: Multiple APIs sync correctly via xDS
+    Given I deploy a test API with the following configuration:
+      """
+      name: xds-sync-api-1
+      version: v1
+      basePath: /xds-sync-1
+      backend:
+        url: http://sample-backend:9080
+      operations:
+        - method: GET
+          path: /test
+      """
+    And I deploy a test API with the following configuration:
+      """
+      name: xds-sync-api-2
+      version: v1
+      basePath: /xds-sync-2
+      backend:
+        url: http://sample-backend:9080
+      operations:
+        - method: POST
+          path: /data
+      """
+    And I wait for 3 seconds for xDS synchronization
+    When I send a GET request to the policy-engine config dump endpoint
+    Then the response status code should be 200
+    And the config dump should contain route with basePath "/xds-sync-1"
+    And the config dump should contain route with basePath "/xds-sync-2"
+    And I delete the API "xds-sync-api-1" version "v1"
+    And I delete the API "xds-sync-api-2" version "v1"
+
+  Scenario: API update syncs via xDS
+    Given I deploy a test API with the following configuration:
+      """
+      name: xds-update-api
+      version: v1
+      basePath: /xds-update
+      backend:
+        url: http://sample-backend:9080
+      operations:
+        - method: GET
+          path: /original
+      """
+    And I wait for 3 seconds for xDS synchronization
+    When I send a GET request to the policy-engine config dump endpoint
+    Then the config dump should contain route with basePath "/xds-update"
+    # Update the API with a new operation
+    When I deploy a test API with the following configuration:
+      """
+      name: xds-update-api
+      version: v1
+      basePath: /xds-update
+      backend:
+        url: http://sample-backend:9080
+      operations:
+        - method: GET
+          path: /original
+        - method: POST
+          path: /new-endpoint
+      """
+    And I wait for 3 seconds for xDS synchronization
+    And I send a GET request to the policy-engine config dump endpoint
+    Then the config dump should contain route with basePath "/xds-update"
+    And I delete the API "xds-update-api" version "v1"
