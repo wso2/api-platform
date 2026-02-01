@@ -1722,10 +1722,10 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			aa.updated_at as association_updated_at,
 			CASE WHEN ad.deployment_id IS NOT NULL THEN 1 ELSE 0 END as is_deployed,
 			ad.deployment_id,
-			ad.created_at as deployed_at
+			ad.updated_at as deployed_at
 		FROM gateways g
 		INNER JOIN api_associations aa ON g.uuid = aa.resource_uuid AND aa.association_type = 'gateway'
-		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ? AND ad.status = ?
+		LEFT JOIN api_deployment_status ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ? AND ad.status = ?
 		WHERE aa.api_uuid = ? AND g.organization_uuid = ?
 		ORDER BY aa.created_at DESC
 	`
