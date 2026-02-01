@@ -1,0 +1,86 @@
+name: mcp-acl-list
+version: v0.1.0
+description: |
+  MCP ACL List policy controls access to tools, resources, and prompts using
+  mode and exceptions. It filters list responses based on the configured mode
+  and enforces the same allow/deny rules on request paths. This policy does not
+  rewrite capability fields (tools, resources, or prompts) or modify list entry contents.
+
+  - Missing capability config: Allow all capabilities of that type
+  - mode: allow, exceptions: [..] => allow all except listed exceptions
+  - mode: deny, exceptions: [..] => deny all except listed exceptions
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    tools:
+      type: object
+      additionalProperties: false
+      description: |
+        ACL configuration for tools. Use mode and exceptions to allow or deny tools.
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: ACL mode for tools.
+          enum:
+            - allow
+            - deny
+        exceptions:
+          type: array
+          description: List of tool names that are exceptions to the mode.
+          items:
+            type: string
+            description: Tool name to include as an exception.
+            minLength: 1
+            maxLength: 256
+    resources:
+      type: object
+      additionalProperties: false
+      description: |
+        ACL configuration for resources. Use mode and exceptions to allow or deny resources.
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: ACL mode for resources.
+          enum:
+            - allow
+            - deny
+        exceptions:
+          type: array
+          description: List of resource URIs that are exceptions to the mode.
+          items:
+            type: string
+            description: Resource URI to include as an exception.
+            minLength: 1
+            maxLength: 2048
+    prompts:
+      type: object
+      additionalProperties: false
+      description: |
+        ACL configuration for prompts. Use mode and exceptions to allow or deny prompts.
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: ACL mode for prompts.
+          enum:
+            - allow
+            - deny
+        exceptions:
+          type: array
+          description: List of prompt names that are exceptions to the mode.
+          items:
+            type: string
+            description: Prompt name to include as an exception.
+            minLength: 1
+            maxLength: 256
+
+systemParameters:
+  type: object
+  properties: {}
