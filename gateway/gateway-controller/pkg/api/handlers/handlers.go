@@ -2364,29 +2364,30 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		slog.Int("certificates", len(certificates)))
 }
 
-// GenerateAPIKey implements ServerInterface.GenerateAPIKey
+// CreateAPIKey implements ServerInterface.CreateAPIKey
 // (POST /apis/{id}/api-keys)
-func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
+// Handles both local key generation and external key injection based on request payload
+func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Extract authenticated user from context
-	user, ok := s.extractAuthenticatedUser(c, "GenerateAPIKey", correlationID)
+	user, ok := s.extractAuthenticatedUser(c, "CreateAPIKey", correlationID)
 	if !ok {
 		return // Error response already sent by extractAuthenticatedUser
 	}
 
-	log.Debug("Starting API key generation",
+	log.Debug("Starting API key creation by generating or injecting a new key",
 		slog.String("handle", handle),
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", correlationID))
 
 	// Parse and validate request body
-	var request api.APIKeyGenerationRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Warn("Invalid request body for API key generation",
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Warn("Invalid request body for API key creation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
@@ -2398,7 +2399,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	}
 
 	// Prepare parameters
-	params := utils.APIKeyGenerationParams{
+	params := utils.APIKeyCreationParams{
 		Handle:        handle,
 		Request:       request,
 		User:          user,
@@ -2406,7 +2407,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 		Logger:        log,
 	}
 
-	result, err := s.apiKeyService.GenerateAPIKey(params)
+	result, err := s.apiKeyService.CreateAPIKey(params)
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
@@ -2423,7 +2424,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 		return
 	}
 
-	log.Info("API key generation completed",
+	log.Info("API key creation completed",
 		slog.String("handle", handle),
 		slog.String("key name", result.Response.ApiKey.Name),
 		slog.String("user", user.UserID),
@@ -2488,6 +2489,107 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 	c.JSON(http.StatusOK, result.Response)
 }
 
+// UpdateAPIKey implements ServerInterface.UpdateAPIKey
+// (PUT /apis/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "UpdateAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
+	}
+
+	log.Debug("Starting API key update",
+		slog.String("handle", handle),
+		slog.String("key_name", apiKeyName),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
+
+	// Parse and validate request body
+	var request api.APIKeyUpdateRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Warn("Invalid request body for API key update",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	// Validate API key value is provided (check nil first)
+	if request.ApiKey == nil || *request.ApiKey == "" {
+		log.Warn("API key value is missing or empty in update request",
+			slog.String("handle", handle),
+			slog.String("key_name", apiKeyName),
+			slog.Bool("is_nil", request.ApiKey == nil),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "API key value is required",
+		})
+		return
+	}
+
+	// Validate API key minimum length (16 characters as per OpenAPI spec)
+	const minAPIKeyLength = 16
+	if len(*request.ApiKey) < minAPIKeyLength {
+		log.Warn("API key value is too short in update request",
+			slog.String("handle", handle),
+			slog.String("key_name", apiKeyName),
+			slog.Int("provided_length", len(*request.ApiKey)),
+			slog.Int("minimum_length", minAPIKeyLength),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("API key must be at least %d characters long", minAPIKeyLength),
+		})
+		return
+	}
+
+	// Prepare parameters
+	params := utils.APIKeyUpdateParams{
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key updated successfully",
+		slog.String("handle", handle),
+		slog.String("key_name", apiKeyName),
+		slog.String("user", user.UserID),
+		slog.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusOK, result.Response)
+}
+
 // RegenerateAPIKey implements ServerInterface.RegenerateAPIKey
 // (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
 func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName string) {
@@ -2510,7 +2612,7 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 
 	// Parse and validate request body
 	var request api.APIKeyRegenerationRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := s.bindRequestBody(c, &request); err != nil {
 		log.Warn("Invalid request body for API key rotation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
@@ -2650,6 +2752,20 @@ func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName strin
 		slog.String("correlation_id", correlationID))
 
 	return &user, true
+}
+
+// bindRequestBody binds the request body based on Content-Type header.
+// Supports both JSON and YAML content types.
+func (s *APIServer) bindRequestBody(c *gin.Context, request interface{}) error {
+	contentType := c.GetHeader("Content-Type")
+
+	// Check for YAML content types
+	if strings.Contains(contentType, "application/yaml") || strings.Contains(contentType, "text/yaml") {
+		return c.ShouldBindYAML(request)
+	}
+
+	// Default to JSON for application/json or when no content type is specified
+	return c.ShouldBindJSON(request)
 }
 
 // getLLMProviderTemplate extracts the template name from sourceConfig and retrieves the template.

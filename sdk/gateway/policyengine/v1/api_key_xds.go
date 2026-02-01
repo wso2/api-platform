@@ -86,6 +86,9 @@ type APIKeyData struct {
 
 	// ExpiresAt Expiration timestamp (null if no expiration)
 	ExpiresAt *time.Time `json:"expires_at" yaml:"expires_at"`
+
+	// Source tracking for external key support ("local" | "external")
+	Source string `json:"source" yaml:"source"`
 }
 
 // APIKeyOperationBatch represents a batch of API key operations

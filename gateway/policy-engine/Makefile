@@ -84,6 +84,7 @@ build: test
 	@echo "Building Policy Engine image: $(RUNTIME_TAG)"
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context policies=../policies \
@@ -101,6 +102,7 @@ build-local:
 	@echo "Building Policy Engine image locally: $(RUNTIME_TAG)"
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context policies=../policies \
@@ -123,6 +125,7 @@ build-and-push-multiarch:
 	@echo "Building and pushing multi-arch Policy Engine image: $(RUNTIME_TAG)"
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context policies=../policies \
