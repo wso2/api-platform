@@ -20,7 +20,7 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.5.0/gateway-v0.5.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v0.5.0/gateway-v0.5.0.zip
 
 # Unzip the downloaded distribution.
 unzip gateway-v0.5.0.zip
