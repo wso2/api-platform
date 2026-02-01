@@ -20,11 +20,234 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// MockServerInterface is a mock implementation of ServerInterface for testing
+type MockServerInterface struct {
+	ListAPIsCalled                   bool
+	CreateAPICalled                  bool
+	DeleteAPICalled                  bool
+	GetAPIByIdCalled                 bool
+	UpdateAPICalled                  bool
+	ListAPIKeysCalled                bool
+	GenerateAPIKeyCalled             bool
+	RevokeAPIKeyCalled               bool
+	RegenerateAPIKeyCalled           bool
+	ListCertificatesCalled           bool
+	UploadCertificateCalled          bool
+	ReloadCertificatesCalled         bool
+	DeleteCertificateCalled          bool
+	GetConfigDumpCalled              bool
+	HealthCheckCalled                bool
+	ListLLMProviderTemplatesCalled   bool
+	CreateLLMProviderTemplateCalled  bool
+	DeleteLLMProviderTemplateCalled  bool
+	GetLLMProviderTemplateByIdCalled bool
+	UpdateLLMProviderTemplateCalled  bool
+	ListLLMProvidersCalled           bool
+	CreateLLMProviderCalled          bool
+	DeleteLLMProviderCalled          bool
+	GetLLMProviderByIdCalled         bool
+	UpdateLLMProviderCalled          bool
+	ListLLMProxiesCalled             bool
+	CreateLLMProxyCalled             bool
+	DeleteLLMProxyCalled             bool
+	GetLLMProxyByIdCalled            bool
+	UpdateLLMProxyCalled             bool
+	ListMCPProxiesCalled             bool
+	CreateMCPProxyCalled             bool
+	DeleteMCPProxyCalled             bool
+	GetMCPProxyByIdCalled            bool
+	UpdateMCPProxyCalled             bool
+	ListPoliciesCalled               bool
+}
+
+func (m *MockServerInterface) ListAPIs(c *gin.Context, params ListAPIsParams) {
+	m.ListAPIsCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) CreateAPI(c *gin.Context) {
+	m.CreateAPICalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+func (m *MockServerInterface) DeleteAPI(c *gin.Context, id string) {
+	m.DeleteAPICalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "deleted", "id": id})
+}
+
+func (m *MockServerInterface) GetAPIById(c *gin.Context, id string) {
+	m.GetAPIByIdCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "id": id})
+}
+
+func (m *MockServerInterface) UpdateAPI(c *gin.Context, id string) {
+	m.UpdateAPICalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "updated", "id": id})
+}
+
+func (m *MockServerInterface) ListAPIKeys(c *gin.Context, id string) {
+	m.ListAPIKeysCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) GenerateAPIKey(c *gin.Context, id string) {
+	m.GenerateAPIKeyCalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+func (m *MockServerInterface) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
+	m.RevokeAPIKeyCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "revoked"})
+}
+
+func (m *MockServerInterface) RegenerateAPIKey(c *gin.Context, id string, apiKeyName string) {
+	m.RegenerateAPIKeyCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "regenerated"})
+}
+
+func (m *MockServerInterface) ListCertificates(c *gin.Context) {
+	m.ListCertificatesCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) UploadCertificate(c *gin.Context) {
+	m.UploadCertificateCalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "uploaded"})
+}
+
+func (m *MockServerInterface) ReloadCertificates(c *gin.Context) {
+	m.ReloadCertificatesCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "reloaded"})
+}
+
+func (m *MockServerInterface) DeleteCertificate(c *gin.Context, id string) {
+	m.DeleteCertificateCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func (m *MockServerInterface) GetConfigDump(c *gin.Context) {
+	m.GetConfigDumpCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) HealthCheck(c *gin.Context) {
+	m.HealthCheckCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+}
+
+func (m *MockServerInterface) ListLLMProviderTemplates(c *gin.Context, params ListLLMProviderTemplatesParams) {
+	m.ListLLMProviderTemplatesCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) CreateLLMProviderTemplate(c *gin.Context) {
+	m.CreateLLMProviderTemplateCalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+func (m *MockServerInterface) DeleteLLMProviderTemplate(c *gin.Context, id string) {
+	m.DeleteLLMProviderTemplateCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func (m *MockServerInterface) GetLLMProviderTemplateById(c *gin.Context, id string) {
+	m.GetLLMProviderTemplateByIdCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) UpdateLLMProviderTemplate(c *gin.Context, id string) {
+	m.UpdateLLMProviderTemplateCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
+}
+
+func (m *MockServerInterface) ListLLMProviders(c *gin.Context, params ListLLMProvidersParams) {
+	m.ListLLMProvidersCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) CreateLLMProvider(c *gin.Context) {
+	m.CreateLLMProviderCalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+func (m *MockServerInterface) DeleteLLMProvider(c *gin.Context, id string) {
+	m.DeleteLLMProviderCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func (m *MockServerInterface) GetLLMProviderById(c *gin.Context, id string) {
+	m.GetLLMProviderByIdCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) UpdateLLMProvider(c *gin.Context, id string) {
+	m.UpdateLLMProviderCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
+}
+
+func (m *MockServerInterface) ListLLMProxies(c *gin.Context, params ListLLMProxiesParams) {
+	m.ListLLMProxiesCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) CreateLLMProxy(c *gin.Context) {
+	m.CreateLLMProxyCalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+func (m *MockServerInterface) DeleteLLMProxy(c *gin.Context, id string) {
+	m.DeleteLLMProxyCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func (m *MockServerInterface) GetLLMProxyById(c *gin.Context, id string) {
+	m.GetLLMProxyByIdCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) UpdateLLMProxy(c *gin.Context, id string) {
+	m.UpdateLLMProxyCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
+}
+
+func (m *MockServerInterface) ListMCPProxies(c *gin.Context, params ListMCPProxiesParams) {
+	m.ListMCPProxiesCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) CreateMCPProxy(c *gin.Context) {
+	m.CreateMCPProxyCalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+func (m *MockServerInterface) DeleteMCPProxy(c *gin.Context, id string) {
+	m.DeleteMCPProxyCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func (m *MockServerInterface) GetMCPProxyById(c *gin.Context, id string) {
+	m.GetMCPProxyByIdCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (m *MockServerInterface) UpdateMCPProxy(c *gin.Context, id string) {
+	m.UpdateMCPProxyCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
+}
+
+func (m *MockServerInterface) ListPolicies(c *gin.Context) {
+	m.ListPoliciesCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
 
 // Tests for APIConfiguration_Spec union methods
 
@@ -723,5 +946,1110 @@ func TestGetSwagger(t *testing.T) {
 
 		// Verify it's a valid OpenAPI spec
 		assert.NotEmpty(t, swagger.Info.Title)
+	})
+}
+
+// Tests for APIConfiguration_Spec AsAPIConfigData roundtrip
+
+func TestAPIConfigurationSpec_APIConfigData(t *testing.T) {
+	t.Run("FromAPIConfigData and AsAPIConfigData roundtrip", func(t *testing.T) {
+		spec := &APIConfiguration_Spec{}
+
+		apiData := APIConfigData{
+			DisplayName: "Test REST API",
+			Version:     "v1.0.0",
+			Context:     "/test",
+			Operations: []Operation{
+				{Method: OperationMethodGET, Path: "/resource"},
+				{Method: OperationMethodPOST, Path: "/resource"},
+			},
+		}
+
+		err := spec.FromAPIConfigData(apiData)
+		require.NoError(t, err)
+
+		retrieved, err := spec.AsAPIConfigData()
+		require.NoError(t, err)
+
+		assert.Equal(t, apiData.DisplayName, retrieved.DisplayName)
+		assert.Equal(t, apiData.Version, retrieved.Version)
+		assert.Equal(t, apiData.Context, retrieved.Context)
+		assert.Len(t, retrieved.Operations, 2)
+	})
+}
+
+// Tests for APIConfiguration_Spec MarshalJSON and UnmarshalJSON
+
+func TestAPIConfigurationSpec_MarshalUnmarshalJSON(t *testing.T) {
+	t.Run("MarshalJSON with APIConfigData", func(t *testing.T) {
+		spec := &APIConfiguration_Spec{}
+
+		apiData := APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0.0",
+			Context:     "/test",
+			Operations: []Operation{
+				{Method: OperationMethodGET, Path: "/items"},
+			},
+		}
+
+		err := spec.FromAPIConfigData(apiData)
+		require.NoError(t, err)
+
+		jsonBytes, err := spec.MarshalJSON()
+		require.NoError(t, err)
+		assert.NotEmpty(t, jsonBytes)
+
+		// Unmarshal back and verify
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+		assert.Equal(t, "Test API", result["displayName"])
+	})
+
+	t.Run("UnmarshalJSON and verify data", func(t *testing.T) {
+		jsonData := `{
+			"displayName": "Unmarshaled API",
+			"version": "v2.0.0",
+			"context": "/unmarshal",
+			"operations": [{"method": "GET", "path": "/test"}]
+		}`
+
+		var spec APIConfiguration_Spec
+		err := spec.UnmarshalJSON([]byte(jsonData))
+		require.NoError(t, err)
+
+		retrieved, err := spec.AsAPIConfigData()
+		require.NoError(t, err)
+		assert.Equal(t, "Unmarshaled API", retrieved.DisplayName)
+	})
+}
+
+// Tests for LLMProviderConfigData_Upstream MarshalJSON
+
+func TestLLMProviderConfigDataUpstream_MarshalJSON(t *testing.T) {
+	t.Run("MarshalJSON with all fields", func(t *testing.T) {
+		url := "https://api.openai.com/v1"
+		hostRewrite := LLMProviderConfigDataUpstreamHostRewrite("auto")
+		ref := "openai-ref"
+		authType := LLMProviderConfigDataUpstreamAuthType("bearer")
+		authHeader := "Authorization"
+		authValue := "Bearer token"
+
+		upstream := LLMProviderConfigData_Upstream{
+			Url:         &url,
+			HostRewrite: &hostRewrite,
+			Ref:         &ref,
+			Auth: &struct {
+				Header *string                               `json:"header,omitempty" yaml:"header,omitempty"`
+				Type   LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value  *string                               `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Header: &authHeader,
+				Type:   authType,
+				Value:  &authValue,
+			},
+		}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+
+		assert.Equal(t, "https://api.openai.com/v1", result["url"])
+		assert.Equal(t, "auto", result["hostRewrite"])
+		assert.Equal(t, "openai-ref", result["ref"])
+		assert.NotNil(t, result["auth"])
+	})
+
+	t.Run("MarshalJSON with nil union", func(t *testing.T) {
+		url := "https://api.test.com"
+		upstream := LLMProviderConfigData_Upstream{
+			Url: &url,
+		}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+		assert.Equal(t, "https://api.test.com", result["url"])
+	})
+
+	t.Run("MarshalJSON roundtrip", func(t *testing.T) {
+		url := "https://api.openai.com/v1"
+		hostRewrite := LLMProviderConfigDataUpstreamHostRewrite("manual")
+
+		original := LLMProviderConfigData_Upstream{
+			Url:         &url,
+			HostRewrite: &hostRewrite,
+		}
+
+		jsonBytes, err := original.MarshalJSON()
+		require.NoError(t, err)
+
+		var restored LLMProviderConfigData_Upstream
+		err = restored.UnmarshalJSON(jsonBytes)
+		require.NoError(t, err)
+
+		assert.Equal(t, *original.Url, *restored.Url)
+		assert.Equal(t, *original.HostRewrite, *restored.HostRewrite)
+	})
+}
+
+// Tests for MCPProxyConfigData_Upstream MarshalJSON
+
+func TestMCPProxyConfigDataUpstream_MarshalJSON(t *testing.T) {
+	t.Run("MarshalJSON with all fields", func(t *testing.T) {
+		url := "https://mcp.example.com/v1"
+		hostRewrite := MCPProxyConfigDataUpstreamHostRewrite("auto")
+		ref := "mcp-ref"
+		authType := MCPProxyConfigDataUpstreamAuthType("api-key")
+		authHeader := "X-API-Key"
+		authValue := "secret-key"
+
+		upstream := MCPProxyConfigData_Upstream{
+			Url:         &url,
+			HostRewrite: &hostRewrite,
+			Ref:         &ref,
+			Auth: &struct {
+				Header *string                            `json:"header,omitempty" yaml:"header,omitempty"`
+				Type   MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value  *string                            `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Header: &authHeader,
+				Type:   authType,
+				Value:  &authValue,
+			},
+		}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+
+		assert.Equal(t, "https://mcp.example.com/v1", result["url"])
+		assert.Equal(t, "auto", result["hostRewrite"])
+		assert.Equal(t, "mcp-ref", result["ref"])
+		assert.NotNil(t, result["auth"])
+	})
+
+	t.Run("MarshalJSON with nil union", func(t *testing.T) {
+		url := "https://mcp.test.com"
+		upstream := MCPProxyConfigData_Upstream{
+			Url: &url,
+		}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+		assert.Equal(t, "https://mcp.test.com", result["url"])
+	})
+
+	t.Run("MarshalJSON roundtrip", func(t *testing.T) {
+		url := "https://mcp.example.com/v1"
+		hostRewrite := MCPProxyConfigDataUpstreamHostRewrite("manual")
+
+		original := MCPProxyConfigData_Upstream{
+			Url:         &url,
+			HostRewrite: &hostRewrite,
+		}
+
+		jsonBytes, err := original.MarshalJSON()
+		require.NoError(t, err)
+
+		var restored MCPProxyConfigData_Upstream
+		err = restored.UnmarshalJSON(jsonBytes)
+		require.NoError(t, err)
+
+		assert.Equal(t, *original.Url, *restored.Url)
+		assert.Equal(t, *original.HostRewrite, *restored.HostRewrite)
+	})
+}
+
+// Tests for Upstream MarshalJSON
+
+func TestUpstream_MarshalJSON(t *testing.T) {
+	t.Run("MarshalJSON with all fields", func(t *testing.T) {
+		url := "https://backend.example.com"
+		hostRewrite := UpstreamHostRewrite("auto")
+		ref := "backend-ref"
+
+		upstream := Upstream{
+			Url:         &url,
+			HostRewrite: &hostRewrite,
+			Ref:         &ref,
+		}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+
+		assert.Equal(t, "https://backend.example.com", result["url"])
+		assert.Equal(t, "auto", result["hostRewrite"])
+		assert.Equal(t, "backend-ref", result["ref"])
+	})
+
+	t.Run("MarshalJSON with nil union", func(t *testing.T) {
+		url := "https://backend.test.com"
+		upstream := Upstream{
+			Url: &url,
+		}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+		assert.Equal(t, "https://backend.test.com", result["url"])
+	})
+
+	t.Run("MarshalJSON roundtrip", func(t *testing.T) {
+		url := "https://backend.example.com"
+		hostRewrite := UpstreamHostRewrite("manual")
+		ref := "backend-service"
+
+		original := Upstream{
+			Url:         &url,
+			HostRewrite: &hostRewrite,
+			Ref:         &ref,
+		}
+
+		jsonBytes, err := original.MarshalJSON()
+		require.NoError(t, err)
+
+		var restored Upstream
+		err = restored.UnmarshalJSON(jsonBytes)
+		require.NoError(t, err)
+
+		assert.Equal(t, *original.Url, *restored.Url)
+		assert.Equal(t, *original.HostRewrite, *restored.HostRewrite)
+		assert.Equal(t, *original.Ref, *restored.Ref)
+	})
+}
+
+// Tests for Upstream UnmarshalJSON error cases
+
+func TestUpstream_UnmarshalJSON_Errors(t *testing.T) {
+	t.Run("Unmarshal with invalid hostRewrite field returns error", func(t *testing.T) {
+		jsonData := `{
+			"url": "https://backend.example.com",
+			"hostRewrite": 12345
+		}`
+
+		var upstream Upstream
+		err := json.Unmarshal([]byte(jsonData), &upstream)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "hostRewrite")
+	})
+
+	t.Run("Unmarshal with invalid ref field returns error", func(t *testing.T) {
+		jsonData := `{
+			"ref": {"invalid": "object"}
+		}`
+
+		var upstream Upstream
+		err := json.Unmarshal([]byte(jsonData), &upstream)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "ref")
+	})
+
+	t.Run("Unmarshal with invalid url field returns error", func(t *testing.T) {
+		jsonData := `{
+			"url": ["invalid", "array"]
+		}`
+
+		var upstream Upstream
+		err := json.Unmarshal([]byte(jsonData), &upstream)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "url")
+	})
+
+	t.Run("Unmarshal with invalid JSON returns error", func(t *testing.T) {
+		jsonData := `{invalid json}`
+
+		var upstream Upstream
+		err := json.Unmarshal([]byte(jsonData), &upstream)
+		assert.Error(t, err)
+	})
+}
+
+// Tests for RegisterHandlers
+
+func TestRegisterHandlers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("RegisterHandlers registers all routes", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+
+		RegisterHandlers(router, mockServer)
+
+		// Test that routes are registered by making requests
+		routes := router.Routes()
+		assert.NotEmpty(t, routes)
+
+		// Verify key routes are registered
+		routePaths := make(map[string]bool)
+		for _, route := range routes {
+			routePaths[route.Method+":"+route.Path] = true
+		}
+
+		assert.True(t, routePaths["GET:/apis"])
+		assert.True(t, routePaths["POST:/apis"])
+		assert.True(t, routePaths["GET:/apis/:id"])
+		assert.True(t, routePaths["PUT:/apis/:id"])
+		assert.True(t, routePaths["DELETE:/apis/:id"])
+		assert.True(t, routePaths["GET:/health"])
+		assert.True(t, routePaths["GET:/certificates"])
+		assert.True(t, routePaths["GET:/policies"])
+	})
+}
+
+// Tests for RegisterHandlersWithOptions
+
+func TestRegisterHandlersWithOptions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("RegisterHandlersWithOptions with custom base URL", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+
+		options := GinServerOptions{
+			BaseURL: "/api/v1",
+		}
+
+		RegisterHandlersWithOptions(router, mockServer, options)
+
+		routes := router.Routes()
+		routePaths := make(map[string]bool)
+		for _, route := range routes {
+			routePaths[route.Method+":"+route.Path] = true
+		}
+
+		assert.True(t, routePaths["GET:/api/v1/apis"])
+		assert.True(t, routePaths["POST:/api/v1/apis"])
+		assert.True(t, routePaths["GET:/api/v1/health"])
+	})
+
+	t.Run("RegisterHandlersWithOptions with custom error handler", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+
+		options := GinServerOptions{
+			ErrorHandler: func(c *gin.Context, err error, statusCode int) {
+				c.JSON(statusCode, gin.H{"custom_error": err.Error()})
+			},
+		}
+
+		RegisterHandlersWithOptions(router, mockServer, options)
+
+		// Make a request to verify handler is set up
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/health", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.HealthCheckCalled)
+	})
+
+	t.Run("RegisterHandlersWithOptions with middleware", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+
+		middlewareCalled := false
+		options := GinServerOptions{
+			Middlewares: []MiddlewareFunc{
+				func(c *gin.Context) {
+					middlewareCalled = true
+				},
+			},
+		}
+
+		RegisterHandlersWithOptions(router, mockServer, options)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/health", nil)
+		router.ServeHTTP(w, req)
+
+		assert.True(t, middlewareCalled)
+		assert.True(t, mockServer.HealthCheckCalled)
+	})
+
+	t.Run("Middleware can abort request", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+
+		options := GinServerOptions{
+			Middlewares: []MiddlewareFunc{
+				func(c *gin.Context) {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+				},
+			},
+		}
+
+		RegisterHandlersWithOptions(router, mockServer, options)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/health", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.False(t, mockServer.HealthCheckCalled)
+	})
+}
+
+// Tests for ServerInterfaceWrapper
+
+func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListAPIs with query parameters", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/apis?displayName=test&version=v1&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListAPIsCalled)
+	})
+
+	t.Run("CreateAPI", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/apis", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.True(t, mockServer.CreateAPICalled)
+	})
+
+	t.Run("GetAPIById", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/apis/test-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.GetAPIByIdCalled)
+	})
+
+	t.Run("UpdateAPI", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PUT", "/apis/test-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.UpdateAPICalled)
+	})
+
+	t.Run("DeleteAPI", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/apis/test-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.DeleteAPICalled)
+	})
+}
+
+func TestServerInterfaceWrapper_APIKeyRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListAPIKeys", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/apis/test-id/api-keys", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListAPIKeysCalled)
+	})
+
+	t.Run("GenerateAPIKey", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/apis/test-id/api-keys", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.True(t, mockServer.GenerateAPIKeyCalled)
+	})
+
+	t.Run("RevokeAPIKey", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/apis/test-id/api-keys/key-name", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.RevokeAPIKeyCalled)
+	})
+
+	t.Run("RegenerateAPIKey", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/apis/test-id/api-keys/key-name/regenerate", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.RegenerateAPIKeyCalled)
+	})
+}
+
+func TestServerInterfaceWrapper_CertificateRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListCertificates", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/certificates", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListCertificatesCalled)
+	})
+
+	t.Run("UploadCertificate", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/certificates", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.True(t, mockServer.UploadCertificateCalled)
+	})
+
+	t.Run("ReloadCertificates", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/certificates/reload", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ReloadCertificatesCalled)
+	})
+
+	t.Run("DeleteCertificate", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/certificates/cert-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.DeleteCertificateCalled)
+	})
+}
+
+func TestServerInterfaceWrapper_LLMProviderRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListLLMProviders with query parameters", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-providers?displayName=test&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListLLMProvidersCalled)
+	})
+
+	t.Run("CreateLLMProvider", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/llm-providers", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.True(t, mockServer.CreateLLMProviderCalled)
+	})
+
+	t.Run("GetLLMProviderById", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-providers/provider-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.GetLLMProviderByIdCalled)
+	})
+
+	t.Run("UpdateLLMProvider", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PUT", "/llm-providers/provider-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.UpdateLLMProviderCalled)
+	})
+
+	t.Run("DeleteLLMProvider", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/llm-providers/provider-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.DeleteLLMProviderCalled)
+	})
+}
+
+func TestServerInterfaceWrapper_LLMProxyRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListLLMProxies with query parameters", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-proxies?displayName=test&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListLLMProxiesCalled)
+	})
+
+	t.Run("CreateLLMProxy", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/llm-proxies", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.True(t, mockServer.CreateLLMProxyCalled)
+	})
+
+	t.Run("GetLLMProxyById", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-proxies/proxy-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.GetLLMProxyByIdCalled)
+	})
+
+	t.Run("UpdateLLMProxy", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PUT", "/llm-proxies/proxy-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.UpdateLLMProxyCalled)
+	})
+
+	t.Run("DeleteLLMProxy", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/llm-proxies/proxy-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.DeleteLLMProxyCalled)
+	})
+}
+
+func TestServerInterfaceWrapper_MCPProxyRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListMCPProxies with query parameters", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/mcp-proxies?displayName=test&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListMCPProxiesCalled)
+	})
+
+	t.Run("CreateMCPProxy", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/mcp-proxies", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.True(t, mockServer.CreateMCPProxyCalled)
+	})
+
+	t.Run("GetMCPProxyById", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/mcp-proxies/proxy-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.GetMCPProxyByIdCalled)
+	})
+
+	t.Run("UpdateMCPProxy", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PUT", "/mcp-proxies/proxy-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.UpdateMCPProxyCalled)
+	})
+
+	t.Run("DeleteMCPProxy", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/mcp-proxies/proxy-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.DeleteMCPProxyCalled)
+	})
+}
+
+func TestServerInterfaceWrapper_LLMProviderTemplateRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListLLMProviderTemplates", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-provider-templates", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListLLMProviderTemplatesCalled)
+	})
+
+	t.Run("CreateLLMProviderTemplate", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/llm-provider-templates", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.True(t, mockServer.CreateLLMProviderTemplateCalled)
+	})
+
+	t.Run("GetLLMProviderTemplateById", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-provider-templates/template-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.GetLLMProviderTemplateByIdCalled)
+	})
+
+	t.Run("UpdateLLMProviderTemplate", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PUT", "/llm-provider-templates/template-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.UpdateLLMProviderTemplateCalled)
+	})
+
+	t.Run("DeleteLLMProviderTemplate", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/llm-provider-templates/template-id", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.DeleteLLMProviderTemplateCalled)
+	})
+}
+
+func TestServerInterfaceWrapper_MiscRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("HealthCheck", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/health", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.HealthCheckCalled)
+	})
+
+	t.Run("GetConfigDump", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/config_dump", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.GetConfigDumpCalled)
+	})
+
+	t.Run("ListPolicies", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/policies", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListPoliciesCalled)
+	})
+}
+
+// Tests for query parameter edge cases
+
+func TestServerInterfaceWrapper_QueryParamsEdgeCases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("ListAPIs with all optional params", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/apis?displayName=test&version=v1&context=/test&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListAPIsCalled)
+	})
+
+	t.Run("ListLLMProviders with all optional params", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-providers?displayName=test&name=provider&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListLLMProvidersCalled)
+	})
+
+	t.Run("ListLLMProxies with all optional params", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-proxies?displayName=test&context=/proxy&name=proxy&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListLLMProxiesCalled)
+	})
+
+	t.Run("ListMCPProxies with all optional params", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/mcp-proxies?displayName=test&name=mcp&status=deployed", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListMCPProxiesCalled)
+	})
+
+	t.Run("ListLLMProviderTemplates with optional params", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+		RegisterHandlers(router, mockServer)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/llm-provider-templates?displayName=test&name=template", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.True(t, mockServer.ListLLMProviderTemplatesCalled)
+	})
+}
+
+// Tests for default error handler
+
+func TestDefaultErrorHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("Default error handler returns JSON error", func(t *testing.T) {
+		router := gin.New()
+		mockServer := &MockServerInterface{}
+
+		// Register with default options (nil error handler)
+		RegisterHandlersWithOptions(router, mockServer, GinServerOptions{})
+
+		// Make a request - the default error handler will be used if there's an error
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/health", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
+// Tests for empty/nil checks in union types
+
+func TestUnionTypes_EmptyState(t *testing.T) {
+	t.Run("APIConfiguration_Spec with empty union", func(t *testing.T) {
+		spec := APIConfiguration_Spec{}
+
+		// MarshalJSON should handle empty state
+		jsonBytes, err := spec.MarshalJSON()
+		require.NoError(t, err)
+		assert.Equal(t, "null", string(jsonBytes))
+	})
+
+	t.Run("LLMProviderConfigData_Upstream with empty union marshals to empty object", func(t *testing.T) {
+		upstream := LLMProviderConfigData_Upstream{}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("MCPProxyConfigData_Upstream with empty union marshals to empty object", func(t *testing.T) {
+		upstream := MCPProxyConfigData_Upstream{}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("Upstream with empty union marshals to empty object", func(t *testing.T) {
+		upstream := Upstream{}
+
+		jsonBytes, err := upstream.MarshalJSON()
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonBytes, &result)
+		require.NoError(t, err)
+		assert.Empty(t, result)
 	})
 }
