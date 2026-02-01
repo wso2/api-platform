@@ -21,6 +21,7 @@ package coverage
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 )
 
 // rewriteCoveragePaths rewrites container paths to local absolute paths
+// and filters out entries for files that don't exist in the source tree
 func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath, sourceDir string) error {
 	input, err := os.Open(inputPath)
 	if err != nil {
@@ -42,11 +44,51 @@ func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath, sourceDi
 	defer output.Close()
 
 	scanner := bufio.NewScanner(input)
+	skippedFiles := make(map[string]bool)
+
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// Always write the mode line
+		if strings.HasPrefix(line, "mode:") {
+			fmt.Fprintln(output, line)
+			continue
+		}
+
 		// Replace container path with absolute path to source directory
-		line = strings.Replace(line, c.config.ContainerPath, sourceDir+"/", 1)
-		fmt.Fprintln(output, line)
+		newLine := strings.Replace(line, c.config.ContainerPath, sourceDir+"/", 1)
+
+		// Extract the file path from the coverage line (format: path:line.col,line.col count hits)
+		if colonIdx := strings.Index(newLine, ":"); colonIdx > 0 {
+			filePath := newLine[:colonIdx]
+
+			// Check if this file exists in the source directory
+			// First check if the file is referenced with the module path
+			localPath := filePath
+			for _, prefix := range c.config.ModulePrefixes {
+				if strings.HasPrefix(filePath, prefix) {
+					// Convert module path to local path
+					relativePath := strings.TrimPrefix(filePath, prefix)
+					localPath = filepath.Join(sourceDir, relativePath)
+					break
+				}
+			}
+
+			// Check if file exists
+			if _, err := os.Stat(localPath); os.IsNotExist(err) {
+				// Track skipped files (only log once per file)
+				if !skippedFiles[filePath] {
+					skippedFiles[filePath] = true
+				}
+				continue // Skip this line - file doesn't exist in source tree
+			}
+		}
+
+		fmt.Fprintln(output, newLine)
+	}
+
+	if len(skippedFiles) > 0 {
+		log.Printf("Skipped %d generated files not in source tree", len(skippedFiles))
 	}
 
 	if err := scanner.Err(); err != nil {

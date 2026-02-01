@@ -265,6 +265,20 @@ func (cm *ComposeManager) Cleanup() {
 		signal.Stop(cm.signalChan)
 		close(cm.signalChan)
 
+		// First, gracefully stop containers to allow coverage data to be flushed
+		// This sends SIGTERM and waits for containers to exit gracefully
+		log.Println("Stopping containers gracefully (waiting for coverage flush)...")
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer stopCancel()
+
+		if err := cm.gracefulStop(stopCtx); err != nil {
+			log.Printf("Warning: graceful stop failed: %v", err)
+		}
+
+		// Give containers time to write coverage data after SIGTERM
+		log.Println("Waiting for coverage data to be written...")
+		time.Sleep(3 * time.Second)
+
 		// Run docker compose down with cleanup context
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
@@ -275,6 +289,18 @@ func (cm *ComposeManager) Cleanup() {
 
 		log.Println("Cleanup complete")
 	})
+}
+
+// gracefulStop sends SIGTERM to containers via docker-compose stop
+func (cm *ComposeManager) gracefulStop(ctx context.Context) error {
+	// Use docker-compose stop which sends SIGTERM and waits for graceful shutdown
+	// The -t flag specifies the timeout in seconds before sending SIGKILL
+	args := []string{"compose", "-p", cm.projectName, "-f", cm.composeFile, "stop", "-t", "15"}
+	cmd := execCommandContext(ctx, "docker", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
 }
 
 // DumpLogs collects docker compose logs and writes them to the given file path

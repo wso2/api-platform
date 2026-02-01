@@ -95,10 +95,10 @@ gateway/it/
 make test-all
 
 # Run with Go directly (with extended timeout for coverage builds)
-go test -v -timeout 20m ./...
+go test -v -timeout 30m ./...
 
 # Run specific scenario (use @tag)
-go test -v -timeout 20m ./... -godog.tags="@wip"
+go test -v -timeout 30m ./... -godog.tags="@wip"
 ```
 
 **Note:** The default Go test timeout is 10 minutes. The full integration test suite with coverage instrumentation typically takes longer to complete, so a 20-minute timeout is recommended.

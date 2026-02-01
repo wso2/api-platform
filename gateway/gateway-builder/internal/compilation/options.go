@@ -20,7 +20,9 @@ package compilation
 
 import (
 	"fmt"
+	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
@@ -28,26 +30,44 @@ import (
 
 // BuildOptions creates compilation options for the policy engine binary
 func BuildOptions(outputPath string, buildMetadata *types.BuildMetadata) *types.CompilationOptions {
+	// Check for coverage mode from environment variable
+	enableCoverage := false
+	if coverageEnv := os.Getenv("COVERAGE"); strings.EqualFold(coverageEnv, "true") {
+		enableCoverage = true
+	}
+
 	// Generate ldflags for build metadata injection
-	ldflags := generateLDFlags(buildMetadata)
+	// Pass enableCoverage to avoid stripping debug info needed for coverage
+	ldflags := generateLDFlags(buildMetadata, enableCoverage)
 
 	return &types.CompilationOptions{
-		OutputPath: outputPath,
-		EnableUPX:  false, // Disabled by default for compatibility
-		LDFlags:    ldflags,
-		BuildTags:  []string{},
-		CGOEnabled: false, // Static binary
-		TargetOS:   "linux",
-		TargetArch: runtime.GOARCH, // Use native architecture
+		OutputPath:     outputPath,
+		EnableUPX:      false, // Disabled by default for compatibility
+		LDFlags:        ldflags,
+		BuildTags:      []string{},
+		CGOEnabled:     false, // Static binary
+		TargetOS:       "linux",
+		TargetArch:     runtime.GOARCH, // Use native architecture
+		EnableCoverage: enableCoverage,
 	}
 }
 
 // generateLDFlags creates ldflags string for embedding build metadata
-func generateLDFlags(metadata *types.BuildMetadata) string {
-	ldflags := "-s -w" // Strip debug info and symbol table
+// enableCoverage determines if coverage is enabled (skip -s -w flags if so)
+func generateLDFlags(metadata *types.BuildMetadata, enableCoverage bool) string {
+	var ldflags string
+	
+	// Only strip debug info if coverage is NOT enabled
+	// -s and -w interfere with Go coverage instrumentation
+	if !enableCoverage {
+		ldflags = "-s -w" // Strip debug info and symbol table
+	}
 
 	// Add version information (matching policy-engine main.go variables)
-	ldflags += fmt.Sprintf(" -X main.Version=%s", metadata.Version)
+	if ldflags != "" {
+		ldflags += " "
+	}
+	ldflags += fmt.Sprintf("-X main.Version=%s", metadata.Version)
 	ldflags += fmt.Sprintf(" -X main.GitCommit=%s", metadata.GitCommit)
 
 	// Add build timestamp as BuildDate

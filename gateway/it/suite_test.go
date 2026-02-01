@@ -100,6 +100,7 @@ func TestFeatures(t *testing.T) {
 				"features/semantic-prompt-guard.feature",
 				"features/modify-headers.feature",
 				"features/respond.feature",
+				"features/policy-engine-admin.feature",
 			},
 			TestingT: t,
 		},
@@ -260,6 +261,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterMCPSteps(ctx, testState, httpSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps
