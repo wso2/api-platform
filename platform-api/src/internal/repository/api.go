@@ -297,12 +297,12 @@ func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*
 		SELECT a.uuid, a.name, a.description, a.context, a.version, a.provider,
 		       a.project_uuid, a.organization_uuid, a.type, a.created_at, a.updated_at
 		FROM apis a
-		INNER JOIN api_deployments ad ON a.uuid = ad.api_uuid
-		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ?
+		INNER JOIN api_deployment_status ad ON a.uuid = ad.api_uuid
+		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ? AND ad.status = ?
 		ORDER BY a.created_at DESC
 	`
 
-	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), gatewayUUID, orgUUID, string(model.DeploymentStatusDeployed))
 	if err != nil {
 		return nil, err
 	}
