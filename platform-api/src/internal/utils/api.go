@@ -67,6 +67,7 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 		CORS:             u.CORSDTOToModel(dto.CORS),
 		BackendServices:  u.BackendServicesDTOToModel(dto.BackendServices),
 		APIRateLimiting:  u.RateLimitingDTOToModel(dto.APIRateLimiting),
+		Policies:         u.PoliciesDTOToModel(dto.Policies),
 		Operations:       u.OperationsDTOToModel(dto.Operations),
 		Channels:         u.ChannelsDTOToModel(dto.Channels),
 	}
@@ -101,6 +102,7 @@ func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 		CORS:             u.CORSModelToDTO(model.CORS),
 		BackendServices:  u.BackendServicesModelToDTO(model.BackendServices),
 		APIRateLimiting:  u.RateLimitingModelToDTO(model.APIRateLimiting),
+		Policies:         u.PoliciesModelToDTO(model.Policies),
 		Operations:       u.OperationsModelToDTO(model.Operations),
 		Channels:         u.ChannelsModelToDTO(model.Channels),
 	}
@@ -875,6 +877,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	apiYAMLData.DisplayName = api.Name
 	apiYAMLData.Version = api.Version
 	apiYAMLData.Context = api.Context
+	apiYAMLData.Policies = api.Policies
 
 	// Only set upstream and operations for HTTP APIs
 	switch api.Type {
@@ -1271,6 +1274,7 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 		Version:         yamlData.Version,
 		BackendServices: backendServices,
 		Operations:      operations,
+		Policies:        yamlData.Policies,
 
 		// Set reasonable defaults for required fields that aren't in APIYAMLData
 		LifeCycleStatus:  "CREATED",

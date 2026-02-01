@@ -729,6 +729,9 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPI
 	if req.Channels != nil {
 		existingAPI.Channels = *req.Channels
 	}
+	if req.Policies != nil {
+		existingAPI.Policies = *req.Policies
+	}
 
 	return existingAPI, nil
 }
@@ -876,6 +879,7 @@ type UpdateAPIRequest struct {
 	APIRateLimiting  *dto.RateLimitingConfig `json:"api-rate-limiting,omitempty"`
 	Operations       *[]dto.Operation        `json:"operations,omitempty"`
 	Channels         *[]dto.Channel          `json:"channels,omitempty"`
+	Policies         *[]dto.Policy           `json:"policies,omitempty"`
 }
 
 // generateDefaultOperations creates default CRUD operations for an API

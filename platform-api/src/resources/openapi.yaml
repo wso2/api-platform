@@ -1927,6 +1927,11 @@ components:
             $ref: '#/components/schemas/BackendService'
         api-rate-limiting:
           $ref: '#/components/schemas/RateLimitingConfig'
+        policies:
+          type: array
+          description: List of policies to be applied on the API
+          items:
+            $ref: '#/components/schemas/Policy'
         operations:
           type: array
           description: List of operations exposed by this API

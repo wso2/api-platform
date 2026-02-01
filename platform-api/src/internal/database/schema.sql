@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS apis (
     is_default_version BOOLEAN DEFAULT FALSE,
     type VARCHAR(20) DEFAULT 'HTTP',
     transport VARCHAR(255), -- JSON array as TEXT
+    policies TEXT DEFAULT '[]', -- JSON array as TEXT
     security_enabled BOOLEAN,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -202,6 +203,7 @@ CREATE TABLE IF NOT EXISTS api_operations (
     path VARCHAR(255) NOT NULL,
     authentication_required BOOLEAN,
     scopes TEXT, -- JSON array as TEXT
+    policies TEXT DEFAULT '[]', -- JSON array as TEXT
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
 
@@ -214,17 +216,6 @@ CREATE TABLE IF NOT EXISTS operation_backend_services (
     FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE,
     FOREIGN KEY (backend_service_uuid) REFERENCES backend_services(uuid) ON DELETE CASCADE,
     UNIQUE(operation_id, backend_service_uuid)
-);
-
--- Policies table
-CREATE TABLE IF NOT EXISTS policies (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operation_id INTEGER,
-    name VARCHAR(255) NOT NULL,
-    params TEXT, -- JSON object as TEXT
-    execution_condition VARCHAR(512),
-    version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
-    FOREIGN KEY (operation_id) REFERENCES api_operations(id)
 );
 
 -- Gateways table (scoped to organizations)
