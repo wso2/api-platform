@@ -422,7 +422,7 @@ func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 			ExecutionCondition: &condition,
 			Name:               "rate-limit",
 			Params:             &params,
-			Version:            "1.0.0",
+			Version:            "v1",
 		},
 	}
 
@@ -430,7 +430,7 @@ func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 		Handle:  "pets-api",
 		Version: "v1",
 		Policies: []model.Policy{
-			{Name: "legacy-policy", Version: "0.1.0"},
+			{Name: "legacy-policy", Version: "v1"},
 		},
 	}
 
