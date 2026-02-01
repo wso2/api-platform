@@ -896,14 +896,14 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel) error {
 	var authRequired bool
 	var scopesJSON string
-	if channel.Request != nil && channel.Request.Authentication != nil {
+	if channel.Request.Authentication != nil {
 		authRequired = channel.Request.Authentication.Required
 		if len(channel.Request.Authentication.Scopes) > 0 {
 			scopesBytes, _ := json.Marshal(channel.Request.Authentication.Scopes)
 			scopesJSON = string(scopesBytes)
 		}
 	}
-	policiesValue, err := serializePolicies(channel.Request.Policies)
+	policiesJSON, err := serializePolicies(channel.Request.Policies)
 	if err != nil {
 		return err
 	}
@@ -916,7 +916,7 @@ func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`
 		if err := tx.QueryRow(r.db.Rebind(channelQuery), apiId, channel.Name, channel.Description,
-			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON, policiesValue).Scan(&channelID); err != nil {
+			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON, policiesJSON).Scan(&channelID); err != nil {
 			return err
 		}
 	} else {
@@ -925,7 +925,7 @@ func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel
 		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes, policies)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 		result, err := tx.Exec(r.db.Rebind(channelQuery), apiId, channel.Name, channel.Description,
-			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON, policiesValue)
+			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON, policiesJSON)
 		if err != nil {
 			return err
 		}

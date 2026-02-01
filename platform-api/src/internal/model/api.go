@@ -221,7 +221,7 @@ type Operation struct {
 	Request     *OperationRequest `json:"request,omitempty"`
 }
 
-// Channel represents an API operation
+// Channel represents an API channel
 type Channel struct {
 	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`

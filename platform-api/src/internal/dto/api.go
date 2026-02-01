@@ -141,20 +141,20 @@ type RateLimitingConfig struct {
 type Operation struct {
 	Name        string            `json:"name,omitempty" yaml:"name,omitempty"`
 	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
-	Request     *OperationRequest `json:"request,omitempty" yaml:"request,omitempty"`
+	Request     *OperationRequest `json:"request" yaml:"request" binding:"required"`
 }
 
 // Channel represents an API channel
 type Channel struct {
 	Name        string          `json:"name,omitempty" yaml:"name,omitempty"`
 	Description string          `json:"description,omitempty" yaml:"description,omitempty"`
-	Request     *ChannelRequest `json:"request,omitempty" yaml:"request,omitempty"`
+	Request     *ChannelRequest `json:"request" yaml:"request" binding:"required"`
 }
 
 // OperationRequest represents operation request details
 type OperationRequest struct {
-	Method          string                `json:"method" yaml:"method"`
-	Path            string                `json:"path" yaml:"path"`
+	Method          string                `json:"method" yaml:"method" binding:"required"`
+	Path            string                `json:"path" yaml:"path" binding:"required"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	Authentication  *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
 	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -162,8 +162,8 @@ type OperationRequest struct {
 
 // ChannelRequest represents channel request details
 type ChannelRequest struct {
-	Method          string                `json:"method" yaml:"method"`
-	Name            string                `json:"name" yaml:"name"`
+	Method          string                `json:"method" yaml:"method" binding:"required"`
+	Name            string                `json:"name" yaml:"name" binding:"required"`
 	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	Authentication  *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
 	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
