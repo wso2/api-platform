@@ -31,7 +31,8 @@ const policyPropagationDelay = 2 * time.Second
 
 // RegisterAPISteps registers all API deployment step definitions
 func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
-	ctx.Step(`^I deploy this API configuration:$`, func(body *godog.DocString) error {
+	// Single deploy function used by multiple step patterns
+	deployAPI := func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		err := httpSteps.SendPOSTToService("gateway-controller", "/apis", body)
 		if err != nil {
@@ -39,15 +40,29 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		}
 		time.Sleep(policyPropagationDelay)
 		return nil
-	})
+	}
 
-	ctx.Step(`^I delete the API "([^"]*)"$`, func(name string) error {
+	// Single delete function used by multiple step patterns
+	deleteAPI := func(name string) error {
 		err := httpSteps.SendDELETEToService("gateway-controller", "/apis/"+name)
 		if err != nil {
 			return err
 		}
 		time.Sleep(policyPropagationDelay)
 		return nil
+	}
+
+	// Register multiple step patterns for deploy
+	ctx.Step(`^I deploy this API configuration:$`, deployAPI)
+	ctx.Step(`^I deploy an API with the following configuration:$`, deployAPI)
+	ctx.Step(`^I deploy a test API with the following configuration:$`, deployAPI)
+
+	// Register multiple step patterns for delete
+	ctx.Step(`^I delete the API "([^"]*)"$`, deleteAPI)
+	// Note: Version parameter is semantically meaningful in tests but not used by the API endpoint.
+	// The API deletes by name only - version is embedded in the API YAML, not in the DELETE path.
+	ctx.Step(`^I delete the API "([^"]*)" version "([^"]*)"$`, func(name, version string) error {
+		return deleteAPI(name)
 	})
 
 	ctx.Step(`^I update the API "([^"]*)" with this configuration:$`, func(apiName string, body *godog.DocString) error {

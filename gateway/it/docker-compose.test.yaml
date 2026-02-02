@@ -54,7 +54,7 @@ services:
 
   policy-engine:
     container_name: it-policy-engine
-    image: ghcr.io/wso2/api-platform/policy-engine:0.6.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/policy-engine-coverage:0.6.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.2
@@ -65,8 +65,10 @@ services:
     environment:
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
+      - GOCOVERDIR=/coverage
     volumes:
       - ./test-config.toml:/etc/policy-engine/config.toml:ro
+      - ./coverage/policy-engine:/coverage
     networks:
       - it-gateway-network
 
@@ -209,6 +211,18 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8085:8080"
+    networks:
+      - it-gateway-network
+
+  # Mock Analytics Collector for analytics testing
+  mock-analytics-collector:
+    container_name: it-mock-analytics-collector
+    image: ghcr.io/wso2/api-platform/mock-analytics-collector:latest
+    build:
+      context: ../../tests/mock-servers/mock-analytics-collector
+      dockerfile: Dockerfile
+    ports:
+      - "8086:8080"
     networks:
       - it-gateway-network
 

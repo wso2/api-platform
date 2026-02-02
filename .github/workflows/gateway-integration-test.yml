@@ -31,7 +31,7 @@ jobs:
 
       - name: Build mock server images
         run: |
-          for mock in mock-jwks mock-azure-content-safety mock-aws-bedrock-guardrail mock-embedding-provider; do
+          for mock in mock-jwks mock-azure-content-safety mock-aws-bedrock-guardrail mock-embedding-provider mock-analytics-collector; do
             echo "Building $mock..."
             docker build -t ghcr.io/wso2/api-platform/$mock:latest tests/mock-servers/$mock
           done

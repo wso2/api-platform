@@ -169,8 +169,6 @@ func (c *Client) setState(state ClientState) {
 
 // run is the main client loop
 func (c *Client) run() {
-	defer close(c.stoppedCh)
-
 	for {
 		select {
 		case <-c.ctx.Done():

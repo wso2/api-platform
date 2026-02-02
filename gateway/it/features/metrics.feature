@@ -65,3 +65,79 @@ Feature: Gateway Metrics
     Then the response status code should be 200
     When I send a GET request to the policy engine metrics endpoint
     Then the response should contain metric "policy_engine_requests_total"
+
+  Scenario: Policy engine exposes system metrics
+    When I send a GET request to the policy engine metrics endpoint
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_up"
+    And the response should contain metric "policy_engine_goroutines"
+
+  Scenario: Policy engine exposes xDS connection metrics
+    When I send a GET request to the policy engine metrics endpoint
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_xds_connection_state"
+    And the response should contain metric "policy_engine_xds_updates_total"
+
+  Scenario: Policy engine exposes gRPC and stream metrics
+    When I send a GET request to the policy engine metrics endpoint
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_active_streams"
+    And the response should contain metric "policy_engine_grpc_connections_active"
+
+  Scenario: Policy engine exposes Go runtime metrics
+    When I send a GET request to the policy engine metrics endpoint
+    Then the response status code should be 200
+    And the response should contain metric "go_goroutines"
+    And the response should contain metric "go_memstats_alloc_bytes"
+    And the response should contain metric "process_cpu_seconds_total"
+
+  Scenario: Policy engine metrics track policy execution after API request
+    Given I am authenticated as "admin" with password "admin"
+    And I create a new API with the following configuration:
+      """
+      {
+        "name": "policy-metrics-api",
+        "version": "1.0",
+        "basePath": "/policy-metrics-api",
+        "backend": {
+          "url": "http://sample-backend:9080"
+        },
+        "routes": [
+          {
+            "path": "/invoke",
+            "methods": ["GET", "POST"]
+          }
+        ]
+      }
+      """
+    And I wait for API deployment to complete
+    When I send a GET request to "/policy-metrics-api/invoke" through the router
+    Then the response status code should be 200
+    When I send a GET request to the policy engine metrics endpoint
+    Then the response should contain metric "policy_engine_request_duration_seconds"
+    And the response should contain metric "policy_engine_context_build_duration_seconds"
+
+  Scenario: Policy engine tracks policy chain configuration
+    Given I am authenticated as "admin" with password "admin"
+    And I create a new API with the following configuration:
+      """
+      {
+        "name": "chain-metrics-api",
+        "version": "1.0",
+        "basePath": "/chain-metrics-api",
+        "backend": {
+          "url": "http://sample-backend:9080"
+        },
+        "routes": [
+          {
+            "path": "/test",
+            "methods": ["GET"]
+          }
+        ]
+      }
+      """
+    And I wait for API deployment to complete
+    When I send a GET request to the policy engine metrics endpoint
+    Then the response status code should be 200
+    And the response should contain metric "policy_engine_policy_chains_loaded"
+    And the response should contain metric "policy_engine_snapshot_size"

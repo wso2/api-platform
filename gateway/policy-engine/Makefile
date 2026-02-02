@@ -40,7 +40,7 @@ GOMOD := $(GOCMD) mod
 # Binary name
 BINARY_NAME := policy-engine
 
-.PHONY: all build build-local test clean docker-clean help push \
+.PHONY: all build build-local build-coverage-image test clean docker-clean help push \
 	run stop tidy lint logs ps restart rebuild dev-build dev-run check-deps \
 	build-sample-setheader test-integration test-envoy clean-all version build-and-push-multiarch
 
@@ -111,6 +111,22 @@ build-local:
 		-t $(RUNTIME_IMAGE):latest \
 		.
 	@echo "Image built successfully: $(RUNTIME_TAG)"
+
+## build-coverage-image: Build the Policy Engine Docker image with coverage instrumentation
+build-coverage-image:
+	@echo "Building Policy Engine coverage image: $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION)"
+	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
+		--build-context sdk=../../sdk \
+		--build-context gateway-builder=../gateway-builder \
+		--build-context policy-engine=. \
+		--build-context policies=../policies \
+		--build-context system-policies=../system-policies \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg ENABLE_COVERAGE=true \
+		-t $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION) \
+		.
+	@echo "Coverage image built successfully: $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION)"
 
 ## push: Push image to registry
 push:

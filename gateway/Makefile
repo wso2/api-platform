@@ -84,7 +84,7 @@ build: build-controller build-gateway-builder build-policy-engine build-router #
 build-local: build-local-controller build-local-gateway-builder build-local-policy-engine build-local-router ## Build all gateway components locally (faster)
 
 .PHONY: build-coverage
-build-coverage: build-controller-coverage build-gateway-builder build-policy-engine build-router ## Build all coverage-instrumented gateway components
+build-coverage: build-gateway-builder build-controller-coverage build-policy-engine-coverage build-router ## Build all coverage-instrumented gateway components
 
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
@@ -100,6 +100,11 @@ build-local-controller: ## Build gateway-controller Docker image locally (faster
 build-controller-coverage: ## Build coverage-instrumented gateway-controller Docker image
 	@echo "Building coverage-instrumented controller Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-controller build-coverage-image VERSION=$(VERSION)
+
+.PHONY: build-policy-engine-coverage
+build-policy-engine-coverage: ## Build coverage-instrumented policy-engine Docker image
+	@echo "Building coverage-instrumented policy-engine Docker image ($(VERSION))..."
+	$(MAKE) -C policy-engine build-coverage-image VERSION=$(VERSION)
 
 .PHONY: build-gateway-builder
 build-gateway-builder: ## Build gateway-builder Docker image
