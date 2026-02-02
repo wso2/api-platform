@@ -60,20 +60,24 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Convert transport slice to JSON
 	transportJSON, _ := json.Marshal(api.Transport)
+	policiesJSON, err := serializePolicies(api.Policies)
+	if err != nil {
+		return err
+	}
 
 	// Insert main API record
 	apiQuery := `
 		INSERT INTO apis (uuid, handle, name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version,
-			type, transport, security_enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			type, transport, policies, security_enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
 	_, err = tx.Exec(r.db.Rebind(apiQuery), api.ID, api.Handle, api.Name, api.Description,
 		api.Context, api.Version, api.Provider, api.ProjectID, api.OrganizationID, api.LifeCycleStatus,
-		api.HasThumbnail, api.IsDefaultVersion, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
+		api.HasThumbnail, api.IsDefaultVersion, api.Type, string(transportJSON), policiesJSON, securityEnabled, api.CreatedAt, api.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -130,16 +134,17 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	query := `
 		SELECT uuid, handle, name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version,
-			type, transport, security_enabled, created_at, updated_at
+			type, transport, policies, security_enabled, created_at, updated_at
 		FROM apis WHERE uuid = ? and organization_uuid = ?
 	`
 
 	var transportJSON string
+	var policiesJSON sql.NullString
 	var securityEnabled bool
 	err := r.db.QueryRow(r.db.Rebind(query), apiUUID, orgUUID).Scan(
 		&api.ID, &api.Handle, &api.Name, &api.Description, &api.Context,
 		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
-		&api.HasThumbnail, &api.IsDefaultVersion, &api.Type, &transportJSON,
+		&api.HasThumbnail, &api.IsDefaultVersion, &api.Type, &transportJSON, &policiesJSON,
 		&securityEnabled, &api.CreatedAt, &api.UpdatedAt)
 
 	if err != nil {
@@ -152,6 +157,11 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	// Parse transport JSON
 	if transportJSON != "" {
 		json.Unmarshal([]byte(transportJSON), &api.Transport)
+	}
+	if policies, err := deserializePolicies(policiesJSON); err != nil {
+		return nil, err
+	} else {
+		api.Policies = policies
 	}
 
 	// Load related configurations
@@ -186,7 +196,7 @@ func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.AP
 	query := `
 		SELECT uuid, handle, name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version,
-			type, transport, security_enabled, created_at, updated_at
+			type, transport, policies, security_enabled, created_at, updated_at
 		FROM apis WHERE project_uuid = ? AND organization_uuid = ? ORDER BY created_at DESC
 	`
 
@@ -200,12 +210,13 @@ func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.AP
 	for rows.Next() {
 		api := &model.API{}
 		var transportJSON string
+		var policiesJSON sql.NullString
 		var securityEnabled bool
 
 		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
-			&api.Type, &transportJSON, &securityEnabled, &api.CreatedAt, &api.UpdatedAt)
+			&api.Type, &transportJSON, &policiesJSON, &securityEnabled, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -213,6 +224,11 @@ func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.AP
 		// Parse transport JSON
 		if transportJSON != "" {
 			json.Unmarshal([]byte(transportJSON), &api.Transport)
+		}
+		if policies, err := deserializePolicies(policiesJSON); err != nil {
+			return nil, err
+		} else {
+			api.Policies = policies
 		}
 
 		// Load related configurations
@@ -236,7 +252,7 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID *string)
 		query = `
 			SELECT uuid, handle, name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version,
-				type, transport, security_enabled, created_at, updated_at
+				type, transport, policies, security_enabled, created_at, updated_at
 			FROM apis
 			WHERE organization_uuid = ? AND project_uuid = ?
 			ORDER BY created_at DESC
@@ -247,7 +263,7 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID *string)
 		query = `
 			SELECT uuid, handle, name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version,
-				type, transport, security_enabled, created_at, updated_at
+				type, transport, policies, security_enabled, created_at, updated_at
 			FROM apis
 			WHERE organization_uuid = ?
 			ORDER BY created_at DESC
@@ -265,12 +281,13 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID *string)
 	for rows.Next() {
 		api := &model.API{}
 		var transportJSON string
+		var policiesJSON sql.NullString
 		var securityEnabled bool
 
 		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
-			&api.Type, &transportJSON, &securityEnabled, &api.CreatedAt, &api.UpdatedAt)
+			&api.Type, &transportJSON, &policiesJSON, &securityEnabled, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -278,6 +295,11 @@ func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID *string)
 		// Parse transport JSON
 		if transportJSON != "" {
 			json.Unmarshal([]byte(transportJSON), &api.Transport)
+		}
+		if policies, err := deserializePolicies(policiesJSON); err != nil {
+			return nil, err
+		} else {
+			api.Policies = policies
 		}
 
 		// Load related configurations
@@ -367,18 +389,22 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 
 	// Convert transport slice to JSON
 	transportJSON, _ := json.Marshal(api.Transport)
+	policiesJSON, err := serializePolicies(api.Policies)
+	if err != nil {
+		return err
+	}
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
 	// Update main API record
 	query := `
 		UPDATE apis SET description = ?,
 			provider = ?, lifecycle_status = ?, has_thumbnail = ?,
-			is_default_version = ?, type = ?, transport = ?, security_enabled = ?, updated_at = ?
+			is_default_version = ?, type = ?, transport = ?, policies = ?, security_enabled = ?, updated_at = ?
 		WHERE uuid = ?
 	`
 	_, err = tx.Exec(r.db.Rebind(query), api.Description,
 		api.Provider, api.LifeCycleStatus,
-		api.HasThumbnail, api.IsDefaultVersion, api.Type, string(transportJSON),
+		api.HasThumbnail, api.IsDefaultVersion, api.Type, string(transportJSON), policiesJSON,
 		securityEnabled, api.UpdatedAt, api.ID)
 	if err != nil {
 		return err
@@ -447,7 +473,6 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 		// Delete API deployments
 		`DELETE FROM api_deployments WHERE api_uuid = ?`,
 		// Delete other related tables that reference the API
-		`DELETE FROM policies WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
 		`DELETE FROM operation_backend_services WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
 		`DELETE FROM api_operations WHERE api_uuid = ?`,
 		`DELETE FROM api_backend_services WHERE api_uuid = ?`,
@@ -805,28 +830,32 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 			scopesJSON = string(scopesBytes)
 		}
 	}
+	policiesValue, err := serializePolicies(operation.Request.Policies)
+	if err != nil {
+		return err
+	}
 
 	// Insert operation
 	var operationID int64
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
 		// PostgreSQL: use RETURNING to get the generated ID
 		opQuery := `
-			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes, policies)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			RETURNING id
 		`
 		if err := tx.QueryRow(r.db.Rebind(opQuery), apiId, operation.Name, operation.Description,
-			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON).Scan(&operationID); err != nil {
+			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON, policiesValue).Scan(&operationID); err != nil {
 			return err
 		}
 	} else {
 		// SQLite (and other drivers that support LastInsertId)
 		opQuery := `
-			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes, policies)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`
 		result, err := tx.Exec(r.db.Rebind(opQuery), apiId, operation.Name, operation.Description,
-			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON)
+			operation.Request.Method, operation.Request.Path, authRequired, scopesJSON, policiesValue)
 		if err != nil {
 			return err
 		}
@@ -861,45 +890,42 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 		}
 	}
 
-	// Insert policies
-	for _, policy := range operation.Request.Policies {
-		if err := r.insertPolicy(tx, operationID, &policy); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
 func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel) error {
 	var authRequired bool
 	var scopesJSON string
-	if channel.Request != nil && channel.Request.Authentication != nil {
+	if channel.Request.Authentication != nil {
 		authRequired = channel.Request.Authentication.Required
 		if len(channel.Request.Authentication.Scopes) > 0 {
 			scopesBytes, _ := json.Marshal(channel.Request.Authentication.Scopes)
 			scopesJSON = string(scopesBytes)
 		}
 	}
+	policiesJSON, err := serializePolicies(channel.Request.Policies)
+	if err != nil {
+		return err
+	}
 	// Insert channel
 	var channelID int64
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
 		// PostgreSQL: use RETURNING to get the generated ID
 		channelQuery := `
-		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes, policies)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`
 		if err := tx.QueryRow(r.db.Rebind(channelQuery), apiId, channel.Name, channel.Description,
-			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON).Scan(&channelID); err != nil {
+			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON, policiesJSON).Scan(&channelID); err != nil {
 			return err
 		}
 	} else {
 		// SQLite (and other drivers that support LastInsertId)
 		channelQuery := `
-		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
+		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes, policies)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 		result, err := tx.Exec(r.db.Rebind(channelQuery), apiId, channel.Name, channel.Description,
-			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON)
+			channel.Request.Method, channel.Request.Name, authRequired, scopesJSON, policiesJSON)
 		if err != nil {
 			return err
 		}
@@ -910,34 +936,12 @@ func (r *APIRepo) insertChannel(tx *sql.Tx, apiId string, channel *model.Channel
 		}
 	}
 
-	// Insert policies
-	for _, policy := range channel.Request.Policies {
-		if err := r.insertPolicy(tx, channelID, &policy); err != nil {
-			return err
-		}
-	}
-
 	return nil
-}
-
-func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, policy *model.Policy) error {
-	var paramsJSON []byte
-	if policy.Params != nil {
-		paramsJSON, _ = json.Marshal(*policy.Params)
-	}
-
-	policyQuery := `
-		INSERT INTO policies (operation_id, name, params, execution_condition, version)
-		VALUES (?, ?, ?, ?, ?)
-	`
-	_, err := tx.Exec(r.db.Rebind(policyQuery), operationID, policy.Name, string(paramsJSON),
-		policy.ExecutionCondition, policy.Version)
-	return err
 }
 
 func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
 	query := `
-		SELECT id, name, description, method, path, authentication_required, scopes 
+		SELECT id, name, description, method, path, authentication_required, scopes, policies 
 		FROM api_operations WHERE api_uuid = ?
 	`
 	rows, err := r.db.Query(r.db.Rebind(query), apiId)
@@ -954,9 +958,10 @@ func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
 		}
 		var authRequired bool
 		var scopesJSON string
+		var policiesJSON sql.NullString
 
 		err := rows.Scan(&operationID, &channel.Name, &channel.Description,
-			&channel.Request.Method, &channel.Request.Name, &authRequired, &scopesJSON)
+			&channel.Request.Method, &channel.Request.Name, &authRequired, &scopesJSON, &policiesJSON)
 		if err != nil {
 			return nil, err
 		}
@@ -970,10 +975,11 @@ func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
 			channel.Request.Authentication = auth
 		}
 
-		// Load policies
-		if policies, err := r.loadPolicies(operationID); err != nil {
+		policies, err := deserializePolicies(policiesJSON)
+		if err != nil {
 			return nil, err
-		} else {
+		}
+		if policies != nil {
 			channel.Request.Policies = policies
 		}
 
@@ -985,7 +991,7 @@ func (r *APIRepo) loadChannels(apiId string) ([]model.Channel, error) {
 
 func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 	query := `
-		SELECT id, name, description, method, path, authentication_required, scopes 
+		SELECT id, name, description, method, path, authentication_required, scopes, policies 
 		FROM api_operations WHERE api_uuid = ?
 	`
 	rows, err := r.db.Query(r.db.Rebind(query), apiId)
@@ -1002,9 +1008,10 @@ func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 		}
 		var authRequired bool
 		var scopesJSON string
+		var policiesJSON sql.NullString
 
 		err := rows.Scan(&operationID, &operation.Name, &operation.Description,
-			&operation.Request.Method, &operation.Request.Path, &authRequired, &scopesJSON)
+			&operation.Request.Method, &operation.Request.Path, &authRequired, &scopesJSON, &policiesJSON)
 		if err != nil {
 			return nil, err
 		}
@@ -1025,10 +1032,11 @@ func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 			operation.Request.BackendServices = backendServices
 		}
 
-		// Load policies
-		if policies, err := r.loadPolicies(operationID); err != nil {
+		policies, err := deserializePolicies(policiesJSON)
+		if err != nil {
 			return nil, err
-		} else {
+		}
+		if policies != nil {
 			operation.Request.Policies = policies
 		}
 
@@ -1064,46 +1072,35 @@ func (r *APIRepo) loadOperationBackendServices(operationID int64) ([]model.Backe
 	return backendServices, rows.Err()
 }
 
-func (r *APIRepo) loadPolicies(operationID int64) ([]model.Policy, error) {
-	query := `SELECT name, params, execution_condition, version FROM policies WHERE operation_id = ?`
-	rows, err := r.db.Query(r.db.Rebind(query), operationID)
+func serializePolicies(policies []model.Policy) (any, error) {
+	if policies == nil {
+		policies = []model.Policy{}
+	}
+	policiesJSON, err := json.Marshal(policies)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var policies []model.Policy
-	for rows.Next() {
-		policy := model.Policy{}
-		var paramsJSON sql.NullString
-		var executionCondition sql.NullString
+	return string(policiesJSON), nil
+}
 
-		err := rows.Scan(&policy.Name, &paramsJSON, &executionCondition, &policy.Version)
-		if err != nil {
-			return nil, err
-		}
-
-		if paramsJSON.Valid && paramsJSON.String != "" {
-			var params map[string]interface{}
-			json.Unmarshal([]byte(paramsJSON.String), &params)
-			policy.Params = &params
-		}
-
-		if executionCondition.Valid {
-			policy.ExecutionCondition = &executionCondition.String
-		}
-
-		policies = append(policies, policy)
+func deserializePolicies(policiesJSON sql.NullString) ([]model.Policy, error) {
+	if !policiesJSON.Valid || policiesJSON.String == "" {
+		return []model.Policy{}, nil
 	}
 
-	return policies, rows.Err()
+	var policies []model.Policy
+	if err := json.Unmarshal([]byte(policiesJSON.String), &policies); err != nil {
+		return nil, err
+	}
+
+	return policies, nil
 }
 
 // Helper method to delete all API configurations (used in Update)
 func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 	// Delete in reverse order of dependencies
 	queries := []string{
-		`DELETE FROM policies WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
 		`DELETE FROM operation_backend_services WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
 		`DELETE FROM api_operations WHERE api_uuid = ?`,
 		`DELETE FROM api_backend_services WHERE api_uuid = ?`, // Remove API-backend service associations

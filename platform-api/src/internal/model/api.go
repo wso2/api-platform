@@ -44,6 +44,7 @@ type API struct {
 	CORS             *CORSConfig         `json:"cors,omitempty"`
 	BackendServices  []BackendService    `json:"backend-services,omitempty"`
 	APIRateLimiting  *RateLimitingConfig `json:"api-rate-limiting,omitempty"`
+	Policies         []Policy            `json:"policies,omitempty"`
 	Operations       []Operation         `json:"operations,omitempty"`
 	Channels         []Channel           `json:"channels,omitempty"`
 }
@@ -220,7 +221,7 @@ type Operation struct {
 	Request     *OperationRequest `json:"request,omitempty"`
 }
 
-// Channel represents an API operation
+// Channel represents an API channel
 type Channel struct {
 	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`

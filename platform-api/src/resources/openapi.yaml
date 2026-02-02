@@ -1946,6 +1946,11 @@ components:
             $ref: '#/components/schemas/BackendService'
         api-rate-limiting:
           $ref: '#/components/schemas/RateLimitingConfig'
+        policies:
+          type: array
+          description: List of policies to be applied on the API
+          items:
+            $ref: '#/components/schemas/Policy'
         operations:
           type: array
           description: List of operations exposed by this API
@@ -2296,6 +2301,8 @@ components:
       title: API Operation
       type: object
       description: Defines a single operation (resource) within the API
+      required:
+        - request
       properties:
         name:
           type: string
@@ -2312,6 +2319,8 @@ components:
       title: Async API Channel
       type: object
       description: Defines a single channel within the Async API
+      required:
+        - request
       properties:
         name:
           type: string
@@ -2328,6 +2337,9 @@ components:
       title: Operation Request
       type: object
       description: Request details for an API operation
+      required:
+        - method
+        - path
       properties:
         method:
           type: string
@@ -2362,6 +2374,9 @@ components:
       title: Channel Request
       type: object
       description: Request details for a channel within the Async API
+      required:
+        - method
+        - name
       properties:
         method:
           type: string
