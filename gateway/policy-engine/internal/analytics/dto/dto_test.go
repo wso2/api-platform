@@ -147,6 +147,42 @@ func TestLatencies_GetSetResponseMediationLatency(t *testing.T) {
 	assert.Equal(t, int64(30), lat.GetResponseMediationLatency())
 }
 
+func TestLatencies_GetSetDuration(t *testing.T) {
+	lat := &Latencies{}
+	assert.Equal(t, int64(0), lat.GetDuration())
+
+	lat.SetDuration(200)
+	assert.Equal(t, int64(200), lat.GetDuration())
+}
+
+// =============================================================================
+// AIMetadata Tests
+// =============================================================================
+
+func TestAIMetadata_GetSetModel(t *testing.T) {
+	ai := &AIMetadata{}
+	assert.Equal(t, "", ai.GetModel())
+
+	ai.SetModel("gpt-4")
+	assert.Equal(t, "gpt-4", ai.GetModel())
+}
+
+func TestAIMetadata_GetSetVendorName(t *testing.T) {
+	ai := &AIMetadata{}
+	assert.Equal(t, "", ai.GetVendorName())
+
+	ai.SetVendorName("OpenAI")
+	assert.Equal(t, "OpenAI", ai.GetVendorName())
+}
+
+func TestAIMetadata_GetSetVendorVersion(t *testing.T) {
+	ai := &AIMetadata{}
+	assert.Equal(t, "", ai.GetVendorVersion())
+
+	ai.SetVendorVersion("v1.0.0")
+	assert.Equal(t, "v1.0.0", ai.GetVendorVersion())
+}
+
 // =============================================================================
 // Target Tests
 // =============================================================================
