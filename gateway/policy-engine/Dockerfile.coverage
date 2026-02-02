@@ -20,7 +20,7 @@
 # Builds with -cover flag for integration test coverage collection
 
 # Stage 1: Builder Base - Contains framework source and builder tooling
-FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine3.23 AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.25.6-alpine3.23 AS builder-base
 ARG BUILDARCH
 
 # Build arguments for version information
@@ -103,7 +103,7 @@ RUN COVERAGE=true /usr/local/bin/gateway-builder \
     -out-dir /workspace/output
 
 # Stage 3: Runtime - Minimal image with compiled binary
-FROM alpine:3.23.2
+FROM alpine:3.23.3
 
 RUN apk --no-cache add ca-certificates
 

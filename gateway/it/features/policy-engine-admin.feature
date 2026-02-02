@@ -72,7 +72,7 @@ Feature: Policy Engine Admin API
           path: /info
           policies:
             - name: modify-headers
-              version: v0.1.0
+              version: v0.1.1
               params:
                 requestHeadersToAdd:
                   - name: X-Test-Header
@@ -118,7 +118,7 @@ Feature: Policy Engine Admin API
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.0
+              version: v0.1.1
               params:
                 requestHeadersToAdd:
                   - name: X-Custom-Header

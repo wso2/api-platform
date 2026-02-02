@@ -101,7 +101,7 @@ go test -v -timeout 30m ./...
 go test -v -timeout 30m ./... -godog.tags="@wip"
 ```
 
-**Note:** The default Go test timeout is 10 minutes. The full integration test suite with coverage instrumentation typically takes longer to complete, so a 20-minute timeout is recommended.
+**Note:** The default Go test timeout is 10 minutes. The full integration test suite with coverage instrumentation typically takes longer to complete, so a 30-minute timeout is recommended.
 
 ## Test Reports
 

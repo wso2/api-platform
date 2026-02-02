@@ -122,6 +122,7 @@ func TestAddQueryParametersToPath_PathWithFragment(t *testing.T) {
 
 	// Query params should come before fragment
 	assert.Contains(t, result, "id=123")
+	assert.Contains(t, result, "#section")
 }
 
 func TestAddQueryParametersToPath_RootPath(t *testing.T) {
