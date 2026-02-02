@@ -1975,7 +1975,7 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 	c.Request.URL.RawQuery = "displayName=test"
 	server.SearchDeployments(c, string(api.Mcp))
 
-	// Should return error due to marshal failure
+	// SearchDeployments logs unmarshal errors and continues, returning StatusOK with valid configs only
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
@@ -2158,14 +2158,9 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 
 	// Add MCP config with invalid source that can't be unmarshaled
 	cfg := &models.StoredConfig{
-		ID:   "mcp-id",
-		Kind: string(api.Mcp),
-		SourceConfiguration: map[string]interface{}{
-			"spec": map[string]interface{}{
-				"displayName": "test",
-				"version":     "v1",
-			},
-		},
+		ID:                  "mcp-id",
+		Kind:                string(api.Mcp),
+		SourceConfiguration: make(chan int), // Invalid - can't be marshaled to JSON
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi, // Use RestApi for the APIConfiguration type
 			Metadata: api.Metadata{
@@ -2180,8 +2175,8 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 	c, w := createTestContext("GET", "/mcp-proxies", nil)
 	server.ListMCPProxies(c, api.ListMCPProxiesParams{})
 
-	// Should handle gracefully
-	assert.True(t, w.Code == http.StatusOK || w.Code == http.StatusInternalServerError)
+	// ListMCPProxies deterministically returns StatusInternalServerError on unmarshal errors
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // TestConvertHandleToUUIDValid tests convertHandleToUUID with valid UUID
