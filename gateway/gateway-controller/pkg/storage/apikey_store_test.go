@@ -76,9 +76,9 @@ func TestAPIKeyStore_Store_Update(t *testing.T) {
 	err := store.Store(apiKey)
 	require.NoError(t, err)
 
-	// Store updated key with same name but different ID (rotation scenario)
+	// Store updated key with same name and same ID (rotation scenario)
 	updatedKey := &models.APIKey{
-		ID:     "key-2",
+		ID:     "key-1",
 		Name:   "test-key",
 		APIKey: "hashed-value-2",
 		APIId:  "api-1",
@@ -89,6 +89,13 @@ func TestAPIKeyStore_Store_Update(t *testing.T) {
 
 	// Should still have only 1 key (the updated one replaced the old one)
 	assert.Equal(t, 1, store.Count())
+
+	// Verify the stored key has the updated API key value
+	allKeys := store.GetAll()
+	require.Len(t, allKeys, 1)
+	assert.Equal(t, "key-1", allKeys[0].ID)
+	assert.Equal(t, "test-key", allKeys[0].Name)
+	assert.Equal(t, "hashed-value-2", allKeys[0].APIKey)
 }
 
 func TestAPIKeyStore_GetAll(t *testing.T) {
