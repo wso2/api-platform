@@ -131,9 +131,9 @@ func GetSampleMCPConfigPath() string {
 	return GetResourcePath("sample-mcp-config.yaml")
 }
 
-// GetPolicyManifestPath returns the path to the policy manifest file
+// GetPolicyManifestPath returns the path to the policy manifest file (build.yaml)
 func GetPolicyManifestPath() string {
-	return GetResourcePath("policy-manifest.yaml")
+	return GetResourcePath("build.yaml")
 }
 
 // GetInvalidYAMLPath returns the path to an invalid YAML file for testing

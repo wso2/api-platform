@@ -26,10 +26,14 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.1
   - name: log-message
     gomodule: github.com/wso2/gateway-controllers/policies/log-message@v0
+  - name: mcp-acl-list
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v0
   - name: mcp-auth
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0
   - name: mcp-authz
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0
+  - name: mcp-rewrite
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v0
   - name: model-round-robin
     gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v0
   - name: model-weighted-round-robin

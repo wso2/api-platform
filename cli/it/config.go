@@ -68,8 +68,6 @@ type InfrastructureID string
 const (
 	// InfraCLI represents the CLI binary
 	InfraCLI InfrastructureID = "CLI"
-	// InfraGatewayImages represents the gateway Docker images (build step)
-	InfraGatewayImages InfrastructureID = "GATEWAY_IMAGES"
 	// InfraGateway represents the gateway stack (running containers)
 	InfraGateway InfrastructureID = "GATEWAY"
 	// InfraMCPServer represents the MCP server
@@ -150,7 +148,6 @@ func (c *TestConfig) GetRequiredInfrastructure() []InfrastructureID {
 
 	order := []InfrastructureID{
 		InfraCLI,
-		InfraGatewayImages,
 		InfraGateway,
 		InfraMCPServer,
 	}

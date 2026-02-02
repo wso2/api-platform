@@ -88,7 +88,9 @@ var defaultSystemPolicies = []systemPolicyConfig{
 			return cfg.Analytics.Enabled
 		},
 		// Default parameters (can be overridden via additionalProps)
-		Parameters:         make(map[string]interface{}),
+		Parameters: map[string]interface{}{
+			"allow_payloads": false,
+		},
 		ExecutionCondition: nil,
 	},
 }
@@ -189,8 +191,18 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 	// Collect enabled system policies with merged parameters
 	for _, sysPol := range defaultSystemPolicies {
 		if sysPol.Enabled(cfg) {
+			// Build effective default parameters, allowing runtime config to control allow_payloads.
+			effectiveDefaults := make(map[string]interface{}, len(sysPol.Parameters)+1)
+			for k, v := range sysPol.Parameters {
+				effectiveDefaults[k] = v
+			}
+			// For the analytics system policy, propagate the allow_payloads flag from runtime config.
+			if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
+				effectiveDefaults["allow_payloads"] = cfg.Analytics.AllowPayloads
+			}
+
 			// Merge parameters efficiently
-			mergedParams := mergeParameters(sysPol.Parameters, additionalProps, sysPol.Name)
+			mergedParams := mergeParameters(effectiveDefaults, additionalProps, sysPol.Name)
 
 			systemPolicies = append(systemPolicies, policyenginev1.PolicyInstance{
 				Name:               sysPol.Name,

@@ -1,5 +1,5 @@
 name: jwt-auth
-version: v0.1.1
+version: v0.1.2
 description: |
   Validates JWT access tokens using one or more JWKS providers (key managers).
   System-level configuration holds key manager endpoints and fetch behavior.
@@ -45,6 +45,13 @@ parameters:
     authHeaderPrefix:
       type: string
       description: Override for the authorization header scheme prefix (e.g., "Bearer", "JWT"). If specified at user-level, takes precedence over system configuration for this route.
+
+    userIdClaim:
+      type: string
+      description: >-
+        Claim name to extract the user ID from the JWT token for analytics.
+        If not specified, defaults to "sub" claim.
+      default: sub
 
 systemParameters:          
   type: object

@@ -20,14 +20,14 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.4.0/gateway-v0.4.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v0.5.0/gateway-v0.5.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.4.0.zip
+unzip gateway-v0.5.0.zip
 
 
 # Start the complete stack
-cd gateway-v0.4.0/
+cd gateway-v0.5.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -51,7 +51,7 @@ spec:
       url: http://sample-backend:5000/api/v2
   policies:
     - name: modify-headers
-      version: v0.1.0
+      version: v0.1.1
       params:
         requestHeaders:
           - action: SET

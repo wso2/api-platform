@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS apis (
     is_default_version BOOLEAN DEFAULT FALSE,
     type VARCHAR(20) DEFAULT 'HTTP',
     transport VARCHAR(255), -- JSON array as TEXT
+    policies TEXT DEFAULT '[]', -- JSON array as TEXT
     security_enabled BOOLEAN,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -202,6 +203,7 @@ CREATE TABLE IF NOT EXISTS api_operations (
     path VARCHAR(255) NOT NULL,
     authentication_required BOOLEAN,
     scopes TEXT, -- JSON array as TEXT
+    policies TEXT DEFAULT '[]', -- JSON array as TEXT
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
 
@@ -216,17 +218,6 @@ CREATE TABLE IF NOT EXISTS operation_backend_services (
     UNIQUE(operation_id, backend_service_uuid)
 );
 
--- Policies table
-CREATE TABLE IF NOT EXISTS policies (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operation_id INTEGER,
-    name VARCHAR(255) NOT NULL,
-    params TEXT, -- JSON object as TEXT
-    execution_condition VARCHAR(512),
-    version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
-    FOREIGN KEY (operation_id) REFERENCES api_operations(id)
-);
-
 -- Gateways table (scoped to organizations)
 -- Must be created before api_deployments which references it
 CREATE TABLE IF NOT EXISTS gateways (
@@ -235,6 +226,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
+    properties TEXT NOT NULL DEFAULT '{}',
     vhost VARCHAR(255) NOT NULL,
     is_critical BOOLEAN DEFAULT FALSE,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
@@ -263,18 +255,33 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 -- API Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS api_deployments (
     deployment_id VARCHAR(40) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     base_deployment_id VARCHAR(40), -- Reference to the deployment used as base, NULL if based on "current"
     content BLOB NOT NULL, -- Immutable deployment artifact (YAML string)
-    metadata TEXT, -- JSON object for flexible key-value metadata    
+    metadata TEXT, -- JSON object for flexible key-value metadata
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (base_deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE SET NULL,
+    FOREIGN KEY (base_deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE SET NULL
+);
+
+-- API Deployment Status table (current deployment state per API+Gateway)
+CREATE TABLE IF NOT EXISTS api_deployment_status (
+    api_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    deployment_id VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (api_uuid, organization_uuid, gateway_uuid),
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (deployment_id) REFERENCES api_deployments(deployment_id) ON DELETE CASCADE,
     CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
 );
 
@@ -357,9 +364,10 @@ CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operat
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operation_backend_services(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
-CREATE INDEX IF NOT EXISTS idx_api_deployments_api_gateway_status ON api_deployments(api_uuid, gateway_uuid, status);
-CREATE INDEX IF NOT EXISTS idx_api_deployments_api_status ON api_deployments (api_uuid, status);
-CREATE INDEX IF NOT EXISTS idx_api_deployments_gateway_status ON api_deployments (gateway_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_api_gateway ON api_deployments(api_uuid, gateway_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_deployments_created_at ON api_deployments(api_uuid, gateway_uuid, created_at);
+CREATE INDEX IF NOT EXISTS idx_api_deployment_status_deployment ON api_deployment_status(deployment_id);
+CREATE INDEX IF NOT EXISTS idx_api_deployment_status_status ON api_deployment_status(status);
 CREATE INDEX IF NOT EXISTS idx_devportals_org ON devportals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_devportals_active ON devportals(organization_uuid, is_active);
 CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid);

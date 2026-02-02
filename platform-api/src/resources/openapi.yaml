@@ -817,11 +817,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Bad Request. Validation errors (missing name, base, gatewayId, or API has no backend services)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Not Found. API, gateway, or base deployment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -905,43 +913,12 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{apiId}/deployments/{deploymentId}/redeploy:
-    post:
-      summary: Redeploy deployment
-      description: |
-        Redeploys an existing deployment artifact. If a previous deployment exists on the same gateway,
-        it will be automatically undeployed first. Access is validated against the organization 
-        in the JWT token.
-      operationId: RedeployDeployment
-      tags:
-        - API Deployments
-      parameters:
-        - $ref: '#/components/parameters/apiID'
-        - $ref: '#/components/parameters/deploymentId'
-      responses:
-        '200':
-          description: Deployment redeployed successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeploymentResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /apis/{apiId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy deployment
       description: |
         Undeploys an active deployment, stopping the API from being served. The deployment artifact
-        remains in the system with UNDEPLOYED status and can be redeployed later. Returns the updated
+        remains in the system with UNDEPLOYED status and can be rolled back later. Returns the updated
         deployment object with status changed to UNDEPLOYED. Access is validated against the organization 
         in the JWT token.
       operationId: UndeployDeployment
@@ -965,6 +942,48 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiId}/rollback-deployment:
+    post:
+      summary: Rollback to a previous deployment
+      description: |
+        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version.
+        This replaces the redeploy operation and provides more flexibility - you can rollback to any
+        previous deployment, not just the last undeployed one. The target deployment must not already
+        be in DEPLOYED status. Access is validated against the organization in the JWT token.
+      operationId: RollbackDeployment
+      tags:
+        - API Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the deployment to rollback to (must be ARCHIVED or UNDEPLOYED)
+      responses:
+        '200':
+          description: Deployment rolled back successfully. Returns the deployment with status changed to DEPLOYED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. Cannot rollback to currently deployed deployment or deployment is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1927,6 +1946,11 @@ components:
             $ref: '#/components/schemas/BackendService'
         api-rate-limiting:
           $ref: '#/components/schemas/RateLimitingConfig'
+        policies:
+          type: array
+          description: List of policies to be applied on the API
+          items:
+            $ref: '#/components/schemas/Policy'
         operations:
           type: array
           description: List of operations exposed by this API
@@ -2277,6 +2301,8 @@ components:
       title: API Operation
       type: object
       description: Defines a single operation (resource) within the API
+      required:
+        - request
       properties:
         name:
           type: string
@@ -2293,6 +2319,8 @@ components:
       title: Async API Channel
       type: object
       description: Defines a single channel within the Async API
+      required:
+        - request
       properties:
         name:
           type: string
@@ -2309,6 +2337,9 @@ components:
       title: Operation Request
       type: object
       description: Request details for an API operation
+      required:
+        - method
+        - path
       properties:
         method:
           type: string
@@ -2343,6 +2374,9 @@ components:
       title: Channel Request
       type: object
       description: Request details for a channel within the Async API
+      required:
+        - method
+        - name
       properties:
         method:
           type: string
@@ -3691,9 +3725,14 @@ components:
     DeployAPIRequest:
       type: object
       required:
+        - name
         - base
         - gatewayId
       properties:
+        name:
+          type: string
+          description: Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
+          example: "v1.0-production"
         base:
           type: string
           description: The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
@@ -3705,12 +3744,13 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional metadata for the deployment
+          description: Optional metadata for the deployment (e.g., endpointUrl overrides)
 
     DeploymentResponse:
       type: object
       required:
         - deploymentId
+        - name
         - gatewayId
         - status
         - createdAt
@@ -3719,6 +3759,10 @@ components:
           type: string
           format: uuid
           description: Unique identifier for the deployment
+        name:
+          type: string
+          description: Name/label for this deployment
+          example: "v1.0-production"
         gatewayId:
           type: string
           format: uuid
@@ -3728,12 +3772,17 @@ components:
           enum:
             - DEPLOYED
             - UNDEPLOYED
-          description: Current deployment status
+            - ARCHIVED
+          description: |
+            Current deployment lifecycle state:
+            - DEPLOYED: Currently active on the gateway
+            - UNDEPLOYED: Suspended but can be rolled back
+            - ARCHIVED: Historical deployment, can be rolled back
         baseDeploymentId:
           type: string
           format: uuid
           nullable: true
-          description: UUID of the previous deployment (if redeployed)
+          description: UUID of the base deployment this was created from
         metadata:
           type: object
           additionalProperties: true
@@ -3741,7 +3790,12 @@ components:
         createdAt:
           type: string
           format: date-time
-          description: Timestamp when the deployment was created
+          description: Timestamp when the deployment artifact was created
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the deployment status last changed (null for ARCHIVED deployments)
 
     DeploymentListResponse:
       type: object

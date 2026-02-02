@@ -78,12 +78,8 @@ var buildCmd = &cobra.Command{
 func init() {
 	// Optional flags with defaults
 	buildCmd.Flags().StringVar(&gatewayName, "name", "", "Gateway name (defaults to directory name)")
-	buildCmd.Flags().StringVar(&gatewayVersion, "version", utils.DefaultGatewayVersion, "Gateway version")
 	buildCmd.Flags().StringVarP(&manifestPath, "path", "p", ".", "Path to directory containing policy manifest files (default: current directory)")
 	buildCmd.Flags().StringVar(&imageRepository, "repository", utils.DefaultImageRepository, "Docker image repository")
-	buildCmd.Flags().StringVar(&gatewayBuilder, "gateway-builder", "", "Gateway builder image (defaults to repository/gateway-builder:version)")
-	buildCmd.Flags().StringVar(&gatewayControllerBaseImg, "gateway-controller-base-image", utils.DefaultGatewayControllerImg, "Gateway controller base image (uses builder default if empty)")
-	buildCmd.Flags().StringVar(&routerBaseImg, "router-base-image", utils.DefaultRouterImg, "Router base image (uses builder default if empty)")
 	buildCmd.Flags().BoolVar(&push, "push", false, "Push image to registry after build")
 	buildCmd.Flags().BoolVar(&noCache, "no-cache", false, "Build without using cache")
 	buildCmd.Flags().StringVar(&platform, "platform", "", "Target platform (e.g., linux/amd64)")
@@ -91,7 +87,7 @@ func init() {
 }
 
 // initializeDefaults sets smart defaults for gateway name and constructs the image tag
-func initializeDefaults() error {
+func initializeDefaults(manifest *policy.PolicyManifest) error {
 	// Default gateway name from directory name if not provided
 	if gatewayName == "" {
 		absPath, err := filepath.Abs(manifestPath)
@@ -101,9 +97,29 @@ func initializeDefaults() error {
 		gatewayName = filepath.Base(absPath)
 	}
 
-	// Default gateway builder if not provided (use repo without forcing a tag)
-	if gatewayBuilder == "" {
-		gatewayBuilder = utils.DefaultGatewayBuilderRepo
+	// Default gateway version from manifest if not provided via flag
+	if manifest.Gateway.Version == "" {
+		return fmt.Errorf("gateway version is required: set gateway.version in build.yaml")
+	}
+	gatewayVersion = manifest.Gateway.Version
+
+	// Use custom images from manifest if provided, otherwise construct from defaults
+	if manifest.Gateway.Images.Builder != "" {
+		gatewayBuilder = manifest.Gateway.Images.Builder
+	} else {
+		gatewayBuilder = fmt.Sprintf(utils.DefaultGatewayBuilder, gatewayVersion)
+	}
+
+	if manifest.Gateway.Images.Controller != "" {
+		gatewayControllerBaseImg = manifest.Gateway.Images.Controller
+	} else {
+		gatewayControllerBaseImg = fmt.Sprintf(utils.DefaultGatewayController, gatewayVersion)
+	}
+
+	if manifest.Gateway.Images.Router != "" {
+		routerBaseImg = manifest.Gateway.Images.Router
+	} else {
+		routerBaseImg = fmt.Sprintf(utils.DefaultGatewayRouter, gatewayVersion)
 	}
 
 	// Construct the full image tag: repository/name:version
@@ -115,11 +131,6 @@ func initializeDefaults() error {
 func runBuildCommand() error {
 	fmt.Println("=== Gateway Image Build ===")
 	fmt.Println()
-
-	// Initialize computed values
-	if err := initializeDefaults(); err != nil {
-		return err
-	}
 
 	// Step 1: Check Docker availability
 	fmt.Println("[1/8] Checking Docker Availability")
@@ -183,6 +194,11 @@ func runUnifiedBuild() error {
 	}
 	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
 
+	// Initialize computed values
+	if err := initializeDefaults(manifest); err != nil {
+		return err
+	}
+
 	// Step 3: Validate Manifest and Separate Policies
 	fmt.Println("[3/6] Validating manifest")
 	localPolicies, hubPolicies := policy.SeparatePolicies(manifest)
@@ -201,6 +217,7 @@ func runUnifiedBuild() error {
 	}
 
 	// Step 5: Prepare workspace and copy manifest + policies
+	fmt.Println()
 	fmt.Println("[5/6] Preparing workspace and copying policies")
 	tempDir, err := utils.SetupTempGatewayWorkspace(manifestFilePath)
 	if err != nil {
@@ -218,34 +235,19 @@ func runUnifiedBuild() error {
 	}
 	fmt.Println("  ✓ All images built successfully")
 
-	// Copy generated lock file from workspace back to manifest location (if present)
+	// Get temp directory for summary
 	tempGatewayImageBuildDir, err := utils.GetTempGatewayImageBuildDir()
 	if err != nil {
 		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
 	}
-	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
-	if _, err := os.Stat(workspaceLockPath); err == nil {
-		// Copy to manifest directory
-		manifestLockDst := filepath.Join(filepath.Dir(manifestFilePath), utils.DefaultManifestLockFile)
-		lockContent, err := os.ReadFile(workspaceLockPath)
-		if err != nil {
-			return fmt.Errorf("failed to read workspace lock file: %w", err)
-		}
-		if err := os.WriteFile(manifestLockDst, lockContent, 0644); err != nil {
-			return fmt.Errorf("failed to write manifest lock file to %s: %w", manifestLockDst, err)
-		}
-		fmt.Printf("  ✓ Copied lock file to manifest location: %s\n\n", manifestLockDst)
-	} else {
-		fmt.Println("  → No lock file generated by builder")
-	}
 
 	// Display Summary
-	displayBuildSummary(manifest, manifestFilePath, filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile), processed, tempGatewayImageBuildDir)
+	displayBuildSummary(manifest, manifestFilePath, processed, tempGatewayImageBuildDir)
 
 	return nil
 }
 
-func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lockFile string, processed []policy.ProcessedPolicy, workspaceDir string) {
+func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath string, processed []policy.ProcessedPolicy, workspaceDir string) {
 	fmt.Println("=== Build Summary ===")
 	fmt.Println()
 
@@ -274,7 +276,6 @@ func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lock
 	// Workspace output
 	outputPath := filepath.Join(workspaceDir, "output")
 	fmt.Printf("✓ Temporary Build output: %s\n", outputPath)
-	fmt.Printf("✓ Manifest lock file: %s\n", lockFile)
 	if outputDir != "" {
 		fmt.Printf("✓ Output artifacts copied to: %s\n", outputDir)
 	}
