@@ -64,7 +64,7 @@ policies:
 ### Optional Fields
 - `gateway.images.builder`: Custom gateway builder image (defaults to `ghcr.io/wso2/api-platform/gateway-builder:<version>`)
 - `gateway.images.controller`: Custom gateway controller base image (defaults to `ghcr.io/wso2/api-platform/gateway-controller:<version>`)
-- `gateway.images.router`: Custom router base image (defaults to `ghcr.io/wso2/api-platform/router:<version>`)
+- `gateway.images.router`: Custom router base image (defaults to `ghcr.io/wso2/api-platform/gateway-router:<version>`)
 
 Each image path can be specified independently. If not provided, the default image path will be constructed using the `gateway.version`.
 

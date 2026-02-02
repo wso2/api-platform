@@ -57,7 +57,7 @@ Even an output directory is not explicitly specified, the built images are cache
 ### Non-Self-Explanatory Flags
 
 - `--name` (`-n`): Sets the gateway name. If not provided, the current directory name is used by default.
-- `--path`: Specifies the directory containing `policy_manifest.yaml`. By default, this is the current working directory.
+- `--path`: Specifies the directory containing `build.yaml`. By default, this is the current working directory.
 - `push`: Pushes the built images to Docker.
 - `no-cache`: Disables Docker build cache usage.
 - `--platform`: Specifies the target platform. By default, the host platform is used.
