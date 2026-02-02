@@ -267,6 +267,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *dto.LLMProvi
 		OpenAPISpec:      req.OpenAPI,
 		AccessControl:    mapAccessControl(&req.AccessControl),
 		Policies:         mapPolicies(req.Policies),
+		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
 	}
 
@@ -372,6 +373,7 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *dto.LLMProvider
 		OpenAPISpec:      req.OpenAPI,
 		AccessControl:    mapAccessControl(&req.AccessControl),
 		Policies:         mapPolicies(req.Policies),
+		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
 	}
 
@@ -453,6 +455,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *dto.LLMProxy) (
 		OpenAPISpec:      req.OpenAPI,
 		AccessControl:    mapAccessControl(req.AccessControl),
 		Policies:         mapPolicies(req.Policies),
+		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
 	}
 
@@ -623,6 +626,7 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *dto.LLMProxy) (*dt
 		OpenAPISpec:      req.OpenAPI,
 		AccessControl:    mapAccessControl(req.AccessControl),
 		Policies:         mapPolicies(req.Policies),
+		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
 	}
 	if err := s.repo.Update(m); err != nil {
@@ -721,6 +725,94 @@ func mapUpstreamAuth(in *dto.LLMUpstreamAuth) *model.UpstreamAuth {
 	return &model.UpstreamAuth{Type: in.Type, Header: in.Header, Value: in.Value}
 }
 
+func mapSecurityConfig(in *dto.SecurityConfig) *model.SecurityConfig {
+	if in == nil {
+		return nil
+	}
+	out := &model.SecurityConfig{Enabled: in.Enabled}
+	if in.APIKey != nil {
+		out.APIKey = &model.APIKeySecurity{Enabled: in.APIKey.Enabled, Header: in.APIKey.Header, Query: in.APIKey.Query, Cookie: in.APIKey.Cookie}
+	}
+	if in.OAuth2 != nil {
+		var grantTypes *model.OAuth2GrantTypes
+		if in.OAuth2.GrantTypes != nil {
+			grantTypes = &model.OAuth2GrantTypes{}
+			if in.OAuth2.GrantTypes.AuthorizationCode != nil {
+				grantTypes.AuthorizationCode = &model.AuthorizationCodeGrant{
+					Enabled:     in.OAuth2.GrantTypes.AuthorizationCode.Enabled,
+					CallbackURL: in.OAuth2.GrantTypes.AuthorizationCode.CallbackURL,
+				}
+			}
+			if in.OAuth2.GrantTypes.Implicit != nil {
+				grantTypes.Implicit = &model.ImplicitGrant{
+					Enabled:     in.OAuth2.GrantTypes.Implicit.Enabled,
+					CallbackURL: in.OAuth2.GrantTypes.Implicit.CallbackURL,
+				}
+			}
+			if in.OAuth2.GrantTypes.Password != nil {
+				grantTypes.Password = &model.PasswordGrant{Enabled: in.OAuth2.GrantTypes.Password.Enabled}
+			}
+			if in.OAuth2.GrantTypes.ClientCredentials != nil {
+				grantTypes.ClientCredentials = &model.ClientCredentialsGrant{Enabled: in.OAuth2.GrantTypes.ClientCredentials.Enabled}
+			}
+		}
+		out.OAuth2 = &model.OAuth2Security{GrantTypes: grantTypes, Scopes: in.OAuth2.Scopes}
+	}
+	if in.XHubSignature != nil {
+		out.XHubSignature = &model.XHubSignatureSecurity{
+			Enabled:   in.XHubSignature.Enabled,
+			Header:    in.XHubSignature.Header,
+			Secret:    in.XHubSignature.Secret,
+			Algorithm: in.XHubSignature.Algorithm,
+		}
+	}
+	return out
+}
+
+func mapSecurityConfigDTO(in *model.SecurityConfig) *dto.SecurityConfig {
+	if in == nil {
+		return nil
+	}
+	out := &dto.SecurityConfig{Enabled: in.Enabled}
+	if in.APIKey != nil {
+		out.APIKey = &dto.APIKeySecurity{Enabled: in.APIKey.Enabled, Header: in.APIKey.Header, Query: in.APIKey.Query, Cookie: in.APIKey.Cookie}
+	}
+	if in.OAuth2 != nil {
+		var grantTypes *dto.OAuth2GrantTypes
+		if in.OAuth2.GrantTypes != nil {
+			grantTypes = &dto.OAuth2GrantTypes{}
+			if in.OAuth2.GrantTypes.AuthorizationCode != nil {
+				grantTypes.AuthorizationCode = &dto.AuthorizationCodeGrant{
+					Enabled:     in.OAuth2.GrantTypes.AuthorizationCode.Enabled,
+					CallbackURL: in.OAuth2.GrantTypes.AuthorizationCode.CallbackURL,
+				}
+			}
+			if in.OAuth2.GrantTypes.Implicit != nil {
+				grantTypes.Implicit = &dto.ImplicitGrant{
+					Enabled:     in.OAuth2.GrantTypes.Implicit.Enabled,
+					CallbackURL: in.OAuth2.GrantTypes.Implicit.CallbackURL,
+				}
+			}
+			if in.OAuth2.GrantTypes.Password != nil {
+				grantTypes.Password = &dto.PasswordGrant{Enabled: in.OAuth2.GrantTypes.Password.Enabled}
+			}
+			if in.OAuth2.GrantTypes.ClientCredentials != nil {
+				grantTypes.ClientCredentials = &dto.ClientCredentialsGrant{Enabled: in.OAuth2.GrantTypes.ClientCredentials.Enabled}
+			}
+		}
+		out.OAuth2 = &dto.OAuth2Security{GrantTypes: grantTypes, Scopes: in.OAuth2.Scopes}
+	}
+	if in.XHubSignature != nil {
+		out.XHubSignature = &dto.XHubSignatureSecurity{
+			Enabled:   in.XHubSignature.Enabled,
+			Header:    in.XHubSignature.Header,
+			Secret:    in.XHubSignature.Secret,
+			Algorithm: in.XHubSignature.Algorithm,
+		}
+	}
+	return out
+}
+
 func mapTemplateModelToDTO(m *model.LLMProviderTemplate) *dto.LLMProviderTemplate {
 	if m == nil {
 		return nil
@@ -810,6 +902,7 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 		},
 		AccessControl: dto.LLMAccessControl{Mode: "deny_all"},
 		Policies:      nil,
+		Security:      mapSecurityConfigDTO(m.Security),
 		CreatedAt:     m.CreatedAt,
 		UpdatedAt:     m.UpdatedAt,
 	}
@@ -854,6 +947,7 @@ func mapProxyModelToDTO(m *model.LLMProxy) *dto.LLMProxy {
 		VHost:       m.VHost,
 		Provider:    m.Provider,
 		OpenAPI:     m.OpenAPISpec,
+		Security:    mapSecurityConfigDTO(m.Security),
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 	}

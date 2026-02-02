@@ -4659,6 +4659,8 @@ components:
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
             $ref: "#/components/schemas/LLMPolicy"
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
         createdAt:
           type: string
           format: date-time
@@ -4803,6 +4805,8 @@ components:
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
             $ref: "#/components/schemas/LLMPolicy"
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
         createdAt:
           type: string
           format: date-time

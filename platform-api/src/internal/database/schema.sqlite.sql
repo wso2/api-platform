@@ -381,13 +381,13 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     openapi_spec TEXT,
     access_control TEXT,
     policies TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    security TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid, template) REFERENCES llm_provider_templates(organization_uuid, handle) ON UPDATE CASCADE ON DELETE RESTRICT,
-    UNIQUE(organization_uuid, handle),
-    CHECK (status IN ('pending', 'deployed', 'failed'))
+    UNIQUE(organization_uuid, handle)
 );
 
 -- LLM Proxies table
@@ -406,14 +406,14 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     openapi_spec TEXT,
     access_control TEXT,
     policies TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    security TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid, provider) REFERENCES llm_providers(organization_uuid, handle) ON UPDATE CASCADE ON DELETE RESTRICT,
-    UNIQUE(organization_uuid, handle),
-    CHECK (status IN ('pending', 'deployed', 'failed'))
+    UNIQUE(organization_uuid, handle)
 );
 
 -- Indexes for better performance

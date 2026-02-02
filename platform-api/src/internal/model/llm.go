@@ -98,6 +98,7 @@ type LLMProvider struct {
 	OpenAPISpec      string            `json:"openapi,omitempty" db:"openapi_spec"`
 	AccessControl    *LLMAccessControl `json:"accessControl" db:"-"`
 	Policies         []LLMPolicy       `json:"policies,omitempty" db:"-"`
+	Security         *SecurityConfig   `json:"security,omitempty" db:"-"`
 	Status           string            `json:"status" db:"status"`
 	CreatedAt        time.Time         `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time         `json:"updatedAt" db:"updated_at"`
@@ -118,6 +119,7 @@ type LLMProxy struct {
 	OpenAPISpec      string            `json:"openapi,omitempty" db:"openapi_spec"`
 	AccessControl    *LLMAccessControl `json:"accessControl,omitempty" db:"-"`
 	Policies         []LLMPolicy       `json:"policies,omitempty" db:"-"`
+	Security         *SecurityConfig   `json:"security,omitempty" db:"-"`
 	Status           string            `json:"status" db:"status"`
 	CreatedAt        time.Time         `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time         `json:"updatedAt" db:"updated_at"`
