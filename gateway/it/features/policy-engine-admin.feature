@@ -75,7 +75,8 @@ Feature: Policy Engine Admin API
               version: v0.1.1
               params:
                 requestHeaders:
-                  - name: X-Test-Header
+                  - action: SET
+                    name: X-Test-Header
                     value: test-value
       """
     And I wait for 3 seconds for xDS synchronization
@@ -121,7 +122,8 @@ Feature: Policy Engine Admin API
               version: v0.1.1
               params:
                 requestHeaders:
-                  - name: X-Custom-Header
+                  - action: SET
+                    name: X-Custom-Header
                     value: custom-value
       """
     And I wait for 3 seconds for xDS synchronization
