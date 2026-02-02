@@ -74,7 +74,7 @@ Feature: Policy Engine Admin API
             - name: modify-headers
               version: v0.1.1
               params:
-                requestHeadersToAdd:
+                requestHeaders:
                   - name: X-Test-Header
                     value: test-value
       """
@@ -120,7 +120,7 @@ Feature: Policy Engine Admin API
             - name: modify-headers
               version: v0.1.1
               params:
-                requestHeadersToAdd:
+                requestHeaders:
                   - name: X-Custom-Header
                     value: custom-value
       """
