@@ -19,6 +19,7 @@
 package it
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"sync"
@@ -33,18 +34,18 @@ type AuthUser struct {
 
 // Config holds configuration for the test suite
 type Config struct {
-	GatewayControllerURL         string
-	RouterURL                    string
-	PolicyEngineURL              string
-	SampleBackendURL             string
-	EchoBackendURL               string
-	MockJWKSURL                  string
-	MockAzureContentSafetyURL    string
-	MockAWSBedrockGuardrailURL   string
-	MockEmbeddingProviderURL     string
-	RedisURL                     string
-	HTTPTimeout                  time.Duration
-	Users                        map[string]AuthUser
+	GatewayControllerURL       string
+	RouterURL                  string
+	PolicyEngineURL            string
+	SampleBackendURL           string
+	EchoBackendURL             string
+	MockJWKSURL                string
+	MockAzureContentSafetyURL  string
+	MockAWSBedrockGuardrailURL string
+	MockEmbeddingProviderURL   string
+	RedisURL                   string
+	HTTPTimeout                time.Duration
+	Users                      map[string]AuthUser
 }
 
 // MockJWKSPort is the port for mock-jwks service
@@ -65,17 +66,17 @@ const RedisPort = "6379"
 // DefaultConfig returns the default test configuration
 func DefaultConfig() *Config {
 	return &Config{
-		GatewayControllerURL:        fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
-		RouterURL:                   fmt.Sprintf("http://localhost:%s", RouterPort),
-		PolicyEngineURL:             "http://localhost:9002",
-		SampleBackendURL:            "http://localhost:9080",
-		EchoBackendURL:              "http://localhost:9081",
-		MockJWKSURL:                 fmt.Sprintf("http://localhost:%s", MockJWKSPort),
-		MockAzureContentSafetyURL:   fmt.Sprintf("http://localhost:%s", MockAzureContentSafetyPort),
-		MockAWSBedrockGuardrailURL:  fmt.Sprintf("http://localhost:%s", MockAWSBedrockGuardrailPort),
-		MockEmbeddingProviderURL:    fmt.Sprintf("http://localhost:%s", MockEmbeddingProviderPort),
-		RedisURL:                    fmt.Sprintf("localhost:%s", RedisPort),
-		HTTPTimeout:                 10 * time.Second,
+		GatewayControllerURL:       fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
+		RouterURL:                  fmt.Sprintf("http://localhost:%s", RouterPort),
+		PolicyEngineURL:            "http://localhost:9002",
+		SampleBackendURL:           "http://localhost:9080",
+		EchoBackendURL:             "http://localhost:9081",
+		MockJWKSURL:                fmt.Sprintf("http://localhost:%s", MockJWKSPort),
+		MockAzureContentSafetyURL:  fmt.Sprintf("http://localhost:%s", MockAzureContentSafetyPort),
+		MockAWSBedrockGuardrailURL: fmt.Sprintf("http://localhost:%s", MockAWSBedrockGuardrailPort),
+		MockEmbeddingProviderURL:   fmt.Sprintf("http://localhost:%s", MockEmbeddingProviderPort),
+		RedisURL:                   fmt.Sprintf("localhost:%s", RedisPort),
+		HTTPTimeout:                10 * time.Second,
 		Users: map[string]AuthUser{
 			"admin": {Username: "admin", Password: "admin"},
 		},
@@ -109,10 +110,15 @@ type TestState struct {
 // NewTestState creates a new TestState with default configuration
 func NewTestState() *TestState {
 	config := DefaultConfig()
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true, // ⚠️ test/dev only
+	}
 	return &TestState{
 		Config: config,
 		HTTPClient: &http.Client{
-			Timeout: config.HTTPTimeout,
+			Timeout:   config.HTTPTimeout,
+			Transport: transport,
 		},
 		Context: make(map[string]interface{}),
 	}
