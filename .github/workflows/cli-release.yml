@@ -27,7 +27,7 @@ jobs:
       - name: Set version
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          make version-set COMPONENT=cli VERSION_ARG=${VERSION}
+          make -C cli version-set VERSION=${VERSION}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -173,6 +173,6 @@ jobs:
 
       - name: Set to next dev version
         run: |
-          make version-bump-next-dev COMPONENT=cli
+          make -C cli version-bump-next-dev
           git commit -am "Bump CLI to next dev version"
           git push origin main

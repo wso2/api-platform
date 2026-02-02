@@ -1,8 +1,6 @@
-### Policy Manifest used for periodic GitHub Action
-### Should contain all policies in the Hub to be tested
 version: v1
 gateway:
-  version: latest
+  version: 0.6.0-SNAPSHOT
 policies:
   - name: add-headers
     gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0

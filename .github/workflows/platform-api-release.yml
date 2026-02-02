@@ -21,8 +21,7 @@ jobs:
       - name: Set version
         run: |
           VERSION=${{ inputs.version }}
-          make version-set COMPONENT=platform-api VERSION_ARG=${VERSION}
-          make update-images COMPONENT=platform-api VERSION_ARG=${VERSION}
+          make -C platform-api version-set VERSION=${VERSION}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -47,7 +46,7 @@ jobs:
           password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Build and push multi arch Docker images
-        run: make build-and-push-platform-api-multiarch VERSION_ARG=${{ inputs.version }}
+        run: make build-and-push-platform-api-multiarch
 
       - name: Create and push tag
         run: |
@@ -60,7 +59,6 @@ jobs:
 
       # - name: Set to next dev version
       #   run: |
-      #     make version-bump-next-dev COMPONENT=platform-api
-      #     make update-images COMPONENT=platform-api VERSION_ARG=$(cat platform-api/VERSION)
+      #     make -C platform-api version-bump-next-dev
       #     git commit -am "Bump platform-api to next dev version"
       #     git push origin main
