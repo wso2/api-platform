@@ -35,7 +35,7 @@ const (
 	DefaultImageRepository   = "ghcr.io/wso2/api-platform"
 	DefaultGatewayBuilder    = "ghcr.io/wso2/api-platform/gateway-builder:%s"    // %s = version
 	DefaultGatewayController = "ghcr.io/wso2/api-platform/gateway-controller:%s" // %s = version
-	DefaultGatewayRouter     = "ghcr.io/wso2/api-platform/router:%s"             // %s = version
+	DefaultGatewayRouter     = "ghcr.io/wso2/api-platform/gateway-router:%s"     // %s = version
 
 	// REST API Endpoints
 	GatewayHealthPath       = "/health"

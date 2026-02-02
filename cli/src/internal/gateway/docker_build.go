@@ -101,6 +101,7 @@ func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
 	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace", config.GatewayBuilder,
 		"-gateway-controller-base-image", config.GatewayControllerBaseImage,
 		"-router-base-image", config.RouterBaseImage,
+		"-system-manifest-lock", "/api-platform/gateway/system-policies/system-policy-manifest-lock.yaml",
 	}
 
 	cmd := exec.Command("docker", args...)
