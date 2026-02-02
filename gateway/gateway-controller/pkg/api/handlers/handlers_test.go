@@ -2102,14 +2102,18 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 	c.Set(constants.AuthContextKey, authCtx)
 
 	// Should panic or return error since apiKeyService is nil
-	defer func() {
-		// Recover from panic as expected when apiKeyService is nil
-		recover()
+	panicked := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
+		server.GenerateAPIKey(c, "test-handle")
 	}()
-
-	server.GenerateAPIKey(c, "test-handle")
-	// If we get here, check status
-	assert.True(t, w.Code >= 400)
+	if !panicked {
+		assert.True(t, w.Code >= http.StatusBadRequest)
+	}
 }
 
 // Test for WebSubAPI - simplified test
