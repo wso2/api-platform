@@ -16,14 +16,14 @@ jobs:
       - name: Determine version from VERSION file
         id: version
         run: |
-          VERSION=$(make -C cli/src version-get-release)
+          VERSION=$(make -C cli/src version-get-release --no-print-directory)
           echo "Releasing CLI version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set version
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          make -C cli version-set VERSION=${VERSION}
+          make -C cli version-set VERSION=${VERSION} --no-print-directory
 
       - name: Set up Go
         uses: actions/setup-go@v5
