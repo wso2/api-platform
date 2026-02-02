@@ -214,6 +214,18 @@ services:
     networks:
       - it-gateway-network
 
+  # Mock Analytics Collector for analytics testing
+  mock-analytics-collector:
+    container_name: it-mock-analytics-collector
+    image: ghcr.io/wso2/api-platform/mock-analytics-collector:latest
+    build:
+      context: ../../tests/mock-servers/mock-analytics-collector
+      dockerfile: Dockerfile
+    ports:
+      - "8086:8080"
+    networks:
+      - it-gateway-network
+
   # Redis with RediSearch for semantic cache vector storage
   redis:
     container_name: it-redis
