@@ -19,8 +19,15 @@ package utils
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -38,6 +45,52 @@ import (
 // =============================================================================
 
 func TestLoadCertificates_ValidCerts(t *testing.T) {
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "cert.pem")
+	keyPath := filepath.Join(tmpDir, "key.pem")
+
+	// Generate a valid self-signed certificate and key pair
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	// Encode certificate
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	require.NotNil(t, certPEM)
+
+	// Encode private key
+	privBytes, err := x509.MarshalECPrivateKey(priv)
+	require.NoError(t, err)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
+	require.NotNil(t, keyPEM)
+
+	// Write to files
+	err = os.WriteFile(certPath, certPEM, 0600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, keyPEM, 0600)
+	require.NoError(t, err)
+
+	// Test loading the valid certificate
+	creds, err := LoadCertificates(certPath, keyPath)
+	assert.NoError(t, err)
+	assert.NotNil(t, creds)
+}
+
+func TestLoadCertificates_InvalidCertKeyPair(t *testing.T) {
 	// Create temp directory for test certs
 	tmpDir := t.TempDir()
 
@@ -45,7 +98,7 @@ func TestLoadCertificates_ValidCerts(t *testing.T) {
 	certPath := filepath.Join(tmpDir, "cert.pem")
 	keyPath := filepath.Join(tmpDir, "key.pem")
 
-	// Create test certificate content (valid self-signed cert)
+	// Create test certificate content (intentionally invalid/mismatched cert/key pair)
 	certPEM := `-----BEGIN CERTIFICATE-----
 MIIBkTCB+wIJAKHBfpegPjMCMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
 c3RjYTAeFw0yMzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
@@ -72,9 +125,7 @@ AKurwXyrxXVHwH0XqrsjiofeQH0PurwXyrxXVHwH0Xqr
 	err = os.WriteFile(keyPath, []byte(keyPEM), 0600)
 	require.NoError(t, err)
 
-	// This will fail because the cert/key pair is not valid, but we're testing the function signature
 	_, err = LoadCertificates(certPath, keyPath)
-	// We expect an error because the test certs are not valid
 	assert.Error(t, err)
 }
 
