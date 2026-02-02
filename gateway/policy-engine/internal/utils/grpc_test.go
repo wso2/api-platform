@@ -37,7 +37,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 // =============================================================================
@@ -205,69 +207,136 @@ func TestCreateGRPCServer_PlainTextWithOptions(t *testing.T) {
 // CreateGRPCConnection Tests
 // =============================================================================
 
-// startTestGRPCServer starts a local gRPC server for testing
-func startTestGRPCServer(t *testing.T) (string, string, func()) {
-t.Helper()
+// startTestGRPCServerWithTLS starts a local TLS-enabled gRPC server with health check for testing
+func startTestGRPCServerWithTLS(t *testing.T) (string, string, *tls.Config, func()) {
+	t.Helper()
 
-listener, err := net.Listen("tcp", "localhost:0")
-require.NoError(t, err)
+	// Generate server certificate and key
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
 
-server := grpc.NewServer(grpc.Creds(insecure.NewCredentials()))
-go func() {
-_ = server.Serve(listener)
-}()
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "localhost",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:              []string{"localhost"},
+	}
 
-addr := listener.Addr().(*net.TCPAddr)
-cleanup := func() {
-server.Stop()
-listener.Close()
-}
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	require.NoError(t, err)
 
-return "localhost", fmt.Sprintf("%d", addr.Port), cleanup
+	// Create TLS certificate
+	serverCert := tls.Certificate{
+		Certificate: [][]byte{certDER},
+		PrivateKey:  priv,
+	}
+
+	// Create server TLS config
+	serverTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		MinVersion:   tls.VersionTLS13,
+	}
+
+	// Create listener
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	// Create gRPC server with TLS
+	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(serverTLSConfig)))
+
+	// Register health check service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(server, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+
+	// Start server
+	go func() {
+		_ = server.Serve(listener)
+	}()
+
+	// Create client TLS config that trusts the server cert
+	certPool := x509.NewCertPool()
+	certPool.AddCert(&x509.Certificate{Raw: certDER})
+	clientTLSConfig := &tls.Config{
+		RootCAs: certPool,
+	}
+
+	addr := listener.Addr().(*net.TCPAddr)
+	cleanup := func() {
+		server.Stop()
+		listener.Close()
+	}
+
+	return "localhost", fmt.Sprintf("%d", addr.Port), clientTLSConfig, cleanup
 }
 
 func TestCreateGRPCConnection_Success(t *testing.T) {
-host, port, cleanup := startTestGRPCServer(t)
-defer cleanup()
+	host, port, tlsConfig, cleanup := startTestGRPCServerWithTLS(t)
+	defer cleanup()
 
-// Use insecure TLS config for test
-tlsConfig := &tls.Config{
-InsecureSkipVerify: true,
+	ctx := context.Background()
+	conn, err := CreateGRPCConnection(ctx, host, port, tlsConfig)
+
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	defer conn.Close()
+
+	// Verify connection works by calling health check RPC
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+	resp, err := healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
 }
 
-ctx := context.Background()
-conn, err := CreateGRPCConnection(ctx, host, port, tlsConfig)
+func TestCreateGRPCConnection_TLSHandshakeFailure(t *testing.T) {
+	host, port, _, cleanup := startTestGRPCServerWithTLS(t)
+	defer cleanup()
 
-require.NoError(t, err)
-require.NotNil(t, conn)
+	// Use TLS config that doesn't trust the server certificate
+	tlsConfig := &tls.Config{
+		RootCAs: x509.NewCertPool(), // Empty pool - won't trust server cert
+	}
 
-// Verify connection state
-assert.NotNil(t, conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 
-// Cleanup
-conn.Close()
+	conn, err := CreateGRPCConnection(ctx, host, port, tlsConfig)
+	require.NoError(t, err) // Client creation succeeds (lazy)
+	require.NotNil(t, conn)
+	defer conn.Close()
+
+	// Attempt RPC to trigger TLS handshake - this should fail
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+	_, err = healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	assert.Error(t, err) // TLS handshake failure
+	assert.Contains(t, err.Error(), "certificate")
 }
 
 func TestCreateGRPCConnection_InvalidAddress(t *testing.T) {
-// Use invalid port
-tlsConfig := &tls.Config{
-InsecureSkipVerify: true,
-}
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
 
-ctx := context.Background()
-conn, err := CreateGRPCConnection(ctx, "invalid-host-that-does-not-exist", "9999", tlsConfig)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 
-// Connection creation should succeed (lazy connection)
-// But we expect it to eventually fail when trying to use it
-// For now, grpc.NewClient succeeds even with invalid address
-if conn != nil {
-conn.Close()
-}
+	conn, err := CreateGRPCConnection(ctx, "invalid-host-that-does-not-exist", "9999", tlsConfig)
 
-// The function returns a connection even for invalid addresses
-// because gRPC uses lazy connection establishment
-// This test verifies the function doesn't panic
-assert.NoError(t, err)
+	require.NoError(t, err) // Client creation succeeds (lazy)
+	require.NotNil(t, conn)
+	defer conn.Close()
+
+	// Attempt RPC to trigger connection - this should fail
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+	_, err = healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	assert.Error(t, err) // Connection failure
 }
 
 // =============================================================================
@@ -275,65 +344,62 @@ assert.NoError(t, err)
 // =============================================================================
 
 func TestCreateGRPCConnectionWithRetry_SuccessFirstTry(t *testing.T) {
-host, port, cleanup := startTestGRPCServer(t)
-defer cleanup()
+	host, port, tlsConfig, cleanup := startTestGRPCServerWithTLS(t)
+	defer cleanup()
 
-tlsConfig := &tls.Config{
-InsecureSkipVerify: true,
-}
+	ctx := context.Background()
+	conn, err := CreateGRPCConnectionWithRetry(ctx, host, port, tlsConfig, 3, 100*time.Millisecond)
 
-ctx := context.Background()
-conn, err := CreateGRPCConnectionWithRetry(ctx, host, port, tlsConfig, 3, 100*time.Millisecond)
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	defer conn.Close()
 
-require.NoError(t, err)
-require.NotNil(t, conn)
-
-conn.Close()
+	// Verify connection works
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+	resp, err := healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
 }
 
 func TestCreateGRPCConnectionWithRetry_ExhaustsRetries(t *testing.T) {
-// Use a port that's definitely not listening
-tlsConfig := &tls.Config{
-InsecureSkipVerify: true,
-}
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
 
-ctx := context.Background()
+	ctx := context.Background()
+	conn, err := CreateGRPCConnectionWithRetry(ctx, "localhost", "9999", tlsConfig, 2, 10*time.Millisecond)
 
-// Note: grpc.NewClient succeeds even with invalid addresses (lazy connection)
-// So we need to test with a scenario that actually fails
-// For now, this tests the retry logic structure
-conn, err := CreateGRPCConnectionWithRetry(ctx, "localhost", "9999", tlsConfig, 2, 10*time.Millisecond)
+	// Connection succeeds (lazy), so no error here
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	defer conn.Close()
 
-// gRPC client creation is lazy, so this might not fail
-// The test verifies retry logic doesn't panic
-if err != nil {
-assert.Error(t, err)
-assert.Nil(t, conn)
-} else {
-// Connection succeeded (lazy), clean up
-if conn != nil {
-conn.Close()
-}
-}
+	// Verify connection actually fails when used
+	ctx2, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+	_, err = healthClient.Check(ctx2, &grpc_health_v1.HealthCheckRequest{})
+	assert.Error(t, err)
 }
 
 func TestCreateGRPCConnectionWithRetry_InfiniteRetries(t *testing.T) {
-host, port, cleanup := startTestGRPCServer(t)
-defer cleanup()
+	host, port, tlsConfig, cleanup := startTestGRPCServerWithTLS(t)
+	defer cleanup()
 
-tlsConfig := &tls.Config{
-InsecureSkipVerify: true,
-}
+	ctx := context.Background()
 
-ctx := context.Background()
+	// Test maxRetries = -1 (infinite retries, but should succeed on first try)
+	conn, err := CreateGRPCConnectionWithRetry(ctx, host, port, tlsConfig, -1, 100*time.Millisecond)
 
-// Test maxRetries = -1 (infinite retries, but should succeed on first try)
-conn, err := CreateGRPCConnectionWithRetry(ctx, host, port, tlsConfig, -1, 100*time.Millisecond)
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	defer conn.Close()
 
-require.NoError(t, err)
-require.NotNil(t, conn)
-
-conn.Close()
+	// Verify connection works
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+	resp, err := healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
 }
 
 // =============================================================================
@@ -341,42 +407,37 @@ conn.Close()
 // =============================================================================
 
 func TestCreateGRPCConnectionWithRetryAndPanic_Success(t *testing.T) {
-host, port, cleanup := startTestGRPCServer(t)
-defer cleanup()
+	host, port, tlsConfig, cleanup := startTestGRPCServerWithTLS(t)
+	defer cleanup()
 
-tlsConfig := &tls.Config{
-InsecureSkipVerify: true,
-}
 
-ctx := context.Background()
+	ctx := context.Background()
 
-// Should not panic with valid server
-conn := CreateGRPCConnectionWithRetryAndPanic(ctx, host, port, tlsConfig, 3, 100*time.Millisecond)
+	// Should not panic with valid server
+	conn := CreateGRPCConnectionWithRetryAndPanic(ctx, host, port, tlsConfig, 3, 100*time.Millisecond)
 
-require.NotNil(t, conn)
-conn.Close()
+	require.NotNil(t, conn)
+	defer conn.Close()
+
+	// Verify connection works
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+	resp, err := healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
 }
 
 func TestCreateGRPCConnectionWithRetryAndPanic_Panics(t *testing.T) {
-// Create a scenario that will definitely fail
-// We need to make CreateGRPCConnection actually return an error
-// Since gRPC is lazy, we'll use a nil TLS config which should cause issues
+	defer func() {
+		r := recover()
+		assert.NotNil(t, r, "Expected panic when retries exhausted")
+		assert.Contains(t, fmt.Sprint(r), "failed to create gRPC connection")
+	}()
 
-defer func() {
-r := recover()
-// Note: This test might not panic if gRPC accepts nil TLS
-// The test verifies the panic recovery works if it does panic
-if r != nil {
-assert.NotNil(t, r)
-}
-}()
+	ctx := context.Background()
 
-ctx := context.Background()
-
-// This might not actually panic since gRPC client creation is lazy
-// But if it does, we'll catch it
-conn := CreateGRPCConnectionWithRetryAndPanic(ctx, "invalid", "0", nil, 1, 1*time.Millisecond)
-if conn != nil {
-conn.Close()
-}
+	// Use maxRetries=0 with invalid config to force immediate failure
+	// This will exhaust retries immediately and return an error
+	_ = CreateGRPCConnectionWithRetryAndPanic(ctx, "localhost", "0", &tls.Config{}, 0, 1*time.Millisecond)
+	
+	t.Fatal("Should have panicked")
 }
