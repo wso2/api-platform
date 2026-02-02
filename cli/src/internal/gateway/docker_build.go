@@ -98,13 +98,9 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 
 // runGatewayBuilder runs the gateway-builder container
 func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
-	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace", config.GatewayBuilder}
-
-	if config.GatewayControllerBaseImage != "" {
-		args = append(args, "-gateway-controller-base-image", config.GatewayControllerBaseImage)
-	}
-	if config.RouterBaseImage != "" {
-		args = append(args, "-router-base-image", config.RouterBaseImage)
+	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace", config.GatewayBuilder,
+		"-gateway-controller-base-image", config.GatewayControllerBaseImage,
+		"-router-base-image", config.RouterBaseImage,
 	}
 
 	cmd := exec.Command("docker", args...)

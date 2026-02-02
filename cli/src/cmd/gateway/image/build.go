@@ -78,12 +78,8 @@ var buildCmd = &cobra.Command{
 func init() {
 	// Optional flags with defaults
 	buildCmd.Flags().StringVar(&gatewayName, "name", "", "Gateway name (defaults to directory name)")
-	buildCmd.Flags().StringVar(&gatewayVersion, "version", utils.DefaultGatewayVersion, "Gateway version")
 	buildCmd.Flags().StringVarP(&manifestPath, "path", "p", ".", "Path to directory containing policy manifest files (default: current directory)")
 	buildCmd.Flags().StringVar(&imageRepository, "repository", utils.DefaultImageRepository, "Docker image repository")
-	buildCmd.Flags().StringVar(&gatewayBuilder, "gateway-builder", "", "Gateway builder image (defaults to repository/gateway-builder:version)")
-	buildCmd.Flags().StringVar(&gatewayControllerBaseImg, "gateway-controller-base-image", utils.DefaultGatewayControllerImg, "Gateway controller base image (uses builder default if empty)")
-	buildCmd.Flags().StringVar(&routerBaseImg, "router-base-image", utils.DefaultRouterImg, "Router base image (uses builder default if empty)")
 	buildCmd.Flags().BoolVar(&push, "push", false, "Push image to registry after build")
 	buildCmd.Flags().BoolVar(&noCache, "no-cache", false, "Build without using cache")
 	buildCmd.Flags().StringVar(&platform, "platform", "", "Target platform (e.g., linux/amd64)")
@@ -91,7 +87,7 @@ func init() {
 }
 
 // initializeDefaults sets smart defaults for gateway name and constructs the image tag
-func initializeDefaults() error {
+func initializeDefaults(manifest *policy.PolicyManifest) error {
 	// Default gateway name from directory name if not provided
 	if gatewayName == "" {
 		absPath, err := filepath.Abs(manifestPath)
@@ -101,9 +97,29 @@ func initializeDefaults() error {
 		gatewayName = filepath.Base(absPath)
 	}
 
-	// Default gateway builder if not provided (use repo without forcing a tag)
-	if gatewayBuilder == "" {
-		gatewayBuilder = utils.DefaultGatewayBuilderRepo
+	// Default gateway version from manifest if not provided via flag
+	if manifest.Gateway.Version == "" {
+		return fmt.Errorf("gateway version is required: set gateway.version in build.yaml")
+	}
+	gatewayVersion = manifest.Gateway.Version
+
+	// Use custom images from manifest if provided, otherwise construct from defaults
+	if manifest.Gateway.Images.Builder != "" {
+		gatewayBuilder = manifest.Gateway.Images.Builder
+	} else {
+		gatewayBuilder = fmt.Sprintf(utils.DefaultGatewayBuilder, gatewayVersion)
+	}
+
+	if manifest.Gateway.Images.Controller != "" {
+		gatewayControllerBaseImg = manifest.Gateway.Images.Controller
+	} else {
+		gatewayControllerBaseImg = fmt.Sprintf(utils.DefaultGatewayController, gatewayVersion)
+	}
+
+	if manifest.Gateway.Images.Router != "" {
+		routerBaseImg = manifest.Gateway.Images.Router
+	} else {
+		routerBaseImg = fmt.Sprintf(utils.DefaultGatewayRouter, gatewayVersion)
 	}
 
 	// Construct the full image tag: repository/name:version
@@ -115,11 +131,6 @@ func initializeDefaults() error {
 func runBuildCommand() error {
 	fmt.Println("=== Gateway Image Build ===")
 	fmt.Println()
-
-	// Initialize computed values
-	if err := initializeDefaults(); err != nil {
-		return err
-	}
 
 	// Step 1: Check Docker availability
 	fmt.Println("[1/8] Checking Docker Availability")
@@ -182,6 +193,11 @@ func runUnifiedBuild() error {
 		return fmt.Errorf("failed to parse manifest file at '%s': %w", manifestFilePath, err)
 	}
 	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
+
+	// Initialize computed values
+	if err := initializeDefaults(manifest); err != nil {
+		return err
+	}
 
 	// Step 3: Validate Manifest and Separate Policies
 	fmt.Println("[3/6] Validating manifest")

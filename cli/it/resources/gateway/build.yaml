@@ -18,6 +18,8 @@
 
 # Sample policy manifest for CLI gateway build integration tests
 version: v1.0.0
+gateway:
+  version: 1.0.4
 policies:
   - name: add-header-policy
     version: v1.0.0
