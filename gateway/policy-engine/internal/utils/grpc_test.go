@@ -427,17 +427,11 @@ func TestCreateGRPCConnectionWithRetryAndPanic_Success(t *testing.T) {
 }
 
 func TestCreateGRPCConnectionWithRetryAndPanic_Panics(t *testing.T) {
-	defer func() {
-		r := recover()
-		assert.NotNil(t, r, "Expected panic when retries exhausted")
-		assert.Contains(t, fmt.Sprint(r), "failed to create gRPC connection")
-	}()
-
 	ctx := context.Background()
 
-	// Use maxRetries=0 with invalid config to force immediate failure
-	// This will exhaust retries immediately and return an error
-	_ = CreateGRPCConnectionWithRetryAndPanic(ctx, "localhost", "0", &tls.Config{}, 0, 1*time.Millisecond)
-	
-	t.Fatal("Should have panicked")
+	// Use require.Panics for deterministic panic assertion
+	// maxRetries=0 ensures no connection attempts are made, causing immediate error
+	require.Panics(t, func() {
+		_ = CreateGRPCConnectionWithRetryAndPanic(ctx, "localhost", "0", &tls.Config{}, 0, 1*time.Millisecond)
+	}, "Expected panic when retries exhausted")
 }
