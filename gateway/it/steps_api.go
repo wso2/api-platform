@@ -59,7 +59,9 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 	// Register multiple step patterns for delete
 	ctx.Step(`^I delete the API "([^"]*)"$`, deleteAPI)
-	ctx.Step(`^I delete the API "([^"]*)" version "([^"]*)"$`, func(name, _ string) error {
+	// Note: Version parameter is semantically meaningful in tests but not used by the API endpoint.
+	// The API deletes by name only - version is embedded in the API YAML, not in the DELETE path.
+	ctx.Step(`^I delete the API "([^"]*)" version "([^"]*)"$`, func(name, version string) error {
 		return deleteAPI(name)
 	})
 

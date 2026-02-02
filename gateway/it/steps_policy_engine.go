@@ -56,7 +56,7 @@ func RegisterPolicyEngineSteps(ctx *godog.ScenarioContext, state *TestState, htt
 // iSendGETRequestToConfigDumpEndpoint sends a GET request to the policy-engine config dump endpoint
 func (p *PolicyEngineSteps) iSendGETRequestToConfigDumpEndpoint() error {
 	url := fmt.Sprintf("%s/config_dump", p.state.Config.PolicyEngineURL)
-	return p.httpSteps.SendGETRequest(url)
+	return p.httpSteps.ISendGETRequest(url)
 }
 
 // iSendPOSTRequestToConfigDumpEndpoint sends a POST request to the policy-engine config dump endpoint

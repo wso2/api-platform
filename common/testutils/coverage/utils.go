@@ -70,6 +70,9 @@ func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath, sourceDi
 					// Convert module path to local path
 					relativePath := strings.TrimPrefix(filePath, prefix)
 					localPath = filepath.Join(sourceDir, relativePath)
+					// Rewrite the output line to use the local path
+					newLine = localPath + newLine[colonIdx:]
+					filePath = localPath
 					break
 				}
 			}
