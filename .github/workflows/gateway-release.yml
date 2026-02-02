@@ -16,7 +16,7 @@ jobs:
       - name: Determine version from VERSION file
         id: version
         run: |
-          VERSION=$(make -C gateway version-get-release)
+          VERSION=$(make -C gateway version-get-release --no-print-directory)
           echo "Releasing gateway version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
