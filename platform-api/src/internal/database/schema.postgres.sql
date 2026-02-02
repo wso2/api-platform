@@ -416,19 +416,6 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     CHECK (status IN ('pending', 'deployed', 'failed'))
 );
 
--- LLM Policies table (for providers and proxies)
-CREATE TABLE IF NOT EXISTS llm_policies (
-    id SERIAL PRIMARY KEY,
-    organization_uuid VARCHAR(40) NOT NULL,
-    target_type VARCHAR(20) NOT NULL,
-    target_handle VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
-    paths TEXT, -- JSON array as TEXT
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    CHECK (target_type IN ('provider', 'proxy'))
-);
-
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_organizations_handle ON organizations(handle);
@@ -468,4 +455,3 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid)
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(organization_uuid, project_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_handle ON llm_proxies(organization_uuid, handle);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider ON llm_proxies(organization_uuid, provider);
-CREATE INDEX IF NOT EXISTS idx_llm_policies_target ON llm_policies(organization_uuid, target_type, target_handle);
