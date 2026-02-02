@@ -106,3 +106,9 @@ const (
 	AssociationTypeGateway   = "gateway"
 	AssociationTypeDevPortal = "dev_portal"
 )
+
+// Deployment limit constants
+const (
+	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement
+	DeploymentLimitBuffer = 5
+)

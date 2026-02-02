@@ -19,6 +19,7 @@ package repository
 
 import (
 	"platform-api/src/internal/model"
+	"time"
 )
 
 // OrganizationRepository defines the interface for organization data access
@@ -56,15 +57,18 @@ type APIRepository interface {
 	DeleteAPI(apiUUID, orgUUID string) error
 
 	// Deployment artifact methods (immutable deployments)
-	CreateDeployment(deployment *model.APIDeployment) error
-	GetDeploymentByID(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)
-	GetDeploymentsByAPIUUID(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error)
-	GetDeploymentContent(deploymentID, apiUUID, orgUUID string) ([]byte, error)
-	UpdateDeploymentStatus(deploymentID, apiUUID, status, orgUUID string) error
+	CreateDeploymentWithLimitEnforcement(deployment *model.APIDeployment, hardLimit int) error    // Atomic: count, cleanup if needed, create
+	GetDeploymentWithContent(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error) // With content (for rollback/base deployment)
+	GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)   // With status derived (without content - lightweight)
+	GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error)
 	DeleteDeployment(deploymentID, apiUUID, orgUUID string) error
-	GetActiveDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
+	GetCurrentDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
 	CountDeploymentsByAPIAndGateway(apiUUID, gatewayID, orgUUID string) (int, error)
-	GetOldestUndeployedDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
+
+	// Deployment status methods (mutable state tracking)
+	SetCurrentDeployment(apiUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (updatedAt time.Time, err error)
+	GetDeploymentStatus(apiUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
+	DeleteDeploymentStatus(apiUUID, orgUUID, gatewayID string) error
 
 	// API-Gateway association methods
 	GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)
