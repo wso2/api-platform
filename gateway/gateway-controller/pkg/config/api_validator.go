@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
@@ -130,7 +131,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 }
 
 // validateUpstream validates a single upstream definition (main or sandbox)
-func (v *APIValidator) validateUpstream(label string, up *api.Upstream) []ValidationError {
+func (v *APIValidator) validateUpstream(label string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 	if up == nil {
 		return errors
@@ -160,7 +161,7 @@ func (v *APIValidator) validateUpstream(label string, up *api.Upstream) []Valida
 	}
 
 	if up.Ref != nil {
-		errors = append(errors, v.validateUpstreamRef(label, up.Ref)...)
+		errors = append(errors, v.validateUpstreamRef(label, up.Ref, upstreamDefinitions)...)
 	}
 
 	return errors
@@ -203,10 +204,169 @@ func (v *APIValidator) validateUpstreamUrl(label string, upUrl *string) []Valida
 	return errors
 }
 
-func (v *APIValidator) validateUpstreamRef(label string, ref *string) []ValidationError {
+func (v *APIValidator) validateUpstreamRef(label string, ref *string, upstreamDefinitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
-	// TODO: Implement upstream reference validation
+	if ref == nil || strings.TrimSpace(*ref) == "" {
+		return errors
+	}
+
+	refName := strings.TrimSpace(*ref)
+
+	// Check if upstream definitions are provided
+	if upstreamDefinitions == nil || len(*upstreamDefinitions) == 0 {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label + ".ref",
+			Message: fmt.Sprintf("Referenced upstream definition '%s' not found: no upstreamDefinitions provided", refName),
+		})
+		return errors
+	}
+
+	// Check if the referenced definition exists
+	found := false
+	for _, def := range *upstreamDefinitions {
+		if def.Name == refName {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label + ".ref",
+			Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", refName),
+		})
+	}
+
+	return errors
+}
+
+// validateUpstreamDefinitions validates the upstreamDefinitions array
+func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDefinition) []ValidationError {
+	var errors []ValidationError
+
+	if definitions == nil {
+		return errors
+	}
+
+	// Track definition names to check for duplicates
+	namesSeen := make(map[string]bool)
+
+	for i, def := range *definitions {
+		// Validate name
+		if def.Name == "" {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].name", i),
+				Message: "Upstream definition name is required",
+			})
+			continue
+		}
+
+		// Check for duplicate names
+		if namesSeen[def.Name] {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].name", i),
+				Message: fmt.Sprintf("Duplicate upstream definition name '%s'", def.Name),
+			})
+		}
+		namesSeen[def.Name] = true
+
+		// Validate upstreams array
+		if len(def.Upstreams) == 0 {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams", i),
+				Message: "At least one upstream target is required",
+			})
+		}
+
+		for j, upstream := range def.Upstreams {
+			// Validate URLs
+			if len(upstream.Urls) == 0 {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls", i, j),
+					Message: "At least one URL is required",
+				})
+				continue
+			}
+
+			for k, urlStr := range upstream.Urls {
+				parsedURL, err := url.Parse(urlStr)
+				if err != nil {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
+						Message: fmt.Sprintf("Invalid URL format: %v", err),
+					})
+					continue
+				}
+
+				if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
+						Message: "URL must use http or https scheme",
+					})
+				}
+
+				if parsedURL.Host == "" {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
+						Message: "URL must include a host",
+					})
+				}
+			}
+
+			// Validate weight if present
+			if upstream.Weight != nil {
+				if *upstream.Weight < 0 || *upstream.Weight > 100 {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].weight", i, j),
+						Message: "Weight must be between 0 and 100",
+					})
+				}
+			}
+		}
+
+		// Validate timeout if present
+		if def.Timeout != nil {
+			if def.Timeout.Connect != nil {
+				timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
+				if timeoutStr != "" {
+					_, err := time.ParseDuration(timeoutStr)
+					if err != nil {
+						errors = append(errors, ValidationError{
+							Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.connect", i),
+							Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
+						})
+					}
+				}
+			}
+
+			if def.Timeout.Request != nil {
+				timeoutStr := strings.TrimSpace(*def.Timeout.Request)
+				if timeoutStr != "" {
+					_, err := time.ParseDuration(timeoutStr)
+					if err != nil {
+						errors = append(errors, ValidationError{
+							Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.request", i),
+							Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
+						})
+					}
+				}
+			}
+
+			if def.Timeout.Idle != nil {
+				timeoutStr := strings.TrimSpace(*def.Timeout.Idle)
+				if timeoutStr != "" {
+					_, err := time.ParseDuration(timeoutStr)
+					if err != nil {
+						errors = append(errors, ValidationError{
+							Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.idle", i),
+							Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
+						})
+					}
+				}
+			}
+		}
+	}
 
 	return errors
 }
@@ -249,10 +409,13 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	// Validate context
 	errors = append(errors, v.validateContext(spec.Context)...)
 
+	// Validate upstreamDefinitions first
+	errors = append(errors, v.validateUpstreamDefinitions(spec.UpstreamDefinitions)...)
+
 	// Validate upstream (main + optional sandbox)
-	errors = append(errors, v.validateUpstream("main", &spec.Upstream.Main)...)
+	errors = append(errors, v.validateUpstream("main", &spec.Upstream.Main, spec.UpstreamDefinitions)...)
 	if spec.Upstream.Sandbox != nil {
-		errors = append(errors, v.validateUpstream("sandbox", spec.Upstream.Sandbox)...)
+		errors = append(errors, v.validateUpstream("sandbox", spec.Upstream.Sandbox, spec.UpstreamDefinitions)...)
 	}
 
 	// Validate operations

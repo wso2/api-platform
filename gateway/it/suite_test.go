@@ -76,6 +76,7 @@ func TestFeatures(t *testing.T) {
 				"features/health.feature",
 				"features/metrics.feature",
 				"features/api_deploy.feature",
+				"features/backend_timeout.feature",
 				"features/mcp_deploy.feature",
 				"features/ratelimit.feature",
 				"features/jwt-auth.feature",

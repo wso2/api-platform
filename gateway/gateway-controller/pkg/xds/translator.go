@@ -83,6 +83,14 @@ type Translator struct {
 	config       *config.Config
 }
 
+// resolvedTimeout represents parsed timeout values for an upstream.
+// All fields are optional; nil means \"no override\" (use global defaults).
+type resolvedTimeout struct {
+	Connect *time.Duration
+	Request *time.Duration
+	Idle    *time.Duration
+}
+
 // NewTranslator creates a new translator
 func NewTranslator(logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
 	// Initialize certificate store if custom certs path is configured
@@ -441,7 +449,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID)
+	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
@@ -459,7 +467,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	clusters := []*cluster.Cluster{}
 
 	// -------- MAIN UPSTREAM --------
-	mainClusterName, parsedMainURL, err := t.resolveUpstreamCluster("main", &apiData.Upstream.Main)
+	mainClusterName, parsedMainURL, mainTimeout, err := t.resolveUpstreamCluster("main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -497,14 +505,14 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
 
 	// -------- SANDBOX UPSTREAM --------
 	if apiData.Upstream.Sandbox != nil {
-		sbClusterName, parsedSbURL, err := t.resolveUpstreamCluster("sandbox", apiData.Upstream.Sandbox)
+		sbClusterName, parsedSbURL, sbTimeout, err := t.resolveUpstreamCluster("sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -516,7 +524,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -526,32 +534,56 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 }
 
 // resolveUpstreamCluster validates an upstream (main or sandbox) and creates its cluster.
-// Returns clusterName, parsedURL, and error.
-func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstream) (string, *url.URL, error) {
-	// Validate URL or ref
+// Returns clusterName, parsedURL, timeout (can be nil), and error.
+func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
 	var rawURL string
+	var timeout *resolvedTimeout
+
+	// Resolve URL and timeout
 	if up.Url != nil && strings.TrimSpace(*up.Url) != "" {
+		// Direct URL provided
 		rawURL = strings.TrimSpace(*up.Url)
+		// No timeout override when using direct URL
+		timeout = nil
 	} else if up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
-		return "", nil, fmt.Errorf("upstream ref is not supported yet for %s: %s",
-			upstreamName, strings.TrimSpace(*up.Ref))
+		// Reference to upstream definition
+		refName := strings.TrimSpace(*up.Ref)
+		definition, err := resolveUpstreamDefinition(refName, upstreamDefinitions)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("failed to resolve %s upstream ref: %w", upstreamName, err)
+		}
+
+		// Extract URL from the first upstream target in the definition
+		if len(definition.Upstreams) == 0 || len(definition.Upstreams[0].Urls) == 0 {
+			return "", nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", refName)
+		}
+		rawURL = definition.Upstreams[0].Urls[0]
+
+		// Extract timeout if specified in the definition (may be nil or partial)
+		if definition.Timeout != nil {
+			resolved, err := resolveTimeoutFromDefinition(definition)
+			if err != nil {
+				return "", nil, nil, fmt.Errorf("invalid timeout in upstream definition '%s': %w", refName, err)
+			}
+			timeout = resolved
+		}
 	} else {
-		return "", nil, fmt.Errorf("no %s upstream configured", upstreamName)
+		return "", nil, nil, fmt.Errorf("no %s upstream configured", upstreamName)
 	}
 
 	// Parse URL
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		return "", nil, fmt.Errorf("invalid %s upstream URL: %w", upstreamName, err)
+		return "", nil, nil, fmt.Errorf("invalid %s upstream URL: %w", upstreamName, err)
 	}
 	if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-		return "", nil, fmt.Errorf("invalid %s upstream URL: must include host and http/https scheme", upstreamName)
+		return "", nil, nil, fmt.Errorf("invalid %s upstream URL: must include host and http/https scheme", upstreamName)
 	}
 
 	// Generate cluster name
 	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
 
-	return clusterName, parsedURL, nil
+	return clusterName, parsedURL, timeout, nil
 }
 
 // SharedRouteConfigName is the name of the shared route configuration used by both HTTP and HTTPS listeners
@@ -1293,7 +1325,7 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -1335,14 +1367,25 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}
 	}
 
+	// Determine timeouts: use overrides if provided, otherwise use global config
+	var requestTimeout time.Duration
+	if timeoutCfg != nil && timeoutCfg.Request != nil {
+		requestTimeout = *timeoutCfg.Request
+	} else {
+		requestTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInSeconds) * time.Second
+	}
+
+	var idleTimeout time.Duration
+	if timeoutCfg != nil && timeoutCfg.Idle != nil {
+		idleTimeout = *timeoutCfg.Idle
+	} else {
+		idleTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInSeconds) * time.Second
+	}
+
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInSeconds) * time.Second,
-			),
-			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInSeconds) * time.Second,
-			),
+			Timeout:     durationpb.New(requestTimeout),
+			IdleTimeout: durationpb.New(idleTimeout),
 			ClusterSpecifier: &route.RouteAction_Cluster{
 				Cluster: clusterName,
 			},
@@ -2469,4 +2512,62 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 			TypedConfig: extProcAny,
 		},
 	}, nil
+}
+
+// resolveUpstreamDefinition finds an upstream definition by its reference name
+// Returns the upstream definition and error if not found
+func resolveUpstreamDefinition(ref string, definitions *[]api.UpstreamDefinition) (*api.UpstreamDefinition, error) {
+	if definitions == nil {
+		return nil, fmt.Errorf("upstream definition '%s' not found: no definitions provided", ref)
+	}
+
+	for _, def := range *definitions {
+		if def.Name == ref {
+			return &def, nil
+		}
+	}
+
+	return nil, fmt.Errorf("upstream definition '%s' not found", ref)
+}
+
+// parseTimeout parses a duration string (e.g., "30s", "1m", "500ms") and returns a time.Duration.
+// Returns nil if the input is nil or empty.
+func parseTimeout(timeoutStr *string) (*time.Duration, error) {
+	if timeoutStr == nil || strings.TrimSpace(*timeoutStr) == "" {
+		return nil, nil
+	}
+
+	duration, err := time.ParseDuration(strings.TrimSpace(*timeoutStr))
+	if err != nil {
+		return nil, fmt.Errorf("invalid timeout format: %w", err)
+	}
+
+	return &duration, nil
+}
+
+// resolveTimeoutFromDefinition converts an UpstreamDefinition's timeout block into a resolvedTimeout.
+// Returns nil if there is no timeout block or all fields are empty.
+func resolveTimeoutFromDefinition(def *api.UpstreamDefinition) (*resolvedTimeout, error) {
+	if def == nil || def.Timeout == nil {
+		return nil, nil
+	}
+
+	var rt resolvedTimeout
+	var err error
+
+	if rt.Connect, err = parseTimeout(def.Timeout.Connect); err != nil {
+		return nil, err
+	}
+	if rt.Request, err = parseTimeout(def.Timeout.Request); err != nil {
+		return nil, err
+	}
+	if rt.Idle, err = parseTimeout(def.Timeout.Idle); err != nil {
+		return nil, err
+	}
+
+	if rt.Connect == nil && rt.Request == nil && rt.Idle == nil {
+		return nil, nil
+	}
+
+	return &rt, nil
 }
