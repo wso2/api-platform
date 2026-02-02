@@ -27,7 +27,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -2264,5 +2263,5 @@ func TestListLLMProxiesUnmarshalError(t *testing.T) {
 func TestStorageConflictErrorHandling(t *testing.T) {
 	// Test that storage.IsConflictError works correctly
 	conflictErr := fmt.Errorf("%w: test conflict", storage.ErrConflict)
-	assert.True(t, strings.Contains(conflictErr.Error(), "conflict"))
+	assert.True(t, storage.IsConflictError(conflictErr))
 }
