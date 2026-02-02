@@ -28,8 +28,11 @@ import (
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
 
-// RegisterLLMSteps registers all LLM provider template step definitions
+// RegisterLLMSteps registers all LLM provider template and provider step definitions
 func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
+	// ========================================
+	// LLM Provider Template Steps
+	// ========================================
 	ctx.Step(`^I create this LLM provider template:$`, func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		err := httpSteps.SendPOSTToService("gateway-controller", "/llm-provider-templates", body)
@@ -129,6 +132,48 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		}
 
 		return nil
+	})
+
+	// ========================================
+	// LLM Provider Steps
+	// ========================================
+	ctx.Step(`^I create this LLM provider:$`, func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPOSTToService("gateway-controller", "/llm-providers", body)
+	})
+
+	ctx.Step(`^I retrieve the LLM provider "([^"]*)"$`, func(providerID string) error {
+		return httpSteps.SendGETToService("gateway-controller", "/llm-providers/"+providerID)
+	})
+
+	ctx.Step(`^I update the LLM provider "([^"]*)" with:$`, func(providerID string, body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+providerID, body)
+	})
+
+	ctx.Step(`^I delete the LLM provider "([^"]*)"$`, func(providerID string) error {
+		return httpSteps.SendDELETEToService("gateway-controller", "/llm-providers/"+providerID)
+	})
+
+	ctx.Step(`^I list all LLM providers$`, func() error {
+		return httpSteps.SendGETToService("gateway-controller", "/llm-providers")
+	})
+
+	ctx.Step(`^I list LLM providers with filter "([^"]*)" as "([^"]*)"$`, func(filterKey, filterValue string) error {
+		return httpSteps.SendGETToService("gateway-controller", "/llm-providers?"+filterKey+"="+filterValue)
+	})
+
+	// ========================================
+	// LLM Proxy Steps
+	// ========================================
+	ctx.Step(`^I deploy this LLM proxy configuration:$`, func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPOSTToService("gateway-controller", "/llm-proxies", body)
+	})
+
+	ctx.Step(`^I update the LLM proxy "([^"]*)" with:$`, func(proxyID string, body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPUTToService("gateway-controller", "/llm-proxies/"+proxyID, body)
 	})
 
 	// Lazy resource assertion steps for config_dump

@@ -130,6 +130,14 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	// Build arguments
 	args := []string{"build"}
 
+	// Add coverage instrumentation if enabled
+	if options.EnableCoverage {
+		slog.Info("Building with coverage instrumentation enabled",
+			"step", "build",
+			"phase", "compilation")
+		args = append(args, "-cover")
+	}
+
 	// Add build tags
 	if len(options.BuildTags) > 0 {
 		tags := ""

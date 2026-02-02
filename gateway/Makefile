@@ -65,6 +65,14 @@ help: ## Show this help message
 	@echo '  make build-controller-coverage - Build coverage-instrumented gateway-controller Docker image'
 	@echo '  make test-integration          - Run integration tests'
 	@echo ''
+	@echo 'Version Management:'
+	@echo '  make version-set VERSION=X              - Set gateway version and update artifacts'
+	@echo '  make version-bump-patch                 - Bump patch version'
+	@echo '  make version-bump-minor                 - Bump minor version'
+	@echo '  make version-bump-major                 - Bump major version'
+	@echo '  make version-bump-next-dev              - Bump to next minor dev version with SNAPSHOT'
+	@echo '  make version-get-release                - Get release version (strips SNAPSHOT suffix)'
+	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                     - Clean all build artifacts'
 
@@ -76,7 +84,7 @@ build: build-controller build-gateway-builder build-policy-engine build-router #
 build-local: build-local-controller build-local-gateway-builder build-local-policy-engine build-local-router ## Build all gateway components locally (faster)
 
 .PHONY: build-coverage
-build-coverage: build-controller-coverage build-gateway-builder build-policy-engine build-router ## Build all coverage-instrumented gateway components
+build-coverage: build-gateway-builder build-controller-coverage build-policy-engine-coverage build-router ## Build all coverage-instrumented gateway components
 
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
@@ -92,6 +100,11 @@ build-local-controller: ## Build gateway-controller Docker image locally (faster
 build-controller-coverage: ## Build coverage-instrumented gateway-controller Docker image
 	@echo "Building coverage-instrumented controller Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-controller build-coverage-image VERSION=$(VERSION)
+
+.PHONY: build-policy-engine-coverage
+build-policy-engine-coverage: ## Build coverage-instrumented policy-engine Docker image
+	@echo "Building coverage-instrumented policy-engine Docker image ($(VERSION))..."
+	$(MAKE) -C policy-engine build-coverage-image VERSION=$(VERSION)
 
 .PHONY: build-gateway-builder
 build-gateway-builder: ## Build gateway-builder Docker image
@@ -169,6 +182,45 @@ test-integration: ## Run integration tests
 
 .PHONY: test-integration-all
 test-integration-all: build-coverage test-integration ## Build coverage images and run integration tests
+
+# Version Management Targets
+.PHONY: version-set
+version-set: ## Set gateway version and update artifacts
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION required"; \
+		echo "Usage: make version-set VERSION=1.0.0"; \
+		exit 1; \
+	fi
+	@echo "$(VERSION)" > VERSION
+	@sed -i.bak 's/^  version: .*/  version: $(VERSION)/' build.yaml && rm -f build.yaml.bak
+	@(cd .. && bash scripts/update-docker-compose.sh gateway $(VERSION))
+	@(cd .. && bash scripts/update-helm.sh gateway $(VERSION))
+	@echo "✓ Set gateway version to $(VERSION)"
+
+.PHONY: version-bump-patch
+version-bump-patch: ## Bump patch version
+	@bash ../scripts/version-bump.sh patch gateway
+
+.PHONY: version-bump-minor
+version-bump-minor: ## Bump minor version
+	@bash ../scripts/version-bump.sh minor gateway
+
+.PHONY: version-bump-major
+version-bump-major: ## Bump major version
+	@bash ../scripts/version-bump.sh major gateway
+
+.PHONY: version-bump-next-dev
+version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
+	@bash ../scripts/version-bump.sh next-dev gateway
+
+.PHONY: version-get-release
+version-get-release: ## Get release version (strips SNAPSHOT suffix)
+	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \
+	if [ -z "$$VERSION" ]; then \
+		echo "Error: VERSION is empty or contains only whitespace. Check gateway/VERSION file." >&2; \
+		exit 1; \
+	fi; \
+	echo "$$VERSION"
 
 # Clean Targets
 .PHONY: clean

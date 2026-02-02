@@ -320,7 +320,7 @@ gateway:
   controller:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-controller
-      tag: "0.4.0"
+      tag: "0.6.0-SNAPSHOT"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -455,7 +455,7 @@ gateway:
   router:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-router
-      tag: "0.4.0"
+      tag: "0.6.0-SNAPSHOT"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -512,7 +512,7 @@ gateway:
   policyEngine:
     image:
       repository: ghcr.io/wso2/api-platform/policy-engine
-      tag: "0.4.0"
+      tag: "0.6.0-SNAPSHOT"
       pullPolicy: Always
     imagePullSecrets: []
     service:

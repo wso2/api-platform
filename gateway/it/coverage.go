@@ -26,16 +26,19 @@ import (
 
 // DefaultCoverageConfig returns the default coverage configuration for gateway/it
 func DefaultCoverageConfig() *coverage.CoverageConfig {
-	sourceDir, _ := filepath.Abs("../gateway-controller")
+	controllerSourceDir, _ := filepath.Abs("../gateway-controller")
+	policyEngineSourceDir, _ := filepath.Abs("../policy-engine")
 	return &coverage.CoverageConfig{
 		OutputDir: "coverage",
-		Services:  []string{"gateway-controller"},
+		Services:  []string{"gateway-controller", "policy-engine"},
 		ServiceSourceDirs: map[string]string{
-			"gateway-controller": sourceDir,
+			"gateway-controller": controllerSourceDir,
+			"policy-engine":      policyEngineSourceDir,
 		},
 		ContainerPath: "/build/",
 		ModulePrefixes: []string{
 			"github.com/wso2/api-platform/gateway/gateway-controller/",
+			"github.com/wso2/api-platform/gateway/policy-engine/",
 			"github.com/wso2/api-platform/gateway/",
 			"github.com/wso2/api-platform/",
 		},

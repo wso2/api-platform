@@ -36,3 +36,14 @@ Feature: Gateway Health Check
   Scenario: All gateway services are healthy
     When I check the health of all gateway services
     Then all services should report healthy status
+
+  # ==================== HEALTH ENDPOINT RESPONSE VALIDATION ====================
+
+  Scenario: Gateway controller health endpoint returns valid JSON
+    When I send a GET request to the gateway controller health endpoint
+    Then the response status code should be 200
+    And the response should be valid JSON
+
+  Scenario: Gateway controller health endpoint is accessible without authentication
+    When I send a GET request to the gateway controller health endpoint
+    Then the response status code should be 200

@@ -88,13 +88,14 @@ type PolicyInfo struct {
 
 // CompilationOptions contains settings for the compilation phase
 type CompilationOptions struct {
-	OutputPath string
-	EnableUPX  bool
-	LDFlags    string
-	BuildTags  []string
-	CGOEnabled bool
-	TargetOS   string
-	TargetArch string
+	OutputPath     string
+	EnableUPX      bool
+	LDFlags        string
+	BuildTags      []string
+	CGOEnabled     bool
+	TargetOS       string
+	TargetArch     string
+	EnableCoverage bool // Enable coverage instrumentation for integration tests
 }
 
 // PackagingMetadata contains Docker image metadata

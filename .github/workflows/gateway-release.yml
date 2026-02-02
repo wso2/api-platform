@@ -16,19 +16,14 @@ jobs:
       - name: Determine version from VERSION file
         id: version
         run: |
-          VERSION=$(cat gateway/VERSION | tr -d '[:space:]' | sed 's/-SNAPSHOT//')
-          if [[ -z "${VERSION}" ]]; then
-            echo "::error::VERSION is empty or contains only whitespace. Check gateway/VERSION file." >&2
-            exit 1
-          fi
+          VERSION=$(make -C gateway version-get-release --no-print-directory)
           echo "Releasing gateway version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set version
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          make version-set COMPONENT=gateway VERSION_ARG=${VERSION}
-          make update-images COMPONENT=gateway VERSION_ARG=${VERSION}
+          make -C gateway version-set VERSION=${VERSION}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -71,11 +66,30 @@ jobs:
           git push origin gateway/v${{ steps.version.outputs.version }}
 
 
-      - name: Set to next dev version
-        run: |
-          make version-bump-next-dev COMPONENT=gateway
-          make update-images COMPONENT=gateway VERSION_ARG=$(cat gateway/VERSION)
-          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-            git commit -am "Bump gateway to next dev version"
-            git push origin main
-          fi
+      - name: Bump to next dev version
+        run: make -C gateway version-bump-next-dev
+
+      - name: Create PR for version bump
+        id: create-pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Bump gateway to next dev version"
+          title: "chore: Bump gateway to next dev version"
+          body: |
+            Automated version bump after release `gateway/v${{ steps.version.outputs.version }}`
+
+            This PR bumps the gateway version to the next development version.
+
+            🤖 This PR will auto-merge once CI checks pass.
+          branch: version-bump-${{ github.run_id }}
+          base: main
+          delete-branch: true
+          labels: |
+            automated
+            version-bump
+
+      - name: Enable auto-merge
+        if: steps.create-pr.outputs.pull-request-number
+        run: gh pr merge --auto --squash ${{ steps.create-pr.outputs.pull-request-number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -77,7 +77,6 @@ func TestFeatures(t *testing.T) {
 				"features/api_deploy.feature",
 				"features/mcp_deploy.feature",
 				"features/ratelimit.feature",
-				"features/basic-ratelimit.feature",
 				"features/jwt-auth.feature",
 				"features/cors.feature",
 				"features/word-count-guardrail.feature",
@@ -100,6 +99,18 @@ func TestFeatures(t *testing.T) {
 				"features/semantic-prompt-guard.feature",
 				"features/modify-headers.feature",
 				"features/respond.feature",
+				"features/llm-provider.feature",
+				"features/certificates.feature",
+				"features/config-dump.feature",
+				"features/api-management.feature",
+				"features/list-policies.feature",
+				"features/api-keys.feature",
+				"features/api-management.feature",
+				"features/llm-proxies.feature",
+				"features/search-deployments.feature",
+				"features/policy-engine-admin.feature",
+				"features/cel-conditions.feature",
+				"features/analytics-basic.feature",
 			},
 			TestingT: t,
 		},
@@ -260,6 +271,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterMCPSteps(ctx, testState, httpSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
+		RegisterAnalyticsSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps
