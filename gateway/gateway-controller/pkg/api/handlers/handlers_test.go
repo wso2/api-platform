@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1320,30 +1321,47 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 	server := createTestAPIServer()
 	server.controlPlaneClient = &MockControlPlaneClient{connected: true}
 
-	// Add config that never becomes deployed
+	// Add config that never becomes deployed (stays pending)
 	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
 	cfg.Status = models.StatusPending
 	_ = server.store.Add(cfg)
 
-	// This should timeout without panicking
-	// We just verify it doesn't panic - actual timeout is 30s which is too long for tests
-	// So we just call it in a goroutine and verify no panic
+	// Test that the method doesn't panic and can be started
+	// We'll let it run briefly to ensure it starts properly, then verify no panic
 	done := make(chan bool, 1)
+	panicked := false
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
+				panicked = true
 				t.Errorf("waitForDeploymentAndNotify panicked: %v", r)
 			}
 			done <- true
 		}()
-		// Don't actually wait for full timeout, just test the function starts
+
+		// Actually call the method - it will timeout after 30s but we'll cancel before that
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		server.waitForDeploymentAndNotify("test-id", "test-correlation", logger)
 	}()
 
+	// Wait a short time to ensure the method starts and begins polling
+	// This tests that the method starts without immediate panic
 	select {
 	case <-done:
-		// Test passed
-	case <-time.After(1 * time.Second):
-		// Test passed (function is running)
+		// Method completed (shouldn't happen since config stays pending)
+		// This is fine - means it ran without panic
+		assert.False(t, panicked, "Method should not panic")
+
+	case <-time.After(2 * time.Second):
+		// Method is still running (expected) - this means it started successfully
+		// The method will continue running in background, but we've verified it starts correctly
+		assert.False(t, panicked, "Method should not panic during execution")
+
+		// Verify the config is still pending (hasn't changed)
+		retrievedCfg, err := server.store.Get("test-id")
+		require.NoError(t, err)
+		assert.Equal(t, models.StatusPending, retrievedCfg.Status)
 	}
 }
 
