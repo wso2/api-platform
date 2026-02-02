@@ -426,7 +426,8 @@ func SetupTempGatewayImageBuildDir(lockFilePath string) error {
 
 // SetupTempGatewayWorkspace prepares the workspace by creating required folders, copying
 // local policies into the workspace, updating the manifest's filePath entries to point
-// to the workspace paths, and writing the modified manifest as policy-manifest.yaml.
+// to the workspace paths, and writing the modified manifest as policy-manifest.yaml
+// (renamed from the original build.yaml file for Docker build compatibility).
 func SetupTempGatewayWorkspace(manifestFilePath string) (string, error) {
 	tempGatewayImageBuildDir, err := GetTempGatewayImageBuildDir()
 	if err != nil {

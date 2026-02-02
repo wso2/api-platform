@@ -18,7 +18,7 @@
 
 package policy
 
-// PolicyManifest represents the policy-manifest.yaml structure
+// PolicyManifest represents the build.yaml structure (policy manifest)
 type PolicyManifest struct {
 	Version           string           `yaml:"version"`
 	VersionResolution string           `yaml:"versionResolution,omitempty"`

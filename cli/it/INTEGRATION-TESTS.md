@@ -59,7 +59,7 @@ cli/it/
 │   └── gateway/                  # Gateway-specific test resources
 │       ├── sample-api.yaml       # API definition for testing
 │       ├── sample-mcp-config.yaml # MCP config for testing
-│       └── policy-manifest.yaml  # Policy manifest for build tests
+│       └── build.yaml             # Policy manifest for build tests
 ├── features/
 │   └── gateway/                  # Gateway-related feature files
 │       ├── management.feature    # add, list, remove, use, current, health
@@ -501,7 +501,7 @@ Duration: 1.23s
 
 ### Story 10: Gateway Build Tests
 - [ ] Create `features/gateway/build.feature`
-- [ ] Create `resources/gateway/policy-manifest.yaml`
+- [ ] Create `resources/gateway/build.yaml`
 - [ ] Implement all BUILD-* test scenarios
 
 ### Story 11: Documentation

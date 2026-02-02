@@ -20,7 +20,7 @@ ap gateway image build \
 - `--image-tag`: Docker image tag for the gateway build
 
 ### Optional Flags & Defaults
-- `--path` / `-p`: Current directory (`.`) - Directory containing `policy-manifest.yaml`
+- `--path` / `-p`: Current directory (`.`) - Directory containing `build.yaml`
 - `--image-repository`: `ghcr.io/wso2/api-platform`
 - `--gateway-builder`: `ghcr.io/wso2/api-platform/gateway-builder:latest`
 - `--gateway-controller-base-image`: Uses default from gateway-builder image
@@ -32,9 +32,11 @@ ap gateway image build \
 
 ### Directory Structure Requirements
 The `--path` flag must point to a directory containing:
-- `policy-manifest.yaml` (required)
+- `build.yaml` (required)
 
 Or execute in manifest location
+
+Note: The `build.yaml` file is internally renamed to `policy-manifest.yaml` when copied to the Docker build workspace.
 
 ## Policy Manifest Format
 
