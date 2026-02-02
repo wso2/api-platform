@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -149,19 +150,18 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	}
 
 	if existingKeyID != "" {
-		// Remove old external key index entry if it exists
+		// Remove old external key index entry if it exists (use IndexKey only; do not compute from APIKey for external keys—APIKey may be hashed)
 		oldKey := aks.apiKeysByAPI[apiId][existingKeyID]
 		if oldKey != nil && oldKey.Source == "external" {
-			var oldIndexKey string
 			if oldKey.IndexKey != "" {
-				oldIndexKey = oldKey.IndexKey
-			} else {
-				oldIndexKey = computeExternalKeyIndexKey(oldKey.APIKey)
-				if oldIndexKey == "" {
-					return fmt.Errorf("failed to compute index key")
+				if aks.externalKeyIndex[apiId] != nil {
+					delete(aks.externalKeyIndex[apiId], oldKey.IndexKey)
 				}
+			} else {
+				// Legacy external key with hashed APIKey and no IndexKey; cannot compute index from hash—skip delete to avoid removing wrong entry
+				log.Printf("[WARN] legacy external API key missing IndexKey during replace: apiId=%s existingKeyID=%s (index entry not removed; consider re-storing key with IndexKey set for cleanup)",
+					apiId, existingKeyID)
 			}
-			delete(aks.externalKeyIndex[apiId], oldIndexKey)
 		}
 
 		// Update the existing entry in apiKeysByAPI

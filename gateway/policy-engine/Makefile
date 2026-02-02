@@ -119,6 +119,7 @@ build-coverage-image:
 	@echo "Building Policy Engine coverage image: $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION)"
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context policies=../policies \

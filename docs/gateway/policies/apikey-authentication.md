@@ -445,7 +445,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
 | `api_key.name` | string | Identifier of the generated API key                  |
 | `api_key.displayName` | string | Display name of the generated API key                  |
 | `api_key.apiId` | string | API identifier                                 |
-| `api_key.api_key` | string | The actual API key value (starts with `apip_`) |
+| `api_key.api_key` | string | The actual API key value (format may vary) |
 | `api_key.status` | string | Key status (`active`)                          |
 | `api_key.created_at` | string | ISO 8601 timestamp of creation                 |
 | `api_key.created_by` | string | User who created the key                       |
