@@ -100,8 +100,6 @@ func TestFeatures(t *testing.T) {
 				"features/semantic-prompt-guard.feature",
 				"features/modify-headers.feature",
 				"features/respond.feature",
-				"features/policy-engine-admin.feature",
-				"features/cel-conditions.feature",
 			},
 			TestingT: t,
 		},

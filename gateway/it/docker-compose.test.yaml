@@ -48,7 +48,7 @@ services:
 
   policy-engine:
     container_name: it-policy-engine
-    image: ghcr.io/wso2/api-platform/policy-engine-coverage:0.5.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/policy-engine:0.6.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.2
