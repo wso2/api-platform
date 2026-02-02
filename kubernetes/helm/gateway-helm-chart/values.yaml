@@ -30,7 +30,7 @@ gateway:
           enabled: true
           users:
             - username: "admin"
-              password: "admin"
+              password: ""
               password_hashed: false
               roles: ["admin"]
         idp:
@@ -318,6 +318,8 @@ gateway:
     labels: {}
 
   controller:
+    auth:
+      adminPassword: "admin"
     image:
       repository: ghcr.io/wso2/api-platform/gateway-controller
       tag: "0.4.0"
@@ -411,7 +413,9 @@ gateway:
       # extraEnvFrom:
       #   - secretRef:
       #       name: my-secret
-      extraEnvFrom: []
+      extraEnvFrom:
+        - secretRef:
+            name: '{{ include "gateway-operator.fullname" . }}-controller-auth'
       env:
         xdsServerAddress: ""
       extraVolumeMounts: []
