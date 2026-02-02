@@ -238,3 +238,137 @@ Feature: LLM Proxy Management Operations
     When I delete the LLM provider "list-test-provider"
     Then the response status code should be 200
 
+  # ==================== CREATE LLM PROXY - ADDITIONAL ERROR CASES ====================
+
+  Scenario: Create LLM proxy with invalid JSON body returns error
+    When I send a POST request to the "gateway-controller" service at "/llm-proxies" with body:
+      """
+      { invalid json content here
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  Scenario: Create LLM proxy referencing non-existent provider
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: orphan-llm-proxy
+      spec:
+        displayName: Orphan LLM Proxy
+        version: v1.0
+        provider: non-existent-provider-12345
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  Scenario: Update LLM proxy with invalid JSON body returns error
+    When I send a PUT request to the "gateway-controller" service at "/llm-proxies/some-proxy" with body:
+      """
+      { not valid json
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  # ==================== LIST LLM PROXIES WITH FILTERS ====================
+
+  Scenario: List LLM proxies with displayName filter
+    # First, create the LLM provider
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: filter-llm-provider
+      spec:
+        displayName: Filter LLM Provider
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    # Create LLM proxy with unique displayName
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: unique-displayname-proxy
+      spec:
+        displayName: UniqueProxyDisplayName
+        version: v1.0
+        provider: filter-llm-provider
+      """
+    Then the response status should be 201
+    # Search by displayName
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies?displayName=UniqueProxyDisplayName"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And the response body should contain "UniqueProxyDisplayName"
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/unique-displayname-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "filter-llm-provider"
+    Then the response status code should be 200
+
+  Scenario: List LLM proxies with version filter
+    # First, create the LLM provider
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: version-filter-provider
+      spec:
+        displayName: Version Filter Provider
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    # Create LLM proxy with specific version
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: version-filter-proxy
+      spec:
+        displayName: Version Filter Proxy
+        version: v99.0
+        provider: version-filter-provider
+      """
+    Then the response status should be 201
+    # Search by version
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies?version=v99.0"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/version-filter-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "version-filter-provider"
+    Then the response status code should be 200
+
+  Scenario: List LLM proxies with non-matching filter returns empty
+    When I send a GET request to the "gateway-controller" service at "/llm-proxies?displayName=NonExistentProxyName99999"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And the JSON response field "count" should be 0

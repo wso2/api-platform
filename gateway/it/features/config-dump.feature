@@ -206,3 +206,168 @@ Feature: Configuration Dump Endpoint
     # Cleanup
     When I delete the API "stats-test-api"
     Then the response should be successful
+
+  # ==================== CONFIG DUMP WITH MCP PROXY ====================
+
+  Scenario: Config dump includes deployed MCP proxy
+    When I deploy this MCP configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: Mcp
+      metadata:
+        name: config-dump-mcp-v1.0
+      spec:
+        displayName: ConfigDump-MCP
+        version: v1.0
+        context: /config-mcp
+        specVersion: "2025-06-18"
+        upstream:
+          url: http://mcp-server-backend:3001
+        tools: []
+        resources: []
+        prompts: []
+      """
+    Then the response should be successful
+    When I send a GET request to the "gateway-controller" service at "/config_dump"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Cleanup
+    When I delete the MCP proxy "config-dump-mcp-v1.0"
+    Then the response should be successful
+
+  # ==================== CONFIG DUMP WITH LLM PROVIDER ====================
+
+  Scenario: Config dump includes deployed LLM provider
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: config-dump-llm-provider
+      spec:
+        displayName: ConfigDump LLM Provider
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I send a GET request to the "gateway-controller" service at "/config_dump"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Cleanup
+    When I delete the LLM provider "config-dump-llm-provider"
+    Then the response status code should be 200
+
+  # ==================== CONFIG DUMP WITH MULTIPLE RESOURCE TYPES ====================
+
+  Scenario: Config dump includes mixed resource types - API, MCP, and LLM provider
+    # Deploy API
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: mixed-resources-api
+      spec:
+        displayName: Mixed-Resources-API
+        version: v1.0
+        context: /mixed-api
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    # Deploy MCP
+    When I deploy this MCP configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: Mcp
+      metadata:
+        name: mixed-resources-mcp-v1.0
+      spec:
+        displayName: Mixed-Resources-MCP
+        version: v1.0
+        context: /mixed-mcp
+        specVersion: "2025-06-18"
+        upstream:
+          url: http://mcp-server-backend:3001
+        tools: []
+        resources: []
+        prompts: []
+      """
+    Then the response should be successful
+    # Deploy LLM Provider
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: mixed-resources-llm
+      spec:
+        displayName: Mixed Resources LLM
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    # Get config dump
+    When I send a GET request to the "gateway-controller" service at "/config_dump"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And the response body should contain "mixed-resources-api"
+    # Cleanup
+    When I delete the API "mixed-resources-api"
+    Then the response should be successful
+    When I delete the MCP proxy "mixed-resources-mcp-v1.0"
+    Then the response should be successful
+    When I delete the LLM provider "mixed-resources-llm"
+    Then the response status code should be 200
+
+  # ==================== CONFIG DUMP AFTER DELETION ====================
+
+  Scenario: Config dump reflects removed API after deletion
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: deletion-test-api
+      spec:
+        displayName: Deletion-Test-API
+        version: v1.0
+        context: /deletion-test
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /data
+      """
+    Then the response should be successful
+    # Verify API is in config dump
+    When I send a GET request to the "gateway-controller" service at "/config_dump"
+    Then the response status should be 200
+    And the response body should contain "deletion-test-api"
+    # Delete the API
+    When I delete the API "deletion-test-api"
+    Then the response should be successful
+    # Verify API is removed from config dump
+    When I send a GET request to the "gateway-controller" service at "/config_dump"
+    Then the response status should be 200
+    And the response body should not contain "deletion-test-api"

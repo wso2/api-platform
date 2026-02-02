@@ -195,3 +195,64 @@ Feature: LLM Provider Template Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+
+  Scenario: Create LLM provider template with invalid JSON body returns error
+    Given I authenticate using basic auth as "admin"
+    When I send a POST request to the "gateway-controller" service at "/llm-provider-templates" with body:
+      """
+      { this is invalid json
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  Scenario: Update LLM provider template with invalid JSON body returns error
+    Given I authenticate using basic auth as "admin"
+    When I send a PUT request to the "gateway-controller" service at "/llm-provider-templates/some-template" with body:
+      """
+      { invalid json content
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+
+  Scenario: Get LLM provider template with invalid ID format returns 404
+    Given I authenticate using basic auth as "admin"
+    When I send a GET request to the "gateway-controller" service at "/llm-provider-templates/invalid@template#id"
+    Then the response status should be 404
+    And the response should be valid JSON
+
+  # ========================================
+  # Scenario Group: Template with All Token Fields
+  # ========================================
+
+  Scenario: Create template with header-based token tracking
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider template:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProviderTemplate
+        metadata:
+          name: header-tokens-template
+        spec:
+          displayName: Header Tokens Template
+          promptTokens:
+            location: header
+            identifier: x-prompt-tokens
+          completionTokens:
+            location: header
+            identifier: x-completion-tokens
+          totalTokens:
+            location: header
+            identifier: x-total-tokens
+        """
+    Then the response status code should be 201
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Verify creation
+    Given I authenticate using basic auth as "admin"
+    When I retrieve the LLM provider template "header-tokens-template"
+    Then the response status code should be 200
+    And the JSON response field "template.configuration.spec.promptTokens.location" should be "header"
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider template "header-tokens-template"
+    Then the response status code should be 200

@@ -310,3 +310,96 @@ Feature: API Key Management Operations
       """
     Then the response status should be 404
     And the response should be valid JSON
+
+  # ==================== GENERATE API KEY - ADDITIONAL ERROR CASES ====================
+
+  Scenario: Generate API key with invalid JSON body returns error
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: invalid-json-key-api
+      spec:
+        displayName: Invalid-JSON-Key-API
+        version: v1.0
+        context: /invalid-json-key
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /data
+      """
+    Then the response should be successful
+    When I send a POST request to the "gateway-controller" service at "/apis/invalid-json-key-api/api-keys" with body:
+      """
+      { this is not valid json
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    # Cleanup
+    When I delete the API "invalid-json-key-api"
+    Then the response should be successful
+
+  Scenario: API key with special characters in name
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: special-char-key-api
+      spec:
+        displayName: Special-Char-Key-API
+        version: v1.0
+        context: /special-char-key
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /data
+      """
+    Then the response should be successful
+    # Generate key with hyphens and underscores (should be allowed)
+    When I send a POST request to the "gateway-controller" service at "/apis/special-char-key-api/api-keys" with body:
+      """
+      {
+        "name": "my-api-key_v1"
+      }
+      """
+    Then the response status should be 201
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Cleanup
+    When I delete the API "special-char-key-api"
+    Then the response should be successful
+
+  # ==================== LIST API KEYS WITH PAGINATION ====================
+
+  Scenario: List API keys with pagination parameters
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: paginated-keys-api
+      spec:
+        displayName: Paginated-Keys-API
+        version: v1.0
+        context: /paginated-keys
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /data
+      """
+    Then the response should be successful
+    When I send a GET request to the "gateway-controller" service at "/apis/paginated-keys-api/api-keys?limit=10&offset=0"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Cleanup
+    When I delete the API "paginated-keys-api"
+    Then the response should be successful

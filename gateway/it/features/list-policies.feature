@@ -58,3 +58,45 @@ Feature: List Available Policies
     Then the response status should be 200
     And the response should be valid JSON
     And the response body should contain "basic-ratelimit"
+
+  # ==================== POLICY LISTING WITH PAGINATION ====================
+
+  Scenario: List policies with limit parameter
+    When I send a GET request to the "gateway-controller" service at "/policies?limit=5"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+
+  Scenario: List policies with offset parameter
+    When I send a GET request to the "gateway-controller" service at "/policies?offset=0"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+
+  Scenario: List policies with limit and offset parameters
+    When I send a GET request to the "gateway-controller" service at "/policies?limit=10&offset=0"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+
+  # ==================== POLICY LIST INCLUDES GUARDRAIL POLICIES ====================
+
+  Scenario: Policy list includes guardrail policies
+    When I send a GET request to the "gateway-controller" service at "/policies"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the response body should contain "word-count-guardrail"
+
+  Scenario: Policy list includes modify-headers policy
+    When I send a GET request to the "gateway-controller" service at "/policies"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the response body should contain "modify-headers"
+
+  # ==================== POLICY COUNT VALIDATION ====================
+
+  Scenario: Policy list returns count field
+    When I send a GET request to the "gateway-controller" service at "/policies"
+    Then the response status should be 200
+    And the response should be valid JSON
+    And the JSON response should have field "count"

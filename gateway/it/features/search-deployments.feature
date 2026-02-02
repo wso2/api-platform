@@ -320,3 +320,4 @@ Feature: Search Deployments API
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     And the JSON response field "count" should be 0
+

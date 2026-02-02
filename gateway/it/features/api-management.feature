@@ -642,5 +642,262 @@ Feature: API Management Handler Operations
     When I delete the API "update-validation-api"
     Then the response should be successful
 
+  # ==================== CREATE API - ADDITIONAL EDGE CASES ====================
+
+  Scenario: Create API with invalid JSON body returns error
+    When I send a POST request to the "gateway-controller" service at "/apis" with body:
+      """
+      { invalid json content here
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+
+  Scenario: Create API with sandbox upstream
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: sandbox-api
+      spec:
+        displayName: Sandbox-Api
+        version: v1.0
+        context: /sandbox-test
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    # Cleanup
+    When I delete the API "sandbox-api"
+    Then the response should be successful
+
+  Scenario: Create API with path parameters
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: path-params-api
+      spec:
+        displayName: Path-Params-Api
+        version: v1.0
+        context: /path-params
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /users/{userId}
+          - method: GET
+            path: /users/{userId}/orders/{orderId}
+          - method: DELETE
+            path: /users/{userId}/orders/{orderId}
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    # Cleanup
+    When I delete the API "path-params-api"
+    Then the response should be successful
+
+  # ==================== LIST APIs WITH FILTERS ====================
+
+  Scenario: List APIs filtered by displayName
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: filter-display-api
+      spec:
+        displayName: UniqueFilterName123
+        version: v1.0
+        context: /filter-display
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    When I send a GET request to the "gateway-controller" service at "/apis?displayName=UniqueFilterName123"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the response body should contain "UniqueFilterName123"
+    # Cleanup
+    When I delete the API "filter-display-api"
+    Then the response should be successful
+
+  Scenario: List APIs filtered by version
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: filter-version-api
+      spec:
+        displayName: Filter-Version-Api
+        version: v99.88.77
+        context: /filter-version
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    When I send a GET request to the "gateway-controller" service at "/apis?version=v99.88.77"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the response body should contain "v99.88.77"
+    # Cleanup
+    When I delete the API "filter-version-api"
+    Then the response should be successful
+
+  Scenario: List APIs filtered by context
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: filter-context-api
+      spec:
+        displayName: Filter-Context-Api
+        version: v1.0
+        context: /unique-filter-context-xyz
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    When I send a GET request to the "gateway-controller" service at "/apis?context=/unique-filter-context-xyz"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the response body should contain "unique-filter-context-xyz"
+    # Cleanup
+    When I delete the API "filter-context-api"
+    Then the response should be successful
+
+  # ==================== UPDATE API - ADDITIONAL EDGE CASES ====================
+
+  Scenario: Update API with invalid JSON body returns error
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: update-invalid-json-api
+      spec:
+        displayName: Update-Invalid-Json-Api
+        version: v1.0
+        context: /update-invalid-json
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    When I send a PUT request to the "gateway-controller" service at "/apis/update-invalid-json-api" with body:
+      """
+      { this is not valid json
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    # Cleanup
+    When I delete the API "update-invalid-json-api"
+    Then the response should be successful
+
+  Scenario: Update API version while keeping same context
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: update-version-api
+      spec:
+        displayName: Update-Version-Api
+        version: v1.0
+        context: /update-version
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    When I update the API "update-version-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: update-version-api
+      spec:
+        displayName: Update-Version-Api
+        version: v2.0
+        context: /update-version
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    When I get the API "update-version-api"
+    Then the response should be successful
+    And the response body should contain "v2.0"
+    # Cleanup
+    When I delete the API "update-version-api"
+    Then the response should be successful
+
+  # ==================== DELETE API - ADDITIONAL EDGE CASES ====================
+
+  Scenario: Delete API with invalid ID format returns 404
+    When I send a DELETE request to the "gateway-controller" service at "/apis/invalid@id#format!!"
+    Then the response status should be 404
+    And the response should be valid JSON
+
+  Scenario: Delete same API twice (idempotent check)
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: delete-twice-api
+      spec:
+        displayName: Delete-Twice-Api
+        version: v1.0
+        context: /delete-twice
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /test
+      """
+    Then the response should be successful
+    When I delete the API "delete-twice-api"
+    Then the response should be successful
+    # Try to delete again
+    When I delete the API "delete-twice-api"
+    Then the response status should be 404
 
 

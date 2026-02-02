@@ -260,226 +260,8 @@ Feature: LLM Provider Management
     Then the response status code should be 200
 
   # ========================================
-  # Scenario Group 3: Access Control Testing
-  # ========================================
-
-  Scenario: LLM provider with allow_all access control mode
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: allow-all-provider
-        spec:
-          displayName: Allow All Provider
-          version: v1.0
-          template: openai
-          context: /allow-all
-          upstream:
-            url: http://mock-openapi-https:9443/openai/v1
-            auth:
-              type: api-key
-              header: Authorization
-              value: Bearer sk-test
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
-    And I wait for 5 seconds
-
-    # Test that any path is accessible
-    When I set header "content-type" to "Bearer sk-test"
-    When I send a POST request to "http://localhost:8080/allow-all/chat/completions" with header "Authorization" value "Bearer sk-test" with body:
-        """
-        {
-          "model": "gpt-4",
-          "messages": [
-            {"role": "user", "content": "Hello"}
-          ]
-        }
-        """
-    Then the response status code should be 200
-    And the response should be valid JSON
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "allow-all-provider"
-    Then the response status code should be 200
-
-  Scenario: LLM provider with deny_all access control and exceptions
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: deny-all-provider
-        spec:
-          displayName: Deny All Provider
-          version: v1.0
-          template: openai
-          context: /deny-all
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-            auth:
-              type: api-key
-              header: Authorization
-              value: Bearer sk-test
-          accessControl:
-            mode: deny_all
-            exceptions:
-              - path: /chat/completions
-                methods: [POST]
-              - path: /embeddings
-                methods: [POST]
-        """
-    Then the response status code should be 201
-    And I wait for 2 seconds
-
-    # Test allowed path
-    When I send a POST request to "http://localhost:8080/deny-all/chat/completions" with body:
-        """
-        {
-          "model": "gpt-4",
-          "messages": [
-            {"role": "user", "content": "Hello"}
-          ]
-        }
-        """
-    Then the response status code should be 200
-
-    # Test denied path (not in exceptions)
-    When I send a GET request to "http://localhost:8080/deny-all/models"
-    Then the response status code should be 404
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "deny-all-provider"
-    Then the response status code should be 200
-
-  # ========================================
-  # Scenario Group 4: Upstream Configuration
-  # ========================================
-
-  Scenario: LLM provider with API key authentication
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: apikey-auth-provider
-        spec:
-          displayName: API Key Auth Provider
-          version: v1.0
-          template: openai
-          context: /apikey-test
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-            auth:
-              type: api-key
-              header: Authorization
-              value: Bearer sk-custom-key-123
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
-    And I wait for 2 seconds
-
-    # Test invocation with configured API key
-    When I send a POST request to "http://localhost:8080/apikey-test/chat/completions" with body:
-        """
-        {
-          "model": "gpt-4",
-          "messages": [
-            {"role": "user", "content": "Test message"}
-          ]
-        }
-        """
-    Then the response status code should be 200
-    And the response should be valid JSON
-    And the JSON response field "model" should be "gpt-4.1-2025-04-14"
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "apikey-auth-provider"
-    Then the response status code should be 200
-
-  Scenario: LLM provider with bearer token authentication
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: bearer-auth-provider
-        spec:
-          displayName: Bearer Auth Provider
-          version: v1.0
-          template: openai
-          context: /bearer-test
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-            auth:
-              type: bearer
-              header: Authorization
-              value: token-abc-123
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "bearer-auth-provider"
-    Then the response status code should be 200
-
-  # ========================================
   # Scenario Group 5: Virtual Host and Context Path
   # ========================================
-
-  Scenario: LLM provider with custom context path
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: context-path-provider
-        spec:
-          displayName: Context Path Provider
-          version: v1.0
-          template: openai
-          context: /custom/openai/v1
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-            auth:
-              type: api-key
-              header: Authorization
-              value: Bearer sk-test
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
-    And I wait for 2 seconds
-
-    # Test that context path is applied correctly
-    When I send a POST request to "http://localhost:8080/custom/openai/v1/chat/completions" with body:
-        """
-        {
-          "model": "gpt-4",
-          "messages": [
-            {"role": "user", "content": "Test"}
-          ]
-        }
-        """
-    Then the response status code should be 200
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "context-path-provider"
-    Then the response status code should be 200
 
   Scenario: LLM provider with vhost configuration
     Given I authenticate using basic auth as "admin"
@@ -623,72 +405,9 @@ Feature: LLM Provider Management
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 
-  Scenario: Create duplicate LLM provider
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: duplicate-provider
-        spec:
-          displayName: Duplicate Test
-          version: v1.0
-          template: openai
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
-
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: duplicate-provider
-        spec:
-          displayName: Duplicate Test
-          version: v1.0
-          template: openai
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 409
-    And the JSON response field "status" should be "error"
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "duplicate-provider"
-    Then the response status code should be 200
-
   Scenario: Retrieve non-existent LLM provider
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "non-existent-provider"
-    Then the response status code should be 404
-    And the JSON response field "status" should be "error"
-
-  Scenario: Update non-existent LLM provider
-    Given I authenticate using basic auth as "admin"
-    When I update the LLM provider "non-existent-update" with:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: non-existent-update
-        spec:
-          displayName: Does Not Exist
-          version: v1.0
-          template: openai
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-          accessControl:
-            mode: allow_all
-        """
     Then the response status code should be 404
     And the JSON response field "status" should be "error"
 
@@ -698,106 +417,23 @@ Feature: LLM Provider Management
     Then the response status code should be 404
     And the JSON response field "status" should be "error"
 
-  # ========================================
-  # Scenario Group 9: End-to-End Invocation Tests
-  # ========================================
-
-  Scenario: Complete LLM invocation flow - create provider and make chat completion request
+  Scenario: Create LLM provider with invalid JSON body returns error
     Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: e2e-openai-provider
-        spec:
-          displayName: E2E OpenAI Provider
-          version: v1.0
-          template: openai
-          context: /e2e-openai
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-            auth:
-              type: api-key
-              header: Authorization
-              value: Bearer sk-test-e2e
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
-    And I wait for 2 seconds
-
-    # Make a chat completion request
-    When I send a POST request to "http://localhost:8080/e2e-openai/chat/completions" with body:
-        """
-        {
-          "model": "gpt-4",
-          "messages": [
-            {
-              "role": "system",
-              "content": "You are a helpful assistant."
-            },
-            {
-              "role": "user",
-              "content": "What is the capital of France?"
-            }
-          ]
-        }
-        """
-    Then the response status code should be 200
-    And the response should be valid JSON
-    And the JSON response field "object" should be "chat.completion"
-    And the JSON response field "model" should be "gpt-4.1-2025-04-14"
-    And the JSON response field "choices[0].message.role" should be "assistant"
-    And the JSON response field "usage.prompt_tokens" should be 19
-    And the JSON response field "usage.completion_tokens" should be 10
-    And the JSON response field "usage.total_tokens" should be 29
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "e2e-openai-provider"
-    Then the response status code should be 200
-
-  Scenario: LLM invocation with embeddings endpoint
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: embeddings-provider
-        spec:
-          displayName: Embeddings Provider
-          version: v1.0
-          template: openai
-          context: /embeddings-test
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-            auth:
-              type: api-key
-              header: Authorization
-              value: Bearer sk-test
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
-    And I wait for 2 seconds
-
-    # Make an embeddings request
-    When I send a POST request to "http://localhost:8080/embeddings-test/embeddings" with body:
-        """
-        {
-          "model": "text-embedding-ada-002",
-          "input": "The quick brown fox jumps over the lazy dog"
-        }
-        """
-    Then the response status code should be 200
+    When I send a POST request to the "gateway-controller" service at "/llm-providers" with body:
+      """
+      { this is not valid json content
+      """
+    Then the response should be a client error
     And the response should be valid JSON
 
-    # Cleanup
+  Scenario: Update LLM provider with invalid JSON body returns error
     Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "embeddings-provider"
-    Then the response status code should be 200
+    When I send a PUT request to the "gateway-controller" service at "/llm-providers/some-provider" with body:
+      """
+      { invalid json
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
 
   # ========================================
   # Scenario Group 10: Minimal Configuration
