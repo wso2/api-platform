@@ -199,19 +199,19 @@ version-set: ## Set gateway version and update artifacts
 
 .PHONY: version-bump-patch
 version-bump-patch: ## Bump patch version
-	@bash ../scripts/version-bump.sh patch gateway
+	@cd .. && bash scripts/version-bump.sh patch gateway
 
 .PHONY: version-bump-minor
 version-bump-minor: ## Bump minor version
-	@bash ../scripts/version-bump.sh minor gateway
+	@cd .. && bash scripts/version-bump.sh minor gateway
 
 .PHONY: version-bump-major
 version-bump-major: ## Bump major version
-	@bash ../scripts/version-bump.sh major gateway
+	@cd .. && bash scripts/version-bump.sh major gateway
 
 .PHONY: version-bump-next-dev
 version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
-	@bash ../scripts/version-bump.sh next-dev gateway
+	@cd .. && bash scripts/version-bump.sh next-dev gateway
 
 .PHONY: version-get-release
 version-get-release: ## Get release version (strips SNAPSHOT suffix)

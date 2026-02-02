@@ -79,16 +79,16 @@ version-set: ## Set platform-api version and update artifacts
 	@echo "✓ Set platform-api version to $(VERSION)"
 
 version-bump-patch: ## Bump patch version
-	@bash ../scripts/version-bump.sh patch platform-api
+	@cd .. && bash scripts/version-bump.sh patch platform-api
 
 version-bump-minor: ## Bump minor version
-	@bash ../scripts/version-bump.sh minor platform-api
+	@cd .. && bash scripts/version-bump.sh minor platform-api
 
 version-bump-major: ## Bump major version
-	@bash ../scripts/version-bump.sh major platform-api
+	@cd .. && bash scripts/version-bump.sh major platform-api
 
 version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
-	@bash ../scripts/version-bump.sh next-dev platform-api
+	@cd .. && bash scripts/version-bump.sh next-dev platform-api
 
 version-get-release: ## Get release version (strips SNAPSHOT suffix)
 	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \
