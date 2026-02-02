@@ -294,8 +294,3 @@ func TestRemoveQueryParametersFromPath_EmptyPath(t *testing.T) {
 
 	assert.Equal(t, "", result)
 }
-
-// =============================================================================
-// AddQueryParametersToPath Additional Tests
-// =============================================================================
-
