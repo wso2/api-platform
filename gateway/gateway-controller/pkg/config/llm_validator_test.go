@@ -27,11 +27,6 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
 
-// Helper function to create string pointer
-func stringPtr(s string) *string {
-	return &s
-}
-
 // TestNewLLMValidator tests the constructor
 func TestNewLLMValidator(t *testing.T) {
 	validator := NewLLMValidator()
