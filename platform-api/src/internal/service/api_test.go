@@ -18,11 +18,14 @@
 package service
 
 import (
+	"reflect"
 	"testing"
 
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 )
 
 // mockAPIRepository is a mock implementation of the APIRepository interface
@@ -51,16 +54,16 @@ func (m *mockAPIRepository) CheckAPIExistsByNameAndVersionInOrganization(name, v
 // TestValidateUpdateAPIRequest tests the validateUpdateAPIRequest method
 func TestValidateUpdateAPIRequest(t *testing.T) {
 	tests := []struct {
-		name                    string
-		existingAPI             *model.API
-		req                     *UpdateAPIRequest
-		mockHandleExists        bool
-		mockHandleError         error
-		mockNameVersionExists   bool
-		mockNameVersionError    error
-		wantErr                 bool
-		expectedErr             error
-		expectedExcludeHandle   string
+		name                      string
+		existingAPI               *model.API
+		req                       *UpdateAPIRequest
+		mockHandleExists          bool
+		mockHandleError           error
+		mockNameVersionExists     bool
+		mockNameVersionError      error
+		wantErr                   bool
+		expectedErr               error
+		expectedExcludeHandle     string
 		verifyExcludeHandleCalled bool
 	}{
 		{
@@ -192,17 +195,17 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 // TestValidateCreateAPIRequest tests the validateCreateAPIRequest method
 func TestValidateCreateAPIRequest(t *testing.T) {
 	tests := []struct {
-		name                      string
-		req                       *CreateAPIRequest
-		mockHandleExists          bool
-		mockHandleError           error
-		mockNameVersionExists     bool
-		mockNameVersionError      error
-		wantErr                   bool
-		expectedErr               error
-		errContains               string
-		verifyExcludeHandleEmpty  bool
-		expectedExcludeHandle     string
+		name                     string
+		req                      *CreateAPIRequest
+		mockHandleExists         bool
+		mockHandleError          error
+		mockNameVersionExists    bool
+		mockNameVersionError     error
+		wantErr                  bool
+		expectedErr              error
+		errContains              string
+		verifyExcludeHandleEmpty bool
+		expectedExcludeHandle    string
 	}{
 		{
 			name: "valid create request",
@@ -403,6 +406,41 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
+	service := &APIService{
+		apiRepo: &mockAPIRepository{},
+		apiUtil: &utils.APIUtil{},
+	}
+
+	condition := "request.path == '/pets'"
+	params := map[string]interface{}{"limit": 10}
+	newPolicies := []dto.Policy{
+		{
+			ExecutionCondition: &condition,
+			Name:               "rate-limit",
+			Params:             &params,
+			Version:            "v1",
+		},
+	}
+
+	existing := &model.API{
+		Handle:  "pets-api",
+		Version: "v1",
+		Policies: []model.Policy{
+			{Name: "legacy-policy", Version: "v1"},
+		},
+	}
+
+	updated, err := service.applyAPIUpdates(existing, &UpdateAPIRequest{Policies: &newPolicies}, "org-1")
+	if err != nil {
+		t.Fatalf("applyAPIUpdates() error = %v", err)
+	}
+
+	if !reflect.DeepEqual(updated.Policies, newPolicies) {
+		t.Errorf("updated policies = %v, want %v", updated.Policies, newPolicies)
 	}
 }
 

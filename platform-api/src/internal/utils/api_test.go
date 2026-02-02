@@ -18,10 +18,14 @@
 package utils
 
 import (
-	"platform-api/src/internal/dto"
-	"platform-api/src/internal/model"
 	"reflect"
 	"testing"
+
+	"gopkg.in/yaml.v3"
+
+	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
+	"platform-api/src/internal/model"
 )
 
 // TestPolicyDTOToModel tests conversion from DTO Policy to Model Policy
@@ -50,13 +54,13 @@ func TestPolicyDTOToModel(t *testing.T) {
 				ExecutionCondition: &executionCondition,
 				Name:               "rate-limiting",
 				Params:             &params,
-				Version:            "1.0.0",
+				Version:            "v1",
 			},
 			expected: &model.Policy{
 				ExecutionCondition: &executionCondition,
 				Name:               "rate-limiting",
 				Params:             &params,
-				Version:            "1.0.0",
+				Version:            "v1",
 			},
 		},
 		{
@@ -65,13 +69,13 @@ func TestPolicyDTOToModel(t *testing.T) {
 				ExecutionCondition: nil,
 				Name:               "logging",
 				Params:             &params,
-				Version:            "2.0.0",
+				Version:            "v2",
 			},
 			expected: &model.Policy{
 				ExecutionCondition: nil,
 				Name:               "logging",
 				Params:             &params,
-				Version:            "2.0.0",
+				Version:            "v2",
 			},
 		},
 		{
@@ -80,13 +84,13 @@ func TestPolicyDTOToModel(t *testing.T) {
 				ExecutionCondition: &executionCondition,
 				Name:               "authentication",
 				Params:             nil,
-				Version:            "1.5.0",
+				Version:            "v1",
 			},
 			expected: &model.Policy{
 				ExecutionCondition: &executionCondition,
 				Name:               "authentication",
 				Params:             nil,
-				Version:            "1.5.0",
+				Version:            "v1",
 			},
 		},
 		{
@@ -95,13 +99,13 @@ func TestPolicyDTOToModel(t *testing.T) {
 				ExecutionCondition: nil,
 				Name:               "cors",
 				Params:             &map[string]interface{}{},
-				Version:            "1.0.0",
+				Version:            "v1",
 			},
 			expected: &model.Policy{
 				ExecutionCondition: nil,
 				Name:               "cors",
 				Params:             &map[string]interface{}{},
-				Version:            "1.0.0",
+				Version:            "v1",
 			},
 		},
 	}
@@ -142,13 +146,13 @@ func TestPolicyModelToDTO(t *testing.T) {
 				ExecutionCondition: &executionCondition,
 				Name:               "caching",
 				Params:             &params,
-				Version:            "1.2.0",
+				Version:            "v1",
 			},
 			expected: &dto.Policy{
 				ExecutionCondition: &executionCondition,
 				Name:               "caching",
 				Params:             &params,
-				Version:            "1.2.0",
+				Version:            "v1",
 			},
 		},
 		{
@@ -157,13 +161,13 @@ func TestPolicyModelToDTO(t *testing.T) {
 				ExecutionCondition: nil,
 				Name:               "throttling",
 				Params:             &params,
-				Version:            "3.0.0",
+				Version:            "v3",
 			},
 			expected: &dto.Policy{
 				ExecutionCondition: nil,
 				Name:               "throttling",
 				Params:             &params,
-				Version:            "3.0.0",
+				Version:            "v3",
 			},
 		},
 		{
@@ -172,13 +176,13 @@ func TestPolicyModelToDTO(t *testing.T) {
 				ExecutionCondition: &executionCondition,
 				Name:               "header-modifier",
 				Params:             nil,
-				Version:            "2.1.0",
+				Version:            "v2",
 			},
 			expected: &dto.Policy{
 				ExecutionCondition: &executionCondition,
 				Name:               "header-modifier",
 				Params:             nil,
-				Version:            "2.1.0",
+				Version:            "v2",
 			},
 		},
 	}
@@ -224,7 +228,7 @@ func TestPoliciesDTOToModel(t *testing.T) {
 					ExecutionCondition: &condition1,
 					Name:               "validation",
 					Params:             &params1,
-					Version:            "1.0.0",
+					Version:            "v1",
 				},
 			},
 			expected: []model.Policy{
@@ -232,7 +236,7 @@ func TestPoliciesDTOToModel(t *testing.T) {
 					ExecutionCondition: &condition1,
 					Name:               "validation",
 					Params:             &params1,
-					Version:            "1.0.0",
+					Version:            "v1",
 				},
 			},
 		},
@@ -243,19 +247,19 @@ func TestPoliciesDTOToModel(t *testing.T) {
 					ExecutionCondition: &condition1,
 					Name:               "request-logger",
 					Params:             &params1,
-					Version:            "1.0.0",
+					Version:            "v1",
 				},
 				{
 					ExecutionCondition: nil,
 					Name:               "rate-limiter",
 					Params:             nil,
-					Version:            "2.0.0",
+					Version:            "v2",
 				},
 				{
 					ExecutionCondition: &condition2,
 					Name:               "error-logger",
 					Params:             &params2,
-					Version:            "1.5.0",
+					Version:            "v1",
 				},
 			},
 			expected: []model.Policy{
@@ -263,19 +267,19 @@ func TestPoliciesDTOToModel(t *testing.T) {
 					ExecutionCondition: &condition1,
 					Name:               "request-logger",
 					Params:             &params1,
-					Version:            "1.0.0",
+					Version:            "v1",
 				},
 				{
 					ExecutionCondition: nil,
 					Name:               "rate-limiter",
 					Params:             nil,
-					Version:            "2.0.0",
+					Version:            "v2",
 				},
 				{
 					ExecutionCondition: &condition2,
 					Name:               "error-logger",
 					Params:             &params2,
-					Version:            "1.5.0",
+					Version:            "v1",
 				},
 			},
 		},
@@ -320,13 +324,13 @@ func TestPoliciesModelToDTO(t *testing.T) {
 					ExecutionCondition: &condition,
 					Name:               "api-key-validation",
 					Params:             &params,
-					Version:            "1.0.0",
+					Version:            "v1",
 				},
 				{
 					ExecutionCondition: nil,
 					Name:               "jwt-validation",
 					Params:             nil,
-					Version:            "2.0.0",
+					Version:            "v2",
 				},
 			},
 			expected: []dto.Policy{
@@ -334,13 +338,13 @@ func TestPoliciesModelToDTO(t *testing.T) {
 					ExecutionCondition: &condition,
 					Name:               "api-key-validation",
 					Params:             &params,
-					Version:            "1.0.0",
+					Version:            "v1",
 				},
 				{
 					ExecutionCondition: nil,
 					Name:               "jwt-validation",
 					Params:             nil,
-					Version:            "2.0.0",
+					Version:            "v2",
 				},
 			},
 		},
@@ -383,7 +387,7 @@ func TestOperationRequestDTOToModel(t *testing.T) {
 						ExecutionCondition: &condition,
 						Name:               "timeout-policy",
 						Params:             &params,
-						Version:            "1.0.0",
+						Version:            "v1",
 					},
 				},
 			},
@@ -395,7 +399,7 @@ func TestOperationRequestDTOToModel(t *testing.T) {
 						ExecutionCondition: &condition,
 						Name:               "timeout-policy",
 						Params:             &params,
-						Version:            "1.0.0",
+						Version:            "v1",
 					},
 				},
 			},
@@ -438,13 +442,13 @@ func TestOperationRequestDTOToModel(t *testing.T) {
 				Policies: []dto.Policy{
 					{
 						Name:    "auth-policy",
-						Version: "1.0.0",
+						Version: "v1",
 					},
 					{
 						ExecutionCondition: &condition,
 						Name:               "rate-limit",
 						Params:             &params,
-						Version:            "2.0.0",
+						Version:            "v2",
 					},
 				},
 			},
@@ -458,13 +462,13 @@ func TestOperationRequestDTOToModel(t *testing.T) {
 				Policies: []model.Policy{
 					{
 						Name:    "auth-policy",
-						Version: "1.0.0",
+						Version: "v1",
 					},
 					{
 						ExecutionCondition: &condition,
 						Name:               "rate-limit",
 						Params:             &params,
-						Version:            "2.0.0",
+						Version:            "v2",
 					},
 				},
 			},
@@ -508,7 +512,7 @@ func TestOperationRequestModelToDTO(t *testing.T) {
 						ExecutionCondition: &condition,
 						Name:               "retry-policy",
 						Params:             &params,
-						Version:            "1.0.0",
+						Version:            "v1",
 					},
 				},
 			},
@@ -520,7 +524,7 @@ func TestOperationRequestModelToDTO(t *testing.T) {
 						ExecutionCondition: &condition,
 						Name:               "retry-policy",
 						Params:             &params,
-						Version:            "1.0.0",
+						Version:            "v1",
 					},
 				},
 			},
@@ -565,7 +569,7 @@ func TestPolicyRoundTrip(t *testing.T) {
 		ExecutionCondition: &condition,
 		Name:               "json-validator",
 		Params:             &params,
-		Version:            "3.1.0",
+		Version:            "v3",
 	}
 
 	// Convert DTO -> Model
@@ -620,19 +624,19 @@ func TestOperationRequestRoundTrip(t *testing.T) {
 				ExecutionCondition: &condition1,
 				Name:               "body-size-validator",
 				Params:             &params1,
-				Version:            "1.0.0",
+				Version:            "v1",
 			},
 			{
 				ExecutionCondition: &condition2,
 				Name:               "success-logger",
 				Params:             nil,
-				Version:            "2.0.0",
+				Version:            "v2",
 			},
 			{
 				ExecutionCondition: nil,
 				Name:               "audit-trail",
 				Params:             &map[string]interface{}{"enabled": true},
-				Version:            "1.5.0",
+				Version:            "v1",
 			},
 		},
 	}
@@ -665,5 +669,90 @@ func TestOperationRequestRoundTrip(t *testing.T) {
 			t.Errorf("Policy[%d] not preserved.\nOriginal: %+v\nResult: %+v",
 				i, original.Policies[i], result.Policies[i])
 		}
+	}
+}
+
+func TestGenerateAPIDeploymentYAMLIncludesPolicies(t *testing.T) {
+	util := &APIUtil{}
+
+	condition := "request.path == '/pets'"
+	params := map[string]interface{}{"limit": 10}
+	policies := []dto.Policy{
+		{
+			ExecutionCondition: &condition,
+			Name:               "rate-limit",
+			Params:             &params,
+			Version:            "v1",
+		},
+	}
+
+	api := &dto.API{
+		ID:        "api-123",
+		Name:      "Pets API",
+		Version:   "v1",
+		Context:   "/pets",
+		ProjectID: "project-123",
+		Type:      constants.APITypeHTTP,
+		Policies:  policies,
+		BackendServices: []dto.BackendService{
+			{
+				Endpoints: []dto.BackendEndpoint{
+					{URL: "https://backend.example.com"},
+				},
+			},
+		},
+		Operations: []dto.Operation{
+			{
+				Request: &dto.OperationRequest{
+					Method: "GET",
+					Path:   "/pets",
+				},
+			},
+		},
+	}
+
+	yamlString, err := util.GenerateAPIDeploymentYAML(api)
+	if err != nil {
+		t.Fatalf("GenerateAPIDeploymentYAML() error = %v", err)
+	}
+
+	var deployment dto.APIDeploymentYAML
+	if err := yaml.Unmarshal([]byte(yamlString), &deployment); err != nil {
+		t.Fatalf("failed to unmarshal deployment YAML: %v", err)
+	}
+
+	if !reflect.DeepEqual(deployment.Spec.Policies, policies) {
+		t.Errorf("deployment policies = %v, want %v", deployment.Spec.Policies, policies)
+	}
+}
+
+func TestAPIYAMLDataToDTOPreservesPolicies(t *testing.T) {
+	util := &APIUtil{}
+
+	condition := "request.method == 'GET'"
+	params := map[string]interface{}{"enabled": true}
+	policies := []dto.Policy{
+		{
+			ExecutionCondition: &condition,
+			Name:               "request-logger",
+			Params:             &params,
+			Version:            "v2",
+		},
+	}
+
+	yamlData := &dto.APIYAMLData{
+		DisplayName: "Pets API",
+		Version:     "v1",
+		Context:     "/pets",
+		Policies:    policies,
+	}
+
+	api := util.APIYAMLDataToDTO(yamlData)
+	if api == nil {
+		t.Fatal("APIYAMLDataToDTO() returned nil")
+	}
+
+	if !reflect.DeepEqual(api.Policies, policies) {
+		t.Errorf("API policies = %v, want %v", api.Policies, policies)
 	}
 }

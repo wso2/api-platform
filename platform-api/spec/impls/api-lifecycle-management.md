@@ -20,6 +20,7 @@
 7. Generates comprehensive deployment API YAML including:
     - API metadata and configuration
     - Security policies (mTLS, OAuth2, API Key)
+    - API-level and operation-level policies
 
 ## Verification
 - Create: `curl -k -X POST https://localhost:9243/api/v1/apis -H 'Content-Type: application/json' -d '{"name":"inventory","context":"/inventory","version":"v1","projectId":"<projectId>"}'`.
