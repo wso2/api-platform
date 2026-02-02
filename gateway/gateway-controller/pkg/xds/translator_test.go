@@ -893,3 +893,120 @@ func TestTranslator_ExtractProviderName_ValidLLMProvider(t *testing.T) {
 	result := translator.extractProviderName(storedCfg, nil)
 	assert.Equal(t, "openai-provider", result)
 }
+
+// Tests for lines 184-200: WebSub API translation error handling
+func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
+	translator := createTestTranslator()
+
+	// Create invalid WebSub API config that will cause translation error
+	invalidConfig := &models.StoredConfig{
+		ID:   "test-websub-invalid",
+		Kind: "WebSubApi",
+		Configuration: api.APIConfiguration{
+			Metadata: api.Metadata{
+				Name: "test-websub-api",
+			},
+			Kind:       api.WebSubApi,
+			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Spec:       api.APIConfiguration_Spec{
+				// Invalid spec that will cause AsWebhookAPIData to fail
+			},
+		},
+	}
+
+	result, err := translator.TranslateConfigs([]*models.StoredConfig{invalidConfig}, "test-correlation")
+
+	// Should handle the error gracefully and continue
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+// Tests for lines 1439-1493: createRoutePerTopic method
+func TestTranslator_CreateRoutePerTopic(t *testing.T) {
+	t.Run("Create route with all parameters", func(t *testing.T) {
+		translator := createTestTranslator()
+
+		route := translator.createRoutePerTopic(
+			"api-123",
+			"Test API",
+			"v1.0.0",
+			"/test",
+			"POST",
+			"/channel1",
+			"test-cluster",
+			"localhost",
+			"WebSubApi",
+			"project-123",
+		)
+
+		assert.NotNil(t, route)
+		assert.NotEmpty(t, route.Name)
+		assert.Equal(t, "/test/channel1", route.GetMatch().GetPath())
+		assert.Equal(t, "/hub", route.GetRoute().PrefixRewrite)
+		assert.Equal(t, "test-cluster", route.GetRoute().GetCluster())
+
+		// Verify metadata contains project ID
+		assert.NotNil(t, route.Metadata)
+		metadata := route.Metadata.FilterMetadata["wso2.route"]
+		assert.NotNil(t, metadata)
+	})
+
+	t.Run("Create route with version placeholder in context", func(t *testing.T) {
+		translator := createTestTranslator()
+
+		route := translator.createRoutePerTopic(
+			"api-123",
+			"Test API",
+			"v1.0.0",
+			"/test/$version", // Context with version placeholder
+			"POST",
+			"/channel1",
+			"test-cluster",
+			"localhost",
+			"WebSubApi",
+			"project-123",
+		)
+
+		assert.NotNil(t, route)
+		// ConstructFullPath replaces $version with actual version
+		assert.Equal(t, "/test/v1.0.0/channel1", route.GetMatch().GetPath())
+	})
+}
+
+// Tests for lines 1568-1629: TLS context creation for policy engine
+func TestTranslator_CreatePolicyEngineCluster_TLS(t *testing.T) {
+	t.Run("TLS with client certificates", func(t *testing.T) {
+		translator := createTestTranslator()
+		translator.routerConfig.PolicyEngine.TLS.Enabled = true
+		translator.routerConfig.PolicyEngine.TLS.CertPath = "/path/to/client.crt"
+		translator.routerConfig.PolicyEngine.TLS.KeyPath = "/path/to/client.key"
+		translator.routerConfig.PolicyEngine.TLS.CAPath = "/path/to/ca.crt"
+		translator.routerConfig.PolicyEngine.TLS.ServerName = "policy-engine.example.com"
+		translator.routerConfig.PolicyEngine.TLS.SkipVerify = false
+
+		cluster := translator.createPolicyEngineCluster()
+		assert.NotNil(t, cluster)
+		assert.NotNil(t, cluster.TransportSocket)
+		assert.Equal(t, "envoy.transport_sockets.tls", cluster.TransportSocket.Name)
+	})
+
+	t.Run("TLS without client certificates", func(t *testing.T) {
+		translator := createTestTranslator()
+		translator.routerConfig.PolicyEngine.TLS.Enabled = true
+		translator.routerConfig.PolicyEngine.TLS.CertPath = ""
+		translator.routerConfig.PolicyEngine.TLS.KeyPath = ""
+		translator.routerConfig.PolicyEngine.TLS.CAPath = "/path/to/ca.crt"
+		translator.routerConfig.PolicyEngine.TLS.SkipVerify = false
+
+		cluster := translator.createPolicyEngineCluster()
+		assert.NotNil(t, cluster)
+		assert.NotNil(t, cluster.TransportSocket)
+	})
+}
+
+func createTestTranslator() *Translator {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	return NewTranslator(logger, routerCfg, nil, cfg)
+}
