@@ -335,7 +335,7 @@ func (c *Client) Close() error {
 
 		err := c.state.Conn.Close()
 		c.state.Conn = nil
-		c.setState(Disconnected)
+		c.setStateNoLock(Disconnected)
 
 		return err
 	}
@@ -640,9 +640,15 @@ func (c *Client) calculateNextRetryDelay() {
 // setState updates the connection state
 func (c *Client) setState(newState State) {
 	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	c.setStateNoLock(newState)
+}
+
+// setStateNoLock updates the connection state without acquiring the lock
+// This should only be called when the caller already holds c.state.mu.Lock()
+func (c *Client) setStateNoLock(newState State) {
 	oldState := c.state.Current
 	c.state.Current = newState
-	c.state.mu.Unlock()
 
 	if oldState != newState {
 		c.logger.Info("Connection state changed",

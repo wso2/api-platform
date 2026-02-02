@@ -1,0 +1,40 @@
+post:
+  summary: Create embeddings
+  operationId: createEmbeddings
+  security:
+    - AuthorizationHeader: []
+
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - input
+            - model
+          properties:
+            input:
+              type: string
+            model:
+              type: string
+
+  responses:
+    "200":
+      description: Successful response
+      content:
+        application/json:
+          example:
+            object: list
+            data:
+              - object: embedding
+                embedding:
+                  - 0.0023064255
+                  - -0.009327292
+                  # ... include all 1536 floats here for ada-002
+                  - -0.0028842222
+                index: 0
+            model: text-embedding-ada-002
+            usage:
+              prompt_tokens: 8
+              total_tokens: 8

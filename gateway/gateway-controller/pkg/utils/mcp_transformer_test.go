@@ -231,3 +231,264 @@ func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
 		t.Errorf("Expected last policy to be %s, got %s", constants.MODIFY_HEADERS_POLICY_NAME, resPolicies[1].Name)
 	}
 }
+
+func TestNewMCPTransformer(t *testing.T) {
+	tr := NewMCPTransformer()
+	if tr == nil {
+		t.Fatal("Expected non-nil MCPTransformer")
+	}
+}
+
+func TestMCPTransformer_Transform_InvalidInput(t *testing.T) {
+	tr := NewMCPTransformer()
+	var out api.APIConfiguration
+
+	// Test with nil input
+	_, err := tr.Transform(nil, &out)
+	if err == nil {
+		t.Error("Expected error for nil input")
+	}
+
+	// Test with wrong type
+	_, err = tr.Transform("not a valid type", &out)
+	if err == nil {
+		t.Error("Expected error for invalid type")
+	}
+}
+
+func TestMCPTransformer_Transform_WithVhost(t *testing.T) {
+	name := "vhost-test"
+	version := "1.0.0"
+	url := "http://backend:8080"
+	vhost := "api.example.com"
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+	}
+
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	in := &api.MCPProxyConfiguration{
+		Metadata: api.Metadata{Name: "vhost-test-proxy"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: name,
+			Version:     version,
+			Upstream:    upstream,
+			SpecVersion: &latest,
+			Vhost:       &vhost,
+		},
+	}
+
+	var out api.APIConfiguration
+	tr := &MCPTransformer{}
+	res, err := tr.Transform(in, &out)
+	if err != nil {
+		t.Fatalf("Transform returned an error: %v", err)
+	}
+
+	apiData, err := res.Spec.AsAPIConfigData()
+	if err != nil {
+		t.Fatalf("Transform produced invalid API config data: %v", err)
+	}
+
+	if apiData.Vhosts == nil {
+		t.Fatal("Expected Vhosts to be set")
+	}
+	if apiData.Vhosts.Main != vhost {
+		t.Errorf("Expected vhost %s, got %s", vhost, apiData.Vhosts.Main)
+	}
+}
+
+func TestMCPTransformer_Transform_WithCORSPolicy(t *testing.T) {
+	name := "cors-test"
+	version := "1.0.0"
+	url := "http://backend:8080"
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+	}
+
+	corsPolicy := api.Policy{
+		Name:    "CORS",
+		Version: "v1.0.0",
+	}
+	policies := []api.Policy{corsPolicy}
+
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	in := &api.MCPProxyConfiguration{
+		Metadata: api.Metadata{Name: "cors-test-proxy"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: name,
+			Version:     version,
+			Upstream:    upstream,
+			SpecVersion: &latest,
+			Policies:    &policies,
+		},
+	}
+
+	var out api.APIConfiguration
+	tr := &MCPTransformer{}
+	res, err := tr.Transform(in, &out)
+	if err != nil {
+		t.Fatalf("Transform returned an error: %v", err)
+	}
+
+	apiData, err := res.Spec.AsAPIConfigData()
+	if err != nil {
+		t.Fatalf("Transform produced invalid API config data: %v", err)
+	}
+
+	// With CORS policy, OPTIONS operations should be included
+	foundOptions := false
+	for _, op := range apiData.Operations {
+		if op.Method == api.OperationMethodOPTIONS {
+			foundOptions = true
+			break
+		}
+	}
+
+	if !foundOptions {
+		t.Error("Expected OPTIONS operations to be present when CORS policy is enabled")
+	}
+}
+
+func TestMCPTransformer_Transform_WithoutContext(t *testing.T) {
+	name := "no-context-test"
+	version := "1.0.0"
+	url := "http://backend:8080"
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+	}
+
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	in := &api.MCPProxyConfiguration{
+		Metadata: api.Metadata{Name: "no-context-proxy"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: name,
+			Version:     version,
+			Upstream:    upstream,
+			SpecVersion: &latest,
+			Context:     nil, // No context
+		},
+	}
+
+	var out api.APIConfiguration
+	tr := &MCPTransformer{}
+	res, err := tr.Transform(in, &out)
+	if err != nil {
+		t.Fatalf("Transform returned an error: %v", err)
+	}
+
+	apiData, err := res.Spec.AsAPIConfigData()
+	if err != nil {
+		t.Fatalf("Transform produced invalid API config data: %v", err)
+	}
+
+	// Context should be empty when not provided
+	if apiData.Context != "" {
+		t.Errorf("Expected empty context, got %s", apiData.Context)
+	}
+}
+
+func TestMCPTransformer_Transform_WithEmptySpecVersion(t *testing.T) {
+	name := "empty-version-test"
+	version := "1.0.0"
+	url := "http://backend:8080"
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+	}
+
+	emptyVersion := ""
+	in := &api.MCPProxyConfiguration{
+		Metadata: api.Metadata{Name: "empty-version-proxy"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: name,
+			Version:     version,
+			Upstream:    upstream,
+			SpecVersion: &emptyVersion, // Empty version string
+		},
+	}
+
+	var out api.APIConfiguration
+	tr := &MCPTransformer{}
+	res, err := tr.Transform(in, &out)
+	if err != nil {
+		t.Fatalf("Transform returned an error: %v", err)
+	}
+
+	// Should use default/latest version
+	apiData, err := res.Spec.AsAPIConfigData()
+	if err != nil {
+		t.Fatalf("Transform produced invalid API config data: %v", err)
+	}
+
+	// Should have operations
+	if len(apiData.Operations) == 0 {
+		t.Error("Expected operations to be present")
+	}
+}
+
+func TestAddMCPSpecificOperations_WithOptions(t *testing.T) {
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	cfg := &api.MCPProxyConfiguration{
+		Spec: api.MCPProxyConfigData{
+			SpecVersion: &latest,
+		},
+	}
+
+	// Test with options required (CORS enabled)
+	ops := addMCPSpecificOperations(cfg, true)
+
+	// Should have OPTIONS operations
+	foundOptions := 0
+	for _, op := range ops {
+		if op.Method == api.OperationMethodOPTIONS {
+			foundOptions++
+		}
+	}
+
+	if foundOptions == 0 {
+		t.Error("Expected OPTIONS operations when optionsRequired is true")
+	}
+}
+
+func TestAddMCPSpecificOperations_OlderVersion(t *testing.T) {
+	// Test with a version before 2025-06-18
+	olderVersion := "2024-01-01"
+	cfg := &api.MCPProxyConfiguration{
+		Spec: api.MCPProxyConfigData{
+			SpecVersion: &olderVersion,
+		},
+	}
+
+	ops := addMCPSpecificOperations(cfg, false)
+
+	// Should only have base operations (GET, POST, DELETE on /mcp)
+	if len(ops) != 3 {
+		t.Errorf("Expected 3 operations for older spec version, got %d", len(ops))
+	}
+
+	// Should not have PRM resource path
+	for _, op := range ops {
+		if op.Path == constants.MCP_PRM_RESOURCE_PATH {
+			t.Error("Should not have PRM resource path for older spec version")
+		}
+	}
+}
+
+func TestGetParamsOfPolicy_MCP(t *testing.T) {
+	params, err := GetParamsOfPolicy(constants.MODIFY_HEADERS_POLICY_PARAMS, "X-Custom-Header", "custom-value")
+	if err != nil {
+		t.Fatalf("GetParamsOfPolicy returned error: %v", err)
+	}
+
+	if params == nil {
+		t.Fatal("Expected non-nil params")
+	}
+
+	// Check that requestHeaders is present
+	if _, ok := params["requestHeaders"]; !ok {
+		t.Error("Expected requestHeaders in params")
+	}
+}

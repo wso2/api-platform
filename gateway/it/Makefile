@@ -32,7 +32,7 @@ test-all: build-coverage test
 
 # Run tests with verbose output
 test-verbose:
-	go test -v -count=1 -timeout 20m ./...
+	go test -v -count=1 -timeout 30m ./...
 
 # Clean up test artifacts
 clean:

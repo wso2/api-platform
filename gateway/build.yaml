@@ -1,0 +1,70 @@
+version: v1
+gateway:
+  version: 0.6.0-SNAPSHOT
+policies:
+  - name: add-headers
+    gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
+  - name: advanced-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0
+  - name: api-key-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
+  - name: aws-bedrock-guardrail
+    gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v0
+  - name: azure-content-safety-content-moderation
+    gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v0
+  - name: basic-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v0
+  - name: basic-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0
+  - name: content-length-guardrail
+    gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v0
+  - name: cors
+    gomodule: github.com/wso2/gateway-controllers/policies/cors@v0
+  - name: json-schema-guardrail
+    gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
+  - name: json-to-xml
+    gomodule: github.com/wso2/gateway-controllers/policies/json-to-xml@v0
+  - name: jwt-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0
+  - name: log-message
+    gomodule: github.com/wso2/gateway-controllers/policies/log-message@v0
+  - name: mcp-acl-list
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v0
+  - name: mcp-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0
+  - name: mcp-authz
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0
+  - name: mcp-rewrite
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v0
+  - name: model-round-robin
+    gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v0
+  - name: model-weighted-round-robin
+    gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v0
+  - name: modify-headers
+    gomodule: github.com/wso2/gateway-controllers/policies/modify-headers@v0
+  - name: pii-masking-regex
+    gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0
+  - name: prompt-decorator
+    gomodule: github.com/wso2/gateway-controllers/policies/prompt-decorator@v0
+  - name: prompt-template
+    gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v0
+  - name: regex-guardrail
+    gomodule: github.com/wso2/gateway-controllers/policies/regex-guardrail@v0
+  - name: remove-headers
+    gomodule: github.com/wso2/gateway-controllers/policies/remove-headers@v0
+  - name: respond
+    gomodule: github.com/wso2/gateway-controllers/policies/respond@v0
+  - name: semantic-cache
+    gomodule: github.com/wso2/gateway-controllers/policies/semantic-cache@v0
+  - name: semantic-prompt-guard
+    gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v0
+  - name: sentence-count-guardrail
+    gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v0
+  - name: set-headers
+    gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v0
+  - name: url-guardrail
+    gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0
+  - name: word-count-guardrail
+    gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
+  - name: xml-to-json
+    gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0

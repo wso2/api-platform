@@ -158,8 +158,8 @@ jobs:
 
             chmod +x my-gw/ap
 
-            if [ -f cli/src/test/resources/sample-policy-manifest.yaml ]; then
-              cp cli/src/test/resources/sample-policy-manifest.yaml my-gw/policy-manifest.yaml
+            if [ -f gateway/build.yaml ]; then
+              cp gateway/build.yaml my-gw/build.yaml
             fi
           } 2>&1 | tee 4-prepare-dir.log
 

@@ -16,18 +16,14 @@ jobs:
       - name: Determine version from VERSION file
         id: version
         run: |
-          VERSION=$(cat cli/VERSION | tr -d '[:space:]' | sed 's/-SNAPSHOT//')
-          if [[ -z "${VERSION}" ]]; then
-            echo "::error::VERSION is empty or contains only whitespace. Check cli/VERSION file." >&2
-            exit 1
-          fi
+          VERSION=$(make -C cli/src version-get-release --no-print-directory)
           echo "Releasing CLI version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set version
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          make version-set COMPONENT=cli VERSION_ARG=${VERSION}
+          make -C cli version-set VERSION=${VERSION} --no-print-directory
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -171,8 +167,30 @@ jobs:
           name: ap-release-zips-${{ steps.version.outputs.version }}
           path: release-artifacts/*.zip
 
-      - name: Set to next dev version
-        run: |
-          make version-bump-next-dev COMPONENT=cli
-          git commit -am "Bump CLI to next dev version"
-          git push origin main
+      - name: Bump to next dev version
+        run: make -C cli version-bump-next-dev
+
+      - name: Create PR for version bump
+        id: create-pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Bump CLI to next dev version"
+          title: "chore: Bump CLI to next dev version"
+          body: |
+            Automated version bump after release `ap/v${{ steps.version.outputs.version }}`
+
+            This PR bumps the CLI version to the next development version.
+
+            🤖 This PR will auto-merge once CI checks pass.
+          branch: cli-version-bump-${{ github.run_id }}
+          base: main
+          delete-branch: true
+          labels: |
+            automated
+            version-bump
+
+      - name: Enable auto-merge
+        if: steps.create-pr.outputs.pull-request-number
+        run: gh pr merge --auto --squash ${{ steps.create-pr.outputs.pull-request-number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
