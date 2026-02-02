@@ -23,8 +23,11 @@ type APIKeyCreatedEvent struct {
 	// ApiId identifies the API this key belongs to
 	ApiId string `json:"apiId"`
 
-	// KeyName is the unique name of the API key
-	KeyName string `json:"keyName"`
+	// Name is the unique name of the API key
+	Name string `json:"name,omitempty"`
+
+	// DisplayName is the display name of the API key
+	DisplayName string `json:"displayName,omitempty"`
 
 	// ApiKey is the plain API key value (hashing happens in the gateway)
 	ApiKey string `json:"apiKey"`

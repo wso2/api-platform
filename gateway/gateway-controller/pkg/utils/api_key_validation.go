@@ -75,6 +75,30 @@ func ValidateDisplayName(displayName string) error {
 	return nil
 }
 
+// ValidateAPIKeyName validates a user-provided API key name.
+// Name must be:
+// - Lowercase only
+// - Alphanumeric with hyphens allowed
+// - No special characters
+// - No consecutive hyphens
+// - Cannot start or end with hyphen
+// - Length between 3 and 63 characters
+func ValidateAPIKeyName(name string) error {
+	if name == "" {
+		return fmt.Errorf("API key name cannot be empty")
+	}
+	if len(name) < apiKeyNameMinLength {
+		return fmt.Errorf("API key name is too short (minimum %d characters required)", apiKeyNameMinLength)
+	}
+	if len(name) > apiKeyNameMaxLength {
+		return fmt.Errorf("API key name is too long (maximum %d characters allowed)", apiKeyNameMaxLength)
+	}
+	if !validAPIKeyNameRegex.MatchString(name) {
+		return fmt.Errorf("API key name must be lowercase alphanumeric with hyphens (no consecutive hyphens, cannot start/end with hyphen)")
+	}
+	return nil
+}
+
 // GenerateAPIKeyName generates a URL-safe name from a display name.
 // Transforms the displayName by:
 // - Trimming whitespace

@@ -77,10 +77,22 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API key name is required"))
-		return
+	// If user has provided a name, use it. Otherwise, generate a name from the display name.
+	var name string
+	if (req.Name != "") {
+		name = req.Name
+	} else {
+		name, err := utils.GenerateHandle(req.DisplayName, nil)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Failed to generate API key name"))
+			return
+		}
+		req.Name = name
+	}
+
+	if req.DisplayName == "" {
+		req.DisplayName = name
 	}
 
 	// Create the API key and broadcast to gateways
@@ -111,12 +123,12 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	// Return success response
 	c.JSON(http.StatusCreated, dto.CreateAPIKeyResponse{
 		Status:  "success",
-		Message: "API key registered and broadcasted to gateways successfully",
+		KeyId:   req.Name,
+		Message: "API key created and broadcasted to gateways successfully",
 	})
 }
-
 // UpdateAPIKey handles PUT /api/v1/apis/{apiId}/api-keys/{keyName}
-// This endpoint allows Cloud APIM to update/regenerate external API keys on hybrid gateways
+// This endpoint allows external platforms to update/regenerate external API keys on hybrid gateways
 func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	// Extract organization from JWT token
 	orgId, exists := middleware.GetOrganizationFromContext(c)

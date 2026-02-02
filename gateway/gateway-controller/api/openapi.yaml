@@ -2300,6 +2300,13 @@ components:
           minLength: 1
           maxLength: 100
           example: My Production Key
+        name:
+          type: string
+          description: Identifier of the API key. If not provided, a default identifier will be generated
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          minLength: 3
+          maxLength: 63
+          example: my-production-key
         api_key:
           type: string
           minLength: 20

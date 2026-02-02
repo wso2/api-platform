@@ -269,6 +269,7 @@ Generate a new API key for a specific API.
 | Field                | Type | Required | Description |
 |----------------------|------|----------|-------------|
 | `displayName`               | string | No | Custom name for the API key. If not provided, a default name will be generated |
+| `name`               | string | No | Identifier of the API key. If not provided, a default identifier will be generated |
 | `expires_at`         | string (ISO 8601) | No | Specific expiration timestamp for the API key. If both `expires_in` and `expires_at` are provided, `expires_at` takes precedence |
 | `expires_in`         | object | No | Relative expiration time from creation |
 | `expires_in.duration` | integer | Yes (if expiresIn used) | Duration value |

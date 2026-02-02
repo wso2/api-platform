@@ -250,7 +250,7 @@ func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID string, eve
 
 	var lastError error
 
-	// Single attempt delivery for API key events
+	// Up to 2 attempts (no backoff)
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		err := s.broadcastAPIKeyRevoked(gatewayID, event)
 		if err == nil {
@@ -320,7 +320,7 @@ func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID string, event *m
 		} else {
 			successCount++
 			log.Printf("[INFO] API key created event sent: gatewayID=%s connectionID=%s correlationId=%s keyName=%s",
-				gatewayID, conn.ConnectionID, correlationID, event.KeyName)
+				gatewayID, conn.ConnectionID, correlationID, event.Name)
 			conn.DeliveryStats.IncrementTotalSent()
 		}
 	}
@@ -416,11 +416,11 @@ func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID string, event *m
 // - Payload size validation
 // - Delivery statistics tracking
 func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID string, event *model.APIKeyUpdatedEvent) error {
-	const maxAttempts = 1
+	const maxAttempts = 2
 
 	var lastError error
 
-	// Single attempt delivery for API key events
+	// Up to 2 attempts (no backoff)
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		err := s.broadcastAPIKeyUpdated(gatewayID, event)
 		if err == nil {

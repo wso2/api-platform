@@ -167,7 +167,7 @@ const (
 
 // CreateAPIKey handles the complete API key creation process.
 // Supports both local key generation by generating a new random key and external key injection
-// (accepts key from external systems like Cloud APIM).
+// (accepts key from external platforms).
 func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreationResult, error) {
 	baseLogger := params.Logger
 	if baseLogger == nil {
@@ -956,12 +956,22 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		displayName = fmt.Sprintf("%s-key-%s", handle, id[:8])
 	}
 
-	// Generate unique URL-safe name from displayName with collision handling
-	// name is immutable after creation and used in path parameters
-	// Use config.ID (API internal ID) not handle so uniqueness is checked per API
-	name, err := s.generateUniqueAPIKeyName(config.ID, displayName, 5)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate unique API key name: %w", err)
+	// Handle name - optional during creation
+	var name string
+	if request.Name != nil && strings.TrimSpace(*request.Name) != "" {
+		// User provided a name
+		name = strings.TrimSpace(*request.Name)
+		if err := ValidateAPIKeyName(name); err != nil {
+			return nil, fmt.Errorf("invalid name: %w", err)
+		}
+	} else {
+		// Generate unique URL-safe name from displayName with collision handling
+		// name is immutable after creation and used in path parameters
+		// Use config.ID (API internal ID) not handle so uniqueness is checked per API
+		name, err = s.generateUniqueAPIKeyName(config.ID, displayName, 5)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate unique API key name: %w", err)
+		}
 	}
 
 	// Process operations

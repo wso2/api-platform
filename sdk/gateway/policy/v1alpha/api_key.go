@@ -127,6 +127,10 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	if apiKey == nil {
 		return fmt.Errorf("API key cannot be nil")
 	}
+	// External keys require non-empty IndexKey for fast lookup; fail fast before any writes
+	if apiKey.Source == "external" && strings.TrimSpace(apiKey.IndexKey) == "" {
+		return fmt.Errorf("external API key requires non-empty IndexKey for fast lookup")
+	}
 
 	aks.mu.Lock()
 	defer aks.mu.Unlock()

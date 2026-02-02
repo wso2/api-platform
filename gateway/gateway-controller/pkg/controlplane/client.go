@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -668,6 +669,30 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		)
 		return
 	}
+	// Validate Name - required field for external API key events
+	// Since no response is sent back through WebSocket, the caller must know the identifier
+	if keyCreatedEvent.Payload.Name != "" {
+		// Validate the name format
+		if err := utils.ValidateAPIKeyName(keyCreatedEvent.Payload.Name); err != nil {
+			baseLogger.Error("API key created event has invalid name",
+				slog.Any("correlation_id", event["correlationId"]),
+				slog.Any("error", err),
+			)
+			return
+		}
+	}
+
+	// Validate DisplayName - required field
+	if strings.TrimSpace(*keyCreatedEvent.Payload.DisplayName) != "" {
+		// Validate the display name format
+		if err := utils.ValidateDisplayName(*keyCreatedEvent.Payload.DisplayName); err != nil {
+			baseLogger.Error("API key created event has invalid display_name",
+				slog.Any("correlation_id", event["correlationId"]),
+				slog.Any("error", err),
+			)
+			return
+		}
+	}
 
 	logger := baseLogger.With(
 		slog.String("correlation_id", keyCreatedEvent.CorrelationID),
@@ -871,6 +896,17 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 			slog.Any("correlation_id", event["correlationId"]),
 			slog.String("api_id", payload.ApiId),
 			slog.String("key_name", payload.KeyName),
+		)
+		return
+	}
+
+	// Validate the display name format
+	if err := utils.ValidateDisplayName(payload.DisplayName); err != nil {
+		baseLogger.Error("API key updated event has invalid display_name",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.String("api_id", payload.ApiId),
+			slog.String("key_name", payload.KeyName),
+			slog.Any("error", err),
 		)
 		return
 	}

@@ -18,15 +18,18 @@
 package dto
 
 // CreateAPIKeyRequest represents the request to register an external API key.
-// This is used when Cloud APIM injects API keys to hybrid gateways.
+// This is used when external platforms inject API keys to hybrid gateways.
 type CreateAPIKeyRequest struct {
-	// Name is the unique identifier for this API key within the API
-	Name string `json:"name" binding:"required"`
+	// Name is the unique identifier for this API key within the API (optional; if omitted, generated from displayName)
+	Name string `json:"name,omitempty"`
+
+	// DisplayName is the display name of the API key
+	DisplayName string `json:"displayName,omitempty"`
 
 	// ApiKey is the plain text API key value that will be hashed before storage
 	ApiKey string `json:"api_key" binding:"required"`
 
-	// ExternalRefId is an optional reference ID for tracing purposes (from Cloud APIM)
+	// ExternalRefId is an optional reference ID for tracing purposes (from external platforms)
 	ExternalRefId *string `json:"external_ref_id,omitempty"`
 
 	// Operations specifies which API operations this key can access (default: "*" for all)
@@ -49,7 +52,7 @@ type CreateAPIKeyResponse struct {
 }
 
 // UpdateAPIKeyRequest represents the request to update/regenerate an API key.
-// This is used when Cloud APIM rotates API keys on hybrid gateways.
+// This is used when external platforms rotate API keys on hybrid gateways.
 type UpdateAPIKeyRequest struct {
 	// ApiKey is the new plain text API key value that will be hashed before storage
 	ApiKey string `json:"api_key" binding:"required"`
@@ -85,8 +88,11 @@ type APIKeyCreatedEventDTO struct {
 	// ApiId identifies the API this key belongs to
 	ApiId string `json:"apiId"`
 
-	// KeyName is the unique name of the API key
-	KeyName string `json:"keyName"`
+	// Name is the unique name of the API key
+	Name string `json:"name"`
+
+	// DisplayName is the display name of the API key
+	DisplayName string `json:"displayName"`
 
 	// HashedApiKey is the SHA256 hashed API key for secure storage
 	HashedApiKey string `json:"hashedApiKey"`
