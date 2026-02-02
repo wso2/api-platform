@@ -58,7 +58,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	t.CreatedAt = time.Now()
 	t.UpdatedAt = time.Now()
 
-	configJSON, _ := json.Marshal(&llmProviderTemplateConfig{
+	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
 		Metadata:         t.Metadata,
 		PromptTokens:     t.PromptTokens,
 		CompletionTokens: t.CompletionTokens,
@@ -67,6 +67,9 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 		RequestModel:     t.RequestModel,
 		ResponseModel:    t.ResponseModel,
 	})
+	if err != nil {
+		return err
+	}
 
 	query := `
 		INSERT INTO llm_provider_templates (
@@ -164,7 +167,7 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 	t.UpdatedAt = time.Now()
 
-	configJSON, _ := json.Marshal(&llmProviderTemplateConfig{
+	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
 		Metadata:         t.Metadata,
 		PromptTokens:     t.PromptTokens,
 		CompletionTokens: t.CompletionTokens,
@@ -173,6 +176,9 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 		RequestModel:     t.RequestModel,
 		ResponseModel:    t.ResponseModel,
 	})
+	if err != nil {
+		return err
+	}
 
 	query := `
 		UPDATE llm_provider_templates
@@ -250,11 +256,17 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	p.CreatedAt = time.Now()
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, _ := json.Marshal(p.AccessControl)
+	accessControlJSON, err := json.Marshal(p.AccessControl)
+	if err != nil {
+		return err
+	}
 	policiesColumn := ""
 	var upstreamAuthJSON []byte
 	if p.UpstreamAuth != nil {
-		upstreamAuthJSON, _ = json.Marshal(p.UpstreamAuth)
+		upstreamAuthJSON, err = json.Marshal(p.UpstreamAuth)
+		if err != nil {
+			return err
+		}
 	}
 
 	query := `
@@ -393,11 +405,17 @@ func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
 func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, _ := json.Marshal(p.AccessControl)
+	accessControlJSON, err := json.Marshal(p.AccessControl)
+	if err != nil {
+		return err
+	}
 	policiesColumn := ""
 	var upstreamAuthJSON []byte
 	if p.UpstreamAuth != nil {
-		upstreamAuthJSON, _ = json.Marshal(p.UpstreamAuth)
+		upstreamAuthJSON, err = json.Marshal(p.UpstreamAuth)
+		if err != nil {
+			return err
+		}
 	}
 
 	query := `
@@ -494,7 +512,10 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	p.CreatedAt = time.Now()
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, _ := json.Marshal(p.AccessControl)
+	accessControlJSON, err := json.Marshal(p.AccessControl)
+	if err != nil {
+		return err
+	}
 	policiesColumn := ""
 
 	query := `
@@ -721,7 +742,10 @@ func (r *LLMProxyRepo) CountByProvider(orgUUID, providerID string) (int, error) 
 func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, _ := json.Marshal(p.AccessControl)
+	accessControlJSON, err := json.Marshal(p.AccessControl)
+	if err != nil {
+		return err
+	}
 	policiesColumn := ""
 
 	query := `
@@ -810,7 +834,10 @@ func (r *LLMProviderRepo) replaceProviderPolicies(orgUUID, providerHandle string
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	for _, p := range policies {
-		pathsJSON, _ := json.Marshal(p.Paths)
+		pathsJSON, err := json.Marshal(p.Paths)
+		if err != nil {
+			return err
+		}
 		if _, err := r.db.Exec(query, orgUUID, "provider", providerHandle, p.Name, p.Version, string(pathsJSON)); err != nil {
 			return err
 		}
@@ -830,7 +857,10 @@ func (r *LLMProviderRepo) replaceProviderPoliciesTx(tx *sql.Tx, orgUUID, provide
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	for _, p := range policies {
-		pathsJSON, _ := json.Marshal(p.Paths)
+		pathsJSON, err := json.Marshal(p.Paths)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(query, orgUUID, "provider", providerHandle, p.Name, p.Version, string(pathsJSON)); err != nil {
 			return err
 		}
@@ -864,7 +894,10 @@ func (r *LLMProxyRepo) replaceProxyPolicies(orgUUID, proxyHandle string, policie
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	for _, p := range policies {
-		pathsJSON, _ := json.Marshal(p.Paths)
+		pathsJSON, err := json.Marshal(p.Paths)
+		if err != nil {
+			return err
+		}
 		if _, err := r.db.Exec(query, orgUUID, "proxy", proxyHandle, p.Name, p.Version, string(pathsJSON)); err != nil {
 			return err
 		}
@@ -884,7 +917,10 @@ func (r *LLMProxyRepo) replaceProxyPoliciesTx(tx *sql.Tx, orgUUID, proxyHandle s
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	for _, p := range policies {
-		pathsJSON, _ := json.Marshal(p.Paths)
+		pathsJSON, err := json.Marshal(p.Paths)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(query, orgUUID, "proxy", proxyHandle, p.Name, p.Version, string(pathsJSON)); err != nil {
 			return err
 		}
