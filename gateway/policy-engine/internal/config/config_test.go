@@ -1163,7 +1163,7 @@ func TestLoad_EmptyPath(t *testing.T) {
 	// Should have default values
 	assert.Equal(t, 9001, cfg.PolicyEngine.Server.ExtProcPort)
 	assert.Equal(t, 9002, cfg.PolicyEngine.Admin.Port)
-	assert.Equal(t, "file", cfg.PolicyEngine.ConfigMode.Mode)
+	assert.Equal(t, "xds", cfg.PolicyEngine.ConfigMode.Mode)
 }
 
 // TestLoad_NonExistentFile tests loading a non-existent file
