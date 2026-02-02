@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 import {
   Box,
   CircularProgress,
@@ -6,69 +6,85 @@ import {
   Stack,
   Typography,
   Alert,
-} from "@mui/material";
-import { useSearchParams } from "react-router-dom";
-import { useApisContext } from "../../context/ApiContext";
-import type { ApiSummary } from "../../hooks/apis";
+} from '@mui/material';
+import { useSearchParams } from 'react-router-dom';
+import { useApisContext } from '../../context/ApiContext';
+import type { ApiSummary } from '../../hooks/apis';
 
-import { DevPortalProvider, useDevPortals } from "../../context/DevPortalContext";
-import type { Portal } from "../../hooks/devportals";
-import { ApiPublishProvider, useApiPublishing} from "../../context/ApiPublishContext";
-import { Card, CardActionArea } from "../../components/src/components/Card";
-import { Button } from "../../components/src/components/Button";
-import { SearchBar } from "../../components/src/components/SearchBar";
-import DevPortalDeployCard from "./ApiPublish/DevPortalDeployCard";
-import DevPortalPickTable from "./ApiPublish/DevPortalPickTable";
-import ApiPublishModal from "./ApiPublish/ApiPublishModal";
-import type { ApiPublicationWithPortal } from "../../hooks/apiPublish";
-import { relativeTime } from "../overview/utils";
+import {
+  DevPortalProvider,
+  useDevPortals,
+} from '../../context/DevPortalContext';
+import type { Portal } from '../../hooks/devportals';
+import {
+  ApiPublishProvider,
+  useApiPublishing,
+} from '../../context/ApiPublishContext';
+import { Card, CardActionArea } from '../../components/src/components/Card';
+import { Button } from '../../components/src/components/Button';
+import { SearchBar } from '../../components/src/components/SearchBar';
+import DevPortalDeployCard from './ApiPublish/DevPortalDeployCard';
+import DevPortalPickTable from './ApiPublish/DevPortalPickTable';
+import ApiPublishModal from './ApiPublish/ApiPublishModal';
+import type { ApiPublicationWithPortal } from '../../hooks/apiPublish';
+import { relativeTime } from '../overview/utils';
 
-type Mode = "empty" | "pick" | "cards";
+type Mode = 'empty' | 'pick' | 'cards';
 
 /* ---------------- page content ---------------- */
 
 const DevelopContent: React.FC = () => {
   const { fetchApiById, selectApi } = useApisContext();
-  const { devportals, refreshDevPortals, loading: devportalsLoading } = useDevPortals();
-  const { publishedApis, loading: publishingLoading, refreshPublishedApis, publishApiToDevPortal } = useApiPublishing();
+  const {
+    devportals,
+    refreshDevPortals,
+    loading: devportalsLoading,
+  } = useDevPortals();
+  const {
+    publishedApis,
+    refreshPublishedApis,
+    publishApiToDevPortal,
+    clearPublishedApis,
+  } = useApiPublishing();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const searchParamsKey = searchParams.toString();
-  const apiIdFromQuery = searchParams.get("apiId");
+  const apiIdFromQuery = searchParams.get('apiId');
 
   const [api, setApi] = React.useState<ApiSummary | null>(null);
   const [loading, setLoading] = React.useState(true);
 
-  // Local published state
-  // const [publishedForApi, setPublishedForApi] = React.useState<ApiPublicationWithPortal[]>([]);
-
   // UI mode + selection
-  const [mode, setMode] = React.useState<Mode>("empty");
-  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
+  const [mode, setMode] = React.useState<Mode>('empty');
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(
+    () => new Set()
+  );
   const [stagedIds, setStagedIds] = React.useState<string[]>([]);
-  const [query, setQuery] = React.useState("");
+  const [query, setQuery] = React.useState('');
 
   // Publishing state
-  const [publishingIds, setPublishingIds] = React.useState<Set<string>>(() => new Set());
+  const [publishingIds, setPublishingIds] = React.useState<Set<string>>(
+    () => new Set()
+  );
 
   // Modal state
   const [publishModalOpen, setPublishModalOpen] = React.useState(false);
-  const [selectedPortalForPublish, setSelectedPortalForPublish] = React.useState<ApiPublicationWithPortal | null>(null);
+  const [selectedPortalForPublish, setSelectedPortalForPublish] =
+    React.useState<ApiPublicationWithPortal | null>(null);
 
   const effectiveApiId = React.useMemo(() => {
     if (apiIdFromQuery) return apiIdFromQuery;
-    return ""; // No current API fallback
+    return ''; // No current API fallback
   }, [apiIdFromQuery]);
 
   React.useEffect(() => {
     if (apiIdFromQuery || !api) return;
     const next = new URLSearchParams(searchParamsKey);
-    next.set("apiId", api.id);
+    next.set('apiId', api.id);
     setSearchParams(next, { replace: true });
   }, [apiIdFromQuery, api?.id, searchParamsKey, setSearchParams]);
 
   React.useEffect(() => {
-    
     if (!effectiveApiId) {
       setLoading(false);
       setApi(null);
@@ -85,27 +101,36 @@ const DevelopContent: React.FC = () => {
         // Refresh devportals and published APIs
         await Promise.all([
           refreshDevPortals(),
-          refreshPublishedApis(effectiveApiId).then((pubs) => {
+          (async () => {
+            clearPublishedApis();
+            const pubs = await refreshPublishedApis(effectiveApiId);
             if (pubs.length > 0) {
-              setStagedIds(pubs.map(p => p.uuid));
-              setMode("cards");
+              setStagedIds(pubs.map((p) => p.uuid));
+              setMode('cards');
             } else {
-              setMode("empty");
+              setMode('empty');
             }
-          })
+          })(),
         ]);
       } catch (error) {
         console.error('Failed to load API data:', error);
         setApi(null);
-        setMode("empty");
+        setMode('empty');
       } finally {
         setLoading(false);
       }
     })();
-  }, [effectiveApiId, fetchApiById, selectApi, refreshDevPortals, refreshPublishedApis]);
+  }, [
+    effectiveApiId,
+    fetchApiById,
+    selectApi,
+    refreshDevPortals,
+    refreshPublishedApis,
+    clearPublishedApis,
+  ]);
 
   // Get published APIs for current API
-  const apiPublished = publishedApis[effectiveApiId] || [];
+  const apiPublished = publishedApis;
 
   // Create published map
   const publishedMap = React.useMemo(() => {
@@ -155,8 +180,7 @@ const DevelopContent: React.FC = () => {
   };
 
   const areAllSelected =
-    devportals.length > 0 &&
-    devportals.every((p) => selectedIds.has(p.uuid));
+    devportals.length > 0 && devportals.every((p) => selectedIds.has(p.uuid));
 
   const isSomeSelected =
     selectedIds.size > 0 &&
@@ -185,7 +209,7 @@ const DevelopContent: React.FC = () => {
     if (selectedIds.size === 0) return;
     // setStagedIds(Array.from(selectedIds));
     setStagedIds((prev) => [...new Set([...prev, ...Array.from(selectedIds)])]);
-    setMode("cards");
+    setMode('cards');
   };
 
   // ---------- Rendering helpers ----------
@@ -193,22 +217,22 @@ const DevelopContent: React.FC = () => {
     <Grid container spacing={3}>
       <Grid>
         <Card
-          testId={""}
+          testId={''}
           style={{
             width: 300,
             height: 200,
-            border: "1px solid #4caf50",
-            borderColor: "success.light",
+            border: '1px solid #4caf50',
+            borderColor: 'success.light',
           }}
         >
           <CardActionArea
-            onClick={() => setMode("pick")}
-            testId={""}
+            onClick={() => setMode('pick')}
+            testId={''}
             sx={{
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             <Stack alignItems="center" spacing={0.5}>
@@ -229,49 +253,51 @@ const DevelopContent: React.FC = () => {
   );
 
   const renderCards = () => {
-    const selectedPortals = stagedIds.map((id) => {
-      const published = (publishedApis[effectiveApiId] || []).find(p => p.uuid === id);
-      if (published) return published;
-      const portal = devportalsById.get(id);
-      if (portal) {
-        // Properly construct ApiPublicationWithPortal from Portal
-        return {
-          uuid: portal.uuid,
-          name: portal.name,
-          identifier: portal.identifier,
-          description: portal.description,
-          portalUrl: portal.uiUrl || "",
-          apiUrl: portal.apiUrl || "",
-          hostname: portal.hostname || "",
-          isActive: portal.isActive || false,
-          createdAt: portal.createdAt || "",
-          updatedAt: portal.updatedAt || "",
-          associatedAt: "",
-          isPublished: false,
-          publication: {
-            status: "UNPUBLISHED",
-            apiVersion: "",
-            sandboxEndpoint: "",
-            productionEndpoint: "",
-            publishedAt: "",
-            updatedAt: "",
-          },
-        } as ApiPublicationWithPortal;
-      }
-      return null;
-    }).filter((p): p is ApiPublicationWithPortal => Boolean(p));
+    const selectedPortals = stagedIds
+      .map((id) => {
+        const published = publishedApis.find((p) => p.uuid === id);
+        if (published) return published;
+        const portal = devportalsById.get(id);
+        if (portal) {
+          // Properly construct ApiPublicationWithPortal from Portal
+          return {
+            uuid: portal.uuid,
+            name: portal.name,
+            identifier: portal.identifier,
+            description: portal.description,
+            portalUrl: portal.uiUrl || '',
+            apiUrl: portal.apiUrl || '',
+            hostname: portal.hostname || '',
+            isEnabled: portal.isEnabled || false,
+            createdAt: portal.createdAt || '',
+            updatedAt: portal.updatedAt || '',
+            associatedAt: '',
+            isPublished: false,
+            publication: {
+              status: 'UNPUBLISHED',
+              apiVersion: '',
+              sandboxEndpoint: '',
+              productionEndpoint: '',
+              publishedAt: '',
+              updatedAt: '',
+            },
+          } as ApiPublicationWithPortal;
+        }
+        return null;
+      })
+      .filter((p): p is ApiPublicationWithPortal => Boolean(p));
 
     // filter by SearchBar query
     const q = query.trim().toLowerCase();
     const filteredPortals = q
       ? selectedPortals.filter((p) => {
-          const text = `${p.name || ""} ${p.description || ""} ${p.portalUrl || ""}`;
+          const text = `${p.name || ''} ${p.description || ''} ${p.portalUrl || ''}`;
           return text.toLowerCase().includes(q);
         })
       : selectedPortals;
 
     return selectedPortals.length === 0 ? (
-      <Card style={{ marginTop: 2 }} testId={""}>
+      <Card style={{ marginTop: 2 }} testId={''}>
         <Typography color="text.secondary">
           No dev portals selected. Click "Select Dev Portals" to choose.
         </Typography>
@@ -299,7 +325,7 @@ const DevelopContent: React.FC = () => {
               minWidth: 500,
               maxWidth: 700,
               flex: 1,
-              justifyContent: "flex-end",
+              justifyContent: 'flex-end',
             }}
           >
             <Box sx={{ flex: 1, maxWidth: 420 }}>
@@ -314,9 +340,7 @@ const DevelopContent: React.FC = () => {
                 color="secondary"
               />
             </Box>
-            <Button onClick={() => setMode("pick")}>
-              Add Dev Portals
-            </Button>
+            <Button onClick={() => setMode('pick')}>Add Dev Portals</Button>
           </Stack>
         </Stack>
 
@@ -365,9 +389,9 @@ const DevelopContent: React.FC = () => {
 
   return (
     <Box>
-      {mode === "empty" && renderEmptyTile()}
+      {mode === 'empty' && renderEmptyTile()}
 
-      {mode === "pick" && (
+      {mode === 'pick' && (
         <DevPortalPickTable
           portals={devportals}
           selectedIds={selectedIds}
@@ -378,11 +402,11 @@ const DevelopContent: React.FC = () => {
           onClear={clearSelection}
           onAdd={addSelection}
           publishedIds={Array.from(publishedMap.keys())}
-          onBack={() => setMode(stagedIds.length ? "cards" : "empty")}
+          onBack={() => setMode(stagedIds.length ? 'cards' : 'empty')}
         />
       )}
 
-      {mode === "cards" && renderCards()}
+      {mode === 'cards' && renderCards()}
 
       {/* Publish Modal */}
       {selectedPortalForPublish && (

@@ -1,15 +1,31 @@
 // src/pages/portals/PortalForm.tsx
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
-import { Box, Typography, Button, FormControl, CircularProgress } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Button,
+  FormControl,
+  CircularProgress,
+  MenuItem,
+} from '@mui/material';
 import Grid from '@mui/material/GridLegacy';
 import { Button as CustomButton } from '../../components/src/components/Button';
 import { TextInput } from '../../components/src';
+import { SimpleSelect } from '../../components/src/components/SimpleSelect';
 import { slugify } from '../../utils/portalUtils';
 import { PORTAL_CONSTANTS } from '../../constants/portal';
-import type { PortalFormProps, PortalFormData } from '../../types/portal';
+import type { CreatePortalPayload, UpdatePortalPayload } from '../../hooks/devportals';
 import { useNotifications } from '../../context/NotificationContext';
 
-const initialFormData: PortalFormData = {
+interface PortalFormProps {
+  onSubmit: (formData: CreatePortalPayload | UpdatePortalPayload) => Promise<void>;
+  onCancel: () => void;
+  isSubmitting?: boolean;
+  initialData?: Partial<CreatePortalPayload>;
+  isEdit?: boolean;
+}
+
+const initialFormData: CreatePortalPayload = {
   name: '',
   identifier: '',
   description: '',
@@ -17,6 +33,7 @@ const initialFormData: PortalFormData = {
   hostname: '',
   apiKey: '',
   headerKeyName: PORTAL_CONSTANTS.DEFAULT_HEADER_KEY_NAME,
+  visibility: 'private',
 };
 
 const PortalForm: React.FC<PortalFormProps> = ({
@@ -26,45 +43,69 @@ const PortalForm: React.FC<PortalFormProps> = ({
   initialData,
   isEdit = false,
 }) => {
-
-  const [formData, setFormData] = useState<PortalFormData>(() => ({
+  const [formData, setFormData] = useState<CreatePortalPayload>(() => ({
     ...initialFormData,
     ...initialData,
   }));
 
-  const [submitStatus, setSubmitStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+  const [identifierTouched, setIdentifierTouched] = useState(false);
+
+  const [submitStatus, setSubmitStatus] = useState<
+    'idle' | 'pending' | 'success' | 'error'
+  >('idle');
   const { showNotification } = useNotifications();
 
   useEffect(() => {
     setFormData({ ...initialFormData, ...initialData });
   }, [initialData]);
 
-  const updateField = useCallback(<K extends keyof PortalFormData>(
-    field: K,
-    value: PortalFormData[K]
-  ) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-      // Auto-generate identifier from name
-      ...(field === 'name' && typeof value === 'string' ? {
-        identifier: slugify(value)
-      } : {}),
-    }));
-  }, []);
+  const updateField = useCallback(
+    <K extends keyof CreatePortalPayload>(
+      field: K,
+      value: CreatePortalPayload[K]
+    ) => {
+      setFormData((prev) => ({
+        ...prev,
+        [field]: value,
+        // Auto-generate identifier from name only in add mode and if identifier hasn't been manually touched
+        ...(field === 'name' && typeof value === 'string' && !isEdit && !identifierTouched
+          ? {
+              identifier: slugify(value),
+            }
+          : {}),
+      }));
+
+      // Track if identifier has been manually edited
+      if (field === 'identifier') {
+        setIdentifierTouched(true);
+      }
+    },
+    [isEdit, identifierTouched]
+  );
 
   const resetForm = useCallback(() => {
     setFormData({ ...initialFormData, ...initialData });
   }, [initialData]);
 
   const isValid = useMemo(() => {
+    const apiKeyValid = isEdit && formData.apiKey === PORTAL_CONSTANTS.API_KEY_MASK ? true : !!formData.apiKey.trim();
+    const isValidUrl = (url: string) => {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
+    const trimmedUrl = formData.apiUrl.trim();
+    const apiUrlValid = !!(trimmedUrl && isValidUrl(trimmedUrl) && !trimmedUrl.endsWith('/'));
     return !!(
       formData.name.trim() &&
-      formData.apiUrl.trim() &&
+      apiUrlValid &&
       formData.hostname.trim() &&
-      formData.apiKey.trim()
+      apiKeyValid
     );
-  }, [formData]);
+  }, [formData, isEdit]);
 
   const effectiveSubmitting = isSubmitting || submitStatus === 'pending';
 
@@ -77,7 +118,15 @@ const PortalForm: React.FC<PortalFormProps> = ({
     }
 
     try {
-      await onSubmit(formData);
+      if (isEdit) {
+        const payload: UpdatePortalPayload = { ...formData };
+        if (payload.apiKey === PORTAL_CONSTANTS.API_KEY_MASK) {
+          delete payload.apiKey;
+        }
+        await onSubmit(payload);
+      } else {
+        await onSubmit(formData);
+      }
 
       if (!isSubmitting) {
         setSubmitStatus('success');
@@ -93,10 +142,25 @@ const PortalForm: React.FC<PortalFormProps> = ({
       if (!isSubmitting) {
         setSubmitStatus('error');
       }
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create Developer Portal.';
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : isEdit
+          ? 'Failed to update Developer Portal.'
+          : 'Failed to create Developer Portal.';
       showNotification(errorMessage, 'error');
     }
-  }, [formData, isValid, isSubmitting, effectiveSubmitting, onSubmit, onCancel, resetForm, isEdit, showNotification]);
+  }, [
+    formData,
+    isValid,
+    isSubmitting,
+    effectiveSubmitting,
+    onSubmit,
+    onCancel,
+    resetForm,
+    isEdit,
+    showNotification,
+  ]);
 
   return (
     <Box>
@@ -134,7 +198,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.name}
                 onChange={(value) => updateField('name', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-name-input"
               />
             </FormControl>
           </Grid>
@@ -147,8 +211,8 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 placeholder="Auto-generated from name"
                 value={formData.identifier}
                 onChange={(value) => updateField('identifier', value)}
-                disabled={effectiveSubmitting}
-                testId=""
+                disabled={isEdit || effectiveSubmitting}
+                testId="portal-identifier-input"
               />
             </FormControl>
           </Grid>
@@ -163,7 +227,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.apiUrl}
                 onChange={(value) => updateField('apiUrl', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-api-url-input"
               />
             </FormControl>
           </Grid>
@@ -177,7 +241,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.hostname}
                 onChange={(value) => updateField('hostname', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-hostname-input"
               />
             </FormControl>
           </Grid>
@@ -193,7 +257,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 onChange={(value) => updateField('apiKey', value)}
                 disabled={effectiveSubmitting}
                 type="password"
-                testId=""
+                testId="portal-api-key-input"
               />
             </FormControl>
           </Grid>
@@ -207,12 +271,33 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.headerKeyName}
                 onChange={(value) => updateField('headerKeyName', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-header-key-input"
               />
             </FormControl>
           </Grid>
 
-          {/* Row 4: Description */}
+          {/* Row 4: Visibility */}
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+                Visibility
+              </Typography>
+              <SimpleSelect
+                value={formData.visibility}
+                onChange={(event) =>
+                  updateField('visibility', event.target.value as CreatePortalPayload['visibility'])
+                }
+                disabled={effectiveSubmitting}
+                testId="visibility-select"
+                size="medium"
+              >
+                <MenuItem value="public">Public</MenuItem>
+                <MenuItem value="private">Private</MenuItem>
+              </SimpleSelect>
+            </FormControl>
+          </Grid>
+
+          {/* Row 5: Description */}
           <Grid item xs={12}>
             <FormControl fullWidth>
               <TextInput
@@ -222,7 +307,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 onChange={(value) => updateField('description', value)}
                 multiline
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-description-input"
               />
             </FormControl>
           </Grid>
@@ -240,12 +325,13 @@ const PortalForm: React.FC<PortalFormProps> = ({
               <CircularProgress size={20} sx={{ mr: 1, color: 'inherit' }} />
               {isEdit ? 'Saving...' : 'Creating...'}
             </>
+          ) : isEdit ? (
+            'Save Changes'
           ) : (
-            isEdit ? 'Save Changes' : 'Create and continue'
+            'Create and continue'
           )}
         </CustomButton>
       </Box>
-
     </Box>
   );
 };

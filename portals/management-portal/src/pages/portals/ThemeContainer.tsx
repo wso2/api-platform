@@ -5,15 +5,19 @@ import PromoBanner from './PromoBanner';
 import ThemeSettingsPanel from './ThemeSettingsPanel';
 import { PrivatePreview } from './PortalPreviews';
 import { PORTAL_CONSTANTS } from '../../constants/portal';
-import type { ThemeContainerProps } from '../../types/portal';
 import { useNotifications } from '../../context/NotificationContext';
+
+interface ThemeContainerProps {
+  portalName?: string;
+  onBack: () => void;
+  onPublish?: () => void;
+}
 
 const ThemeContainer: React.FC<ThemeContainerProps> = ({
   portalName,
   onBack,
   onPublish,
 }) => {
-
   const { showNotification } = useNotifications();
 
   const handlePublish = useCallback(async () => {
@@ -24,7 +28,8 @@ const ThemeContainer: React.FC<ThemeContainerProps> = ({
       await Promise.resolve(result);
       showNotification('Theme published successfully', 'success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to publish theme';
+      const message =
+        err instanceof Error ? err.message : PORTAL_CONSTANTS.MESSAGES.PUBLISH_THEME_FAILED;
       showNotification(message, 'error');
     }
   }, [onPublish, showNotification]);
@@ -35,7 +40,8 @@ const ThemeContainer: React.FC<ThemeContainerProps> = ({
       await Promise.resolve(result);
       showNotification('Promo action completed', 'success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Promo action failed';
+      const message =
+        err instanceof Error ? err.message : PORTAL_CONSTANTS.MESSAGES.PROMO_ACTION_FAILED;
       showNotification(message, 'error');
     }
   }, [onPublish, showNotification]);

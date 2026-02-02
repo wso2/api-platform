@@ -1,4 +1,4 @@
-import * as React from "react";
+import * as React from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -10,8 +10,8 @@ import {
   Tabs,
   TextField,
   Typography,
-} from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+} from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 const Swatch = ({ value }: { value: string }) => (
   <Box
@@ -20,7 +20,7 @@ const Swatch = ({ value }: { value: string }) => (
       height: 36,
       borderRadius: 1,
       border: (t) => `1px solid ${t.palette.divider}`,
-      bgcolor: value || "transparent",
+      bgcolor: value || 'transparent',
     }}
   />
 );
@@ -46,17 +46,17 @@ const ColorField: React.FC<{
 
 const ThemeSettingsPanel: React.FC = () => {
   const [tab, setTab] = React.useState(0);
-  const [bg, setBg] = React.useState("#FFFFFF");
-  const [primary, setPrimary] = React.useState("#1A4C6D");
-  const [secondary, setSecondary] = React.useState("#FE8C3A");
-  const [text, setText] = React.useState("#40404B");
+  const [bg, setBg] = React.useState('#FFFFFF');
+  const [primary, setPrimary] = React.useState('#1A4C6D');
+  const [secondary, setSecondary] = React.useState('#FE8C3A');
+  const [text, setText] = React.useState('#40404B');
 
   return (
     <Stack spacing={2.5}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Tabs
           value={0}
-          sx={{ minHeight: 36, "& .MuiTab-root": { minHeight: 36 } }}
+          sx={{ minHeight: 36, '& .MuiTab-root': { minHeight: 36 } }}
         >
           <Tab label="Org Level" />
           <Tab label="API Level" disabled />

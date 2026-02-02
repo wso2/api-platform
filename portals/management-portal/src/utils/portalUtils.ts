@@ -18,7 +18,10 @@ export const getPortalListPath = (pathname: string): string => {
 /**
  * Navigate to portal list
  */
-export const navigateToPortalList = (navigate: NavigateFunction, pathname: string): void => {
+export const navigateToPortalList = (
+  navigate: NavigateFunction,
+  pathname: string
+): void => {
   const basePath = getPortalListPath(pathname);
   navigate(basePath);
 };
@@ -26,7 +29,10 @@ export const navigateToPortalList = (navigate: NavigateFunction, pathname: strin
 /**
  * Navigate to create portal form
  */
-export const navigateToPortalCreate = (navigate: NavigateFunction, pathname: string): void => {
+export const navigateToPortalCreate = (
+  navigate: NavigateFunction,
+  pathname: string
+): void => {
   const basePath = getPortalListPath(pathname);
   navigate(`${basePath}/create`);
 };
@@ -34,7 +40,11 @@ export const navigateToPortalCreate = (navigate: NavigateFunction, pathname: str
 /**
  * Navigate to portal theme editor
  */
-export const navigateToPortalTheme = (navigate: NavigateFunction, pathname: string, portalId: string): void => {
+export const navigateToPortalTheme = (
+  navigate: NavigateFunction,
+  pathname: string,
+  portalId: string
+): void => {
   const basePath = getPortalListPath(pathname);
   navigate(`${basePath}/${portalId}/theme`);
 };
@@ -42,7 +52,11 @@ export const navigateToPortalTheme = (navigate: NavigateFunction, pathname: stri
 /**
  * Navigate to portal edit form
  */
-export const navigateToPortalEdit = (navigate: NavigateFunction, pathname: string, portalId: string): void => {
+export const navigateToPortalEdit = (
+  navigate: NavigateFunction,
+  pathname: string,
+  portalId: string
+): void => {
   const basePath = getPortalListPath(pathname);
   navigate(`${basePath}/${portalId}/edit`);
 };
@@ -81,7 +95,10 @@ export const getPortalIdFromPath = (pathname: string): string | null => {
   if (portalsIndex === -1) return null;
 
   const afterPortals = pathSegments.slice(portalsIndex + 1);
-  if (afterPortals.length >= 2 && (afterPortals[1] === 'theme' || afterPortals[1] === 'edit')) {
+  if (
+    afterPortals.length >= 2 &&
+    (afterPortals[1] === 'theme' || afterPortals[1] === 'edit')
+  ) {
     return afterPortals[0];
   }
   return null;
