@@ -245,7 +245,12 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 	})
 
 	t.Run("handles caches that don't support delta watch", func(t *testing.T) {
-		policyCache := newMockCache()
+		// Create a mock cache that implements cache.Cache but not the specific
+		// CreateDeltaWatch interface used in type assertion
+		policyCache := &struct {
+			cache.Cache
+		}{newMockCache()}
+
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, logger)
@@ -259,7 +264,7 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cancel := cc.CreateDeltaWatch(request, stream.NewStreamState(false, nil), responseChan)
 		assert.NotNil(t, cancel)
 
-		// Should not panic
+		// Should not panic - this tests the fallback path when type assertion fails
 		cancel()
 	})
 
