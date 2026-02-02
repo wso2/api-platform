@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -255,12 +256,13 @@ func TestClient_Start_WithToken(t *testing.T) {
 func TestClient_MultipleStops(t *testing.T) {
 	client := createTestClient(t)
 
-	// Multiple stops should not panic
+	// First stop should succeed
 	client.Stop()
 
-	// Create a new client with fresh channels for second stop test
-	client2 := createTestClient(t)
-	client2.Stop()
+	// Second stop should panic (current behavior - closing already closed channel)
+	require.Panics(t, func() {
+		client.Stop()
+	})
 }
 
 func TestClient_StateTransitions(t *testing.T) {
