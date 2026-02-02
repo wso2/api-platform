@@ -33,6 +33,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 func TestNewAPIUtilsService(t *testing.T) {
@@ -195,12 +197,34 @@ func TestAPIUtilsService_SaveAPIDefinition(t *testing.T) {
 func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
+	// Helper function to create minimal test StoredConfig
+	createTestStoredConfig := func() *models.StoredConfig {
+		return &models.StoredConfig{
+			ID:        "test-api",
+			Kind:      "RestApi",
+			Status:    models.StatusDeployed,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			// Configuration will be marshaled in the HTTP request body
+			Configuration: api.APIConfiguration{},
+		}
+	}
+
 	t.Run("Successful notification", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "POST", r.Method)
 			assert.Equal(t, "/apis/test-api/gateway-deployments", r.URL.Path)
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
 			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+			// Verify request body contains expected fields
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			var notification APIDeploymentNotification
+			err = json.Unmarshal(body, &notification)
+			require.NoError(t, err)
+			assert.Equal(t, "test-api", notification.ID)
+
 			w.WriteHeader(http.StatusCreated)
 			w.Write([]byte(`{"status": "deployed"}`))
 		}))
@@ -211,13 +235,19 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 			Token:   "test-token",
 		}
 		svc := NewAPIUtilsService(cfg, logger)
-		// Verify service was created - actual call requires models.StoredConfig
-		assert.NotNil(t, svc)
+
+		// Actually call the method
+		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "")
+		assert.NoError(t, err)
 	})
 
 	t.Run("With revision ID", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/apis/test-api/gateway-deployments", r.URL.Path)
 			assert.Contains(t, r.URL.RawQuery, "revisionId=rev-123")
+			assert.Equal(t, "test-token", r.Header.Get("api-key"))
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer server.Close()
@@ -227,8 +257,29 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 			Token:   "test-token",
 		}
 		svc := NewAPIUtilsService(cfg, logger)
-		// Verify service was created - actual call requires models.StoredConfig
-		assert.NotNil(t, svc)
+
+		// Actually call the method with revision ID
+		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "rev-123")
+		assert.NoError(t, err)
+	})
+
+	t.Run("HTTP error response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error": "internal server error"}`))
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{
+			BaseURL: server.URL,
+			Token:   "test-token",
+		}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		// Should return error for non-success status
+		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "500")
 	})
 }
 
