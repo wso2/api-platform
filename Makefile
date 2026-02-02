@@ -19,10 +19,10 @@
 SHELL := /bin/bash
 
 # Version files
-ROOT_VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
-GATEWAY_VERSION := $(shell cat gateway/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
-PLATFORM_API_VERSION := $(shell cat platform-api/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
-CLI_VERSION := $(shell cat cli/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+ROOT_VERSION := $(shell cat VERSION)
+GATEWAY_VERSION := $(shell cat gateway/VERSION)
+PLATFORM_API_VERSION := $(shell cat platform-api/VERSION)
+CLI_VERSION := $(shell cat cli/VERSION)
 
 # Docker registry configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
