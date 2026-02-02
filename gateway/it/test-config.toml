@@ -260,12 +260,12 @@ type = "moesif"
 enabled = true
 
 [analytics.publishers.settings]
-application_id = "<MOESIF_APPLICATION_ID>"
-moesif_base_url = "https://api.moesif.net"
-publish_interval = 5
+application_id = "test-application-id"
+moesif_base_url = "http://mock-analytics-collector:8080"
+publish_interval = 2
 event_queue_size = 10000
 batch_size = 50
-timer_wakeup_seconds = 3
+timer_wakeup_seconds = 1
 
 [analytics.grpc_access_logs]
 host = "policy-engine"

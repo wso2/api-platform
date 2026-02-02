@@ -102,6 +102,7 @@ func TestFeatures(t *testing.T) {
 				"features/respond.feature",
 				"features/policy-engine-admin.feature",
 				"features/cel-conditions.feature",
+				"features/analytics-basic.feature",
 			},
 			TestingT: t,
 		},
@@ -263,6 +264,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
+		RegisterAnalyticsSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps
