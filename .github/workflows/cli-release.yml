@@ -16,11 +16,7 @@ jobs:
       - name: Determine version from VERSION file
         id: version
         run: |
-          VERSION=$(cat cli/VERSION | tr -d '[:space:]' | sed 's/-SNAPSHOT//')
-          if [[ -z "${VERSION}" ]]; then
-            echo "::error::VERSION is empty or contains only whitespace. Check cli/VERSION file." >&2
-            exit 1
-          fi
+          VERSION=$(make -C cli/src version-get-release)
           echo "Releasing CLI version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 

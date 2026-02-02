@@ -89,3 +89,11 @@ version-bump-major: ## Bump major version
 
 version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
 	@bash ../scripts/version-bump.sh next-dev platform-api
+
+version-get-release: ## Get release version (strips SNAPSHOT suffix)
+	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \
+	if [ -z "$$VERSION" ]; then \
+		echo "Error: VERSION is empty or contains only whitespace. Check platform-api/VERSION file." >&2; \
+		exit 1; \
+	fi; \
+	echo "$$VERSION"

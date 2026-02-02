@@ -155,6 +155,15 @@ version-bump-major:
 version-bump-next-dev:
 	@bash ../../scripts/version-bump.sh next-dev cli
 
+## version-get-release: Get release version (strips SNAPSHOT suffix)
+version-get-release:
+	@VERSION=$$(cat ../VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \
+	if [ -z "$$VERSION" ]; then \
+		echo "Error: VERSION is empty or contains only whitespace. Check cli/VERSION file." >&2; \
+		exit 1; \
+	fi; \
+	echo "$$VERSION"
+
 ## help: Display this help message
 help:
 	@echo "Usage: make [target]"
