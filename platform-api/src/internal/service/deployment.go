@@ -447,12 +447,6 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 		return nil, err
 	}
 
-	// Apply soft limit (from config) for UI display - only if no filters applied
-	softLimit := s.cfg.Deployments.MaxPerAPIGateway
-	if gatewayID == nil && status == nil && len(deployments) > softLimit {
-		deployments = deployments[:softLimit]
-	}
-
 	// Convert to DTOs
 	var deploymentDTOs = []*dto.DeploymentResponse{}
 	for _, d := range deployments {
