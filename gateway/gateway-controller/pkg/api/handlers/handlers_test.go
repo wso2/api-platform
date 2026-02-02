@@ -385,6 +385,7 @@ type MockControlPlaneClient struct {
 }
 
 func (m *MockControlPlaneClient) Connect() error {
+	m.connected = true
 	return nil
 }
 
