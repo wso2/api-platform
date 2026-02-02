@@ -233,16 +233,14 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Check if deployment already exists
-	existingDeployments, err := s.apiRepo.GetDeploymentsWithState(apiUUID, orgID, nil, nil)
+	deploymentID, status, _, err := s.apiRepo.GetDeploymentStatus(apiUUID, orgID, gatewayID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
+		return nil, fmt.Errorf("failed to check deployment status of gateway: %w", err)
 	}
 
-	// Check if this gateway already has this API deployed
-	for _, deployment := range existingDeployments {
-		if deployment.GatewayID == gatewayID {
-			return nil, fmt.Errorf("API already deployed to this gateway")
-		}
+	// Check if this gateway already has this API deployed or undeployed
+	if deploymentID != "" && (status == model.DeploymentStatusDeployed || status == model.DeploymentStatusUndeployed) {
+		return nil, fmt.Errorf("API already deployed to this gateway")
 	}
 
 	// Check if API-gateway association exists, create if not

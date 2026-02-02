@@ -442,7 +442,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	}
 
 	// Get deployments with state derived via LEFT JOIN
-	deployments, err := s.apiRepo.GetDeploymentsWithState(apiUUID, orgUUID, gatewayID, status)
+	deployments, err := s.apiRepo.GetDeploymentsWithState(apiUUID, orgUUID, gatewayID, status, s.cfg.Deployments.MaxPerAPIGateway)
 	if err != nil {
 		return nil, err
 	}
