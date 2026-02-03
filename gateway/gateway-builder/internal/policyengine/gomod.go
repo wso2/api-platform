@@ -20,12 +20,15 @@ package policyengine
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	"golang.org/x/mod/modfile"
@@ -55,13 +58,19 @@ func UpdateGoMod(srcDir string, policies []*types.DiscoveredPolicy) error {
 			"policy", policy.Name,
 			"target", target)
 
-		cmd := exec.Command("go", "get", target)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cmd := exec.CommandContext(ctx, "go", "get", target)
 		cmd.Dir = srcDir
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("go get failed for %s: %w; stderr: %s", target, err, stderr.String())
+			cancel()
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("go get timed out after 30s for %s in %s: %w; stderr: %s", target, srcDir, err, stderr.String())
+			}
+			return fmt.Errorf("go get failed for %s in %s: %w; stderr: %s", target, srcDir, err, stderr.String())
 		}
+		cancel()
 	}
 
 	// Second pass: add replace directives for filePath (local) entries
