@@ -19,9 +19,11 @@
 package policyengine
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -29,8 +31,10 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
-// GenerateGoModReplaces adds replace directives to go.mod for local policies
-func GenerateGoModReplaces(srcDir string, policies []*types.DiscoveredPolicy) error {
+// UpdateGoMod updates go.mod for discovered policies:
+//   - gomodule entries: runs 'go get' to pin the real module at its resolved version
+//   - filePath entries: adds a replace directive pointing to the local path
+func UpdateGoMod(srcDir string, policies []*types.DiscoveredPolicy) error {
 	// Ensure srcDir is absolute
 	absSrcDir, err := filepath.Abs(srcDir)
 	if err != nil {
@@ -40,37 +44,56 @@ func GenerateGoModReplaces(srcDir string, policies []*types.DiscoveredPolicy) er
 
 	goModPath := filepath.Join(srcDir, "go.mod")
 
-	// Read existing go.mod
+	// First pass: run 'go get' for all gomodule (remote) entries
+	for _, policy := range policies {
+		if policy.IsFilePathEntry {
+			continue
+		}
+
+		target := fmt.Sprintf("%s@%s", policy.GoModulePath, policy.GoModuleVersion)
+		slog.Debug("running go get for remote policy",
+			"policy", policy.Name,
+			"target", target)
+
+		cmd := exec.Command("go", "get", target)
+		cmd.Dir = srcDir
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("go get failed for %s: %w; stderr: %s", target, err, stderr.String())
+		}
+	}
+
+	// Second pass: add replace directives for filePath (local) entries
+	// Re-read go.mod after 'go get' may have modified it
 	data, err := os.ReadFile(goModPath)
 	if err != nil {
 		return fmt.Errorf("failed to read go.mod: %w", err)
 	}
 
-	// Parse go.mod
 	modFile, err := modfile.Parse(goModPath, data, nil)
 	if err != nil {
 		return fmt.Errorf("failed to parse go.mod: %w", err)
 	}
 
-	// Add replace directives for each policy
 	for _, policy := range policies {
-		importPath := generateImportPath(policy)
+		if !policy.IsFilePathEntry {
+			continue
+		}
+
 		relativePath, err := filepath.Rel(srcDir, policy.Path)
 		if err != nil {
 			return fmt.Errorf("failed to get relative path for %s: %w", policy.Name, err)
 		}
 
-		slog.Debug("adding replace directive",
+		slog.Debug("adding replace directive for local policy",
 			"policy", policy.Name,
-			"version", policy.Version,
-			"importPath", importPath,
+			"modulePath", policy.GoModulePath,
 			"relativePath", relativePath)
 
-		// Add replace directive
-		if err := modFile.AddReplace(importPath, "", relativePath, ""); err != nil {
-			// If replace already exists, that's okay
+		if err := modFile.AddReplace(policy.GoModulePath, "", relativePath, ""); err != nil {
 			if !strings.Contains(err.Error(), "already") {
-				return fmt.Errorf("failed to add replace directive: %w", err)
+				return fmt.Errorf("failed to add replace directive for %s: %w", policy.Name, err)
 			}
 		}
 	}

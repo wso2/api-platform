@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
+	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -174,19 +175,35 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 	for _, entry := range manifest.Policies {
 		var policyPath string
 		var source string
+		var goModulePath string
+		var goModuleVersion string
+		var isFilePathEntry bool
 
 		if entry.FilePath != "" {
 			policyPath = filepath.Join(baseDir, entry.FilePath)
 			source = "filePath"
+			isFilePathEntry = true
+
+			// Read the module path from the policy's own go.mod
+			modulePath, err := extractModulePathFromGoMod(filepath.Join(policyPath, "go.mod"))
+			if err != nil {
+				return nil, errors.NewDiscoveryError(
+					fmt.Sprintf("failed to read module path from go.mod for %s: %v", entry.Name, err),
+					err,
+				)
+			}
+			goModulePath = modulePath
 		} else if entry.Gomodule != "" {
-			modDir, err := resolveModuleDir(entry.Gomodule)
+			modInfo, err := resolveModuleInfo(entry.Gomodule)
 			if err != nil {
 				return nil, errors.NewDiscoveryError(
 					fmt.Sprintf("failed to resolve gomodule for %s: %v", entry.Name, err),
 					err,
 				)
 			}
-			policyPath = modDir
+			policyPath = modInfo.Dir
+			goModulePath = modInfo.Path
+			goModuleVersion = modInfo.Version
 			source = "gomodule"
 		} else {
 			return nil, errors.NewDiscoveryError(
@@ -199,6 +216,8 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 			"policy", entry.Name,
 			"source", source,
 			"path", policyPath,
+			"goModulePath", goModulePath,
+			"goModuleVersion", goModuleVersion,
 			"phase", "discovery")
 
 		// Check path exists and is accessible
@@ -274,6 +293,9 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 			SourceFiles:      sourceFiles,
 			SystemParameters: ExtractDefaultValues(definition.SystemParameters),
 			Definition:       definition,
+			GoModulePath:     goModulePath,
+			GoModuleVersion:  goModuleVersion,
+			IsFilePathEntry:  isFilePathEntry,
 		}
 
 		discovered = append(discovered, policy)
@@ -282,8 +304,15 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 	return discovered, nil
 }
 
-// ResolveModuleDir resolves a Go module to its local directory using 'go mod download'
-func resolveModuleDir(gomodule string) (string, error) {
+// moduleInfo contains resolved module information from 'go mod download'
+type moduleInfo struct {
+	Path    string // e.g., "github.com/wso2/gateway-controllers/policies/add-headers"
+	Version string // e.g., "v0.1.0"
+	Dir     string // Local directory path in module cache
+}
+
+// resolveModuleInfo resolves a Go module and returns full module information
+func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -295,21 +324,42 @@ func resolveModuleDir(gomodule string) (string, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("timed out while running 'go mod download -json %s'", gomodule)
+			return nil, fmt.Errorf("timed out while running 'go mod download -json %s'", gomodule)
 		}
-		return "", fmt.Errorf("failed to run 'go mod download -json %s': %w; stderr: %s", gomodule, err, stderr.String())
+		return nil, fmt.Errorf("failed to run 'go mod download -json %s': %w; stderr: %s", gomodule, err, stderr.String())
 	}
 
 	var info struct {
-		Dir string `json:"Dir"`
+		Path    string `json:"Path"`
+		Version string `json:"Version"`
+		Dir     string `json:"Dir"`
 	}
 	if err := json.Unmarshal(out, &info); err != nil {
-		return "", fmt.Errorf("failed to parse 'go mod download' output: %w", err)
+		return nil, fmt.Errorf("failed to parse 'go mod download' output: %w", err)
 	}
 
 	if info.Dir == "" {
-		return "", fmt.Errorf("module download did not return a Dir for %s", gomodule)
+		return nil, fmt.Errorf("module download did not return a Dir for %s", gomodule)
 	}
 
-	return info.Dir, nil
+	return &moduleInfo{
+		Path:    info.Path,
+		Version: info.Version,
+		Dir:     info.Dir,
+	}, nil
+}
+
+// extractModulePathFromGoMod reads the module path from a go.mod file
+func extractModulePathFromGoMod(goModPath string) (string, error) {
+	data, err := os.ReadFile(goModPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read go.mod: %w", err)
+	}
+
+	modFile, err := modfile.Parse(goModPath, data, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse go.mod: %w", err)
+	}
+
+	return modFile.Module.Mod.Path, nil
 }
