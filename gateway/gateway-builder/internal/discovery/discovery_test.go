@@ -491,7 +491,8 @@ policies:
 
 	require.Error(t, err)
 	assert.Nil(t, policies)
-	assert.Contains(t, err.Error(), "from manifest entry missing-policy")
+	// The error occurs when trying to read go.mod from the non-existent policy path
+	assert.Contains(t, err.Error(), "failed to read module path from go.mod for missing-policy")
 }
 
 func TestDiscoverPoliciesFromManifest_NoFilePathOrGomodule(t *testing.T) {
@@ -593,7 +594,8 @@ policies:
 
 	require.Error(t, err)
 	assert.Nil(t, policies)
-	assert.Contains(t, err.Error(), "invalid structure")
+	// The error occurs when trying to read go.mod which doesn't exist
+	assert.Contains(t, err.Error(), "failed to read module path from go.mod for invalid")
 }
 
 func TestDiscoverPoliciesFromManifest_WithBaseDir(t *testing.T) {

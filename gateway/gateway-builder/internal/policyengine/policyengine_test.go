@@ -134,44 +134,31 @@ func TestGenerateImportPath(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "simple policy name",
+			name: "returns GoModulePath directly",
 			policy: &types.DiscoveredPolicy{
-				Name:    "ratelimit",
-				Version: "v1.0.0",
+				Name:         "ratelimit",
+				Version:      "v1.0.0",
+				GoModulePath: "github.com/example/policies/ratelimit",
 			},
-			expected: "github.com/policy-engine/policies/ratelimit",
+			expected: "github.com/example/policies/ratelimit",
 		},
 		{
-			name: "policy with dashes",
+			name: "policy with custom module path",
 			policy: &types.DiscoveredPolicy{
-				Name:    "jwt-auth",
-				Version: "v0.1.0",
+				Name:         "jwt-auth",
+				Version:      "v0.1.0",
+				GoModulePath: "github.com/custom/jwt-auth",
 			},
-			expected: "github.com/policy-engine/policies/jwt-auth",
+			expected: "github.com/custom/jwt-auth",
 		},
 		{
-			name: "policy with underscores converted to dashes",
+			name: "empty GoModulePath returns empty string",
 			policy: &types.DiscoveredPolicy{
-				Name:    "my_policy",
-				Version: "v1.0.0",
+				Name:         "my_policy",
+				Version:      "v1.0.0",
+				GoModulePath: "",
 			},
-			expected: "github.com/policy-engine/policies/my-policy",
-		},
-		{
-			name: "policy with spaces converted to dashes",
-			policy: &types.DiscoveredPolicy{
-				Name:    "my policy",
-				Version: "v1.0.0",
-			},
-			expected: "github.com/policy-engine/policies/my-policy",
-		},
-		{
-			name: "uppercase policy name lowercased",
-			policy: &types.DiscoveredPolicy{
-				Name:    "RateLimit",
-				Version: "v1.0.0",
-			},
-			expected: "github.com/policy-engine/policies/ratelimit",
+			expected: "",
 		},
 	}
 
@@ -195,9 +182,10 @@ func TestGeneratePluginRegistry_EmptyPolicies(t *testing.T) {
 func TestGeneratePluginRegistry_SinglePolicy(t *testing.T) {
 	policies := []*types.DiscoveredPolicy{
 		{
-			Name:    "ratelimit",
-			Version: "v1.0.0",
-			Path:    "/policies/ratelimit/v1.0.0",
+			Name:         "ratelimit",
+			Version:      "v1.0.0",
+			Path:         "/policies/ratelimit/v1.0.0",
+			GoModulePath: "github.com/policy-engine/policies/ratelimit",
 		},
 	}
 
@@ -211,14 +199,16 @@ func TestGeneratePluginRegistry_SinglePolicy(t *testing.T) {
 func TestGeneratePluginRegistry_MultiplePolicies(t *testing.T) {
 	policies := []*types.DiscoveredPolicy{
 		{
-			Name:    "ratelimit",
-			Version: "v1.0.0",
-			Path:    "/policies/ratelimit/v1.0.0",
+			Name:         "ratelimit",
+			Version:      "v1.0.0",
+			Path:         "/policies/ratelimit/v1.0.0",
+			GoModulePath: "github.com/policy-engine/policies/ratelimit",
 		},
 		{
-			Name:    "jwt-auth",
-			Version: "v0.1.0",
-			Path:    "/policies/jwt-auth/v0.1.0",
+			Name:         "jwt-auth",
+			Version:      "v0.1.0",
+			Path:         "/policies/jwt-auth/v0.1.0",
+			GoModulePath: "github.com/policy-engine/policies/jwt-auth",
 		},
 	}
 
@@ -289,9 +279,9 @@ func TestGenerateBuildInfo_BuilderVersion(t *testing.T) {
 	assert.Contains(t, result, "v3.2.1-beta")
 }
 
-// ==== GenerateGoModReplaces tests ====
+// ==== UpdateGoMod tests ====
 
-func TestGenerateGoModReplaces_Success(t *testing.T) {
+func TestUpdateGoMod_LocalPolicies_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a valid go.mod file
@@ -309,23 +299,25 @@ go 1.23
 
 	policies := []*types.DiscoveredPolicy{
 		{
-			Name:    "ratelimit",
-			Version: "v1.0.0",
-			Path:    policyPath,
+			Name:            "ratelimit",
+			Version:         "v1.0.0",
+			Path:            policyPath,
+			GoModulePath:    "github.com/example/policies/ratelimit",
+			IsFilePathEntry: true,
 		},
 	}
 
-	err = GenerateGoModReplaces(tmpDir, policies)
+	err = UpdateGoMod(tmpDir, policies)
 	require.NoError(t, err)
 
 	// Read back go.mod and verify replace directive
 	modData, err := os.ReadFile(filepath.Join(tmpDir, "go.mod"))
 	require.NoError(t, err)
 	assert.Contains(t, string(modData), "replace")
-	assert.Contains(t, string(modData), "github.com/policy-engine/policies/ratelimit")
+	assert.Contains(t, string(modData), "github.com/example/policies/ratelimit")
 }
 
-func TestGenerateGoModReplaces_MultiplePolicies(t *testing.T) {
+func TestUpdateGoMod_MultiplePolicies(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
@@ -344,20 +336,20 @@ go 1.23
 	require.NoError(t, err)
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policy1Path},
-		{Name: "jwt-auth", Version: "v0.1.0", Path: policy2Path},
+		{Name: "ratelimit", Version: "v1.0.0", Path: policy1Path, GoModulePath: "github.com/example/policies/ratelimit", IsFilePathEntry: true},
+		{Name: "jwt-auth", Version: "v0.1.0", Path: policy2Path, GoModulePath: "github.com/example/policies/jwt-auth", IsFilePathEntry: true},
 	}
 
-	err = GenerateGoModReplaces(tmpDir, policies)
+	err = UpdateGoMod(tmpDir, policies)
 	require.NoError(t, err)
 
 	modData, err := os.ReadFile(filepath.Join(tmpDir, "go.mod"))
 	require.NoError(t, err)
-	assert.Contains(t, string(modData), "github.com/policy-engine/policies/ratelimit")
-	assert.Contains(t, string(modData), "github.com/policy-engine/policies/jwt-auth")
+	assert.Contains(t, string(modData), "github.com/example/policies/ratelimit")
+	assert.Contains(t, string(modData), "github.com/example/policies/jwt-auth")
 }
 
-func TestGenerateGoModReplaces_EmptyPolicies(t *testing.T) {
+func TestUpdateGoMod_EmptyPolicies(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
@@ -370,24 +362,24 @@ go 1.23
 	// Empty policies - should work fine
 	policies := []*types.DiscoveredPolicy{}
 
-	err = GenerateGoModReplaces(tmpDir, policies)
+	err = UpdateGoMod(tmpDir, policies)
 	require.NoError(t, err)
 }
 
-func TestGenerateGoModReplaces_MissingGoMod(t *testing.T) {
+func TestUpdateGoMod_MissingGoMod(t *testing.T) {
 	tmpDir := t.TempDir()
 	// No go.mod file
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit"},
+		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit", GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
 	}
 
-	err := GenerateGoModReplaces(tmpDir, policies)
+	err := UpdateGoMod(tmpDir, policies)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read go.mod")
 }
 
-func TestGenerateGoModReplaces_InvalidGoMod(t *testing.T) {
+func TestUpdateGoMod_InvalidGoMod(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create invalid go.mod
@@ -395,10 +387,10 @@ func TestGenerateGoModReplaces_InvalidGoMod(t *testing.T) {
 	require.NoError(t, err)
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit"},
+		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit", GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
 	}
 
-	err = GenerateGoModReplaces(tmpDir, policies)
+	err = UpdateGoMod(tmpDir, policies)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse go.mod")
 }
@@ -427,7 +419,7 @@ go 1.23
 	require.NoError(t, err)
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policyPath},
+		{Name: "ratelimit", Version: "v1.0.0", Path: policyPath, GoModulePath: "github.com/policy-engine/policies/ratelimit", IsFilePathEntry: true},
 	}
 
 	err = GenerateCode(tmpDir, policies)
@@ -489,7 +481,7 @@ go 1.23
 	require.NoError(t, err)
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit"},
+		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit", GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
 	}
 
 	err = GenerateCode(tmpDir, policies)
@@ -510,7 +502,7 @@ func TestGenerateCode_MissingGoMod(t *testing.T) {
 	require.NoError(t, err)
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policyPath},
+		{Name: "ratelimit", Version: "v1.0.0", Path: policyPath, GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
 	}
 
 	err = GenerateCode(tmpDir, policies)
@@ -544,9 +536,9 @@ go 1.23
 	require.NoError(t, err)
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policy1Path},
-		{Name: "jwt-auth", Version: "v0.1.0", Path: policy2Path},
-		{Name: "cors", Version: "v2.0.0", Path: policy3Path},
+		{Name: "ratelimit", Version: "v1.0.0", Path: policy1Path, GoModulePath: "github.com/policy-engine/policies/ratelimit", IsFilePathEntry: true},
+		{Name: "jwt-auth", Version: "v0.1.0", Path: policy2Path, GoModulePath: "github.com/policy-engine/policies/jwt-auth", IsFilePathEntry: true},
+		{Name: "cors", Version: "v2.0.0", Path: policy3Path, GoModulePath: "github.com/policy-engine/policies/cors", IsFilePathEntry: true},
 	}
 
 	err = GenerateCode(tmpDir, policies)
