@@ -373,5 +373,9 @@ func extractModulePathFromGoMod(goModPath string) (string, error) {
 		return "", fmt.Errorf("failed to parse go.mod: %w", err)
 	}
 
+	if modFile.Module == nil || modFile.Module.Mod.Path == "" {
+		return "", fmt.Errorf("module directive missing in go.mod: %s", goModPath)
+	}
+
 	return modFile.Module.Mod.Path, nil
 }

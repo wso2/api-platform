@@ -1,4 +1,4 @@
-module github.com/policy-engine/policies/count-letters
+module github.com/wso2/api-platform/gateway/sample-policies/count-letters
 
 go 1.25.1
 
