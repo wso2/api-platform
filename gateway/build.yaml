@@ -4,6 +4,8 @@ gateway:
 policies:
   - name: add-headers
     gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
+  - name: token-based-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
   - name: advanced-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0
   - name: api-key-auth
