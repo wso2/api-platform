@@ -39,11 +39,12 @@ const (
 
 // Moesif represents a Moesif publisher.
 type Moesif struct {
-	cfg    *config.PublisherConfig
-	api    moesifapi.API
-	events []*models.EventModel
-	mu     sync.Mutex
-	done   chan struct{}
+	cfg      *config.PublisherConfig
+	api      moesifapi.API
+	events   []*models.EventModel
+	mu       sync.Mutex
+	done     chan struct{}
+	closeOnce sync.Once
 }
 
 // MoesifConfig holds the configs specific for the Moesif publisher.
@@ -122,10 +123,13 @@ func NewMoesif(pubCfg *config.PublisherConfig) *Moesif {
 
 // Close stops the background publishing goroutine.
 // It should be called when the Moesif publisher is no longer needed.
+// Safe to call multiple times.
 func (m *Moesif) Close() {
-	if m.done != nil {
-		close(m.done)
-	}
+	m.closeOnce.Do(func() {
+		if m.done != nil {
+			close(m.done)
+		}
+	})
 }
 
 // Publish publishes an event to Moesif.
