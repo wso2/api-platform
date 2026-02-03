@@ -1559,6 +1559,8 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
             LEFT JOIN api_deployment_status s 
                 ON d.deployment_id = s.deployment_id
                 AND d.gateway_uuid = s.gateway_uuid
+				AND d.api_uuid = s.api_uuid
+				AND d.organization_uuid = s.organization_uuid
             WHERE d.api_uuid = ? AND d.organization_uuid = ?
     `
 	args = append(args, apiUUID, orgUUID)
