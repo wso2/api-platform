@@ -180,6 +180,7 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 		ec.policyChain.PolicySpecs,
 		ec.requestContext.SharedContext.APIName,
 		ec.routeKey,
+		ec.policyChain.HasCELConditions,
 	)
 	if err != nil {
 		return ec.handlePolicyError(ctx, err, "request_headers"), nil
@@ -211,6 +212,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 			ec.policyChain.PolicySpecs,
 			ec.requestContext.SharedContext.APIName,
 			ec.routeKey,
+			ec.policyChain.HasCELConditions,
 		)
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "request_body"), nil
@@ -254,6 +256,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		ec.policyChain.PolicySpecs,
 		ec.responseContext.SharedContext.APIName,
 		ec.routeKey,
+		ec.policyChain.HasCELConditions,
 	)
 	if err != nil {
 		return ec.handlePolicyError(ctx, err, "response_headers"), nil
@@ -285,6 +288,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			ec.policyChain.PolicySpecs,
 			ec.responseContext.SharedContext.APIName,
 			ec.routeKey,
+			ec.policyChain.HasCELConditions,
 		)
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "response_body"), nil

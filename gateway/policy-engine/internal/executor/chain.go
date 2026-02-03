@@ -69,7 +69,8 @@ type ResponseExecutionResult struct {
 
 // ExecuteRequestPolicies executes request policies with condition evaluation
 // T043: Implements execution with condition evaluation and short-circuit logic
-func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec, api, route string) (*RequestExecutionResult, error) {
+// hasCELConditions indicates if any policy in the chain has CEL conditions; when false, CEL evaluation is skipped entirely
+func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec, api, route string, hasCELConditions bool) (*RequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestExecutionResult{
 		Results:        make([]RequestPolicyResult, 0, len(policyList)),
@@ -110,8 +111,9 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			continue
 		}
 
-		// Evaluate execution condition if present
-		if spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+		// Evaluate execution condition if present and if chain has any CEL conditions
+		// Skip this block entirely when no policies in the chain have CEL conditions
+		if hasCELConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
 				conditionMet, err := c.celEvaluator.EvaluateRequestCondition(*spec.ExecutionCondition, ctx)
 				if err != nil {
@@ -193,7 +195,8 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 
 // ExecuteResponsePolicies executes response policies with condition evaluation
 // T044: Implements execution with condition evaluation
-func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec, api, route string) (*ResponseExecutionResult, error) {
+// hasCELConditions indicates if any policy in the chain has CEL conditions; when false, CEL evaluation is skipped entirely
+func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec, api, route string, hasCELConditions bool) (*ResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseExecutionResult{
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),
@@ -235,8 +238,9 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			continue
 		}
 
-		// Evaluate execution condition if present
-		if spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+		// Evaluate execution condition if present and if chain has any CEL conditions
+		// Skip this block entirely when no policies in the chain have CEL conditions
+		if hasCELConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
 				conditionMet, err := c.celEvaluator.EvaluateResponseCondition(*spec.ExecutionCondition, ctx)
 				if err != nil {
