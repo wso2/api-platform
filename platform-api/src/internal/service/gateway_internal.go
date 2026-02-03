@@ -303,6 +303,9 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Use same limit computation as DeploymentService: MaxPerAPIGateway + buffer
+	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
+		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
+	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
 	err = s.apiRepo.CreateDeploymentWithLimitEnforcement(deployment, hardLimit)
 	if err != nil {
