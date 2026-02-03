@@ -305,9 +305,10 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 	// If not found via local key lookup, try external key index for O(1) lookup
 	if matchedKey == nil {
 		indexKey := computeExternalKeyIndexKey(providedAPIKey)
+		trimmedAPIKey := strings.TrimSpace(providedAPIKey)
 		if keyID, exists := aks.externalKeyIndex[apiId][indexKey]; exists {
 			if apiKey, ok := aks.apiKeysByAPI[apiId][*keyID]; ok {
-				if apiKey.Source == "external" && compareAPIKeys(providedAPIKey, apiKey.APIKey) {
+				if apiKey.Source == "external" && compareAPIKeys(trimmedAPIKey, apiKey.APIKey) {
 					matchedKey = apiKey
 				}
 			}
@@ -340,16 +341,13 @@ func (aks *APIkeyStore) RemoveAPIKeysByAPI(apiId string) error {
 	// Remove from external key index
 	for _, apiKey := range apiKeys {
 		if apiKey.Source == "external" {
-			var indexKey string
 			if apiKey.IndexKey != "" {
-				indexKey = apiKey.IndexKey
+				delete(aks.externalKeyIndex[apiKey.APIId], apiKey.IndexKey)
 			} else {
-				indexKey = computeExternalKeyIndexKey(apiKey.APIKey)
-				if indexKey == "" {
-					return fmt.Errorf("failed to compute index key")
-				}
+				// Legacy external key with hashed APIKey and no IndexKey; cannot compute index from hash—skip delete to avoid removing wrong entry
+				log.Printf("[WARN] legacy external API key missing IndexKey during RemoveAPIKeysByAPI: apiId=%s keyID=%s (index entry not removed; consider re-storing key with IndexKey set for cleanup)",
+					apiKey.APIId, apiKey.ID)
 			}
-			delete(aks.externalKeyIndex[apiKey.APIId], indexKey)
 		}
 	}
 
@@ -554,15 +552,12 @@ func (aks *APIkeyStore) removeFromAPIMapping(apiKey *APIKey) {
 		if aks.externalKeyIndex[apiKey.APIId] == nil {
 			return
 		}
-		var indexKey string
 		if apiKey.IndexKey != "" {
-			indexKey = apiKey.IndexKey
+			delete(aks.externalKeyIndex[apiKey.APIId], apiKey.IndexKey)
 		} else {
-			indexKey = computeExternalKeyIndexKey(apiKey.APIKey)
-			if indexKey == "" {
-				return
-			}
+			// Legacy external key with hashed APIKey and no IndexKey; cannot compute index from hash—skip delete to avoid removing wrong entry
+			log.Printf("[WARN] legacy external API key missing IndexKey during removeFromAPIMapping: apiId=%s keyID=%s (index entry not removed; consider re-storing key with IndexKey set for cleanup)",
+				apiKey.APIId, apiKey.ID)
 		}
-		delete(aks.externalKeyIndex[apiKey.APIId], indexKey)
 	}
 }

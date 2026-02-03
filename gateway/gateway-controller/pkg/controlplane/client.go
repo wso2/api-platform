@@ -682,8 +682,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		}
 	}
 
-	// Validate DisplayName - required field
-	if strings.TrimSpace(*keyCreatedEvent.Payload.DisplayName) != "" {
+	// Validate DisplayName - optional field (pointer may be nil)
+	if keyCreatedEvent.Payload.DisplayName != nil && strings.TrimSpace(*keyCreatedEvent.Payload.DisplayName) != "" {
 		// Validate the display name format
 		if err := utils.ValidateDisplayName(*keyCreatedEvent.Payload.DisplayName); err != nil {
 			baseLogger.Error("API key created event has invalid display_name",
