@@ -1654,6 +1654,11 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 		deployments = append(deployments, deployment)
 	}
 
+	// Check if the loop stopped because of an error rather than reaching the end
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during deployment rows iteration: %w", err)
+	}
+
 	return deployments, nil
 }
 
