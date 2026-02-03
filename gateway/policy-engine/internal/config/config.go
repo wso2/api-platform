@@ -52,7 +52,7 @@ type AnalyticsConfig struct {
 	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
 	// AllowPayloads controls whether request and response bodies are captured
 	// into analytics metadata and forwarded to analytics publishers.
-	AllowPayloads 		 bool 					 `koanf:"allow_payloads"`
+	AllowPayloads bool `koanf:"allow_payloads"`
 }
 
 // PublisherConfig holds publisher configuration
@@ -280,7 +280,7 @@ func defaultConfig() *Config {
 			Admin: AdminConfig{
 				Enabled:    true,
 				Port:       9002,
-				AllowedIPs: []string{"127.0.0.1", "::1"},
+				AllowedIPs: []string{"*"},
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
