@@ -1,4 +1,4 @@
-name: UppercaseBody
+name: uppercase-body
 version: v1.0.0
 description: |
   Transforms the request body text to uppercase letters.

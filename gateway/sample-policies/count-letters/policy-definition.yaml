@@ -1,4 +1,4 @@
-name: CountLetters
+name: count-letters
 version: v1.0.0
 description: |
   Analyzes the response body and counts occurrences of specified letters/characters.
