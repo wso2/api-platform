@@ -1568,6 +1568,7 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 		args = append(args, *gatewayID)
 	}
 
+	// 3. Close CTE and start Outer Selection
 	query += `
         )
         SELECT 
