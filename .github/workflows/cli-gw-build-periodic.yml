@@ -30,6 +30,7 @@ jobs:
             3-cli-build.log \
             4-prepare-dir.log \
             5-ap-gw-image-build.log \
+            6-sample-policies-gw-image-build.log \
             docker.log
 
       # ------------------------------------------------------------
@@ -161,6 +162,11 @@ jobs:
             if [ -f gateway/build.yaml ]; then
               cp gateway/build.yaml my-gw/build.yaml
             fi
+
+            # Copy sample-policies dir (build.yaml uses relative filePath entries)
+            if [ -d gateway/sample-policies ]; then
+              cp -r gateway/sample-policies my-gw/sample-policies
+            fi
           } 2>&1 | tee 4-prepare-dir.log
 
       # ------------------------------------------------------------
@@ -220,6 +226,57 @@ jobs:
             fi
 
       # ------------------------------------------------------------
+      # 6. Gateway image build using sample-policies/build.yaml
+      # ------------------------------------------------------------
+      - name: Build gateway image with sample policies
+        working-directory: ./my-gw
+        env:
+          CI: ""
+          WSO2AP_GW_USERNAME: ${{ secrets.WSO2AP_GW_USERNAME || '' }}
+          WSO2AP_GW_PASSWORD: ${{ secrets.WSO2AP_GW_PASSWORD || '' }}
+        run: |
+          set -o pipefail
+
+          REAL_DOCKER_LOG="$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log"
+
+          mkdir -p "$(dirname "$REAL_DOCKER_LOG")"
+
+            set -o pipefail
+
+            # Run the build pointing to sample-policies/ (contains build.yaml with relative policy paths)
+            (./ap gateway image build -p sample-policies) 2>&1 | tee "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log"
+            BUILD_RC=${PIPESTATUS[0]}
+
+            # Post-build diagnostics
+            LOG_DIR="$(dirname "$REAL_DOCKER_LOG")"
+            echo "=== DIAGNOSTICS: list $LOG_DIR ===" >> "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" 2>&1
+            ls -la "$LOG_DIR" >> "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" 2>&1 || true
+            echo "=== DIAGNOSTICS: stat $REAL_DOCKER_LOG ===" >> "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" 2>&1
+            stat "$REAL_DOCKER_LOG" >> "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" 2>&1 || true
+            echo "=== DIAGNOSTICS: du -h $LOG_DIR ===" >> "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" 2>&1
+            du -h "$LOG_DIR" >> "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" 2>&1 || true
+
+            # Copy any .log files from the real log dir into the workspace
+            if [ -d "$LOG_DIR" ]; then
+              mkdir -p "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs"
+              for f in "$LOG_DIR"/*.log; do
+                [ -e "$f" ] || continue
+                cp "$f" "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs/" 2>>"$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" || (
+                  sudo cp "$f" "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs/" 2>>"$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" || echo "copy failed for $f" >>"$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log"
+                )
+              done
+              if [ -f "$REAL_DOCKER_LOG" ]; then
+                cp "$REAL_DOCKER_LOG" "$GITHUB_WORKSPACE/docker.log" 2>>"$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" || sudo cp "$REAL_DOCKER_LOG" "$GITHUB_WORKSPACE/docker.log" 2>>"$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log" || true
+              fi
+            fi
+
+            # Exit with the build return code so failures are visible
+            if [ "${BUILD_RC}" -ne 0 ]; then
+              echo "ap gateway image build with sample policies failed (rc=${BUILD_RC})" >&2
+              exit ${BUILD_RC}
+            fi
+
+      # ------------------------------------------------------------
       # Upload logs ALWAYS
       # ------------------------------------------------------------
       - name: Upload logs
@@ -233,4 +290,5 @@ jobs:
             3-cli-build.log
             4-prepare-dir.log
             5-ap-gw-image-build.log
+            6-sample-policies-gw-image-build.log
             docker.log

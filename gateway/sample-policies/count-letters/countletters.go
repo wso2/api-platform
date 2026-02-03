@@ -3,6 +3,7 @@ package countletters
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -17,6 +18,7 @@ func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
+	slog.Debug("[Count Letters]: GetPolicy called")
 	return ins, nil
 }
 
@@ -37,8 +39,11 @@ func (p *CountLettersPolicy) OnRequest(ctx *policy.RequestContext, params map[st
 
 // OnResponse counts letters in the response body and replaces it with the count
 func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+	slog.Debug("[Count Letters]: OnResponse called", "hasBody", ctx.ResponseBody != nil && ctx.ResponseBody.Present)
+
 	// Check if response body is present
 	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present {
+		slog.Info("[Count Letters]: No response body present, returning empty count")
 		// No body to process, return empty count
 		return p.generateEmptyResponse(params)
 	}
@@ -60,9 +65,17 @@ func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 		outputFormat = strings.ToLower(outputFormatRaw.(string))
 	}
 
+	slog.Info("[Count Letters]: Processing response body",
+		"letters", letters,
+		"caseSensitive", caseSensitive,
+		"outputFormat", outputFormat,
+		"bodySize", len(ctx.ResponseBody.Content))
+
 	// Count letters in the response body
 	bodyText := string(ctx.ResponseBody.Content)
 	counts := p.countLetters(bodyText, letters, caseSensitive)
+
+	slog.Info("[Count Letters]: Letter counts calculated", "counts", counts)
 
 	// Generate output based on format
 	var outputBody []byte
@@ -71,11 +84,15 @@ func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 	if outputFormat == "json" {
 		outputBody, err = p.generateJSONOutput(counts)
 		if err != nil {
+			slog.Error("[Count Letters]: Failed to generate JSON output, falling back to text", "error", err)
 			// Fallback to text output on JSON error
 			outputBody = p.generateTextOutput(counts)
+		} else {
+			slog.Debug("[Count Letters]: Generated JSON output", "size", len(outputBody))
 		}
 	} else {
 		outputBody = p.generateTextOutput(counts)
+		slog.Debug("[Count Letters]: Generated text output", "size", len(outputBody))
 	}
 
 	return policy.UpstreamResponseModifications{
@@ -85,6 +102,11 @@ func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 
 // countLetters counts occurrences of each letter in the text
 func (p *CountLettersPolicy) countLetters(text string, letters []string, caseSensitive bool) map[string]int {
+	slog.Debug("[Count Letters]: Counting letters in text",
+		"textLength", len(text),
+		"letters", letters,
+		"caseSensitive", caseSensitive)
+
 	counts := make(map[string]int)
 
 	// Initialize counts for all requested letters
@@ -111,6 +133,7 @@ func (p *CountLettersPolicy) countLetters(text string, letters []string, caseSen
 
 		count := strings.Count(searchText, searchLetter)
 		counts[searchLetter] = count
+		slog.Debug("[Count Letters]: Letter counted", "letter", searchLetter, "count", count)
 	}
 
 	return counts
@@ -140,6 +163,8 @@ func (p *CountLettersPolicy) generateEmptyResponse(params map[string]interface{}
 	if outputFormatRaw, ok := params["outputFormat"]; ok {
 		outputFormat = strings.ToLower(outputFormatRaw.(string))
 	}
+
+	slog.Debug("[Count Letters]: Generating empty response", "outputFormat", outputFormat)
 
 	var outputBody []byte
 	if outputFormat == "json" {
