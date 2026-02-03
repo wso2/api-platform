@@ -133,6 +133,7 @@ Envoy-based API gateway for securing and routing API traffic.
 ### API Developer Portal
 Developer portal for API discovery, subscription, and consumption.
 
+
 **Key Features:**
 - API catalog and semantic search
 - Try-it console for API testing
