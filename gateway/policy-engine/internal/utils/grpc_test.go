@@ -245,7 +245,7 @@ func startTestGRPCServerWithTLS(t *testing.T) (string, string, *tls.Config, func
 	}
 
 	// Create listener
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	// Create gRPC server with TLS
@@ -274,7 +274,7 @@ func startTestGRPCServerWithTLS(t *testing.T) (string, string, *tls.Config, func
 		listener.Close()
 	}
 
-	return "localhost", fmt.Sprintf("%d", addr.Port), clientTLSConfig, cleanup
+	return "127.0.0.1", fmt.Sprintf("%d", addr.Port), clientTLSConfig, cleanup
 }
 
 func TestCreateGRPCConnection_Success(t *testing.T) {
@@ -316,7 +316,7 @@ func TestCreateGRPCConnection_TLSHandshakeFailure(t *testing.T) {
 	healthClient := grpc_health_v1.NewHealthClient(conn)
 	_, err = healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
 	assert.Error(t, err) // TLS handshake failure
-	assert.Contains(t, err.Error(), "certificate")
+	assert.Contains(t, err.Error(), "certificate signed by unknown authority")
 }
 
 func TestCreateGRPCConnection_InvalidAddress(t *testing.T) {
@@ -409,7 +409,6 @@ func TestCreateGRPCConnectionWithRetry_InfiniteRetries(t *testing.T) {
 func TestCreateGRPCConnectionWithRetryAndPanic_Success(t *testing.T) {
 	host, port, tlsConfig, cleanup := startTestGRPCServerWithTLS(t)
 	defer cleanup()
-
 
 	ctx := context.Background()
 
