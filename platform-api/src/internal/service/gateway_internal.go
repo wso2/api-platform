@@ -250,6 +250,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 		default:
 			// Fallback in case new statuses are introduced in the future
 			return nil, fmt.Errorf("a deployment already exists for this API-gateway combination with status %s", status)
+		}
 	}
 
 	// Check if API-gateway association exists, create if not
