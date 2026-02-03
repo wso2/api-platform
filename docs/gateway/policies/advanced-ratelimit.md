@@ -98,7 +98,7 @@ Simplest configuration: 10 requests per minute per route.
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.1
+    version: v0.1.3
     params:
       quotas:
         - limits:
@@ -115,7 +115,7 @@ Enforce two independent quotas simultaneously:
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.1
+    version: v0.1.3
     params:
       quotas:
         - name: "user_quota"
@@ -140,7 +140,7 @@ Allow 10 req/sec (bursty) AND 1000 req/hour (sustained) for the same key.
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.1
+    version: v0.1.3
     params:
       quotas:
         - limits:
@@ -161,7 +161,7 @@ Rate limit based on total tokens consumed, extracted from the response body.
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.1
+    version: v0.1.3
     params:
       quotas:
         - limits:
@@ -183,7 +183,7 @@ policies:
 ```yaml
 policies:
   - name: advanced-ratelimit
-    version: v0.1.1
+    version: v0.1.3
     params:
       quotas:
         - limits:
