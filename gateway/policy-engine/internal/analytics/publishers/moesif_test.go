@@ -121,8 +121,9 @@ func TestNewMoesif_DefaultBaseURL(t *testing.T) {
 
 	result := NewMoesif(pubCfg)
 	require.NotNil(t, result, "NewMoesif should return a valid publisher")
-	// Clean up the goroutine by letting it run briefly
-	time.Sleep(10 * time.Millisecond)
+	t.Cleanup(func() {
+		result.Close()
+	})
 }
 
 func TestNewMoesif_EnvVarOverridesConfig(t *testing.T) {
@@ -145,7 +146,9 @@ func TestNewMoesif_EnvVarOverridesConfig(t *testing.T) {
 
 	result := NewMoesif(pubCfg)
 	require.NotNil(t, result, "NewMoesif should return a valid publisher")
-	time.Sleep(10 * time.Millisecond)
+	t.Cleanup(func() {
+		result.Close()
+	})
 }
 
 func TestPublish_BasicEvent(t *testing.T) {
