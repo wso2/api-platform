@@ -1,0 +1,451 @@
+name: advanced-ratelimit
+version: v0.1.3
+description: |
+  Rate limiting policy supporting multiple algorithms (GCRA, Fixed Window), multi-dimensional quotas,
+  weighted rate limiting, flexible key extraction, and both in-memory and Redis backends. Supports
+  fail-open behavior for Redis failures and provides comprehensive rate limit headers (X-RateLimit-*,
+  IETF RateLimit, and Retry-After).
+
+  Key features:
+  - Multi-dimensional quotas: Each quota can have its own key extraction and cost extraction
+  - Multiple algorithms: GCRA (smooth rate limiting) or Fixed Window (simple counter)
+  - Dynamic cost extraction: Extract costs from request/response headers, metadata, or JSON body
+  - Weighted multipliers: Apply multipliers to extracted costs (e.g., prompt tokens @ 0.1, completion tokens @ 0.3)
+  - Multiple concurrent limits (e.g., 10/second AND 1000/hour)
+  - Array-based key extraction with sensible defaults (route name)
+  - Dual backends: in-memory (single instance) or Redis (distributed)
+  - Graceful degradation: missing key components log warnings but don't fail requests
+  - Atomic operations via Lua scripts (GCRA+Redis) or native Redis commands (Fixed Window)
+
+parameters:
+  type: object
+  additionalProperties: false
+  required: ["quotas"]
+  properties:
+    quotas:
+      type: array
+      description: |
+        Array of self-contained quota definitions. Each quota is an independent rate limit
+        dimension with its own limits, keyExtraction, and costExtraction. This enables
+        multi-dimensional rate limiting (e.g., per-user request limit + per-org token limit).
+      minItems: 1
+      maxItems: 10
+      items:
+        type: object
+        additionalProperties: false
+        required: ["limits"]
+        properties:
+          name:
+            type: string
+            description: |
+              Optional name for this quota. Used for logging and in the X-RateLimit-Quota
+              header when rate limit is exceeded. Makes debugging easier when multiple
+              quotas are configured.
+            minLength: 1
+            maxLength: 128
+
+          limits:
+            type: array
+            description: |
+              Array of rate limits for this quota. Multiple limits can be specified to enforce
+              different time windows (e.g., 500/hour AND 10000/day). All limits are evaluated,
+              and the most restrictive limit is enforced.
+            minItems: 1
+            maxItems: 10
+            items:
+              type: object
+              additionalProperties: false
+              required: ["limit", "duration"]
+              properties:
+                limit:
+                  type: integer
+                  description: Maximum number of tokens/requests allowed in the duration
+                  minimum: 1
+                  maximum: 1000000000
+                duration:
+                  type: string
+                  description: |
+                    Time window for the limit (Go duration string format).
+                    Examples: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "24h" (1 day),
+                    "1h30m" (1 hour 30 minutes), "1.5h" (1.5 hours)
+                  pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+                burst:
+                  type: integer
+                  description: |
+                    Maximum burst capacity (number of requests that can accumulate).
+                    If omitted, defaults to the limit value (no burst beyond normal rate).
+                  minimum: 1
+                  maximum: 1000000000
+
+          keyExtraction:
+            type: array
+            description: |
+              Per-quota key extraction. If omitted, inherits from global keyExtraction
+              or defaults to route name.
+            minItems: 0
+            maxItems: 5
+            items:
+              type: object
+              additionalProperties: false
+              required: ["type"]
+              properties:
+                type:
+                  type: string
+                  description: |
+                    Type of component to extract:
+                    - header: Extract from HTTP header (requires 'key' field)
+                    - metadata: Extract from SharedContext.Metadata (requires 'key' field)
+                    - ip: Extract client IP from X-Forwarded-For/X-Real-IP
+                    - apiname: Use API name from context
+                    - apiversion: Use API version from context
+                    - routename: Use route name from metadata (default)
+                    - constant: Use a static string value (requires 'key' field)
+                    - cel: Use CEL expression to extract key (requires 'expression' field)
+                  enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "cel", "constant"]
+                key:
+                  type: string
+                  description: Header name or metadata key (required for header/metadata types)
+                  minLength: 1
+                  maxLength: 256
+                expression:
+                  type: string
+                  description: |
+                    CEL expression for key extraction (required for cel type).
+                    The expression must return a string value.
+                    Available variables:
+                    - request.Headers: map[string][]string of request headers
+                    - request.Path: string, the request path
+                    - request.Method: string, the HTTP method
+                    - request.Metadata: map[string]any, shared metadata
+                    - api.Name: string, API name
+                    - api.Version: string, API version
+                    - api.Context: string, API context path
+                    Example: 'request.Headers["x-user-id"][0] + ":" + api.Name'
+                  minLength: 1
+                  maxLength: 1024
+
+          costExtraction:
+            type: object
+            description: |
+              Per-quota dynamic cost extraction configuration. When enabled, costs are
+              extracted from request or response data, allowing for token-based rate limiting
+              (e.g., LLM API token usage).
+              
+              Multiple sources can be configured. When multiple sources succeed, their values
+              are SUMMED (with multipliers applied). This enables weighted token counting:
+              
+              Example: prompt_tokens * 0.1 + completion_tokens * 0.3 = total weighted cost
+            additionalProperties: false
+            properties:
+              enabled:
+                type: boolean
+                description: Enable dynamic cost extraction
+                default: false
+
+              sources:
+                type: array
+                description: |
+                  List of sources to extract cost from. All successful extractions are
+                  summed together (with multipliers). If all fail, the default value is used.
+                minItems: 1
+                maxItems: 10
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: ["type"]
+                  properties:
+                    type:
+                      type: string
+                      description: |
+                        Type of source to extract cost from:
+                        - request_header: Extract from request header (pre-request)
+                        - request_metadata: Extract from request metadata (pre-request)
+                        - request_body: Extract from JSON request body using jsonPath (pre-request)
+                        - response_header: Extract from response header (post-response)
+                        - response_metadata: Extract from response metadata (post-response)
+                        - response_body: Extract from JSON response body using jsonPath (post-response)
+                        - request_cel: Use CEL expression to extract cost from request context (pre-request)
+                        - response_cel: Use CEL expression to extract cost from response context (post-response)
+                      enum: ["request_header", "request_metadata", "request_body",
+                             "response_header", "response_metadata", "response_body",
+                             "request_cel", "response_cel"]
+
+                    key:
+                      type: string
+                      description: |
+                        Header name (for *_header types) or metadata key (for *_metadata types).
+                        Required for header and metadata source types.
+                      minLength: 1
+                      maxLength: 256
+
+                    jsonPath:
+                      type: string
+                      description: |
+                        JSON path expression for extracting cost from body.
+                        Required for *_body types.
+                        Example: "$.usage.total_tokens" or "$.usage.prompt_tokens"
+                      minLength: 1
+                      maxLength: 512
+
+                    expression:
+                      type: string
+                      description: |
+                        CEL expression for cost extraction (required for request_cel/response_cel types).
+                        The expression must return a numeric value (int or double).
+                        Available variables for request_cel:
+                        - request.Headers: map[string][]string of request headers
+                        - request.Body: request body bytes (if buffered)
+                        - request.Path: string, the request path
+                        - request.Method: string, the HTTP method
+                        - request.Metadata: map[string]any, shared metadata
+                        Available variables for response_cel:
+                        - response.Headers: map[string][]string of response headers
+                        - response.Body: response body bytes (if buffered)
+                        - response.Status: int, response status code
+                        - request.Headers: map[string][]string of original request headers
+                        - request.Path: string, the original request path
+                        - request.Method: string, the original HTTP method
+                        - request.Metadata: map[string]any, shared metadata
+                        Example: 'int(request.Headers["x-token-count"][0])'
+                      minLength: 1
+                      maxLength: 1024
+
+                    multiplier:
+                      type: number
+                      description: |
+                        Multiplier applied to the extracted value. Default is 1.0.
+                        Use this for weighted token counting:
+                        - Prompt tokens: multiplier 0.1 (cheaper)
+                        - Completion tokens: multiplier 0.3 (more expensive)
+                      minimum: 0
+                      default: 1.0
+
+              default:
+                type: number
+                description: Default cost to use if extraction fails from all sources
+                minimum: 0
+                maximum: 1000000000
+                default: 1
+
+    keyExtraction:
+      type: array
+      description: |
+        Global key extraction configuration. Used as a default for quotas that don't specify
+        their own keyExtraction.
+        
+        If omitted or empty, defaults to route name.
+        Multiple components are joined with ':' separator for composite keys.
+      minItems: 0
+      maxItems: 5
+      items:
+        type: object
+        additionalProperties: false
+        required: ["type"]
+        properties:
+          type:
+            type: string
+            description: |
+              Type of component to extract:
+              - header: Extract from HTTP header (requires 'key' field)
+              - metadata: Extract from SharedContext.Metadata (requires 'key' field)
+              - ip: Extract client IP from X-Forwarded-For/X-Real-IP
+              - apiname: Use API name from context
+              - apiversion: Use API version from context
+              - routename: Use route name from metadata (default)
+              - constant: Use a static string value (requires 'key' field)
+              - cel: Use CEL expression to extract key (requires 'expression' field)
+            enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "cel", "constant"]
+          key:
+            type: string
+            description: Header name or metadata key (required for header/metadata types)
+            minLength: 1
+            maxLength: 256
+          expression:
+            type: string
+            description: |
+              CEL expression for key extraction (required for cel type).
+              The expression must return a string value.
+              Available variables:
+              - request.Headers: map[string][]string of request headers
+              - request.Path: string, the request path
+              - request.Method: string, the HTTP method
+              - request.Metadata: map[string]any, shared metadata
+              - api.Name: string, API name
+              - api.Version: string, API version
+              - api.Context: string, API context path
+              Example: 'request.Headers["x-user-id"][0] + ":" + api.Name'
+            minLength: 1
+            maxLength: 1024
+
+    onRateLimitExceeded:
+      type: object
+      description: Customize the 429 response when rate limit is exceeded
+      additionalProperties: false
+      properties:
+        statusCode:
+          type: integer
+          description: HTTP status code for rate limit response
+          minimum: 400
+          maximum: 599
+          default: 429
+
+        body:
+          type: string
+          description: Custom error message body
+          maxLength: 8192
+          default: '{"error": "Too Many Requests", "message": "Rate limit exceeded. Please try again later."}'
+
+        bodyFormat:
+          type: string
+          description: Response body content type
+          enum: ["json", "plain"]
+          default: "json"
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties:
+    algorithm:
+      type: string
+      description: |
+        Rate limiting algorithm to use:
+        - gcra: Generic Cell Rate Algorithm (default). Provides smooth rate limiting
+          with burst support and token bucket semantics. Better for consistent traffic
+          shaping and burst handling.
+        - fixed-window: Simple fixed time window counter. Divides time into fixed
+          intervals and counts requests per window. Lower computational overhead,
+          but can allow up to 2x burst at window boundaries.
+      enum: ["gcra", "fixed-window"]
+      default: "gcra"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.algorithm}"
+
+    backend:
+      type: string
+      description: |
+        Rate limit storage backend. 'memory' for in-memory storage (single-instance),
+        'redis' for distributed rate limiting across multiple gateway instances.
+      enum: ["memory", "redis"]
+      default: "memory"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.backend}"
+
+    redis:
+      type: object
+      description: Redis configuration (only used when backend=redis)
+      additionalProperties: false
+      properties:
+        host:
+          type: string
+          description: Redis server hostname or IP address
+          default: "localhost"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.host}"
+
+        port:
+          type: integer
+          description: Redis server port
+          minimum: 1
+          maximum: 65535
+          default: 6379
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.port}"
+
+        password:
+          type: string
+          description: Redis authentication password (optional)
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.password}"
+
+        username:
+          type: string
+          description: Redis ACL username (optional, Redis 6+)
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.username}"
+
+        db:
+          type: integer
+          description: Redis database number
+          minimum: 0
+          maximum: 15
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.db}"
+
+        keyPrefix:
+          type: string
+          description: Prefix for all Redis keys to avoid conflicts
+          default: "ratelimit:v1:"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.key_prefix}"
+
+        failureMode:
+          type: string
+          description: |
+            Behavior when Redis is unavailable. 'open' allows requests through,
+            'closed' denies requests. Recommended: 'open' for availability.
+          enum: ["open", "closed"]
+          default: "open"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.failure_mode}"
+
+        connectionTimeout:
+          type: string
+          description: Redis connection timeout (Go duration string)
+          default: "5s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.connection_timeout}"
+
+        readTimeout:
+          type: string
+          description: Redis read timeout (Go duration string)
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.read_timeout}"
+
+        writeTimeout:
+          type: string
+          description: Redis write timeout (Go duration string)
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.write_timeout}"
+
+    memory:
+      type: object
+      description: In-memory storage configuration (only used when backend=memory)
+      additionalProperties: false
+      properties:
+        maxEntries:
+          type: integer
+          description: |
+            Maximum number of rate limit entries to store in memory.
+            Oldest entries are evicted when limit is reached.
+          minimum: 100
+          maximum: 10000000
+          default: 10000
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.max_entries}"
+
+        cleanupInterval:
+          type: string
+          description: |
+            Interval for cleaning up expired entries (Go duration string).
+            Use "0" to disable periodic cleanup.
+          default: "5m"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.cleanup_interval}"
+
+    headers:
+      type: object
+      description: Control which rate limit headers are included in responses
+      additionalProperties: false
+      properties:
+        includeXRateLimit:
+          type: boolean
+          description: |
+            Include X-RateLimit-* headers (de facto industry standard).
+            Headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+          default: true
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.include_x_rate_limit}"
+
+        includeIETF:
+          type: boolean
+          description: |
+            Include IETF RateLimit headers (draft standard).
+            Headers: RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, RateLimit-Policy
+          default: true
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.include_ietf}"
+
+        includeRetryAfter:
+          type: boolean
+          description: |
+            Include Retry-After header when rate limited (RFC 7231).
+            Only set on 429 responses.
+          default: true
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.headers.include_retry_after}"

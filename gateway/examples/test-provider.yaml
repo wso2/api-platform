@@ -1,0 +1,35 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: test-openai-provider
+spec:
+  displayName: Test OpenAI Provider
+  version: v1.0
+  context: /token-ratelimit
+  template: test-openai-template
+  upstream:
+    url: http://echo-backend:80
+    auth:
+      type: api-key
+      header: Authorization
+      value: test-api-key
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /chat/completions
+        methods: [POST]
+  policies:
+    - name: tokenBasedRateLimit
+      version: v1.0.0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            promptTokenLimits:
+              - count: 10
+                duration: "1m"
+            totalTokenLimits:
+              - count: 20
+                duration: "1m"
+            algorithm: fixed-window
+            backend: memory

@@ -1,0 +1,92 @@
+go test -v -timeout 30m ./...
+=== RUN   TestFeatures
+2026/02/03 11:02:24 Setting up test reporter...
+2026/02/03 11:02:24 Reports directory ready at reports
+2026/02/03 11:02:24 === Integration Test Suite Starting ===
+2026/02/03 11:02:24 Setting up coverage collection directories...
+2026/02/03 11:02:24 Cleaned existing coverage data
+2026/02/03 11:02:24 Coverage directories created at coverage
+2026/02/03 11:02:24 Colima detected, setting up environment variables...
+2026/02/03 11:02:24 Set DOCKER_HOST=unix:///Users/tharsanan/.colima/default/docker.sock
+2026/02/03 11:02:24 Set TESTCONTAINERS_RYUK_DISABLED=true
+2026/02/03 11:02:25 Using compose file: /Users/tharsanan/Documents/github/forked/platform/api-platform/gateway/it/docker-compose.test.yaml
+2026/02/03 11:02:25 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 28.4.0
+  API Version: 1.51
+  Operating System: Ubuntu 24.04.2 LTS
+  Total Memory: 1959 MB
+  Testcontainers for Go Version: v0.40.0
+  Resolved Docker Host: unix:///Users/tharsanan/.colima/default/docker.sock
+  Resolved Docker Socket Path: /Users/tharsanan/.colima/default/docker.sock
+  Test SessionID: 80aa5854b08ae3b54ccc1130a92b745dc62a28d8c3663d5b066c59b53d80514b
+  Test ProcessID: 4649d0b2-4bf1-4544-aaea-0bf09a14670a
+2026/02/03 11:02:25 Starting Docker Compose services...
+ Container it-mock-jwks  Stopping
+ Container mcp-server-backend  Stopping
+ Container it-mock-analytics-collector  Stopping
+ Container it-echo-backend-multi-arch  Stopping
+ Container it-router  Stopping
+ Container it-redis  Stopping
+ Container it-mock-embedding-provider  Stopping
+ Container it-mock-openapi-https  Stopping
+ Container it-mock-aws-bedrock-guardrail  Stopping
+ Container it-policy-engine  Stopping
+ Container it-sample-backend  Stopping
+ Container it-mock-azure-content-safety  Stopping
+ Container it-echo-backend  Stopping
+ Container it-router  Stopped
+ Container it-mock-openapi-https  Stopped
+ Container it-mock-openapi  Stopping
+ Container it-gateway-controller  Stopping
+ Container it-echo-backend-multi-arch  Stopped
+ Container it-mock-jwks  Stopped
+ Container it-sample-backend  Stopped
+ Container it-gateway-controller  Stopped
+ Container it-policy-engine  Stopped
+ Container it-mock-embedding-provider  Stopped
+ Container it-mock-aws-bedrock-guardrail  Stopped
+ Container it-mock-openapi  Stopped
+ Container it-redis  Stopped
+ Container it-mock-azure-content-safety  Stopped
+ Container it-mock-analytics-collector  Stopped
+ Container it-echo-backend  Stopped
+ Container mcp-server-backend  Stopped
+ Network gateway-it_it-gateway-network  Removed
+ Network gateway-it_it-gateway-network  Creating
+ Network gateway-it_it-gateway-network  Created
+ Container it-mock-aws-bedrock-guardrail  Starting
+ Container mcp-server-backend  Starting
+ Container it-sample-backend  Starting
+ Container it-echo-backend-multi-arch  Starting
+ Container it-redis  Starting
+ Container it-mock-analytics-collector  Starting
+ Container it-mock-azure-content-safety  Starting
+ Container it-mock-jwks  Starting
+ Container it-mock-embedding-provider  Starting
+ Container it-gateway-controller  Starting
+ Container it-echo-backend  Starting
+ Container it-mock-openapi  Starting
+ Container it-policy-engine  Starting
+ Container it-redis  Started
+ Container mcp-server-backend  Started
+ Container it-mock-jwks  Started
+ Container it-mock-azure-content-safety  Started
+ Container it-mock-aws-bedrock-guardrail  Started
+ Container it-policy-engine  Started
+ Container it-echo-backend  Started
+ Container it-sample-backend  Started
+ Container it-echo-backend-multi-arch  Started
+ Container it-mock-analytics-collector  Started
+ Container it-mock-embedding-provider  Started
+ Container it-mock-openapi  Started
+ Container it-mock-openapi  Waiting
+ Container it-gateway-controller  Started
+ Container it-mock-openapi  Waiting
+ Container it-gateway-controller  Waiting
+ Container it-gateway-controller  Healthy
+ Container it-mock-openapi  Error
+ Container it-mock-openapi  Error
+2026/02/03 11:03:28 Failed to start services: failed to start docker compose: compose up: dependency failed to start: container it-mock-openapi is unhealthy
+FAIL	github.com/wso2/api-platform/gateway/it	64.712s
+?   	github.com/wso2/api-platform/gateway/it/steps	[no test files]
+FAIL
