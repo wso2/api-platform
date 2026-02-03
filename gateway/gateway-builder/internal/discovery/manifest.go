@@ -193,6 +193,12 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 				)
 			}
 			goModulePath = modulePath
+
+			slog.Info("Resolved policy entry via filePath",
+				"name", entry.Name,
+				"filePath", entry.FilePath,
+				"resolvedPath", policyPath,
+				"goModulePath", goModulePath)
 		} else if entry.Gomodule != "" {
 			modInfo, err := resolveModuleInfo(entry.Gomodule)
 			if err != nil {
@@ -205,6 +211,12 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 			goModulePath = modInfo.Path
 			goModuleVersion = modInfo.Version
 			source = "gomodule"
+
+			slog.Info("Resolved policy entry via remote module",
+				"name", entry.Name,
+				"gomodule", entry.Gomodule,
+				"resolvedPath", policyPath,
+				"goModuleVersion", goModuleVersion)
 		} else {
 			return nil, errors.NewDiscoveryError(
 				fmt.Sprintf("policy entry %s: either filePath or gomodule must be provided", entry.Name),
