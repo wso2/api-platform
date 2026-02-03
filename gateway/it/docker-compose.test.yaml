@@ -175,6 +175,9 @@ services:
     volumes:
       - ./mock-api/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../gateway-controller/listener-certs:/etc/nginx/certs:ro
+    depends_on:
+      mock-openapi:
+        condition: service_healthy
     networks:
       - it-gateway-network
 
