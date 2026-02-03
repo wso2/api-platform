@@ -283,3 +283,245 @@ policies:
 	assert.Contains(t, string(content), "v1.0.0")
 	assert.Contains(t, string(content), "v0.1.0")
 }
+
+// ==== Phase 2a: Additional coverage for WriteManifestLockWithVersions ====
+
+func TestWriteManifestLockWithVersions_MultipleCandidatesWithFilePath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create manifest with a policy that has filePath
+	manifestContent := `version: "1.0"
+policies:
+  - name: ratelimit
+    filePath: ./policies/ratelimit-v2
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest.yaml")
+	err := os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	require.NoError(t, err)
+
+	// Create policy directories for both versions
+	v1Dir := filepath.Join(tmpDir, "policies", "ratelimit-v1")
+	v2Dir := filepath.Join(tmpDir, "policies", "ratelimit-v2")
+	err = os.MkdirAll(v1Dir, 0755)
+	require.NoError(t, err)
+	err = os.MkdirAll(v2Dir, 0755)
+	require.NoError(t, err)
+
+	// Multiple candidates with same name but different paths
+	discovered := []*types.DiscoveredPolicy{
+		{Name: "ratelimit", Version: "v1.0.0", Path: v1Dir},
+		{Name: "ratelimit", Version: "v2.0.0", Path: v2Dir},
+	}
+
+	err = WriteManifestLockWithVersions(manifestPath, discovered)
+	require.NoError(t, err)
+
+	// Verify the correct version was selected (v2.0.0 based on filePath)
+	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "v2.0.0")
+	assert.NotContains(t, string(content), "v1.0.0")
+}
+
+func TestWriteManifestLockWithVersions_GomoduleWithVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create manifest with gomodule containing @version
+	manifestContent := `version: "1.0"
+policies:
+  - name: ratelimit
+    gomodule: github.com/example/ratelimit@v1.0.0
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest.yaml")
+	err := os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	require.NoError(t, err)
+
+	// Create policy directory with go.mod
+	policyDir := filepath.Join(tmpDir, "policies", "ratelimit")
+	err = os.MkdirAll(policyDir, 0755)
+	require.NoError(t, err)
+
+	goModContent := `module github.com/example/ratelimit
+
+go 1.21
+`
+	goModPath := filepath.Join(policyDir, "go.mod")
+	err = os.WriteFile(goModPath, []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:      "ratelimit",
+			Version:   "v1.0.0",
+			Path:      policyDir,
+			GoModPath: goModPath,
+		},
+	}
+
+	err = WriteManifestLockWithVersions(manifestPath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "ratelimit")
+	assert.Contains(t, string(content), "v1.0.0")
+}
+
+func TestWriteManifestLockWithVersions_GomoduleWithoutVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create manifest with gomodule without @version
+	manifestContent := `version: "1.0"
+policies:
+  - name: ratelimit
+    gomodule: github.com/example/ratelimit
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest.yaml")
+	err := os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	require.NoError(t, err)
+
+	// Create policy directory with go.mod
+	policyDir := filepath.Join(tmpDir, "policies", "ratelimit")
+	err = os.MkdirAll(policyDir, 0755)
+	require.NoError(t, err)
+
+	goModContent := `module github.com/example/ratelimit
+
+go 1.21
+`
+	goModPath := filepath.Join(policyDir, "go.mod")
+	err = os.WriteFile(goModPath, []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:      "ratelimit",
+			Version:   "v2.0.0",
+			Path:      policyDir,
+			GoModPath: goModPath,
+		},
+	}
+
+	err = WriteManifestLockWithVersions(manifestPath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "v2.0.0")
+}
+
+func TestWriteManifestLockWithVersions_GomoduleNoMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create manifest with gomodule
+	manifestContent := `version: "1.0"
+policies:
+  - name: ratelimit
+    gomodule: github.com/example/ratelimit@v1.0.0
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest.yaml")
+	err := os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	require.NoError(t, err)
+
+	// Empty discovered policies - no candidates at all
+	discovered := []*types.DiscoveredPolicy{}
+
+	err = WriteManifestLockWithVersions(manifestPath, discovered)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to determine version for policy")
+}
+
+func TestWriteManifestLockWithVersions_GomoduleMultipleCandidates(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create manifest with gomodule
+	manifestContent := `version: "1.0"
+policies:
+  - name: ratelimit
+    gomodule: github.com/example/ratelimit@v2.0.0
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest.yaml")
+	err := os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	require.NoError(t, err)
+
+	// Create two policy directories with go.mod
+	v1Dir := filepath.Join(tmpDir, "policies", "ratelimit-v1")
+	v2Dir := filepath.Join(tmpDir, "policies", "ratelimit-v2")
+	err = os.MkdirAll(v1Dir, 0755)
+	require.NoError(t, err)
+	err = os.MkdirAll(v2Dir, 0755)
+	require.NoError(t, err)
+
+	goModContent := `module github.com/example/ratelimit
+
+go 1.21
+`
+	v1GoModPath := filepath.Join(v1Dir, "go.mod")
+	v2GoModPath := filepath.Join(v2Dir, "go.mod")
+	err = os.WriteFile(v1GoModPath, []byte(goModContent), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(v2GoModPath, []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	// Multiple candidates - should pick the one matching version
+	discovered := []*types.DiscoveredPolicy{
+		{Name: "ratelimit", Version: "v1.0.0", Path: v1Dir, GoModPath: v1GoModPath},
+		{Name: "ratelimit", Version: "v2.0.0", Path: v2Dir, GoModPath: v2GoModPath},
+	}
+
+	err = WriteManifestLockWithVersions(manifestPath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "v2.0.0")
+}
+
+func TestWriteManifestLockWithVersions_GomoduleVersionNormalization(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create manifest with gomodule - version without 'v' prefix
+	manifestContent := `version: "1.0"
+policies:
+  - name: ratelimit
+    gomodule: github.com/example/ratelimit@1.0.0
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest.yaml")
+	err := os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	require.NoError(t, err)
+
+	// Create policy directory with go.mod
+	policyDir := filepath.Join(tmpDir, "policies", "ratelimit")
+	err = os.MkdirAll(policyDir, 0755)
+	require.NoError(t, err)
+
+	goModContent := `module github.com/example/ratelimit
+
+go 1.21
+`
+	goModPath := filepath.Join(policyDir, "go.mod")
+	err = os.WriteFile(goModPath, []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	// Discovered version has 'v' prefix
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:      "ratelimit",
+			Version:   "v1.0.0", // Has 'v' prefix
+			Path:      policyDir,
+			GoModPath: goModPath,
+		},
+	}
+
+	err = WriteManifestLockWithVersions(manifestPath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "v1.0.0")
+}
