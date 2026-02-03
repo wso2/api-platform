@@ -193,6 +193,7 @@ version-set: ## Set gateway version and update artifacts
 	fi
 	@echo "$(VERSION)" > VERSION
 	@sed -i.bak 's/^  version: .*/  version: $(VERSION)/' build.yaml && rm -f build.yaml.bak
+	@sed -i.bak 's/^  version: .*/  version: $(VERSION)/' sample-policies/build.yaml && rm -f sample-policies/build.yaml.bak
 	@(cd .. && bash scripts/update-docker-compose.sh gateway $(VERSION))
 	@(cd .. && bash scripts/update-helm.sh gateway $(VERSION))
 	@echo "✓ Set gateway version to $(VERSION)"

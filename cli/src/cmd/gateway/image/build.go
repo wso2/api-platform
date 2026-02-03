@@ -199,6 +199,12 @@ func runUnifiedBuild() error {
 		return err
 	}
 
+	// Display resolved images used for the build
+	fmt.Println("  Resolved images:")
+	fmt.Printf("    • Builder:            %s\n", gatewayBuilder)
+	fmt.Printf("    • Gateway Controller: %s\n", gatewayControllerBaseImg)
+	fmt.Printf("    • Router:             %s\n\n", routerBaseImg)
+
 	// Step 3: Validate Manifest and Separate Policies
 	fmt.Println("[3/6] Validating manifest")
 	localPolicies, hubPolicies := policy.SeparatePolicies(manifest)

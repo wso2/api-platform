@@ -34,6 +34,9 @@ type DiscoveredPolicy struct {
 	SourceFiles      []string
 	SystemParameters map[string]interface{}
 	Definition       *policy.PolicyDefinition
+	GoModulePath     string // The actual Go module path (from go.mod or gomodule field)
+	GoModuleVersion  string // Resolved version for gomodule entries (e.g., "v0.1.0")
+	IsFilePathEntry  bool   // True if from filePath manifest entry (needs replace directive)
 }
 
 // ConditionDef represents execution conditions
