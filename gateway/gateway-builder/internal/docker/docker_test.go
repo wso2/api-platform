@@ -21,6 +21,7 @@ package docker
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -300,12 +301,12 @@ func TestDockerfileGenerator_GenerateAll_GatewayControllerFails(t *testing.T) {
 
 	hasGCError := false
 	for _, e := range result.Errors {
-		if e.Error() != "" && (e.Error() == "gateway controller generation failed" || true) {
-			// Error message check
+		if strings.Contains(e.Error(), "gateway controller generation failed") {
+			hasGCError = true
+			break
 		}
-		hasGCError = true
 	}
-	assert.True(t, hasGCError)
+	assert.True(t, hasGCError, "expected error containing 'gateway controller generation failed'")
 }
 
 // ==== Additional tests to improve coverage ====
