@@ -54,9 +54,9 @@ func validConfig() *Config {
 						DisableSslVerification: true,
 					},
 					Timeouts: upstreamTimeout{
-						RouteTimeoutInSeconds:     60,
-						MaxRouteTimeoutInSeconds:  120,
-						RouteIdleTimeoutInSeconds: 30,
+						RouteTimeoutInMs:     60000,
+						MaxRouteTimeoutInMs:  120000,
+						RouteIdleTimeoutInMs: 30000,
 					},
 				},
 				PolicyEngine: PolicyEngineConfig{
@@ -637,20 +637,20 @@ func TestConfig_ValidateTimeoutConfig(t *testing.T) {
 		wantErr      bool
 		errContains  string
 	}{
-		{name: "Valid timeouts", routeTimeout: 60, maxTimeout: 120, idleTimeout: 30, wantErr: false},
-		{name: "Zero route timeout", routeTimeout: 0, maxTimeout: 120, idleTimeout: 30, wantErr: true, errContains: "route_timeout_in_seconds must be positive"},
-		{name: "Zero max timeout", routeTimeout: 60, maxTimeout: 0, idleTimeout: 30, wantErr: true, errContains: "max_route_timeout_in_seconds must be positive"},
-		{name: "Zero idle timeout", routeTimeout: 60, maxTimeout: 120, idleTimeout: 0, wantErr: true, errContains: "route_idle_timeout_in_seconds must be positive"},
-		{name: "Route greater than max", routeTimeout: 200, maxTimeout: 100, idleTimeout: 30, wantErr: true, errContains: "cannot be greater than"},
-		{name: "Route exceeds max reasonable", routeTimeout: constants.MaxReasonableTimeoutSeconds + 1, maxTimeout: constants.MaxReasonableTimeoutSeconds + 2, idleTimeout: 30, wantErr: true, errContains: "exceeds maximum reasonable timeout"},
+		{name: "Valid timeouts", routeTimeout: 60000, maxTimeout: 120000, idleTimeout: 30000, wantErr: false},
+		{name: "Zero route timeout", routeTimeout: 0, maxTimeout: 120000, idleTimeout: 30000, wantErr: true, errContains: "route_timeout_in_milliseconds must be positive"},
+		{name: "Zero max timeout", routeTimeout: 60000, maxTimeout: 0, idleTimeout: 30000, wantErr: true, errContains: "max_route_timeout_in_milliseconds must be positive"},
+		{name: "Zero idle timeout", routeTimeout: 60000, maxTimeout: 120000, idleTimeout: 0, wantErr: true, errContains: "route_idle_timeout_in_milliseconds must be positive"},
+		{name: "Route greater than max", routeTimeout: 200000, maxTimeout: 100000, idleTimeout: 30000, wantErr: true, errContains: "cannot be greater than"},
+		{name: "Route exceeds max reasonable", routeTimeout: constants.MaxReasonableTimeoutMs + 1, maxTimeout: constants.MaxReasonableTimeoutMs + 2, idleTimeout: 30000, wantErr: true, errContains: "exceeds maximum reasonable timeout"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
-			cfg.GatewayController.Router.Upstream.Timeouts.RouteTimeoutInSeconds = tt.routeTimeout
-			cfg.GatewayController.Router.Upstream.Timeouts.MaxRouteTimeoutInSeconds = tt.maxTimeout
-			cfg.GatewayController.Router.Upstream.Timeouts.RouteIdleTimeoutInSeconds = tt.idleTimeout
+			cfg.GatewayController.Router.Upstream.Timeouts.RouteTimeoutInMs = tt.routeTimeout
+			cfg.GatewayController.Router.Upstream.Timeouts.MaxRouteTimeoutInMs = tt.maxTimeout
+			cfg.GatewayController.Router.Upstream.Timeouts.RouteIdleTimeoutInMs = tt.idleTimeout
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
