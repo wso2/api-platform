@@ -46,6 +46,38 @@ type LLMPolicy struct {
 	Paths   []LLMPolicyPath `json:"paths" yaml:"paths" binding:"required"`
 }
 
+type RateLimitingLimitConfig struct {
+	RequestCount         int      `json:"requestCount" yaml:"requestCount"`
+	RequestResetDuration int      `json:"requestResetDuration" yaml:"requestResetDuration"`
+	RequestResetUnit     string   `json:"requestResetUnit" yaml:"requestResetUnit"`
+	TokenCount           *int     `json:"tokenCount,omitempty" yaml:"tokenCount,omitempty"`
+	TokenResetDuration   *int     `json:"tokenResetDuration,omitempty" yaml:"tokenResetDuration,omitempty"`
+	TokenResetUnit       *string  `json:"tokenResetUnit,omitempty" yaml:"tokenResetUnit,omitempty"`
+	Cost                 *float64 `json:"cost,omitempty" yaml:"cost,omitempty"`
+	CostResetDuration    *int     `json:"costResetDuration,omitempty" yaml:"costResetDuration,omitempty"`
+	CostResetUnit        *string  `json:"costResetUnit,omitempty" yaml:"costResetUnit,omitempty"`
+}
+
+type RateLimitingResourceLimit struct {
+	Resource string                  `json:"resource" yaml:"resource"`
+	Limit    RateLimitingLimitConfig `json:"limit" yaml:"limit"`
+}
+
+type ResourceWiseRateLimitingConfig struct {
+	Default   RateLimitingLimitConfig     `json:"default" yaml:"default"`
+	Resources []RateLimitingResourceLimit `json:"resources" yaml:"resources"`
+}
+
+type RateLimitingScopeConfig struct {
+	Global       *RateLimitingLimitConfig        `json:"global,omitempty" yaml:"global,omitempty"`
+	ResourceWise *ResourceWiseRateLimitingConfig `json:"resourceWise,omitempty" yaml:"resourceWise,omitempty"`
+}
+
+type LLMRateLimitingConfig struct {
+	ProviderLevel *RateLimitingScopeConfig `json:"providerLevel,omitempty" yaml:"providerLevel,omitempty"`
+	ConsumerLevel *RateLimitingScopeConfig `json:"consumerLevel,omitempty" yaml:"consumerLevel,omitempty"`
+}
+
 type LLMUpstreamAuth struct {
 	Type   string `json:"type" yaml:"type" binding:"required"`
 	Header string `json:"header,omitempty" yaml:"header,omitempty"`
@@ -70,19 +102,19 @@ type LLMProviderTemplateMetadata struct {
 }
 
 type LLMProviderTemplate struct {
-	ID               string                `json:"id" yaml:"id" binding:"required"`
-	Name             string                `json:"name" yaml:"name" binding:"required"`
-	Description      string                `json:"description,omitempty" yaml:"description,omitempty"`
-	CreatedBy        string                `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	ID               string                       `json:"id" yaml:"id" binding:"required"`
+	Name             string                       `json:"name" yaml:"name" binding:"required"`
+	Description      string                       `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy        string                       `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Metadata         *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	PromptTokens     *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
-	TotalTokens      *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
-	RemainingTokens  *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
-	RequestModel     *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
-	ResponseModel    *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
-	CreatedAt        time.Time             `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	UpdatedAt        time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	PromptTokens     *ExtractionIdentifier        `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	CompletionTokens *ExtractionIdentifier        `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
+	TotalTokens      *ExtractionIdentifier        `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier        `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier        `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	ResponseModel    *ExtractionIdentifier        `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	CreatedAt        time.Time                    `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	UpdatedAt        time.Time                    `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 type LLMProviderTemplateListItem struct {
@@ -97,25 +129,26 @@ type LLMProviderTemplateListItem struct {
 type LLMProviderTemplateListResponse struct {
 	Count      int                           `json:"count" yaml:"count"`
 	List       []LLMProviderTemplateListItem `json:"list" yaml:"list"`
-	Pagination Pagination                   `json:"pagination" yaml:"pagination"`
+	Pagination Pagination                    `json:"pagination" yaml:"pagination"`
 }
 
 type LLMProvider struct {
-	ID            string           `json:"id" yaml:"id" binding:"required"`
-	Name          string           `json:"name" yaml:"name" binding:"required"`
-	Description   string           `json:"description,omitempty" yaml:"description,omitempty"`
-	CreatedBy     string           `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Version       string           `json:"version" yaml:"version" binding:"required"`
-	Context       string           `json:"context,omitempty" yaml:"context,omitempty"`
-	VHost         string           `json:"vhost,omitempty" yaml:"vhost,omitempty"`
-	Template      string           `json:"template" yaml:"template" binding:"required"`
-	Upstream      LLMUpstream      `json:"upstream" yaml:"upstream" binding:"required"`
-	OpenAPI       string           `json:"openapi,omitempty" yaml:"openapi,omitempty"`
-	AccessControl LLMAccessControl `json:"accessControl" yaml:"accessControl" binding:"required"`
-	Policies      []LLMPolicy      `json:"policies,omitempty" yaml:"policies,omitempty"`
-	Security      *SecurityConfig  `json:"security,omitempty" yaml:"security,omitempty"`
-	CreatedAt     time.Time        `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	UpdatedAt     time.Time        `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	ID            string                 `json:"id" yaml:"id" binding:"required"`
+	Name          string                 `json:"name" yaml:"name" binding:"required"`
+	Description   string                 `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy     string                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Version       string                 `json:"version" yaml:"version" binding:"required"`
+	Context       string                 `json:"context,omitempty" yaml:"context,omitempty"`
+	VHost         string                 `json:"vhost,omitempty" yaml:"vhost,omitempty"`
+	Template      string                 `json:"template" yaml:"template" binding:"required"`
+	Upstream      LLMUpstream            `json:"upstream" yaml:"upstream" binding:"required"`
+	OpenAPI       string                 `json:"openapi,omitempty" yaml:"openapi,omitempty"`
+	AccessControl LLMAccessControl       `json:"accessControl" yaml:"accessControl" binding:"required"`
+	RateLimiting  *LLMRateLimitingConfig `json:"rateLimiting,omitempty" yaml:"rateLimiting,omitempty"`
+	Policies      []LLMPolicy            `json:"policies,omitempty" yaml:"policies,omitempty"`
+	Security      *SecurityConfig        `json:"security,omitempty" yaml:"security,omitempty"`
+	CreatedAt     time.Time              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	UpdatedAt     time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 type LLMProviderListItem struct {

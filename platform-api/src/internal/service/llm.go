@@ -224,6 +224,9 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *dto.LLMProvi
 	if err := validateUpstream(req.Upstream); err != nil {
 		return nil, err
 	}
+	if err := validateRateLimitingConfig(req.RateLimiting); err != nil {
+		return nil, err
+	}
 
 	// Ensure template exists
 	tpl, err := s.templateRepo.GetByID(req.Template, orgUUID)
@@ -266,6 +269,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *dto.LLMProvi
 		UpstreamAuth:     mapUpstreamAuth(req.Upstream.Auth),
 		OpenAPISpec:      req.OpenAPI,
 		AccessControl:    mapAccessControl(&req.AccessControl),
+		RateLimiting:     mapRateLimiting(req.RateLimiting),
 		Policies:         mapPolicies(req.Policies),
 		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
@@ -349,6 +353,9 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *dto.LLMProvider
 	if err := validateUpstream(req.Upstream); err != nil {
 		return nil, err
 	}
+	if err := validateRateLimitingConfig(req.RateLimiting); err != nil {
+		return nil, err
+	}
 
 	// Validate template exists
 	tpl, err := s.templateRepo.GetByID(req.Template, orgUUID)
@@ -372,6 +379,7 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *dto.LLMProvider
 		UpstreamAuth:     mapUpstreamAuth(req.Upstream.Auth),
 		OpenAPISpec:      req.OpenAPI,
 		AccessControl:    mapAccessControl(&req.AccessControl),
+		RateLimiting:     mapRateLimiting(req.RateLimiting),
 		Policies:         mapPolicies(req.Policies),
 		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
@@ -725,6 +733,60 @@ func mapUpstreamAuth(in *dto.LLMUpstreamAuth) *model.UpstreamAuth {
 	return &model.UpstreamAuth{Type: in.Type, Header: in.Header, Value: in.Value}
 }
 
+func mapRateLimiting(in *dto.LLMRateLimitingConfig) *model.LLMRateLimitingConfig {
+	if in == nil {
+		return nil
+	}
+	return &model.LLMRateLimitingConfig{
+		ProviderLevel: mapRateLimitingScope(in.ProviderLevel),
+		ConsumerLevel: mapRateLimitingScope(in.ConsumerLevel),
+	}
+}
+
+func mapRateLimitingScope(in *dto.RateLimitingScopeConfig) *model.RateLimitingScopeConfig {
+	if in == nil {
+		return nil
+	}
+	return &model.RateLimitingScopeConfig{
+		Global:       mapRateLimitingLimit(in.Global),
+		ResourceWise: mapResourceWiseRateLimiting(in.ResourceWise),
+	}
+}
+
+func mapRateLimitingLimit(in *dto.RateLimitingLimitConfig) *model.RateLimitingLimitConfig {
+	if in == nil {
+		return nil
+	}
+	return &model.RateLimitingLimitConfig{
+		RequestCount:         in.RequestCount,
+		RequestResetDuration: in.RequestResetDuration,
+		RequestResetUnit:     in.RequestResetUnit,
+		TokenCount:           in.TokenCount,
+		TokenResetDuration:   in.TokenResetDuration,
+		TokenResetUnit:       in.TokenResetUnit,
+		Cost:                 in.Cost,
+		CostResetDuration:    in.CostResetDuration,
+		CostResetUnit:        in.CostResetUnit,
+	}
+}
+
+func mapResourceWiseRateLimiting(in *dto.ResourceWiseRateLimitingConfig) *model.ResourceWiseRateLimitingConfig {
+	if in == nil {
+		return nil
+	}
+	resources := make([]model.RateLimitingResourceLimit, 0, len(in.Resources))
+	for _, r := range in.Resources {
+		resources = append(resources, model.RateLimitingResourceLimit{
+			Resource: r.Resource,
+			Limit:    *mapRateLimitingLimit(&r.Limit),
+		})
+	}
+	return &model.ResourceWiseRateLimitingConfig{
+		Default:   *mapRateLimitingLimit(&in.Default),
+		Resources: resources,
+	}
+}
+
 func mapSecurityConfig(in *dto.SecurityConfig) *model.SecurityConfig {
 	if in == nil {
 		return nil
@@ -888,15 +950,16 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 		return nil
 	}
 	out := &dto.LLMProvider{
-		ID:          m.ID,
-		Name:        m.Name,
-		Description: m.Description,
-		CreatedBy:   m.CreatedBy,
-		Version:     m.Version,
-		Context:     m.Context,
-		VHost:       m.VHost,
-		Template:    m.Template,
-		OpenAPI:     m.OpenAPISpec,
+		ID:           m.ID,
+		Name:         m.Name,
+		Description:  m.Description,
+		CreatedBy:    m.CreatedBy,
+		Version:      m.Version,
+		Context:      m.Context,
+		VHost:        m.VHost,
+		Template:     m.Template,
+		OpenAPI:      m.OpenAPISpec,
+		RateLimiting: mapRateLimitingDTO(m.RateLimiting),
 		Upstream: dto.LLMUpstream{
 			URL: m.UpstreamURL,
 		},
@@ -930,6 +993,171 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 		}
 	}
 	return out
+}
+
+func mapRateLimitingDTO(in *model.LLMRateLimitingConfig) *dto.LLMRateLimitingConfig {
+	if in == nil {
+		return nil
+	}
+	return &dto.LLMRateLimitingConfig{
+		ProviderLevel: mapRateLimitingScopeDTO(in.ProviderLevel),
+		ConsumerLevel: mapRateLimitingScopeDTO(in.ConsumerLevel),
+	}
+}
+
+func mapRateLimitingScopeDTO(in *model.RateLimitingScopeConfig) *dto.RateLimitingScopeConfig {
+	if in == nil {
+		return nil
+	}
+	return &dto.RateLimitingScopeConfig{
+		Global:       mapRateLimitingLimitDTO(in.Global),
+		ResourceWise: mapResourceWiseRateLimitingDTO(in.ResourceWise),
+	}
+}
+
+func mapRateLimitingLimitDTO(in *model.RateLimitingLimitConfig) *dto.RateLimitingLimitConfig {
+	if in == nil {
+		return nil
+	}
+	return &dto.RateLimitingLimitConfig{
+		RequestCount:         in.RequestCount,
+		RequestResetDuration: in.RequestResetDuration,
+		RequestResetUnit:     in.RequestResetUnit,
+		TokenCount:           in.TokenCount,
+		TokenResetDuration:   in.TokenResetDuration,
+		TokenResetUnit:       in.TokenResetUnit,
+		Cost:                 in.Cost,
+		CostResetDuration:    in.CostResetDuration,
+		CostResetUnit:        in.CostResetUnit,
+	}
+}
+
+func mapResourceWiseRateLimitingDTO(in *model.ResourceWiseRateLimitingConfig) *dto.ResourceWiseRateLimitingConfig {
+	if in == nil {
+		return nil
+	}
+	resources := make([]dto.RateLimitingResourceLimit, 0, len(in.Resources))
+	for _, r := range in.Resources {
+		resources = append(resources, dto.RateLimitingResourceLimit{
+			Resource: r.Resource,
+			Limit: dto.RateLimitingLimitConfig{
+				RequestCount:         r.Limit.RequestCount,
+				RequestResetDuration: r.Limit.RequestResetDuration,
+				RequestResetUnit:     r.Limit.RequestResetUnit,
+				TokenCount:           r.Limit.TokenCount,
+				TokenResetDuration:   r.Limit.TokenResetDuration,
+				TokenResetUnit:       r.Limit.TokenResetUnit,
+				Cost:                 r.Limit.Cost,
+				CostResetDuration:    r.Limit.CostResetDuration,
+				CostResetUnit:        r.Limit.CostResetUnit,
+			},
+		})
+	}
+	return &dto.ResourceWiseRateLimitingConfig{
+		Default: dto.RateLimitingLimitConfig{
+			RequestCount:         in.Default.RequestCount,
+			RequestResetDuration: in.Default.RequestResetDuration,
+			RequestResetUnit:     in.Default.RequestResetUnit,
+			TokenCount:           in.Default.TokenCount,
+			TokenResetDuration:   in.Default.TokenResetDuration,
+			TokenResetUnit:       in.Default.TokenResetUnit,
+			Cost:                 in.Default.Cost,
+			CostResetDuration:    in.Default.CostResetDuration,
+			CostResetUnit:        in.Default.CostResetUnit,
+		},
+		Resources: resources,
+	}
+}
+
+func validateRateLimitingConfig(cfg *dto.LLMRateLimitingConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	if err := validateRateLimitingScope(cfg.ProviderLevel); err != nil {
+		return err
+	}
+	if err := validateRateLimitingScope(cfg.ConsumerLevel); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateRateLimitingScope(scope *dto.RateLimitingScopeConfig) error {
+	if scope == nil {
+		return nil
+	}
+	if (scope.Global == nil && scope.ResourceWise == nil) || (scope.Global != nil && scope.ResourceWise != nil) {
+		return constants.ErrInvalidInput
+	}
+	if scope.Global != nil {
+		return validateRateLimitingLimit(scope.Global)
+	}
+	return validateResourceWiseRateLimiting(scope.ResourceWise)
+}
+
+func validateResourceWiseRateLimiting(cfg *dto.ResourceWiseRateLimitingConfig) error {
+	if cfg == nil {
+		return constants.ErrInvalidInput
+	}
+	if err := validateRateLimitingLimit(&cfg.Default); err != nil {
+		return err
+	}
+	if len(cfg.Resources) == 0 {
+		return constants.ErrInvalidInput
+	}
+	for _, r := range cfg.Resources {
+		if err := validateRateLimitingLimit(&r.Limit); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRateLimitingLimit(cfg *dto.RateLimitingLimitConfig) error {
+	if cfg == nil {
+		return constants.ErrInvalidInput
+	}
+	if cfg.RequestCount <= 0 || cfg.RequestResetDuration <= 0 {
+		return constants.ErrInvalidInput
+	}
+	if !isValidResetUnit(cfg.RequestResetUnit) {
+		return constants.ErrInvalidInput
+	}
+	if (cfg.TokenCount == nil && cfg.Cost == nil) || (cfg.TokenCount != nil && cfg.Cost != nil) {
+		return constants.ErrInvalidInput
+	}
+	if cfg.TokenCount != nil {
+		if *cfg.TokenCount <= 0 {
+			return constants.ErrInvalidInput
+		}
+		if cfg.TokenResetDuration == nil || *cfg.TokenResetDuration <= 0 {
+			return constants.ErrInvalidInput
+		}
+		if cfg.TokenResetUnit == nil || !isValidResetUnit(*cfg.TokenResetUnit) {
+			return constants.ErrInvalidInput
+		}
+	}
+	if cfg.Cost != nil {
+		if *cfg.Cost < 0 {
+			return constants.ErrInvalidInput
+		}
+		if cfg.CostResetDuration == nil || *cfg.CostResetDuration <= 0 {
+			return constants.ErrInvalidInput
+		}
+		if cfg.CostResetUnit == nil || !isValidResetUnit(*cfg.CostResetUnit) {
+			return constants.ErrInvalidInput
+		}
+	}
+	return nil
+}
+
+func isValidResetUnit(unit string) bool {
+	switch unit {
+	case "minute", "hour", "day", "week", "month":
+		return true
+	default:
+		return false
+	}
 }
 
 func mapProxyModelToDTO(m *model.LLMProxy) *dto.LLMProxy {

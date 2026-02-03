@@ -268,6 +268,10 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	if err != nil {
 		return err
 	}
+	rateLimitingJSON, err := json.Marshal(p.RateLimiting)
+	if err != nil {
+		return err
+	}
 	var upstreamAuthJSON []byte
 	if p.UpstreamAuth != nil {
 		upstreamAuthJSON, err = json.Marshal(p.UpstreamAuth)
@@ -279,7 +283,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	query := `
 		INSERT INTO llm_providers (
 			uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
-			upstream_url, upstream_auth, openapi_spec, access_control, policies, security, status, created_at, updated_at
+			upstream_url, upstream_auth, openapi_spec, rate_limiting, access_control, policies, security, status, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -291,7 +295,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 
 	_, err = tx.Exec(query,
 		p.UUID, p.OrganizationUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Template,
-		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec,
+		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec, string(rateLimitingJSON),
 		string(accessControlJSON), policiesColumn, string(securityJSON), p.Status,
 		p.CreatedAt, p.UpdatedAt,
 	)
@@ -308,17 +312,17 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
 	row := r.db.QueryRow(`
 		SELECT uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
-			upstream_url, upstream_auth, openapi_spec, access_control, policies, security, status, created_at, updated_at
+			upstream_url, upstream_auth, openapi_spec, rate_limiting, access_control, policies, security, status, created_at, updated_at
 		FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?
 	`, providerID, orgUUID)
 
 	var p model.LLMProvider
 	var upstreamURL, openAPISpec sql.NullString
-	var upstreamAuthJSON, accessControlJSON, policiesJSON, securityJSON sql.NullString
+	var upstreamAuthJSON, rateLimitingJSON, accessControlJSON, policiesJSON, securityJSON sql.NullString
 	if err := row.Scan(
 		&p.UUID, &p.OrganizationUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Template,
-		&upstreamURL, &upstreamAuthJSON, &openAPISpec,
+		&upstreamURL, &upstreamAuthJSON, &openAPISpec, &rateLimitingJSON,
 		&accessControlJSON, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -335,6 +339,11 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	}
 	if openAPISpec.Valid {
 		p.OpenAPISpec = openAPISpec.String
+	}
+	if rateLimitingJSON.Valid && rateLimitingJSON.String != "" {
+		if err := json.Unmarshal([]byte(rateLimitingJSON.String), &p.RateLimiting); err != nil {
+			return nil, fmt.Errorf("unmarshal rateLimiting for provider %s: %w", p.ID, err)
+		}
 	}
 	policies, err := unmarshalPolicies(policiesJSON)
 	if err != nil {
@@ -359,7 +368,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
 	rows, err := r.db.Query(`
 		SELECT uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
-			upstream_url, upstream_auth, openapi_spec, access_control, policies, security, status, created_at, updated_at
+			upstream_url, upstream_auth, openapi_spec, rate_limiting, access_control, policies, security, status, created_at, updated_at
 		FROM llm_providers
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -374,10 +383,10 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 	for rows.Next() {
 		var p model.LLMProvider
 		var upstreamURL, openAPISpec sql.NullString
-		var upstreamAuthJSON, accessControlJSON, policiesJSON, securityJSON sql.NullString
+		var upstreamAuthJSON, rateLimitingJSON, accessControlJSON, policiesJSON, securityJSON sql.NullString
 		err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Template,
-			&upstreamURL, &upstreamAuthJSON, &openAPISpec,
+			&upstreamURL, &upstreamAuthJSON, &openAPISpec, &rateLimitingJSON,
 			&accessControlJSON, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
@@ -389,6 +398,9 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
+		}
+		if rateLimitingJSON.Valid && rateLimitingJSON.String != "" {
+			_ = json.Unmarshal([]byte(rateLimitingJSON.String), &p.RateLimiting)
 		}
 		policies, err := unmarshalPolicies(policiesJSON)
 		if err != nil {
@@ -429,6 +441,10 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	if err != nil {
 		return err
 	}
+	rateLimitingJSON, err := json.Marshal(p.RateLimiting)
+	if err != nil {
+		return err
+	}
 	var upstreamAuthJSON []byte
 	if p.UpstreamAuth != nil {
 		upstreamAuthJSON, err = json.Marshal(p.UpstreamAuth)
@@ -440,7 +456,7 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	query := `
 		UPDATE llm_providers
 		SET name = ?, description = ?, version = ?, context = ?, vhost = ?, template = ?,
-			upstream_url = ?, upstream_auth = ?, openapi_spec = ?, access_control = ?, policies = ?, security = ?, status = ?, updated_at = ?
+			upstream_url = ?, upstream_auth = ?, openapi_spec = ?, rate_limiting = ?, access_control = ?, policies = ?, security = ?, status = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
 	tx, err := r.db.Begin()
@@ -451,7 +467,7 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 
 	result, err := tx.Exec(query,
 		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Template,
-		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec,
+		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec, string(rateLimitingJSON),
 		string(accessControlJSON), policiesColumn, string(securityJSON), p.Status, p.UpdatedAt,
 		p.ID, p.OrganizationUUID,
 	)

@@ -378,6 +378,7 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     upstream_url TEXT NOT NULL,
     upstream_auth TEXT,
     openapi_spec TEXT,
+    rate_limiting TEXT,
     access_control TEXT,
     policies TEXT,
     security TEXT,

@@ -4581,6 +4581,148 @@ components:
           description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
           additionalProperties: true
 
+    LLMRateLimitingConfig:
+      type: object
+      description: Rate limiting configuration for an LLM provider at provider and consumer levels.
+      properties:
+        providerLevel:
+          $ref: '#/components/schemas/RateLimitingScopeConfig'
+        consumerLevel:
+          $ref: '#/components/schemas/RateLimitingScopeConfig'
+      example:
+        providerLevel:
+          global:
+            requestCount: 1500
+            tokenCount: 1000000
+            requestResetDuration: 2
+            requestResetUnit: week
+            tokenResetDuration: 1
+            tokenResetUnit: month
+        consumerLevel:
+          resourceWise:
+            default:
+              requestCount: 50
+              cost: 100
+              requestResetDuration: 2
+              requestResetUnit: week
+              costResetDuration: 1
+              costResetUnit: month
+            resources:
+              - resource: /models
+                limit:
+                  requestCount: 200
+                  tokenCount: 100000
+                  requestResetDuration: 1
+                  requestResetUnit: week
+                  tokenResetDuration: 1
+                  tokenResetUnit: month
+              - resource: /chat/completions
+                limit:
+                  requestCount: 25
+                  cost: 10
+                  requestResetDuration: 1
+                  requestResetUnit: week
+                  costResetDuration: 1
+                  costResetUnit: month
+
+    RateLimitingScopeConfig:
+      type: object
+      description: Rate limiting configuration for a scope (provider or consumer). Either global or resource-wise limits can be defined.
+      oneOf:
+        - required: [ global ]
+        - required: [ resourceWise ]
+      properties:
+        global:
+          $ref: '#/components/schemas/RateLimitingLimitConfig'
+        resourceWise:
+          $ref: '#/components/schemas/ResourceWiseRateLimitingConfig'
+
+    ResourceWiseRateLimitingConfig:
+      type: object
+      description: Resource-specific limits with a required default limit.
+      required:
+        - default
+        - resources
+      properties:
+        default:
+          $ref: '#/components/schemas/RateLimitingLimitConfig'
+        resources:
+          type: array
+          description: Explicit resource limits that override the default limit.
+          items:
+            $ref: '#/components/schemas/RateLimitingResourceLimit'
+
+    RateLimitingResourceLimit:
+      type: object
+      required:
+        - resource
+        - limit
+      properties:
+        resource:
+          type: string
+          description: Explicit resource path to apply the limit to.
+          example: /chat/completions
+        limit:
+          $ref: '#/components/schemas/RateLimitingLimitConfig'
+
+    RateLimitingLimitConfig:
+      type: object
+      description: Limit definition using request count plus either token count or cost, each with its own reset window.
+      required:
+        - requestCount
+        - requestResetDuration
+        - requestResetUnit
+      oneOf:
+        - required: [ tokenCount, tokenResetDuration, tokenResetUnit ]
+        - required: [ cost, costResetDuration, costResetUnit ]
+      properties:
+        requestCount:
+          type: integer
+          description: Maximum number of requests in the reset window.
+          example: 1500
+          minimum: 1
+        requestResetDuration:
+          type: integer
+          description: Reset duration for the request count window.
+          example: 2
+          minimum: 1
+        requestResetUnit:
+          type: string
+          description: Reset time unit for the request count window.
+          enum: [ minute, hour, day, week, month ]
+          example: week
+        tokenCount:
+          type: integer
+          description: Maximum number of tokens in the reset window.
+          example: 1000000
+          minimum: 1
+        tokenResetDuration:
+          type: integer
+          description: Reset duration for the token count window.
+          example: 1
+          minimum: 1
+        tokenResetUnit:
+          type: string
+          description: Reset time unit for the token count window.
+          enum: [ minute, hour, day, week, month ]
+          example: month
+        cost:
+          type: number
+          format: float
+          description: Maximum cost in the reset window.
+          example: 1000
+          minimum: 0
+        costResetDuration:
+          type: integer
+          description: Reset duration for the cost window.
+          example: 1
+          minimum: 1
+        costResetUnit:
+          type: string
+          description: Reset time unit for the cost window.
+          enum: [ minute, hour, day, week, month ]
+          example: month
+
     LLMProvider:
       type: object
       required:
@@ -4623,7 +4765,7 @@ components:
           pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           default: /
           minLength: 1
-          maxLength: 200
+          maxLength: 20
           example: /openai
         vhost:
           type: string
@@ -4654,6 +4796,8 @@ components:
             - $ref: "#/components/schemas/UpstreamAuth"
         accessControl:
           $ref: '#/components/schemas/LLMAccessControl'
+        rateLimiting:
+          $ref: '#/components/schemas/LLMRateLimitingConfig'
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
