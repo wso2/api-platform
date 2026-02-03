@@ -158,7 +158,7 @@ services:
     volumes:
       - ./mock-api:/api:ro
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "http://127.0.0.1:4010/health"]
+      test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:4010/health"]
       interval: 5s
       timeout: 3s
       retries: 10
