@@ -268,6 +268,75 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 			assert.Contains(t, route.RouteKey, "custom")
 		}
 	})
+
+	t.Run("API mixing major-only versions for same policy name", func(t *testing.T) {
+		// Ensure an API can reference the same policy name with different
+		// major-only versions (v1 and v2) within a single operation and that
+		// the derived configuration contains two entries with different
+		// resolved versions.
+
+		specUnion := api.APIConfiguration_Spec{}
+		err := specUnion.FromAPIConfigData(api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0.0",
+			Context:     "/test-mixed-majors",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend:8080"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: api.OperationMethodGET,
+					Path:   "/resource",
+					Policies: &[]api.Policy{
+						{
+							Name:    "MultiVersionPolicy",
+							Version: "v1", // major-only v1
+						},
+						{
+							Name:    "MultiVersionPolicy",
+							Version: "v2", // major-only v2
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		cfg := &models.StoredConfig{
+			ID:   "test-mixed-majors-id",
+			Kind: string(api.RestApi),
+			Configuration: api.APIConfiguration{
+				Kind: api.RestApi,
+				Metadata: api.Metadata{
+					Name: "test-api-mixed-majors",
+				},
+				Spec: specUnion,
+			},
+		}
+
+		result := derivePolicyFromAPIConfig(cfg, fullConfig)
+		require.NotNil(t, result)
+		require.NotEmpty(t, result.Configuration.Routes)
+
+		route := result.Configuration.Routes[0]
+		require.GreaterOrEqual(t, len(route.Policies), 2)
+
+		var versions []string
+		for _, p := range route.Policies {
+			if p.Name == "MultiVersionPolicy" {
+				versions = append(versions, p.Version)
+			}
+		}
+
+		// Expect two entries for MultiVersionPolicy with different versions.
+		require.Len(t, versions, 2, "expected two MultiVersionPolicy entries in the route")
+		assert.NotEqual(t, versions[0], versions[1], "expected resolved versions for v1 and v2 majors to differ")
+	})
 }
 
 func TestDerivePolicyFromAPIConfig_InvalidConfig(t *testing.T) {
