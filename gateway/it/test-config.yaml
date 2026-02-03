@@ -136,6 +136,10 @@ gateway_controller:
         route_timeout_in_milliseconds: 6000
         max_route_timeout_in_milliseconds: 6000
         route_idle_timeout_in_milliseconds: 300000
+
+      # Default cluster settings for API upstream clusters (e.g. connect timeout)
+      envoy_upstream_cluster:
+        connect_timeout_in_milliseconds: 10000
     tracing_service_name: router
 
 

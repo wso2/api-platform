@@ -36,18 +36,18 @@ func RegisterBackendTimeoutSteps(ctx *godog.ScenarioContext, state *TestState) {
 		return nil
 	})
 
-	ctx.Step(`^the request should have taken at least "(\d+)" seconds$`, func(expectedSecondsStr string) error {
+	ctx.Step(`^the request should have taken at least "(\d+)" seconds since "([^"]*)"$`, func(expectedSecondsStr, key string) error {
 		expectedSeconds, err := strconv.Atoi(expectedSecondsStr)
 		if err != nil {
 			return fmt.Errorf("expected seconds must be a number, got: %s", expectedSecondsStr)
 		}
-		val, ok := state.GetContextValue("request_start")
+		val, ok := state.GetContextValue(key)
 		if !ok {
 			return fmt.Errorf("no start time recorded; record the current time as \"request_start\" before sending the request")
 		}
 		start, ok := val.(time.Time)
 		if !ok {
-			return fmt.Errorf("context value \"request_start\" is not a time.Time")
+			return fmt.Errorf("no start time recorded; record the current time as %q before sending the request", key)
 		}
 		elapsed := time.Since(start)
 		minElapsed := time.Duration(expectedSeconds-elapsedTimeToleranceSeconds) * time.Second

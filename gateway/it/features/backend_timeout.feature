@@ -57,7 +57,7 @@ Feature: Backend timeout
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-api/v1.0/timeout-test"
     Then the response status code should be 504
-    And the request should have taken at least "5" seconds
+    And the request should have taken at least "5" seconds since "request_start"
     Given I authenticate using basic auth as "admin"
     When I delete the API "timeout-api-v1.0"
     Then the response should be successful
@@ -93,7 +93,7 @@ Feature: Backend timeout
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-global/v1.0/timeout-test"
     Then the response status code should be 504
-    And the request should have taken at least "6" seconds
+    And the request should have taken at least "6" seconds since "request_start"
     Given I authenticate using basic auth as "admin"
     When I delete the API "timeout-api-global-v1.0"
     Then the response should be successful

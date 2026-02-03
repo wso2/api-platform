@@ -204,23 +204,29 @@ type PostgresConfig struct {
 
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
-	AccessLogs    AccessLogsConfig   `koanf:"access_logs"`
-	ListenerPort  int                `koanf:"listener_port"`
-	HTTPSEnabled  bool               `koanf:"https_enabled"`
-	HTTPSPort     int                `koanf:"https_port"`
-	GatewayHost   string             `koanf:"gateway_host"`
+	AccessLogs         AccessLogsConfig         `koanf:"access_logs"`
+	ListenerPort       int                      `koanf:"listener_port"`
+	HTTPSEnabled       bool                     `koanf:"https_enabled"`
+	HTTPSPort          int                      `koanf:"https_port"`
+	GatewayHost        string                   `koanf:"gateway_host"`
 	Lua           RouterLuaConfig     `koanf:"lua"`
 	LuaScriptPath string             `koanf:"lua_script_path"` // Deprecated: use router.lua.request_transformation.script_path
-	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
-	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
-	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
-	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
-	VHosts        VHostsConfig       `koanf:"vhosts"`
+	Upstream           envoyUpstream            `koanf:"envoy_upstream"`
+	EnvoyUpstreamCluster EnvoyUpstreamClusterConfig `koanf:"envoy_upstream_cluster"`
+	PolicyEngine       PolicyEngineConfig       `koanf:"policy_engine"`
+	DownstreamTLS      DownstreamTLS            `koanf:"downstream_tls"`
+	EventGateway       EventGatewayConfig       `koanf:"event_gateway"`
+	VHosts             VHostsConfig             `koanf:"vhosts"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
 	// HTTPListener configuration
 	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
+}
+
+// EnvoyUpstreamClusterConfig holds default cluster-level settings for API upstream clusters (e.g. connect timeout).
+type EnvoyUpstreamClusterConfig struct {
+	ConnectTimeoutInMs uint32 `koanf:"connect_timeout_in_milliseconds"`
 }
 
 // RouterLuaConfig holds Lua related configurations.
@@ -525,6 +531,9 @@ func defaultConfig() *Config {
 						RouteIdleTimeoutInMs: 300000,
 					},
 				},
+				EnvoyUpstreamCluster: EnvoyUpstreamClusterConfig{
+					ConnectTimeoutInMs: 5000,
+				},
 				PolicyEngine: PolicyEngineConfig{
 					Enabled:           true,
 					Host:              "policy-engine",
@@ -741,6 +750,11 @@ func (c *Config) Validate() error {
 
 	// Validate timeout configuration
 	if err := c.validateTimeoutConfig(); err != nil {
+		return err
+	}
+
+	// Validate envoy upstream cluster configuration
+	if err := c.validateEnvoyUpstreamClusterConfig(); err != nil {
 		return err
 	}
 
@@ -1048,6 +1062,20 @@ func (c *Config) validateTimeoutConfig() error {
 			timeouts.RouteIdleTimeoutInMs, constants.MaxReasonableTimeoutMs)
 	}
 
+	return nil
+}
+
+// validateEnvoyUpstreamClusterConfig validates the envoy upstream cluster configuration
+func (c *Config) validateEnvoyUpstreamClusterConfig() error {
+	clusterCfg := c.GatewayController.Router.EnvoyUpstreamCluster
+	if clusterCfg.ConnectTimeoutInMs <= 0 {
+		return fmt.Errorf("router.envoy_upstream_cluster.connect_timeout_in_milliseconds must be positive, got: %d",
+			clusterCfg.ConnectTimeoutInMs)
+	}
+	if clusterCfg.ConnectTimeoutInMs > constants.MaxReasonableTimeoutMs {
+		return fmt.Errorf("router.envoy_upstream_cluster.connect_timeout_in_milliseconds (%d) exceeds maximum reasonable timeout of %d ms",
+			clusterCfg.ConnectTimeoutInMs, constants.MaxReasonableTimeoutMs)
+	}
 	return nil
 }
 

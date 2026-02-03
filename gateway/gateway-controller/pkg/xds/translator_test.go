@@ -353,6 +353,9 @@ func TestResolveUpstreamCluster_InvalidURL(t *testing.T) {
 			 Main:    config.VHostEntry{Default: "localhost"},
 			 Sandbox: config.VHostEntry{Default: "sandbox.localhost"},
 		 },
+		 EnvoyUpstreamCluster: config.EnvoyUpstreamClusterConfig{
+			 ConnectTimeoutInMs: 5000,
+		 },
 		 PolicyEngine: config.PolicyEngineConfig{
 			 Enabled: false,
 		 },
@@ -1100,7 +1103,7 @@ func TestResolveUpstreamCluster_InvalidURL(t *testing.T) {
 		 t.Run(tt.name, func(t *testing.T) {
 			 parsedURL, err := parseURL(tt.urlStr)
 			 require.NoError(t, err)
-			 cluster := translator.createCluster(tt.clusterNm, parsedURL, tt.certs)
+			 cluster := translator.createCluster(tt.clusterNm, parsedURL, tt.certs, nil)
 			 if tt.hasCluster {
 				 assert.NotNil(t, cluster)
 				 assert.Equal(t, tt.clusterNm, cluster.Name)

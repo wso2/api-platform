@@ -59,6 +59,9 @@ func validConfig() *Config {
 						RouteIdleTimeoutInMs: 30000,
 					},
 				},
+				EnvoyUpstreamCluster: EnvoyUpstreamClusterConfig{
+					ConnectTimeoutInMs: 5000,
+				},
 				PolicyEngine: PolicyEngineConfig{
 					Enabled:           false,
 					RouteCacheAction:  "DEFAULT",
@@ -1114,6 +1117,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "sqlite", cfg.GatewayController.Storage.Type)
 	assert.Equal(t, "info", cfg.GatewayController.Logging.Level)
+	assert.Equal(t, uint32(5000), cfg.GatewayController.Router.EnvoyUpstreamCluster.ConnectTimeoutInMs, "default envoy upstream cluster connect timeout should be 5s (5000 ms)")
 }
 
 func TestConfig_CaseInsensitiveAlgorithm(t *testing.T) {

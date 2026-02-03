@@ -337,7 +337,7 @@ func (t *Translator) TranslateConfigs(
 		if parsedURL.Scheme == "" {
 			parsedURL.Scheme = "http"
 		}
-		websubhubCluster := t.createCluster(constants.WEBSUBHUB_INTERNAL_CLUSTER_NAME, parsedURL, nil)
+		websubhubCluster := t.createCluster(constants.WEBSUBHUB_INTERNAL_CLUSTER_NAME, parsedURL, nil, nil)
 		clusters = append(clusters, websubhubCluster)
 		websubInternalListener, err := t.createInternalListenerForWebSubHub(false)
 		if err != nil {
@@ -471,7 +471,14 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	if err != nil {
 		return nil, nil, err
 	}
-	mainCluster := t.createCluster(mainClusterName, parsedMainURL, nil)
+
+	// Timeout for main upstream cluster
+	var mainUpstreamClusterConnectTimeout *time.Duration
+	if mainTimeout != nil {
+		mainUpstreamClusterConnectTimeout = mainTimeout.Connect
+	}
+
+	mainCluster := t.createCluster(mainClusterName, parsedMainURL, nil, mainUpstreamClusterConnectTimeout)
 	clusters = append(clusters, mainCluster)
 
 	// Create routes for each operation (default to main cluster)
@@ -516,7 +523,14 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		if err != nil {
 			return nil, nil, err
 		}
-		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil)
+
+		// Timeout for sandbox upstream cluster
+		var sbUpstreamClusterConnectTimeout *time.Duration
+		if sbTimeout != nil {
+			sbUpstreamClusterConnectTimeout = sbTimeout.Connect
+		}
+
+		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
 		clusters = append(clusters, sandboxCluster)
 
 		// Create sandbox routes for each operation
@@ -1561,12 +1575,23 @@ func (t *Translator) createCluster(
 	name string,
 	upstreamURL *url.URL,
 	upstreamCerts map[string][]byte,
+	connectTimeout *time.Duration,
 ) *cluster.Cluster {
 	endpoints, transportSocketMatch := t.processEndpoint(upstreamURL, upstreamCerts)
 
+	var effectiveConnectTimeout time.Duration
+	if connectTimeout != nil {
+		effectiveConnectTimeout = *connectTimeout
+	} else {
+		effectiveConnectTimeout = time.Duration(t.routerConfig.EnvoyUpstreamCluster.ConnectTimeoutInMs) * time.Millisecond
+		if effectiveConnectTimeout == 0 {
+			effectiveConnectTimeout = 5 * time.Second
+		}
+	}
+
 	c := &cluster.Cluster{
 		Name:                 name,
-		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ConnectTimeout:       durationpb.New(effectiveConnectTimeout),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
 			ClusterName: name,

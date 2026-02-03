@@ -1965,12 +1965,12 @@ components:
           example: 5s
         request:
           type: string
-          description: Request timeout duration (e.g., "30s", "1m", "500ms")
+          description: Request timeout duration (e.g., "30s", "500ms")
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 30s
         idle:
           type: string
-          description: Idle timeout duration for keeping connections open (e.g., "60s", "2m")
+          description: Idle timeout duration for keeping connections open (e.g., "60s", "60000ms")
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 60s
 

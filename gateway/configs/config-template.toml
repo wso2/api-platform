@@ -98,6 +98,9 @@ route_timeout_in_milliseconds = 60000
 max_route_timeout_in_milliseconds = 60000
 route_idle_timeout_in_milliseconds = 300000
 
+[gateway_controller.router.envoy_upstream_cluster]
+connect_timeout_in_milliseconds = 5000
+
 [gateway_controller.router.http_listener]
 server_header_transformation = "OVERWRITE"
 server_header_value = "WSO2 API Platform"
