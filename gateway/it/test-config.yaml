@@ -351,6 +351,25 @@ policy_configurations:
     errormessage: "Authentication failed"
     validateissuer: true
 
+  # LLM Cost-Based Rate Limiting Policy Configuration
+  llm_cost_ratelimit:
+    # Cost per N tokens (default: 1,000,000 tokens)
+    # This allows configuring costs in convenient units (e.g., per 1000 tokens)
+    cost_per_n_tokens: 1000000
+
+    # Default token costs (cost per 1,000,000 tokens as configured above)
+    # These costs are scaled by cost_scale_factor for precision in the rate limiter
+    # Example: 0.01 means $0.01 per 1M tokens = $0.00000001 per token
+    prompt_token_cost: 0.01
+    completion_token_cost: 0.02
+    total_token_cost: 0.01
+
+    # Scale factor for converting dollar amounts to internal units for precision.
+    # The underlying rate limiter uses int64 counters, so costs less than 1 would be
+    # truncated to 0 without scaling.
+    # Default: 1000000000 (nano-dollars, $1.00 = 1,000,000,000 units)
+    cost_scale_factor: 1000000000
+
   # Rate Limiting Policy Configuration
   # See documentation: docs/gateway/policies/ratelimit.md
   ratelimit_v010:

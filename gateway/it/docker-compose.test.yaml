@@ -246,6 +246,14 @@ services:
       retries: 10
       start_period: 5s
 
+  echo-backend-multi-arch:
+    container_name: it-echo-backend-multi-arch
+    image: mccutchen/go-httpbin:latest
+    ports:
+      - "9082:8080"
+    networks:
+      - it-gateway-network
+
 volumes:
   controller-data-tests:
     driver: local

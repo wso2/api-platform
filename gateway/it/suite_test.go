@@ -111,6 +111,8 @@ func TestFeatures(t *testing.T) {
 				"features/policy-engine-admin.feature",
 				"features/cel-conditions.feature",
 				"features/analytics-basic.feature",
+				"features/token-based-ratelimit.feature",
+				// "features/llm-cost-based-ratelimit.feature",
 			},
 			TestingT: t,
 		},
