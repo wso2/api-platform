@@ -131,11 +131,11 @@ gateway_controller:
         verify_host_name: true
         disable_ssl_verification: false
 
-      # Timeout configurations for upstream connections
+      # Timeout configurations for upstream connections (milliseconds; 6000 = 6s for fast backend_timeout it scenario global-default)
       timeouts:
-        route_timeout_in_seconds: 60
-        max_route_timeout_in_seconds: 60
-        route_idle_timeout_in_seconds: 300
+        route_timeout_in_milliseconds: 6000
+        max_route_timeout_in_milliseconds: 6000
+        route_idle_timeout_in_milliseconds: 300000
     tracing_service_name: router
 
 

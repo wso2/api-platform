@@ -554,6 +554,7 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 		}
 
 		// Extract URL from the first upstream target in the definition
+		// TODO: Support multiple upstream targets
 		if len(definition.Upstreams) == 0 || len(definition.Upstreams[0].Urls) == 0 {
 			return "", nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", refName)
 		}
@@ -1372,14 +1373,14 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if timeoutCfg != nil && timeoutCfg.Request != nil {
 		requestTimeout = *timeoutCfg.Request
 	} else {
-		requestTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInSeconds) * time.Second
+		requestTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInMs) * time.Millisecond
 	}
 
 	var idleTimeout time.Duration
 	if timeoutCfg != nil && timeoutCfg.Idle != nil {
 		idleTimeout = *timeoutCfg.Idle
 	} else {
-		idleTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInSeconds) * time.Second
+		idleTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInMs) * time.Millisecond
 	}
 
 	routeAction := &route.Route_Route{
@@ -2540,6 +2541,10 @@ func parseTimeout(timeoutStr *string) (*time.Duration, error) {
 	duration, err := time.ParseDuration(strings.TrimSpace(*timeoutStr))
 	if err != nil {
 		return nil, fmt.Errorf("invalid timeout format: %w", err)
+	}
+
+	if duration <= 0 {
+		return nil, fmt.Errorf("timeout must be positive, got: %v", duration)
 	}
 
 	return &duration, nil

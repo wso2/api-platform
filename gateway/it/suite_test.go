@@ -271,6 +271,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterMetricsSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
+		RegisterBackendTimeoutSteps(ctx, testState)
 		RegisterMCPSteps(ctx, testState, httpSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)

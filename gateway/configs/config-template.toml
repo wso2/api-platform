@@ -94,9 +94,9 @@ verify_host_name = true
 disable_ssl_verification = false
 
 [gateway_controller.router.envoy_upstream.timeouts]
-route_timeout_in_seconds = 60
-max_route_timeout_in_seconds = 60
-route_idle_timeout_in_seconds = 300
+route_timeout_in_milliseconds = 60000
+max_route_timeout_in_milliseconds = 60000
+route_idle_timeout_in_milliseconds = 300000
 
 [gateway_controller.router.http_listener]
 server_header_transformation = "OVERWRITE"

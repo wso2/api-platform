@@ -39,7 +39,7 @@ Feature: Backend timeout
         upstreamDefinitions:
           - name: my-timeout-upstream
             timeout:
-              request: 2s
+              request: 5s
               idle: 5s
             upstreams:
               - urls:
@@ -54,13 +54,15 @@ Feature: Backend timeout
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for 2 seconds
+    And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-api/v1.0/timeout-test"
-    Then the response should be a server error
+    Then the response status code should be 504
+    And the request should have taken at least "5" seconds
     Given I authenticate using basic auth as "admin"
     When I delete the API "timeout-api-v1.0"
     Then the response should be successful
 
+  # Global-default scenario: route timeout comes from it config (5s); elapsed-time assertion verifies configured global timeout.
   Scenario: RestApi without upstream timeout uses global defaults
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
@@ -88,9 +90,10 @@ Feature: Backend timeout
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for 2 seconds
+    And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-global/v1.0/timeout-test"
-    Then the response should be a server error
+    Then the response status code should be 504
+    And the request should have taken at least "6" seconds
     Given I authenticate using basic auth as "admin"
     When I delete the API "timeout-api-global-v1.0"
     Then the response should be successful

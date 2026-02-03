@@ -270,11 +270,11 @@ type upstreamTLS struct {
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
 }
 
-// upstreamTimeout holds envoy upstream timeout related configurations
+// upstreamTimeout holds envoy upstream timeout related configurations (values in milliseconds)
 type upstreamTimeout struct {
-	RouteTimeoutInSeconds     uint32 `koanf:"route_timeout_in_seconds"`
-	MaxRouteTimeoutInSeconds  uint32 `koanf:"max_route_timeout_in_seconds"`
-	RouteIdleTimeoutInSeconds uint32 `koanf:"route_idle_timeout_in_seconds"`
+	RouteTimeoutInMs     uint32 `koanf:"route_timeout_in_milliseconds"`
+	MaxRouteTimeoutInMs  uint32 `koanf:"max_route_timeout_in_milliseconds"`
+	RouteIdleTimeoutInMs uint32 `koanf:"route_idle_timeout_in_milliseconds"`
 }
 
 // VHostsConfig for vhosts configuration
@@ -520,9 +520,9 @@ func defaultConfig() *Config {
 						DisableSslVerification: false,
 					},
 					Timeouts: upstreamTimeout{
-						RouteTimeoutInSeconds:     60,
-						MaxRouteTimeoutInSeconds:  60,
-						RouteIdleTimeoutInSeconds: 300,
+						RouteTimeoutInMs:     60000,
+						MaxRouteTimeoutInMs:  60000,
+						RouteIdleTimeoutInMs: 300000,
 					},
 				},
 				PolicyEngine: PolicyEngineConfig{
@@ -1009,43 +1009,43 @@ func (c *Config) validateTimeoutConfig() error {
 	timeouts := c.GatewayController.Router.Upstream.Timeouts
 
 	// Validate route timeout
-	if timeouts.RouteTimeoutInSeconds <= 0 {
-		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_seconds must be positive, got: %d",
-			timeouts.RouteTimeoutInSeconds)
+	if timeouts.RouteTimeoutInMs <= 0 {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_milliseconds must be positive, got: %d",
+			timeouts.RouteTimeoutInMs)
 	}
 
 	// Validate max route timeout
-	if timeouts.MaxRouteTimeoutInSeconds <= 0 {
-		return fmt.Errorf("router.envoy_upstream.timeouts.max_route_timeout_in_seconds must be positive, got: %d",
-			timeouts.MaxRouteTimeoutInSeconds)
+	if timeouts.MaxRouteTimeoutInMs <= 0 {
+		return fmt.Errorf("router.envoy_upstream.timeouts.max_route_timeout_in_milliseconds must be positive, got: %d",
+			timeouts.MaxRouteTimeoutInMs)
 	}
 
 	// Validate idle timeout
-	if timeouts.RouteIdleTimeoutInSeconds <= 0 {
-		return fmt.Errorf("router.envoy_upstream.timeouts.route_idle_timeout_in_seconds must be positive, got: %d",
-			timeouts.RouteIdleTimeoutInSeconds)
+	if timeouts.RouteIdleTimeoutInMs <= 0 {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_idle_timeout_in_milliseconds must be positive, got: %d",
+			timeouts.RouteIdleTimeoutInMs)
 	}
 
 	// Validate that route timeout is not greater than max route timeout
-	if timeouts.RouteTimeoutInSeconds > timeouts.MaxRouteTimeoutInSeconds {
-		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_seconds (%d) cannot be greater than max_route_timeout_in_seconds (%d)",
-			timeouts.RouteTimeoutInSeconds, timeouts.MaxRouteTimeoutInSeconds)
+	if timeouts.RouteTimeoutInMs > timeouts.MaxRouteTimeoutInMs {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_milliseconds (%d) cannot be greater than max_route_timeout_in_milliseconds (%d)",
+			timeouts.RouteTimeoutInMs, timeouts.MaxRouteTimeoutInMs)
 	}
 
 	// Validate reasonable timeout ranges (prevent extremely long timeouts)
-	if timeouts.RouteTimeoutInSeconds > constants.MaxReasonableTimeoutSeconds {
-		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_seconds (%d) exceeds maximum reasonable timeout of %d seconds",
-			timeouts.RouteTimeoutInSeconds, constants.MaxReasonableTimeoutSeconds)
+	if timeouts.RouteTimeoutInMs > constants.MaxReasonableTimeoutMs {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_milliseconds (%d) exceeds maximum reasonable timeout of %d ms",
+			timeouts.RouteTimeoutInMs, constants.MaxReasonableTimeoutMs)
 	}
 
-	if timeouts.MaxRouteTimeoutInSeconds > constants.MaxReasonableTimeoutSeconds {
-		return fmt.Errorf("router.envoy_upstream.timeouts.max_route_timeout_in_seconds (%d) exceeds maximum reasonable timeout of %d seconds",
-			timeouts.MaxRouteTimeoutInSeconds, constants.MaxReasonableTimeoutSeconds)
+	if timeouts.MaxRouteTimeoutInMs > constants.MaxReasonableTimeoutMs {
+		return fmt.Errorf("router.envoy_upstream.timeouts.max_route_timeout_in_milliseconds (%d) exceeds maximum reasonable timeout of %d ms",
+			timeouts.MaxRouteTimeoutInMs, constants.MaxReasonableTimeoutMs)
 	}
 
-	if timeouts.RouteIdleTimeoutInSeconds > constants.MaxReasonableTimeoutSeconds {
-		return fmt.Errorf("router.envoy_upstream.timeouts.route_idle_timeout_in_seconds (%d) exceeds maximum reasonable timeout of %d seconds",
-			timeouts.RouteIdleTimeoutInSeconds, constants.MaxReasonableTimeoutSeconds)
+	if timeouts.RouteIdleTimeoutInMs > constants.MaxReasonableTimeoutMs {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_idle_timeout_in_milliseconds (%d) exceeds maximum reasonable timeout of %d ms",
+			timeouts.RouteIdleTimeoutInMs, constants.MaxReasonableTimeoutMs)
 	}
 
 	return nil

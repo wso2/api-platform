@@ -268,6 +268,7 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 				Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].name", i),
 				Message: fmt.Sprintf("Duplicate upstream definition name '%s'", def.Name),
 			})
+			continue
 		}
 		namesSeen[def.Name] = true
 

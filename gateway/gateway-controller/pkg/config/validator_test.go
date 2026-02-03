@@ -720,6 +720,29 @@ func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
 	assert.Contains(t, errors[0].Message, "must use http or https scheme")
 }
 
+func TestValidateUpstreamDefinitions_InvalidURL_MissingHost(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls[0]", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "URL must include a host")
+}
+
 func TestValidateUpstreamDefinitions_InvalidWeight(t *testing.T) {
 	validator := NewAPIValidator()
 
