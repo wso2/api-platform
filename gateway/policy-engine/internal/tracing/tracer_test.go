@@ -20,6 +20,7 @@ package tracing
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -29,8 +30,56 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
+
+// =============================================================================
+// Test OTLP Server
+// =============================================================================
+
+// testOTLPServer is a minimal in-memory OTLP trace collector for testing
+type testOTLPServer struct {
+	coltracepb.UnimplementedTraceServiceServer
+	server   *grpc.Server
+	listener net.Listener
+	addr     string
+}
+
+// Export implements the OTLP trace service Export method
+func (s *testOTLPServer) Export(ctx context.Context, req *coltracepb.ExportTraceServiceRequest) (*coltracepb.ExportTraceServiceResponse, error) {
+	return &coltracepb.ExportTraceServiceResponse{}, nil
+}
+
+// startTestOTLPServer starts a test OTLP server on a random port
+func startTestOTLPServer(t *testing.T) *testOTLPServer {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	server := grpc.NewServer()
+	testServer := &testOTLPServer{
+		server:   server,
+		listener: listener,
+		addr:     listener.Addr().String(),
+	}
+
+	coltracepb.RegisterTraceServiceServer(server, testServer)
+
+	go func() {
+		_ = server.Serve(listener)
+	}()
+
+	return testServer
+}
+
+// stop stops the test OTLP server
+func (s *testOTLPServer) stop() {
+	s.server.Stop()
+	s.listener.Close()
+}
 
 // setupPropagator sets up the W3C Trace Context propagator for tests
 func setupPropagator() {
@@ -349,5 +398,423 @@ func TestInitTracerConfig_CustomServiceVersion(t *testing.T) {
 
 	shutdown, err := InitTracer(cfg)
 	require.NoError(t, err)
+	defer shutdown()
+}
+
+// =============================================================================
+// InitTracer Enabled Path Tests (with test OTLP server)
+// =============================================================================
+
+func TestInitTracer_EnabledWithTestServer(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+		PolicyEngine: config.PolicyEngine{
+			TracingServiceName: "test-policy-engine",
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+
+	// Call shutdown to clean up
+	shutdown()
+}
+
+func TestInitTracer_EnabledInsecureConnection(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true, // Test insecure mode
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_DefaultEndpointFallback(t *testing.T) {
+	// When endpoint is empty, it should default to "otel-collector:4317"
+	// This test verifies the fallback code path runs, though connection will fail
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           "", // Empty - should use default
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
+
+	// This will attempt to connect to the default endpoint which won't exist
+	// but the exporter creation should still succeed (lazy connection)
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_EmptyServiceNameFallback(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+		PolicyEngine: config.PolicyEngine{
+			TracingServiceName: "", // Empty - should default to "policy-engine"
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_EmptyServiceVersionFallback(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "", // Empty - should default to "1.0.0"
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_DefaultBatchTimeoutFallback(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       0, // Zero - should default to 1 second
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_NegativeBatchTimeoutFallback(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       -5 * time.Second, // Negative - should default to 1 second
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_DefaultMaxBatchFallback(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 0, // Zero - should default to 512
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_NegativeMaxBatchFallback(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: -100, // Negative - should default to 512
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_SamplingRateAlwaysSample(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0, // >= 1.0 should use AlwaysSample
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_SamplingRateAboveOne(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.5, // > 1.0 should still use AlwaysSample
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_SamplingRateRatioBased(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       0.5, // < 1.0 should use TraceIDRatioBased
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_SamplingRateZeroDefaultsToOne(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       0.0, // Zero - should default to 1.0 (AlwaysSample)
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_SamplingRateNegativeDefaultsToOne(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       -0.5, // Negative - should default to 1.0 (AlwaysSample)
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_SamplingRateSmallFraction(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       0.01, // Very small - should use TraceIDRatioBased
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_ShutdownMultipleTimes(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+
+	// Should be able to call shutdown multiple times without panic
+	shutdown()
+	shutdown()
+}
+
+func TestInitTracer_AllDefaultFallbacks(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	// Test with all values that trigger fallbacks
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "",  // Empty - fallback to "1.0.0"
+			BatchTimeout:       0,   // Zero - fallback to 1s
+			MaxExportBatchSize: 0,   // Zero - fallback to 512
+			SamplingRate:       0.0, // Zero - fallback to 1.0
+		},
+		PolicyEngine: config.PolicyEngine{
+			TracingServiceName: "", // Empty - fallback to "policy-engine"
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	defer shutdown()
+}
+
+func TestInitTracer_SecureConnectionWithoutCerts(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	// Test with Insecure=false (secure mode) - exporter creation should succeed
+	// but connection will fail at runtime (which is fine for unit test)
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           false, // Secure mode
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
 	defer shutdown()
 }
