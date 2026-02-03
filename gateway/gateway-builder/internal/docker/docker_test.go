@@ -307,3 +307,128 @@ func TestDockerfileGenerator_GenerateAll_GatewayControllerFails(t *testing.T) {
 	}
 	assert.True(t, hasGCError)
 }
+
+// ==== Additional tests to improve coverage ====
+
+func TestPolicyEngineGenerator_Generate_DirectoryCreationSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create fake binary
+	binPath := filepath.Join(tmpDir, "policy-engine-bin")
+	err := os.WriteFile(binPath, []byte("#!/bin/bash\necho hello"), 0644)
+	require.NoError(t, err)
+
+	// Use nested directory to exercise directory creation
+	outputDir := filepath.Join(tmpDir, "deep", "nested", "output")
+
+	gen := NewPolicyEngineGenerator(outputDir, binPath, "v1.0.0")
+
+	dockerfilePath, err := gen.Generate()
+
+	require.NoError(t, err)
+	assert.FileExists(t, dockerfilePath)
+}
+
+func TestGatewayControllerGenerator_Generate_EmptyPolicies(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// No policies - should still create Dockerfile
+	gen := NewGatewayControllerGenerator(outputDir, "base:image", nil, "v1.0.0")
+
+	dockerfilePath, err := gen.Generate()
+
+	require.NoError(t, err)
+	assert.FileExists(t, dockerfilePath)
+
+	// Verify Dockerfile contains base image
+	content, err := os.ReadFile(dockerfilePath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "base:image")
+}
+
+func TestGatewayControllerGenerator_Generate_MultiplePolicies(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create multiple policy directories with policy.yaml
+	policy1Dir := filepath.Join(tmpDir, "policies", "ratelimit")
+	policy2Dir := filepath.Join(tmpDir, "policies", "jwt-auth")
+	err := os.MkdirAll(policy1Dir, 0755)
+	require.NoError(t, err)
+	err = os.MkdirAll(policy2Dir, 0755)
+	require.NoError(t, err)
+
+	policy1YAML := filepath.Join(policy1Dir, "policy.yaml")
+	policy2YAML := filepath.Join(policy2Dir, "policy.yaml")
+	err = os.WriteFile(policy1YAML, []byte("name: ratelimit\nversion: v1.0.0"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(policy2YAML, []byte("name: jwt-auth\nversion: v0.1.0"), 0644)
+	require.NoError(t, err)
+
+	outputDir := filepath.Join(tmpDir, "output")
+
+	policies := []*types.DiscoveredPolicy{
+		{Name: "ratelimit", Version: "v1.0.0", YAMLPath: policy1YAML},
+		{Name: "jwt-auth", Version: "v0.1.0", YAMLPath: policy2YAML},
+	}
+
+	gen := NewGatewayControllerGenerator(outputDir, "base:image", policies, "v1.0.0")
+
+	dockerfilePath, err := gen.Generate()
+
+	require.NoError(t, err)
+	assert.FileExists(t, dockerfilePath)
+
+	// Verify both policy files were copied
+	copiedPolicy1 := filepath.Join(outputDir, "gateway-controller", "policies", "ratelimit-v1.0.0.yaml")
+	copiedPolicy2 := filepath.Join(outputDir, "gateway-controller", "policies", "jwt-auth-v0.1.0.yaml")
+	assert.FileExists(t, copiedPolicy1)
+	assert.FileExists(t, copiedPolicy2)
+}
+
+func TestRouterGenerator_Generate_NestedDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Nested output directory
+	outputDir := filepath.Join(tmpDir, "deep", "nested", "output")
+
+	gen := NewRouterGenerator(outputDir, "envoy:latest", "v2.0.0")
+
+	dockerfilePath, err := gen.Generate()
+
+	require.NoError(t, err)
+	assert.FileExists(t, dockerfilePath)
+
+	content, err := os.ReadFile(dockerfilePath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "envoy:latest")
+	assert.Contains(t, string(content), "v2.0.0")
+}
+
+func TestDockerfileGenerator_GenerateAll_AllSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create fake binary
+	binPath := filepath.Join(tmpDir, "policy-engine-bin")
+	err := os.WriteFile(binPath, []byte("#!/bin/bash\necho hello"), 0644)
+	require.NoError(t, err)
+
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// No policies - simplest success case
+	gen := &DockerfileGenerator{
+		PolicyEngineBin:            binPath,
+		Policies:                   nil,
+		OutputDir:                  outputDir,
+		GatewayControllerBaseImage: "gc:base",
+		RouterBaseImage:            "router:base",
+		BuilderVersion:             "v1.0.0",
+	}
+
+	result, err := gen.GenerateAll()
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Empty(t, result.Errors)
+	assert.Equal(t, outputDir, result.OutputDir)
+	assert.Equal(t, binPath, result.PolicyEngineBin)
+}
