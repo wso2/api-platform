@@ -19,11 +19,14 @@
 package kernel
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 // =============================================================================
@@ -545,4 +548,411 @@ func TestBuildAnalyticsStruct_MultipleTypes(t *testing.T) {
 	assert.Equal(t, float64(42), result.Fields["number"].GetNumberValue())
 	assert.InDelta(t, 3.14, result.Fields["float"].GetNumberValue(), 0.001)
 	assert.True(t, result.Fields["boolean"].GetBoolValue())
+}
+
+// =============================================================================
+// buildAnalyticsStruct with ExecutionContext Tests
+// =============================================================================
+
+func TestBuildAnalyticsStruct_WithExecutionContext(t *testing.T) {
+	// Create a mock execution context with SharedContext
+	execCtx := &PolicyExecutionContext{
+		requestContext: &policy.RequestContext{
+			SharedContext: &policy.SharedContext{
+				APIId:         "api-123",
+				APIName:       "PetStore",
+				APIVersion:    "v1.0.0",
+				APIContext:    "/petstore",
+				OperationPath: "/pets/{id}",
+				APIKind:       "REST",
+				ProjectID:     "proj-456",
+			},
+		},
+	}
+
+	data := map[string]any{
+		"customKey": "customValue",
+	}
+
+	result, err := buildAnalyticsStruct(data, execCtx)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Check custom data is included
+	assert.Equal(t, "customValue", result.Fields["customKey"].GetStringValue())
+
+	// Check system metadata from SharedContext is included
+	assert.Equal(t, "api-123", result.Fields[APIIDKey].GetStringValue())
+	assert.Equal(t, "PetStore", result.Fields[APINameKey].GetStringValue())
+	assert.Equal(t, "v1.0.0", result.Fields[APIVersionKey].GetStringValue())
+	assert.Equal(t, "/petstore", result.Fields[APIContextKey].GetStringValue())
+	assert.Equal(t, "/pets/{id}", result.Fields[OperationPathKey].GetStringValue())
+	assert.Equal(t, "REST", result.Fields[APIKindKey].GetStringValue())
+	assert.Equal(t, "proj-456", result.Fields[ProjectIDKey].GetStringValue())
+}
+
+func TestBuildAnalyticsStruct_WithPartialSharedContext(t *testing.T) {
+	// Create execution context with only some fields populated
+	execCtx := &PolicyExecutionContext{
+		requestContext: &policy.RequestContext{
+			SharedContext: &policy.SharedContext{
+				APIName:    "TestAPI",
+				APIVersion: "v2.0",
+				// Other fields empty
+			},
+		},
+	}
+
+	data := map[string]any{}
+
+	result, err := buildAnalyticsStruct(data, execCtx)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Only populated fields should be present
+	assert.Equal(t, "TestAPI", result.Fields[APINameKey].GetStringValue())
+	assert.Equal(t, "v2.0", result.Fields[APIVersionKey].GetStringValue())
+
+	// Empty fields should not be present
+	_, hasAPIId := result.Fields[APIIDKey]
+	assert.False(t, hasAPIId)
+}
+
+func TestBuildAnalyticsStruct_WithNilSharedContext(t *testing.T) {
+	execCtx := &PolicyExecutionContext{
+		requestContext: &policy.RequestContext{
+			SharedContext: nil,
+		},
+	}
+
+	data := map[string]any{
+		"key": "value",
+	}
+
+	result, err := buildAnalyticsStruct(data, execCtx)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Len(t, result.Fields, 1)
+	assert.Equal(t, "value", result.Fields["key"].GetStringValue())
+}
+
+func TestBuildAnalyticsStruct_WithNilRequestContext(t *testing.T) {
+	execCtx := &PolicyExecutionContext{
+		requestContext: nil,
+	}
+
+	data := map[string]any{
+		"key": "value",
+	}
+
+	result, err := buildAnalyticsStruct(data, execCtx)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Len(t, result.Fields, 1)
+}
+
+// =============================================================================
+// convertToStructValue Error Path Tests
+// =============================================================================
+
+// unmarshallableType is a type that cannot be marshaled to JSON
+type unmarshallableType struct {
+	Ch chan int // channels cannot be marshaled
+}
+
+func TestConvertToStructValue_UnmarshallableType(t *testing.T) {
+	// Create a value that cannot be converted directly or marshaled to JSON
+	val := unmarshallableType{Ch: make(chan int)}
+
+	_, err := convertToStructValue(val)
+
+	// Should return an error because the type cannot be marshaled
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to marshal value to JSON")
+}
+
+func TestConvertToStructValue_FunctionType(t *testing.T) {
+	// Functions cannot be marshaled to JSON
+	fn := func() {}
+
+	_, err := convertToStructValue(fn)
+
+	assert.Error(t, err)
+}
+
+// =============================================================================
+// extractMetadataFromRouteMetadata Additional Tests
+// =============================================================================
+
+func TestExtractMetadataFromRouteMetadata_WithProjectID(t *testing.T) {
+	routeMeta := RouteMetadata{
+		APIName:   "TestAPI",
+		ProjectID: "project-123",
+	}
+
+	result := extractMetadataFromRouteMetadata(routeMeta)
+
+	assert.Equal(t, "TestAPI", result[APINameKey])
+	assert.Equal(t, "project-123", result[ProjectIDKey])
+}
+
+// =============================================================================
+// ConfigLoader Creation Tests
+// =============================================================================
+
+func TestNewConfigLoader(t *testing.T) {
+	// Create a minimal kernel for testing
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+
+	loader := NewConfigLoader(kernel, reg)
+
+	require.NotNil(t, loader)
+}
+
+func TestLoadFromFile_FileNotFound(t *testing.T) {
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err := loader.LoadFromFile("/nonexistent/path/config.yaml")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read config file")
+}
+
+func TestLoadFromFile_InvalidYAML(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "invalid.yaml")
+
+	// Write invalid YAML that will fail to unmarshal into []policyenginev1.PolicyChain
+	invalidYaml := `
+this is not valid yaml as a list
+  - broken structure
+    missing: proper formatting
+  invalid: [unclosed bracket
+`
+	err := os.WriteFile(configPath, []byte(invalidYaml), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse config file")
+}
+
+func TestLoadFromFile_EmptyFile(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "empty.yaml")
+
+	err := os.WriteFile(configPath, []byte(""), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	// Empty file should be parsed successfully with no routes to add
+	assert.NoError(t, err)
+}
+
+func TestLoadFromFile_EmptyList(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "empty-list.yaml")
+
+	// Empty list
+	err := os.WriteFile(configPath, []byte("[]"), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	assert.NoError(t, err)
+}
+
+func TestLoadFromFile_ValidationError_EmptyRouteKey(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "invalid-route-key.yaml")
+
+	// Valid YAML but empty route_key should fail validation
+	yamlContent := `
+- route_key: ""
+  policies: []
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "route_key is required")
+}
+
+func TestLoadFromFile_ValidationError_EmptyPolicyName(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "empty-policy-name.yaml")
+
+	// Valid route_key but policy with empty name
+	yamlContent := `
+- route_key: "test-route"
+  policies:
+    - name: ""
+      version: "v1.0.0"
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "name is required")
+}
+
+func TestLoadFromFile_ValidationError_EmptyPolicyVersion(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "empty-policy-version.yaml")
+
+	// Valid route_key but policy with empty version
+	yamlContent := `
+- route_key: "test-route"
+  policies:
+    - name: "test-policy"
+      version: ""
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "version is required")
+}
+
+func TestLoadFromFile_ValidationError_PolicyNotInRegistry(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "unknown-policy.yaml")
+
+	// Valid config but policy not registered
+	yamlContent := `
+- route_key: "test-route"
+  policies:
+    - name: "unknown-policy"
+      version: "v1.0.0"
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown-policy")
+}
+
+func TestLoadFromFile_ValidationError_PolicyDefinitionExistsButNoFactory(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "no-factory.yaml")
+
+	// Valid config with policy name and version
+	yamlContent := `
+- route_key: "test-route"
+  policies:
+    - name: "test-policy"
+      version: "v1.0.0"
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	kernel := &Kernel{
+		Routes: make(map[string]*registry.PolicyChain),
+	}
+	// Register definition but NOT factory
+	reg := &registry.PolicyRegistry{
+		Definitions: map[string]*policy.PolicyDefinition{
+			"test-policy:v1.0.0": {
+				Name:    "test-policy",
+				Version: "v1.0.0",
+			},
+		},
+		Factories: make(map[string]policy.PolicyFactory), // No factory registered
+	}
+	loader := NewConfigLoader(kernel, reg)
+
+	err = loader.LoadFromFile(configPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "factory not found")
 }
