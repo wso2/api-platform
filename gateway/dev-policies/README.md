@@ -12,7 +12,7 @@ unless explicitly listed in `gateway/build.yaml`.
    - A `.go` file implementing `policy.Policy`
    - `policy-definition.yaml` – the policy's parameter schema
 
-2. Copy the `policy-definition.yaml` to the default policies directory:
+2. If you are working on a new policy, copy the `policy-definition.yaml` to the default policies directory:
    ```bash
    cp dev-policies/my-policy/policy-definition.yaml \
       gateway-controller/default-policies/my-policy.yaml
