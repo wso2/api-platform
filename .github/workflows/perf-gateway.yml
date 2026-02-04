@@ -73,7 +73,7 @@ jobs:
       - name: Debug netty port
         run: |
           docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-          docker compose -f gateway/docker-compose-perf.yaml port netty-backend 8085 || true
+          docker compose -f gateway/docker-compose-perf.yaml port netty 8085 || true
           curl -v http://127.0.0.1:8085/ || true
 
       - name: Create 50 APIs + collect docker stats CSV
@@ -233,7 +233,7 @@ jobs:
             router_memory_vs_api_count.png
             controller_memory_vs_api_count.png
             policy_memory_vs_api_count.png
-            path: tps_over_time.png
+            tps_over_time.png
 
 
       - name: Upload artifacts (CSV + JTL + logs)
