@@ -1709,6 +1709,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			g.name,
 			g.display_name,
 			g.description,
+			g.properties,
 			g.vhost,
 			g.is_critical,
 			g.gateway_functionality_type as functionality_type,
@@ -1736,6 +1737,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 	var gateways []*model.APIGatewayWithDetails
 	for rows.Next() {
 		gateway := &model.APIGatewayWithDetails{}
+		var propertiesJSON string
 		var deployedAt sql.NullTime
 		var deploymentId sql.NullString
 
@@ -1745,6 +1747,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&gateway.Name,
 			&gateway.DisplayName,
 			&gateway.Description,
+			&propertiesJSON,
 			&gateway.Vhost,
 			&gateway.IsCritical,
 			&gateway.FunctionalityType,
@@ -1759,6 +1762,12 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		if propertiesJSON != "" && propertiesJSON != "{}" {
+			if err := json.Unmarshal([]byte(propertiesJSON), &gateway.Properties); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal gateway properties: %w", err)
+			}
 		}
 
 		if deploymentId.Valid {
