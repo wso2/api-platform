@@ -2,8 +2,8 @@ name: Gateway Perf (Create 50 APIs + TPS)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 20 * * *"   # daily 20:00 UTC (adjust)
+  # schedule:
+    # - cron: "0 20 * * *"   # daily 20:00 UTC (adjust)
 
 jobs:
   perf:
