@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -296,6 +296,104 @@ func TestRemoveQueryParametersFromPath_EmptyPath(t *testing.T) {
 }
 
 // =============================================================================
-// AddQueryParametersToPath Additional Tests
+// AddQueryParametersToPath URL Parsing Failure Fallback Tests
 // =============================================================================
+
+func TestAddQueryParametersToPath_InvalidURLFallback_NoExistingQuery(t *testing.T) {
+	// Use a control character in the URL to make url.Parse fail
+	path := "http://example.com\x00/path"
+	params := map[string][]string{
+		"key": {"value"},
+	}
+
+	result := AddQueryParametersToPath(path, params)
+
+	// Should fallback to simple append with "?"
+	assert.Contains(t, result, "?key=value")
+}
+
+func TestAddQueryParametersToPath_InvalidURLFallback_WithExistingQuery(t *testing.T) {
+	// Use a control character in the URL with existing "?" to make url.Parse fail
+	path := "http://example.com\x00/path?existing=param"
+	params := map[string][]string{
+		"key": {"value"},
+	}
+
+	result := AddQueryParametersToPath(path, params)
+
+	// Should fallback to simple append with "&" since "?" already exists
+	assert.Contains(t, result, "&key=value")
+	assert.Contains(t, result, "?existing=param")
+}
+
+func TestAddQueryParametersToPath_InvalidURLFallback_MultipleParams(t *testing.T) {
+	// Use invalid URL escape to make url.Parse fail
+	path := "%zzinvalid/path"
+	params := map[string][]string{
+		"a": {"1"},
+		"b": {"2"},
+	}
+
+	result := AddQueryParametersToPath(path, params)
+
+	// Should contain both parameters with proper separators
+	assert.Contains(t, result, "a=1")
+	assert.Contains(t, result, "b=2")
+	assert.Contains(t, result, "?")
+}
+
+func TestAddQueryParametersToPath_InvalidURLFallback_MultipleValues(t *testing.T) {
+	// Use control character to make url.Parse fail
+	path := "/path\x00here"
+	params := map[string][]string{
+		"tags": {"go", "rust"},
+	}
+
+	result := AddQueryParametersToPath(path, params)
+
+	// Should contain both values for the same key
+	assert.Contains(t, result, "tags=go")
+	assert.Contains(t, result, "tags=rust")
+}
+
+func TestAddQueryParametersToPath_InvalidURLFallback_SpecialCharsEncoded(t *testing.T) {
+	// Use control character to trigger fallback
+	path := "/api\x00/users"
+	params := map[string][]string{
+		"name": {"John Doe"},
+		"email": {"test@example.com"},
+	}
+
+	result := AddQueryParametersToPath(path, params)
+
+	// Values should be URL encoded in fallback path
+	assert.Contains(t, result, "name=John+Doe")
+	assert.Contains(t, result, "email=test%40example.com")
+}
+
+// =============================================================================
+// RemoveQueryParametersFromPath URL Parsing Failure Tests
+// =============================================================================
+
+func TestRemoveQueryParametersFromPath_InvalidURLReturnsOriginal(t *testing.T) {
+	// Use a control character in the URL to make url.Parse fail
+	path := "http://example.com\x00/path?id=123"
+	params := []string{"id"}
+
+	result := RemoveQueryParametersFromPath(path, params)
+
+	// Should return the original path when parsing fails
+	assert.Equal(t, path, result)
+}
+
+func TestRemoveQueryParametersFromPath_InvalidURLEscapeReturnsOriginal(t *testing.T) {
+	// Use invalid URL escape to make url.Parse fail
+	path := "%zzinvalid/path?key=value"
+	params := []string{"key"}
+
+	result := RemoveQueryParametersFromPath(path, params)
+
+	// Should return the original path when parsing fails
+	assert.Equal(t, path, result)
+}
 

@@ -69,6 +69,14 @@ jobs:
       - name: Bump to next dev version
         run: make -C gateway version-bump-next-dev
 
+      - name: Commit version bump
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git commit -am "Bump gateway to next dev version"
+          else
+            echo "No changes to commit"
+          fi
+
       - name: Create PR for version bump
         id: create-pr
         uses: peter-evans/create-pull-request@v6
@@ -79,17 +87,11 @@ jobs:
             Automated version bump after release `gateway/v${{ steps.version.outputs.version }}`
 
             This PR bumps the gateway version to the next development version.
-
-            🤖 This PR will auto-merge once CI checks pass.
           branch: version-bump-${{ github.run_id }}
           base: main
           delete-branch: true
+          assignees: renuka-fernando
           labels: |
             automated
             version-bump
 
-      - name: Enable auto-merge
-        if: steps.create-pr.outputs.pull-request-number
-        run: gh pr merge --auto --squash ${{ steps.create-pr.outputs.pull-request-number }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -90,6 +90,9 @@ COPY --from=sdk . /api-platform/sdk
 # Copy system policy implementations
 COPY --from=system-policies . /workspace/system-policies/
 
+# Copy dev policy implementations (local file-path policies added via build.yaml)
+COPY --from=dev-policies . /workspace/policies/dev-policies/
+
 # Copy policy manifest from gateway build.yaml
 COPY --from=target build.yaml /workspace/policies/policy-manifest.yaml
 
