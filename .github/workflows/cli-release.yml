@@ -170,6 +170,15 @@ jobs:
       - name: Bump to next dev version
         run: make -C cli version-bump-next-dev
 
+      - name: Commit version bump
+        run: |
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Bump CLI to next dev version"
+          else
+            echo "No changes to commit"
+          fi
+
       - name: Create PR for version bump
         id: create-pr
         uses: peter-evans/create-pull-request@v6
@@ -180,17 +189,10 @@ jobs:
             Automated version bump after release `ap/v${{ steps.version.outputs.version }}`
 
             This PR bumps the CLI version to the next development version.
-
-            🤖 This PR will auto-merge once CI checks pass.
           branch: cli-version-bump-${{ github.run_id }}
           base: main
           delete-branch: true
+          assignees: renuka-fernando
           labels: |
             automated
             version-bump
-
-      - name: Enable auto-merge
-        if: steps.create-pr.outputs.pull-request-number
-        run: gh pr merge --auto --squash ${{ steps.create-pr.outputs.pull-request-number }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
