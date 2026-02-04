@@ -62,9 +62,8 @@ jobs:
 
       - name: Commit version bump
         run: |
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Bump platform-api to next dev version"
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git commit -am "Bump platform-api to next dev version"
           else
             echo "No changes to commit"
           fi
