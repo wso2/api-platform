@@ -72,7 +72,11 @@ jobs:
       - name: Commit version bump
         run: |
           git add -A
-          git commit -m "Bump gateway to next dev version"
+          if ! git diff --cached --quiet; then
+            git commit -m "Bump gateway to next dev version"
+          else
+            echo "No changes to commit"
+          fi
 
       - name: Create PR for version bump
         id: create-pr
