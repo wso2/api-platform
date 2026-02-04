@@ -47,6 +47,7 @@ import (
 	common_dfp "github.com/envoyproxy/go-control-plane/envoy/extensions/common/dynamic_forward_proxy/v3"
 	dfpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/dynamic_forward_proxy/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
@@ -484,7 +485,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	
+
 	// Extract project ID from labels
 	apiProjectID := ""
 	if cfg.Configuration.Metadata.Labels != nil {
@@ -579,6 +580,12 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			return nil, nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
 		}
 		httpFilters = append(httpFilters, extProcFilter)
+
+		luaFilter, err := t.createLuaFilter()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create lua filter: %w", err)
+		}
+		httpFilters = append(httpFilters, luaFilter)
 	}
 
 	// Add router filter (must be last)
@@ -731,6 +738,12 @@ func (t *Translator) createInternalListenerForWebSubHub(isHTTPS bool) (*listener
 			return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
 		}
 		httpFilters = append(httpFilters, extProcFilter)
+
+		luaFilter, err := t.createLuaFilter()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create lua filter: %w", err)
+		}
+		httpFilters = append(httpFilters, luaFilter)
 	}
 
 	// Add router filter (must be last)
@@ -941,6 +954,12 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 			return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
 		}
 		httpFilters = append(httpFilters, extProcFilter)
+
+		luaFilter, err := t.createLuaFilter()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create lua filter: %w", err)
+		}
+		httpFilters = append(httpFilters, luaFilter)
 	}
 
 	dnsCacheConfig := &common_dfp.DnsCacheConfig{
@@ -2348,6 +2367,40 @@ func convertToInterface(m map[string]string) map[string]interface{} {
 	return result
 }
 
+// createLuaFilter creates an Envoy lua filter for request transformation
+func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
+	luaScriptPath := strings.TrimSpace(t.routerConfig.LuaScriptPath)
+	if luaScriptPath == "" {
+		luaScriptPath = config.DefaultLuaScriptPath
+	}
+
+	scriptBytes, err := os.ReadFile(luaScriptPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read lua script from %s: %w", luaScriptPath, err)
+	}
+
+	script := strings.TrimSpace(string(scriptBytes))
+	if script == "" {
+		return nil, fmt.Errorf("lua script at %s is empty", luaScriptPath)
+	}
+
+	luaConfig := &luav3.Lua{
+		InlineCode: string(scriptBytes),
+	}
+
+	luaAny, err := anypb.New(luaConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal lua config: %w", err)
+	}
+
+	return &hcm.HttpFilter{
+		Name: "envoy.filters.http.lua",
+		ConfigType: &hcm.HttpFilter_TypedConfig{
+			TypedConfig: luaAny,
+		},
+	}, nil
+}
+
 // createExtProcFilter creates an Envoy ext_proc filter for policy engine integration
 func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 	policyEngine := t.routerConfig.PolicyEngine
@@ -2393,10 +2446,10 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		},
 		MetadataOptions: &extproc.MetadataOptions{
 			ReceivingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
-				Untyped: []string{constants.ExtProcFilterName},
+				Untyped: []string{constants.ExtProcMetadataNamespace},
 			},
 			ForwardingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
-				Untyped: []string{constants.ExtProcFilterName},
+				Untyped: []string{constants.ExtProcMetadataNamespace},
 			},
 		},
 	}

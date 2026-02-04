@@ -36,6 +36,8 @@ import (
 const (
 	// EnvPrefix is the prefix for environment variables used to configure the gateway-controller
 	EnvPrefix = "APIP_GW_"
+	// DefaultLuaScriptPath is the default path for request transformation lua script
+	DefaultLuaScriptPath = "./lua/request_transformation.lua"
 )
 
 // Config holds all configuration for the gateway-controller
@@ -55,7 +57,7 @@ type AnalyticsConfig struct {
 	AccessLogsServiceCfg AccessLogsServiceConfig  `koanf:"access_logs_service"`
 	// AllowPayloads controls whether request and response bodies are captured
 	// into analytics metadata and forwarded to analytics publishers.
-	AllowPayloads        bool 					  `koanf:"allow_payloads"`
+	AllowPayloads bool `koanf:"allow_payloads"`
 }
 
 // AccessLogsServiceConfig holds the access logs service configuration
@@ -207,6 +209,7 @@ type RouterConfig struct {
 	HTTPSEnabled  bool               `koanf:"https_enabled"`
 	HTTPSPort     int                `koanf:"https_port"`
 	GatewayHost   string             `koanf:"gateway_host"`
+	LuaScriptPath string             `koanf:"lua_script_path"`
 	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
 	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
@@ -476,9 +479,10 @@ func defaultConfig() *Config {
 						"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 						"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 				},
-				ListenerPort: 8080,
-				HTTPSEnabled: true,
-				HTTPSPort:    8443,
+				ListenerPort:  8080,
+				HTTPSEnabled:  true,
+				HTTPSPort:     8443,
+				LuaScriptPath: DefaultLuaScriptPath,
 				DownstreamTLS: DownstreamTLS{
 					CertPath:               "./listener-certs/default-listener.crt",
 					KeyPath:                "./listener-certs/default-listener.key",
@@ -567,8 +571,8 @@ func defaultConfig() *Config {
 			},
 		},
 		Analytics: AnalyticsConfig{
-			Enabled:       false,
-			Publishers:    make([]map[string]interface{}, 0),
+			Enabled:    false,
+			Publishers: make([]map[string]interface{}, 0),
 			GRPCAccessLogCfg: GRPCAccessLogConfig{
 				Host:                "policy-engine",
 				LogName:             "envoy_access_log",

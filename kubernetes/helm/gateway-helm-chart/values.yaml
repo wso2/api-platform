@@ -171,6 +171,9 @@ gateway:
         
         tracing_service_name: router
 
+        # Lua script path for request method transformation
+        lua_script_path: ./lua/request_transformation.lua
+
         # Policy Engine ext_proc filter configuration
         policy_engine:
           # Enable or disable policy engine ext_proc filter
