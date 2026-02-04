@@ -187,7 +187,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, pathMutation, nil, nil
+	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, pathMutation, nil, nil
 }
 
 // TranslateRequestHeadersActions converts request headers execution result to ext_proc response
@@ -366,7 +366,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, nil
+	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, nil
 }
 
 // finalizeAnalyticsHeaders finalizes the analytics headers based on the drop action
