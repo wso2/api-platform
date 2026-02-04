@@ -209,7 +209,8 @@ type RouterConfig struct {
 	HTTPSEnabled  bool               `koanf:"https_enabled"`
 	HTTPSPort     int                `koanf:"https_port"`
 	GatewayHost   string             `koanf:"gateway_host"`
-	LuaScriptPath string             `koanf:"lua_script_path"`
+	Lua           RouterLuaConfig     `koanf:"lua"`
+	LuaScriptPath string             `koanf:"lua_script_path"` // Deprecated: use router.lua.request_transformation.script_path
 	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
 	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
@@ -220,6 +221,16 @@ type RouterConfig struct {
 
 	// HTTPListener configuration
 	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
+}
+
+// RouterLuaConfig holds Lua related configurations.
+type RouterLuaConfig struct {
+	RequestTransformation LuaScriptConfig `koanf:"request_transformation"`
+}
+
+// LuaScriptConfig holds Lua script path configuration.
+type LuaScriptConfig struct {
+	ScriptPath string `koanf:"script_path"`
 }
 
 // EventGatewayConfig holds event gateway specific configurations
@@ -482,6 +493,11 @@ func defaultConfig() *Config {
 				ListenerPort:  8080,
 				HTTPSEnabled:  true,
 				HTTPSPort:     8443,
+				Lua: RouterLuaConfig{
+					RequestTransformation: LuaScriptConfig{
+						ScriptPath: DefaultLuaScriptPath,
+					},
+				},
 				LuaScriptPath: DefaultLuaScriptPath,
 				DownstreamTLS: DownstreamTLS{
 					CertPath:               "./listener-certs/default-listener.crt",

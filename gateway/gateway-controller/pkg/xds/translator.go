@@ -2369,7 +2369,10 @@ func convertToInterface(m map[string]string) map[string]interface{} {
 
 // createLuaFilter creates an Envoy lua filter for request transformation
 func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
-	luaScriptPath := strings.TrimSpace(t.routerConfig.LuaScriptPath)
+	luaScriptPath := strings.TrimSpace(t.routerConfig.Lua.RequestTransformation.ScriptPath)
+	if luaScriptPath == "" {
+		luaScriptPath = strings.TrimSpace(t.routerConfig.LuaScriptPath)
+	}
 	if luaScriptPath == "" {
 		luaScriptPath = config.DefaultLuaScriptPath
 	}
