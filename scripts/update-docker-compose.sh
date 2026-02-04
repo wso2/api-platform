@@ -55,7 +55,7 @@ if [ "$COMPONENT" = "gateway" ]; then
     if [ -f "$IT_COMPOSE_FILE" ]; then
         sed -i -i.bak \
             -e "s|image: .*/gateway-controller-coverage:.*|image: ${DOCKER_REGISTRY}/gateway-controller-coverage:$VERSION|" \
-            -e "s|image: .*/policy-engine:.*|image: ${DOCKER_REGISTRY}/policy-engine:$VERSION|" \
+            -e "s|image: .*/policy-engine-coverage:.*|image: ${DOCKER_REGISTRY}/policy-engine-coverage:$VERSION|" \
             -e "s|image: .*/gateway-router:.*|image: ${DOCKER_REGISTRY}/gateway-router:$VERSION|" \
             "$IT_COMPOSE_FILE"
         rm -f "$IT_COMPOSE_FILE.bak"
