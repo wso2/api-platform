@@ -141,19 +141,19 @@ version-set:
 
 ## version-bump-patch: Bump patch version
 version-bump-patch:
-	@cd ../.. && bash scripts/version-bump.sh patch cli
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh patch cli)
 
 ## version-bump-minor: Bump minor version
 version-bump-minor:
-	@cd ../.. && bash scripts/version-bump.sh minor cli
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh minor cli)
 
 ## version-bump-major: Bump major version
 version-bump-major:
-	@cd ../.. && bash scripts/version-bump.sh major cli
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major cli)
 
 ## version-bump-next-dev: Bump to next minor dev version with SNAPSHOT suffix
 version-bump-next-dev:
-	@cd ../.. && bash scripts/version-bump.sh next-dev cli
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev cli)
 
 ## version-get-release: Get release version (strips SNAPSHOT suffix)
 version-get-release:
