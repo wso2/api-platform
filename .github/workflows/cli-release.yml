@@ -189,8 +189,6 @@ jobs:
             Automated version bump after release `ap/v${{ steps.version.outputs.version }}`
 
             This PR bumps the CLI version to the next development version.
-
-            cc: @renuka-fernando, @malinthaprasan, @Krishanx92
           branch: cli-version-bump-${{ github.run_id }}
           base: main
           delete-branch: true

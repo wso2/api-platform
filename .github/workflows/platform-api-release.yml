@@ -79,8 +79,6 @@ jobs:
             Automated version bump after release `platform-api/v${{ inputs.version }}`
 
             This PR bumps the platform-api version to the next development version.
-
-            cc: @renuka-fernando, @malinthaprasan, @Krishanx92
           branch: platform-api-version-bump-${{ github.run_id }}
           base: main
           delete-branch: true

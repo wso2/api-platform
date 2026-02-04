@@ -88,8 +88,6 @@ jobs:
             Automated version bump after release `gateway/v${{ steps.version.outputs.version }}`
 
             This PR bumps the gateway version to the next development version.
-
-            cc: @renuka-fernando, @malinthaprasan, @Krishanx92
           branch: version-bump-${{ github.run_id }}
           base: main
           delete-branch: true
