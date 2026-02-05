@@ -1515,9 +1515,12 @@ func (r *APIRepo) GetDeploymentWithState(deploymentID, apiUUID, orgUUID string) 
 	return deployment, nil
 }
 
-// GetDeploymentsWithState retrieves deployments with their lifecycle states populated (without content - lightweight)
-func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error) {
-	// Validate status parameter
+// GetDeploymentsWithState retrieves deployments with their lifecycle states.
+// It enforces a soft limit of N records per Gateway, ensuring that the
+// currently DEPLOYED or UNDEPLOYED record is always included regardless of its age.
+func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string, maxPerAPIGW int) ([]*model.APIDeployment, error) {
+
+	// 1. Validation Logic
 	if status != nil {
 		validStatuses := map[string]bool{
 			string(model.DeploymentStatusDeployed):   true,
@@ -1529,43 +1532,69 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 		}
 	}
 
-	var query string
 	var args []interface{}
 
-	baseQuery := `
-		SELECT 
-			d.deployment_id, d.name, d.api_uuid, d.organization_uuid, d.gateway_uuid,
-			d.base_deployment_id, d.metadata, d.created_at,
-			s.status, s.updated_at AS status_updated_at
-		FROM api_deployments d
-		LEFT JOIN api_deployment_status s 
-			ON d.deployment_id = s.deployment_id
-			AND d.api_uuid = s.api_uuid
-			AND d.organization_uuid = s.organization_uuid
-			AND d.gateway_uuid = s.gateway_uuid
-		WHERE d.api_uuid = ? AND d.organization_uuid = ?
-	`
+	// 2. Build the CTE (Common Table Expression)
+	// We rank within the CTE to ensure each Gateway gets its own "Top N" bucket.
+	// Order Priority:
+	//   1. Records with an active status (Deployed/Undeployed)
+	//   2. Creation date (Newest first)
+	query := `
+        WITH AnnotatedDeployments AS (
+            SELECT 
+                d.deployment_id, d.name, d.api_uuid, d.organization_uuid, d.gateway_uuid,
+                d.base_deployment_id, d.metadata, d.created_at,
+                s.status as current_status,
+                s.updated_at as status_updated_at,
+                ROW_NUMBER() OVER (
+                    PARTITION BY d.gateway_uuid 
+                    ORDER BY 
+                        (CASE WHEN s.status IS NOT NULL THEN 0 ELSE 1 END) ASC, 
+                        d.created_at DESC
+                ) as rank_idx
+            FROM api_deployments d
+            LEFT JOIN api_deployment_status s 
+                ON d.deployment_id = s.deployment_id
+                AND d.gateway_uuid = s.gateway_uuid
+				AND d.api_uuid = s.api_uuid
+				AND d.organization_uuid = s.organization_uuid
+            WHERE d.api_uuid = ? AND d.organization_uuid = ?
+    `
 	args = append(args, apiUUID, orgUUID)
 
 	if gatewayID != nil {
-		baseQuery += " AND d.gateway_uuid = ?"
+		query += " AND d.gateway_uuid = ?"
 		args = append(args, *gatewayID)
 	}
 
-	// Filter by status (including ARCHIVED)
+	// 3. Close CTE and start Outer Selection
+	query += `
+        )
+        SELECT 
+            deployment_id, name, api_uuid, organization_uuid, gateway_uuid,
+            base_deployment_id, metadata, created_at,
+            current_status, status_updated_at
+        FROM AnnotatedDeployments
+        WHERE rank_idx <= ?
+    `
+	args = append(args, maxPerAPIGW)
+
+	// 4. Apply Status Filters on the Ranked Set
 	if status != nil {
 		if *status == string(model.DeploymentStatusArchived) {
-			// ARCHIVED: status table row doesn't exist
-			baseQuery += " AND s.deployment_id IS NULL"
+			// ARCHIVED means no entry exists in the status table for this artifact
+			query += " AND current_status IS NULL"
 		} else {
-			// DEPLOYED or UNDEPLOYED: status table row exists with matching status
-			baseQuery += " AND s.status = ?"
+			// DEPLOYED or UNDEPLOYED must match the status column exactly
+			query += " AND current_status = ?"
 			args = append(args, *status)
 		}
 	}
 
-	query = baseQuery + " ORDER BY d.created_at DESC"
+	// Final sorting for the application layer
+	query += " ORDER BY gateway_uuid ASC, rank_idx ASC"
 
+	// 5. Execution
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
@@ -1573,7 +1602,6 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 	defer rows.Close()
 
 	var deployments []*model.APIDeployment
-
 	for rows.Next() {
 		deployment := &model.APIDeployment{}
 		var baseDeploymentID sql.NullString
@@ -1582,7 +1610,8 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 		var updatedAtVal sql.NullTime
 
 		err := rows.Scan(
-			&deployment.DeploymentID, &deployment.Name, &deployment.ApiID, &deployment.OrganizationID, &deployment.GatewayID,
+			&deployment.DeploymentID, &deployment.Name, &deployment.ApiID,
+			&deployment.OrganizationID, &deployment.GatewayID,
 			&baseDeploymentID, &metadataJSON, &deployment.CreatedAt,
 			&statusStr, &updatedAtVal)
 
@@ -1590,11 +1619,12 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 			return nil, err
 		}
 
-		// Set nullable fields
+		// Handle Nullable BaseDeploymentID
 		if baseDeploymentID.Valid {
 			deployment.BaseDeploymentID = &baseDeploymentID.String
 		}
 
+		// Handle Metadata
 		if metadataJSON != "" {
 			var metadata map[string]interface{}
 			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
@@ -1604,7 +1634,7 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 			}
 		}
 
-		// Populate status fields from JOIN (nil if ARCHIVED)
+		// Map Database Status to Model Status
 		if statusStr.Valid {
 			st := model.DeploymentStatus(statusStr.String)
 			deployment.Status = &st
@@ -1612,16 +1642,18 @@ func (r *APIRepo) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *st
 				deployment.UpdatedAt = &updatedAtVal.Time
 			}
 		} else {
-			// ARCHIVED state - Status and UpdatedAt remain nil
+			// If the JOIN resulted in NULL, the record is ARCHIVED
 			archived := model.DeploymentStatusArchived
 			deployment.Status = &archived
+			// For Archived, UpdatedAt usually defaults to nil
 		}
 
 		deployments = append(deployments, deployment)
 	}
 
+	// Check if the loop stopped because of an error rather than reaching the end
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error during deployment rows iteration: %w", err)
 	}
 
 	return deployments, nil
@@ -1800,21 +1832,4 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	}
 
 	return count > 0, nil
-}
-
-// CountDeploymentsByAPIAndGateway returns the number of deployments for a specific API-Gateway combination
-func (r *APIRepo) CountDeploymentsByAPIAndGateway(apiID, gatewayID, orgID string) (int, error) {
-	var count int
-	query := `
-		SELECT COUNT(*)
-		FROM api_deployments
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
-	`
-	err := r.db.QueryRow(r.db.Rebind(query), apiID, gatewayID, orgID).Scan(&count)
-
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
 }
