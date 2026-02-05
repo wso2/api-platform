@@ -245,7 +245,7 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 
 	requiresRequestBody := false
 	requiresResponseBody := false
-	hasCELConditions := false
+	hasExecutionConditions := false
 
 	for _, policyConfig := range config.Policies {
 		// Create metadata with route and API information
@@ -284,7 +284,7 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 
 		// Check if policy has CEL execution condition
 		if policyConfig.ExecutionCondition != nil && *policyConfig.ExecutionCondition != "" {
-			hasCELConditions = true
+			hasExecutionConditions = true
 		}
 
 		// Add to policy list
@@ -310,7 +310,7 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 		PolicySpecs:          policySpecs,
 		RequiresRequestBody:  requiresRequestBody,
 		RequiresResponseBody: requiresResponseBody,
-		HasCELConditions:     hasCELConditions,
+		HasExecutionConditions:     hasExecutionConditions,
 	}
 
 	return chain, nil

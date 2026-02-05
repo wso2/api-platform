@@ -40,5 +40,5 @@ type PolicyChain struct {
 
 	// Computed flag: true if any policy has a CEL execution condition
 	// When false, CEL evaluation is skipped entirely during execution
-	HasCELConditions bool
+	HasExecutionConditions bool
 }

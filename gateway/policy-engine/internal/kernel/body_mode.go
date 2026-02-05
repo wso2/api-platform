@@ -44,7 +44,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		PolicySpecs:          make([]policy.PolicySpec, 0),
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
-		HasCELConditions:     false,
+		HasExecutionConditions:     false,
 	}
 
 	// Build policy list and compute body requirements
@@ -70,7 +70,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 		// Check if policy has CEL execution condition
 		if spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
-			chain.HasCELConditions = true
+			chain.HasExecutionConditions = true
 		}
 
 		// Add to policy list
