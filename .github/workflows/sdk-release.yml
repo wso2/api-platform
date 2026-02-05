@@ -1,0 +1,106 @@
+name: SDK Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sdk/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.3.10). Required for manual trigger.'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger - use provided version
+            VERSION="${{ inputs.version }}"
+            # Remove leading 'v' if present
+            VERSION="${VERSION#v}"
+            echo "Using manually provided version: ${VERSION}"
+          else
+            # Push trigger (PR merge) - auto-increment patch version
+            # Get the latest SDK tag
+            LATEST_TAG=$(git tag -l "sdk/v*" | sort -V | tail -n 1)
+            if [ -z "$LATEST_TAG" ]; then
+              # No existing tags, start with 0.0.1
+              VERSION="0.0.1"
+              echo "No existing SDK tags found, starting with version: ${VERSION}"
+            else
+              # Extract version from tag (remove sdk/v prefix)
+              CURRENT_VERSION="${LATEST_TAG#sdk/v}"
+              echo "Latest SDK tag: ${LATEST_TAG} (version: ${CURRENT_VERSION})"
+              
+              # Parse major.minor.patch
+              MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+              MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
+              PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
+              
+              # Increment patch version
+              NEW_PATCH=$((PATCH + 1))
+              VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+              echo "Auto-incremented patch version: ${VERSION}"
+            fi
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Validate tag does not exist
+        run: |
+          TAG_NAME="sdk/v${{ steps.version.outputs.version }}"
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Error: Tag $TAG_NAME already exists!"
+            exit 1
+          fi
+          echo "Tag $TAG_NAME does not exist, proceeding with release"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "sdk/v${{ steps.version.outputs.version }}" -m "SDK ${{ steps.version.outputs.version }}"
+          git push origin "sdk/v${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: sdk/v${{ steps.version.outputs.version }}
+          name: "WSO2 API Platform SDK v${{ steps.version.outputs.version }}"
+          body: |
+            ## WSO2 API Platform SDK v${{ steps.version.outputs.version }}
+
+            This release contains the WSO2 API Platform SDK for Go.
+
+            ### Installation
+
+            ```bash
+            go get github.com/wso2/api-platform/sdk@v${{ steps.version.outputs.version }}
+            ```
+
+            ### Documentation
+
+            For complete documentation, see the [SDK Documentation](https://github.com/wso2/api-platform/tree/main/sdk).
+
+            ### Reporting Issues
+
+            Report issues at [WSO2 API Platform Issues](https://github.com/wso2/api-platform/issues).
+          draft: false
+          prerelease: false
