@@ -46,6 +46,7 @@ func (r *OrganizationRepo) CreateOrganization(org *model.Organization) error {
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query), org.ID, org.Handle, org.Name, org.Region, org.CreatedAt, org.UpdatedAt)
+
 	return err
 }
 
@@ -118,6 +119,7 @@ func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 		WHERE uuid = ?
 	`
 	_, err := r.db.Exec(r.db.Rebind(query), org.Handle, org.Name, org.Region, org.UpdatedAt, org.ID)
+
 	return err
 }
 

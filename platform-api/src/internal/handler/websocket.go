@@ -18,6 +18,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -93,6 +94,17 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 		return
 	}
 
+	// Check organization connection limit before upgrading to WebSocket
+	if !h.manager.CanAcceptOrgConnection(gateway.OrganizationID) {
+		stats := h.manager.GetOrgConnectionStats(gateway.OrganizationID)
+		log.Printf("[WARN] Organization connection limit exceeded: orgID=%s count=%d max=%d",
+			gateway.OrganizationID, stats.CurrentCount, stats.MaxAllowed)
+		c.JSON(http.StatusTooManyRequests, utils.NewErrorResponse(429, "Too Many Requests",
+			"Organization connection limit reached. Maximum allowed connections: "+
+				fmt.Sprintf("%d", stats.MaxAllowed)))
+		return
+	}
+
 	// Upgrade HTTP connection to WebSocket
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -105,16 +117,34 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	transport := ws.NewWebSocketTransport(conn)
 
 	// Register connection with manager
-	connection, err := h.manager.Register(gateway.ID, transport, apiKey)
+	connection, err := h.manager.Register(gateway.ID, transport, apiKey, gateway.OrganizationID)
 	if err != nil {
-		log.Printf("[ERROR] Connection registration failed: gatewayID=%s error=%v", gateway.ID, err)
-		// Send error message before closing
-		errorMsg := map[string]string{
-			"type":    "error",
-			"message": err.Error(),
-		}
-		if jsonErr, _ := json.Marshal(errorMsg); jsonErr != nil {
-			conn.WriteMessage(websocket.TextMessage, jsonErr)
+		log.Printf("[ERROR] Connection registration failed: gatewayID=%s orgID=%s error=%v",
+			gateway.ID, gateway.OrganizationID, err)
+
+		// Check if this is an org connection limit error
+		if orgLimitErr, ok := err.(*ws.OrgConnectionLimitError); ok {
+			errorMsg := map[string]interface{}{
+				"type":         "error",
+				"code":         "ORG_CONNECTION_LIMIT_EXCEEDED",
+				"message":      "Organization connection limit reached",
+				"currentCount": orgLimitErr.CurrentCount,
+				"maxAllowed":   orgLimitErr.MaxAllowed,
+			}
+			if jsonErr, _ := json.Marshal(errorMsg); jsonErr != nil {
+				conn.WriteMessage(websocket.TextMessage, jsonErr)
+			}
+			log.Printf("[WARN] Organization connection limit exceeded: orgID=%s count=%d max=%d",
+				orgLimitErr.OrganizationID, orgLimitErr.CurrentCount, orgLimitErr.MaxAllowed)
+		} else {
+			// Generic error
+			errorMsg := map[string]string{
+				"type":    "error",
+				"message": err.Error(),
+			}
+			if jsonErr, _ := json.Marshal(errorMsg); jsonErr != nil {
+				conn.WriteMessage(websocket.TextMessage, jsonErr)
+			}
 		}
 		conn.Close()
 		return
