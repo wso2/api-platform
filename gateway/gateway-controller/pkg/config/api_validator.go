@@ -208,7 +208,12 @@ func (v *APIValidator) validateUpstreamRef(label string, ref *string, upstreamDe
 	var errors []ValidationError
 
 	if ref == nil || strings.TrimSpace(*ref) == "" {
-		return errors
+		return []ValidationError{
+			{
+				Field:   "spec.upstream." + label + ".ref",
+				Message: "Upstream reference is required",
+			},
+		}
 	}
 
 	refName := strings.TrimSpace(*ref)
