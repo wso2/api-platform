@@ -575,6 +575,7 @@ func TestRestoreDeployment(t *testing.T) {
 		{
 			name:         "gateway not found",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -612,6 +613,7 @@ func TestRestoreDeployment(t *testing.T) {
 		{
 			name:         "set current deployment fails",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -721,6 +723,7 @@ func TestUndeployDeployment(t *testing.T) {
 	tests := []struct {
 		name                string
 		deploymentID        string
+		gatewayID           string
 		mockDeployment      *model.APIDeployment
 		mockDeploymentError error
 		mockGateway         *model.Gateway
@@ -735,6 +738,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "successful undeploy",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -754,6 +758,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:                "deployment not found",
 			deploymentID:        testDeploymentID,
+			gatewayID:           testGatewayID,
 			mockDeployment:      nil,
 			mockDeploymentError: nil,
 			wantErr:             true,
@@ -762,6 +767,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "deployment not active (UNDEPLOYED)",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -775,6 +781,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "deployment not active (nil status - ARCHIVED)",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -788,6 +795,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "gateway not found",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -802,6 +810,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "set current deployment fails",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -817,6 +826,20 @@ func TestUndeployDeployment(t *testing.T) {
 			mockSetCurrentError: errors.New("database write failed"),
 			wantErr:             true,
 			errContains:         "failed to update deployment status",
+		},
+		{
+			name:         "gateway ID mismatch validation",
+			deploymentID: testDeploymentID,
+			gatewayID:    "wrong-gateway-id",
+			mockDeployment: &model.APIDeployment{
+				DeploymentID: testDeploymentID,
+				Name:         "test-deployment",
+				ApiID:        testAPIUUID,
+				GatewayID:    testGatewayID, // Different from provided gatewayID
+				Status:       &deployedStatus,
+			},
+			wantErr:     true,
+			expectedErr: constants.ErrGatewayIDMismatch,
 		},
 	}
 
@@ -839,7 +862,7 @@ func TestUndeployDeployment(t *testing.T) {
 				gatewayRepo: mockGatewayRepo,
 			}
 
-			result, err := service.UndeployDeployment(testAPIUUID, tt.deploymentID, testGatewayID, testOrgUUID)
+			result, err := service.UndeployDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID)
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
