@@ -49,7 +49,7 @@ Feature: LLM Proxy Management Operations
     Then the response should be successful
     And the response should be valid JSON
 
-  # ==================== GET LLM PROXY BY ID ====================
+  # ==================== GET LLM PROXY BY ID ===================
   
   Scenario: Get LLM proxy by non-existent ID returns 404
     When I send a GET request to the "gateway-controller" service at "/llm-proxies/non-existent-proxy-id-12345"
