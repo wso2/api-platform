@@ -233,15 +233,23 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Check if deployment already exists
-	existingDeployments, err := s.apiRepo.GetDeploymentsWithState(apiUUID, orgID, nil, nil)
+	deploymentID, status, _, err := s.apiRepo.GetDeploymentStatus(apiUUID, orgID, gatewayID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
+		return nil, fmt.Errorf("failed to check deployment status of gateway: %w", err)
 	}
 
-	// Check if this gateway already has this API deployed
-	for _, deployment := range existingDeployments {
-		if deployment.GatewayID == gatewayID {
+	// Check if this gateway already has this API deployed or undeployed
+	if deploymentID != "" && (status == model.DeploymentStatusDeployed || status == model.DeploymentStatusUndeployed) {
+		switch status {
+		case model.DeploymentStatusDeployed:
+			// An active deployment already exists for this API-gateway combination
 			return nil, fmt.Errorf("API already deployed to this gateway")
+		case model.DeploymentStatusUndeployed:
+			// A deployment record exists, but it is currently undeployed
+			return nil, fmt.Errorf("a deployment already exists for this API-gateway combination with status %s", status)
+		default:
+			// Fallback in case new statuses are introduced in the future
+			return nil, fmt.Errorf("a deployment already exists for this API-gateway combination with status %s", status)
 		}
 	}
 
@@ -296,6 +304,9 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Use same limit computation as DeploymentService: MaxPerAPIGateway + buffer
+	if s.cfg.Deployments.MaxPerAPIGateway < 1 {
+		return nil, fmt.Errorf("MaxPerAPIGateway limit config must be at least 1, got %d", s.cfg.Deployments.MaxPerAPIGateway)
+	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
 	err = s.apiRepo.CreateDeploymentWithLimitEnforcement(deployment, hardLimit)
 	if err != nil {

@@ -19,7 +19,7 @@
 services:
   gateway-controller:
     image: ghcr.io/wso2/api-platform/gateway-controller:0.7.0-SNAPSHOT
-    mem_limit: 64m
+    mem_limit: 60m
     mem_reservation: 60m
     cpus: 0.025
     command: ["-config", "/etc/gateway-controller/config.toml"]
