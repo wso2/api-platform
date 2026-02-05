@@ -582,7 +582,10 @@ func TestClient_ConnectionLoop_RetryBackoff(t *testing.T) {
 		client := createTestClient(t)
 
 		// Start the client (starts connectionLoop)
-		client.Start()
+		err := client.Start()
+		if err != nil {
+			t.Fatalf("Start() unexpected error: %v", err)
+		}
 
 		// Give it time to attempt connection
 		time.Sleep(100 * time.Millisecond)
