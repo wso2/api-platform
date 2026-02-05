@@ -43,26 +43,26 @@ Feature: Backend timeout
               idle: 5s
             upstreams:
               - urls:
-                  - https://www.google.com:81
+                  - http://echo-backend:80
         upstream:
           main:
             ref: my-timeout-upstream
         operations:
           - method: GET
-            path: /timeout-test
+            path: /delay/10 
       """
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     And I record the current time as "request_start"
-    When I send a GET request to "http://localhost:8080/timeout-api/v1.0/timeout-test"
+    When I send a GET request to "http://localhost:8080/timeout-api/v1.0/delay/10"
     Then the response status code should be 504
     And the request should have taken at least "5" seconds since "request_start"
     Given I authenticate using basic auth as "admin"
     When I delete the API "timeout-api-v1.0"
     Then the response should be successful
 
-  # Global-default scenario: route timeout comes from it config (5s); elapsed-time assertion verifies configured global timeout.
+  # Global-default scenario: route timeout comes from it config (6s); elapsed-time assertion verifies configured global timeout.
   Scenario: RestApi without upstream timeout uses global defaults
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
@@ -79,19 +79,19 @@ Feature: Backend timeout
           - name: my-timeout-upstream-global
             upstreams:
               - urls:
-                  - https://www.google.com:81
+                  - http://echo-backend:80
         upstream:
           main:
             ref: my-timeout-upstream-global
         operations:
           - method: GET
-            path: /timeout-test
+            path: /delay/10 
       """
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     And I record the current time as "request_start"
-    When I send a GET request to "http://localhost:8080/timeout-global/v1.0/timeout-test"
+    When I send a GET request to "http://localhost:8080/timeout-global/v1.0/delay/10"
     Then the response status code should be 504
     And the request should have taken at least "6" seconds since "request_start"
     Given I authenticate using basic auth as "admin"
