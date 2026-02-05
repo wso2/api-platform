@@ -22,6 +22,10 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -414,13 +418,27 @@ spec:
 
 // Tests for lines 166-268: WebSub topic registration/unregistration paths
 func TestDeployAPIConfiguration_WebSubTopicOperations(t *testing.T) {
+	// Helper to create a failing WebSub hub server
+	failingHub := func(t *testing.T) (string, int, func()) {
+		t.Helper()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "hub error", http.StatusInternalServerError)
+		}))
+		u, _ := url.Parse(srv.URL)
+		p, _ := strconv.Atoi(u.Port())
+		return u.Hostname(), p, srv.Close
+	}
+
 	t.Run("Topic registration error path", func(t *testing.T) {
+		host, port, closeFn := failingHub(t)
+		t.Cleanup(closeFn)
+
 		store := storage.NewConfigStore()
 		validator := config.NewAPIValidator()
 		routerConfig := &config.RouterConfig{
 			EventGateway: config.EventGatewayConfig{
-				RouterHost:            "localhost",
-				WebSubHubListenerPort: 8084,
+				RouterHost:            host,
+				WebSubHubListenerPort: port,
 				TimeoutSeconds:        1,
 			},
 		}
@@ -448,7 +466,7 @@ spec:
 			Logger:        logger,
 		}
 
-		// This will fail because there's no actual WebSubHub running
+		// This will fail because the hub returns an error
 		result, err := service.DeployAPIConfiguration(params)
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -456,12 +474,15 @@ spec:
 	})
 
 	t.Run("Topic deregistration during update", func(t *testing.T) {
+		host, port, closeFn := failingHub(t)
+		t.Cleanup(closeFn)
+
 		store := storage.NewConfigStore()
 		validator := config.NewAPIValidator()
 		routerConfig := &config.RouterConfig{
 			EventGateway: config.EventGatewayConfig{
-				RouterHost:            "localhost",
-				WebSubHubListenerPort: 8084,
+				RouterHost:            host,
+				WebSubHubListenerPort: port,
 				TimeoutSeconds:        1,
 			},
 		}
@@ -515,7 +536,7 @@ spec:
 			Logger:        logger,
 		}
 
-		// Will fail because WebSubHub is not running
+		// Will fail because the hub returns an error
 		result, err := service.DeployAPIConfiguration(params)
 		assert.Error(t, err)
 		assert.Nil(t, result)
