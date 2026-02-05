@@ -82,6 +82,27 @@ func TestPolicyEngineGenerator_Generate_MissingBinary(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to copy binary")
 }
 
+func TestPolicyEngineGenerator_Generate_OutputDirCreationFails(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file where the directory should be to force mkdir failure
+	blockingFile := filepath.Join(tmpDir, "output", "policy-engine")
+	testutils.WriteFile(t, blockingFile, "blocking")
+
+	binPath := filepath.Join(tmpDir, "policy-engine-bin")
+	testutils.WriteFile(t, binPath, "binary content")
+
+	gen := NewPolicyEngineGenerator(
+		filepath.Join(tmpDir, "output"),
+		binPath,
+		"v1.0.0",
+	)
+
+	_, err := gen.Generate()
+
+	assert.Error(t, err)
+}
+
 // ==== GatewayControllerGenerator tests ====
 
 func TestNewGatewayControllerGenerator(t *testing.T) {
@@ -158,6 +179,28 @@ func TestGatewayControllerGenerator_Generate_MissingPolicyYAML(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to copy policy files")
 }
 
+func TestGatewayControllerGenerator_Generate_OutputDirCreationFails(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file where the directory should be to force mkdir failure
+	blockingFile := filepath.Join(tmpDir, "output", "gateway-controller")
+	testutils.WriteFile(t, blockingFile, "blocking")
+
+	policies := []*types.DiscoveredPolicy{}
+
+	gen := NewGatewayControllerGenerator(
+		filepath.Join(tmpDir, "output"),
+		"base:image",
+		policies,
+		"v1.0.0",
+	)
+
+	_, err := gen.Generate()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create gateway-controller directory")
+}
+
 // ==== RouterGenerator tests ====
 
 func TestNewRouterGenerator(t *testing.T) {
@@ -186,6 +229,25 @@ func TestRouterGenerator_Generate_Success(t *testing.T) {
 	assert.Contains(t, string(content), "envoy:v1.30.0")
 	assert.Contains(t, string(content), "v1.0.0") // builder version
 	assert.Contains(t, string(content), "router") // component label
+}
+
+func TestRouterGenerator_Generate_OutputDirCreationFails(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file where the directory should be to force mkdir failure
+	blockingFile := filepath.Join(tmpDir, "output", "router")
+	testutils.WriteFile(t, blockingFile, "blocking")
+
+	gen := NewRouterGenerator(
+		filepath.Join(tmpDir, "output"),
+		"envoy:v1.30.0",
+		"v1.0.0",
+	)
+
+	_, err := gen.Generate()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create router directory")
 }
 
 // ==== DockerfileGenerator tests ====
