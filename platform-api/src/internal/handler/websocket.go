@@ -18,6 +18,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -90,6 +91,17 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 		log.Printf("[WARN] WebSocket authentication failed: ip=%s error=%v", clientIP, err)
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Invalid or expired API key"))
+		return
+	}
+
+	// Check organization connection limit before upgrading to WebSocket
+	if !h.manager.CanAcceptOrgConnection(gateway.OrganizationID) {
+		stats := h.manager.GetOrgConnectionStats(gateway.OrganizationID)
+		log.Printf("[WARN] Organization connection limit exceeded: orgID=%s count=%d max=%d",
+			gateway.OrganizationID, stats.CurrentCount, stats.MaxAllowed)
+		c.JSON(http.StatusTooManyRequests, utils.NewErrorResponse(429, "Too Many Requests",
+			"Organization connection limit reached. Maximum allowed connections: "+
+				fmt.Sprintf("%d", stats.MaxAllowed)))
 		return
 	}
 

@@ -53,8 +53,8 @@ type Manager struct {
 	// heartbeatTimeout specifies when to consider a connection dead (default 30s)
 	heartbeatTimeout time.Duration
 
-	// orgLimiter enforces per-organization connection limits
-	orgLimiter *OrgConnectionLimiter
+	// maxConnectionsPerOrg enforces per-organization connection limits
+	maxConnectionsPerOrg int
 
 	// shutdownCtx is used to signal graceful shutdown to all connection goroutines
 	shutdownCtx context.Context
@@ -72,6 +72,12 @@ type ManagerConfig struct {
 	MaxConnectionsPerOrg int           // Maximum connections per organization (default 3)
 }
 
+type OrgConnectionStats struct {
+	OrganizationID string `json:"organizationId"`
+	CurrentCount   int    `json:"currentCount"`
+	MaxAllowed     int    `json:"maxAllowed"`
+}
+
 // DefaultManagerConfig returns sensible default configuration values
 func DefaultManagerConfig() ManagerConfig {
 	return ManagerConfig{
@@ -86,14 +92,14 @@ func DefaultManagerConfig() ManagerConfig {
 func NewManager(config ManagerConfig) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
-		connections:       sync.Map{},
-		connectionCount:   0,
-		maxConnections:    config.MaxConnections,
-		heartbeatInterval: config.HeartbeatInterval,
-		heartbeatTimeout:  config.HeartbeatTimeout,
-		orgLimiter:        NewOrgConnectionLimiter(config.MaxConnectionsPerOrg),
-		shutdownCtx:       ctx,
-		shutdownFn:        cancel,
+		connections:          sync.Map{},
+		connectionCount:      0,
+		maxConnections:       config.MaxConnections,
+		heartbeatInterval:    config.HeartbeatInterval,
+		heartbeatTimeout:     config.HeartbeatTimeout,
+		maxConnectionsPerOrg: config.MaxConnectionsPerOrg,
+		shutdownCtx:          ctx,
+		shutdownFn:           cancel,
 	}
 }
 
@@ -114,26 +120,27 @@ func NewManager(config ManagerConfig) *Manager {
 func (m *Manager) Register(gatewayID string, transport Transport, authToken string,
 	orgID string) (*Connection, error) {
 
-	// Create connection ID early so we can use it for org limiter
-	connectionID := uuid.New().String()
-
-	// Check per-org limit first
-	if err := m.orgLimiter.AddConnection(orgID, connectionID); err != nil {
-		return nil, err
+	// Check per-org limit first (count from main connections map)
+	orgCount := m.countOrgConnections(orgID)
+	if orgCount >= m.maxConnectionsPerOrg {
+		return nil, &OrgConnectionLimitError{
+			OrganizationID: orgID,
+			CurrentCount:   orgCount,
+			MaxAllowed:     m.maxConnectionsPerOrg,
+		}
 	}
 
 	// Check global connection limit
 	m.mu.Lock()
 	if m.connectionCount >= m.maxConnections {
 		m.mu.Unlock()
-		// Rollback org limiter
-		m.orgLimiter.RemoveConnection(orgID, connectionID)
 		return nil, fmt.Errorf("maximum connection limit reached (%d)", m.maxConnections)
 	}
 	m.connectionCount++
 	m.mu.Unlock()
 
 	// Create connection
+	connectionID := uuid.New().String()
 	conn := NewConnection(gatewayID, connectionID, transport, authToken, orgID)
 
 	// Add connection to registry
@@ -143,11 +150,10 @@ func (m *Manager) Register(gatewayID string, transport Transport, authToken stri
 	m.connections.Store(gatewayID, conns)
 
 	// Start heartbeat monitoring in background
-	m.wg.Add(1)
-	go m.monitorHeartbeat(conn)
+	m.wg.Go(func() { m.monitorHeartbeat(conn) })
 
 	log.Printf("[INFO] Gateway connected: gatewayID=%s connectionID=%s orgID=%s totalConnections=%d orgConnections=%d",
-		gatewayID, connectionID, orgID, m.GetConnectionCount(), m.orgLimiter.GetOrgConnectionCount(orgID))
+		gatewayID, connectionID, orgID, m.GetConnectionCount(), m.countOrgConnections(orgID))
 
 	return conn, nil
 }
@@ -194,11 +200,6 @@ func (m *Manager) Unregister(gatewayID, connectionID string) {
 			gatewayID, connectionID, err)
 	}
 
-	// Remove from org limiter
-	if removed.OrganizationID != "" {
-		m.orgLimiter.RemoveConnection(removed.OrganizationID, connectionID)
-	}
-
 	// Decrement connection count
 	m.mu.Lock()
 	m.connectionCount--
@@ -242,6 +243,22 @@ func (m *Manager) GetConnectionCount() int {
 	return m.connectionCount
 }
 
+// countOrgConnections counts the number of connections for a specific organization
+// by iterating through the main connections map.
+func (m *Manager) countOrgConnections(orgID string) int {
+	count := 0
+	m.connections.Range(func(key, value interface{}) bool {
+		conns := value.([]*Connection)
+		for _, conn := range conns {
+			if conn.OrganizationID == orgID {
+				count++
+			}
+		}
+		return true
+	})
+	return count
+}
+
 // monitorHeartbeat periodically sends ping frames and detects connection death.
 // Runs in a background goroutine for each connection.
 //
@@ -253,8 +270,6 @@ func (m *Manager) GetConnectionCount() int {
 //   - Heartbeat timeout is detected (no pong received)
 //   - Manager shutdown is triggered
 func (m *Manager) monitorHeartbeat(conn *Connection) {
-	defer m.wg.Done()
-
 	ticker := time.NewTicker(m.heartbeatInterval)
 	defer ticker.Stop()
 
@@ -327,10 +342,28 @@ func (m *Manager) Shutdown() {
 
 // GetOrgConnectionStats returns connection statistics for a specific organization
 func (m *Manager) GetOrgConnectionStats(orgID string) OrgConnectionStats {
-	return m.orgLimiter.GetOrgStats(orgID)
+	return OrgConnectionStats{
+		OrganizationID: orgID,
+		CurrentCount:   m.countOrgConnections(orgID),
+		MaxAllowed:     m.maxConnectionsPerOrg,
+	}
 }
 
 // GetAllOrgConnectionStats returns connection counts for all organizations
 func (m *Manager) GetAllOrgConnectionStats() map[string]int {
-	return m.orgLimiter.GetAllOrgConnectionCounts()
+	result := make(map[string]int)
+	m.connections.Range(func(key, value interface{}) bool {
+		conns := value.([]*Connection)
+		for _, conn := range conns {
+			result[conn.OrganizationID]++
+		}
+		return true
+	})
+	return result
+}
+
+// CanAcceptOrgConnection checks if the organization can accept a new connection
+// without actually adding it. Use this for pre-upgrade validation.
+func (m *Manager) CanAcceptOrgConnection(orgID string) bool {
+	return m.countOrgConnections(orgID) < m.maxConnectionsPerOrg
 }
