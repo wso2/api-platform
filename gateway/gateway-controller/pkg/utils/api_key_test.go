@@ -728,8 +728,8 @@ func TestHashAPIKeyWithArgon2ID_EmptyKey(t *testing.T) {
 
 // Additional tests for uncovered lines
 
-// Tests for expiration handling in generateAPIKeyFromRequest
-func TestGenerateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
+// Tests for expiration handling in createAPIKeyFromRequest
+func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 	service := &APIKeyService{
 		apiKeyConfig: &config.APIKeyConfig{
 			APIKeysPerUserPerAPI: 10,
@@ -748,17 +748,17 @@ func TestGenerateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 
 	t.Run("seconds unit", func(t *testing.T) {
 		name := "key1"
-		req := &api.APIKeyGenerationRequest{
+		req := &api.APIKeyCreationRequest{
 			Name: &name,
 			ExpiresIn: &struct {
 				Duration int                                      `json:"duration" yaml:"duration"`
-				Unit     api.APIKeyGenerationRequestExpiresInUnit `json:"unit" yaml:"unit"`
+				Unit     api.APIKeyCreationRequestExpiresInUnit `json:"unit" yaml:"unit"`
 			}{
 				Duration: 3600,
-				Unit:     api.APIKeyGenerationRequestExpiresInUnitSeconds,
+				Unit:     api.APIKeyCreationRequestExpiresInUnitSeconds,
 			},
 		}
-		key, err := service.generateAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		key, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig)
 		assert.NoError(t, err)
 		assert.NotNil(t, key.ExpiresAt)
 	})
@@ -766,11 +766,11 @@ func TestGenerateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 	t.Run("past expiration fails", func(t *testing.T) {
 		name := "key2"
 		past := time.Now().Add(-1 * time.Hour)
-		req := &api.APIKeyGenerationRequest{
+		req := &api.APIKeyCreationRequest{
 			Name:      &name,
 			ExpiresAt: &past,
 		}
-		_, err := service.generateAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		_, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "must be in the future")
 	})

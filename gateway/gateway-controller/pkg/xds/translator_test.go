@@ -1218,6 +1218,7 @@ func TestTranslator_CreateInternalListenerForWebSubHub(t *testing.T) {
 		translator.routerConfig.PolicyEngine.Enabled = true
 		translator.routerConfig.PolicyEngine.Host = "policy-engine"
 		translator.routerConfig.PolicyEngine.Port = 9002
+		translator.routerConfig.LuaScriptPath = "../../lua/request_transformation.lua"
 
 		listener, err := translator.createInternalListenerForWebSubHub(false)
 		require.NoError(t, err)
@@ -1301,6 +1302,7 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		translator.routerConfig.PolicyEngine.Enabled = true
 		translator.routerConfig.PolicyEngine.Host = "policy-engine"
 		translator.routerConfig.PolicyEngine.Port = 9002
+		translator.routerConfig.LuaScriptPath = "../../lua/request_transformation.lua"
 
 		listener, err := translator.createDynamicFwdListenerForWebSubHub(false)
 		require.NoError(t, err)
