@@ -198,6 +198,11 @@ func TestValidatePathExists_PermissionDenied(t *testing.T) {
 	}
 	defer os.Chmod(testDir, 0755) // Restore for cleanup
 
+	// Verify permissions are actually enforced (may not be on Windows or when running as root)
+	if _, statErr := os.Stat(testFile); statErr == nil {
+		t.Skip("Permissions not enforced on this OS/user")
+	}
+
 	err = ValidatePathExists(testFile, "secret file")
 
 	// Should return permission error
@@ -215,6 +220,12 @@ func TestCopyFile_SourceUnreadable(t *testing.T) {
 		t.Skip("Cannot create file with restricted permissions on this OS")
 	}
 	defer os.Chmod(srcPath, 0644) // Restore for cleanup
+
+	// Verify permissions are actually enforced (may not be on Windows or when running as root)
+	if f, openErr := os.Open(srcPath); openErr == nil {
+		_ = f.Close()
+		t.Skip("Permissions not enforced on this OS/user")
+	}
 
 	dstPath := filepath.Join(tmpDir, "destination.txt")
 	err = CopyFile(srcPath, dstPath)
@@ -238,6 +249,14 @@ func TestCopyFile_DestinationReadOnly(t *testing.T) {
 		t.Skip("Cannot create read-only directory on this OS")
 	}
 	defer os.Chmod(readOnlyDir, 0755) // Restore for cleanup
+
+	// Verify permissions are actually enforced (may not be on Windows or when running as root)
+	probePath := filepath.Join(readOnlyDir, "probe.txt")
+	if f, createErr := os.Create(probePath); createErr == nil {
+		_ = f.Close()
+		_ = os.Remove(probePath)
+		t.Skip("Permissions not enforced on this OS/user")
+	}
 
 	dstPath := filepath.Join(readOnlyDir, "destination.txt")
 	err = CopyFile(srcPath, dstPath)

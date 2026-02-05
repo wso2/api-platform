@@ -21,40 +21,40 @@ package testutils
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 // DefaultGoVersion is the default Go version used in generated go.mod files.
-const DefaultGoVersion = "1.23"
+const DefaultGoVersion = "1.25.1"
 
 // WriteGoMod creates a go.mod file in the specified directory with the given module name.
 // Uses DefaultGoVersion for the Go version.
+// Parent directories are created if they don't exist.
 func WriteGoMod(t *testing.T, dir, moduleName string) {
 	t.Helper()
 	WriteGoModWithVersion(t, dir, moduleName, DefaultGoVersion)
 }
 
 // WriteGoModWithVersion creates a go.mod file with a specific Go version.
+// Parent directories are created if they don't exist.
 func WriteGoModWithVersion(t *testing.T, dir, moduleName, goVersion string) {
 	t.Helper()
 	content := fmt.Sprintf("module %s\n\ngo %s\n", moduleName, goVersion)
 	path := filepath.Join(dir, "go.mod")
-	err := os.WriteFile(path, []byte(content), 0644)
-	require.NoError(t, err, "failed to write go.mod to %s", path)
+	WriteFile(t, path, content)
 }
 
 // WritePolicyEngineGoMod creates a go.mod file for the policy-engine module.
 // This is the standard module used in most gateway-builder tests.
+// Parent directories are created if they don't exist.
 func WritePolicyEngineGoMod(t *testing.T, dir string) {
 	t.Helper()
 	WriteGoMod(t, dir, "github.com/wso2/api-platform/gateway/policy-engine")
 }
 
 // WriteGoModWithRequire creates a go.mod file with a require directive.
+// Parent directories are created if they don't exist.
 func WriteGoModWithRequire(t *testing.T, dir, moduleName, goVersion, requireModule, requireVersion string) {
 	t.Helper()
 	content := fmt.Sprintf(`module %s
@@ -64,11 +64,11 @@ go %s
 require %s %s
 `, moduleName, goVersion, requireModule, requireVersion)
 	path := filepath.Join(dir, "go.mod")
-	err := os.WriteFile(path, []byte(content), 0644)
-	require.NoError(t, err, "failed to write go.mod with require to %s", path)
+	WriteFile(t, path, content)
 }
 
 // WriteGoModWithReplace creates a go.mod file with a replace directive.
+// Parent directories are created if they don't exist.
 func WriteGoModWithReplace(t *testing.T, dir, moduleName, goVersion, replaceModule, replacePath string) {
 	t.Helper()
 	content := fmt.Sprintf(`module %s
@@ -78,6 +78,5 @@ go %s
 replace %s => %s
 `, moduleName, goVersion, replaceModule, replacePath)
 	path := filepath.Join(dir, "go.mod")
-	err := os.WriteFile(path, []byte(content), 0644)
-	require.NoError(t, err, "failed to write go.mod with replace to %s", path)
+	WriteFile(t, path, content)
 }

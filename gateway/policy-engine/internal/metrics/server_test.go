@@ -80,22 +80,30 @@ func TestServer_StartStop(t *testing.T) {
 		errCh <- server.Start(startCtx)
 	}()
 
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for server to be ready with retries
+	var resp *http.Response
+	var err error
+	for i := 0; i < 10; i++ {
+		time.Sleep(50 * time.Millisecond)
+		resp, err = http.Get("http://localhost:9101/health")
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+	}
+	require.NoError(t, err, "server should be reachable after startup")
 
 	// Test metrics endpoint
-	resp, err := http.Get("http://localhost:9101/metrics")
-	if err == nil {
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		resp.Body.Close()
-	}
+	resp, err = http.Get("http://localhost:9101/metrics")
+	require.NoError(t, err, "metrics endpoint should be reachable")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
 
 	// Test health endpoint
 	resp, err = http.Get("http://localhost:9101/health")
-	if err == nil {
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		resp.Body.Close()
-	}
+	require.NoError(t, err, "health endpoint should be reachable")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
 
 	// Stop the server
 	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

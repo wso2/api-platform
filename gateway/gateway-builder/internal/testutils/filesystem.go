@@ -21,10 +21,24 @@ package testutils
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// SanitizePackageName converts a policy name to a valid Go package name.
+// Replaces hyphens and dots with underscores, removes other invalid characters.
+func SanitizePackageName(name string) string {
+	// Replace common invalid characters with underscores
+	result := strings.ReplaceAll(name, "-", "_")
+	result = strings.ReplaceAll(result, ".", "_")
+	// If starts with a digit, prefix with underscore
+	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
+		result = "_" + result
+	}
+	return result
+}
 
 // WriteFile creates a file at the specified path with the given content.
 // Parent directories are created if they don't exist.
@@ -54,10 +68,12 @@ func CreateSourceFile(t *testing.T, dir, filename, content string) {
 
 // CreateMinimalGoSource creates a minimal valid Go source file in the directory.
 // Useful when you just need a compilable Go package.
+// The packageName is sanitized to be a valid Go identifier.
 func CreateMinimalGoSource(t *testing.T, dir, packageName string) {
 	t.Helper()
-	content := "package " + packageName + "\n"
-	CreateSourceFile(t, dir, packageName+".go", content)
+	safeName := SanitizePackageName(packageName)
+	content := "package " + safeName + "\n"
+	CreateSourceFile(t, dir, safeName+".go", content)
 }
 
 // CreateMainGoSource creates a main.go file with a minimal main function.

@@ -119,8 +119,10 @@ func NewRemoteDiscoveredPolicy(name, version, modulePath, moduleVersion string) 
 }
 
 // CreatePolicySourceFile creates a Go source file in the policy directory.
+// The packageName is sanitized to be a valid Go identifier.
 func CreatePolicySourceFile(t *testing.T, policyDir, packageName string) {
 	t.Helper()
+	safeName := SanitizePackageName(packageName)
 	content := fmt.Sprintf(`package %s
 
 import (
@@ -145,8 +147,8 @@ func (p *TestPolicy) Mode() policy.PolicyMode {
 func Factory(metadata policy.PolicyMetadata, initParams map[string]interface{}) (policy.Policy, map[string]interface{}, error) {
 	return &TestPolicy{}, initParams, nil
 }
-`, packageName)
-	CreateSourceFile(t, policyDir, packageName+".go", content)
+`, safeName)
+	CreateSourceFile(t, policyDir, safeName+".go", content)
 }
 
 // CreateValidPolicyDir creates a complete valid policy directory at baseDir/name with:
@@ -155,6 +157,7 @@ func Factory(metadata policy.PolicyMetadata, initParams map[string]interface{}) 
 // - policy.go (with minimal valid methods)
 // Returns the full path to the policy directory.
 // This matches the pattern used in validation tests.
+// The policy name is sanitized to create valid Go package names.
 func CreateValidPolicyDir(t *testing.T, baseDir, name, version string) string {
 	t.Helper()
 	policyDir := filepath.Join(baseDir, name)
@@ -169,6 +172,9 @@ func CreateValidPolicyDir(t *testing.T, baseDir, name, version string) string {
 	goModContent := fmt.Sprintf("module github.com/test/%s", name)
 	WriteFile(t, filepath.Join(policyDir, "go.mod"), goModContent)
 
+	// Sanitize name for valid Go package name
+	pkgName := SanitizePackageName(name)
+
 	// Create valid policy.go with all required methods
 	goContent := fmt.Sprintf(`package %s
 
@@ -178,7 +184,7 @@ func GetPolicy() *Policy { return &Policy{} }
 func (p *Policy) Mode() int { return 0 }
 func (p *Policy) OnRequest() {}
 func (p *Policy) OnResponse() {}
-`, name)
+`, pkgName)
 	WriteFile(t, filepath.Join(policyDir, "policy.go"), goContent)
 
 	return policyDir
