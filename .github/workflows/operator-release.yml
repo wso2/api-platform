@@ -52,7 +52,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add kubernetes/gateway-operator/Makefile
-          git commit -m "chore: bump gateway-operator version to ${{ inputs.version }}"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump gateway-operator version to ${{ inputs.version }}"
+          else
+            echo "No changes to commit"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

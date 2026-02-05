@@ -243,8 +243,8 @@ jobs:
 
             set -o pipefail
 
-            # Run the build pointing to sample-policies/ (contains build.yaml with relative policy paths)
-            (./ap gateway image build -p sample-policies) 2>&1 | tee "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log"
+            # cd into sample-policies so that relative filePath entries in build.yaml resolve correctly
+            (cd sample-policies && ../ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/6-sample-policies-gw-image-build.log"
             BUILD_RC=${PIPESTATUS[0]}
 
             # Post-build diagnostics

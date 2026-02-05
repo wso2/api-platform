@@ -17,8 +17,9 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# version-bump.sh - Bump version numbers in VERSION files
-# Usage: ./scripts/version-bump.sh <major|minor|patch> <component>
+# next-version.sh - Compute the next version from a VERSION file
+# Prints the new version to stdout. Does not modify any files.
+# Usage: ./scripts/next-version.sh <major|minor|patch|next-dev> <component>
 
 set -e
 
@@ -89,6 +90,5 @@ elif [[ "$CURRENT_VERSION" == *"-SNAPSHOT" ]]; then
     NEW_VERSION="$NEW_VERSION-SNAPSHOT"
 fi
 
-# Write new version
-echo "$NEW_VERSION" > "$VERSION_FILE"
-echo "✅ Bumped $VERSION_FILE: $CURRENT_VERSION → $NEW_VERSION"
+# Print computed version to stdout
+echo "$NEW_VERSION"

@@ -88,6 +88,7 @@ build: test
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -107,6 +108,7 @@ build-local:
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -125,6 +127,7 @@ build-coverage-image:
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -149,6 +152,7 @@ build-and-push-multiarch:
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
 		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \

@@ -368,6 +368,7 @@ CREATE INDEX IF NOT EXISTS idx_api_deployments_api_gateway ON api_deployments(ap
 CREATE INDEX IF NOT EXISTS idx_api_deployments_created_at ON api_deployments(api_uuid, gateway_uuid, created_at);
 CREATE INDEX IF NOT EXISTS idx_api_deployment_status_deployment ON api_deployment_status(deployment_id);
 CREATE INDEX IF NOT EXISTS idx_api_deployment_status_status ON api_deployment_status(status);
+CREATE INDEX IF NOT EXISTS idx_api_gw_created ON api_deployments (api_uuid, organization_uuid, gateway_uuid, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_devportals_org ON devportals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_devportals_active ON devportals(organization_uuid, is_active);
 CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid);

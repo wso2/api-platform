@@ -394,7 +394,7 @@ func (m *mockDeploymentAPIRepository) GetDeploymentWithState(deploymentID, apiUU
 	return m.deploymentWithState, nil
 }
 
-func (m *mockDeploymentAPIRepository) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error) {
+func (m *mockDeploymentAPIRepository) GetDeploymentsWithState(apiUUID, orgUUID string, gatewayID *string, status *string, maxPerAPIGW int) ([]*model.APIDeployment, error) {
 	if m.getDeploymentsWithStateError != nil {
 		return nil, m.getDeploymentsWithStateError
 	}
