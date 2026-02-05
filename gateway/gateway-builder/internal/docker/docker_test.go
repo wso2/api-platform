@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/testutils"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
@@ -44,8 +45,7 @@ func TestPolicyEngineGenerator_Generate_Success(t *testing.T) {
 
 	// Create fake binary
 	binPath := filepath.Join(tmpDir, "policy-engine-bin")
-	err := os.WriteFile(binPath, []byte("#!/bin/bash\necho hello"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, binPath, "#!/bin/bash\necho hello")
 
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -102,12 +102,10 @@ func TestGatewayControllerGenerator_Generate_Success(t *testing.T) {
 
 	// Create policy directory with policy.yaml
 	policyDir := filepath.Join(tmpDir, "policies", "test-policy")
-	err := os.MkdirAll(policyDir, 0755)
-	require.NoError(t, err)
+	testutils.CreateDir(t, policyDir)
 
 	policyYAMLPath := filepath.Join(policyDir, "policy.yaml")
-	err = os.WriteFile(policyYAMLPath, []byte("name: test-policy\nversion: v1.0.0"), 0644)
-	require.NoError(t, err)
+	testutils.CreatePolicyYAML(t, policyDir, "test-policy", "v1.0.0")
 
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -197,17 +195,14 @@ func TestDockerfileGenerator_GenerateAll_Success(t *testing.T) {
 
 	// Create fake binary
 	binPath := filepath.Join(tmpDir, "policy-engine-bin")
-	err := os.WriteFile(binPath, []byte("#!/bin/bash\necho hello"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, binPath, "#!/bin/bash\necho hello")
 
 	// Create policy directory with policy.yaml
 	policyDir := filepath.Join(tmpDir, "policies", "test-policy")
-	err = os.MkdirAll(policyDir, 0755)
-	require.NoError(t, err)
+	testutils.CreateDir(t, policyDir)
 
 	policyYAMLPath := filepath.Join(policyDir, "policy.yaml")
-	err = os.WriteFile(policyYAMLPath, []byte("name: test-policy\nversion: v1.0.0"), 0644)
-	require.NoError(t, err)
+	testutils.CreatePolicyYAML(t, policyDir, "test-policy", "v1.0.0")
 
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -239,12 +234,10 @@ func TestDockerfileGenerator_GenerateAll_PolicyEngineFails(t *testing.T) {
 
 	// Create policy directory with policy.yaml
 	policyDir := filepath.Join(tmpDir, "policies", "test-policy")
-	err := os.MkdirAll(policyDir, 0755)
-	require.NoError(t, err)
+	testutils.CreateDir(t, policyDir)
 
 	policyYAMLPath := filepath.Join(policyDir, "policy.yaml")
-	err = os.WriteFile(policyYAMLPath, []byte("name: test-policy\nversion: v1.0.0"), 0644)
-	require.NoError(t, err)
+	testutils.CreatePolicyYAML(t, policyDir, "test-policy", "v1.0.0")
 
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -274,8 +267,7 @@ func TestDockerfileGenerator_GenerateAll_GatewayControllerFails(t *testing.T) {
 
 	// Create fake binary
 	binPath := filepath.Join(tmpDir, "policy-engine-bin")
-	err := os.WriteFile(binPath, []byte("#!/bin/bash\necho hello"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, binPath, "#!/bin/bash\necho hello")
 
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -316,8 +308,7 @@ func TestPolicyEngineGenerator_Generate_DirectoryCreationSuccess(t *testing.T) {
 
 	// Create fake binary
 	binPath := filepath.Join(tmpDir, "policy-engine-bin")
-	err := os.WriteFile(binPath, []byte("#!/bin/bash\necho hello"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, binPath, "#!/bin/bash\necho hello")
 
 	// Use nested directory to exercise directory creation
 	outputDir := filepath.Join(tmpDir, "deep", "nested", "output")
@@ -354,17 +345,13 @@ func TestGatewayControllerGenerator_Generate_MultiplePolicies(t *testing.T) {
 	// Create multiple policy directories with policy.yaml
 	policy1Dir := filepath.Join(tmpDir, "policies", "ratelimit")
 	policy2Dir := filepath.Join(tmpDir, "policies", "jwt-auth")
-	err := os.MkdirAll(policy1Dir, 0755)
-	require.NoError(t, err)
-	err = os.MkdirAll(policy2Dir, 0755)
-	require.NoError(t, err)
+	testutils.CreateDir(t, policy1Dir)
+	testutils.CreateDir(t, policy2Dir)
 
 	policy1YAML := filepath.Join(policy1Dir, "policy.yaml")
 	policy2YAML := filepath.Join(policy2Dir, "policy.yaml")
-	err = os.WriteFile(policy1YAML, []byte("name: ratelimit\nversion: v1.0.0"), 0644)
-	require.NoError(t, err)
-	err = os.WriteFile(policy2YAML, []byte("name: jwt-auth\nversion: v0.1.0"), 0644)
-	require.NoError(t, err)
+	testutils.CreatePolicyYAML(t, policy1Dir, "ratelimit", "v1.0.0")
+	testutils.CreatePolicyYAML(t, policy2Dir, "jwt-auth", "v0.1.0")
 
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -410,8 +397,7 @@ func TestDockerfileGenerator_GenerateAll_AllSuccess(t *testing.T) {
 
 	// Create fake binary
 	binPath := filepath.Join(tmpDir, "policy-engine-bin")
-	err := os.WriteFile(binPath, []byte("#!/bin/bash\necho hello"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, binPath, "#!/bin/bash\necho hello")
 
 	outputDir := filepath.Join(tmpDir, "output")
 

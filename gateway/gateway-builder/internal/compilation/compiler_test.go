@@ -25,6 +25,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/testutils"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
@@ -70,16 +72,9 @@ func TestRunGoModDownload_NoGoMod(t *testing.T) {
 
 func TestRunGoModDownload_ValidModule(t *testing.T) {
 	tmpDir := t.TempDir()
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
-	// Create a minimal go.mod
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
-
-	err = runGoModDownload(tmpDir)
+	err := runGoModDownload(tmpDir)
 
 	// Should succeed with a valid go.mod (no dependencies to download)
 	assert.NoError(t, err)
@@ -96,16 +91,9 @@ func TestRunGoModTidy_NoGoMod(t *testing.T) {
 
 func TestRunGoModTidy_ValidModule(t *testing.T) {
 	tmpDir := t.TempDir()
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
-	// Create a minimal go.mod
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
-
-	err = runGoModTidy(tmpDir)
+	err := runGoModTidy(tmpDir)
 
 	assert.NoError(t, err)
 }
@@ -114,12 +102,7 @@ func TestRunGoBuild_NoSource(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create go.mod but no source files
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "output", "binary"),
@@ -128,7 +111,7 @@ go 1.21
 		TargetArch: "amd64",
 	}
 
-	err = runGoBuild(tmpDir, options)
+	err := runGoBuild(tmpDir, options)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "go build failed")
@@ -136,14 +119,7 @@ go 1.21
 
 func TestRunGoBuild_CreatesOutputDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create go.mod
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	// Output dir that doesn't exist yet
 	outputDir := filepath.Join(tmpDir, "deep", "nested", "output")
@@ -160,19 +136,13 @@ go 1.21
 	_ = runGoBuild(tmpDir, options)
 
 	// Verify directory was created
-	_, err = os.Stat(outputDir)
+	_, err := os.Stat(outputDir)
 	assert.NoError(t, err, "output directory should be created")
 }
 
 func TestRunGoBuild_WithBuildTags(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "binary"),
@@ -183,19 +153,13 @@ go 1.21
 	}
 
 	// Will fail but exercises the build tags path
-	err = runGoBuild(tmpDir, options)
+	err := runGoBuild(tmpDir, options)
 	assert.Error(t, err) // No source to build
 }
 
 func TestRunGoBuild_WithLDFlags(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "binary"),
@@ -205,19 +169,13 @@ go 1.21
 		TargetArch: "amd64",
 	}
 
-	err = runGoBuild(tmpDir, options)
+	err := runGoBuild(tmpDir, options)
 	assert.Error(t, err) // No source to build
 }
 
 func TestRunGoBuild_WithCoverage(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	options := &types.CompilationOptions{
 		OutputPath:     filepath.Join(tmpDir, "binary"),
@@ -227,19 +185,13 @@ go 1.21
 		TargetArch:     "amd64",
 	}
 
-	err = runGoBuild(tmpDir, options)
+	err := runGoBuild(tmpDir, options)
 	assert.Error(t, err) // No source to build
 }
 
 func TestRunGoBuild_WithCGOEnabled(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "binary"),
@@ -248,7 +200,7 @@ go 1.21
 		TargetArch: "amd64",
 	}
 
-	err = runGoBuild(tmpDir, options)
+	err := runGoBuild(tmpDir, options)
 	assert.Error(t, err) // No source to build
 }
 
@@ -293,8 +245,7 @@ go 1.21
 
 require github.com/stretchr/testify v1.8.0
 `
-	err := os.WriteFile(goModPath, []byte(content), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, goModPath, content)
 
 	// Should not panic, just logs
 	printGoModForDebug(goModPath)
@@ -307,19 +258,11 @@ func TestPrintGoModForDebug_FileNotFound(t *testing.T) {
 
 func TestCompileBinary_FullPipeline_InvalidSource(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create go.mod
-	goModContent := `module testmodule
-
-go 1.21
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
 
 	// Create cmd/policy-engine directory but no main.go
 	cmdDir := filepath.Join(tmpDir, "cmd", "policy-engine")
-	err = os.MkdirAll(cmdDir, 0755)
-	require.NoError(t, err)
+	testutils.CreateDir(t, cmdDir)
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "output", "binary"),
@@ -329,7 +272,7 @@ go 1.21
 		EnableUPX:  false,
 	}
 
-	err = CompileBinary(tmpDir, options)
+	err := CompileBinary(tmpDir, options)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "go build failed")
