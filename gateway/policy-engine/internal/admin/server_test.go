@@ -19,12 +19,131 @@
 package admin
 
 import (
+	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
+
+// =============================================================================
+// NewServer Tests
+// =============================================================================
+
+// getFreePort finds an available port for testing
+func getFreePort(t *testing.T) int {
+	listener, err := net.Listen("tcp", ":0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	return port
+}
+
+func TestNewServer(t *testing.T) {
+	port := getFreePort(t)
+	cfg := &config.AdminConfig{
+		Port:       port,
+		AllowedIPs: []string{"127.0.0.1"},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+
+	server := NewServer(cfg, k, reg)
+
+	require.NotNil(t, server)
+	assert.Equal(t, cfg, server.cfg)
+	assert.NotNil(t, server.httpServer)
+	assert.Equal(t, fmt.Sprintf(":%d", port), server.httpServer.Addr)
+}
+
+// =============================================================================
+// Start and Stop Tests
+// =============================================================================
+
+func TestServer_StartAndStop(t *testing.T) {
+	port := getFreePort(t)
+	cfg := &config.AdminConfig{
+		Port:       port,
+		AllowedIPs: []string{"127.0.0.1", "*"},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+
+	server := NewServer(cfg, k, reg)
+	ctx := context.Background()
+
+	// Start server in goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- server.Start(ctx)
+	}()
+
+	// Wait for server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify server is responding
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/config_dump", port))
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Stop server
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = server.Stop(stopCtx)
+	assert.NoError(t, err)
+
+	// Wait for Start to return
+	select {
+	case startErr := <-errChan:
+		// Should return nil (or http.ErrServerClosed which is handled)
+		assert.NoError(t, startErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Server did not stop within timeout")
+	}
+}
+
+func TestServer_StartWithInvalidPort(t *testing.T) {
+	// First, bind a port so it's in use
+	listener, err := net.Listen("tcp", ":0")
+	require.NoError(t, err)
+	defer listener.Close()
+	usedPort := listener.Addr().(*net.TCPAddr).Port
+
+	cfg := &config.AdminConfig{
+		Port:       usedPort,
+		AllowedIPs: []string{"127.0.0.1"},
+	}
+	k := kernel.NewKernel()
+	reg := &registry.PolicyRegistry{
+		Definitions: make(map[string]*policy.PolicyDefinition),
+		Factories:   make(map[string]policy.PolicyFactory),
+	}
+
+	server := NewServer(cfg, k, reg)
+
+	// Start should fail because port is already in use
+	ctx := context.Background()
+	err = server.Start(ctx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "admin server error")
+}
 
 // TestExtractClientIP tests the extractClientIP function
 func TestExtractClientIP(t *testing.T) {
