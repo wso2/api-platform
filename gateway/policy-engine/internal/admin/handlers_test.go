@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/testutils"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
@@ -231,7 +232,7 @@ func TestPolicySpec_JSONSerialization(t *testing.T) {
 				Name:               "rate-limit",
 				Version:            "v1.0.0",
 				Enabled:            false,
-				ExecutionCondition: ptrString("request.method == 'POST'"),
+				ExecutionCondition: testutils.PtrString("request.method == 'POST'"),
 				Parameters:         nil,
 			},
 		},
@@ -256,11 +257,6 @@ func TestPolicySpec_JSONSerialization(t *testing.T) {
 			}
 		})
 	}
-}
-
-// ptrString returns a pointer to the given string
-func ptrString(s string) *string {
-	return &s
 }
 
 // TestPolicyRegistryDump_EmptyPolicies tests PolicyRegistryDump with empty policies
@@ -341,7 +337,7 @@ func TestDumpPolicySpecs(t *testing.T) {
 					Name:               "rate-limit",
 					Version:            "v2.0.0",
 					Enabled:            false,
-					ExecutionCondition: ptrString("request.method == 'POST'"),
+					ExecutionCondition: testutils.PtrString("request.method == 'POST'"),
 					Parameters: policy.PolicyParameters{
 						Raw: map[string]interface{}{"limit": 100},
 					},
@@ -352,7 +348,7 @@ func TestDumpPolicySpecs(t *testing.T) {
 					Name:               "rate-limit",
 					Version:            "v2.0.0",
 					Enabled:            false,
-					ExecutionCondition: ptrString("request.method == 'POST'"),
+					ExecutionCondition: testutils.PtrString("request.method == 'POST'"),
 					Parameters:         map[string]interface{}{"limit": 100},
 				},
 			},

@@ -41,7 +41,7 @@ import (
 )
 
 // =============================================================================
-// Mock Stream for Testing
+// Mock Stream for Testing (kept local - uses io.EOF specific behavior)
 // =============================================================================
 
 // mockExtProcStream implements extprocv3.ExternalProcessor_ProcessServer for testing
@@ -88,36 +88,6 @@ func (m *mockExtProcStream) SetTrailer(metadata.MD)       {}
 func (m *mockExtProcStream) Context() context.Context     { return m.ctx }
 func (m *mockExtProcStream) SendMsg(interface{}) error    { return nil }
 func (m *mockExtProcStream) RecvMsg(interface{}) error    { return nil }
-
-// =============================================================================
-// Mock Policy for Testing
-// =============================================================================
-
-type mockPolicy struct {
-	name    string
-	version string
-	mode    policy.ProcessingMode
-	onReq   func(*policy.RequestContext, map[string]interface{}) policy.RequestAction
-	onResp  func(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction
-}
-
-func (m *mockPolicy) Mode() policy.ProcessingMode {
-	return m.mode
-}
-
-func (m *mockPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	if m.onReq != nil {
-		return m.onReq(ctx, params)
-	}
-	return nil
-}
-
-func (m *mockPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	if m.onResp != nil {
-		return m.onResp(ctx, params)
-	}
-	return nil
-}
 
 // =============================================================================
 // NewExternalProcessorServer Tests

@@ -23,31 +23,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/testutils"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
-
-// mockPolicy is a simple mock policy for testing
-type mockPolicy struct {
-	name    string
-	version string
-}
-
-func (m *mockPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{}
-}
-func (m *mockPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	return nil
-}
-func (m *mockPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	return nil
-}
-
-// mockPolicyFactory creates a mock policy factory for testing
-func mockPolicyFactory(name, version string) policy.PolicyFactory {
-	return func(metadata policy.PolicyMetadata, params map[string]interface{}) (policy.Policy, error) {
-		return &mockPolicy{name: name, version: version}, nil
-	}
-}
 
 // newTestRegistry creates a fresh PolicyRegistry for testing (not using the global singleton)
 func newTestRegistry() *PolicyRegistry {
@@ -168,7 +146,7 @@ func TestRegister(t *testing.T) {
 			Name:    "jwt-auth",
 			Version: "v1.0.0",
 		}
-		factory := mockPolicyFactory("jwt-auth", "v1.0.0")
+		factory := testutils.NewMockPolicyFactory("jwt-auth", "v1.0.0")
 
 		err := reg.Register(def, factory)
 		require.NoError(t, err)
@@ -187,7 +165,7 @@ func TestRegister(t *testing.T) {
 			Name:    "jwt-auth",
 			Version: "v1.0.0",
 		}
-		factory := mockPolicyFactory("jwt-auth", "v1.0.0")
+		factory := testutils.NewMockPolicyFactory("jwt-auth", "v1.0.0")
 
 		// First registration should succeed
 		err := reg.Register(def, factory)
@@ -214,7 +192,7 @@ func TestRegister(t *testing.T) {
 
 		for _, p := range policies {
 			def := &policy.PolicyDefinition{Name: p.name, Version: p.version}
-			factory := mockPolicyFactory(p.name, p.version)
+			factory := testutils.NewMockPolicyFactory(p.name, p.version)
 			err := reg.Register(def, factory)
 			require.NoError(t, err)
 		}
@@ -234,7 +212,7 @@ func TestGetDefinition(t *testing.T) {
 		Version:     "v1.0.0",
 		Description: "JWT Authentication Policy",
 	}
-	factory := mockPolicyFactory("jwt-auth", "v1.0.0")
+	factory := testutils.NewMockPolicyFactory("jwt-auth", "v1.0.0")
 	err := reg.Register(def, factory)
 	require.NoError(t, err)
 
@@ -270,7 +248,7 @@ func TestGetFactory(t *testing.T) {
 		Name:    "jwt-auth",
 		Version: "v1.0.0",
 	}
-	factory := mockPolicyFactory("jwt-auth", "v1.0.0")
+	factory := testutils.NewMockPolicyFactory("jwt-auth", "v1.0.0")
 	err := reg.Register(def, factory)
 	require.NoError(t, err)
 
@@ -352,7 +330,7 @@ func TestDumpPolicies(t *testing.T) {
 
 		for _, p := range policies {
 			def := &policy.PolicyDefinition{Name: p.name, Version: p.version}
-			factory := mockPolicyFactory(p.name, p.version)
+			factory := testutils.NewMockPolicyFactory(p.name, p.version)
 			err := reg.Register(def, factory)
 			require.NoError(t, err)
 		}
@@ -367,7 +345,7 @@ func TestDumpPolicies(t *testing.T) {
 		reg := newTestRegistry()
 
 		def := &policy.PolicyDefinition{Name: "jwt-auth", Version: "v1.0.0"}
-		factory := mockPolicyFactory("jwt-auth", "v1.0.0")
+		factory := testutils.NewMockPolicyFactory("jwt-auth", "v1.0.0")
 		err := reg.Register(def, factory)
 		require.NoError(t, err)
 
@@ -405,7 +383,7 @@ func TestCreateInstance(t *testing.T) {
 				"issuer": "${config.policy_configurations.jwtauth.issuer}",
 			},
 		}
-		factory := mockPolicyFactory("jwt-auth", "v1.0.0")
+		factory := testutils.NewMockPolicyFactory("jwt-auth", "v1.0.0")
 		err = reg.Register(def, factory)
 		require.NoError(t, err)
 
@@ -435,7 +413,7 @@ func TestCreateInstance(t *testing.T) {
 			Name:    "jwt-auth",
 			Version: "v1.0.0",
 		}
-		factory := mockPolicyFactory("jwt-auth", "v1.0.0")
+		factory := testutils.NewMockPolicyFactory("jwt-auth", "v1.0.0")
 		err := reg.Register(def, factory)
 		require.NoError(t, err)
 
@@ -479,7 +457,7 @@ func TestCreateInstance(t *testing.T) {
 				"timeout": "${config.default_timeout}",
 			},
 		}
-		factory := mockPolicyFactory("timeout", "v1.0.0")
+		factory := testutils.NewMockPolicyFactory("timeout", "v1.0.0")
 		err = reg.Register(def, factory)
 		require.NoError(t, err)
 
@@ -505,7 +483,7 @@ func TestCreateInstance(t *testing.T) {
 			Version:          "v1.0.0",
 			SystemParameters: nil,
 		}
-		factory := mockPolicyFactory("simple", "v1.0.0")
+		factory := testutils.NewMockPolicyFactory("simple", "v1.0.0")
 		err = reg.Register(def, factory)
 		require.NoError(t, err)
 
@@ -538,8 +516,8 @@ func TestPolicyChain(t *testing.T) {
 	t.Run("chain with policies", func(t *testing.T) {
 		chain := PolicyChain{
 			Policies: []policy.Policy{
-				&mockPolicy{name: "jwt-auth", version: "v1.0.0"},
-				&mockPolicy{name: "rate-limit", version: "v1.0.0"},
+				&testutils.SimpleMockPolicy{Name: "jwt-auth", Version: "v1.0.0"},
+				&testutils.SimpleMockPolicy{Name: "rate-limit", Version: "v1.0.0"},
 			},
 			PolicySpecs: []policy.PolicySpec{
 				{Name: "jwt-auth", Version: "v1.0.0", Enabled: true},

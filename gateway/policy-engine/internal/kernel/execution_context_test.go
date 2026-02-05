@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/testutils"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
@@ -168,8 +169,8 @@ func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
 
-	mockPol := &mockPolicy{
-		mode: policy.ProcessingMode{
+	mockPol := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
 			ResponseHeaderMode: policy.HeaderModeProcess,
 		},
 	}
