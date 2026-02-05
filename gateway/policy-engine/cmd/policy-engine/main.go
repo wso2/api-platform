@@ -89,13 +89,24 @@ func main() {
 	slog.SetDefault(logger)
 	ctx := context.Background()
 
-	slog.InfoContext(ctx, "Policy Engine starting",
-		"version", Version,
-		"git_commit", GitCommit,
-		"build_date", BuildDate,
-		"config_file", *configFile,
-		"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
-		"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
+	// Log startup info based on listen mode
+	if cfg.PolicyEngine.Server.ExtProcSocket != "" {
+		slog.InfoContext(ctx, "Policy Engine starting",
+			"version", Version,
+			"git_commit", GitCommit,
+			"build_date", BuildDate,
+			"config_file", *configFile,
+			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
+			"extproc_socket", cfg.PolicyEngine.Server.ExtProcSocket)
+	} else {
+		slog.InfoContext(ctx, "Policy Engine starting",
+			"version", Version,
+			"git_commit", GitCommit,
+			"build_date", BuildDate,
+			"config_file", *configFile,
+			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
+			"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
+	}
 
 	// Initialize tracing (if enabled in config)
 	tracingShutdown, err := tracing.InitTracer(cfg)
@@ -162,18 +173,39 @@ func main() {
 	// Create and start ext_proc gRPC server
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName)
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.ExtProcPort))
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to listen on port",
-			"port", cfg.PolicyEngine.Server.ExtProcPort,
-			"error", err)
-		os.Exit(1)
+	var lis net.Listener
+	if cfg.PolicyEngine.Server.ExtProcSocket != "" {
+		// UDS mode - cleanup stale socket file
+		socketPath := cfg.PolicyEngine.Server.ExtProcSocket
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+			slog.WarnContext(ctx, "Failed to remove existing socket file", "path", socketPath, "error", err)
+		}
+
+		lis, err = net.Listen("unix", socketPath)
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to listen on Unix socket", "path", socketPath, "error", err)
+			os.Exit(1)
+		}
+
+		// Set socket permissions (readable/writable by owner and group)
+		if err := os.Chmod(socketPath, 0660); err != nil {
+			slog.WarnContext(ctx, "Failed to set socket permissions", "path", socketPath, "error", err)
+		}
+
+		slog.InfoContext(ctx, "Policy Engine listening on Unix socket", "path", socketPath)
+	} else {
+		// TCP mode
+		lis, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.ExtProcPort))
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to listen on port", "port", cfg.PolicyEngine.Server.ExtProcPort, "error", err)
+			os.Exit(1)
+		}
+
+		slog.InfoContext(ctx, "Policy Engine listening on TCP port", "port", cfg.PolicyEngine.Server.ExtProcPort)
 	}
 
 	grpcServer := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(grpcServer, extprocServer)
-
-	slog.InfoContext(ctx, "Policy Engine listening", "port", cfg.PolicyEngine.Server.ExtProcPort)
 
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server
@@ -257,6 +289,15 @@ func main() {
 	}
 
 	grpcServer.GracefulStop()
+
+	// Cleanup Unix socket if used
+	if cfg.PolicyEngine.Server.ExtProcSocket != "" {
+		if err := os.Remove(cfg.PolicyEngine.Server.ExtProcSocket); err != nil && !os.IsNotExist(err) {
+			slog.WarnContext(ctx, "Failed to cleanup socket file on shutdown",
+				"path", cfg.PolicyEngine.Server.ExtProcSocket, "error", err)
+		}
+	}
+
 	slog.InfoContext(ctx, "Policy Engine shut down successfully")
 }
 
