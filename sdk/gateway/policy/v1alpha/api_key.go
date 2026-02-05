@@ -128,6 +128,10 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	if apiKey == nil {
 		return fmt.Errorf("API key cannot be nil")
 	}
+
+	// Normalize the API key value before storing
+	apiKey.APIKey = strings.TrimSpace(apiKey.APIKey)
+
 	// External keys require non-empty IndexKey for fast lookup; fail fast before any writes
 	if apiKey.Source == "external" && strings.TrimSpace(apiKey.IndexKey) == "" {
 		return fmt.Errorf("external API key requires non-empty IndexKey for fast lookup")
@@ -207,6 +211,9 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
+	// Normalize the provided API key
+	providedAPIKey = strings.TrimSpace(providedAPIKey)
+
 	var targetAPIKey *APIKey
 
 	// Try to parse as local key (format: key_id)
@@ -226,12 +233,11 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		if indexKey == "" {
 			return false, fmt.Errorf("API key is empty")
 		}
-		trimmedAPIKey := strings.TrimSpace(providedAPIKey)
 		keyID, exists := aks.externalKeyIndex[apiId][indexKey]
 		if exists {
 			// Found in index, retrieve the key
 			if apiKey, ok := aks.apiKeysByAPI[apiId][*keyID]; ok {
-				if apiKey.Source == "external" && compareAPIKeys(trimmedAPIKey, apiKey.APIKey) {
+				if apiKey.Source == "external" && compareAPIKeys(providedAPIKey, apiKey.APIKey) {
 					targetAPIKey = apiKey
 				}
 			}
@@ -291,6 +297,9 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
+	// Normalize the provided API key
+	providedAPIKey = strings.TrimSpace(providedAPIKey)
+
 	var matchedKey *APIKey
 
 	// Try to parse as local key (format: key_id); empty Source treated as "local"
@@ -305,10 +314,9 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 	// If not found via local key lookup, try external key index for O(1) lookup
 	if matchedKey == nil {
 		indexKey := computeExternalKeyIndexKey(providedAPIKey)
-		trimmedAPIKey := strings.TrimSpace(providedAPIKey)
 		if keyID, exists := aks.externalKeyIndex[apiId][indexKey]; exists {
 			if apiKey, ok := aks.apiKeysByAPI[apiId][*keyID]; ok {
-				if apiKey.Source == "external" && compareAPIKeys(trimmedAPIKey, apiKey.APIKey) {
+				if apiKey.Source == "external" && compareAPIKeys(providedAPIKey, apiKey.APIKey) {
 					matchedKey = apiKey
 				}
 			}

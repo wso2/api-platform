@@ -661,7 +661,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	regeneratedKey, err := s.regenerateAPIKey(existingKey, params.Request, user.UserID, logger)
 	if err != nil {
 		// Check if this is a duplicate key error
-		if strings.Contains(err.Error(), "API key value already exists") {
+		if errors.Is(err, storage.ErrConflict) {
 			// For local key regeneration, retry with a new generated key
 			logger.Warn("API key collision detected during regeneration, retrying",
 				slog.String("handle", params.Handle),

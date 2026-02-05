@@ -131,6 +131,9 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 		return fmt.Errorf("API key cannot be nil")
 	}
 
+	// Normalize the API key value before storing
+	apiKey.APIKey = strings.TrimSpace(apiKey.APIKey)
+
 	// Require non-empty IndexKey for external keys before any writes (no replacement from hashed APIKey)
 	if apiKey.Source == "external" && strings.TrimSpace(apiKey.IndexKey) == "" {
 		return fmt.Errorf("%w: external API key requires non-empty IndexKey", ErrInvalidInput)
@@ -200,6 +203,9 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
+	// Normalize the provided API key
+	providedAPIKey = strings.TrimSpace(providedAPIKey)
+
 	var targetAPIKey *APIKey
 
 	// Try to parse as local key (format: key_id)
@@ -219,12 +225,11 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		if indexKey == "" {
 			return false, fmt.Errorf("API key is empty")
 		}
-		trimmedAPIKey := strings.TrimSpace(providedAPIKey)
 		keyID, exists := aks.externalKeyIndex[apiId][indexKey]
 		if exists {
 			// Found in index, retrieve the key
 			if apiKey, ok := aks.apiKeysByAPI[apiId][*keyID]; ok {
-				if apiKey.Source == "external" && compareAPIKeys(trimmedAPIKey, apiKey.APIKey) {
+				if apiKey.Source == "external" && compareAPIKeys(providedAPIKey, apiKey.APIKey) {
 					targetAPIKey = apiKey
 				}
 			}
@@ -284,8 +289,10 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	var matchedKey *APIKey
+	// Normalize the provided API key
+	providedAPIKey = strings.TrimSpace(providedAPIKey)
 
+	var matchedKey *APIKey
 
 	// Try to parse as local key (format: key_id); empty Source treated as "local"
 	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
