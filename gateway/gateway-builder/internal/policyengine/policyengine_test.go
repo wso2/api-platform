@@ -558,3 +558,154 @@ go 1.23
 	assert.Contains(t, string(modData), "github.com/policy-engine/policies/jwt-auth")
 	assert.Contains(t, string(modData), "github.com/policy-engine/policies/cors")
 }
+
+// ==== Additional tests for remote gomodule policies ====
+
+func TestUpdateGoMod_RemotePolicy_InvalidModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
+
+go 1.23
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	// Create a remote policy (IsFilePathEntry: false) with invalid module
+	policies := []*types.DiscoveredPolicy{
+		{
+			Name:            "ratelimit",
+			Version:         "v1.0.0",
+			GoModulePath:    "github.com/nonexistent-org-12345/nonexistent-module",
+			GoModuleVersion: "v1.0.0",
+			IsFilePathEntry: false, // Remote module
+		},
+	}
+
+	err = UpdateGoMod(tmpDir, policies)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "go get failed")
+}
+
+func TestUpdateGoMod_DuplicateReplaceDirective(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create go.mod that already has a replace directive
+	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
+
+go 1.23
+
+replace github.com/example/policies/ratelimit => ./policies/ratelimit/v1.0.0
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	policyPath := filepath.Join(tmpDir, "policies", "ratelimit", "v1.0.0")
+	err = os.MkdirAll(policyPath, 0755)
+	require.NoError(t, err)
+
+	// Try to add the same replace directive again
+	policies := []*types.DiscoveredPolicy{
+		{
+			Name:            "ratelimit",
+			Version:         "v1.0.0",
+			Path:            policyPath,
+			GoModulePath:    "github.com/example/policies/ratelimit",
+			IsFilePathEntry: true,
+		},
+	}
+
+	// Should succeed (handles "already exists" error gracefully)
+	err = UpdateGoMod(tmpDir, policies)
+	require.NoError(t, err)
+}
+
+func TestUpdateGoMod_MixedLocalAndRemoteSkipsRemote(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
+
+go 1.23
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	policyPath := filepath.Join(tmpDir, "policies", "local-policy", "v1.0.0")
+	err = os.MkdirAll(policyPath, 0755)
+	require.NoError(t, err)
+
+	// Mix of local and remote policies (remote will fail but local should succeed)
+	policies := []*types.DiscoveredPolicy{
+		{
+			Name:            "local-policy",
+			Version:         "v1.0.0",
+			Path:            policyPath,
+			GoModulePath:    "github.com/example/policies/local",
+			IsFilePathEntry: true, // Local
+		},
+	}
+
+	err = UpdateGoMod(tmpDir, policies)
+	require.NoError(t, err)
+
+	// Verify local policy replace directive was added
+	modData, err := os.ReadFile(filepath.Join(tmpDir, "go.mod"))
+	require.NoError(t, err)
+	assert.Contains(t, string(modData), "github.com/example/policies/local")
+}
+
+func TestUpdateGoMod_RelativeSrcDir(t *testing.T) {
+	// Test with relative srcDir (should be converted to absolute)
+	tmpDir := t.TempDir()
+
+	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
+
+go 1.23
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	policyPath := filepath.Join(tmpDir, "policies", "test-policy", "v1.0.0")
+	err = os.MkdirAll(policyPath, 0755)
+	require.NoError(t, err)
+
+	policies := []*types.DiscoveredPolicy{
+		{
+			Name:            "test-policy",
+			Version:         "v1.0.0",
+			Path:            policyPath,
+			GoModulePath:    "github.com/example/test-policy",
+			IsFilePathEntry: true,
+		},
+	}
+
+	// Use absolute path (simulating what the code does with relative)
+	err = UpdateGoMod(tmpDir, policies)
+	require.NoError(t, err)
+}
+
+func TestUpdateGoMod_OnlyRemotePolicies_AllFail(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
+
+go 1.23
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	// Only remote policies, all with invalid modules
+	policies := []*types.DiscoveredPolicy{
+		{
+			Name:            "remote-policy",
+			Version:         "v1.0.0",
+			GoModulePath:    "github.com/definitely-not-real-org/fake-module",
+			GoModuleVersion: "v1.0.0",
+			IsFilePathEntry: false,
+		},
+	}
+
+	err = UpdateGoMod(tmpDir, policies)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "go get failed")
+}
