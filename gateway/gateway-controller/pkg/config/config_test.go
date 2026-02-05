@@ -759,6 +759,82 @@ func TestConfig_ValidatePolicyEngineTLS(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidatePolicyEngineSocket(t *testing.T) {
+	tests := []struct {
+		name        string
+		socket      string
+		host        string
+		port        uint32
+		tlsEnabled  bool
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:   "Valid UDS socket path",
+			socket: "/var/run/policy-engine.sock",
+			host:   "",
+			port:   0,
+		},
+		{
+			name:   "Valid TCP mode (no socket)",
+			socket: "",
+			host:   "localhost",
+			port:   50051,
+		},
+		{
+			name:        "Relative socket path",
+			socket:      "var/run/policy-engine.sock",
+			wantErr:     true,
+			errContains: "socket must be an absolute path",
+		},
+		{
+			name:        "UDS with TLS enabled",
+			socket:      "/var/run/policy-engine.sock",
+			tlsEnabled:  true,
+			wantErr:     true,
+			errContains: "tls cannot be enabled when using Unix domain socket",
+		},
+		{
+			name:        "TCP mode missing host",
+			socket:      "",
+			host:        "",
+			port:        50051,
+			wantErr:     true,
+			errContains: "host is required",
+		},
+		{
+			name:        "TCP mode missing port",
+			socket:      "",
+			host:        "localhost",
+			port:        0,
+			wantErr:     true,
+			errContains: "port is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.GatewayController.Router.PolicyEngine.Enabled = true
+			cfg.GatewayController.Router.PolicyEngine.Socket = tt.socket
+			cfg.GatewayController.Router.PolicyEngine.Host = tt.host
+			cfg.GatewayController.Router.PolicyEngine.Port = tt.port
+			cfg.GatewayController.Router.PolicyEngine.TimeoutMs = 1000
+			cfg.GatewayController.Router.PolicyEngine.MessageTimeoutMs = 500
+			cfg.GatewayController.Router.PolicyEngine.RouteCacheAction = "DEFAULT"
+			cfg.GatewayController.Router.PolicyEngine.RequestHeaderMode = "DEFAULT"
+			cfg.GatewayController.Router.PolicyEngine.TLS.Enabled = tt.tlsEnabled
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfig_ValidateVHostsConfig(t *testing.T) {
 	tests := []struct {
 		name           string

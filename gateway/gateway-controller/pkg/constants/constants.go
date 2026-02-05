@@ -81,7 +81,8 @@ const (
 	ExtProcRequestAttributeRouteMetadata = "xds.route_metadata"
 
 	// Policy Engine
-	PolicyEngineClusterName = "api-platform/policy-engine"
+	PolicyEngineClusterName         = "api-platform/policy-engine"
+	DefaultPolicyEngineSocketPath   = "/var/run/policy-engine.sock"
 
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"

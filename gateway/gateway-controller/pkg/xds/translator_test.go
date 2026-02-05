@@ -494,6 +494,73 @@ func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {
 	assert.Equal(t, constants.PolicyEngineClusterName, cluster.Name)
 }
 
+func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
+	logger := createTestLogger()
+
+	t.Run("UDS mode with socket path", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Enabled:           true,
+			Socket:            "/var/run/policy-engine.sock",
+			Host:              "", // Not used in UDS mode
+			Port:              0,  // Not used in UDS mode
+			TimeoutMs:         1000,
+			MessageTimeoutMs:  500,
+			RouteCacheAction:  "DEFAULT",
+			RequestHeaderMode: "DEFAULT",
+		}
+		cfg := testConfig()
+		cfg.GatewayController.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		c := translator.createPolicyEngineCluster()
+		assert.NotNil(t, c)
+		assert.Equal(t, constants.PolicyEngineClusterName, c.Name)
+
+		// Verify cluster type is STATIC for UDS
+		assert.Equal(t, cluster.Cluster_STATIC, c.ClusterDiscoveryType.(*cluster.Cluster_Type).Type)
+
+		// Verify the address is a Pipe (UDS)
+		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
+		addr := lbEndpoint.GetEndpoint().Address
+		pipe := addr.GetPipe()
+		assert.NotNil(t, pipe, "Expected Pipe address for UDS mode")
+		assert.Equal(t, "/var/run/policy-engine.sock", pipe.Path)
+	})
+
+	t.Run("TCP mode with host:port", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Enabled:           true,
+			Socket:            "", // Empty = TCP mode
+			Host:              "policy-engine",
+			Port:              9001,
+			TimeoutMs:         1000,
+			MessageTimeoutMs:  500,
+			RouteCacheAction:  "DEFAULT",
+			RequestHeaderMode: "DEFAULT",
+		}
+		cfg := testConfig()
+		cfg.GatewayController.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		c := translator.createPolicyEngineCluster()
+		assert.NotNil(t, c)
+		assert.Equal(t, constants.PolicyEngineClusterName, c.Name)
+
+		// Verify cluster type is STRICT_DNS for TCP
+		assert.Equal(t, cluster.Cluster_STRICT_DNS, c.ClusterDiscoveryType.(*cluster.Cluster_Type).Type)
+
+		// Verify the address is a SocketAddress (TCP)
+		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
+		addr := lbEndpoint.GetEndpoint().Address
+		socketAddr := addr.GetSocketAddress()
+		assert.NotNil(t, socketAddr, "Expected SocketAddress for TCP mode")
+		assert.Equal(t, "policy-engine", socketAddr.Address)
+		assert.Equal(t, uint32(9001), socketAddr.GetPortValue())
+	})
+}
+
 func TestTranslator_CreateExtProcFilter(t *testing.T) {
 	logger := createTestLogger()
 

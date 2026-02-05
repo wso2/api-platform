@@ -299,8 +299,9 @@ type HTTPListenerConfig struct {
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
 type PolicyEngineConfig struct {
 	Enabled           bool            `koanf:"enabled"`
-	Host              string          `koanf:"host"` // Policy engine hostname/IP
-	Port              uint32          `koanf:"port"` // Policy engine ext_proc port
+	Host              string          `koanf:"host"`   // Policy engine hostname/IP (TCP mode)
+	Port              uint32          `koanf:"port"`   // Policy engine ext_proc port (TCP mode)
+	Socket            string          `koanf:"socket"` // Unix domain socket path (UDS mode, takes precedence over Host/Port)
 	TimeoutMs         uint32          `koanf:"timeout_ms"`
 	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
 	RouteCacheAction  string          `koanf:"route_cache_action"`
@@ -527,8 +528,9 @@ func defaultConfig() *Config {
 				},
 				PolicyEngine: PolicyEngineConfig{
 					Enabled:           true,
-					Host:              "policy-engine",
-					Port:              9001,
+					Host:              "",                                      // Not used when Socket is set
+					Port:              0,                                       // Not used when Socket is set
+					Socket:            constants.DefaultPolicyEngineSocketPath, // UDS mode by default
 					TimeoutMs:         60000,
 					FailureModeAllow:  false,
 					RouteCacheAction:  "RETAIN",
@@ -1060,18 +1062,29 @@ func (c *Config) validatePolicyEngineConfig() error {
 		return nil
 	}
 
-	// Validate host
-	if policyEngine.Host == "" {
-		return fmt.Errorf("router.policy_engine.host is required when policy engine is enabled")
-	}
+	// Validate connection mode: UDS (Socket) or TCP (Host/Port)
+	if policyEngine.Socket != "" {
+		// UDS mode - socket path must be absolute
+		if !strings.HasPrefix(policyEngine.Socket, "/") {
+			return fmt.Errorf("router.policy_engine.socket must be an absolute path, got: %s", policyEngine.Socket)
+		}
+		// TLS is not supported with UDS (local communication)
+		if policyEngine.TLS.Enabled {
+			return fmt.Errorf("router.policy_engine.tls cannot be enabled when using Unix domain socket")
+		}
+	} else {
+		// TCP mode - validate host and port
+		if policyEngine.Host == "" {
+			return fmt.Errorf("router.policy_engine.host is required when policy engine is enabled and socket is not set")
+		}
 
-	// Validate port
-	if policyEngine.Port == 0 {
-		return fmt.Errorf("router.policy_engine.port is required when policy engine is enabled")
-	}
+		if policyEngine.Port == 0 {
+			return fmt.Errorf("router.policy_engine.port is required when policy engine is enabled and socket is not set")
+		}
 
-	if policyEngine.Port > 65535 {
-		return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
+		if policyEngine.Port > 65535 {
+			return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
+		}
 	}
 
 	// Validate timeout
