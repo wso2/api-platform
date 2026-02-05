@@ -19,18 +19,14 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
-)
-
-const (
-	apiKeyNameMinLength    = 3
-	apiKeyNameMaxLength    = 63
-	displayNameMaxLength   = 100
 )
 
 var (
@@ -44,17 +40,28 @@ var (
 
 // ValidateAPIKeyValue validates a plain API key value for creation or update.
 // Use this for both REST create/update and external events (apikey.created, apikey.updated).
+// Min and max length are read from the service's APIKeyConfig; defaults are used if not configured.
 // Returns a descriptive error if the key is empty, too short, or too long.
 // Note: Expects the caller to trim whitespace before validation.
-func ValidateAPIKeyValue(plainKey string) error {
+func (s *APIKeyService) ValidateAPIKeyValue(plainKey string) error {
+	minLength := constants.DefaultMinAPIKeyLength
+	maxLength := constants.DefaultMaxAPIKeyLength
+	if s.apiKeyConfig != nil {
+		if s.apiKeyConfig.MinKeyLength > 0 {
+			minLength = s.apiKeyConfig.MinKeyLength
+		}
+		if s.apiKeyConfig.MaxKeyLength > 0 {
+			maxLength = s.apiKeyConfig.MaxKeyLength
+		}
+	}
 	if plainKey == "" {
 		return fmt.Errorf("API key cannot be empty")
 	}
-	if len(plainKey) < constants.MIN_API_KEY_LENGTH {
-		return fmt.Errorf("API key is too short (minimum %d characters required)", constants.MIN_API_KEY_LENGTH)
+	if len(plainKey) < minLength {
+		return fmt.Errorf("API key is too short (minimum %d characters required)", minLength)
 	}
-	if len(plainKey) > constants.MAX_API_KEY_LENGTH {
-		return fmt.Errorf("API key is too long (maximum %d characters allowed)", constants.MAX_API_KEY_LENGTH)
+	if len(plainKey) > maxLength {
+		return fmt.Errorf("API key is too long (maximum %d characters allowed)", maxLength)
 	}
 	return nil
 }
@@ -69,8 +76,8 @@ func ValidateDisplayName(displayName string) error {
 	}
 
 	runeCount := utf8.RuneCountInString(trimmed)
-	if runeCount > displayNameMaxLength {
-		return fmt.Errorf("display name is too long (%d characters, maximum %d allowed)", runeCount, displayNameMaxLength)
+	if runeCount > constants.DisplayNameMaxLength {
+		return fmt.Errorf("display name is too long (%d characters, maximum %d allowed)", runeCount, constants.DisplayNameMaxLength)
 	}
 	return nil
 }
@@ -87,11 +94,11 @@ func ValidateAPIKeyName(name string) error {
 	if name == "" {
 		return fmt.Errorf("API key name cannot be empty")
 	}
-	if len(name) < apiKeyNameMinLength {
-		return fmt.Errorf("API key name is too short (minimum %d characters required)", apiKeyNameMinLength)
+	if len(name) < constants.APIKeyNameMinLength {
+		return fmt.Errorf("API key name is too short (minimum %d characters required)", constants.APIKeyNameMinLength)
 	}
-	if len(name) > apiKeyNameMaxLength {
-		return fmt.Errorf("API key name is too long (maximum %d characters allowed)", apiKeyNameMaxLength)
+	if len(name) > constants.APIKeyNameMaxLength {
+		return fmt.Errorf("API key name is too long (maximum %d characters allowed)", constants.APIKeyNameMaxLength)
 	}
 	if !validAPIKeyNameRegex.MatchString(name) {
 		return fmt.Errorf("API key name must be lowercase alphanumeric with hyphens (no consecutive hyphens, cannot start/end with hyphen)")
@@ -127,16 +134,39 @@ func GenerateAPIKeyName(displayName string) (string, error) {
 	name = strings.Trim(name, "-")
 
 	// Enforce max length
-	if len(name) > apiKeyNameMaxLength {
-		name = name[:apiKeyNameMaxLength]
+	if len(name) > constants.APIKeyNameMaxLength {
+		name = name[:constants.APIKeyNameMaxLength]
 		// Trim trailing hyphen if truncation created one
 		name = strings.TrimRight(name, "-")
 	}
 
-	// If name is too short after sanitization, return error
-	if len(name) < apiKeyNameMinLength {
-		return "", fmt.Errorf("generated name '%s' is too short (minimum %d characters required after sanitization)", name, apiKeyNameMinLength)
+	// If name is too short after sanitization, pad with random hex characters
+	if len(name) < constants.APIKeyNameMinLength {
+		padding, err := randomHexString(constants.APIKeyNameMinLength - len(name))
+		if err != nil {
+			return "", fmt.Errorf("failed to generate random padding for short name: %w", err)
+		}
+		if name == "" {
+			name = padding
+		} else {
+			name = name + "-" + padding
+		}
+		// Trim again to max length in case padding pushed it over
+		if len(name) > constants.APIKeyNameMaxLength {
+			name = name[:constants.APIKeyNameMaxLength]
+			name = strings.TrimRight(name, "-")
+		}
 	}
 
 	return name, nil
+}
+
+// randomHexString returns a lowercase hex string of exactly n characters.
+func randomHexString(n int) (string, error) {
+	// Each byte encodes to 2 hex chars, so we need ceil(n/2) bytes
+	b := make([]byte, (n+1)/2)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b)[:n], nil
 }

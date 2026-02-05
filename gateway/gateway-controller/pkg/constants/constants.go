@@ -139,8 +139,13 @@ const (
 	APIKeySeparator = "_"
 
 	// API Key length constants
-	MIN_API_KEY_LENGTH = 20
-	MAX_API_KEY_LENGTH = 128
+	DefaultMinAPIKeyLength = 36
+	DefaultMaxAPIKeyLength = 128
+
+	// API Key name and display name length constants
+	APIKeyNameMinLength  = 3
+	APIKeyNameMaxLength  = 63
+	DisplayNameMaxLength = 100
 
 	// HashingAlgorithm constants
 	HashingAlgorithmSHA256   = "sha256"

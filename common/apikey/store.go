@@ -40,9 +40,9 @@ type APIKey struct {
 	// Name of the API key (URL-safe identifier, auto-generated, immutable)
 	Name string `json:"name" yaml:"name"`
 	// DisplayName is the human-readable name (user-provided, mutable)
-	DisplayName string `json:"display_name" yaml:"display_name"`
+	DisplayName string `json:"displayName" yaml:"displayName"`
 	// ApiKey API key with apip_ prefix
-	APIKey string `json:"api_key" yaml:"api_key"`
+	APIKey string `json:"apiKey" yaml:"apiKey"`
 	// APIId Unique identifier of the API that the key is associated with
 	APIId string `json:"apiId" yaml:"apiId"`
 	// Operations List of API operations the key will have access to
@@ -50,17 +50,17 @@ type APIKey struct {
 	// Status of the API key
 	Status APIKeyStatus `json:"status" yaml:"status"`
 	// CreatedAt Timestamp when the API key was generated
-	CreatedAt time.Time `json:"created_at" yaml:"created_at"`
+	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
 	// CreatedBy User who created the API key
-	CreatedBy string `json:"created_by" yaml:"created_by"`
+	CreatedBy string `json:"createdBy" yaml:"createdBy"`
 	// UpdatedAt Timestamp when the API key was last updated
-	UpdatedAt time.Time `json:"updated_at" yaml:"updated_at"`
+	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
 	// ExpiresAt Expiration timestamp (null if no expiration)
-	ExpiresAt *time.Time `json:"expires_at" yaml:"expires_at"`
+	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
 	// Source tracking for external key support ("local" | "external")
 	Source string `json:"source" yaml:"source"`
 	// IndexKey Pre-computed hash for O(1) lookup (external plain text keys only)
-	IndexKey string `json:"index_key" yaml:"index_key"`
+	IndexKey string `json:"indexKey" yaml:"indexKey"`
 }
 
 // APIKeyStatus Status of the API key

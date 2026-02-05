@@ -40,19 +40,19 @@ type APIKeyOperation struct {
 	Operation APIKeyOperationType `json:"operation" yaml:"operation"`
 
 	// APIKey contains the API key data (for store operations)
-	APIKey *APIKeyData `json:"api_key,omitempty" yaml:"api_key,omitempty"`
+	APIKey *APIKeyData `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
 
 	// APIId of the API associated with the operation
-	APIId string `json:"api_id" yaml:"api_id"`
+	APIId string `json:"apiId" yaml:"apiId"`
 
 	// APIKeyValue for revoke operations (the actual key value to revoke)
-	APIKeyValue string `json:"api_key_value,omitempty" yaml:"api_key_value,omitempty"`
+	APIKeyValue string `json:"apiKeyValue,omitempty" yaml:"apiKeyValue,omitempty"`
 
 	// Timestamp of the operation
 	Timestamp time.Time `json:"timestamp" yaml:"timestamp"`
 
 	// CorrelationID for tracking the operation
-	CorrelationID string `json:"correlation_id" yaml:"correlation_id"`
+	CorrelationID string `json:"correlationId" yaml:"correlationId"`
 }
 
 // APIKeyData represents an API key for xDS transmission
@@ -64,10 +64,10 @@ type APIKeyData struct {
 	Name string `json:"name" yaml:"name"`
 
 	// APIKey value with apip_ prefix
-	APIKey string `json:"api_key" yaml:"api_key"`
+	APIKey string `json:"apiKey" yaml:"apiKey"`
 
 	// APIId of the API the key is associated with
-	APIId string `json:"api_id" yaml:"api_id"`
+	APIId string `json:"apiId" yaml:"apiId"`
 
 	// Operations List of API operations the key will have access to (JSON array string)
 	Operations string `json:"operations" yaml:"operations"`
@@ -76,22 +76,22 @@ type APIKeyData struct {
 	Status string `json:"status" yaml:"status"`
 
 	// CreatedAt Timestamp when the API key was generated
-	CreatedAt time.Time `json:"created_at" yaml:"created_at"`
+	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
 
 	// CreatedBy User who created the API key
-	CreatedBy string `json:"created_by" yaml:"created_by"`
+	CreatedBy string `json:"createdBy" yaml:"createdBy"`
 
 	// UpdatedAt Timestamp when the API key was last updated
-	UpdatedAt time.Time `json:"updated_at" yaml:"updated_at"`
+	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
 
 	// ExpiresAt Expiration timestamp (null if no expiration)
-	ExpiresAt *time.Time `json:"expires_at" yaml:"expires_at"`
+	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
 
 	// Source tracking for external key support ("local" | "external")
 	Source string `json:"source" yaml:"source"`
 
 	// IndexKey Pre-computed hash for O(1) lookup (external plain text keys only)
-	IndexKey string `json:"index_key" yaml:"index_key"`
+	IndexKey string `json:"indexKey" yaml:"indexKey"`
 }
 
 // APIKeyOperationBatch represents a batch of API key operations
@@ -101,7 +101,7 @@ type APIKeyOperationBatch struct {
 	Operations []APIKeyOperation `json:"operations" yaml:"operations"`
 
 	// BatchID uniquely identifies this batch
-	BatchID string `json:"batch_id" yaml:"batch_id"`
+	BatchID string `json:"batchId" yaml:"batchId"`
 
 	// Version represents the version of this batch
 	Version int64 `json:"version" yaml:"version"`

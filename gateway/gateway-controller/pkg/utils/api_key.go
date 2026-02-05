@@ -912,7 +912,7 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	if request.ApiKey != nil {
 		// External key injection: use provided key AS-IS
 		providedKey := strings.TrimSpace(*request.ApiKey)
-		if err := ValidateAPIKeyValue(providedKey); err != nil {
+		if err := s.ValidateAPIKeyValue(providedKey); err != nil {
 			return nil, err
 		}
 		// Use the key as-is - we don't dictate format for external keys
@@ -1163,7 +1163,7 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 	}
 
 	plainAPIKeyValue := strings.TrimSpace(*request.ApiKey)
-	if err := ValidateAPIKeyValue(plainAPIKeyValue); err != nil {
+	if err := s.ValidateAPIKeyValue(plainAPIKeyValue); err != nil {
 		return nil, fmt.Errorf("invalid API key value: %w", err)
 	}
 
@@ -1915,9 +1915,9 @@ func (s *APIKeyService) generateUniqueAPIKeyName(apiId, displayName string, maxR
 		uniqueName := baseName + "-" + suffix
 
 		// Enforce max length (name field is typically 63 chars max)
-		if len(uniqueName) > apiKeyNameMaxLength {
+		if len(uniqueName) > constants.APIKeyNameMaxLength {
 			// Truncate base name to make room for suffix
-			truncatedBase := baseName[:apiKeyNameMaxLength-len(suffix)-1]
+			truncatedBase := baseName[:constants.APIKeyNameMaxLength-len(suffix)-1]
 			uniqueName = truncatedBase + "-" + suffix
 		}
 

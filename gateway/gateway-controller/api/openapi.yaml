@@ -2307,17 +2307,17 @@ components:
           minLength: 3
           maxLength: 63
           example: my-production-key
-        api_key:
+        apiKey:
           type: string
-          minLength: 20
+          minLength: 36
           description: |
             Optional plain-text API key value for external key injection.
             If provided, this key will be used instead of generating a new one.
             The key will be hashed before storage. The key can be in any format
-            (minimum 20 characters). Use this for injecting externally generated
+            (minimum 36 characters). Use this for injecting externally generated
             API keys.
           example: "cloud-apim-key-abc123xyz789"
-        expires_in:
+        expiresIn:
           type: object
           description: Expiration duration for the API key
           properties:
@@ -2339,12 +2339,12 @@ components:
           required:
             - unit
             - duration
-        expires_at:
+        expiresAt:
           type: string
           format: date-time
-          description: Expiration timestamp. If both expires_in and expires_at are provided, expires_at takes precedence.
+          description: Expiration timestamp. If both expiresIn and expiresAt are provided, expiresAt takes precedence.
           example: "2026-12-08T10:30:00Z"
-        external_ref_id:
+        externalRefId:
           type: string
           description: |
             External reference ID for the API key.
@@ -2360,11 +2360,11 @@ components:
         message:
           type: string
           example: API key generated successfully
-        remaining_api_key_quota:
+        remainingApiKeyQuota:
           type: integer
           description: Remaining API key quota for the user
           example: 9
-        api_key:
+        apiKey:
           $ref: '#/components/schemas/APIKey'
       required:
         - status
@@ -2386,7 +2386,7 @@ components:
           minLength: 1
           maxLength: 100
           example: My Production Key
-        api_key:
+        apiKey:
           type: string
           description: Generated API key with apip_ prefix
           example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
@@ -2406,16 +2406,16 @@ components:
             - revoked
             - expired
           example: active
-        created_at:
+        createdAt:
           type: string
           format: date-time
           description: Timestamp when the API key was generated
           example: "2025-12-08T10:30:00Z"
-        created_by:
+        createdBy:
           type: string
           description: Identifier of the user who generated the API key
           example: api_consumer
-        expires_at:
+        expiresAt:
           type: string
           format: date-time
           nullable: true
@@ -2428,7 +2428,7 @@ components:
             - local
             - external
           example: local
-        external_ref_id:
+        externalRefId:
           type: string
           description: External reference ID for the API key
           example: "cloud-apim-key-98765"
@@ -2437,14 +2437,14 @@ components:
         - apiId
         - operations
         - status
-        - created_at
-        - created_by
-        - expires_at
+        - createdAt
+        - createdBy
+        - expiresAt
         - source
     APIKeyRegenerationRequest:
       type: object
       properties:
-        expires_in:
+        expiresIn:
           type: object
           description: Expiration duration for the API key
           properties:
@@ -2466,7 +2466,7 @@ components:
           required:
             - unit
             - duration
-        expires_at:
+        expiresAt:
           type: string
           format: date-time
           description: Expiration timestamp
@@ -2475,7 +2475,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/APIKeyCreationRequest"
       required:
-        - api_key
+        - apiKey
     APIKeyRevocationResponse:
       type: object
       properties:

@@ -23,7 +23,7 @@ policies:
   - name: json-to-xml
     gomodule: github.com/wso2/gateway-controllers/policies/json-to-xml@v0
   - name: jwt-auth
-    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0.1.1
+    gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0
   - name: log-message
     gomodule: github.com/wso2/gateway-controllers/policies/log-message@v0
   - name: mcp-acl-list
