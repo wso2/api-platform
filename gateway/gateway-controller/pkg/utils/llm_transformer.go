@@ -77,14 +77,12 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 
 	// Step 3: Map the referenced local provider as an upstream in the transformed API config
-	effectiveScheme := constants.SchemeHTTP
-	effectivePort := t.routerConfig.ListenerPort
-	if t.routerConfig.HTTPSEnabled {
-		effectiveScheme = constants.SchemeHTTPS
-		effectivePort = t.routerConfig.HTTPSPort
-	}
+	// Always use HTTP for internal loopback routing (proxy to provider) since:
+	// 1. Traffic stays on localhost and never leaves the machine
+	// 2. TLS adds unnecessary overhead for internal routing
+	// 3. Self-signed listener certificates can cause TLS verification failures
 	upstream := fmt.Sprintf("%s://%s:%d%s",
-		effectiveScheme, constants.LocalhostIP, effectivePort, provider.GetContext())
+		constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, provider.GetContext())
 	spec.Upstream.Main = api.Upstream{
 		Url: &upstream,
 	}
