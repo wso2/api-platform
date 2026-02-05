@@ -31,6 +31,7 @@ CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/gateway-controller
 POLICY_ENGINE_IMAGE := $(DOCKER_REGISTRY)/policy-engine
 GATEWAY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/gateway-builder
 ROUTER_IMAGE := $(DOCKER_REGISTRY)/gateway-router
+UNIFIED_GATEWAY_IMAGE := $(DOCKER_REGISTRY)/unified-gateway
 
 .DEFAULT_GOAL := help
 
@@ -45,6 +46,8 @@ help: ## Show this help message
 	@echo '  make build-gateway-builder                      - Build gateway-builder Docker image'
 	@echo '  make build-policy-engine                        - Build policy-engine Docker images'
 	@echo '  make build-router                               - Build router Docker image'
+	@echo '  make build-unified-gateway                      - Build unified-gateway Docker image (Router + Policy Engine)'
+	@echo '  make build-local-unified-gateway                - Build unified-gateway Docker image locally (faster)'
 	@echo ''
 	@echo 'Multi-arch Build and Push Targets:'
 	@echo '  make build-and-push-multiarch                   - Build and push all gateway components for multiple architectures'
@@ -52,6 +55,7 @@ help: ## Show this help message
 	@echo '  make build-and-push-multiarch-gateway-builder   - Build and push gateway-builder for multiple architectures'
 	@echo '  make build-and-push-multiarch-policy-engine     - Build and push policy-engine for multiple architectures'
 	@echo '  make build-and-push-multiarch-router            - Build and push router for multiple architectures'
+	@echo '  make build-and-push-multiarch-unified-gateway   - Build and push unified-gateway for multiple architectures'
 	@echo ''
 	@echo 'Test Targets:'
 	@echo '  make test                      - Run all tests'
@@ -63,6 +67,7 @@ help: ## Show this help message
 	@echo '  make test-integration-all      - Build coverage images and run integration tests'
 	@echo '  make build-coverage            - Build all coverage-instrumented gateway components'
 	@echo '  make build-controller-coverage - Build coverage-instrumented gateway-controller Docker image'
+	@echo '  make build-unified-gateway-coverage - Build coverage-instrumented unified-gateway Docker image'
 	@echo '  make test-integration          - Run integration tests'
 	@echo ''
 	@echo 'Version Management:'
@@ -136,6 +141,21 @@ build-local-router: ## Build router Docker image locally (faster)
 	@echo "Building router Docker image locally ($(VERSION))..."
 	$(MAKE) -C router build-local VERSION=$(VERSION)
 
+.PHONY: build-unified-gateway
+build-unified-gateway: ## Build unified-gateway Docker image (Router + Policy Engine)
+	@echo "Building unified-gateway Docker image ($(VERSION))..."
+	$(MAKE) -C unified-gateway build VERSION=$(VERSION)
+
+.PHONY: build-local-unified-gateway
+build-local-unified-gateway: ## Build unified-gateway Docker image locally (faster)
+	@echo "Building unified-gateway Docker image locally ($(VERSION))..."
+	$(MAKE) -C unified-gateway build-local VERSION=$(VERSION)
+
+.PHONY: build-unified-gateway-coverage
+build-unified-gateway-coverage: ## Build coverage-instrumented unified-gateway Docker image
+	@echo "Building coverage-instrumented unified-gateway Docker image ($(VERSION))..."
+	$(MAKE) -C unified-gateway build-coverage-image VERSION=$(VERSION)
+
 # Multi-arch Build and Push Targets
 .PHONY: build-and-push-multiarch
 build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-gateway-builder build-and-push-multiarch-policy-engine build-and-push-multiarch-router ## Build and push all gateway components for multiple architectures
@@ -159,6 +179,11 @@ build-and-push-multiarch-policy-engine: ## Build and push policy-engine Docker i
 build-and-push-multiarch-router: ## Build and push router Docker image for multiple architectures
 	@echo "Building and pushing multi-arch router Docker image ($(VERSION))..."
 	$(MAKE) -C router build-and-push-multiarch VERSION=$(VERSION)
+
+.PHONY: build-and-push-multiarch-unified-gateway
+build-and-push-multiarch-unified-gateway: ## Build and push unified-gateway Docker image for multiple architectures
+	@echo "Building and pushing multi-arch unified-gateway Docker image ($(VERSION))..."
+	$(MAKE) -C unified-gateway build-and-push-multiarch VERSION=$(VERSION)
 
 # Test Targets
 .PHONY: test
@@ -230,3 +255,4 @@ clean: ## Clean all build artifacts
 	$(MAKE) -C gateway-builder clean
 	$(MAKE) -C policy-engine clean
 	$(MAKE) -C router clean
+	$(MAKE) -C unified-gateway clean

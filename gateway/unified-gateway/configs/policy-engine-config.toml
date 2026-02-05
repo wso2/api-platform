@@ -1,0 +1,51 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Policy Engine Configuration for Unified Gateway
+# Uses Unix Domain Socket for Envoy communication
+
+[policy_engine.server]
+# Unix Domain Socket for ext_proc gRPC server (preferred in unified container)
+# This takes precedence over extproc_port when set
+extproc_socket = "/var/run/policy-engine.sock"
+
+# TCP port (used as fallback if socket is empty)
+extproc_port = 9001
+
+# Admin server port for health checks and runtime info
+admin_port = 9002
+
+# Metrics server port for Prometheus metrics
+metrics_port = 9003
+
+[policy_engine.config_mode]
+# Configuration mode: "xds" for dynamic configuration from gateway-controller
+mode = "xds"
+
+[policy_engine.xds]
+# xDS client configuration
+enabled = true
+# Use localhost since gateway-controller is external
+server_host = "gateway-controller"
+server_port = 18000
+
+[policy_engine.logging]
+# Log level: debug, info, warn, error
+level = "info"
+# Log format: json, text
+format = "json"
