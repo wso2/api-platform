@@ -1125,7 +1125,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			},
 		}
 
-		_ = webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
+		require.NoError(t, webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
 			DisplayName: "WebSub Test API",
 			Version:     "v1.0",
 			Context:     "/webhook",
@@ -1133,7 +1133,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 				{Name: "/topic1", Method: "POST"},
 				{Name: "topic2", Method: "POST"},
 			},
-		})
+		}))
 
 		routes, clusters, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})
 		require.NoError(t, err)
@@ -1164,12 +1164,12 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 				Spec:     api.APIConfiguration_Spec{},
 			},
 		}
-		_ = webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
+		require.NoError(t, webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
 			DisplayName: "WebSub Invalid",
 			Version:     "v1.0",
 			Context:     "/webhook",
 			Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
-		})
+		}))
 
 		_, _, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})
 		assert.Error(t, err)
