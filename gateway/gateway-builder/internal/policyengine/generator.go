@@ -71,12 +71,12 @@ func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
 		"path", buildInfoPath,
 		"phase", "generation")
 
-	// Update go.mod with replace directives
-	if err := GenerateGoModReplaces(srcDir, policies); err != nil {
+	// Update go.mod: 'go get' for remote policies, replace directives for local ones
+	if err := UpdateGoMod(srcDir, policies); err != nil {
 		return errors.NewGenerationError("failed to update go.mod", err)
 	}
 
-	slog.Info("Updated go.mod with replace directives",
+	slog.Info("Updated go.mod for policies",
 		"count", len(policies),
 		"phase", "generation")
 

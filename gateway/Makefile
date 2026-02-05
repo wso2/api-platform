@@ -193,25 +193,26 @@ version-set: ## Set gateway version and update artifacts
 	fi
 	@echo "$(VERSION)" > VERSION
 	@sed -i.bak 's/^  version: .*/  version: $(VERSION)/' build.yaml && rm -f build.yaml.bak
+	@sed -i.bak 's/^  version: .*/  version: $(VERSION)/' sample-policies/build.yaml && rm -f sample-policies/build.yaml.bak
 	@(cd .. && bash scripts/update-docker-compose.sh gateway $(VERSION))
 	@(cd .. && bash scripts/update-helm.sh gateway $(VERSION))
 	@echo "✓ Set gateway version to $(VERSION)"
 
 .PHONY: version-bump-patch
 version-bump-patch: ## Bump patch version
-	@bash ../scripts/version-bump.sh patch gateway
+	@$(MAKE) version-set VERSION=$$(cd .. && bash scripts/next-version.sh patch gateway)
 
 .PHONY: version-bump-minor
 version-bump-minor: ## Bump minor version
-	@bash ../scripts/version-bump.sh minor gateway
+	@$(MAKE) version-set VERSION=$$(cd .. && bash scripts/next-version.sh minor gateway)
 
 .PHONY: version-bump-major
 version-bump-major: ## Bump major version
-	@bash ../scripts/version-bump.sh major gateway
+	@$(MAKE) version-set VERSION=$$(cd .. && bash scripts/next-version.sh major gateway)
 
 .PHONY: version-bump-next-dev
 version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
-	@bash ../scripts/version-bump.sh next-dev gateway
+	@$(MAKE) version-set VERSION=$$(cd .. && bash scripts/next-version.sh next-dev gateway)
 
 .PHONY: version-get-release
 version-get-release: ## Get release version (strips SNAPSHOT suffix)

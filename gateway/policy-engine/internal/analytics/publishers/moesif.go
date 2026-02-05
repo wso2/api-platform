@@ -39,10 +39,12 @@ const (
 
 // Moesif represents a Moesif publisher.
 type Moesif struct {
-	cfg    *config.PublisherConfig
-	api    moesifapi.API
-	events []*models.EventModel
-	mu     sync.Mutex
+	cfg      *config.PublisherConfig
+	api      moesifapi.API
+	events   []*models.EventModel
+	mu       sync.Mutex
+	done     chan struct{}
+	closeOnce sync.Once
 }
 
 // MoesifConfig holds the configs specific for the Moesif publisher.
@@ -93,23 +95,41 @@ func NewMoesif(pubCfg *config.PublisherConfig) *Moesif {
 		events: []*models.EventModel{},
 		api:    apiClient,
 		mu:     sync.Mutex{},
+		done:   make(chan struct{}),
 	}
 	go func() {
+		ticker := time.NewTicker(time.Duration(moesifCfg.PublishInterval) * time.Second)
+		defer ticker.Stop()
 		for {
-			time.Sleep(time.Duration(moesifCfg.PublishInterval) * time.Second)
-			moesif.mu.Lock()
-			if len(moesif.events) > 0 {
-				slog.Info(fmt.Sprintf("Publishing %d events to Moesif", len(moesif.events)))
-				err := moesif.api.QueueEvents(moesif.events)
-				if err != nil {
-					slog.Error("Error publishing events to Moesif", "error", err)
+			select {
+			case <-moesif.done:
+				return
+			case <-ticker.C:
+				moesif.mu.Lock()
+				if len(moesif.events) > 0 {
+					slog.Info(fmt.Sprintf("Publishing %d events to Moesif", len(moesif.events)))
+					err := moesif.api.QueueEvents(moesif.events)
+					if err != nil {
+						slog.Error("Error publishing events to Moesif", "error", err)
+					}
+					moesif.events = []*models.EventModel{}
 				}
-				moesif.events = []*models.EventModel{}
+				moesif.mu.Unlock()
 			}
-			moesif.mu.Unlock()
 		}
 	}()
 	return moesif
+}
+
+// Close stops the background publishing goroutine.
+// It should be called when the Moesif publisher is no longer needed.
+// Safe to call multiple times.
+func (m *Moesif) Close() {
+	m.closeOnce.Do(func() {
+		if m.done != nil {
+			close(m.done)
+		}
+	})
 }
 
 // Publish publishes an event to Moesif.

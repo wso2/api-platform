@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -203,6 +203,108 @@ func TestCreateGRPCServer_PlainTextWithOptions(t *testing.T) {
 	server.Stop()
 }
 
+func TestCreateGRPCServer_TLSWithValidCerts(t *testing.T) {
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "cert.pem")
+	keyPath := filepath.Join(tmpDir, "key.pem")
+
+	// Generate a valid self-signed certificate and key pair
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test-server",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	// Encode certificate
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	require.NotNil(t, certPEM)
+
+	// Encode private key
+	privBytes, err := x509.MarshalECPrivateKey(priv)
+	require.NoError(t, err)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
+	require.NotNil(t, keyPEM)
+
+	// Write to files
+	err = os.WriteFile(certPath, certPEM, 0600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, keyPEM, 0600)
+	require.NoError(t, err)
+
+	// Test creating a TLS-enabled gRPC server
+	server, err := CreateGRPCServer(certPath, keyPath, false)
+
+	require.NoError(t, err)
+	assert.NotNil(t, server)
+
+	// Clean up
+	server.Stop()
+}
+
+func TestCreateGRPCServer_TLSWithValidCertsAndOptions(t *testing.T) {
+	tmpDir := t.TempDir()
+	certPath := filepath.Join(tmpDir, "cert.pem")
+	keyPath := filepath.Join(tmpDir, "key.pem")
+
+	// Generate a valid self-signed certificate and key pair
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test-server",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	// Encode certificate
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	require.NotNil(t, certPEM)
+
+	// Encode private key
+	privBytes, err := x509.MarshalECPrivateKey(priv)
+	require.NoError(t, err)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
+	require.NotNil(t, keyPEM)
+
+	// Write to files
+	err = os.WriteFile(certPath, certPEM, 0600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, keyPEM, 0600)
+	require.NoError(t, err)
+
+	// Test creating a TLS-enabled gRPC server with additional options
+	server, err := CreateGRPCServer(certPath, keyPath, false,
+		grpc.MaxRecvMsgSize(1024*1024),
+		grpc.MaxSendMsgSize(1024*1024))
+
+	require.NoError(t, err)
+	assert.NotNil(t, server)
+
+	// Clean up
+	server.Stop()
+}
+
 // =============================================================================
 // CreateGRPCConnection Tests
 // =============================================================================
@@ -245,7 +347,7 @@ func startTestGRPCServerWithTLS(t *testing.T) (string, string, *tls.Config, func
 	}
 
 	// Create listener
-	listener, err := net.Listen("tcp", "localhost:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	// Create gRPC server with TLS
@@ -274,7 +376,7 @@ func startTestGRPCServerWithTLS(t *testing.T) (string, string, *tls.Config, func
 		listener.Close()
 	}
 
-	return "localhost", fmt.Sprintf("%d", addr.Port), clientTLSConfig, cleanup
+	return "127.0.0.1", fmt.Sprintf("%d", addr.Port), clientTLSConfig, cleanup
 }
 
 func TestCreateGRPCConnection_Success(t *testing.T) {
@@ -316,7 +418,7 @@ func TestCreateGRPCConnection_TLSHandshakeFailure(t *testing.T) {
 	healthClient := grpc_health_v1.NewHealthClient(conn)
 	_, err = healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
 	assert.Error(t, err) // TLS handshake failure
-	assert.Contains(t, err.Error(), "certificate")
+	assert.Contains(t, err.Error(), "certificate signed by unknown authority")
 }
 
 func TestCreateGRPCConnection_InvalidAddress(t *testing.T) {
@@ -409,7 +511,6 @@ func TestCreateGRPCConnectionWithRetry_InfiniteRetries(t *testing.T) {
 func TestCreateGRPCConnectionWithRetryAndPanic_Success(t *testing.T) {
 	host, port, tlsConfig, cleanup := startTestGRPCServerWithTLS(t)
 	defer cleanup()
-
 
 	ctx := context.Background()
 

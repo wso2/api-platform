@@ -18,10 +18,10 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.6.0-SNAPSHOT
-    mem_limit: 128m
-    mem_reservation: 128m
-    cpus: 0.1
+    image: ghcr.io/wso2/api-platform/gateway-controller:0.7.0-SNAPSHOT
+    mem_limit: 60m
+    mem_reservation: 60m
+    cpus: 0.025
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"   # REST API
@@ -46,11 +46,11 @@ services:
       - gateway-network
 
   policy-engine:
-    image: ghcr.io/wso2/api-platform/policy-engine:0.6.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/policy-engine:0.7.0-SNAPSHOT
     command: ["-config", "/etc/policy-engine/config.toml", "-xds-server", "gateway-controller:18001"]
-    mem_limit: 128m
-    mem_reservation: 128m
-    cpus: 0.2
+    mem_limit: 60m
+    mem_reservation: 60m
+    cpus: 0.050
     ports:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
@@ -62,10 +62,10 @@ services:
       - gateway-network
 
   router:
-    image: ghcr.io/wso2/api-platform/gateway-router:0.6.0-SNAPSHOT
-    mem_limit: 256m
-    mem_reservation: 256m
-    cpus: 0.2
+    image: ghcr.io/wso2/api-platform/gateway-router:0.7.0-SNAPSHOT
+    mem_limit: 120m
+    mem_reservation: 120m
+    cpus: 0.125
     ports:
       - "8080:8080"   # HTTP traffic
       - "8443:8443"   # HTTPS traffic

@@ -84,8 +84,10 @@ ENV BUILD_DATE=${BUILD_DATE}
 # Copy Policy Engine mod files and SDK and Common mod files for dependency resolution
 COPY --from=common go.mod go.sum /api-platform/common/
 COPY --from=sdk go.mod go.sum /api-platform/sdk/
-COPY go.mod go.sum /api-platform/gateway/policy-engine/
+RUN go mod download
+
 WORKDIR /api-platform/gateway/policy-engine
+COPY go.mod go.sum ./
 RUN go mod download
 
 
@@ -94,11 +96,14 @@ COPY . /api-platform/gateway/policy-engine
 COPY --from=common . /api-platform/common
 COPY --from=sdk . /api-platform/sdk
 
-# Copy policy implementations
-COPY --from=policies . /workspace/policies/
-
 # Copy system policy implementations
-COPY --from=system-policies . /workspace/policies/
+COPY --from=system-policies . /workspace/system-policies/
+
+# Copy dev policy implementations (local file-path policies added via build.yaml)
+COPY --from=dev-policies . /workspace/policies/dev-policies/
+
+# Copy policy manifest from gateway build.yaml
+COPY --from=target build.yaml /workspace/policies/policy-manifest.yaml
 
 # Create output directory
 RUN mkdir -p /workspace/output
@@ -111,13 +116,13 @@ WORKDIR /workspace
 RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
         COVERAGE=true /usr/local/bin/gateway-builder \
             -manifest /workspace/policies/policy-manifest.yaml \
-            -system-manifest-lock /workspace/policies/system-policy-manifest-lock.yaml \
+            -system-manifest-lock /workspace/system-policies/system-policy-manifest-lock.yaml \
             -policy-engine-src /api-platform/gateway/policy-engine \
             -out-dir /workspace/output; \
     else \
         /usr/local/bin/gateway-builder \
             -manifest /workspace/policies/policy-manifest.yaml \
-            -system-manifest-lock /workspace/policies/system-policy-manifest-lock.yaml \
+            -system-manifest-lock /workspace/system-policies/system-policy-manifest-lock.yaml \
             -policy-engine-src /api-platform/gateway/policy-engine \
             -out-dir /workspace/output; \
     fi

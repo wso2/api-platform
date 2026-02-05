@@ -82,53 +82,62 @@ help:
 ## build: Build the Policy Engine Docker image using buildx
 build: test
 	@echo "Building Policy Engine image: $(RUNTIME_TAG)"
+	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
-		--build-context policies=../policies \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(RUNTIME_TAG) \
 		-t $(RUNTIME_IMAGE):latest \
 		--load \
 		.
+	@rm -rf target
 	@echo "Image built successfully: $(RUNTIME_TAG)"
 
 ## build-local: Build the Policy Engine Docker image locally (faster, no buildx)
 build-local:
 	@echo "Building Policy Engine image locally: $(RUNTIME_TAG)"
+	@mkdir -p target && cp ../build.yaml target/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
-		--build-context policies=../policies \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(RUNTIME_TAG) \
 		-t $(RUNTIME_IMAGE):latest \
 		.
+	@rm -rf target
 	@echo "Image built successfully: $(RUNTIME_TAG)"
 
 ## build-coverage-image: Build the Policy Engine Docker image with coverage instrumentation
 build-coverage-image:
 	@echo "Building Policy Engine coverage image: $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION)"
+	@mkdir -p target && cp ../build.yaml target/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
-		--build-context policies=../policies \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
 		-t $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION) \
 		.
+	@rm -rf target
 	@echo "Coverage image built successfully: $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION)"
 
 ## push: Push image to registry
@@ -140,13 +149,15 @@ push:
 ## build-and-push-multiarch: Build and push the Policy Engine Docker image for multiple architectures (amd64, arm64)
 build-and-push-multiarch:
 	@echo "Building and pushing multi-arch Policy Engine image: $(RUNTIME_TAG)"
+	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
-		--build-context policies=../policies \
 		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
+		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -154,6 +165,7 @@ build-and-push-multiarch:
 		-t $(RUNTIME_IMAGE):latest \
 		--push \
 		.
+	@rm -rf target
 	@echo "Multi-arch image built and pushed: $(RUNTIME_TAG)"
 	
 ## run: Start the Policy Engine with docker-compose
@@ -183,6 +195,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
+	rm -rf target
 	@echo "Clean completed"
 
 ## docker-clean: Remove all Docker images and containers
