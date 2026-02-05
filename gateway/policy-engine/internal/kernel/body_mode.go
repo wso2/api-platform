@@ -44,6 +44,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		PolicySpecs:          make([]policy.PolicySpec, 0),
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
+		HasExecutionConditions:     false,
 	}
 
 	// Build policy list and compute body requirements
@@ -66,6 +67,11 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 		// Update spec with merged params so OnRequest/OnResponse receive merged values
 		spec.Parameters.Raw = mergedParams
+
+		// Check if policy has CEL execution condition
+		if spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+			chain.HasExecutionConditions = true
+		}
 
 		// Add to policy list
 		chain.Policies = append(chain.Policies, impl)

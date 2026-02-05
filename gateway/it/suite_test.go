@@ -105,7 +105,7 @@ func TestFeatures(t *testing.T) {
 				"features/api-management.feature",
 				"features/list-policies.feature",
 				"features/api-keys.feature",
-				"features/api-management.feature",
+				"features/api-with-policies.feature",
 				"features/llm-proxies.feature",
 				"features/search-deployments.feature",
 				"features/policy-engine-admin.feature",

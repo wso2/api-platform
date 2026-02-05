@@ -74,7 +74,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 5) // Current schema version
+	assert.Equal(t, version, 6) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -119,7 +119,7 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 5)
+	assert.Equal(t, version, 6)
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {

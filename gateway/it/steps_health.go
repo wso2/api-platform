@@ -45,6 +45,7 @@ func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps
 	ctx.Step(`^I check the health of all gateway services$`, h.iCheckHealthOfAllGatewayServices)
 	ctx.Step(`^all services should report healthy status$`, h.allServicesShouldReportHealthyStatus)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready$`, h.iWaitForEndpointToBeReady)
+	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with method "([^"]*)" and body '([^']*)'$`, h.iWaitForEndpointToBeReadyWithMethodAndBody)
 }
 
 // theGatewayServicesAreRunning verifies that gateway services are available
@@ -157,4 +158,34 @@ func (h *HealthSteps) iWaitForEndpointToBeReady(url string) error {
 	}
 
 	return fmt.Errorf("endpoint %s did not become ready after %d attempts", url, maxAttempts)
+}
+
+// iWaitForEndpointToBeReadyWithMethodAndBody polls an endpoint with specified method and body until it returns 200 or times out
+// This is useful for testing POST endpoints that require a request body
+func (h *HealthSteps) iWaitForEndpointToBeReadyWithMethodAndBody(url, method, body string) error {
+	maxAttempts := 50
+	attemptInterval := 300 * time.Millisecond
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequest(method, url, strings.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := h.state.HTTPClient.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return nil
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(attemptInterval)
+		}
+	}
+
+	return fmt.Errorf("endpoint %s did not become ready with %s method after %d attempts", url, method, maxAttempts)
 }

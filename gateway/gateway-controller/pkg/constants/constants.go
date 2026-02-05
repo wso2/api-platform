@@ -138,6 +138,15 @@ const (
 	APIKeyLen       = 32 // Length of the random part of the API key in bytes
 	APIKeySeparator = "_"
 
+	// API Key length constants
+	DefaultMinAPIKeyLength = 36
+	DefaultMaxAPIKeyLength = 128
+
+	// API Key name and display name length constants
+	APIKeyNameMinLength  = 3
+	APIKeyNameMaxLength  = 63
+	DisplayNameMaxLength = 100
+
 	// HashingAlgorithm constants
 	HashingAlgorithmSHA256   = "sha256"
 	HashingAlgorithmBcrypt   = "bcrypt"

@@ -298,8 +298,8 @@ func main() {
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
-	// Initialize and start control plane client with dependencies for API creation
-	cpClient := controlplane.NewClient(cfg.GatewayController.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.GatewayController.Router)
+	// Initialize and start control plane client with dependencies for API creation and API key management
+	cpClient := controlplane.NewClient(cfg.GatewayController.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.GatewayController.Router, apiKeyXDSManager, &cfg.GatewayController.APIKey)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -472,6 +472,7 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 
 		"POST /apis/:id/api-keys":                        {"admin", "consumer"},
 		"GET /apis/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
 		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 

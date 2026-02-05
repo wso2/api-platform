@@ -349,13 +349,13 @@ paths:
 
   /apis/{id}/api-keys:
     post:
-      summary: Generate API key for an API
+      summary: Create a new API key for an API
       description: |
-        Generate a new API key for the specified API. The generated key can be
-        used by clients to authenticate requests to the API if API Key validation
-        policy is applied. The key is a 32-byte random value encoded in hexadecimal
-        and prefixed with "apip_".
-      operationId: generateAPIKey
+        Generates a new API key for the specified API.
+        Use the created key to authenticate client requests when the API Key validation policy is enabled.
+        The generated key is a 32-byte random value, encoded in hexadecimal, and prefixed with apip_.
+        If you are using an external API key, you may provide it directly without modification.
+      operationId: createAPIKey
       tags:
         - API Management
       parameters:
@@ -372,17 +372,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/APIKeyGenerationRequest"
+              $ref: "#/components/schemas/APIKeyCreationRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/APIKeyGenerationRequest"
+              $ref: "#/components/schemas/APIKeyCreationRequest"
       responses:
         '201':
-          description: API key generated successfully
+          description: API key created successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APIKeyGenerationResponse"
+                $ref: "#/components/schemas/APIKeyCreationResponse"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -482,7 +482,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APIKeyGenerationResponse"
+                $ref: "#/components/schemas/APIKeyCreationResponse"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -503,6 +503,66 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /apis/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key with a new regenerated value
+      description: |
+        Update an existing API key with a new regenerated value. This allows
+        rotating API keys with a predetermined value instead of auto-generating one.
+        The new key must be at least 20 characters long.
+      operationId: updateAPIKey
+      tags:
+        - API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API
+          schema:
+            type: string
+          example: weather-api-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to update
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Revoke an API key
       description: |
@@ -2231,14 +2291,33 @@ components:
           format: date-time
           example: 2025-10-11T11:45:00Z
 
-    APIKeyGenerationRequest:
+    APIKeyCreationRequest:
       type: object
       properties:
+        displayName:
+          type: string
+          description: Human-readable name for the API key (1-100 characters)
+          minLength: 1
+          maxLength: 100
+          example: My Production Key
         name:
           type: string
-          description: Name of the API key
-          example: my-weather-api-key
-        expires_in:
+          description: Identifier of the API key. If not provided, a default identifier will be generated
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          minLength: 3
+          maxLength: 63
+          example: my-production-key
+        apiKey:
+          type: string
+          minLength: 36
+          description: |
+            Optional plain-text API key value for external key injection.
+            If provided, this key will be used instead of generating a new one.
+            The key will be hashed before storage. The key can be in any format
+            (minimum 36 characters). Use this for injecting externally generated
+            API keys.
+          example: "cloud-apim-key-abc123xyz789"
+        expiresIn:
           type: object
           description: Expiration duration for the API key
           properties:
@@ -2260,12 +2339,19 @@ components:
           required:
             - unit
             - duration
-        expires_at:
+        expiresAt:
           type: string
           format: date-time
-          description: Expiration timestamp. If both expires_in and expires_at are provided, expires_at takes precedence.
+          description: Expiration timestamp. If both expiresIn and expiresAt are provided, expiresAt takes precedence.
           example: "2026-12-08T10:30:00Z"
-    APIKeyGenerationResponse:
+        externalRefId:
+          type: string
+          description: |
+            External reference ID for the API key.
+            This field is optional and used for tracing purposes only.
+            The gateway generates its own internal ID for tracking.
+          example: "cloud-apim-key-98765"
+    APIKeyCreationResponse:
       type: object
       properties:
         status:
@@ -2274,11 +2360,11 @@ components:
         message:
           type: string
           example: API key generated successfully
-        remaining_api_key_quota:
+        remainingApiKeyQuota:
           type: integer
           description: Remaining API key quota for the user
           example: 9
-        api_key:
+        apiKey:
           $ref: '#/components/schemas/APIKey'
       required:
         - status
@@ -2289,9 +2375,18 @@ components:
       properties:
         name:
           type: string
-          description: Name of the API key
-          example: my-weather-api-key
-        api_key:
+          description: URL-safe identifier for the API key (auto-generated from displayName, immutable, used as path parameter)
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          minLength: 3
+          maxLength: 63
+          example: my-production-key
+        displayName:
+          type: string
+          description: Human-readable name for the API key (user-provided, mutable)
+          minLength: 1
+          maxLength: 100
+          example: My Production Key
+        apiKey:
           type: string
           description: Generated API key with apip_ prefix
           example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
@@ -2311,33 +2406,45 @@ components:
             - revoked
             - expired
           example: active
-        created_at:
+        createdAt:
           type: string
           format: date-time
           description: Timestamp when the API key was generated
           example: "2025-12-08T10:30:00Z"
-        created_by:
+        createdBy:
           type: string
           description: Identifier of the user who generated the API key
           example: api_consumer
-        expires_at:
+        expiresAt:
           type: string
           format: date-time
           nullable: true
           description: Expiration timestamp (null if no expiration)
           example: "2025-12-08T10:30:00Z"
+        source:
+          type: string
+          description: Source of the API key (local or external)
+          enum:
+            - local
+            - external
+          example: local
+        externalRefId:
+          type: string
+          description: External reference ID for the API key
+          example: "cloud-apim-key-98765"
       required:
         - name
         - apiId
         - operations
         - status
-        - created_at
-        - created_by
-        - expires_at
+        - createdAt
+        - createdBy
+        - expiresAt
+        - source
     APIKeyRegenerationRequest:
       type: object
       properties:
-        expires_in:
+        expiresIn:
           type: object
           description: Expiration duration for the API key
           properties:
@@ -2359,11 +2466,16 @@ components:
           required:
             - unit
             - duration
-        expires_at:
+        expiresAt:
           type: string
           format: date-time
           description: Expiration timestamp
           example: "2026-12-08T10:30:00Z"
+    APIKeyUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/APIKeyCreationRequest"
+      required:
+        - apiKey
     APIKeyRevocationResponse:
       type: object
       properties:
@@ -2407,7 +2519,6 @@ components:
           type: string
           format: date-time
           example: 2025-10-11T10:30:00Z
-
     APIDetailResponse:
       type: object
       properties:

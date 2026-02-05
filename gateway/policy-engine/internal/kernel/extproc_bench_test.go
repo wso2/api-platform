@@ -202,11 +202,20 @@ func newBenchServer(routes map[string]*registry.PolicyChain) *ExternalProcessorS
 
 // buildPolicyChain creates a PolicyChain from policies and specs.
 func buildPolicyChain(policies []policy.Policy, specs []policy.PolicySpec) *registry.PolicyChain {
+	// Compute HasExecutionConditions based on specs
+	hasExecutionConditions := false
+	for _, spec := range specs {
+		if spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+			hasExecutionConditions = true
+			break
+		}
+	}
 	return &registry.PolicyChain{
 		Policies:             policies,
 		PolicySpecs:          specs,
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
+		HasExecutionConditions:     hasExecutionConditions,
 	}
 }
 
@@ -499,6 +508,7 @@ func BenchmarkGetModeOverride(b *testing.B) {
 		},
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
+		HasExecutionConditions:     false,
 	}
 
 	server := newBenchServer(nil)

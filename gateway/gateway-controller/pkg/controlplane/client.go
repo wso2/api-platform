@@ -25,10 +25,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 
 	"github.com/gorilla/websocket"
@@ -103,6 +105,7 @@ type Client struct {
 	validator         config.Validator
 	deploymentService *utils.APIDeploymentService
 	apiUtilsService   *utils.APIUtilsService
+	apiKeyService     *utils.APIKeyService
 	routerConfig      *config.RouterConfig
 }
 
@@ -115,6 +118,8 @@ func NewClient(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	apiKeyXDSManager utils.XDSManager,
+	apiKeyConfig *config.APIKeyConfig,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -127,6 +132,8 @@ func NewClient(
 		parser:            config.NewParser(),
 		validator:         validator,
 		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
+		apiKeyService:     utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig),
+		routerConfig:      routerConfig,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -516,6 +523,12 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleAPIDeployedEvent(event)
 	case "api.undeployed":
 		c.handleAPIUndeployedEvent(event)
+	case "apikey.created":
+		c.handleAPIKeyCreatedEvent(event)
+	case "apikey.updated":
+		c.handleAPIKeyUpdatedEvent(event)
+	case "apikey.revoked":
+		c.handleAPIKeyRevokedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -612,6 +625,365 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		slog.Any("correlationId", event["correlationId"]),
 	)
 	// TODO: Implement actual API undeployment logic in Phase 6
+}
+
+// handleAPIKeyCreatedEvent handles API key created events from platform-api
+func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+	baseLogger.Info("API Key Created Event received",
+		slog.Any("correlation_id", event["correlationId"]),
+		slog.Any("timestamp", event["timestamp"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		baseLogger.Error("Failed to marshal API key created event for parsing",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var keyCreatedEvent APIKeyCreatedEvent
+	if err := json.Unmarshal(eventBytes, &keyCreatedEvent); err != nil {
+		baseLogger.Error("Failed to parse API key created event",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Defensive nil/empty checks on required fields before logging or proceeding
+	if keyCreatedEvent.Payload.ApiId == "" {
+		baseLogger.Error("API key created event missing required api_id",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+	if keyCreatedEvent.Payload.ApiKey == "" {
+		baseLogger.Error("API key created event missing required api_key",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+	// Validate Name - required field for external API key events
+	// Since no response is sent back through WebSocket, the caller must know the identifier
+	if keyCreatedEvent.Payload.Name != "" {
+		// Validate the name format
+		if err := utils.ValidateAPIKeyName(keyCreatedEvent.Payload.Name); err != nil {
+			baseLogger.Error("API key created event has invalid name",
+				slog.Any("correlation_id", event["correlationId"]),
+				slog.Any("error", err),
+			)
+			return
+		}
+	}
+
+	// Validate DisplayName - optional field (pointer may be nil)
+	if keyCreatedEvent.Payload.DisplayName != nil && strings.TrimSpace(*keyCreatedEvent.Payload.DisplayName) != "" {
+		// Validate the display name format
+		if err := utils.ValidateDisplayName(*keyCreatedEvent.Payload.DisplayName); err != nil {
+			baseLogger.Error("API key created event has invalid display_name",
+				slog.Any("correlation_id", event["correlationId"]),
+				slog.Any("error", err),
+			)
+			return
+		}
+	}
+
+	logger := baseLogger.With(
+		slog.String("correlation_id", keyCreatedEvent.CorrelationID),
+		slog.String("user_id", keyCreatedEvent.UserId),
+		slog.String("api_id", keyCreatedEvent.Payload.ApiId),
+	)
+
+	payload := keyCreatedEvent.Payload
+
+	var expiresAt *time.Time
+	var duration *int
+	now := time.Now()
+
+
+	apiKeyCreationRequest := api.APIKeyCreationRequest{
+		ApiKey:        &payload.ApiKey,
+		DisplayName:   payload.DisplayName,
+		ExternalRefId: payload.ExternalRefId,
+	}
+	if payload.ExpiresAt != nil {
+		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
+		parsedExpiresAt, err := time.Parse(time.RFC3339, *payload.ExpiresAt)
+		if err != nil {
+			logger.Error("Invalid expires_at format for API key, expected RFC3339",
+				slog.Any("expires_at", *payload.ExpiresAt),
+				slog.Any("error", err),
+			)
+			return
+		}
+		if parsedExpiresAt.Before(now) {
+			logger.Error("API key expiration time must be in the future",
+				slog.String("expires_at", parsedExpiresAt.Format(time.RFC3339)),
+				slog.String("now", now.Format(time.RFC3339)))
+			return
+		}
+		// If expires_at is explicitly provided, use it
+		expiresAt = &parsedExpiresAt
+		apiKeyCreationRequest.ExpiresAt = expiresAt
+	} else if payload.ExpiresIn != nil {
+		duration = &payload.ExpiresIn.Duration
+		timeDuration := time.Duration(*duration)
+		switch payload.ExpiresIn.Unit {
+		case string(api.APIKeyCreationRequestExpiresInUnitSeconds):
+			timeDuration *= time.Second
+		case string(api.APIKeyCreationRequestExpiresInUnitMinutes):
+			timeDuration *= time.Minute
+		case string(api.APIKeyCreationRequestExpiresInUnitHours):
+			timeDuration *= time.Hour
+		case string(api.APIKeyCreationRequestExpiresInUnitDays):
+			timeDuration *= 24 * time.Hour
+		case string(api.APIKeyCreationRequestExpiresInUnitWeeks):
+			timeDuration *= 7 * 24 * time.Hour
+		case string(api.APIKeyCreationRequestExpiresInUnitMonths):
+			timeDuration *= 30 * 24 * time.Hour // Approximate month as 30 days
+		default:
+			logger.Error("Unsupported expiration unit", slog.Any("expires_in.unit", payload.ExpiresIn.Unit))
+			return
+		}
+		expiry := now.Add(timeDuration)
+		expiresAt = &expiry
+		apiKeyCreationRequest.ExpiresAt = expiresAt
+	}
+
+	result, err := c.apiKeyService.CreateExternalAPIKeyFromEvent(
+		payload.ApiId,
+		keyCreatedEvent.UserId,
+		&apiKeyCreationRequest,
+		keyCreatedEvent.CorrelationID,
+		logger,
+	)
+	if err != nil {
+		logger.Error("Failed to create external API key", slog.Any("error", err))
+		return
+	}
+
+	logger.Info("Successfully processed API key created event",
+		slog.String("api_key_name", result.Response.ApiKey.Name),
+	)
+}
+
+// handleAPIKeyRevokedEvent handles API key revoked events from platform-api
+func (c *Client) handleAPIKeyRevokedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+	baseLogger.Info("API Key Revoked Event received",
+		slog.Any("correlation_id", event["correlationId"]),
+		slog.Any("timestamp", event["timestamp"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		baseLogger.Error("Failed to marshal API key revoked event for parsing",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var evt APIKeyRevokedEvent
+	if err := json.Unmarshal(eventBytes, &evt); err != nil {
+		baseLogger.Error("Failed to parse API key revoked event",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Defensive nil/empty checks on required fields before logging or proceeding
+	if evt.Payload.ApiId == "" {
+		baseLogger.Error("API key revoked event missing required api_id",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+	if evt.Payload.KeyName == "" {
+		baseLogger.Error("API key revoked event missing required key_name",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	logger := baseLogger.With(
+		slog.String("correlation_id", evt.CorrelationID),
+		slog.String("user_id", evt.UserId),
+		slog.String("api_id", evt.Payload.ApiId),
+		slog.String("api_key_name", evt.Payload.KeyName),
+	)
+
+	payload := evt.Payload
+
+	err = c.apiKeyService.RevokeExternalAPIKeyFromEvent(
+		payload.ApiId,
+		payload.KeyName,
+		evt.UserId,
+		evt.CorrelationID,
+		logger,
+	)
+	if err != nil {
+		logger.Error("Failed to revoke external API key", slog.Any("error", err))
+		return
+	}
+
+	logger.Info("Successfully processed API key revoked event")
+}
+
+// handleAPIKeyUpdatedEvent handles API key updated events from platform-api.
+func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+	baseLogger.Info("API Key Updated Event received",
+		slog.Any("correlation_id", event["correlationId"]),
+		slog.Any("timestamp", event["timestamp"]),
+	)
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		baseLogger.Error("Failed to marshal event for parsing",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var evt APIKeyUpdatedEvent
+	if err := json.Unmarshal(eventBytes, &evt); err != nil {
+		baseLogger.Error("Failed to parse API key updated event",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	payload := evt.Payload
+
+	// Defensive nil/empty checks on required fields
+	if payload.ApiId == "" {
+		baseLogger.Error("API key updated event missing required api_id",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+	if payload.KeyName == "" {
+		baseLogger.Error("API key updated event missing required key_name",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+	if payload.ApiKey == "" {
+		baseLogger.Error("API key updated event missing required api_key",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.String("api_id", payload.ApiId),
+			slog.String("key_name", payload.KeyName),
+		)
+		return
+	}
+	if payload.DisplayName == "" {
+		baseLogger.Error("API key updated event missing required display_name",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.String("api_id", payload.ApiId),
+			slog.String("key_name", payload.KeyName),
+		)
+		return
+	}
+
+	// Validate the display name format
+	if err := utils.ValidateDisplayName(payload.DisplayName); err != nil {
+		baseLogger.Error("API key updated event has invalid display_name",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.String("api_id", payload.ApiId),
+			slog.String("key_name", payload.KeyName),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	logger := baseLogger.With(
+		slog.String("correlation_id", evt.CorrelationID),
+		slog.String("user_id", evt.UserId),
+		slog.String("api_id", payload.ApiId),
+		slog.String("key_name", payload.KeyName),
+	)
+
+	var expiresAt *time.Time
+	var duration *int
+	now := time.Now()
+
+	apiKeyCreationRequest := api.APIKeyCreationRequest{
+		ApiKey:        &payload.ApiKey,
+		DisplayName:   &payload.DisplayName,
+		ExternalRefId: &payload.ExternalRefId,
+	}
+	if payload.ExpiresAt != nil {
+		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
+		parsedExpiresAt, err := time.Parse(time.RFC3339, *payload.ExpiresAt)
+		if err != nil {
+			logger.Error("Invalid expires_at format for API key, expected RFC3339",
+				slog.Any("expires_at", *payload.ExpiresAt),
+				slog.Any("error", err),
+			)
+			return
+		}
+		if parsedExpiresAt.Before(now) {
+			logger.Error("API key expiration time must be in the future",
+				slog.String("expires_at", parsedExpiresAt.Format(time.RFC3339)),
+				slog.String("now", now.Format(time.RFC3339)))
+			return
+		}
+		// If expires_at is explicitly provided, use it
+		expiresAt = &parsedExpiresAt
+		apiKeyCreationRequest.ExpiresAt = expiresAt
+	} else if payload.ExpiresIn != nil {
+		duration = &payload.ExpiresIn.Duration
+		timeDuration := time.Duration(*duration)
+		switch payload.ExpiresIn.Unit {
+		case string(api.APIKeyCreationRequestExpiresInUnitSeconds):
+			timeDuration *= time.Second
+		case string(api.APIKeyCreationRequestExpiresInUnitMinutes):
+			timeDuration *= time.Minute
+		case string(api.APIKeyCreationRequestExpiresInUnitHours):
+			timeDuration *= time.Hour
+		case string(api.APIKeyCreationRequestExpiresInUnitDays):
+			timeDuration *= 24 * time.Hour
+		case string(api.APIKeyCreationRequestExpiresInUnitWeeks):
+			timeDuration *= 7 * 24 * time.Hour
+		case string(api.APIKeyCreationRequestExpiresInUnitMonths):
+			timeDuration *= 30 * 24 * time.Hour // Approximate month as 30 days
+		default:
+			logger.Error("Unsupported expiration unit", slog.Any("expires_in.unit", payload.ExpiresIn.Unit))
+			return
+		}
+		expiry := now.Add(timeDuration)
+		expiresAt = &expiry
+		apiKeyCreationRequest.ExpiresAt = expiresAt
+	}
+
+	err = c.apiKeyService.UpdateExternalAPIKeyFromEvent(
+		payload.ApiId,
+		payload.KeyName,
+		&apiKeyCreationRequest,
+		evt.UserId,
+		evt.CorrelationID,
+		logger,
+	)
+	if err != nil {
+		logger.Error("Failed to update external API key", slog.Any("error", err))
+		return
+	}
+	logger.Info("Successfully processed API key updated event")
 }
 
 // calculateNextRetryDelay calculates the next retry delay with exponential backoff and jitter

@@ -121,3 +121,13 @@ var (
 	ErrOpenAPIFileNotFound  = errors.New("OpenAPI definition file not found")
 	ErrWSO2ArtifactNotFound = errors.New("WSO2 API artifact not found")
 )
+
+var (
+	// API Key errors
+	ErrAPIKeyNotFound        = errors.New("api key not found")
+	ErrAPIKeyAlreadyExists   = errors.New("api key already exists")
+	ErrInvalidAPIKey         = errors.New("invalid api key")
+	ErrGatewayUnavailable    = errors.New("gateway unavailable")
+	ErrAPIKeyEventDelivery   = errors.New("failed to deliver api key event to gateway")
+	ErrAPIKeyHashingFailed   = errors.New("failed to hash api key")
+)

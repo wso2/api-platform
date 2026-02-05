@@ -64,3 +64,5 @@ require (
 
 // Local module replacements for Docker builds
 replace github.com/wso2/api-platform/sdk => ../../sdk
+
+replace github.com/wso2/api-platform/common => ../../common

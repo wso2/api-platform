@@ -209,7 +209,8 @@ type MockServerInterface struct {
 	GetAPIByIdCalled                 bool
 	UpdateAPICalled                  bool
 	ListAPIKeysCalled                bool
-	GenerateAPIKeyCalled             bool
+	CreateAPIKeyCalled               bool
+	UpdateAPIKeyCalled               bool
 	RevokeAPIKeyCalled               bool
 	RegenerateAPIKeyCalled           bool
 	ListCertificatesCalled           bool
@@ -241,6 +242,18 @@ type MockServerInterface struct {
 	ListPoliciesCalled               bool
 }
 
+// CreateAPIKey implements [ServerInterface].
+func (m *MockServerInterface) CreateAPIKey(c *gin.Context, id string) {
+	m.CreateAPIKeyCalled = true
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+// UpdateAPIKey implements [ServerInterface].
+func (m *MockServerInterface) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
+	m.UpdateAPIKeyCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
+}
+
 func (m *MockServerInterface) ListAPIs(c *gin.Context, params ListAPIsParams) {
 	m.ListAPIsCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -269,11 +282,6 @@ func (m *MockServerInterface) UpdateAPI(c *gin.Context, id string) {
 func (m *MockServerInterface) ListAPIKeys(c *gin.Context, id string) {
 	m.ListAPIKeysCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func (m *MockServerInterface) GenerateAPIKey(c *gin.Context, id string) {
-	m.GenerateAPIKeyCalled = true
-	c.JSON(http.StatusCreated, gin.H{"status": "created"})
 }
 
 func (m *MockServerInterface) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
@@ -1670,7 +1678,7 @@ func TestServerInterfaceWrapper_APIKeyRoutes(t *testing.T) {
 		assert.True(t, mockServer.ListAPIKeysCalled)
 	})
 
-	t.Run("GenerateAPIKey", func(t *testing.T) {
+	t.Run("CreateAPIKey", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
 		RegisterHandlers(router, mockServer)
@@ -1680,7 +1688,7 @@ func TestServerInterfaceWrapper_APIKeyRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
-		assert.True(t, mockServer.GenerateAPIKeyCalled)
+		assert.True(t, mockServer.CreateAPIKeyCalled)
 	})
 
 	t.Run("RevokeAPIKey", func(t *testing.T) {
