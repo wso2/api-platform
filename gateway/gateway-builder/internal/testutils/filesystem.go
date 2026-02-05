@@ -21,21 +21,28 @@ package testutils
 import (
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
+// invalidIdentifierChars matches any character that is not valid in a Go identifier.
+var invalidIdentifierChars = regexp.MustCompile(`[^a-zA-Z0-9_]`)
+
 // SanitizePackageName converts a policy name to a valid Go package name.
-// Replaces hyphens and dots with underscores, removes other invalid characters.
+// Go identifiers must match [a-zA-Z_][a-zA-Z0-9_]*, so this function:
+// - Replaces all non-alphanumeric/underscore characters with underscores
+// - Prefixes with underscore if the name starts with a digit
+// - Returns "_" if the result would be empty
 func SanitizePackageName(name string) string {
-	// Replace common invalid characters with underscores
-	result := strings.ReplaceAll(name, "-", "_")
-	result = strings.ReplaceAll(result, ".", "_")
+	result := invalidIdentifierChars.ReplaceAllString(name, "_")
 	// If starts with a digit, prefix with underscore
 	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
 		result = "_" + result
+	}
+	if result == "" {
+		result = "_"
 	}
 	return result
 }

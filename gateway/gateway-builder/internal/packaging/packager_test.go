@@ -19,6 +19,7 @@
 package packaging
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,8 +107,9 @@ func TestGenerateDockerfile_CreatesBuildMD(t *testing.T) {
 }
 
 func TestGenerateDockerfile_InvalidOutputDir(t *testing.T) {
-	// Try to write to a path that can't be created
-	invalidPath := "/nonexistent/readonly/path"
+	// Use a file path to deterministically fail directory creation
+	invalidPath := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(invalidPath, []byte("x"), 0600))
 
 	policies := []*types.DiscoveredPolicy{
 		{Name: "test", Version: "v1.0.0"},
@@ -222,7 +224,11 @@ func TestGenerateBuildInstructions_InvalidPath(t *testing.T) {
 		Policies:       []types.PolicyInfo{},
 	}
 
-	err := generateBuildInstructions("/nonexistent/path", metadata)
+	// Use a file path to deterministically fail directory creation
+	invalidPath := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(invalidPath, []byte("x"), 0600))
+
+	err := generateBuildInstructions(invalidPath, metadata)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to write BUILD.md")
@@ -251,9 +257,9 @@ func TestGenerateBuildInstructions_ManyPolicies(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(tmpDir, "BUILD.md"))
 	require.NoError(t, err)
 
-	// Verify all policies are numbered
-	for i := 1; i <= 10; i++ {
-		assert.Contains(t, string(content), string(rune('0'+i%10))+".")
+	// Verify all policies are numbered with full entry format
+	for i, p := range policies {
+		assert.Contains(t, string(content), fmt.Sprintf("%d. %s %s", i+1, p.Name, p.Version))
 	}
 }
 
