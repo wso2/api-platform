@@ -30,8 +30,8 @@ import (
 )
 
 var (
-	// validAPIKeyNameRegex matches lowercase alphanumeric with hyphens (not at start/end, no consecutive)
-	validAPIKeyNameRegex = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	// validAPIKeyNameRegex matches lowercase alphanumeric with hyphens and underscores (not at start/end, no consecutive separators)
+	validAPIKeyNameRegex = regexp.MustCompile(`^[a-z0-9]+([_-][a-z0-9]+)*$`)
 	// invalidCharsRegex matches any character that is not alphanumeric, hyphen, underscore, or space
 	invalidCharsRegex = regexp.MustCompile(`[^a-z0-9\-_ ]`)
 	// multipleHyphensRegex matches consecutive hyphens
@@ -85,10 +85,10 @@ func ValidateDisplayName(displayName string) error {
 // ValidateAPIKeyName validates a user-provided API key name.
 // Name must be:
 // - Lowercase only
-// - Alphanumeric with hyphens allowed
+// - Alphanumeric with hyphens and underscores allowed
 // - No special characters
-// - No consecutive hyphens
-// - Cannot start or end with hyphen
+// - No consecutive separators (hyphens/underscores)
+// - Cannot start or end with hyphen or underscore
 // - Length between 3 and 63 characters
 func ValidateAPIKeyName(name string) error {
 	if name == "" {
@@ -101,7 +101,7 @@ func ValidateAPIKeyName(name string) error {
 		return fmt.Errorf("API key name is too long (maximum %d characters allowed)", constants.APIKeyNameMaxLength)
 	}
 	if !validAPIKeyNameRegex.MatchString(name) {
-		return fmt.Errorf("API key name must be lowercase alphanumeric with hyphens (no consecutive hyphens, cannot start/end with hyphen)")
+		return fmt.Errorf("API key name must be lowercase alphanumeric with hyphens or underscores (no consecutive separators, cannot start/end with hyphen or underscore)")
 	}
 	return nil
 }
