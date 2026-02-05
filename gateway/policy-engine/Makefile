@@ -179,7 +179,7 @@ stop:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	$(GOTEST) -v ./... -cover -coverprofile=unit-test-coverage.txt
+	$(GOTEST) -v $$(go list ./... | grep -v /testutils) -cover -coverprofile=unit-test-coverage.txt
 	@echo "Tests completed"
 
 ## clean: Clean build artifacts
