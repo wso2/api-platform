@@ -504,38 +504,39 @@ func TestClient_HeartbeatMonitor_TimeoutDetection(t *testing.T) {
 
 	t.Run("Heartbeat monitor with recent heartbeat stays connected", func(t *testing.T) {
 		client := createTestClient(t)
+		client.setState(Connected)
 
 		// Set recent heartbeat
 		atomic.StoreInt64(&client.state.LastHeartbeat, time.Now().Unix())
 
-		// Start monitor
+		// Start the actual heartbeat monitor
 		client.wg.Add(1)
+		go client.heartbeatMonitor()
+
+		// Keep heartbeat fresh in background
 		go func() {
-			defer client.wg.Done()
-
-			ticker := time.NewTicker(1 * time.Second)
-			defer ticker.Stop()
-
-			for i := 0; i < 3; i++ {
+			for {
 				select {
-				case <-ticker.C:
-					// Update heartbeat to keep it fresh
-					atomic.StoreInt64(&client.state.LastHeartbeat, time.Now().Unix())
 				case <-client.stopChan:
 					return
+				case <-time.After(1 * time.Second):
+					atomic.StoreInt64(&client.state.LastHeartbeat, time.Now().Unix())
 				}
 			}
 		}()
 
-		// Wait a bit
-		time.Sleep(4 * time.Second)
+		// Wait for at least one monitor check cycle (monitor ticks every 5s)
+		time.Sleep(6 * time.Second)
 
 		// Stop
 		close(client.stopChan)
 		client.wg.Wait()
 
-		// Should still be in original state (not reconnecting due to timeout)
-		// This test verifies the heartbeat doesn't timeout when properly maintained
+		// Should still be Connected (not Reconnecting due to timeout)
+		state := client.GetState()
+		if state != Connected {
+			t.Errorf("Expected Connected state when heartbeat is maintained, got %v", state)
+		}
 	})
 }
 
