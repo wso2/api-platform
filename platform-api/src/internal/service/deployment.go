@@ -223,8 +223,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	}, nil
 }
 
-// RollbackDeployment rolls back to a previous deployment (can be ARCHIVED or UNDEPLOYED)
-func (s *DeploymentService) RollbackDeployment(apiUUID, deploymentID, orgUUID string) (*dto.DeploymentResponse, error) {
+// RestoreDeployment restores a previous deployment (can be ARCHIVED or UNDEPLOYED)
+func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, orgUUID string) (*dto.DeploymentResponse, error) {
 	// Verify target deployment exists and belongs to the API
 	targetDeployment, err := s.apiRepo.GetDeploymentWithContent(deploymentID, apiUUID, orgUUID)
 	if err != nil {
@@ -232,6 +232,11 @@ func (s *DeploymentService) RollbackDeployment(apiUUID, deploymentID, orgUUID st
 	}
 	if targetDeployment == nil {
 		return nil, constants.ErrDeploymentNotFound
+	}
+
+	// Validate that the provided gatewayID matches the deployment's bound gateway
+	if targetDeployment.GatewayID != gatewayID {
+		return nil, constants.ErrGatewayIDMismatch
 	}
 
 	// Verify target deployment is NOT currently DEPLOYED
@@ -286,7 +291,7 @@ func (s *DeploymentService) RollbackDeployment(apiUUID, deploymentID, orgUUID st
 }
 
 // UndeployDeployment undeploys an active deployment
-func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID string) (*dto.DeploymentResponse, error) {
+func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID, orgUUID string) (*dto.DeploymentResponse, error) {
 	// Verify deployment exists and belongs to API
 	deployment, err := s.apiRepo.GetDeploymentWithState(deploymentID, apiUUID, orgUUID)
 	if err != nil {
@@ -294,6 +299,11 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 	}
 	if deployment == nil {
 		return nil, constants.ErrDeploymentNotFound
+	}
+
+	// Validate that the provided gatewayID matches the deployment's bound gateway
+	if deployment.GatewayID != gatewayID {
+		return nil, constants.ErrGatewayIDMismatch
 	}
 
 	// Verify deployment is currently DEPLOYED (status already populated by GetDeploymentWithState)
@@ -562,15 +572,15 @@ func (s *DeploymentService) DeployAPIByHandle(apiHandle string, req *dto.DeployA
 	return s.DeployAPI(apiUUID, req, orgUUID)
 }
 
-// RollbackDeploymentByHandle rolls back to a previous deployment using API handle
-func (s *DeploymentService) RollbackDeploymentByHandle(apiHandle, deploymentID, orgUUID string) (*dto.DeploymentResponse, error) {
+// RestoreDeploymentByHandle restores a previous deployment using API handle
+func (s *DeploymentService) RestoreDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*dto.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.RollbackDeployment(apiUUID, deploymentID, orgUUID)
+	return s.RestoreDeployment(apiUUID, deploymentID, gatewayID, orgUUID)
 }
 
 // getAPIUUIDByHandle retrieves the internal UUID for an API by its handle
@@ -623,14 +633,14 @@ func (s *DeploymentService) GetDeploymentsByHandle(apiHandle, gatewayID, status,
 }
 
 // UndeployDeploymentByHandle undeploys a deployment using API handle
-func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, orgUUID string) (*dto.DeploymentResponse, error) {
+func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*dto.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.UndeployDeployment(apiUUID, deploymentID, orgUUID)
+	return s.UndeployDeployment(apiUUID, deploymentID, gatewayID, orgUUID)
 }
 
 // DeleteDeploymentByHandle deletes a deployment using API handle

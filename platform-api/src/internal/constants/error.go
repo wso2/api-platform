@@ -76,6 +76,7 @@ var (
 	ErrDeploymentGatewayIDRequired     = errors.New("gatewayId is required")
 	ErrAPINoBackendServices            = errors.New("API must have at least one backend service attached before deployment")
 	ErrDeploymentAlreadyDeployed       = errors.New("cannot rollback to currently deployed deployment")
+	ErrGatewayIDMismatch               = errors.New("gateway ID mismatch: deployment is bound to a different gateway")
 )
 
 var (
