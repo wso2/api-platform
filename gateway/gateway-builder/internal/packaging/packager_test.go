@@ -319,19 +319,15 @@ func TestGenerateDockerfile_BuildTimestampIsRecent(t *testing.T) {
 	// Extract timestamp from content
 	contentStr := string(content)
 	timestampIdx := strings.Index(contentStr, "Build timestamp: ")
-	if timestampIdx != -1 {
-		// Find the timestamp portion
-		timestampStart := timestampIdx + len("Build timestamp: ")
-		timestampEnd := strings.Index(contentStr[timestampStart:], "\n")
-		if timestampEnd != -1 {
-			timestampStr := contentStr[timestampStart : timestampStart+timestampEnd]
-			parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-			if err == nil {
-				assert.True(t, parsedTime.After(beforeTime) || parsedTime.Equal(beforeTime))
-				assert.True(t, parsedTime.Before(afterTime) || parsedTime.Equal(afterTime))
-			}
-		}
-	}
+	require.NotEqual(t, -1, timestampIdx, "Build timestamp not found")
+	timestampStart := timestampIdx + len("Build timestamp: ")
+	timestampEnd := strings.Index(contentStr[timestampStart:], "\n")
+	require.NotEqual(t, -1, timestampEnd, "Build timestamp line not found")
+	timestampStr := contentStr[timestampStart : timestampStart+timestampEnd]
+	parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+	require.NoError(t, err, "Invalid build timestamp")
+	assert.True(t, parsedTime.After(beforeTime) || parsedTime.Equal(beforeTime))
+	assert.True(t, parsedTime.Before(afterTime) || parsedTime.Equal(afterTime))
 }
 
 func TestGenerateDockerfile_FilePermissions(t *testing.T) {
