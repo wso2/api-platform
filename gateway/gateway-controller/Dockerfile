@@ -90,6 +90,9 @@ COPY --from=builder /build/controller .
 # Copy policy definitions
 COPY default-policies /app/default-policies
 
+# Copy lua scripts
+COPY lua /app/lua
+
 # Copy default llm provider templates
 COPY default-llm-provider-templates /app/default-llm-provider-templates
 

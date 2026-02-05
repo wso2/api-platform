@@ -56,6 +56,9 @@ type PolicyExecutionContext struct {
 	// without currupting the metadata map used by the policies
 	analyticsMetadata map[string]interface{}
 
+	// Dynamic metadata to be shared across request and response phases
+	dynamicMetadata map[string]map[string]interface{}
+
 	// Reference to server components
 	server *ExternalProcessorServer
 }
@@ -67,10 +70,11 @@ func newPolicyExecutionContext(
 	chain *registry.PolicyChain,
 ) *PolicyExecutionContext {
 	return &PolicyExecutionContext{
-		server:      server,
-		routeKey:    routeKey,
-		policyChain: chain,
+		server:            server,
+		routeKey:          routeKey,
+		policyChain:       chain,
 		analyticsMetadata: make(map[string]interface{}),
+		dynamicMetadata:   make(map[string]map[string]interface{}),
 	}
 }
 
