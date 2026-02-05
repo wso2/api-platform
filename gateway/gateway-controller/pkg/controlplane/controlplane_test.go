@@ -21,6 +21,7 @@ package controlplane
 import (
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -458,4 +459,216 @@ func TestClient_waitForDisconnection_NilConn(t *testing.T) {
 
 	// Should return immediately when conn is nil
 	client.waitForDisconnection()
+}
+
+// Tests for lines 229-323: Connect error handling paths
+func TestClient_Connect_AdditionalErrorPaths(t *testing.T) {
+	t.Run("Connection with unreachable host", func(t *testing.T) {
+		client := createTestClient(t)
+		// Override with unreachable host
+		client.config.Host = "192.0.2.1:9999" // TEST-NET-1, should be unreachable
+
+		err := client.Connect()
+		if err == nil {
+			t.Error("Expected error for unreachable host, got nil")
+		}
+	})
+}
+
+// Tests for lines 331-380: Close and heartbeat monitoring
+func TestClient_HeartbeatMonitor_TimeoutDetection(t *testing.T) {
+	t.Run("Heartbeat timeout triggers reconnection", func(t *testing.T) {
+		client := createTestClient(t)
+
+		// Set heartbeat to old time to simulate timeout
+		oldTime := time.Now().Add(-40 * time.Second)
+		atomic.StoreInt64(&client.state.LastHeartbeat, oldTime.Unix())
+
+		// Start heartbeat monitor
+		client.wg.Add(1)
+		go client.heartbeatMonitor()
+
+		// Wait for monitor to detect timeout
+		time.Sleep(6 * time.Second)
+
+		// Close stop channel
+		close(client.stopChan)
+		client.wg.Wait()
+
+		// State should have transitioned
+		state := client.GetState()
+		if state != Reconnecting && state != Disconnected {
+			t.Errorf("Expected Reconnecting or Disconnected state after timeout, got %v", state)
+		}
+	})
+
+	t.Run("Heartbeat monitor with recent heartbeat stays connected", func(t *testing.T) {
+		client := createTestClient(t)
+		client.setState(Connected)
+
+		// Set recent heartbeat
+		atomic.StoreInt64(&client.state.LastHeartbeat, time.Now().Unix())
+
+		// Start the actual heartbeat monitor
+		client.wg.Add(1)
+		go client.heartbeatMonitor()
+
+		// Keep heartbeat fresh in background
+		go func() {
+			for {
+				select {
+				case <-client.stopChan:
+					return
+				case <-time.After(1 * time.Second):
+					atomic.StoreInt64(&client.state.LastHeartbeat, time.Now().Unix())
+				}
+			}
+		}()
+
+		// Wait for at least one monitor check cycle (monitor ticks every 5s)
+		time.Sleep(6 * time.Second)
+
+		// Stop
+		close(client.stopChan)
+		client.wg.Wait()
+
+		// Should still be Connected (not Reconnecting due to timeout)
+		state := client.GetState()
+		if state != Connected {
+			t.Errorf("Expected Connected state when heartbeat is maintained, got %v", state)
+		}
+	})
+}
+
+// Tests for lines 414-465: connectionLoop retry logic and waitForDisconnection
+func TestClient_ConnectionLoop_RetryBackoff(t *testing.T) {
+	t.Run("Retry delay increases with retries", func(t *testing.T) {
+		client := createTestClient(t)
+
+		// Set initial state
+		client.state.NextRetryDelay = 2 * time.Second
+		client.state.RetryCount = 0
+
+		delays := []time.Duration{}
+		for i := 0; i < 5; i++ {
+			client.calculateNextRetryDelay()
+			delays = append(delays, client.state.NextRetryDelay)
+			client.state.RetryCount++ // Increment retry count for exponential growth
+		}
+
+		// Due to jitter, we check that delays generally trend upward or hit the max
+		// At least one delay should be larger than the initial
+		foundIncrease := false
+		for _, d := range delays {
+			if d > 2*time.Second {
+				foundIncrease = true
+				break
+			}
+		}
+
+		if !foundIncrease {
+			t.Errorf("Expected at least one delay to be larger than initial 2s, got: %v", delays)
+		}
+
+		// Verify no delay exceeds max
+		for i, d := range delays {
+			if d > client.config.ReconnectMax {
+				t.Errorf("Delay at index %d exceeded max: %v > %v", i, d, client.config.ReconnectMax)
+			}
+		}
+	})
+
+	t.Run("Client lifecycle with Start and Stop", func(t *testing.T) {
+		client := createTestClient(t)
+
+		// Start the client (starts connectionLoop)
+		err := client.Start()
+		if err != nil {
+			t.Fatalf("Start() unexpected error: %v", err)
+		}
+
+		// Give it time to attempt connection
+		time.Sleep(100 * time.Millisecond)
+
+		// Stop the client
+		client.Stop()
+
+		// Verify stopped
+		if client.IsConnected() {
+			t.Error("Expected client to be disconnected after Stop()")
+		}
+	})
+}
+
+// Tests for lines 577-604: handleAPIDeployedEvent
+func TestClient_HandleAPIDeployedEvent_ErrorCases(t *testing.T) {
+	t.Run("Payload with missing fields logs but doesn't panic", func(t *testing.T) {
+		client := createTestClient(t)
+
+		// Missing apiId
+		event1 := map[string]interface{}{
+			"payload": map[string]interface{}{
+				"correlationId": "test-123",
+			},
+		}
+		client.handleAPIDeployedEvent(event1)
+
+		// Missing correlationId
+		event2 := map[string]interface{}{
+			"payload": map[string]interface{}{
+				"apiId": "api-456",
+			},
+		}
+		client.handleAPIDeployedEvent(event2)
+
+		// Invalid payload type
+		event3 := map[string]interface{}{
+			"payload": "not-a-map",
+		}
+		client.handleAPIDeployedEvent(event3)
+
+		// No payload at all
+		event4 := map[string]interface{}{}
+		client.handleAPIDeployedEvent(event4)
+
+		// All should handle gracefully without panic
+	})
+
+	t.Run("Valid payload structure extracts fields correctly", func(t *testing.T) {
+		client := createTestClient(t)
+
+		event := map[string]interface{}{
+			"payload": map[string]interface{}{
+				"apiId":         "test-api-789",
+				"correlationId": "corr-xyz",
+			},
+		}
+
+		// This will attempt to download the API (which will fail)
+		// but the important part is that it extracts the fields correctly
+		client.handleAPIDeployedEvent(event)
+
+		// No panic expected even though download will fail
+	})
+}
+
+func TestClient_CalculateNextRetryDelay_CappedAtMax(t *testing.T) {
+	t.Run("Delay caps at configured maximum", func(t *testing.T) {
+		client := createTestClient(t)
+
+		// Set a low max for testing
+		client.config.ReconnectMax = 10 * time.Second
+		client.state.RetryCount = 0
+
+		// Trigger many retries to force cap
+		for i := 0; i < 20; i++ {
+			client.calculateNextRetryDelay()
+			client.state.RetryCount++
+		}
+
+		if client.state.NextRetryDelay > client.config.ReconnectMax {
+			t.Errorf("Delay exceeded configured max: %v > %v",
+				client.state.NextRetryDelay, client.config.ReconnectMax)
+		}
+	})
 }

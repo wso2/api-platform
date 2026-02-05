@@ -725,3 +725,120 @@ func TestHashAPIKeyWithArgon2ID_EmptyKey(t *testing.T) {
 	_, err := service.hashAPIKeyWithArgon2ID("")
 	assert.Error(t, err)
 }
+
+// Additional tests for uncovered lines
+
+// Tests for expiration handling in generateAPIKeyFromRequest
+func TestGenerateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
+	service := &APIKeyService{
+		apiKeyConfig: &config.APIKeyConfig{
+			APIKeysPerUserPerAPI: 10,
+			Algorithm:            constants.HashingAlgorithmSHA256,
+		},
+	}
+
+	apiConfig := &models.StoredConfig{
+		ID:   "test-api",
+		Kind: "Api",
+		Configuration: api.APIConfiguration{
+			Metadata: api.Metadata{Name: "test-api"},
+			Spec:     api.APIConfiguration_Spec{},
+		},
+	}
+
+	t.Run("seconds unit", func(t *testing.T) {
+		name := "key1"
+		req := &api.APIKeyGenerationRequest{
+			Name: &name,
+			ExpiresIn: &struct {
+				Duration int                                      `json:"duration" yaml:"duration"`
+				Unit     api.APIKeyGenerationRequestExpiresInUnit `json:"unit" yaml:"unit"`
+			}{
+				Duration: 3600,
+				Unit:     api.APIKeyGenerationRequestExpiresInUnitSeconds,
+			},
+		}
+		key, err := service.generateAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		assert.NoError(t, err)
+		assert.NotNil(t, key.ExpiresAt)
+	})
+
+	t.Run("past expiration fails", func(t *testing.T) {
+		name := "key2"
+		past := time.Now().Add(-1 * time.Hour)
+		req := &api.APIKeyGenerationRequest{
+			Name:      &name,
+			ExpiresAt: &past,
+		}
+		_, err := service.generateAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "must be in the future")
+	})
+}
+
+// Tests for regenerateAPIKey expiration handling
+func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	service := &APIKeyService{
+		apiKeyConfig: &config.APIKeyConfig{
+			Algorithm: constants.HashingAlgorithmSHA256,
+		},
+	}
+
+	t.Run("uses existing key duration when no request expiration", func(t *testing.T) {
+		unit := "days"
+		dur := 30
+		existing := &models.APIKey{
+			ID:        "k1",
+			Name:      "n1",
+			CreatedBy: "u1",
+			Unit:      &unit,
+			Duration:  &dur,
+		}
+		req := api.APIKeyRegenerationRequest{}
+		key, err := service.regenerateAPIKey(existing, req, "u1", logger)
+		assert.NoError(t, err)
+		assert.NotNil(t, key.ExpiresAt)
+	})
+
+	t.Run("uses existing absolute expiry", func(t *testing.T) {
+		exp := time.Now().Add(10 * 24 * time.Hour)
+		existing := &models.APIKey{
+			ID:        "k1",
+			Name:      "n1",
+			CreatedBy: "u1",
+			ExpiresAt: &exp,
+		}
+		req := api.APIKeyRegenerationRequest{}
+		key, err := service.regenerateAPIKey(existing, req, "u1", logger)
+		assert.NoError(t, err)
+		assert.Equal(t, exp, *key.ExpiresAt)
+	})
+
+	t.Run("no expiry when existing has none", func(t *testing.T) {
+		existing := &models.APIKey{
+			ID:        "k1",
+			Name:      "n1",
+			CreatedBy: "u1",
+		}
+		req := api.APIKeyRegenerationRequest{}
+		key, err := service.regenerateAPIKey(existing, req, "u1", logger)
+		assert.NoError(t, err)
+		assert.Nil(t, key.ExpiresAt)
+	})
+
+	t.Run("past expiration fails", func(t *testing.T) {
+		existing := &models.APIKey{
+			ID:        "k1",
+			Name:      "n1",
+			CreatedBy: "u1",
+		}
+		past := time.Now().Add(-1 * time.Hour)
+		req := api.APIKeyRegenerationRequest{
+			ExpiresAt: &past,
+		}
+		_, err := service.regenerateAPIKey(existing, req, "u1", logger)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "must be in the future")
+	})
+}
