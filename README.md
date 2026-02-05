@@ -4,6 +4,7 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/wso2/api-platform.svg)](https://github.com/wso2/api-platform/commits/main)
 [![GitHub issues](https://img.shields.io/github/issues/wso2/api-platform.svg)](https://github.com/wso2/api-platform/issues)
 [![codecov.io](https://codecov.io/github/wso2/api-platform/coverage.svg?branch=main)](https://app.codecov.io/github/wso2/api-platform?branch=main)
+[![Performance](https://img.shields.io/badge/Performance-Benchmark-success)](https://github.com/wso2/api-platform/blob/main/docs/performance/README.md)
 
 AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments.
 

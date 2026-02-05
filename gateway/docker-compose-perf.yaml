@@ -18,7 +18,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.7.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller:0.5.0
     mem_limit: 60m
     mem_reservation: 60m
     cpus: 0.025
@@ -45,8 +45,14 @@ services:
     networks:
       - gateway-network
 
+  netty: 
+    image: renukafernando/netty-http-echo-service:0.4.6
+    ports:
+      - "8085:8688"
+    networks:
+      - gateway-network
   policy-engine:
-    image: ghcr.io/wso2/api-platform/policy-engine:0.7.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/policy-engine:0.5.0
     command: ["-config", "/etc/policy-engine/config.toml", "-xds-server", "gateway-controller:18001"]
     mem_limit: 60m
     mem_reservation: 60m
@@ -62,7 +68,7 @@ services:
       - gateway-network
 
   router:
-    image: ghcr.io/wso2/api-platform/gateway-router:0.7.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-router:0.5.0
     mem_limit: 120m
     mem_reservation: 120m
     cpus: 0.125
