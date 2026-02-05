@@ -1984,6 +1984,14 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 	correlationID string,
 	logger *slog.Logger,
 ) (*APIKeyCreationResult, error) {
+	if request == nil {
+		logger.Error("nil APIKeyCreationRequest",
+			slog.String("api_id", handle),
+			slog.String("correlation_id", correlationID),
+		)
+		return nil, fmt.Errorf("nil APIKeyCreationRequest for api %s", handle)
+	}
+
 	logger.Info("Creating external API key from event",
 		slog.String("api_id", handle),
 		slog.Bool("has_expiry", request.ExpiresAt != nil),
@@ -2048,6 +2056,13 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 	correlationID string,
 	logger *slog.Logger,
 ) error {
+	if request == nil {
+		logger.Error("nil APIKeyCreationRequest",
+			slog.String("api_id", handle),
+			slog.String("correlation_id", correlationID),
+		)
+		return fmt.Errorf("nil APIKeyCreationRequest for api %s", handle)
+	}
 
 	apiKeyUpdateParams := APIKeyUpdateParams{
 		Handle:     handle,

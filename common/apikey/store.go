@@ -294,7 +294,7 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 
 	var matchedKey *APIKey
 
-	// Try to parse as local key (format: key_id); empty Source treated as "local"
+	// Try to parse as local key (format: key_id); only keys with Source == "local" are accepted
 	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
 	if ok {
 		apiKey, exists := aks.apiKeysByAPI[apiId][parsedAPIkey.ID]
