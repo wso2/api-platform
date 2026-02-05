@@ -2550,7 +2550,12 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	result, err := s.apiKeyService.UpdateAPIKey(params)
 	if err != nil {
 		// Check error type to determine appropriate status code
-		if strings.Contains(err.Error(), "not found") {
+		if storage.IsOperationNotAllowedError(err) {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
