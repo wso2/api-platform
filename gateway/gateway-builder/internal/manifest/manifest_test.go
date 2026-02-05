@@ -525,3 +525,55 @@ go 1.21
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "v1.0.0")
 }
+
+func TestWriteManifestLockWithVersions_InvalidManifestYAML(t *testing.T) {
+tmpDir := t.TempDir()
+
+// Create invalid YAML manifest
+manifestPath := filepath.Join(tmpDir, "policy-manifest.yaml")
+err := os.WriteFile(manifestPath, []byte("invalid: yaml: content: -"), 0644)
+require.NoError(t, err)
+
+discovered := []*types.DiscoveredPolicy{}
+
+err = WriteManifestLockWithVersions(manifestPath, discovered)
+assert.Error(t, err)
+assert.Contains(t, err.Error(), "failed to parse manifest YAML")
+}
+
+func TestManifest_WriteToFile_InvalidPath(t *testing.T) {
+	manifest := &Manifest{
+		BuildTimestamp: "2025-01-01T00:00:00Z",
+		BuilderVersion: "v1.0.0",
+		OutputDir:      "/output",
+		Policies:       []PolicyInfo{},
+	}
+
+	// Try to write to a path that doesn't exist
+	err := manifest.WriteToFile("/nonexistent/directory/manifest.json")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to write manifest file")
+}
+
+func TestManifest_ToJSON_Success(t *testing.T) {
+manifest := &Manifest{
+BuildTimestamp: "2025-01-01T00:00:00Z",
+BuilderVersion: "v2.0.0",
+OutputDir:      "/output/dir",
+Policies: []PolicyInfo{
+{Name: "test", Version: "v1.0.0"},
+},
+}
+
+jsonStr, err := manifest.ToJSON()
+require.NoError(t, err)
+assert.Contains(t, jsonStr, "v2.0.0")
+assert.Contains(t, jsonStr, "test")
+assert.Contains(t, jsonStr, "v1.0.0")
+
+// Verify it's valid JSON
+var parsed Manifest
+err = json.Unmarshal([]byte(jsonStr), &parsed)
+require.NoError(t, err)
+assert.Equal(t, manifest.BuilderVersion, parsed.BuilderVersion)
+}
