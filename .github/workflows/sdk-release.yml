@@ -76,31 +76,3 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "sdk/v${{ steps.version.outputs.version }}" -m "SDK ${{ steps.version.outputs.version }}"
           git push origin "sdk/v${{ steps.version.outputs.version }}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: sdk/v${{ steps.version.outputs.version }}
-          name: "WSO2 API Platform SDK v${{ steps.version.outputs.version }}"
-          body: |
-            ## WSO2 API Platform SDK v${{ steps.version.outputs.version }}
-
-            This release contains the WSO2 API Platform SDK for Go.
-
-            ### Installation
-
-            ```bash
-            go get github.com/wso2/api-platform/sdk@v${{ steps.version.outputs.version }}
-            ```
-
-            ### Documentation
-
-            For complete documentation, see the [SDK Documentation](https://github.com/wso2/api-platform/tree/main/sdk).
-
-            ### Reporting Issues
-
-            Report issues at [WSO2 API Platform Issues](https://github.com/wso2/api-platform/issues).
-          draft: false
-          prerelease: false
