@@ -658,10 +658,12 @@ func TestClient_CalculateNextRetryDelay_CappedAtMax(t *testing.T) {
 
 		// Set a low max for testing
 		client.config.ReconnectMax = 10 * time.Second
+		client.state.RetryCount = 0
 
 		// Trigger many retries to force cap
 		for i := 0; i < 20; i++ {
 			client.calculateNextRetryDelay()
+			client.state.RetryCount++
 		}
 
 		if client.state.NextRetryDelay > client.config.ReconnectMax {
