@@ -760,6 +760,11 @@ func TestValidateDirectoryStructure_UnreadableDirectory(t *testing.T) {
 	}
 	defer os.Chmod(testDir, 0755) // Restore for cleanup
 
+	// If the directory is still readable (e.g., privileged CI), skip to avoid false failures.
+	if _, err := os.ReadDir(testDir); err == nil {
+		t.Skip("Directory still readable after chmod; skipping permission test")
+	}
+
 	err = ValidateDirectoryStructure(testDir)
 
 	// Should fail due to permission error

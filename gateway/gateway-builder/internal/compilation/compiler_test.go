@@ -284,8 +284,8 @@ func lookupUPX() (string, error) {
 }
 
 func lookupPath(name string) (string, error) {
-	path, err := os.LookupEnv("PATH")
-	if !err {
+	path, ok := os.LookupEnv("PATH")
+	if !ok {
 		return "", os.ErrNotExist
 	}
 	for _, dir := range filepath.SplitList(path) {

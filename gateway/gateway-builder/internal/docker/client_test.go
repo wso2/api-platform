@@ -20,6 +20,8 @@ package docker
 
 import (
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,7 +53,7 @@ func TestExecuteDockerCommand_DockerNotInPath(t *testing.T) {
 
 func TestExecuteDockerCommand_InvalidSubcommand(t *testing.T) {
 	// Skip if docker is not available
-	if _, err := lookupPath("docker"); err != nil {
+	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("Docker not installed, skipping test")
 	}
 
@@ -63,24 +65,21 @@ func TestExecuteDockerCommand_InvalidSubcommand(t *testing.T) {
 
 func TestCheckDockerAvailable_Success(t *testing.T) {
 	// Skip if docker is not available
-	if _, err := lookupPath("docker"); err != nil {
+	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("Docker not installed, skipping test")
 	}
 
-	// This test will only pass if docker is running
-	// We expect it to either succeed or fail with "daemon not running"
 	err := CheckDockerAvailable()
 
-	// If docker is installed, we should get here
-	// The error might be about daemon not running, which is acceptable
-	if err != nil {
-		assert.Contains(t, err.Error(), "daemon")
+	// Accept success or daemon-not-running error; fail on unexpected errors
+	if err != nil && !strings.Contains(err.Error(), "daemon") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
 func TestExecuteDockerCommand_Version(t *testing.T) {
 	// Skip if docker is not available
-	if _, err := lookupPath("docker"); err != nil {
+	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("Docker not installed, skipping test")
 	}
 
