@@ -24,6 +24,18 @@ type ExtractionIdentifier struct {
 	Identifier string `json:"identifier" yaml:"identifier" binding:"required"`
 }
 
+type LLMModel struct {
+	ID          string `json:"id" yaml:"id"`
+	Name        string `json:"name,omitempty" yaml:"name,omitempty"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
+type LLMModelProvider struct {
+	ID     string     `json:"id" yaml:"id"`
+	Name   string     `json:"name,omitempty" yaml:"name,omitempty"`
+	Models []LLMModel `json:"models,omitempty" yaml:"models,omitempty"`
+}
+
 type RouteException struct {
 	Path    string   `json:"path" yaml:"path" binding:"required"`
 	Methods []string `json:"methods" yaml:"methods" binding:"required"`
@@ -143,6 +155,7 @@ type LLMProvider struct {
 	Template      string                 `json:"template" yaml:"template" binding:"required"`
 	Upstream      LLMUpstream            `json:"upstream" yaml:"upstream" binding:"required"`
 	OpenAPI       string                 `json:"openapi,omitempty" yaml:"openapi,omitempty"`
+	ModelProviders []LLMModelProvider    `json:"modelProviders,omitempty" yaml:"modelProviders,omitempty"`
 	AccessControl LLMAccessControl       `json:"accessControl" yaml:"accessControl" binding:"required"`
 	RateLimiting  *LLMRateLimitingConfig `json:"rateLimiting,omitempty" yaml:"rateLimiting,omitempty"`
 	Policies      []LLMPolicy            `json:"policies,omitempty" yaml:"policies,omitempty"`

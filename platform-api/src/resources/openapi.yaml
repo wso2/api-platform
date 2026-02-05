@@ -4790,6 +4790,11 @@ components:
               title: Provider API
               version: v1.0
             paths: {}
+        modelProviders:
+          type: array
+          description: List of model providers and their models supported by this provider. For native providers, this will typically contain a single model provider.
+          items:
+            $ref: '#/components/schemas/LLMModelProvider'
         upstream:
           allOf:
             - $ref: "#/components/schemas/Upstream"
@@ -4854,6 +4859,43 @@ components:
           type: string
           format: date-time
           example: 2025-11-25T10:30:00Z
+
+    LLMModelProvider:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Unique model provider identifier
+          example: claude
+        name:
+          type: string
+          description: Human-readable model provider name
+          example: Claude
+        models:
+          type: array
+          description: Models under this model provider
+          items:
+            $ref: '#/components/schemas/LLMModel'
+
+    LLMModel:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Unique model identifier
+          example: claude-3-5-sonnet
+        name:
+          type: string
+          description: Human-readable model name
+          example: Claude 3.5 Sonnet
+        description:
+          type: string
+          description: Model description
+          example: High-quality reasoning model
 
     LLMProviderListResponse:
       type: object

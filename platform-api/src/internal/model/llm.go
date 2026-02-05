@@ -24,6 +24,18 @@ type ExtractionIdentifier struct {
 	Identifier string `json:"identifier" db:"-"`
 }
 
+type LLMModel struct {
+	ID          string `json:"id" db:"-"`
+	Name        string `json:"name,omitempty" db:"-"`
+	Description string `json:"description,omitempty" db:"-"`
+}
+
+type LLMModelProvider struct {
+	ID     string     `json:"id" db:"-"`
+	Name   string     `json:"name,omitempty" db:"-"`
+	Models []LLMModel `json:"models,omitempty" db:"-"`
+}
+
 type RouteException struct {
 	Path    string   `json:"path" db:"-"`
 	Methods []string `json:"methods" db:"-"`
@@ -128,6 +140,7 @@ type LLMProvider struct {
 	UpstreamURL      string                 `json:"-" db:"upstream_url"`
 	UpstreamAuth     *UpstreamAuth          `json:"upstreamAuth,omitempty" db:"-"`
 	OpenAPISpec      string                 `json:"openapi,omitempty" db:"openapi_spec"`
+	ModelProviders   []LLMModelProvider     `json:"modelProviders,omitempty" db:"-"`
 	RateLimiting     *LLMRateLimitingConfig `json:"rateLimiting,omitempty" db:"-"`
 	AccessControl    *LLMAccessControl      `json:"accessControl" db:"-"`
 	Policies         []LLMPolicy            `json:"policies,omitempty" db:"-"`

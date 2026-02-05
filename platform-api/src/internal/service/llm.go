@@ -211,6 +211,9 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *dto.LLMProvi
 	if req.ID == "" || req.Name == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
+		return nil, err
+	}
 	if s.orgRepo != nil {
 		org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
 		if err != nil {
@@ -268,6 +271,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *dto.LLMProvi
 		UpstreamURL:      req.Upstream.URL,
 		UpstreamAuth:     mapUpstreamAuth(req.Upstream.Auth),
 		OpenAPISpec:      req.OpenAPI,
+		ModelProviders:   mapModelProviders(req.ModelProviders),
 		AccessControl:    mapAccessControl(&req.AccessControl),
 		RateLimiting:     mapRateLimiting(req.RateLimiting),
 		Policies:         mapPolicies(req.Policies),
@@ -350,6 +354,9 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *dto.LLMProvider
 	if req.Name == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
+		return nil, err
+	}
 	if err := validateUpstream(req.Upstream); err != nil {
 		return nil, err
 	}
@@ -378,6 +385,7 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *dto.LLMProvider
 		UpstreamURL:      req.Upstream.URL,
 		UpstreamAuth:     mapUpstreamAuth(req.Upstream.Auth),
 		OpenAPISpec:      req.OpenAPI,
+		ModelProviders:   mapModelProviders(req.ModelProviders),
 		AccessControl:    mapAccessControl(&req.AccessControl),
 		RateLimiting:     mapRateLimiting(req.RateLimiting),
 		Policies:         mapPolicies(req.Policies),
@@ -959,6 +967,7 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 		VHost:        m.VHost,
 		Template:     m.Template,
 		OpenAPI:      m.OpenAPISpec,
+		ModelProviders: mapModelProvidersDTO(m.ModelProviders),
 		RateLimiting: mapRateLimitingDTO(m.RateLimiting),
 		Upstream: dto.LLMUpstream{
 			URL: m.UpstreamURL,
@@ -991,6 +1000,89 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 			}
 			out.Policies = append(out.Policies, dto.LLMPolicy{Name: p.Name, Version: p.Version, Paths: paths})
 		}
+	}
+	return out
+}
+
+func validateModelProviders(template string, providers []dto.LLMModelProvider) error {
+	if len(providers) == 0 {
+		return nil
+	}
+
+	aggregatorTemplates := map[string]bool{
+		"awsbedrock":      true,
+		"azureaifoundry":  true,
+	}
+	if !aggregatorTemplates[template] && len(providers) > 1 {
+		return constants.ErrInvalidInput
+	}
+
+	seenProviders := make(map[string]struct{}, len(providers))
+	for _, p := range providers {
+		if p.ID == "" {
+			return constants.ErrInvalidInput
+		}
+		if _, ok := seenProviders[p.ID]; ok {
+			return constants.ErrInvalidInput
+		}
+		seenProviders[p.ID] = struct{}{}
+
+		seenModels := make(map[string]struct{}, len(p.Models))
+		for _, m := range p.Models {
+			if m.ID == "" {
+				return constants.ErrInvalidInput
+			}
+			if _, ok := seenModels[m.ID]; ok {
+				return constants.ErrInvalidInput
+			}
+			seenModels[m.ID] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func mapModelProviders(in []dto.LLMModelProvider) []model.LLMModelProvider {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]model.LLMModelProvider, 0, len(in))
+	for _, p := range in {
+		models := make([]model.LLMModel, 0, len(p.Models))
+		for _, m := range p.Models {
+			models = append(models, model.LLMModel{
+				ID:          m.ID,
+				Name:        m.Name,
+				Description: m.Description,
+			})
+		}
+		out = append(out, model.LLMModelProvider{
+			ID:     p.ID,
+			Name:   p.Name,
+			Models: models,
+		})
+	}
+	return out
+}
+
+func mapModelProvidersDTO(in []model.LLMModelProvider) []dto.LLMModelProvider {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]dto.LLMModelProvider, 0, len(in))
+	for _, p := range in {
+		models := make([]dto.LLMModel, 0, len(p.Models))
+		for _, m := range p.Models {
+			models = append(models, dto.LLMModel{
+				ID:          m.ID,
+				Name:        m.Name,
+				Description: m.Description,
+			})
+		}
+		out = append(out, dto.LLMModelProvider{
+			ID:     p.ID,
+			Name:   p.Name,
+			Models: models,
+		})
 	}
 	return out
 }
