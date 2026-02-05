@@ -178,3 +178,70 @@ func TestCopyFile_OverwriteExisting(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, srcContent, dstContent)
 }
+
+func TestValidatePathExists_PermissionDenied(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file and make it inaccessible
+	testDir := filepath.Join(tmpDir, "restricted")
+	err := os.MkdirAll(testDir, 0755)
+	require.NoError(t, err)
+
+	testFile := filepath.Join(testDir, "secret.txt")
+	err = os.WriteFile(testFile, []byte("secret"), 0644)
+	require.NoError(t, err)
+
+	// Make parent directory unreadable (skip on Windows/systems that don't support this)
+	err = os.Chmod(testDir, 0000)
+	if err != nil {
+		t.Skip("Cannot change directory permissions on this OS")
+	}
+	defer os.Chmod(testDir, 0755) // Restore for cleanup
+
+	err = ValidatePathExists(testFile, "secret file")
+
+	// Should return permission error
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to access")
+}
+
+func TestCopyFile_SourceUnreadable(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file and make it unreadable
+	srcPath := filepath.Join(tmpDir, "unreadable.txt")
+	err := os.WriteFile(srcPath, []byte("content"), 0000)
+	if err != nil {
+		t.Skip("Cannot create file with restricted permissions on this OS")
+	}
+	defer os.Chmod(srcPath, 0644) // Restore for cleanup
+
+	dstPath := filepath.Join(tmpDir, "destination.txt")
+	err = CopyFile(srcPath, dstPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to open source file")
+}
+
+func TestCopyFile_DestinationReadOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file
+	srcPath := filepath.Join(tmpDir, "source.txt")
+	err := os.WriteFile(srcPath, []byte("content"), 0644)
+	require.NoError(t, err)
+
+	// Create a read-only directory
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	err = os.MkdirAll(readOnlyDir, 0555)
+	if err != nil {
+		t.Skip("Cannot create read-only directory on this OS")
+	}
+	defer os.Chmod(readOnlyDir, 0755) // Restore for cleanup
+
+	dstPath := filepath.Join(readOnlyDir, "destination.txt")
+	err = CopyFile(srcPath, dstPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create destination file")
+}
