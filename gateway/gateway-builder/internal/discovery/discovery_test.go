@@ -716,3 +716,158 @@ policies:
 	// SystemParameters should be extracted
 	assert.NotNil(t, policies[0].SystemParameters)
 }
+
+// ==== Tests for extractModulePathFromGoMod ====
+
+func TestExtractModulePathFromGoMod_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	goModContent := `module github.com/example/test-policy
+
+go 1.23
+
+require github.com/stretchr/testify v1.8.0
+`
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	err := os.WriteFile(goModPath, []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	modulePath, err := extractModulePathFromGoMod(goModPath)
+
+	require.NoError(t, err)
+	assert.Equal(t, "github.com/example/test-policy", modulePath)
+}
+
+func TestExtractModulePathFromGoMod_FileNotFound(t *testing.T) {
+	_, err := extractModulePathFromGoMod("/nonexistent/go.mod")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read go.mod")
+}
+
+func TestExtractModulePathFromGoMod_InvalidGoMod(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	err := os.WriteFile(goModPath, []byte("this is not valid go.mod syntax!!!"), 0644)
+	require.NoError(t, err)
+
+	_, err = extractModulePathFromGoMod(goModPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse go.mod")
+}
+
+func TestExtractModulePathFromGoMod_MissingModuleDirective(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// go.mod with no module directive
+	goModContent := `go 1.23
+
+require github.com/stretchr/testify v1.8.0
+`
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	err := os.WriteFile(goModPath, []byte(goModContent), 0644)
+	require.NoError(t, err)
+
+	_, err = extractModulePathFromGoMod(goModPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "module directive missing")
+}
+
+// ==== Tests for resolveModuleInfo ====
+
+func TestResolveModuleInfo_InvalidModule(t *testing.T) {
+	// Test with a non-existent module
+	_, err := resolveModuleInfo("github.com/nonexistent-org-12345/nonexistent-module@v1.0.0")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to run 'go mod download")
+}
+
+func TestResolveModuleInfo_InvalidModuleFormat(t *testing.T) {
+	// Test with an invalid module format
+	_, err := resolveModuleInfo("not-a-valid-module-path")
+
+	assert.Error(t, err)
+}
+
+// ==== Tests for ValidateDirectoryStructure error paths ====
+
+func TestValidateDirectoryStructure_UnreadableDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a directory and make it unreadable
+	testDir := filepath.Join(tmpDir, "unreadable")
+	err := os.MkdirAll(testDir, 0755)
+	require.NoError(t, err)
+
+	// Create required files first
+	os.WriteFile(filepath.Join(testDir, "policy-definition.yaml"), []byte("name: test\nversion: v1.0.0"), 0644)
+	os.WriteFile(filepath.Join(testDir, "go.mod"), []byte("module test\n\ngo 1.23"), 0644)
+
+	// Now make directory unreadable (skip on Windows)
+	err = os.Chmod(testDir, 0000)
+	if err != nil {
+		t.Skip("Cannot change directory permissions on this OS")
+	}
+	defer os.Chmod(testDir, 0755) // Restore for cleanup
+
+	err = ValidateDirectoryStructure(testDir)
+
+	// Should fail due to permission error
+	assert.Error(t, err)
+}
+
+// ==== Tests for DiscoverPoliciesFromManifest with gomodule entries ====
+
+func TestDiscoverPoliciesFromManifest_GomoduleEntry_InvalidModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	manifestContent := `version: v1
+policies:
+  - name: remote-policy
+    gomodule: github.com/nonexistent-org-12345/fake-policy@v1.0.0
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	err := os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	require.NoError(t, err)
+
+	_, err = DiscoverPoliciesFromManifest(manifestPath, "")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to resolve gomodule")
+}
+
+func TestDiscoverPoliciesFromManifest_MixedEntries(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a local policy
+	policyDir := filepath.Join(tmpDir, "policies", "local-policy")
+	err := os.MkdirAll(policyDir, 0755)
+	require.NoError(t, err)
+
+	policyDefContent := `name: local-policy
+version: v1.0.0
+`
+	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"), []byte(policyDefContent), 0644)
+	os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte("module github.com/example/local\n\ngo 1.23\n"), 0644)
+	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package local\n"), 0644)
+
+	// Manifest with local entry only (remote would fail and we test that separately)
+	manifestContent := `version: v1
+policies:
+  - name: local-policy
+    filePath: ./policies/local-policy
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+
+	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
+
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	assert.Equal(t, "local-policy", policies[0].Name)
+	assert.True(t, policies[0].IsFilePathEntry)
+}
