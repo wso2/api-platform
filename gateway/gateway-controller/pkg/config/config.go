@@ -343,6 +343,8 @@ type ControlPlaneConfig struct {
 type APIKeyConfig struct {
 	APIKeysPerUserPerAPI int    `koanf:"api_keys_per_user_per_api"` // Number of API keys allowed per user per API
 	Algorithm            string `koanf:"algorithm"`                 // Hashing algorithm to use
+	MinKeyLength         int    `koanf:"min_key_length"`            // Minimum length for external API key values
+	MaxKeyLength         int    `koanf:"max_key_length"`            // Maximum length for external API key values
 }
 
 // LoadConfig loads configuration from file, environment variables, and defaults
@@ -564,6 +566,8 @@ func defaultConfig() *Config {
 			APIKey: APIKeyConfig{
 				APIKeysPerUserPerAPI: 10,
 				Algorithm:            constants.HashingAlgorithmSHA256,
+				MinKeyLength:         constants.DefaultMinAPIKeyLength,
+				MaxKeyLength:         constants.DefaultMaxAPIKeyLength,
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -1217,6 +1221,19 @@ func (c *Config) validateAPIKeyConfig() error {
 		return fmt.Errorf("api_key.api_keys_per_user_per_api must be a positive integer, got: %d",
 			c.GatewayController.APIKey.APIKeysPerUserPerAPI)
 	}
+
+	// Default min/max key lengths if not configured
+	if c.GatewayController.APIKey.MinKeyLength <= 0 {
+		c.GatewayController.APIKey.MinKeyLength = constants.DefaultMinAPIKeyLength
+	}
+	if c.GatewayController.APIKey.MaxKeyLength <= 0 {
+		c.GatewayController.APIKey.MaxKeyLength = constants.DefaultMaxAPIKeyLength
+	}
+	if c.GatewayController.APIKey.MinKeyLength > c.GatewayController.APIKey.MaxKeyLength {
+		return fmt.Errorf("api_key.min_key_length (%d) must not exceed api_key.max_key_length (%d)",
+			c.GatewayController.APIKey.MinKeyLength, c.GatewayController.APIKey.MaxKeyLength)
+	}
+
 	// If hashing is enabled but no algorithm is provided, default to SHA256
 	if c.GatewayController.APIKey.Algorithm == "" {
 		c.GatewayController.APIKey.Algorithm = constants.HashingAlgorithmSHA256

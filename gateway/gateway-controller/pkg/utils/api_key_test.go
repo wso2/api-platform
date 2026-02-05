@@ -55,9 +55,9 @@ func TestAPIKeyGenerationParams(t *testing.T) {
 		Roles:  []string{"developer"},
 	}
 
-	params := APIKeyGenerationParams{
+	params := APIKeyCreationParams{
 		Handle:        "test-api-handle",
-		Request:       api.APIKeyGenerationRequest{},
+		Request:       api.APIKeyCreationRequest{},
 		User:          user,
 		CorrelationID: "corr-123",
 		Logger:        logger,
@@ -497,7 +497,7 @@ func TestBuildAPIKeyResponse(t *testing.T) {
 	}
 
 	t.Run("Nil API key returns error response", func(t *testing.T) {
-		response := service.buildAPIKeyResponse(nil, "test-handle", "")
+		response := service.buildAPIKeyResponse(nil, "test-handle", "", false)
 		assert.Equal(t, "error", response.Status)
 		assert.Equal(t, "API key is nil", response.Message)
 	})
@@ -515,7 +515,7 @@ func TestBuildAPIKeyResponse(t *testing.T) {
 		}
 		plainKey := "apip_plain123456789"
 
-		response := service.buildAPIKeyResponse(apiKey, "test-handle", plainKey)
+		response := service.buildAPIKeyResponse(apiKey, "test-handle", plainKey, false)
 		assert.Equal(t, "success", response.Status)
 		assert.NotNil(t, response.ApiKey)
 		assert.Equal(t, "my-test-key", response.ApiKey.Name)
@@ -533,7 +533,7 @@ func TestBuildAPIKeyResponse(t *testing.T) {
 			CreatedBy:  "test-user",
 		}
 
-		response := service.buildAPIKeyResponse(apiKey, "test-handle", "")
+		response := service.buildAPIKeyResponse(apiKey, "test-handle", "", false)
 		assert.Equal(t, "success", response.Status)
 		assert.NotNil(t, response.ApiKey)
 		assert.Nil(t, response.ApiKey.ApiKey) // Should not expose hashed key

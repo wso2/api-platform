@@ -1086,7 +1086,7 @@ func TestDeleteMCPProxyNotFound(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestGenerateAPIKeyNoAuth tests GenerateAPIKey without authentication
+// TestGenerateAPIKeyNoAuth tests CreateAPIKey without authentication
 func TestGenerateAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
@@ -1094,12 +1094,12 @@ func TestGenerateAPIKeyNoAuth(t *testing.T) {
 	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.GenerateAPIKey(c, "test-handle")
+	server.CreateAPIKey(c, "test-handle")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-// TestGenerateAPIKeyInvalidAuthContext tests GenerateAPIKey with invalid auth context
+// TestGenerateAPIKeyInvalidAuthContext tests CreateAPIKey with invalid auth context
 func TestGenerateAPIKeyInvalidAuthContext(t *testing.T) {
 	server := createTestAPIServer()
 
@@ -1108,12 +1108,12 @@ func TestGenerateAPIKeyInvalidAuthContext(t *testing.T) {
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, "invalid-context") // Wrong type
-	server.GenerateAPIKey(c, "test-handle")
+	server.CreateAPIKey(c, "test-handle")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-// TestGenerateAPIKeyInvalidBody tests GenerateAPIKey with invalid body
+// TestGenerateAPIKeyInvalidBody tests CreateAPIKey with invalid body
 func TestGenerateAPIKeyInvalidBody(t *testing.T) {
 	server := createTestAPIServer()
 
@@ -1124,7 +1124,7 @@ func TestGenerateAPIKeyInvalidBody(t *testing.T) {
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.GenerateAPIKey(c, "test-handle")
+	server.CreateAPIKey(c, "test-handle")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -2119,7 +2119,7 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 				panicked = true
 			}
 		}()
-		server.GenerateAPIKey(c, "test-handle")
+		server.CreateAPIKey(c, "test-handle")
 	}()
 	if !panicked {
 		assert.True(t, w.Code >= http.StatusBadRequest)

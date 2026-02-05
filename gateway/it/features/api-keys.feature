@@ -58,9 +58,9 @@ Feature: API Key Management Operations
     Then the response status should be 201
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response should have field "api_key"
-    And the JSON response should have field "api_key.name"
-    And the JSON response should have field "api_key.api_key"
+    And the JSON response should have field "apiKey"
+    And the JSON response should have field "apiKey.name"
+    And the JSON response should have field "apiKey.apiKey"
     
     # List API keys - should have 1 key
     When I send a GET request to the "gateway-controller" service at "/apis/apikey-lifecycle-api/api-keys"
@@ -77,7 +77,7 @@ Feature: API Key Management Operations
     Then the response status should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response should have field "api_key.api_key"
+    And the JSON response should have field "apiKey.apiKey"
     
     # Revoke API key
     When I send a DELETE request to the "gateway-controller" service at "/apis/apikey-lifecycle-api/api-keys/test-key-1"
@@ -212,7 +212,7 @@ Feature: API Key Management Operations
     Then the response status should be 201
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response should have field "api_key"
+    And the JSON response should have field "apiKey"
     # Cleanup
     When I delete the API "key-validation-api"
     Then the response should be successful

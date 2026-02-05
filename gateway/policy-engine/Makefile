@@ -85,6 +85,7 @@ build: test
 	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
@@ -105,6 +106,7 @@ build-local:
 	@mkdir -p target && cp ../build.yaml target/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
@@ -124,6 +126,7 @@ build-coverage-image:
 	@mkdir -p target && cp ../build.yaml target/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
@@ -149,6 +152,7 @@ build-and-push-multiarch:
 	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
 		--build-context system-policies=../system-policies \
