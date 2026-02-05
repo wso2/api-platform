@@ -72,7 +72,7 @@ Feature: Policy Engine Admin API
           path: /info
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -119,7 +119,7 @@ Feature: Policy Engine Admin API
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET

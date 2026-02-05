@@ -51,7 +51,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[A-Z]{3}-[0-9]{4}$"
@@ -102,7 +102,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "(badword|profanity|offensive)"
@@ -152,7 +152,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
@@ -205,7 +205,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "\\b\\d{3}-\\d{2}-\\d{4}\\b"
@@ -255,7 +255,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
@@ -309,7 +309,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.code"
@@ -367,7 +367,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.user.username"
@@ -429,7 +429,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.nonexistent.field"
@@ -481,7 +481,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[0-9]{5}$"
@@ -531,7 +531,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: ".*"
@@ -572,7 +572,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^(approved|pending|rejected)$"
@@ -628,7 +628,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^UPPERCASE$"
@@ -677,7 +677,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "(?i)^hello$"
@@ -737,7 +737,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[A-Za-z0-9 ]+$"
@@ -793,7 +793,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^\\+?[1-9]\\d{1,14}$"
@@ -846,7 +846,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[0-9]+$"
@@ -899,7 +899,7 @@ Feature: Regex Guardrail
             path: /echo
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   response:
                     jsonPath: "$.method"
@@ -943,7 +943,7 @@ Feature: Regex Guardrail
             path: /echo
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   response:
                     regex: "(internal|confidential|secret)"
@@ -983,7 +983,7 @@ Feature: Regex Guardrail
             path: /echo
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   response:
                     jsonPath: "$.host"
@@ -1030,7 +1030,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[\\p{L}\\p{N}\\s]+$"
@@ -1079,7 +1079,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: ".*"
@@ -1135,7 +1135,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[a-zA-Z0-9\\s]+$"
@@ -1185,7 +1185,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     regex: "^[\\p{L}\\s]+$"

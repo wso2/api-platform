@@ -29,14 +29,14 @@ spec:
       url: http://petstore.swagger.io/v2
   policies:
     - name: apiKeyValidation
-      version: v1.0.0
+      version: v1
       executionCondition: "request.metadata[authenticated] != true"
       params: # any object
         header: "X-API-Key"
         optional: false
         mandatory: true
     - name: setHeaders
-      version: v1.0.0
+      version: v1
       params: # any object
         requestHeaders:
           - X-Request-Source: WSO2 API Manager test
@@ -47,7 +47,7 @@ spec:
       path: /pet/{petId}
       policies:
         - name: apiKeyValidation
-          version: v1.0.0
+          version: v1
           executionCondition: "request.metadata[authenticated] != true"
           params: # any object
             header: "X-API-Key"

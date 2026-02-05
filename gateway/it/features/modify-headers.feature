@@ -23,7 +23,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -50,7 +50,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: APPEND
@@ -80,7 +80,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: DELETE
@@ -106,7 +106,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -143,7 +143,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -170,7 +170,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -201,7 +201,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: SET
@@ -228,7 +228,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: APPEND
@@ -258,7 +258,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: DELETE
@@ -284,7 +284,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: SET
@@ -325,7 +325,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -369,7 +369,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: SET
@@ -416,7 +416,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: SET
@@ -462,7 +462,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: SET
@@ -501,7 +501,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -528,7 +528,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: DELETE
@@ -553,7 +553,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -580,7 +580,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -607,7 +607,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -634,7 +634,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 responseHeaders:
                   - action: SET
@@ -665,7 +665,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -719,7 +719,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -754,7 +754,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -791,7 +791,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -830,7 +830,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET
@@ -861,7 +861,7 @@ Feature: Modify Headers Policy Integration Tests
           path: /test
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               params:
                 requestHeaders:
                   - action: SET

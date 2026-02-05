@@ -45,7 +45,7 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   requestHeadersToFilter:
                     operation: deny
@@ -90,7 +90,7 @@ Feature: Analytics Header Filter Policy
             path: /data
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   requestHeadersToFilter:
                     operation: allow
@@ -130,7 +130,7 @@ Feature: Analytics Header Filter Policy
             path: /headers
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   responseHeadersToFilter:
                     operation: deny
@@ -168,7 +168,7 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   requestHeadersToFilter:
                     headers:
@@ -199,7 +199,7 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   requestHeadersToFilter:
                     operation: invalid
@@ -231,7 +231,7 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   responseHeadersToFilter:
                     operation: allow
@@ -261,7 +261,7 @@ Feature: Analytics Header Filter Policy
             path: /case-test
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   requestHeadersToFilter:
                     operation: allow
@@ -303,7 +303,7 @@ Feature: Analytics Header Filter Policy
             path: /empty-test
             policies:
               - name: analytics-header-filter
-                version: v0.1.0
+                version: v0
                 params:
                   requestHeadersToFilter:
                     operation: deny

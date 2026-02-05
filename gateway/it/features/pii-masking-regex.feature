@@ -51,7 +51,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -97,7 +97,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "PHONE"
@@ -141,7 +141,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -193,7 +193,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -237,7 +237,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "SSN"
@@ -281,7 +281,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -331,7 +331,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -381,7 +381,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "PHONE"
@@ -437,7 +437,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -481,7 +481,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -524,7 +524,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -577,7 +577,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"
@@ -621,7 +621,7 @@ Feature: PII Masking Regex
             path: /echo
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "CREDIT_CARD"
@@ -665,7 +665,7 @@ Feature: PII Masking Regex
             path: /submit
             policies:
               - name: pii-masking-regex
-                version: v0.1.0
+                version: v0
                 params:
                   piiEntities:
                     - piiEntity: "EMAIL"

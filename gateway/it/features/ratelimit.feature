@@ -45,7 +45,7 @@ Feature: Rate Limiting
             path: /limited
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: request-limit
@@ -87,7 +87,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: burst
@@ -139,7 +139,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: request-limit
@@ -189,7 +189,7 @@ Feature: Rate Limiting
             path: /check
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: request-limit
@@ -226,7 +226,7 @@ Feature: Rate Limiting
             path: /custom
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: request-limit
@@ -268,7 +268,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: request-limit
@@ -309,7 +309,7 @@ Feature: Rate Limiting
             path: /anything
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: token-quota
@@ -375,7 +375,7 @@ Feature: Rate Limiting
             path: /route1
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: api-quota
@@ -388,7 +388,7 @@ Feature: Rate Limiting
             path: /route2
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: api-quota
@@ -446,7 +446,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: request-limit
@@ -486,7 +486,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: request-limit
@@ -526,7 +526,7 @@ Feature: Rate Limiting
             path: /multi1
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: per-route
@@ -545,7 +545,7 @@ Feature: Rate Limiting
             path: /multi2
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: per-route
@@ -608,7 +608,7 @@ Feature: Rate Limiting
             path: /anything
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: token-limit
@@ -671,7 +671,7 @@ Feature: Rate Limiting
             path: /user
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: per-user-limit
@@ -723,7 +723,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: "request-quota"
@@ -773,7 +773,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: "request-quota"
@@ -820,7 +820,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: token-quota
@@ -886,7 +886,7 @@ Feature: Rate Limiting
             path: /anything
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: "prompt-tokens"
@@ -997,7 +997,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: per-ip-limit
@@ -1048,7 +1048,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: token-quota
@@ -1111,7 +1111,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: per-user-per-api
@@ -1164,7 +1164,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: token-quota
@@ -1235,7 +1235,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: api-quota
@@ -1269,7 +1269,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: api-quota
@@ -1327,7 +1327,7 @@ Feature: Rate Limiting
             path: /group-a-1
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - limits:
@@ -1341,7 +1341,7 @@ Feature: Rate Limiting
             path: /group-a-2
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - limits:
@@ -1355,7 +1355,7 @@ Feature: Rate Limiting
             path: /group-b-1
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - limits:
@@ -1415,7 +1415,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: per-user-cel
@@ -1465,7 +1465,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: per-user-per-api-cel
@@ -1513,7 +1513,7 @@ Feature: Rate Limiting
             path: /resource
             policies:
               - name: advanced-ratelimit
-                version: v0.1.3
+                version: v0
                 params:
                   quotas:
                     - name: token-quota-cel

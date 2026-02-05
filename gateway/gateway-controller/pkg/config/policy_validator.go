@@ -123,20 +123,27 @@ var (
 	majorVersionPattern = regexp.MustCompile(`^v\d+$`)
 )
 
-// resolvePolicyVersion normalizes a policy version string:
-//   - If it is a full semantic version (vX.Y.Z), it is returned as-is.
-//   - If it is a major-only version (vX), it is resolved to the unique full
-//     version (vX.Y.Z) for the given policy name from the loaded definitions.
-//   - Otherwise, an error is returned.
+// resolvePolicyVersion resolves a policy version string. Only major-only
+// versions (e.g., v1) are accepted; they are resolved to the unique full
+// version (vX.Y.Z) from the loaded definitions. Full semantic version
+// (e.g., v1.0.0) is rejected.
 func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, error) {
+	return ResolvePolicyVersion(pv.policyDefinitions, name, version)
+}
+
+// ResolvePolicyVersion resolves a policy version using the given definitions map.
+// Only major-only versions (e.g., v1) are accepted; they are resolved to the
+// unique full version (vX.Y.Z) for that policy name. Full semantic version
+// (e.g., v1.0.0) is rejected. Used by both the validator and the derivation path.
+func ResolvePolicyVersion(definitions map[string]api.PolicyDefinition, name, version string) (string, error) {
 	trimmed := strings.TrimSpace(version)
 	if trimmed == "" {
 		return "", fmt.Errorf("policy '%s' version is required", name)
 	}
 
-	// Full semantic version (e.g., v1.0.0) – accept as-is
+	// Full semantic version (e.g., v1.0.0) – reject; only major-only is allowed
 	if fullSemverPattern.MatchString(trimmed) {
-		return trimmed, nil
+		return "", fmt.Errorf("policy '%s' version must be major-only (e.g., v1); full semantic version (e.g., v1.0.0) is not allowed", name)
 	}
 
 	// Major-only version (e.g., v1) – resolve to a single matching full version
@@ -144,7 +151,7 @@ func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, e
 		var matchingVersions []string
 		majorPrefix := trimmed + "."
 
-		for _, def := range pv.policyDefinitions {
+		for _, def := range definitions {
 			if def.Name != name {
 				continue
 			}
@@ -163,8 +170,8 @@ func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, e
 		return matchingVersions[0], nil
 	}
 
-	// Unsupported version format – keep existing behaviour but provide clearer message
-	return "", fmt.Errorf("invalid version format '%s' for policy '%s'; expected full semantic version (e.g., v1.0.0) or major-only (e.g., v1)", version, name)
+	// Unsupported version format
+	return "", fmt.Errorf("invalid version format '%s' for policy '%s'; expected major-only version (e.g., v1)", version, name)
 }
 
 // validatePolicyParams validates policy parameters against a JSON schema

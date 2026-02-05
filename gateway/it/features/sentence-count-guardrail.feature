@@ -51,7 +51,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -101,7 +101,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 3
@@ -155,7 +155,7 @@ Feature: Sentence Count Guardrail
             path: /chat
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -214,7 +214,7 @@ Feature: Sentence Count Guardrail
             path: /chat
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -278,7 +278,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -331,7 +331,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 2
@@ -393,7 +393,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -443,7 +443,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -485,7 +485,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 2
@@ -553,7 +553,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -610,7 +610,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -660,7 +660,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -716,7 +716,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1

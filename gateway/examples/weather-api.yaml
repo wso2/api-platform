@@ -29,7 +29,7 @@ spec:
       url: http://sample-backend:5000/api/v2
   policies:
     - name: modify-headers
-      version: v0.1.1
+      version: v0
       params:
         requestHeaders:
           - action: SET
@@ -47,7 +47,7 @@ spec:
       path: /{country_code}/{city}
       policies:
         - name: modify-headers
-          version: v0.1.1
+          version: v0
           params:
             requestHeaders:
               - action: SET
@@ -58,7 +58,7 @@ spec:
                 name: operation-level-res-header
                 value: world
         - name: basic-ratelimit
-          version: v0.1.2
+          version: v0
           params:
             limits:
               - limit: 5
@@ -69,7 +69,7 @@ spec:
       path: /alerts/active
       policies:
         - name: respond
-          version: v0.1.0
+          version: v0
           params:
             statusCode: 201
             body: '{"message": "Active weather alert created successfully."}'

@@ -49,7 +49,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: ""
@@ -94,7 +94,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     hateCategory: 4
@@ -136,7 +136,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     violenceCategory: 4
@@ -178,7 +178,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     showAssessment: true
@@ -229,7 +229,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     hateCategory: -1
@@ -272,7 +272,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     hateCategory: 4
@@ -332,7 +332,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.message"
@@ -390,7 +390,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /chat
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.data.content"
@@ -455,7 +455,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     violenceCategory: 4
@@ -501,7 +501,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     violenceCategory: 4
@@ -542,7 +542,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     passthroughOnError: true
@@ -587,7 +587,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     showAssessment: true
