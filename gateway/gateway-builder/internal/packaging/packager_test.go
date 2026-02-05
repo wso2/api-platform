@@ -189,8 +189,8 @@ func TestGenerateBuildInstructions_Success(t *testing.T) {
 
 	// Verify content structure
 	assert.Contains(t, contentStr, "# Policy Engine Runtime Build Instructions")
-	assert.Contains(t, contentStr, "1. ratelimit vv1.0.0")
-	assert.Contains(t, contentStr, "2. jwt-auth vv0.1.0")
+	assert.Contains(t, contentStr, "1. ratelimit v1.0.0")
+	assert.Contains(t, contentStr, "2. jwt-auth v0.1.0")
 	assert.Contains(t, contentStr, "2025-06-15T10:30:00Z")
 	assert.Contains(t, contentStr, "docker build")
 	assert.Contains(t, contentStr, "docker run")
