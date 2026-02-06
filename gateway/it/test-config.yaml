@@ -139,7 +139,7 @@ gateway_controller:
 
       # Default cluster settings for API upstream clusters (e.g. connect timeout)
       envoy_upstream_cluster:
-        connect_timeout_in_milliseconds: 10000
+        connect_timeout_in_milliseconds: 5000
     tracing_service_name: router
 
 

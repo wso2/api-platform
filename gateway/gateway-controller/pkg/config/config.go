@@ -204,19 +204,19 @@ type PostgresConfig struct {
 
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
-	AccessLogs         AccessLogsConfig         `koanf:"access_logs"`
-	ListenerPort       int                      `koanf:"listener_port"`
-	HTTPSEnabled       bool                     `koanf:"https_enabled"`
-	HTTPSPort          int                      `koanf:"https_port"`
-	GatewayHost        string                   `koanf:"gateway_host"`
-	Lua           RouterLuaConfig     `koanf:"lua"`
-	LuaScriptPath string             `koanf:"lua_script_path"` // Deprecated: use router.lua.request_transformation.script_path
-	Upstream           envoyUpstream            `koanf:"envoy_upstream"`
+	AccessLogs           AccessLogsConfig           `koanf:"access_logs"`
+	ListenerPort         int                        `koanf:"listener_port"`
+	HTTPSEnabled         bool                       `koanf:"https_enabled"`
+	HTTPSPort            int                        `koanf:"https_port"`
+	GatewayHost          string                     `koanf:"gateway_host"`
+	Lua                  RouterLuaConfig            `koanf:"lua"`
+	LuaScriptPath        string                     `koanf:"lua_script_path"` // Deprecated: use router.lua.request_transformation.script_path
+	Upstream             envoyUpstream              `koanf:"envoy_upstream"`
 	EnvoyUpstreamCluster EnvoyUpstreamClusterConfig `koanf:"envoy_upstream_cluster"`
-	PolicyEngine       PolicyEngineConfig       `koanf:"policy_engine"`
-	DownstreamTLS      DownstreamTLS            `koanf:"downstream_tls"`
-	EventGateway       EventGatewayConfig       `koanf:"event_gateway"`
-	VHosts             VHostsConfig             `koanf:"vhosts"`
+	PolicyEngine         PolicyEngineConfig         `koanf:"policy_engine"`
+	DownstreamTLS        DownstreamTLS              `koanf:"downstream_tls"`
+	EventGateway         EventGatewayConfig         `koanf:"event_gateway"`
+	VHosts               VHostsConfig               `koanf:"vhosts"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
@@ -498,9 +498,9 @@ func defaultConfig() *Config {
 						"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 						"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 				},
-				ListenerPort:  8080,
-				HTTPSEnabled:  true,
-				HTTPSPort:     8443,
+				ListenerPort: 8080,
+				HTTPSEnabled: true,
+				HTTPSPort:    8443,
 				Lua: RouterLuaConfig{
 					RequestTransformation: LuaScriptConfig{
 						ScriptPath: DefaultLuaScriptPath,

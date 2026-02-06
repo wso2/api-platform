@@ -1299,12 +1299,6 @@ type UpstreamDefinition struct {
 type UpstreamTimeout struct {
 	// Connect Connection timeout duration (e.g., "5s", "500ms")
 	Connect *string `json:"connect,omitempty" yaml:"connect,omitempty"`
-
-	// Idle Idle timeout duration for keeping connections open (e.g., "60s", "60000ms")
-	Idle *string `json:"idle,omitempty" yaml:"idle,omitempty"`
-
-	// Request Request timeout duration (e.g., "30s", "500ms")
-	Request *string `json:"request,omitempty" yaml:"request,omitempty"`
 }
 
 // ValidationError defines model for ValidationError.

@@ -331,44 +331,17 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 			}
 		}
 
-		// Validate timeout if present
-		if def.Timeout != nil {
-			if def.Timeout.Connect != nil {
-				timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
-				if timeoutStr != "" {
-					_, err := time.ParseDuration(timeoutStr)
-					if err != nil {
-						errors = append(errors, ValidationError{
-							Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.connect", i),
-							Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
-						})
-					}
-				}
-			}
-
-			if def.Timeout.Request != nil {
-				timeoutStr := strings.TrimSpace(*def.Timeout.Request)
-				if timeoutStr != "" {
-					_, err := time.ParseDuration(timeoutStr)
-					if err != nil {
-						errors = append(errors, ValidationError{
-							Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.request", i),
-							Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
-						})
-					}
-				}
-			}
-
-			if def.Timeout.Idle != nil {
-				timeoutStr := strings.TrimSpace(*def.Timeout.Idle)
-				if timeoutStr != "" {
-					_, err := time.ParseDuration(timeoutStr)
-					if err != nil {
-						errors = append(errors, ValidationError{
-							Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.idle", i),
-							Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
-						})
-					}
+		// Timeout validation is limited to connect timeout; request and idle
+		// timeouts are no longer supported at the upstream definition level.
+		if def.Timeout != nil && def.Timeout.Connect != nil {
+			timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
+			if timeoutStr != "" {
+				_, err := time.ParseDuration(timeoutStr)
+				if err != nil {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.connect", i),
+						Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
+					})
 				}
 			}
 		}

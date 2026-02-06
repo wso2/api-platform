@@ -580,7 +580,7 @@ func TestValidateUpstreamDefinitions_Valid(t *testing.T) {
 		{
 			Name: "my-upstream-1",
 			Timeout: &api.UpstreamTimeout{
-				Request: &timeout,
+				Connect: &timeout,
 			},
 			Upstreams: []struct {
 				Urls   []string `json:"urls" yaml:"urls"`
@@ -766,33 +766,6 @@ func TestValidateUpstreamDefinitions_InvalidWeight(t *testing.T) {
 	require.Len(t, errors, 1)
 	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].weight", errors[0].Field)
 	assert.Contains(t, errors[0].Message, "Weight must be between 0 and 100")
-}
-
-func TestValidateUpstreamDefinitions_InvalidTimeout(t *testing.T) {
-	validator := NewAPIValidator()
-
-	invalidTimeout := "invalid"
-	definitions := &[]api.UpstreamDefinition{
-		{
-			Name: "my-upstream",
-			Timeout: &api.UpstreamTimeout{
-				Request: &invalidTimeout,
-			},
-			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
-			}{
-				{
-					Urls: []string{"http://backend:8080"},
-				},
-			},
-		},
-	}
-
-	errors := validator.validateUpstreamDefinitions(definitions)
-	require.Len(t, errors, 1)
-	assert.Equal(t, "spec.upstreamDefinitions[0].timeout.request", errors[0].Field)
-	assert.Contains(t, errors[0].Message, "Invalid timeout format")
 }
 
 func TestValidateUpstreamDefinitions_NoTimeout(t *testing.T) {

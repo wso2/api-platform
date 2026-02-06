@@ -27,25 +27,21 @@ import (
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	commonconstants "github.com/wso2/api-platform/common/constants"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 func TestResolveUpstreamDefinition_Found(t *testing.T) {
-	timeout := "30s"
 	definitions := &[]api.UpstreamDefinition{
 		{
 			Name: "test-upstream",
-			Timeout: &api.UpstreamTimeout{
-				Request: &timeout,
-			},
 			Upstreams: []struct {
 				Urls   []string `json:"urls" yaml:"urls"`
 				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
@@ -62,9 +58,6 @@ func TestResolveUpstreamDefinition_Found(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, def)
 	assert.Equal(t, "test-upstream", def.Name)
-	assert.NotNil(t, def.Timeout)
-	assert.NotNil(t, def.Timeout.Request)
-	assert.Equal(t, "30s", *def.Timeout.Request)
 }
 
 func TestResolveUpstreamDefinition_NotFound(t *testing.T) {
@@ -189,7 +182,7 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Timeout: &api.UpstreamTimeout{
-				Request: &timeoutStr,
+				Connect: &timeoutStr,
 			},
 			Upstreams: []struct {
 				Urls   []string `json:"urls" yaml:"urls"`
@@ -211,8 +204,8 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 	assert.Equal(t, "backend-1:9000", parsedURL.Host)
 	assert.Equal(t, "/v2", parsedURL.Path)
 	require.NotNil(t, timeout)
-	require.NotNil(t, timeout.Request)
-	assert.Equal(t, 45*time.Second, *timeout.Request)
+	require.NotNil(t, timeout.Connect)
+	assert.Equal(t, 45*time.Second, *timeout.Connect)
 }
 
 func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
@@ -281,7 +274,7 @@ func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Timeout: &api.UpstreamTimeout{
-				Request: &invalidTimeout,
+				Connect: &invalidTimeout,
 			},
 			Upstreams: []struct {
 				Urls   []string `json:"urls" yaml:"urls"`
@@ -308,7 +301,7 @@ func TestResolveUpstreamCluster_WithRef_NoURLs(t *testing.T) {
 	}
 	definitions := &[]api.UpstreamDefinition{
 		{
-			Name:      "my-upstream",
+			Name: "my-upstream",
 			Upstreams: []struct {
 				Urls   []string `json:"urls" yaml:"urls"`
 				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
@@ -344,7 +337,7 @@ func TestResolveUpstreamCluster_InvalidURL(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid main upstream URL")
 }
- 
+
 // testRouterConfig creates a minimal valid router config for testing
 func testRouterConfig() *config.RouterConfig {
 	return &config.RouterConfig{
@@ -367,7 +360,7 @@ func testRouterConfig() *config.RouterConfig {
 		},
 	}
 }
- 
+
 // testConfig creates a minimal valid config for testing
 func testConfig() *config.Config {
 	return &config.Config{
@@ -382,7 +375,7 @@ func testConfig() *config.Config {
 		},
 	}
 }
- 
+
 func TestTranslator_CreateTLSProtocolVersion(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -409,7 +402,7 @@ func TestTranslator_CreateTLSProtocolVersion(t *testing.T) {
 		})
 	}
 }
- 
+
 func TestTranslator_ParseCipherSuites(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -1328,6 +1321,7 @@ func createTestTranslator() *Translator {
 	cfg := testConfig()
 	return NewTranslator(logger, routerCfg, nil, cfg)
 }
+
 // Tests for lines 310-351: Event gateway WebSub hub configuration
 func TestTranslator_TranslateConfigs_WebSubHub_Enabled(t *testing.T) {
 	t.Run("Event gateway enabled creates WebSub listeners and clusters", func(t *testing.T) {

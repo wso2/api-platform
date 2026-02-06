@@ -84,11 +84,9 @@ type Translator struct {
 }
 
 // resolvedTimeout represents parsed timeout values for an upstream.
-// All fields are optional; nil means \"no override\" (use global defaults).
+// Currently only connect timeout is supported at the upstream definition level.
 type resolvedTimeout struct {
 	Connect *time.Duration
-	Request *time.Duration
-	Idle    *time.Duration
 }
 
 // NewTranslator creates a new translator
@@ -574,7 +572,7 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 		}
 		rawURL = definition.Upstreams[0].Urls[0]
 
-		// Extract timeout if specified in the definition (may be nil or partial)
+		// Extract timeout if specified in the definition (may be nil)
 		if definition.Timeout != nil {
 			resolved, err := resolveTimeoutFromDefinition(definition)
 			if err != nil {
@@ -1382,25 +1380,15 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}
 	}
 
-	// Determine timeouts: use overrides if provided, otherwise use global config
-	var requestTimeout time.Duration
-	if timeoutCfg != nil && timeoutCfg.Request != nil {
-		requestTimeout = *timeoutCfg.Request
-	} else {
-		requestTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInMs) * time.Millisecond
-	}
-
-	var idleTimeout time.Duration
-	if timeoutCfg != nil && timeoutCfg.Idle != nil {
-		idleTimeout = *timeoutCfg.Idle
-	} else {
-		idleTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInMs) * time.Millisecond
-	}
-
+	// Currently the route level timeouts are configurable using the global configuration.
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout:     durationpb.New(requestTimeout),
-			IdleTimeout: durationpb.New(idleTimeout),
+			Timeout:     durationpb.New(
+				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInMs) * time.Millisecond,
+			),
+			IdleTimeout: durationpb.New(
+				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInMs) * time.Millisecond,
+			),
 			ClusterSpecifier: &route.RouteAction_Cluster{
 				Cluster: clusterName,
 			},
@@ -2588,14 +2576,8 @@ func resolveTimeoutFromDefinition(def *api.UpstreamDefinition) (*resolvedTimeout
 	if rt.Connect, err = parseTimeout(def.Timeout.Connect); err != nil {
 		return nil, err
 	}
-	if rt.Request, err = parseTimeout(def.Timeout.Request); err != nil {
-		return nil, err
-	}
-	if rt.Idle, err = parseTimeout(def.Timeout.Idle); err != nil {
-		return nil, err
-	}
 
-	if rt.Connect == nil && rt.Request == nil && rt.Idle == nil {
+	if rt.Connect == nil {
 		return nil, nil
 	}
 

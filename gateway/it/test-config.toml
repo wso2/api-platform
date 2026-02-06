@@ -124,7 +124,7 @@ max_route_timeout_in_milliseconds = 6000
 route_idle_timeout_in_milliseconds = 300000
 
 [gateway_controller.router.envoy_upstream_cluster]
-connect_timeout_in_milliseconds = 10000
+connect_timeout_in_milliseconds = 5000
 
 [gateway_controller.router.policy_engine]
 enabled = true
