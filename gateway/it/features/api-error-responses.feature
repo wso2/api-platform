@@ -103,7 +103,7 @@ Feature: API Error Responses
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the JSON response field "message" should be "Configuration validation failed"
-    And the response body should contain "spec.policies[0].name"
+    And the response body should contain "spec.policies[0].version"
     And the response body should contain "policy-does-not-exist"
     And the response body should contain "not found in loaded policy definitions"
 
