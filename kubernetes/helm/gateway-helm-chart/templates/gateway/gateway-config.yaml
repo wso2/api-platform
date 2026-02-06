@@ -79,9 +79,6 @@ data:
     max_route_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.max_route_timeout_in_seconds }}
     route_idle_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.route_idle_timeout_in_seconds }}
 
-    [gateway_controller.router.lua.request_transformation]
-    script_path = {{ $gc.router.lua.request_transformation.script_path | quote }}
-
     [gateway_controller.router.policy_engine]
     enabled = {{ $gc.router.policy_engine.enabled }}
     host = "{{ $policyEngineHost }}"
