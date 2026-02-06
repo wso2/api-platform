@@ -403,16 +403,22 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		}
 		p.UpstreamURL = upstreamURL.String
 		if upstreamAuthJSON.Valid && upstreamAuthJSON.String != "" {
-			_ = json.Unmarshal([]byte(upstreamAuthJSON.String), &p.UpstreamAuth)
+			if err := json.Unmarshal([]byte(upstreamAuthJSON.String), &p.UpstreamAuth); err != nil {
+				return nil, fmt.Errorf("unmarshal upstreamAuth for provider %s: %w", p.ID, err)
+			}
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
 		}
 		if modelProvidersRaw.Valid && modelProvidersRaw.String != "" {
-			_ = json.Unmarshal([]byte(modelProvidersRaw.String), &p.ModelProviders)
+			if err := json.Unmarshal([]byte(modelProvidersRaw.String), &p.ModelProviders); err != nil {
+				return nil, fmt.Errorf("unmarshal modelProviders for provider %s: %w", p.ID, err)
+			}
 		}
 		if rateLimitingJSON.Valid && rateLimitingJSON.String != "" {
-			_ = json.Unmarshal([]byte(rateLimitingJSON.String), &p.RateLimiting)
+			if err := json.Unmarshal([]byte(rateLimitingJSON.String), &p.RateLimiting); err != nil {
+				return nil, fmt.Errorf("unmarshal rateLimiting for provider %s: %w", p.ID, err)
+			}
 		}
 		policies, err := unmarshalPolicies(policiesJSON)
 		if err != nil {
@@ -420,10 +426,14 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		}
 		p.Policies = policies
 		if accessControlJSON.Valid && accessControlJSON.String != "" {
-			_ = json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl)
+			if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
+				return nil, fmt.Errorf("unmarshal accessControl for provider %s: %w", p.ID, err)
+			}
 		}
 		if securityJSON.Valid && securityJSON.String != "" {
-			_ = json.Unmarshal([]byte(securityJSON.String), &p.Security)
+			if err := json.Unmarshal([]byte(securityJSON.String), &p.Security); err != nil {
+				return nil, fmt.Errorf("unmarshal security for provider %s: %w", p.ID, err)
+			}
 		}
 		res = append(res, &p)
 	}
