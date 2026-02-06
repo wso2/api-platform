@@ -258,7 +258,8 @@ func (s *Server) Start(port string, certDir string) error {
 
 	// Add a health endpoint that works with self-signed certs
 	s.router.HEAD("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		c.Header("Content-Length", "0")
+		c.Status(200)
 	})
 
 	// CreateOrganization TLS configuration
