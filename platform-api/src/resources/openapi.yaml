@@ -789,9 +789,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{apiId}/deploy:
+  /apis/{apiId}/deployments:
     post:
-      summary: Deploy API to gateway
+      summary: Create and deploy a new deployment
       description: |
         Creates an immutable deployment artifact for an API and deploys it to a specified gateway.
         Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
@@ -833,7 +833,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{apiId}/deployments:
     get:
       summary: Get deployments for an API
       description: |
@@ -913,20 +912,36 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{apiId}/deployments/{deploymentId}/undeploy:
+  /apis/{apiId}/deployments/undeploy:
     post:
-      summary: Undeploy deployment
+      summary: Undeploy deployment from gateway
       description: |
-        Undeploys an active deployment, stopping the API from being served. The deployment artifact
-        remains in the system with UNDEPLOYED status and can be rolled back later. Returns the updated
-        deployment object with status changed to UNDEPLOYED. Access is validated against the organization 
-        in the JWT token.
+        Undeploys an active deployment, stopping the API from being served on the specified gateway.
+        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
+        Returns the updated deployment object with status changed to UNDEPLOYED.
+        
+        Both deploymentId and gatewayId are required for safety. The backend validates that the 
+        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
       operationId: UndeployDeployment
       tags:
         - API Deployments
       parameters:
         - $ref: '#/components/parameters/apiID'
-        - $ref: '#/components/parameters/deploymentId'
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
@@ -945,15 +960,18 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{apiId}/rollback-deployment:
+  /apis/{apiId}/deployments/restore:
     post:
-      summary: Rollback to a previous deployment
+      summary: Restore a previous deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version.
-        This replaces the redeploy operation and provides more flexibility - you can rollback to any
-        previous deployment, not just the last undeployed one. The target deployment must not already
-        be in DEPLOYED status. Access is validated against the organization in the JWT token.
-      operationId: RollbackDeployment
+        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
+        on the specified gateway. This operation changes the deployment state of the API on that gateway.
+        The target deployment must not already be in DEPLOYED status.
+        
+        Both deploymentId and gatewayId are required for safety. The backend validates that the 
+        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: RestoreDeployment
       tags:
         - API Deployments
       parameters:
@@ -964,10 +982,17 @@ paths:
           schema:
             type: string
             format: uuid
-          description: UUID of the deployment to rollback to (must be ARCHIVED or UNDEPLOYED)
+          description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment rolled back successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
           content:
             application/json:
               schema:
@@ -979,7 +1004,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot rollback to currently deployed deployment or deployment is invalid.
+          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
           content:
             application/json:
               schema:
