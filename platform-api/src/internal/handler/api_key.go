@@ -54,11 +54,11 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	// Extract API ID from path parameter
-	apiID := c.Param("apiId")
-	if apiID == "" {
+	// Extract API handle from path parameter (parameter named apiId for backward compatibility, but contains handle)
+	apiHandle := c.Param("apiId")
+	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+			"API handle is required"))
 		return
 	}
 
@@ -96,7 +96,7 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	}
 
 	// Create the API key and broadcast to gateways
-	err := h.apiKeyService.CreateAPIKey(c.Request.Context(), apiID, orgId, &req)
+	err := h.apiKeyService.CreateAPIKey(c.Request.Context(), apiHandle, orgId, &req)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -110,15 +110,15 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 			return
 		}
 
-		log.Printf("[ERROR] Failed to create API key: apiId=%s orgId=%s keyName=%s error=%v",
-			apiID, orgId, req.Name, err)
+		log.Printf("[ERROR] Failed to create API key: apiHandle=%s orgId=%s keyName=%s error=%v",
+			apiHandle, orgId, req.Name, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to create API key"))
 		return
 	}
 
-	log.Printf("[INFO] Successfully created API key: apiId=%s orgId=%s keyName=%s",
-		apiID, orgId, req.Name)
+	log.Printf("[INFO] Successfully created API key: apiHandle=%s orgId=%s keyName=%s",
+		apiHandle, orgId, req.Name)
 
 	// Return success response
 	c.JSON(http.StatusCreated, dto.CreateAPIKeyResponse{
@@ -139,10 +139,10 @@ func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	}
 
 	// Extract API ID and key name from path parameters
-	apiID := c.Param("apiId")
-	if apiID == "" {
+	apiHandle := c.Param("apiId")
+	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+			"API handle is required"))
 		return
 	}
 
@@ -156,8 +156,8 @@ func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	// Parse and validate request body
 	var req dto.UpdateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("[WARN] Invalid API key update request: orgId=%s apiId=%s keyName=%s error=%v",
-			orgId, apiID, keyName, err)
+		log.Printf("[WARN] Invalid API key update request: orgId=%s apiHandle=%s keyName=%s error=%v",
+			orgId, apiHandle, keyName, err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Invalid request body: "+err.Error()))
 		return
@@ -171,7 +171,7 @@ func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 	}
 
 	// Update the API key and broadcast to gateways
-	err := h.apiKeyService.UpdateAPIKey(c.Request.Context(), apiID, orgId, keyName, &req)
+	err := h.apiKeyService.UpdateAPIKey(c.Request.Context(), apiHandle, orgId, keyName, &req)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -185,15 +185,15 @@ func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 			return
 		}
 
-		log.Printf("[ERROR] Failed to update API key: apiId=%s orgId=%s keyName=%s error=%v",
-			apiID, orgId, keyName, err)
+		log.Printf("[ERROR] Failed to update API key: apiHandle=%s orgId=%s keyName=%s error=%v",
+			apiHandle, orgId, keyName, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to update API key"))
 		return
 	}
 
 	log.Printf("[INFO] Successfully updated API key: apiId=%s orgId=%s keyName=%s",
-		apiID, orgId, keyName)
+		apiHandle, orgId, keyName)
 
 	// Return success response
 	c.JSON(http.StatusOK, dto.UpdateAPIKeyResponse{
@@ -215,10 +215,10 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 	}
 
 	// Extract API ID and key name from path parameters
-	apiID := c.Param("apiId")
-	if apiID == "" {
+	apiHandle := c.Param("apiId")
+	if apiHandle == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API ID is required"))
+			"API handle is required"))
 		return
 	}
 
@@ -230,7 +230,7 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 	}
 
 	// Revoke the API key and broadcast to gateways
-	err := h.apiKeyService.RevokeAPIKey(c.Request.Context(), apiID, orgId, keyName)
+	err := h.apiKeyService.RevokeAPIKey(c.Request.Context(), apiHandle, orgId, keyName)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -245,14 +245,14 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		}
 
 		log.Printf("[ERROR] Failed to revoke API key: apiId=%s orgId=%s keyName=%s error=%v",
-			apiID, orgId, keyName, err)
+			apiHandle, orgId, keyName, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to revoke API key in one or more gateways"))
 		return
 	}
 
-	log.Printf("[INFO] Successfully revoked API key: apiId=%s orgId=%s keyName=%s",
-		apiID, orgId, keyName)
+	log.Printf("[INFO] Successfully revoked API key: apiHandle=%s orgId=%s keyName=%s",
+		apiHandle, orgId, keyName)
 
 	// Return success response (204 No Content)
 	c.Status(http.StatusNoContent)
