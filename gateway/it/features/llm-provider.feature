@@ -168,7 +168,7 @@ Feature: LLM Provider Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "count" should be at least 2
+    And the JSON response field "count" should be greater than 1
 
     # Cleanup
     Given I authenticate using basic auth as "admin"

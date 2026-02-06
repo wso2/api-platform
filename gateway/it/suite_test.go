@@ -70,6 +70,7 @@ func TestFeatures(t *testing.T) {
 		TestSuiteInitializer: InitializeTestSuite,
 		ScenarioInitializer:  InitializeScenario,
 		Options: &godog.Options{
+			Strict: true,
 			Format: "pretty",
 			Paths: []string{
 				"features/health.feature",
