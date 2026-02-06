@@ -114,7 +114,7 @@ This binary includes the following policies:
 
 `
 	for i, p := range metadata.Policies {
-		instructions += fmt.Sprintf("%d. %s v%s\n", i+1, p.Name, p.Version)
+		instructions += fmt.Sprintf("%d. %s %s\n", i+1, p.Name, p.Version)
 	}
 
 	instructions += fmt.Sprintf("\nBuild timestamp: %s\n", metadata.BuildTimestamp.Format(time.RFC3339))

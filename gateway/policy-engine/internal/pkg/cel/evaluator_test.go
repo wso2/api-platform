@@ -24,43 +24,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/testutils"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
-
-// =============================================================================
-// Helper Functions - using same patterns as benchmarks
-// =============================================================================
-
-func newTestRequestContext() *policy.RequestContext {
-	return &policy.RequestContext{
-		SharedContext: &policy.SharedContext{
-			RequestID:     "test-request-id",
-			APIName:       "TestAPI",
-			APIVersion:    "v1.0",
-			APIContext:    "/api",
-			OperationPath: "/users/{id}",
-			Metadata:      map[string]interface{}{"custom_key": "custom_value"},
-		},
-		Headers:   policy.NewHeaders(map[string][]string{"content-type": {"application/json"}, "authorization": {"Bearer token123"}}),
-		Path:      "/api/v1/users/123",
-		Method:    "GET",
-		Authority: "api.example.com",
-		Scheme:    "https",
-	}
-}
-
-func newTestResponseContext() *policy.ResponseContext {
-	reqCtx := newTestRequestContext()
-	return &policy.ResponseContext{
-		SharedContext:   reqCtx.SharedContext,
-		RequestHeaders:  reqCtx.Headers,
-		RequestBody:     reqCtx.Body,
-		RequestPath:     reqCtx.Path,
-		RequestMethod:   reqCtx.Method,
-		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
-		ResponseStatus:  200,
-	}
-}
 
 // =============================================================================
 // NewCELEvaluator Tests
@@ -80,7 +46,7 @@ func TestEvaluateRequestCondition_SimpleExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	tests := []struct {
 		name       string
@@ -152,7 +118,7 @@ func TestEvaluateRequestCondition_ComplexExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	tests := []struct {
 		name       string
@@ -214,7 +180,7 @@ func TestEvaluateRequestCondition_InvalidExpression(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	tests := []struct {
 		name       string
@@ -242,7 +208,7 @@ func TestEvaluateRequestCondition_NonBooleanResult(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	// Expression that returns string instead of boolean
 	_, err = evaluator.EvaluateRequestCondition(`request.Method`, reqCtx)
@@ -258,7 +224,7 @@ func TestEvaluateResponseCondition_SimpleExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 
 	tests := []struct {
 		name       string
@@ -320,7 +286,7 @@ func TestEvaluateResponseCondition_CrossPhaseAccess(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 
 	tests := []struct {
 		name       string
@@ -415,7 +381,7 @@ func TestEvaluateResponseCondition_StatusRanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			respCtx := newTestResponseContext()
+			respCtx := testutils.NewTestResponseContext()
 			respCtx.ResponseStatus = tt.status
 			result, err := evaluator.EvaluateResponseCondition(tt.expression, respCtx)
 			require.NoError(t, err)
@@ -428,7 +394,7 @@ func TestEvaluateResponseCondition_InvalidExpression(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 
 	_, err = evaluator.EvaluateResponseCondition(`response.ResponseStatus ==`, respCtx)
 	assert.Error(t, err)
@@ -438,7 +404,7 @@ func TestEvaluateResponseCondition_NonBooleanResult(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 
 	_, err = evaluator.EvaluateResponseCondition(`response.ResponseStatus`, respCtx)
 	assert.Error(t, err)
@@ -453,7 +419,7 @@ func TestCELEvaluator_ProgramCaching(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 	expression := `request.Method == "GET"`
 
 	// First evaluation - compiles the program
@@ -474,7 +440,7 @@ func TestCELEvaluator_DifferentExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	expressions := []string{
 		`request.Method == "GET"`,
@@ -510,7 +476,7 @@ func TestCELEvaluator_ConcurrentAccess(t *testing.T) {
 			wg.Add(1)
 			go func(e string) {
 				defer wg.Done()
-				ctx := newTestRequestContext()
+				ctx := testutils.NewTestRequestContext()
 				_, err := evaluator.EvaluateRequestCondition(e, ctx)
 				if err != nil {
 					errors <- err
@@ -535,7 +501,7 @@ func TestEvaluateResponseCondition_ZeroStatus(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 	respCtx.ResponseStatus = 0
 
 	result, err := evaluator.EvaluateResponseCondition(`response.ResponseStatus == 0`, respCtx)
@@ -547,7 +513,7 @@ func TestEvaluateRequestCondition_EmptyPath(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 	reqCtx.Path = ""
 
 	result, err := evaluator.EvaluateRequestCondition(`request.Path == ""`, reqCtx)
@@ -559,7 +525,7 @@ func TestEvaluateRequestCondition_PathEndsWith(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	result, err := evaluator.EvaluateRequestCondition(`request.Path.endsWith("123")`, reqCtx)
 	require.NoError(t, err)
@@ -570,7 +536,7 @@ func TestEvaluateRequestCondition_PathSize(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	result, err := evaluator.EvaluateRequestCondition(`size(request.Path) > 0`, reqCtx)
 	require.NoError(t, err)
@@ -585,7 +551,7 @@ func TestEvaluateRequestCondition_MethodComparison(t *testing.T) {
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
-			reqCtx := newTestRequestContext()
+			reqCtx := testutils.NewTestRequestContext()
 			reqCtx.Method = method
 
 			result, err := evaluator.EvaluateRequestCondition(`request.Method == "`+method+`"`, reqCtx)
@@ -614,7 +580,7 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		{
 			name: "Skip POST requests",
 			setupReq: func() *policy.RequestContext {
-				ctx := newTestRequestContext()
+				ctx := testutils.NewTestRequestContext()
 				ctx.Method = "GET"
 				return ctx
 			},
@@ -625,7 +591,7 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		{
 			name: "Only POST requests",
 			setupReq: func() *policy.RequestContext {
-				ctx := newTestRequestContext()
+				ctx := testutils.NewTestRequestContext()
 				ctx.Method = "POST"
 				return ctx
 			},
@@ -636,7 +602,7 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		{
 			name: "Error response only",
 			setupResp: func() *policy.ResponseContext {
-				ctx := newTestResponseContext()
+				ctx := testutils.NewTestResponseContext()
 				ctx.ResponseStatus = 500
 				return ctx
 			},
@@ -647,7 +613,7 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		{
 			name: "Success response only",
 			setupResp: func() *policy.ResponseContext {
-				ctx := newTestResponseContext()
+				ctx := testutils.NewTestResponseContext()
 				ctx.ResponseStatus = 200
 				return ctx
 			},
@@ -658,7 +624,7 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		{
 			name: "Specific path prefix",
 			setupReq: func() *policy.RequestContext {
-				ctx := newTestRequestContext()
+				ctx := testutils.NewTestRequestContext()
 				ctx.Path = "/admin/users"
 				return ctx
 			},

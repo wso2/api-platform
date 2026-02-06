@@ -25,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/testutils"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -56,107 +57,8 @@ func (m *mockCELEvaluator) EvaluateResponseCondition(expression string, ctx *pol
 }
 
 // =============================================================================
-// Mock Policies for Tests
-// =============================================================================
-
-// noopPolicy does nothing
-type noopPolicy struct{}
-
-func (p *noopPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{}
-}
-
-func (p *noopPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return nil
-}
-
-func (p *noopPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
-}
-
-// headerModifyingPolicy modifies headers
-type headerModifyingPolicy struct {
-	headerKey   string
-	headerValue string
-}
-
-func (p *headerModifyingPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		ResponseHeaderMode: policy.HeaderModeProcess,
-	}
-}
-
-func (p *headerModifyingPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.UpstreamRequestModifications{
-		SetHeaders: map[string]string{p.headerKey: p.headerValue},
-	}
-}
-
-func (p *headerModifyingPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return policy.UpstreamResponseModifications{
-		SetHeaders: map[string]string{p.headerKey: p.headerValue},
-	}
-}
-
-// shortCircuitingPolicy returns an immediate response
-type shortCircuitingPolicy struct {
-	statusCode int
-	body       []byte
-}
-
-func (p *shortCircuitingPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode: policy.HeaderModeProcess,
-	}
-}
-
-func (p *shortCircuitingPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.ImmediateResponse{
-		StatusCode: p.statusCode,
-		Body:       p.body,
-	}
-}
-
-func (p *shortCircuitingPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
-}
-
-// =============================================================================
 // Helper Functions
 // =============================================================================
-
-func newTestRequestContext() *policy.RequestContext {
-	return &policy.RequestContext{
-		SharedContext: &policy.SharedContext{
-			RequestID:  "test-req-id",
-			APIName:    "TestAPI",
-			APIVersion: "v1.0",
-			Metadata:   map[string]interface{}{},
-		},
-		Headers:   policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
-		Path:      "/test/path",
-		Method:    "GET",
-		Authority: "test.example.com",
-		Scheme:    "https",
-	}
-}
-
-func newTestResponseContext() *policy.ResponseContext {
-	reqCtx := newTestRequestContext()
-	return &policy.ResponseContext{
-		SharedContext:   reqCtx.SharedContext,
-		RequestHeaders:  reqCtx.Headers,
-		RequestPath:     reqCtx.Path,
-		RequestMethod:   reqCtx.Method,
-		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
-		ResponseStatus:  200,
-	}
-}
-
-func ptrStr(s string) *string {
-	return &s
-}
 
 func newPolicySpec(name, version string, enabled bool, condition *string) policy.PolicySpec {
 	return policy.PolicySpec{
@@ -193,7 +95,7 @@ func TestExecuteRequestPolicies_EmptyPolicyList(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 
 	result, err := executor.ExecuteRequestPolicies(ctx, []policy.Policy{}, reqCtx, []policy.PolicySpec{}, "api", "route", false)
 
@@ -208,8 +110,8 @@ func TestExecuteRequestPolicies_SinglePolicy_NoAction(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
-	policies := []policy.Policy{&noopPolicy{}}
+	reqCtx := testutils.NewTestRequestContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, nil)}
 
 	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", false)
@@ -226,8 +128,8 @@ func TestExecuteRequestPolicies_DisabledPolicy_Skipped(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
-	policies := []policy.Policy{&noopPolicy{}}
+	reqCtx := testutils.NewTestRequestContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", false, nil)}
 
 	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", false)
@@ -243,9 +145,9 @@ func TestExecuteRequestPolicies_ConditionFalse_Skipped(t *testing.T) {
 	executor := NewChainExecutor(nil, celEval, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
-	policies := []policy.Policy{&noopPolicy{}}
-	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, ptrStr("request.method == 'POST'"))}
+	reqCtx := testutils.NewTestRequestContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
+	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("request.method == 'POST'"))}
 
 	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", true)
 
@@ -260,9 +162,9 @@ func TestExecuteRequestPolicies_ConditionTrue_Executed(t *testing.T) {
 	executor := NewChainExecutor(nil, celEval, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
-	policies := []policy.Policy{&noopPolicy{}}
-	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, ptrStr("request.method == 'GET'"))}
+	reqCtx := testutils.NewTestRequestContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
+	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("request.method == 'GET'"))}
 
 	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", true)
 
@@ -277,9 +179,9 @@ func TestExecuteRequestPolicies_ConditionEvaluationError(t *testing.T) {
 	executor := NewChainExecutor(nil, celEval, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
-	policies := []policy.Policy{&noopPolicy{}}
-	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, ptrStr("invalid.expression"))}
+	reqCtx := testutils.NewTestRequestContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
+	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("invalid.expression"))}
 
 	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", true)
 
@@ -293,10 +195,10 @@ func TestExecuteRequestPolicies_ShortCircuit(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 	policies := []policy.Policy{
-		&shortCircuitingPolicy{statusCode: 401, body: []byte("unauthorized")},
-		&noopPolicy{}, // This should NOT be executed
+		&testutils.ShortCircuitingPolicy{StatusCode: 401, Body: []byte("unauthorized")},
+		&testutils.NoopPolicy{}, // This should NOT be executed
 	}
 	specs := []policy.PolicySpec{
 		newPolicySpec("auth", "v1.0.0", true, nil),
@@ -316,9 +218,9 @@ func TestExecuteRequestPolicies_HeaderModification(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 	policies := []policy.Policy{
-		&headerModifyingPolicy{headerKey: "x-custom-header", headerValue: "test-value"},
+		&testutils.HeaderModifyingPolicy{Key: "x-custom-header", Value: "test-value"},
 	}
 	specs := []policy.PolicySpec{newPolicySpec("header-mod", "v1.0.0", true, nil)}
 
@@ -339,11 +241,11 @@ func TestExecuteRequestPolicies_MultiplePolicies(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	reqCtx := newTestRequestContext()
+	reqCtx := testutils.NewTestRequestContext()
 	policies := []policy.Policy{
-		&headerModifyingPolicy{headerKey: "x-header-1", headerValue: "value-1"},
-		&headerModifyingPolicy{headerKey: "x-header-2", headerValue: "value-2"},
-		&noopPolicy{},
+		&testutils.HeaderModifyingPolicy{Key: "x-header-1", Value: "value-1"},
+		&testutils.HeaderModifyingPolicy{Key: "x-header-2", Value: "value-2"},
+		&testutils.NoopPolicy{},
 	}
 	specs := []policy.PolicySpec{
 		newPolicySpec("header-1", "v1.0.0", true, nil),
@@ -375,7 +277,7 @@ func TestExecuteResponsePolicies_EmptyPolicyList(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 
 	result, err := executor.ExecuteResponsePolicies(ctx, []policy.Policy{}, respCtx, []policy.PolicySpec{}, "api", "route", false)
 
@@ -389,8 +291,8 @@ func TestExecuteResponsePolicies_SinglePolicy(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	respCtx := newTestResponseContext()
-	policies := []policy.Policy{&noopPolicy{}}
+	respCtx := testutils.NewTestResponseContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, nil)}
 
 	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
@@ -406,8 +308,8 @@ func TestExecuteResponsePolicies_DisabledPolicy(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	respCtx := newTestResponseContext()
-	policies := []policy.Policy{&noopPolicy{}}
+	respCtx := testutils.NewTestResponseContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", false, nil)}
 
 	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
@@ -423,9 +325,9 @@ func TestExecuteResponsePolicies_ConditionFalse(t *testing.T) {
 	executor := NewChainExecutor(nil, celEval, tracer)
 
 	ctx := context.Background()
-	respCtx := newTestResponseContext()
-	policies := []policy.Policy{&noopPolicy{}}
-	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, ptrStr("response.status == 404"))}
+	respCtx := testutils.NewTestResponseContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
+	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("response.status == 404"))}
 
 	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", true)
 
@@ -440,9 +342,9 @@ func TestExecuteResponsePolicies_ConditionError(t *testing.T) {
 	executor := NewChainExecutor(nil, celEval, tracer)
 
 	ctx := context.Background()
-	respCtx := newTestResponseContext()
-	policies := []policy.Policy{&noopPolicy{}}
-	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, ptrStr("invalid"))}
+	respCtx := testutils.NewTestResponseContext()
+	policies := []policy.Policy{&testutils.NoopPolicy{}}
+	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("invalid"))}
 
 	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", true)
 
@@ -456,9 +358,9 @@ func TestExecuteResponsePolicies_HeaderModification(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 	policies := []policy.Policy{
-		&headerModifyingPolicy{headerKey: "x-response-header", headerValue: "response-value"},
+		&testutils.HeaderModifyingPolicy{Key: "x-response-header", Value: "response-value"},
 	}
 	specs := []policy.PolicySpec{newPolicySpec("header-mod", "v1.0.0", true, nil)}
 
@@ -478,7 +380,7 @@ func TestExecuteResponsePolicies_ReverseOrder(t *testing.T) {
 	executor := NewChainExecutor(nil, nil, tracer)
 
 	ctx := context.Background()
-	respCtx := newTestResponseContext()
+	respCtx := testutils.NewTestResponseContext()
 
 	// Track execution order
 	var executionOrder []string
@@ -531,7 +433,7 @@ func (p *trackingPolicyImpl) OnResponse(*policy.ResponseContext, map[string]inte
 // =============================================================================
 
 func TestApplyRequestModifications_SetHeaders(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	mods := policy.UpstreamRequestModifications{
 		SetHeaders: map[string]string{
 			"x-new-header": "new-value",
@@ -551,7 +453,7 @@ func TestApplyRequestModifications_SetHeaders(t *testing.T) {
 }
 
 func TestApplyRequestModifications_RemoveHeaders(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	mods := policy.UpstreamRequestModifications{
 		RemoveHeaders: []string{"content-type"},
 	}
@@ -563,7 +465,7 @@ func TestApplyRequestModifications_RemoveHeaders(t *testing.T) {
 }
 
 func TestApplyRequestModifications_AppendHeaders(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	mods := policy.UpstreamRequestModifications{
 		AppendHeaders: map[string][]string{
 			"x-multi": {"value1", "value2"},
@@ -577,7 +479,7 @@ func TestApplyRequestModifications_AppendHeaders(t *testing.T) {
 }
 
 func TestApplyRequestModifications_UpdateBody(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	newBody := []byte(`{"modified": true}`)
 	mods := policy.UpstreamRequestModifications{
 		Body: newBody,
@@ -592,7 +494,7 @@ func TestApplyRequestModifications_UpdateBody(t *testing.T) {
 }
 
 func TestApplyRequestModifications_UpdatePath(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	newPath := "/new/path"
 	mods := policy.UpstreamRequestModifications{
 		Path: &newPath,
@@ -604,7 +506,7 @@ func TestApplyRequestModifications_UpdatePath(t *testing.T) {
 }
 
 func TestApplyRequestModifications_UpdateMethod(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	newMethod := "POST"
 	mods := policy.UpstreamRequestModifications{
 		Method: &newMethod,
@@ -616,7 +518,7 @@ func TestApplyRequestModifications_UpdateMethod(t *testing.T) {
 }
 
 func TestApplyRequestModifications_AddQueryParameters(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	ctx.Path = "/test/path"
 	mods := policy.UpstreamRequestModifications{
 		AddQueryParameters: map[string][]string{
@@ -632,7 +534,7 @@ func TestApplyRequestModifications_AddQueryParameters(t *testing.T) {
 }
 
 func TestApplyRequestModifications_RemoveQueryParameters(t *testing.T) {
-	ctx := newTestRequestContext()
+	ctx := testutils.NewTestRequestContext()
 	ctx.Path = "/test/path?foo=bar&baz=qux&keep=me"
 	mods := policy.UpstreamRequestModifications{
 		RemoveQueryParameters: []string{"foo", "baz"},
@@ -650,7 +552,7 @@ func TestApplyRequestModifications_RemoveQueryParameters(t *testing.T) {
 // =============================================================================
 
 func TestApplyResponseModifications_SetHeaders(t *testing.T) {
-	ctx := newTestResponseContext()
+	ctx := testutils.NewTestResponseContext()
 	mods := policy.UpstreamResponseModifications{
 		SetHeaders: map[string]string{
 			"x-response-header": "response-value",
@@ -665,7 +567,7 @@ func TestApplyResponseModifications_SetHeaders(t *testing.T) {
 }
 
 func TestApplyResponseModifications_RemoveHeaders(t *testing.T) {
-	ctx := newTestResponseContext()
+	ctx := testutils.NewTestResponseContext()
 	mods := policy.UpstreamResponseModifications{
 		RemoveHeaders: []string{"content-type"},
 	}
@@ -677,7 +579,7 @@ func TestApplyResponseModifications_RemoveHeaders(t *testing.T) {
 }
 
 func TestApplyResponseModifications_AppendHeaders(t *testing.T) {
-	ctx := newTestResponseContext()
+	ctx := testutils.NewTestResponseContext()
 	mods := policy.UpstreamResponseModifications{
 		AppendHeaders: map[string][]string{
 			"x-multi-resp": {"val1", "val2"},
@@ -691,7 +593,7 @@ func TestApplyResponseModifications_AppendHeaders(t *testing.T) {
 }
 
 func TestApplyResponseModifications_UpdateBody(t *testing.T) {
-	ctx := newTestResponseContext()
+	ctx := testutils.NewTestResponseContext()
 	newBody := []byte(`{"response": "modified"}`)
 	mods := policy.UpstreamResponseModifications{
 		Body: newBody,
@@ -706,7 +608,7 @@ func TestApplyResponseModifications_UpdateBody(t *testing.T) {
 }
 
 func TestApplyResponseModifications_UpdateStatusCode(t *testing.T) {
-	ctx := newTestResponseContext()
+	ctx := testutils.NewTestResponseContext()
 	newStatus := 404
 	mods := policy.UpstreamResponseModifications{
 		StatusCode: &newStatus,
