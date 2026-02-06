@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS api_mtls_config (
 -- API Key Security Configuration table
 CREATE TABLE IF NOT EXISTS api_key_security (
     id SERIAL PRIMARY KEY,
-    api_uuid VARCHAR(40) NOT NULL
+    api_uuid VARCHAR(40) NOT NULL,
     enabled BOOLEAN,
     header VARCHAR(255),
     query VARCHAR(255),

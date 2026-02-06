@@ -977,7 +977,7 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 		UpdatedAt:     m.UpdatedAt,
 	}
 	if m.UpstreamAuth != nil {
-		out.Upstream.Auth = &dto.LLMUpstreamAuth{Type: m.UpstreamAuth.Type, Header: m.UpstreamAuth.Header, Value: m.UpstreamAuth.Value}
+		out.Upstream.Auth = &dto.LLMUpstreamAuth{Type: m.UpstreamAuth.Type, Header: m.UpstreamAuth.Header}
 	}
 	if m.AccessControl != nil {
 		ac := dto.LLMAccessControl{Mode: m.AccessControl.Mode}

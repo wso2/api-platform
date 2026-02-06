@@ -93,7 +93,8 @@ type LLMRateLimitingConfig struct {
 type LLMUpstreamAuth struct {
 	Type   string `json:"type" yaml:"type" binding:"required"`
 	Header string `json:"header,omitempty" yaml:"header,omitempty"`
-	Value  string `json:"value,omitempty" yaml:"value,omitempty"`
+	// Value is write-only and must never be returned in responses.
+	Value string `json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 type LLMUpstream struct {
