@@ -32,7 +32,7 @@ Feature: Policy Engine Admin API
 #   Scenario: Config dump endpoint returns valid JSON
 #     When I send a GET request to the policy-engine config dump endpoint
 #     Then the response status code should be 200
-#     And the response content type should be "application/json"
+#     And the response Content-Type should be "application/json"
 #     And the response should be valid JSON
 
   Scenario: Config dump contains policy registry section

@@ -43,7 +43,7 @@ Feature: Gateway Metrics
 
 #   Scenario: Policy engine metrics reflect request processing
 #     Given I am authenticated as "admin" with password "admin"
-#     And I create a new API with the following configuration:
+#     And I deploy an API with the following configuration:
 #       """
 #       {
 #         "name": "metrics-api",
@@ -93,7 +93,7 @@ Feature: Gateway Metrics
 
 #   Scenario: Policy engine metrics track policy execution after API request
 #     Given I am authenticated as "admin" with password "admin"
-#     And I create a new API with the following configuration:
+#     And I deploy an API with the following configuration:
 #       """
 #       {
 #         "name": "policy-metrics-api",
@@ -119,7 +119,7 @@ Feature: Gateway Metrics
 
 #   Scenario: Policy engine tracks policy chain configuration
 #     Given I am authenticated as "admin" with password "admin"
-#     And I create a new API with the following configuration:
+#     And I deploy an API with the following configuration:
 #       """
 #       {
 #         "name": "chain-metrics-api",
