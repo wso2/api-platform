@@ -36,14 +36,19 @@ import (
 // - APIServer handlers (REST API path) - TODO: Refactor this to use the implementation in utils
 // - main.go startup (loading existing configs) - TODO: Refactor this to use the implementation in utils
 
-func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config) *models.StoredPolicyConfig {
+func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config, policyDefinitions map[string]api.PolicyDefinition) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
 
-	// Collect API-level policies
+	// Collect API-level policies (resolve major-only version to full semver for engine)
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
 	if cfg.GetPolicies() != nil {
 		for _, p := range *cfg.GetPolicies() {
-			apiPolicies[p.Name] = ConvertAPIPolicyToModel(p, policy.LevelAPI)
+			resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, p.Name, p.Version)
+			if err != nil {
+				// Skip policy if version resolution fails
+				continue
+			}
+			apiPolicies[p.Name] = ConvertAPIPolicyToModel(p, policy.LevelAPI, resolvedVersion)
 		}
 	}
 
@@ -65,7 +70,11 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
 				addedNames := make(map[string]struct{})
 				for _, opPolicy := range *ch.Policies {
-					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policy.LevelRoute))
+					resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
+					if err != nil {
+						continue
+					}
+					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policy.LevelRoute, resolvedVersion))
 					addedNames[opPolicy.Name] = struct{}{}
 				}
 				// Add any API-level policies not mentioned in operation policies (append at end)
@@ -112,7 +121,11 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
 				addedNames := make(map[string]struct{})
 				for _, opPolicy := range *op.Policies {
-					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policy.LevelRoute))
+					resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
+					if err != nil {
+						continue
+					}
+					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policy.LevelRoute, resolvedVersion))
 					addedNames[opPolicy.Name] = struct{}{}
 				}
 				// Add any API-level policies not mentioned in operation policies (append at end)
@@ -194,7 +207,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 }
 
 // ConvertAPIPolicyToModel converts generated api.Policy to policyenginev1.PolicyInstance
-func ConvertAPIPolicyToModel(p api.Policy, attachedTo policy.Level) policyenginev1.PolicyInstance {
+func ConvertAPIPolicyToModel(p api.Policy, attachedTo policy.Level, resolvedVersion string) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
 		for k, v := range *p.Params {
@@ -208,7 +221,7 @@ func ConvertAPIPolicyToModel(p api.Policy, attachedTo policy.Level) policyengine
 
 	return policyenginev1.PolicyInstance{
 		Name:               p.Name,
-		Version:            p.Version,
+		Version:            resolvedVersion,
 		Enabled:            true,
 		ExecutionCondition: p.ExecutionCondition,
 		Parameters:         paramsMap,

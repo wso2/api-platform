@@ -110,6 +110,7 @@ type Client struct {
 	routerConfig      *config.RouterConfig
 	policyManager     *policyxds.PolicyManager
 	systemConfig      *config.Config
+	policyDefinitions map[string]api.PolicyDefinition
 }
 
 // NewClient creates a new control plane client
@@ -125,6 +126,7 @@ func NewClient(
 	apiKeyConfig *config.APIKeyConfig,
 	policyManager *policyxds.PolicyManager,
 	systemConfig *config.Config,
+	policyDefinitions map[string]api.PolicyDefinition,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -141,6 +143,7 @@ func NewClient(
 		routerConfig:      routerConfig,
 		policyManager:     policyManager,
 		systemConfig:      systemConfig,
+		policyDefinitions: policyDefinitions,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -633,7 +636,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 
 		// Guard against nil systemConfig before deriving policies
 		if c.systemConfig != nil {
-			storedPolicy = utils.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig)
+			storedPolicy = utils.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig, c.policyDefinitions)
 		} else {
 			c.logger.Warn("Cannot derive policies: systemConfig is nil",
 				slog.String("api_id", apiID),
@@ -653,7 +656,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 			}
 		} else if result.IsUpdate {
 			// No policies but this is an update, so remove any existing policies
-			if err := c.policyManager.RemovePolicy(apiID + "-policies"); err != nil {
+			if err := c.policyManager.RemovePolicy(result.StoredConfig.ID + "-policies"); err != nil {
 				c.logger.Error("Failed to remove policy from policy engine",
 					slog.Any("error", err),
 					slog.String("api_id", apiID),
@@ -761,6 +764,7 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		ApiKey:        &payload.ApiKey,
 		DisplayName:   payload.DisplayName,
+		Name:          &payload.Name,
 		ExternalRefId: payload.ExternalRefId,
 	}
 	if payload.ExpiresAt != nil {
@@ -977,6 +981,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		ApiKey:        &payload.ApiKey,
 		DisplayName:   &payload.DisplayName,
 		ExternalRefId: &payload.ExternalRefId,
+		Name:          &payload.KeyName,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
