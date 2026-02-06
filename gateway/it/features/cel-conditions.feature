@@ -23,7 +23,7 @@ Feature: CEL Execution Conditions
   So that I can apply policies based on request/response attributes
 
   Background:
-    Given the gateway is running
+    Given the gateway services are running
 
   # ============================================================
   # Request Method Conditions
@@ -63,7 +63,7 @@ Feature: CEL Execution Conditions
                     name: X-Cel-Executed
                     value: "true"
       """
-    And I wait for the health endpoint to be ready
+    And I wait for the endpoint "http://localhost:8080/cel-method-test/1.0.0/resource" to be ready
     # GET request - condition is false, policy should NOT execute
     When I send a GET request to "/cel-method-test/1.0.0/resource"
     Then the response status code should be 200
@@ -121,7 +121,7 @@ Feature: CEL Execution Conditions
                     name: X-Write-Operation
                     value: "true"
       """
-    And I wait for the health endpoint to be ready
+    And I wait for the endpoint "http://localhost:8080/cel-multi-method/1.0.0/data" to be ready
     # GET request - not in list, policy should NOT execute
     When I send a GET request to "/cel-multi-method/1.0.0/data"
     Then the response status code should be 200
@@ -168,7 +168,7 @@ Feature: CEL Execution Conditions
                     name: X-Token-Validated
                     value: "true"
       """
-    And I wait for the health endpoint to be ready
+    And I wait for the endpoint "http://localhost:8080/cel-header-presence/1.0.0/check" to be ready
     # Request without header - condition is false, policy should NOT execute
     When I send a GET request to "/cel-header-presence/1.0.0/check"
     Then the response status code should be 200
@@ -201,7 +201,7 @@ Feature: CEL Execution Conditions
                     name: X-Premium-Access
                     value: "granted"
       """
-    And I wait for the health endpoint to be ready
+    And I wait for the endpoint "http://localhost:8080/cel-header-value/1.0.0/premium" to be ready
     # Request with wrong tier value - condition is false
     When I send a GET request to "/cel-header-value/1.0.0/premium" with header "X-Tier" value "basic"
     Then the response status code should be 200
@@ -249,7 +249,7 @@ Feature: CEL Execution Conditions
                     name: X-Admin-Request
                     value: "true"
       """
-    And I wait for the health endpoint to be ready
+    And I wait for the endpoint "http://localhost:8080/cel-path-prefix/1.0.0/public/info" to be ready
     # Public path - condition is false, policy should NOT execute
     When I send a GET request to "/cel-path-prefix/1.0.0/public/info"
     Then the response status code should be 200
@@ -297,7 +297,7 @@ Feature: CEL Execution Conditions
                     name: X-Secure-Write
                     value: "authorized"
       """
-    And I wait for the health endpoint to be ready
+    And I wait for the endpoint "http://localhost:8080/cel-combined/1.0.0/secure" to be ready
     # GET request - method condition false
     When I send a GET request to "/cel-combined/1.0.0/secure"
     Then the response status code should be 200

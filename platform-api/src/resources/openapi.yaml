@@ -1721,6 +1721,513 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-provider-templates:
+    post:
+      summary: Create a new LLM provider template
+      description: |
+        Creates a new LLM provider template within the organization.
+        Organization is identified via the JWT token.
+      operationId: createLLMProviderTemplate
+      tags:
+        - LLM Provider Templates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+      responses:
+        '201':
+          description: LLM provider template created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List all LLM provider templates
+      description: |
+        Retrieve a list of all LLM provider templates for the organization.
+      operationId: listLLMProviderTemplates
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of LLM provider templates to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of LLM provider templates to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of LLM provider templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-provider-templates/{id}:
+    get:
+      summary: Get LLM provider template by id
+      description: Retrieve the complete configuration for a specific LLM provider template.
+      operationId: getLLMProviderTemplate
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+      responses:
+        '200':
+          description: LLM provider template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update an existing LLM provider template
+      description: Update an existing LLM provider template configuration.
+      operationId: updateLLMProviderTemplate
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the template to update
+          schema:
+            type: string
+          example: openai
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+      responses:
+        '200':
+          description: LLM provider template updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an LLM provider template
+      description: Remove an LLM provider template.
+      operationId: deleteLLMProviderTemplate
+      tags:
+        - LLM Provider Templates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the template to delete
+          schema:
+            type: string
+          example: openai
+      responses:
+        '204':
+          description: LLM provider template deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers:
+    post:
+      summary: Create a new LLM provider
+      description: |
+        Deploy a new LLM provider configuration.
+      operationId: createLLMProvider
+      tags:
+        - LLM Providers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProvider'
+      responses:
+        '201':
+          description: LLM provider created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProvider'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List all LLM providers
+      description: Retrieve a list of all LLM providers.
+      operationId: listLLMProviders
+      tags:
+        - LLM Providers
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of LLM providers to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of LLM providers to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of LLM providers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{id}:
+    get:
+      summary: Get LLM provider by identifier
+      description: Retrieve the complete configuration for a specific LLM provider.
+      operationId: getLLMProvider
+      tags:
+        - LLM Providers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+      responses:
+        '200':
+          description: LLM provider details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProvider'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update an existing LLM provider
+      description: Update the configuration of an existing LLM provider.
+      operationId: updateLLMProvider
+      tags:
+        - LLM Providers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProvider'
+      responses:
+        '200':
+          description: LLM provider updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProvider'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an LLM provider
+      description: Remove an LLM provider.
+      operationId: deleteLLMProvider
+      tags:
+        - LLM Providers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+      responses:
+        '204':
+          description: LLM provider deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{id}/llm-proxies:
+    get:
+      summary: List LLM proxies by provider
+      description: Retrieve a list of LLM proxies that use the specified LLM provider.
+      operationId: listLLMProxiesByProvider
+      tags:
+        - LLM Providers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of LLM proxies to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of LLM proxies to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of LLM proxies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies:
+    post:
+      summary: Create a new LLM proxy
+      description: |
+        Deploy a new LLM proxy configuration.
+      operationId: createLLMProxy
+      tags:
+        - LLM Proxies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProxy'
+      responses:
+        '201':
+          description: LLM proxy created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List all LLM proxies
+      description: Retrieve a list of all LLM proxies. Optionally filter by project using the projectId query parameter.
+      operationId: listLLMProxies
+      tags:
+        - LLM Proxies
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+        - name: limit
+          in: query
+          description: Maximum number of LLM proxies to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of LLM proxies to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of LLM proxies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{id}:
+    get:
+      summary: Get LLM proxy by unique identifier
+      description: Retrieve the complete configuration for a specific LLM proxy.
+      operationId: getLLMProxy
+      tags:
+        - LLM Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+      responses:
+        '200':
+          description: LLM proxy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update an existing LLM proxy
+      description: Update the configuration of an existing LLM proxy.
+      operationId: updateLLMProxy
+      tags:
+        - LLM Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProxy'
+      responses:
+        '200':
+          description: LLM proxy updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an LLM proxy
+      description: Remove an LLM proxy.
+      operationId: deleteLLMProxy
+      tags:
+        - LLM Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+      responses:
+        '204':
+          description: LLM proxy deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -3852,6 +4359,710 @@ components:
             $ref: '#/components/schemas/DeploymentResponse'
           description: List of deployments
 
+    Upstream:
+      type: object
+      oneOf:
+        - required: [ "url" ]
+        - required: [ "ref" ]
+      description: Upstream backend configuration (single target or reference)
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Direct backend URL to route traffic to
+          example: http://prod-backend:5000/api/v2
+        ref:
+          type: string
+          description: Reference to a predefined upstreamDefinition
+
+    UpstreamAuth:
+      type: object
+      properties:
+        auth:
+          type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [ api-key, bearer ]
+            header:
+              type: string
+            value:
+              type: string
+
+    ExtractionIdentifier:
+      type: object
+      required:
+        - location
+        - identifier
+      properties:
+        location:
+          type: string
+          description: Where to find the token information
+          enum:
+            - payload
+            - header
+            - queryParam
+            - pathParam
+          example: payload
+        identifier:
+          type: string
+          description: JSONPath expression or header name to identify the token value
+          example: $.usage.inputTokens
+
+    LLMProviderTemplate:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: Unique handle for the template
+          example: openai
+        name:
+          type: string
+          description: Human-readable LLM Template name
+          minLength: 1
+          maxLength: 253
+          example: OpenAI
+        description:
+          type: string
+          description: Description of the LLM provider template
+          maxLength: 1023
+          example: Default OpenAI template
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was created
+          readOnly: true
+          example: "2023-10-12T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated
+          readOnly: true
+          example: "2023-10-12T10:30:00Z"
+
+    LLMProviderTemplateListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: openai
+        name:
+          type: string
+          example: OpenAI
+        description:
+          type: string
+          example: Default OpenAI template
+        createdBy:
+          type: string
+          example: jane.doe
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProviderTemplateListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 5
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProviderTemplateListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    LLMAccessControl:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: Access control mode
+          example: deny_all
+          enum:
+            - allow_all
+            - deny_all
+        exceptions:
+          type: array
+          description: Path exceptions to the access control mode
+          items:
+            $ref: '#/components/schemas/RouteException'
+
+    RouteException:
+      type: object
+      required:
+        - path
+        - methods
+      properties:
+        path:
+          type: string
+          description: Path pattern
+          example: /chat/completions
+        methods:
+          type: array
+          description: HTTP methods
+          items:
+            type: string
+            enum:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+
+    LLMPolicy:
+      type: object
+      required:
+        - name
+        - version
+        - paths
+      properties:
+        name:
+          type: string
+          example: budgetControl
+        version:
+          type: string
+          example: v1.0.0
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMPolicyPath'
+
+    LLMPolicyPath:
+      type: object
+      required:
+        - path
+        - methods
+        - params
+      properties:
+        path:
+          type: string
+          example: /chat/completions
+        methods:
+          type: array
+          items:
+            type: string
+            enum: [ GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, "*" ]
+        params:
+          type: object
+          description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
+          additionalProperties: true
+
+    LLMRateLimitingConfig:
+      type: object
+      description: Rate limiting configuration for an LLM provider at provider and consumer levels.
+      properties:
+        providerLevel:
+          $ref: '#/components/schemas/RateLimitingScopeConfig'
+        consumerLevel:
+          $ref: '#/components/schemas/RateLimitingScopeConfig'
+      example:
+        providerLevel:
+          global:
+            requestCount: 1500
+            tokenCount: 1000000
+            requestResetDuration: 2
+            requestResetUnit: week
+            tokenResetDuration: 1
+            tokenResetUnit: month
+        consumerLevel:
+          resourceWise:
+            default:
+              requestCount: 50
+              cost: 100
+              requestResetDuration: 2
+              requestResetUnit: week
+              costResetDuration: 1
+              costResetUnit: month
+            resources:
+              - resource: /models
+                limit:
+                  requestCount: 200
+                  tokenCount: 100000
+                  requestResetDuration: 1
+                  requestResetUnit: week
+                  tokenResetDuration: 1
+                  tokenResetUnit: month
+              - resource: /chat/completions
+                limit:
+                  requestCount: 25
+                  cost: 10
+                  requestResetDuration: 1
+                  requestResetUnit: week
+                  costResetDuration: 1
+                  costResetUnit: month
+
+    RateLimitingScopeConfig:
+      type: object
+      description: Rate limiting configuration for a scope (provider or consumer). Either global or resource-wise limits can be defined.
+      oneOf:
+        - required: [ global ]
+        - required: [ resourceWise ]
+      properties:
+        global:
+          $ref: '#/components/schemas/RateLimitingLimitConfig'
+        resourceWise:
+          $ref: '#/components/schemas/ResourceWiseRateLimitingConfig'
+
+    ResourceWiseRateLimitingConfig:
+      type: object
+      description: Resource-specific limits with a required default limit.
+      required:
+        - default
+        - resources
+      properties:
+        default:
+          $ref: '#/components/schemas/RateLimitingLimitConfig'
+        resources:
+          type: array
+          description: Explicit resource limits that override the default limit.
+          items:
+            $ref: '#/components/schemas/RateLimitingResourceLimit'
+
+    RateLimitingResourceLimit:
+      type: object
+      required:
+        - resource
+        - limit
+      properties:
+        resource:
+          type: string
+          description: Explicit resource path to apply the limit to.
+          example: /chat/completions
+        limit:
+          $ref: '#/components/schemas/RateLimitingLimitConfig'
+
+    RateLimitingLimitConfig:
+      type: object
+      description: Limit definition using request count plus either token count or cost, each with its own reset window.
+      required:
+        - requestCount
+        - requestResetDuration
+        - requestResetUnit
+      oneOf:
+        - required: [ tokenCount, tokenResetDuration, tokenResetUnit ]
+        - required: [ cost, costResetDuration, costResetUnit ]
+      properties:
+        requestCount:
+          type: integer
+          description: Maximum number of requests in the reset window.
+          example: 1500
+          minimum: 1
+        requestResetDuration:
+          type: integer
+          description: Reset duration for the request count window.
+          example: 2
+          minimum: 1
+        requestResetUnit:
+          type: string
+          description: Reset time unit for the request count window.
+          enum: [ minute, hour, day, week, month ]
+          example: week
+        tokenCount:
+          type: integer
+          description: Maximum number of tokens in the reset window.
+          example: 1000000
+          minimum: 1
+        tokenResetDuration:
+          type: integer
+          description: Reset duration for the token count window.
+          example: 1
+          minimum: 1
+        tokenResetUnit:
+          type: string
+          description: Reset time unit for the token count window.
+          enum: [ minute, hour, day, week, month ]
+          example: month
+        cost:
+          type: number
+          format: float
+          description: Maximum cost in the reset window.
+          example: 1000
+          minimum: 0
+        costResetDuration:
+          type: integer
+          description: Reset duration for the cost window.
+          example: 1
+          minimum: 1
+        costResetUnit:
+          type: string
+          description: Reset time unit for the cost window.
+          enum: [ minute, hour, day, week, month ]
+          example: month
+
+    LLMProvider:
+      type: object
+      required:
+        - id
+        - name
+        - version
+        - template
+        - upstream
+        - accessControl
+      properties:
+        id:
+          type: string
+          description: Unique handle for the provider
+          example: wso2-openai-provider
+        name:
+          type: string
+          description: Human-readable LLM Provider name
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: WSO2 OpenAI Provider
+        description:
+          type: string
+          description: Description of the LLM provider
+          maxLength: 1023
+          example: Primary OpenAI provider
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        version:
+          type: string
+          description: Semantic version of the LLM Provider
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 20
+          example: /openai
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "api.openai"
+        template:
+          type: string
+          description: Template name to use for this LLM Provider
+          example: openai
+        openapi:
+          type: string
+          description: OpenAPI specification (JSON or YAML) for the provider endpoint
+          example: |
+            openapi: 3.0.3
+            info:
+              title: Provider API
+              version: v1.0
+            paths: {}
+        modelProviders:
+          type: array
+          description: List of model providers and their models supported by this provider. For native providers, this will typically contain a single model provider.
+          items:
+            $ref: '#/components/schemas/LLMModelProvider'
+        upstream:
+          allOf:
+            - $ref: "#/components/schemas/Upstream"
+            - $ref: "#/components/schemas/UpstreamAuth"
+        accessControl:
+          $ref: '#/components/schemas/LLMAccessControl'
+        rateLimiting:
+          $ref: '#/components/schemas/LLMRateLimitingConfig'
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/LLMPolicy"
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was created
+          readOnly: true
+          example: "2023-10-12T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated
+          readOnly: true
+          example: "2023-10-12T10:30:00Z"
+
+    LLMProviderListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: wso2-openai-provider
+        name:
+          type: string
+          example: WSO2 OpenAI Provider
+        description:
+          type: string
+          example: Primary OpenAI provider
+        createdBy:
+          type: string
+          example: jane.doe
+        version:
+          type: string
+          example: v1.0
+        template:
+          type: string
+          example: openai
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMModelProvider:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Unique model provider identifier
+          example: claude
+        name:
+          type: string
+          description: Human-readable model provider name
+          example: Claude
+        models:
+          type: array
+          description: Models under this model provider
+          items:
+            $ref: '#/components/schemas/LLMModel'
+
+    LLMModel:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Unique model identifier
+          example: claude-3-5-sonnet
+        name:
+          type: string
+          description: Human-readable model name
+          example: Claude 3.5 Sonnet
+        description:
+          type: string
+          description: Model description
+          example: High-quality reasoning model
+
+    LLMProviderListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProviderListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    LLMProxy:
+      type: object
+      required:
+        - id
+        - name
+        - version
+        - projectId
+        - provider
+      properties:
+        id:
+          type: string
+          description: Unique handle for the proxy
+          example: wso2-con-assistant
+        name:
+          type: string
+          description: Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: wso2-con-assistant
+        description:
+          type: string
+          description: Description of the LLM proxy
+          maxLength: 1023
+          example: Customer support assistant
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        version:
+          type: string
+          description: Semantic version of the LLM proxy
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+          example: /openai
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "api.openai"
+        provider:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: wso2-openai-provider
+        openapi:
+          type: string
+          description: OpenAPI specification (JSON or YAML) for the proxy endpoint
+          example: |
+            openapi: 3.0.3
+            info:
+              title: Proxy API
+              version: v1.0
+            paths: {}
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/LLMPolicy"
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was created
+          readOnly: true
+          example: "2023-10-12T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated
+          readOnly: true
+          example: "2023-10-12T10:30:00Z"
+
+    LLMProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: wso2-con-assistant
+        name:
+          type: string
+          example: WSO2 Con Assistant
+        description:
+          type: string
+          example: Customer support assistant
+        createdBy:
+          type: string
+          example: jane.doe
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        provider:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: wso2-openai-provider
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProxyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProxyListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -4093,3 +5304,9 @@ tags:
     description: Gateway registration and management operations
   - name: Gateway Tokens
     description: Gateway token rotation and revocation operations
+  - name: LLM Providers
+    description: LLM provider management operations
+  - name: LLM Proxies
+    description: LLM proxy management operations
+  - name: LLM Provider Templates
+    description: LLM provider template management operations

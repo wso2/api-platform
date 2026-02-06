@@ -52,6 +52,16 @@ type APIDeploymentResult struct {
 	IsUpdate     bool
 }
 
+// ValidationErrorListError wraps validation errors for API configuration.
+// This allows callers to return structured validation errors in API responses.
+type ValidationErrorListError struct {
+	Errors []config.ValidationError
+}
+
+func (e *ValidationErrorListError) Error() string {
+	return fmt.Sprintf("configuration validation failed with %d errors", len(e.Errors))
+}
+
 // APIDeploymentService provides utilities for API configuration deployment
 type APIDeploymentService struct {
 	store           *storage.ConfigStore
@@ -125,7 +135,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 				slog.String("field", e.Field),
 				slog.String("message", e.Message))
 		}
-		return nil, fmt.Errorf("configuration validation failed with %d errors", len(validationErrors))
+		return nil, &ValidationErrorListError{Errors: validationErrors}
 	}
 
 	// Generate API ID if not provided

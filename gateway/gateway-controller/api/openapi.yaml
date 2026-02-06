@@ -3459,8 +3459,6 @@ components:
           type: string
           description: Unique id of a deployed llm provider
           example: wso2-openai-provider
-        accessControl:
-          $ref: '#/components/schemas/LLMAccessControl'
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)

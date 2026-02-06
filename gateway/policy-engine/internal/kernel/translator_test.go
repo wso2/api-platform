@@ -426,7 +426,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, immResp, _, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -457,7 +457,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 		},
 	}
 
-	headerMutation, bodyMutation, _, _, immResp, _, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -565,7 +565,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 		},
 	}
 
-	_, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)
@@ -596,7 +596,7 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 		},
 	}
 
-	_, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)

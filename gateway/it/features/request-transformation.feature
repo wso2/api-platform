@@ -134,7 +134,7 @@ Feature: Request Transformation Policy Integration Tests
                       substitution: "\\2/instance/\\1"
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/req-transform-regex-capture/v1.0/service/foo/v1/api" to be ready
+    And I wait for the endpoint "http://localhost:8080/req-transform-regex-capture/v1.0/health" to be ready
     And I set header "Content-Type" to "application/json"
     When I send a GET request to "http://localhost:8080/req-transform-regex-capture/v1.0/service/foo/v1/api"
     Then the response status code should be 200
@@ -169,7 +169,7 @@ Feature: Request Transformation Policy Integration Tests
                       substitution: "/yyy/"
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/req-transform-regex-ci/v1.0/aaa/XxX/bbb" to be ready
+    And I wait for the endpoint "http://localhost:8080/req-transform-regex-ci/v1.0/health" to be ready
     And I set header "Content-Type" to "application/json"
     When I send a GET request to "http://localhost:8080/req-transform-regex-ci/v1.0/aaa/XxX/bbb"
     Then the response status code should be 200
@@ -204,7 +204,7 @@ Feature: Request Transformation Policy Integration Tests
                       substitution: "two"
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/req-transform-regex-multi/v1.0/xxx/one/yyy/one/zzz" to be ready
+    And I wait for the endpoint "http://localhost:8080/req-transform-regex-multi/v1.0/health" to be ready
     And I set header "Content-Type" to "application/json"
     When I send a GET request to "http://localhost:8080/req-transform-regex-multi/v1.0/xxx/one/yyy/one/zzz"
     Then the response status code should be 200
@@ -244,7 +244,7 @@ Feature: Request Transformation Policy Integration Tests
                         name: debug
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/req-transform-query/v1.0/search?q=old-value&debug=true" to be ready
+    And I wait for the endpoint "http://localhost:8080/req-transform-query/v1.0/search" to be ready
     And I set header "Content-Type" to "application/json"
     When I send a GET request to "http://localhost:8080/req-transform-query/v1.0/search?q=old-value&debug=true"
     Then the response status code should be 200
@@ -276,7 +276,7 @@ Feature: Request Transformation Policy Integration Tests
                   methodRewrite: POST
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/req-transform-method/v1.0/test/hello" to be ready
+    And I wait for the endpoint "http://localhost:8080/req-transform-method/v1.0/test/health" to be ready
     And I set header "Content-Type" to "application/json"
     When I send a GET request to "http://localhost:8080/req-transform-method/v1.0/test/hello"
     Then the response status code should be 200

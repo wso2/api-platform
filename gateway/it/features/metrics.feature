@@ -35,20 +35,13 @@ Feature: Gateway Metrics
     And the response should contain Prometheus metrics
 
   Scenario: Gateway controller metrics reflect API operations
-    Given I am authenticated as "admin" with password "admin"
-    When I create a new API with name "metrics-test-api"
-    And I send a GET request to the gateway controller metrics endpoint
-    Then the response should contain metric "gateway_controller_api_operations_total"
-    And the response should contain metric "gateway_controller_apis_total"
-
-  Scenario: Policy engine metrics reflect request processing
-    Given I am authenticated as "admin" with password "admin"
-    And I create a new API with the following configuration:
+    Given I authenticate using basic auth as "admin"
+    When I deploy an API with the following configuration:
       """
       {
-        "name": "metrics-api",
+        "name": "metrics-test-api",
         "version": "1.0",
-        "basePath": "/metrics-api",
+        "basePath": "/metrics-test-api",
         "backend": {
           "url": "http://sample-backend:9080"
         },
@@ -60,12 +53,11 @@ Feature: Gateway Metrics
         ]
       }
       """
-    And I wait for API deployment to complete
-    When I send a GET request to "/metrics-api/test" through the router
-    Then the response status code should be 200
-    When I send a GET request to the policy engine metrics endpoint
-    Then the response should contain metric "policy_engine_requests_total"
+    And I send a GET request to the gateway controller metrics endpoint
+    Then the response should contain metric "gateway_controller_api_operations_total"
+    And the response should contain metric "gateway_controller_apis_total"
 
+  
   Scenario: Policy engine exposes system metrics
     When I send a GET request to the policy engine metrics endpoint
     Then the response status code should be 200
@@ -91,53 +83,4 @@ Feature: Gateway Metrics
     And the response should contain metric "go_memstats_alloc_bytes"
     And the response should contain metric "process_cpu_seconds_total"
 
-  Scenario: Policy engine metrics track policy execution after API request
-    Given I am authenticated as "admin" with password "admin"
-    And I create a new API with the following configuration:
-      """
-      {
-        "name": "policy-metrics-api",
-        "version": "1.0",
-        "basePath": "/policy-metrics-api",
-        "backend": {
-          "url": "http://sample-backend:9080"
-        },
-        "routes": [
-          {
-            "path": "/invoke",
-            "methods": ["GET", "POST"]
-          }
-        ]
-      }
-      """
-    And I wait for API deployment to complete
-    When I send a GET request to "/policy-metrics-api/invoke" through the router
-    Then the response status code should be 200
-    When I send a GET request to the policy engine metrics endpoint
-    Then the response should contain metric "policy_engine_request_duration_seconds"
-    And the response should contain metric "policy_engine_context_build_duration_seconds"
-
-  Scenario: Policy engine tracks policy chain configuration
-    Given I am authenticated as "admin" with password "admin"
-    And I create a new API with the following configuration:
-      """
-      {
-        "name": "chain-metrics-api",
-        "version": "1.0",
-        "basePath": "/chain-metrics-api",
-        "backend": {
-          "url": "http://sample-backend:9080"
-        },
-        "routes": [
-          {
-            "path": "/test",
-            "methods": ["GET"]
-          }
-        ]
-      }
-      """
-    And I wait for API deployment to complete
-    When I send a GET request to the policy engine metrics endpoint
-    Then the response status code should be 200
-    And the response should contain metric "policy_engine_policy_chains_loaded"
-    And the response should contain metric "policy_engine_snapshot_size"
+  

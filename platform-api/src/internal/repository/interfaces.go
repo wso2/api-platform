@@ -150,3 +150,40 @@ type APIPublicationRepository interface {
 	UpsertPublication(publication *model.APIPublication) error
 	GetAPIDevPortalsWithDetails(apiUUID, orgUUID string) ([]*model.APIDevPortalWithDetails, error)
 }
+
+// LLMProviderTemplateRepository defines the interface for LLM provider template persistence
+type LLMProviderTemplateRepository interface {
+	Create(t *model.LLMProviderTemplate) error
+	GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error)
+	List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error)
+	Count(orgUUID string) (int, error)
+	Update(t *model.LLMProviderTemplate) error
+	Delete(templateID, orgUUID string) error
+	Exists(templateID, orgUUID string) (bool, error)
+}
+
+// LLMProviderRepository defines the interface for LLM provider persistence
+type LLMProviderRepository interface {
+	Create(p *model.LLMProvider) error
+	GetByID(providerID, orgUUID string) (*model.LLMProvider, error)
+	List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error)
+	Count(orgUUID string) (int, error)
+	Update(p *model.LLMProvider) error
+	Delete(providerID, orgUUID string) error
+	Exists(providerID, orgUUID string) (bool, error)
+}
+
+// LLMProxyRepository defines the interface for LLM proxy persistence
+type LLMProxyRepository interface {
+	Create(p *model.LLMProxy) error
+	GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
+	List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error)
+	ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error)
+	ListByProvider(orgUUID, providerID string, limit, offset int) ([]*model.LLMProxy, error)
+	Count(orgUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	CountByProvider(orgUUID, providerID string) (int, error)
+	Update(p *model.LLMProxy) error
+	Delete(proxyID, orgUUID string) error
+	Exists(proxyID, orgUUID string) (bool, error)
+}

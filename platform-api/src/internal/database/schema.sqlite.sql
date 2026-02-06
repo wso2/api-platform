@@ -349,6 +349,74 @@ CREATE TABLE IF NOT EXISTS api_publications (
     UNIQUE (api_uuid, devportal_uuid, organization_uuid)
 );
 
+-- LLM Provider Templates table
+CREATE TABLE IF NOT EXISTS llm_provider_templates (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(255) NOT NULL,
+    name VARCHAR(253) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
+    configuration TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
+-- LLM Providers table
+CREATE TABLE IF NOT EXISTS llm_providers (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(255) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
+    version VARCHAR(30) NOT NULL,
+    context VARCHAR(200) DEFAULT '/',
+    vhost VARCHAR(253),
+    template VARCHAR(255) NOT NULL,
+    upstream_url TEXT NOT NULL,
+    upstream_auth TEXT,
+    openapi_spec TEXT,
+    model_list TEXT,
+    rate_limiting TEXT,
+    access_control TEXT,
+    policies TEXT,
+    security TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid, template) REFERENCES llm_provider_templates(organization_uuid, handle) ON UPDATE CASCADE ON DELETE RESTRICT,
+    UNIQUE(organization_uuid, handle)
+);
+
+-- LLM Proxies table
+CREATE TABLE IF NOT EXISTS llm_proxies (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(255) NOT NULL,
+    name VARCHAR(253) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
+    version VARCHAR(30) NOT NULL,
+    context VARCHAR(200) DEFAULT '/',
+    vhost VARCHAR(253),
+    provider VARCHAR(255) NOT NULL,
+    openapi_spec TEXT,
+    policies TEXT,
+    security TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid, provider) REFERENCES llm_providers(organization_uuid, handle) ON UPDATE CASCADE ON DELETE RESTRICT,
+    UNIQUE(organization_uuid, handle)
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_organizations_handle ON organizations(handle);
@@ -378,3 +446,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_devportals_default_per_org ON devportals(o
 CREATE INDEX IF NOT EXISTS idx_api_associations_api_resource_type ON api_associations(api_uuid, association_type, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_associations_resource ON api_associations(association_type, resource_uuid, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_associations_org ON api_associations(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_org ON llm_provider_templates(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_handle ON llm_provider_templates(organization_uuid, handle);
+CREATE INDEX IF NOT EXISTS idx_llm_providers_org ON llm_providers(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_llm_providers_handle ON llm_providers(organization_uuid, handle);
+CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(organization_uuid, template);
+CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(organization_uuid, project_uuid);
+CREATE INDEX IF NOT EXISTS idx_llm_proxies_handle ON llm_proxies(organization_uuid, handle);
+CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider ON llm_proxies(organization_uuid, provider);
