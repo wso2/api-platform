@@ -19,12 +19,12 @@
 package validation
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/testutils"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
@@ -41,7 +41,7 @@ func TestValidatePolicies_EmptyList(t *testing.T) {
 
 func TestValidatePolicies_DuplicatePolicy(t *testing.T) {
 	tmpDir := t.TempDir()
-	policyDir := createValidPolicyDir(t, tmpDir, "testpolicy", "v1.0.0")
+	policyDir := testutils.CreateValidPolicyDir(t, tmpDir, "testpolicy", "v1.0.0")
 
 	policies := []*types.DiscoveredPolicy{
 		{Name: "testpolicy", Version: "v1.0.0", Path: policyDir, YAMLPath: filepath.Join(policyDir, "policy.yaml"), GoModPath: filepath.Join(policyDir, "go.mod"), SourceFiles: []string{filepath.Join(policyDir, "policy.go")}, Definition: &policy.PolicyDefinition{Name: "testpolicy", Version: "v1.0.0"}},
@@ -57,7 +57,7 @@ func TestValidatePolicies_DuplicatePolicy(t *testing.T) {
 
 func TestValidatePolicies_ValidPolicy(t *testing.T) {
 	tmpDir := t.TempDir()
-	policyDir := createValidPolicyDir(t, tmpDir, "testpolicy", "v1.0.0")
+	policyDir := testutils.CreateValidPolicyDir(t, tmpDir, "testpolicy", "v1.0.0")
 
 	policies := []*types.DiscoveredPolicy{
 		{
@@ -142,7 +142,7 @@ func TestFormatValidationErrors_NoFilePath(t *testing.T) {
 
 func TestValidateDirectoryStructure_AllFilesPresent(t *testing.T) {
 	tmpDir := t.TempDir()
-	policyDir := createValidPolicyDir(t, tmpDir, "test-policy", "v1.0.0")
+	policyDir := testutils.CreateValidPolicyDir(t, tmpDir, "test-policy", "v1.0.0")
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -161,11 +161,11 @@ func TestValidateDirectoryStructure_AllFilesPresent(t *testing.T) {
 func TestValidateDirectoryStructure_MissingYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Create go.mod and source file but not policy.yaml
-	os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte("module test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "go.mod"), "module test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package test")
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -185,11 +185,11 @@ func TestValidateDirectoryStructure_MissingYAML(t *testing.T) {
 func TestValidateDirectoryStructure_MissingGoMod(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Create policy.yaml and source file but not go.mod
-	os.WriteFile(filepath.Join(policyDir, "policy.yaml"), []byte("name: test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.yaml"), "name: test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package test")
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -209,10 +209,10 @@ func TestValidateDirectoryStructure_MissingGoMod(t *testing.T) {
 func TestValidateDirectoryStructure_NoSourceFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy.yaml"), []byte("name: test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte("module test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.yaml"), "name: test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "go.mod"), "module test")
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -232,10 +232,10 @@ func TestValidateDirectoryStructure_NoSourceFiles(t *testing.T) {
 func TestValidateDirectoryStructure_MissingSourceFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy.yaml"), []byte("name: test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte("module test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.yaml"), "name: test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "go.mod"), "module test")
 	// Don't create policy.go
 
 	policy := &types.DiscoveredPolicy{
@@ -352,7 +352,7 @@ func TestIsValidVersion(t *testing.T) {
 
 func TestValidateGoInterface_ValidPolicy(t *testing.T) {
 	tmpDir := t.TempDir()
-	policyDir := createValidPolicyDir(t, tmpDir, "testpolicy", "v1.0.0")
+	policyDir := testutils.CreateValidPolicyDir(t, tmpDir, "testpolicy", "v1.0.0")
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "testpolicy",
@@ -369,10 +369,10 @@ func TestValidateGoInterface_ValidPolicy(t *testing.T) {
 func TestValidateGoInterface_InvalidGoSyntax(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Create invalid Go file
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("this is not valid go code"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "this is not valid go code")
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -390,10 +390,10 @@ func TestValidateGoInterface_InvalidGoSyntax(t *testing.T) {
 func TestValidateGoInterface_NoValidFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Create invalid Go file - all files will fail to parse
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("not valid"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "not valid")
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -417,14 +417,14 @@ func TestValidateGoInterface_NoValidFiles(t *testing.T) {
 func TestValidateGoInterface_MissingMethods(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Valid Go but missing required methods
 	goCode := `package test
 
 type TestPolicy struct{}
 `
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte(goCode), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -441,7 +441,7 @@ type TestPolicy struct{}
 func TestValidateGoInterface_MissingGetPolicy(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Has methods but no GetPolicy factory
 	goCode := `package test
@@ -452,7 +452,7 @@ func (p *TestPolicy) Mode() int { return 0 }
 func (p *TestPolicy) OnRequest() {}
 func (p *TestPolicy) OnResponse() {}
 `
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte(goCode), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
 
 	policy := &types.DiscoveredPolicy{
 		Name:        "test-policy",
@@ -520,38 +520,4 @@ func TestSanitizeForGoIdent(t *testing.T) {
 			assert.Equal(t, tc.expected, result)
 		})
 	}
-}
-
-// ==== Helper functions ====
-
-func createValidPolicyDir(t *testing.T, baseDir, name, version string) string {
-	policyDir := filepath.Join(baseDir, name)
-	err := os.MkdirAll(policyDir, 0755)
-	require.NoError(t, err)
-
-	// Create policy.yaml
-	yamlContent := `name: ` + name + `
-version: ` + version
-	err = os.WriteFile(filepath.Join(policyDir, "policy.yaml"), []byte(yamlContent), 0644)
-	require.NoError(t, err)
-
-	// Create go.mod
-	goModContent := `module github.com/test/` + name
-	err = os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
-
-	// Create valid policy.go with all required methods
-	goContent := `package ` + name + `
-
-type Policy struct{}
-
-func GetPolicy() *Policy { return &Policy{} }
-func (p *Policy) Mode() int { return 0 }
-func (p *Policy) OnRequest() {}
-func (p *Policy) OnResponse() {}
-`
-	err = os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte(goContent), 0644)
-	require.NoError(t, err)
-
-	return policyDir
 }

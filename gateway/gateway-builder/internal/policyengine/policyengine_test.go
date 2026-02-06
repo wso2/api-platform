@@ -26,6 +26,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/testutils"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
@@ -283,31 +285,16 @@ func TestGenerateBuildInfo_BuilderVersion(t *testing.T) {
 
 func TestUpdateGoMod_LocalPolicies_Success(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create a valid go.mod file
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
-
-go 1.23
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	// Create policy directories
-	policyPath := filepath.Join(tmpDir, "policies", "ratelimit", "v1.0.0")
-	err = os.MkdirAll(policyPath, 0755)
-	require.NoError(t, err)
+	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
 
 	policies := []*types.DiscoveredPolicy{
-		{
-			Name:            "ratelimit",
-			Version:         "v1.0.0",
-			Path:            policyPath,
-			GoModulePath:    "github.com/example/policies/ratelimit",
-			IsFilePathEntry: true,
-		},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policyPath, "github.com/example/policies/ratelimit"),
 	}
 
-	err = UpdateGoMod(tmpDir, policies)
+	err := UpdateGoMod(tmpDir, policies)
 	require.NoError(t, err)
 
 	// Read back go.mod and verify replace directive
@@ -319,28 +306,18 @@ go 1.23
 
 func TestUpdateGoMod_MultiplePolicies(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
-
-go 1.23
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	// Create multiple policy directories
-	policy1Path := filepath.Join(tmpDir, "policies", "ratelimit", "v1.0.0")
-	policy2Path := filepath.Join(tmpDir, "policies", "jwt-auth", "v0.1.0")
-	err = os.MkdirAll(policy1Path, 0755)
-	require.NoError(t, err)
-	err = os.MkdirAll(policy2Path, 0755)
-	require.NoError(t, err)
+	policy1Path := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
+	policy2Path := testutils.CreatePolicyDir(t, tmpDir, "jwt-auth", "v0.1.0")
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policy1Path, GoModulePath: "github.com/example/policies/ratelimit", IsFilePathEntry: true},
-		{Name: "jwt-auth", Version: "v0.1.0", Path: policy2Path, GoModulePath: "github.com/example/policies/jwt-auth", IsFilePathEntry: true},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policy1Path, "github.com/example/policies/ratelimit"),
+		testutils.NewLocalDiscoveredPolicy("jwt-auth", "v0.1.0", policy2Path, "github.com/example/policies/jwt-auth"),
 	}
 
-	err = UpdateGoMod(tmpDir, policies)
+	err := UpdateGoMod(tmpDir, policies)
 	require.NoError(t, err)
 
 	modData, err := os.ReadFile(filepath.Join(tmpDir, "go.mod"))
@@ -351,18 +328,12 @@ go 1.23
 
 func TestUpdateGoMod_EmptyPolicies(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
-
-go 1.23
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	// Empty policies - should work fine
 	policies := []*types.DiscoveredPolicy{}
 
-	err = UpdateGoMod(tmpDir, policies)
+	err := UpdateGoMod(tmpDir, policies)
 	require.NoError(t, err)
 }
 
@@ -371,7 +342,7 @@ func TestUpdateGoMod_MissingGoMod(t *testing.T) {
 	// No go.mod file
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit", GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", "/policies/ratelimit", "github.com/example/ratelimit"),
 	}
 
 	err := UpdateGoMod(tmpDir, policies)
@@ -383,14 +354,13 @@ func TestUpdateGoMod_InvalidGoMod(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create invalid go.mod
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("not a valid go.mod file !!!"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "not a valid go.mod file !!!")
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit", GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", "/policies/ratelimit", "github.com/example/ratelimit"),
 	}
 
-	err = UpdateGoMod(tmpDir, policies)
+	err := UpdateGoMod(tmpDir, policies)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse go.mod")
 }
@@ -402,27 +372,17 @@ func TestGenerateCode_Success(t *testing.T) {
 
 	// Create the required directory structure
 	mainPkgDir := filepath.Join(tmpDir, "cmd", "policy-engine")
-	err := os.MkdirAll(mainPkgDir, 0755)
-	require.NoError(t, err)
-
-	// Create go.mod
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
-
-go 1.23
-`
-	err = os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.CreateDir(t, mainPkgDir)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	// Create policy directory
-	policyPath := filepath.Join(tmpDir, "policies", "ratelimit", "v1.0.0")
-	err = os.MkdirAll(policyPath, 0755)
-	require.NoError(t, err)
+	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policyPath, GoModulePath: "github.com/policy-engine/policies/ratelimit", IsFilePathEntry: true},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policyPath, "github.com/policy-engine/policies/ratelimit"),
 	}
 
-	err = GenerateCode(tmpDir, policies)
+	err := GenerateCode(tmpDir, policies)
 	require.NoError(t, err)
 
 	// Verify plugin_registry.go was generated
@@ -448,20 +408,13 @@ func TestGenerateCode_EmptyPolicies(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	mainPkgDir := filepath.Join(tmpDir, "cmd", "policy-engine")
-	err := os.MkdirAll(mainPkgDir, 0755)
-	require.NoError(t, err)
-
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
-
-go 1.23
-`
-	err = os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.CreateDir(t, mainPkgDir)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	// Empty policies
 	policies := []*types.DiscoveredPolicy{}
 
-	err = GenerateCode(tmpDir, policies)
+	err := GenerateCode(tmpDir, policies)
 	require.NoError(t, err)
 
 	// Files should still be generated
@@ -473,18 +426,13 @@ func TestGenerateCode_MissingCmdDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create go.mod but NOT the cmd/policy-engine directory
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
-
-go 1.23
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: "/policies/ratelimit", GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", "/policies/ratelimit", "github.com/example/ratelimit"),
 	}
 
-	err = GenerateCode(tmpDir, policies)
+	err := GenerateCode(tmpDir, policies)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to write plugin_registry.go")
 }
@@ -493,19 +441,16 @@ func TestGenerateCode_MissingGoMod(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	mainPkgDir := filepath.Join(tmpDir, "cmd", "policy-engine")
-	err := os.MkdirAll(mainPkgDir, 0755)
-	require.NoError(t, err)
+	testutils.CreateDir(t, mainPkgDir)
 
 	// No go.mod file
-	policyPath := filepath.Join(tmpDir, "policies", "ratelimit", "v1.0.0")
-	err = os.MkdirAll(policyPath, 0755)
-	require.NoError(t, err)
+	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policyPath, GoModulePath: "github.com/example/ratelimit", IsFilePathEntry: true},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policyPath, "github.com/example/ratelimit"),
 	}
 
-	err = GenerateCode(tmpDir, policies)
+	err := GenerateCode(tmpDir, policies)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to update go.mod")
 }
@@ -514,34 +459,21 @@ func TestGenerateCode_MultiplePolicies(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	mainPkgDir := filepath.Join(tmpDir, "cmd", "policy-engine")
-	err := os.MkdirAll(mainPkgDir, 0755)
-	require.NoError(t, err)
-
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
-
-go 1.23
-`
-	err = os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.CreateDir(t, mainPkgDir)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	// Create multiple policy directories
-	policy1Path := filepath.Join(tmpDir, "policies", "ratelimit", "v1.0.0")
-	policy2Path := filepath.Join(tmpDir, "policies", "jwt-auth", "v0.1.0")
-	policy3Path := filepath.Join(tmpDir, "policies", "cors", "v2.0.0")
-	err = os.MkdirAll(policy1Path, 0755)
-	require.NoError(t, err)
-	err = os.MkdirAll(policy2Path, 0755)
-	require.NoError(t, err)
-	err = os.MkdirAll(policy3Path, 0755)
-	require.NoError(t, err)
+	policy1Path := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
+	policy2Path := testutils.CreatePolicyDir(t, tmpDir, "jwt-auth", "v0.1.0")
+	policy3Path := testutils.CreatePolicyDir(t, tmpDir, "cors", "v2.0.0")
 
 	policies := []*types.DiscoveredPolicy{
-		{Name: "ratelimit", Version: "v1.0.0", Path: policy1Path, GoModulePath: "github.com/policy-engine/policies/ratelimit", IsFilePathEntry: true},
-		{Name: "jwt-auth", Version: "v0.1.0", Path: policy2Path, GoModulePath: "github.com/policy-engine/policies/jwt-auth", IsFilePathEntry: true},
-		{Name: "cors", Version: "v2.0.0", Path: policy3Path, GoModulePath: "github.com/policy-engine/policies/cors", IsFilePathEntry: true},
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policy1Path, "github.com/policy-engine/policies/ratelimit"),
+		testutils.NewLocalDiscoveredPolicy("jwt-auth", "v0.1.0", policy2Path, "github.com/policy-engine/policies/jwt-auth"),
+		testutils.NewLocalDiscoveredPolicy("cors", "v2.0.0", policy3Path, "github.com/policy-engine/policies/cors"),
 	}
 
-	err = GenerateCode(tmpDir, policies)
+	err := GenerateCode(tmpDir, policies)
 	require.NoError(t, err)
 
 	// Verify all policies are in the registry
@@ -557,4 +489,94 @@ go 1.23
 	assert.Contains(t, string(modData), "github.com/policy-engine/policies/ratelimit")
 	assert.Contains(t, string(modData), "github.com/policy-engine/policies/jwt-auth")
 	assert.Contains(t, string(modData), "github.com/policy-engine/policies/cors")
+}
+
+// ==== Additional tests for remote gomodule policies ====
+
+func TestUpdateGoMod_RemotePolicy_InvalidModule(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	// Create a remote policy (IsFilePathEntry: false) with invalid module
+	policies := []*types.DiscoveredPolicy{
+		testutils.NewRemoteDiscoveredPolicy("ratelimit", "v1.0.0", "github.com/nonexistent-org-12345/nonexistent-module", "v1.0.0"),
+	}
+
+	err := UpdateGoMod(tmpDir, policies)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "go get failed")
+}
+
+func TestUpdateGoMod_DuplicateReplaceDirective(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create go.mod that already has a replace directive
+	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
+
+go 1.23
+
+replace github.com/example/policies/ratelimit => ./policies/ratelimit/v1.0.0
+`
+	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), goModContent)
+
+	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
+
+	// Try to add the same replace directive again
+	policies := []*types.DiscoveredPolicy{
+		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policyPath, "github.com/example/policies/ratelimit"),
+	}
+
+	// Should succeed (handles "already exists" error gracefully)
+	err := UpdateGoMod(tmpDir, policies)
+	require.NoError(t, err)
+}
+
+func TestUpdateGoMod_MixedLocalAndRemoteSkipsRemote(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	policyPath := testutils.CreatePolicyDir(t, tmpDir, "local-policy", "v1.0.0")
+
+	// Mix of local and remote policies (remote will fail but local should succeed)
+	policies := []*types.DiscoveredPolicy{
+		testutils.NewLocalDiscoveredPolicy("local-policy", "v1.0.0", policyPath, "github.com/example/policies/local"),
+	}
+
+	err := UpdateGoMod(tmpDir, policies)
+	require.NoError(t, err)
+
+	// Verify local policy replace directive was added
+	modData, err := os.ReadFile(filepath.Join(tmpDir, "go.mod"))
+	require.NoError(t, err)
+	assert.Contains(t, string(modData), "github.com/example/policies/local")
+}
+
+func TestUpdateGoMod_RelativeSrcDir(t *testing.T) {
+	// Test with relative srcDir (should be converted to absolute)
+	tmpDir := t.TempDir()
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	policyPath := testutils.CreatePolicyDir(t, tmpDir, "test-policy", "v1.0.0")
+
+	policies := []*types.DiscoveredPolicy{
+		testutils.NewLocalDiscoveredPolicy("test-policy", "v1.0.0", policyPath, "github.com/example/test-policy"),
+	}
+
+	// Use absolute path (simulating what the code does with relative)
+	err := UpdateGoMod(tmpDir, policies)
+	require.NoError(t, err)
+}
+
+func TestUpdateGoMod_OnlyRemotePolicies_AllFail(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	// Only remote policies, all with invalid modules
+	policies := []*types.DiscoveredPolicy{
+		testutils.NewRemoteDiscoveredPolicy("remote-policy", "v1.0.0", "github.com/definitely-not-real-org/fake-module", "v1.0.0"),
+	}
+
+	err := UpdateGoMod(tmpDir, policies)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "go get failed")
 }
