@@ -42,7 +42,6 @@ func RegisterPolicyEngineSteps(ctx *godog.ScenarioContext, state *TestState, htt
 	ctx.Step(`^I send a POST request to the policy-engine config dump endpoint$`, p.iSendPOSTRequestToConfigDumpEndpoint)
 
 	// JSON structure validation steps
-	ctx.Step(`^the response should be valid JSON$`, p.theResponseShouldBeValidJSON)
 	ctx.Step(`^the response JSON should have key "([^"]*)"$`, p.theResponseJSONShouldHaveKey)
 	ctx.Step(`^the response JSON at "([^"]*)" should have key "([^"]*)"$`, p.theResponseJSONAtPathShouldHaveKey)
 	ctx.Step(`^the response JSON at "([^"]*)" should be greater than (\d+)$`, p.theResponseJSONAtPathShouldBeGreaterThan)
@@ -63,20 +62,6 @@ func (p *PolicyEngineSteps) iSendGETRequestToConfigDumpEndpoint() error {
 func (p *PolicyEngineSteps) iSendPOSTRequestToConfigDumpEndpoint() error {
 	url := fmt.Sprintf("%s/config_dump", p.state.Config.PolicyEngineURL)
 	return p.httpSteps.ISendPOSTRequest(url)
-}
-
-// theResponseShouldBeValidJSON validates that the response body is valid JSON
-func (p *PolicyEngineSteps) theResponseShouldBeValidJSON() error {
-	body := p.httpSteps.LastBody()
-	if len(body) == 0 {
-		return fmt.Errorf("response body is empty")
-	}
-
-	var js interface{}
-	if err := json.Unmarshal(body, &js); err != nil {
-		return fmt.Errorf("response is not valid JSON: %w", err)
-	}
-	return nil
 }
 
 // theResponseJSONShouldHaveKey validates that the response JSON has a specific top-level key

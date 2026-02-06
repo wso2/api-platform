@@ -137,22 +137,8 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	// ========================================
 	// LLM Provider Steps
 	// ========================================
-	ctx.Step(`^I create this LLM provider:$`, func(body *godog.DocString) error {
-		httpSteps.SetHeader("Content-Type", "application/yaml")
-		return httpSteps.SendPOSTToService("gateway-controller", "/llm-providers", body)
-	})
-
 	ctx.Step(`^I retrieve the LLM provider "([^"]*)"$`, func(providerID string) error {
 		return httpSteps.SendGETToService("gateway-controller", "/llm-providers/"+providerID)
-	})
-
-	ctx.Step(`^I update the LLM provider "([^"]*)" with:$`, func(providerID string, body *godog.DocString) error {
-		httpSteps.SetHeader("Content-Type", "application/yaml")
-		return httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+providerID, body)
-	})
-
-	ctx.Step(`^I delete the LLM provider "([^"]*)"$`, func(providerID string) error {
-		return httpSteps.SendDELETEToService("gateway-controller", "/llm-providers/"+providerID)
 	})
 
 	ctx.Step(`^I list all LLM providers$`, func() error {
