@@ -883,8 +883,6 @@ type LLMProviderUpdateResponse struct {
 
 // LLMProxyConfigData defines model for LLMProxyConfigData.
 type LLMProxyConfigData struct {
-	AccessControl *LLMAccessControl `json:"accessControl,omitempty" yaml:"accessControl,omitempty"`
-
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 

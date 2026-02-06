@@ -4984,8 +4984,6 @@ components:
               title: Proxy API
               version: v1.0
             paths: {}
-        accessControl:
-          $ref: '#/components/schemas/LLMAccessControl'
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)

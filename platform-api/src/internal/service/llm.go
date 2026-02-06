@@ -469,7 +469,6 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *dto.LLMProxy) (
 		VHost:            req.VHost,
 		Provider:         req.Provider,
 		OpenAPISpec:      req.OpenAPI,
-		AccessControl:    mapAccessControl(req.AccessControl),
 		Policies:         mapPolicies(req.Policies),
 		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
@@ -640,7 +639,6 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *dto.LLMProxy) (*dt
 		VHost:            req.VHost,
 		Provider:         req.Provider,
 		OpenAPISpec:      req.OpenAPI,
-		AccessControl:    mapAccessControl(req.AccessControl),
 		Policies:         mapPolicies(req.Policies),
 		Security:         mapSecurityConfig(req.Security),
 		Status:           llmStatusPending,
@@ -958,17 +956,17 @@ func mapProviderModelToDTO(m *model.LLMProvider) *dto.LLMProvider {
 		return nil
 	}
 	out := &dto.LLMProvider{
-		ID:           m.ID,
-		Name:         m.Name,
-		Description:  m.Description,
-		CreatedBy:    m.CreatedBy,
-		Version:      m.Version,
-		Context:      m.Context,
-		VHost:        m.VHost,
-		Template:     m.Template,
-		OpenAPI:      m.OpenAPISpec,
+		ID:             m.ID,
+		Name:           m.Name,
+		Description:    m.Description,
+		CreatedBy:      m.CreatedBy,
+		Version:        m.Version,
+		Context:        m.Context,
+		VHost:          m.VHost,
+		Template:       m.Template,
+		OpenAPI:        m.OpenAPISpec,
 		ModelProviders: mapModelProvidersDTO(m.ModelProviders),
-		RateLimiting: mapRateLimitingDTO(m.RateLimiting),
+		RateLimiting:   mapRateLimitingDTO(m.RateLimiting),
 		Upstream: dto.LLMUpstream{
 			URL: m.UpstreamURL,
 		},
@@ -1010,8 +1008,8 @@ func validateModelProviders(template string, providers []dto.LLMModelProvider) e
 	}
 
 	aggregatorTemplates := map[string]bool{
-		"awsbedrock":      true,
-		"azureaifoundry":  true,
+		"awsbedrock":     true,
+		"azureaifoundry": true,
 	}
 	if !aggregatorTemplates[template] && len(providers) > 1 {
 		return constants.ErrInvalidInput
@@ -1270,16 +1268,6 @@ func mapProxyModelToDTO(m *model.LLMProxy) *dto.LLMProxy {
 		Security:    mapSecurityConfigDTO(m.Security),
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
-	}
-	if m.AccessControl != nil {
-		ac := &dto.LLMAccessControl{Mode: m.AccessControl.Mode}
-		if len(m.AccessControl.Exceptions) > 0 {
-			ac.Exceptions = make([]dto.RouteException, 0, len(m.AccessControl.Exceptions))
-			for _, e := range m.AccessControl.Exceptions {
-				ac.Exceptions = append(ac.Exceptions, dto.RouteException{Path: e.Path, Methods: e.Methods})
-			}
-		}
-		out.AccessControl = ac
 	}
 	if len(m.Policies) > 0 {
 		out.Policies = make([]dto.LLMPolicy, 0, len(m.Policies))

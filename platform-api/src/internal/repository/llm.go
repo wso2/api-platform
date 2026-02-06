@@ -256,10 +256,6 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	p.CreatedAt = time.Now()
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, err := json.Marshal(p.AccessControl)
-	if err != nil {
-		return err
-	}
 	policiesColumn, err := marshalPolicies(p.Policies)
 	if err != nil {
 		return err
@@ -269,6 +265,10 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		return err
 	}
 	rateLimitingJSON, err := json.Marshal(p.RateLimiting)
+	if err != nil {
+		return err
+	}
+	accessControlJSON, err := json.Marshal(p.AccessControl)
 	if err != nil {
 		return err
 	}
@@ -441,10 +441,6 @@ func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
 func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, err := json.Marshal(p.AccessControl)
-	if err != nil {
-		return err
-	}
 	policiesColumn, err := marshalPolicies(p.Policies)
 	if err != nil {
 		return err
@@ -454,6 +450,10 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 		return err
 	}
 	rateLimitingJSON, err := json.Marshal(p.RateLimiting)
+	if err != nil {
+		return err
+	}
+	accessControlJSON, err := json.Marshal(p.AccessControl)
 	if err != nil {
 		return err
 	}
@@ -556,10 +556,6 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	p.CreatedAt = time.Now()
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, err := json.Marshal(p.AccessControl)
-	if err != nil {
-		return err
-	}
 	policiesColumn, err := marshalPolicies(p.Policies)
 	if err != nil {
 		return err
@@ -572,9 +568,9 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	query := `
 		INSERT INTO llm_proxies (
 			uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
-			openapi_spec, access_control, policies, security, status, created_at, updated_at
+			openapi_spec, policies, security, status, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -584,7 +580,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 
 	_, err = tx.Exec(query,
 		p.UUID, p.OrganizationUUID, p.ProjectUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Provider,
-		p.OpenAPISpec, string(accessControlJSON), policiesColumn, string(securityJSON), p.Status,
+		p.OpenAPISpec, policiesColumn, string(securityJSON), p.Status,
 		p.CreatedAt, p.UpdatedAt,
 	)
 	if err != nil {
@@ -600,16 +596,16 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error) {
 	row := r.db.QueryRow(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
-			openapi_spec, access_control, policies, security, status, created_at, updated_at
+				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?
 	`, proxyID, orgUUID)
 
 	var p model.LLMProxy
-	var accessControlJSON, openAPISpec, policiesJSON, securityJSON sql.NullString
+	var openAPISpec, policiesJSON, securityJSON sql.NullString
 	if err := row.Scan(
 		&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
-		&openAPISpec, &accessControlJSON, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+		&openAPISpec, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -617,11 +613,6 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 		return nil, err
 	}
 
-	if accessControlJSON.Valid && accessControlJSON.String != "" {
-		if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
-			return nil, fmt.Errorf("unmarshal accessControl for proxy %s: %w", p.ID, err)
-		}
-	}
 	if openAPISpec.Valid {
 		p.OpenAPISpec = openAPISpec.String
 	}
@@ -642,7 +633,7 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	rows, err := r.db.Query(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
-			openapi_spec, access_control, policies, security, status, created_at, updated_at
+				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -656,18 +647,13 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var accessControlJSON, openAPISpec, policiesJSON, securityJSON sql.NullString
+		var openAPISpec, policiesJSON, securityJSON sql.NullString
 		err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
-			&openAPISpec, &accessControlJSON, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+			&openAPISpec, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
-		}
-		if accessControlJSON.Valid && accessControlJSON.String != "" {
-			if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
-				return nil, fmt.Errorf("unmarshal accessControl for proxy %s: %w", p.ID, err)
-			}
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
@@ -690,7 +676,7 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	rows, err := r.db.Query(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
-			openapi_spec, access_control, policies, security, status, created_at, updated_at
+				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
 		ORDER BY created_at DESC
@@ -704,18 +690,13 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var accessControlJSON, openAPISpec, policiesJSON, securityJSON sql.NullString
+		var openAPISpec, policiesJSON, securityJSON sql.NullString
 		err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
-			&openAPISpec, &accessControlJSON, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+			&openAPISpec, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
-		}
-		if accessControlJSON.Valid && accessControlJSON.String != "" {
-			if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
-				return nil, fmt.Errorf("unmarshal accessControl for proxy %s (project %s): %w", p.ID, projectUUID, err)
-			}
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
@@ -738,7 +719,7 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 func (r *LLMProxyRepo) ListByProvider(orgUUID, providerID string, limit, offset int) ([]*model.LLMProxy, error) {
 	rows, err := r.db.Query(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
-			openapi_spec, access_control, policies, security, status, created_at, updated_at
+				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND provider = ?
 		ORDER BY created_at DESC
@@ -752,18 +733,13 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerID string, limit, offset 
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var accessControlJSON, openAPISpec, policiesJSON, securityJSON sql.NullString
+		var openAPISpec, policiesJSON, securityJSON sql.NullString
 		err := rows.Scan(
 			&p.UUID, &p.OrganizationUUID, &p.ProjectUUID, &p.ID, &p.Name, &p.Description, &p.CreatedBy, &p.Version, &p.Context, &p.VHost, &p.Provider,
-			&openAPISpec, &accessControlJSON, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+			&openAPISpec, &policiesJSON, &securityJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
-		}
-		if accessControlJSON.Valid && accessControlJSON.String != "" {
-			if err := json.Unmarshal([]byte(accessControlJSON.String), &p.AccessControl); err != nil {
-				return nil, fmt.Errorf("unmarshal accessControl for proxy %s (provider %s): %w", p.ID, providerID, err)
-			}
 		}
 		if openAPISpec.Valid {
 			p.OpenAPISpec = openAPISpec.String
@@ -810,10 +786,6 @@ func (r *LLMProxyRepo) CountByProvider(orgUUID, providerID string) (int, error) 
 func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	p.UpdatedAt = time.Now()
 
-	accessControlJSON, err := json.Marshal(p.AccessControl)
-	if err != nil {
-		return err
-	}
 	policiesColumn, err := marshalPolicies(p.Policies)
 	if err != nil {
 		return err
@@ -826,7 +798,7 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	query := `
 		UPDATE llm_proxies
 		SET name = ?, description = ?, version = ?, context = ?, vhost = ?, provider = ?,
-			openapi_spec = ?, access_control = ?, policies = ?, security = ?, status = ?, updated_at = ?
+			openapi_spec = ?, policies = ?, security = ?, status = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
 	tx, err := r.db.Begin()
@@ -837,7 +809,7 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 
 	result, err := tx.Exec(query,
 		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Provider,
-		p.OpenAPISpec, string(accessControlJSON), policiesColumn, string(securityJSON), p.Status, p.UpdatedAt,
+		p.OpenAPISpec, policiesColumn, string(securityJSON), p.Status, p.UpdatedAt,
 		p.ID, p.OrganizationUUID,
 	)
 	if err != nil {

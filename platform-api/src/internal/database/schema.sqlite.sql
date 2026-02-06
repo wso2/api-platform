@@ -406,7 +406,6 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     vhost VARCHAR(253),
     provider VARCHAR(255) NOT NULL,
     openapi_spec TEXT,
-    access_control TEXT,
     policies TEXT,
     security TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
