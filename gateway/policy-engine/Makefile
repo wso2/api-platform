@@ -121,7 +121,7 @@ build-local:
 	@echo "Image built successfully: $(RUNTIME_TAG)"
 
 ## build-coverage-image: Build the Policy Engine Docker image with coverage instrumentation
-build-coverage-image:
+build-coverage-image: test
 	@echo "Building Policy Engine coverage image: $(RUNTIME_IMAGE)-coverage:$(RUNTIME_VERSION)"
 	@mkdir -p target && cp ../build.yaml target/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
