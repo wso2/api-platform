@@ -112,7 +112,7 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 	err := store.AddTemplate(openAITemplate)
 	require.NoError(t, err, "Failed to add test template")
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, &cfg)
+	transformer := NewLLMProviderTransformer(store, &cfg, newTestPolicyVersionResolver())
 	return transformer, store
 }
 
@@ -123,7 +123,7 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 func TestNewLLMProviderTransformer(t *testing.T) {
 	store := storage.NewConfigStore()
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, &cfg)
+	transformer := NewLLMProviderTransformer(store, &cfg, newTestPolicyVersionResolver())
 
 	assert.NotNil(t, transformer, "Transformer should not be nil")
 	assert.NotNil(t, transformer.store, "Store should not be nil")
@@ -231,7 +231,7 @@ func TestTransform_FullProvider(t *testing.T) {
 	assert.Len(t, *spec.Policies, 1)
 	authPolicy := (*spec.Policies)[0]
 	assert.Equal(t, "modify-headers", authPolicy.Name)
-	assert.Equal(t, "v0.1.0", authPolicy.Version)
+	assert.Equal(t, testModifyHeadersVersion, authPolicy.Version)
 	assert.NotNil(t, authPolicy.Params)
 }
 
@@ -501,7 +501,7 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 
 	policy := (*spec.Policies)[0]
 	assert.Equal(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, policy.Name)
-	assert.Equal(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_VERSION, policy.Version)
+	assert.Equal(t, testModifyHeadersVersion, policy.Version)
 	require.NotNil(t, policy.Params)
 
 	// Verify policy params contain header and value
@@ -639,7 +639,7 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 			assert.Len(t, *op.Policies, 1)
 			policy := (*op.Policies)[0]
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
-			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_VERSION, policy.Version)
+			assert.Equal(t, testRespondVersion, policy.Version)
 		}
 		if op.Path == "/admin" && op.Method == api.OperationMethod("POST") {
 			foundPOST = true
@@ -647,7 +647,7 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 			assert.Len(t, *op.Policies, 1)
 			policy := (*op.Policies)[0]
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
-			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_VERSION, policy.Version)
+			assert.Equal(t, testRespondVersion, policy.Version)
 		}
 		if op.Path == "/*" {
 			assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
@@ -719,7 +719,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardMethod(t *testing.T) 
 			assert.Len(t, *op.Policies, 1)
 			policy := (*op.Policies)[0]
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
-			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_VERSION, policy.Version)
+			assert.Equal(t, testRespondVersion, policy.Version)
 		}
 		if op.Path == "/*" {
 			foundCatchCount++
@@ -784,7 +784,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardResource(t *testing.T
 			assert.Len(t, *op.Policies, 1)
 			policy := (*op.Policies)[0]
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
-			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_VERSION, policy.Version)
+			assert.Equal(t, testRespondVersion, policy.Version)
 		}
 		if op.Path == "/*" {
 			foundCatchCount++

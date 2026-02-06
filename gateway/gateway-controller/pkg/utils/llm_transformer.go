@@ -13,8 +13,9 @@ import (
 )
 
 type LLMProviderTransformer struct {
-	store        *storage.ConfigStore
-	routerConfig *config.RouterConfig
+	store                 *storage.ConfigStore
+	routerConfig          *config.RouterConfig
+	policyVersionResolver PolicyVersionResolver
 }
 
 // pathMethodKey represents a unique path+method combination
@@ -23,8 +24,12 @@ type pathMethodKey struct {
 	method string
 }
 
-func NewLLMProviderTransformer(store *storage.ConfigStore, routerConfig *config.RouterConfig) *LLMProviderTransformer {
-	return &LLMProviderTransformer{store: store, routerConfig: routerConfig}
+func NewLLMProviderTransformer(store *storage.ConfigStore, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
+	return &LLMProviderTransformer{
+		store:                 store,
+		routerConfig:          routerConfig,
+		policyVersionResolver: policyVersionResolver,
+	}
 }
 
 func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error) {
@@ -36,6 +41,13 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 	default:
 		return nil, fmt.Errorf("invalid input type: expected *api.LLMProviderConfiguration or *api.LLMProxyConfiguration")
 	}
+}
+
+func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, error) {
+	if t.policyVersionResolver == nil {
+		return "", &PolicyDefinitionMissingError{PolicyName: name}
+	}
+	return t.policyVersionResolver.Resolve(name)
 }
 
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
@@ -98,10 +110,14 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		if err != nil {
 			return nil, fmt.Errorf("failed to build host addition policy params: %w", err)
 		}
+		policyVersion, err := t.resolvePolicyVersion(constants.PROXY_HOST__HEADER_POLICY_NAME)
+		if err != nil {
+			return nil, err
+		}
 
 		hh := api.Policy{
 			Name:    constants.PROXY_HOST__HEADER_POLICY_NAME,
-			Version: constants.PROXY_HOST__HEADER_POLICY_VERSION, Params: &hParams}
+			Version: policyVersion, Params: &hParams}
 		spec.Policies = &[]api.Policy{hh}
 
 		// Update spec upstream hostRewrite to Manual
@@ -256,9 +272,13 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			if err != nil {
 				return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 			}
+			policyVersion, err := t.resolvePolicyVersion(constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME)
+			if err != nil {
+				return nil, err
+			}
 			mh := api.Policy{
 				Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
-				Version: constants.UPSTREAM_AUTH_APIKEY_POLICY_VERSION, Params: &params}
+				Version: policyVersion, Params: &params}
 			spec.Policies = &[]api.Policy{mh}
 		default:
 			return nil, fmt.Errorf("unsupported upstream auth type: %s", upstream.Auth.Type)
@@ -276,6 +296,15 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 	switch mode {
 	case api.AllowAll:
+		var denyPolicyVersion string
+		if len(exceptions) > 0 {
+			var err error
+			denyPolicyVersion, err = t.resolvePolicyVersion(constants.ACCESS_CONTROL_DENY_POLICY_NAME)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		// Phase 1: Create Catch-All Base Operations
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
 		for _, method := range constants.WILDCARD_HTTP_METHODS {
@@ -322,7 +351,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 				}
 				denyPolicy := api.Policy{
 					Name:    constants.ACCESS_CONTROL_DENY_POLICY_NAME,
-					Version: constants.ACCESS_CONTROL_DENY_POLICY_VERSION,
+					Version: denyPolicyVersion,
 					Params:  &policyParams,
 				}
 				op := operationRegistry[key]
@@ -381,7 +410,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							}
 
 							// Skip if this operation has deny policy (from exceptions)
-							if hasDenyPolicy(op) {
+							if denyPolicyVersion != "" && hasDenyPolicy(op, denyPolicyVersion) {
 								continue
 							}
 
@@ -635,13 +664,16 @@ func isDeniedByException(policyPath, policyMethod string, deniedPathMethods map[
 }
 
 // hasDenyPolicy checks if an operation has a deny policy attached (from access control exceptions)
-func hasDenyPolicy(op *api.Operation) bool {
+func hasDenyPolicy(op *api.Operation, denyPolicyVersion string) bool {
 	if op.Policies == nil {
+		return false
+	}
+	if denyPolicyVersion == "" {
 		return false
 	}
 	for _, pol := range *op.Policies {
 		if pol.Name == constants.ACCESS_CONTROL_DENY_POLICY_NAME &&
-			pol.Version == constants.ACCESS_CONTROL_DENY_POLICY_VERSION {
+			pol.Version == denyPolicyVersion {
 			return true
 		}
 	}

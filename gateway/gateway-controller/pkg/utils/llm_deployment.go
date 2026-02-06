@@ -65,7 +65,10 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
-	deploymentService *APIDeploymentService, routerConfig *config.RouterConfig) *LLMDeploymentService {
+	deploymentService *APIDeploymentService,
+	routerConfig *config.RouterConfig,
+	policyVersionResolver PolicyVersionResolver,
+) *LLMDeploymentService {
 	service := &LLMDeploymentService{
 		store:               store,
 		db:                  db,
@@ -75,7 +78,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 		deploymentService:   deploymentService,
 		parser:              config.NewParser(),
 		validator:           config.NewLLMValidator(),
-		transformer:         NewLLMProviderTransformer(store, routerConfig),
+		transformer:         NewLLMProviderTransformer(store, routerConfig, policyVersionResolver),
 	}
 
 	// Initialize OOB templates

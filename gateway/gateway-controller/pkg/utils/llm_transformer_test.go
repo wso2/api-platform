@@ -37,7 +37,7 @@ func TestNewLLMProviderTransformer_Basic(t *testing.T) {
 		HTTPSEnabled: false,
 	}
 
-	transformer := NewLLMProviderTransformer(store, routerConfig)
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 	assert.NotNil(t, transformer)
 	assert.Equal(t, store, transformer.store)
 	assert.Equal(t, routerConfig, transformer.routerConfig)
@@ -48,7 +48,7 @@ func TestLLMProviderTransformer_Transform_InvalidInput(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig)
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	t.Run("Invalid input type returns error", func(t *testing.T) {
 		output := &api.APIConfiguration{}
@@ -308,23 +308,23 @@ func TestIsDeniedByException(t *testing.T) {
 func TestHasDenyPolicy(t *testing.T) {
 	t.Run("Nil policies returns false", func(t *testing.T) {
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: nil}
-		result := hasDenyPolicy(op)
+		result := hasDenyPolicy(op, testRespondVersion)
 		assert.False(t, result)
 	})
 
 	t.Run("Empty policies returns false", func(t *testing.T) {
 		policies := []api.Policy{}
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
-		result := hasDenyPolicy(op)
+		result := hasDenyPolicy(op, testRespondVersion)
 		assert.False(t, result)
 	})
 
 	t.Run("Has deny policy returns true", func(t *testing.T) {
 		policies := []api.Policy{
-			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: constants.ACCESS_CONTROL_DENY_POLICY_VERSION},
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
 		}
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
-		result := hasDenyPolicy(op)
+		result := hasDenyPolicy(op, testRespondVersion)
 		assert.True(t, result)
 	})
 
@@ -333,17 +333,17 @@ func TestHasDenyPolicy(t *testing.T) {
 			{Name: "other-policy", Version: "v1.0.0"},
 		}
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
-		result := hasDenyPolicy(op)
+		result := hasDenyPolicy(op, testRespondVersion)
 		assert.False(t, result)
 	})
 
 	t.Run("Mixed policies with deny returns true", func(t *testing.T) {
 		policies := []api.Policy{
 			{Name: "other-policy", Version: "v1.0.0"},
-			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: constants.ACCESS_CONTROL_DENY_POLICY_VERSION},
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
 		}
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
-		result := hasDenyPolicy(op)
+		result := hasDenyPolicy(op, testRespondVersion)
 		assert.True(t, result)
 	})
 }
@@ -543,7 +543,7 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig)
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	provider := &api.LLMProviderConfiguration{
 		Metadata: api.Metadata{Name: "test-provider"},
@@ -568,7 +568,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig)
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -609,7 +609,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig)
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -653,7 +653,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig)
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -709,7 +709,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig)
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
