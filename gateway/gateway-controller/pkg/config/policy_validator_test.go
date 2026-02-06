@@ -19,6 +19,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -63,7 +64,7 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 		Policies: &[]api.Policy{
 			{
 				Name:    "APIKeyValidation",
-				Version: "v1.0.0",
+				Version: "v1",
 				Params: &map[string]interface{}{
 					"header":    "X-API-Key",
 					"mandatory": true,
@@ -113,7 +114,7 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 		Policies: &[]api.Policy{
 			{
 				Name:    "NonExistentPolicy",
-				Version: "v1.0.0",
+				Version: "v1",
 			},
 		},
 		Operations: []api.Operation{
@@ -180,7 +181,7 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		Policies: &[]api.Policy{
 			{
 				Name:    "APIKeyValidation",
-				Version: "v1.0.0",
+				Version: "v1",
 				Params: &map[string]interface{}{
 					"mandatory": true,
 					// Missing required "header" field
@@ -247,7 +248,7 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 				Policies: &[]api.Policy{
 					{
 						Name:    "RateLimiting",
-						Version: "v1.0.0",
+						Version: "v1",
 						Params: &map[string]interface{}{
 							"rate": 100,
 						},
@@ -296,11 +297,11 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 		Policies: &[]api.Policy{
 			{
 				Name:    "NonExistent1",
-				Version: "v1.0.0",
+				Version: "v1",
 			},
 			{
 				Name:    "NonExistent2",
-				Version: "v1.0.0",
+				Version: "v1",
 			},
 		},
 		Operations: []api.Operation{
@@ -310,7 +311,7 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 				Policies: &[]api.Policy{
 					{
 						Name:    "NonExistent3",
-						Version: "v1.0.0",
+						Version: "v1",
 					},
 				},
 			},
@@ -364,7 +365,7 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		Policies: &[]api.Policy{
 			{
 				Name:    "TestPolicy",
-				Version: "v1.0.0",
+				Version: "v1",
 				Params: &map[string]interface{}{
 					"count": "not-a-number",
 				},
@@ -429,7 +430,7 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		Policies: &[]api.Policy{
 			{
 				Name:    "JWTValidation",
-				Version: "v1.0.0",
+				Version: "v1",
 				Params:  nil, // No params provided
 			},
 		},
@@ -483,6 +484,289 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	errors = validator.ValidatePolicies(apiConfig)
 	if len(errors) > 0 {
 		t.Errorf("Expected no validation errors, got: %v", errors)
+	}
+}
+
+// Test that two different major-only versions of the same policy name
+// can be referenced within the same API and both resolve successfully.
+func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
+	policyDefs := map[string]api.PolicyDefinition{
+		"MultiVersionPolicy|v1.0.0": {
+			Name:    "MultiVersionPolicy",
+			Version: "v1.0.0",
+		},
+		"MultiVersionPolicy|v2.0.0": {
+			Name:    "MultiVersionPolicy",
+			Version: "v2.0.0",
+		},
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	specUnion := api.APIConfiguration_Spec{}
+	if err := specUnion.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Test API",
+		Version:     "v1.0",
+		Context:     "/test",
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+				Policies: &[]api.Policy{
+					{
+						Name:    "MultiVersionPolicy",
+						Version: "v1", // major-only v1
+					},
+					{
+						Name:    "MultiVersionPolicy",
+						Version: "v2", // major-only v2
+					},
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Failed to create API config data: %v", err)
+	}
+
+	apiConfig := &api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec:       specUnion,
+	}
+
+	errors := validator.ValidatePolicies(apiConfig)
+	if len(errors) > 0 {
+		t.Errorf("Expected no validation errors for mixed major-only versions, got %d: %v", len(errors), errors)
+	}
+}
+
+// TestPolicyValidator_FullSemverRejected ensures that full semantic version (e.g. v1.0.0)
+// in API policy refs is rejected; only major-only (e.g. v1) is allowed.
+func TestPolicyValidator_FullSemverRejected(t *testing.T) {
+	policyDefs := map[string]api.PolicyDefinition{
+		"SomePolicy|v1.0.0": {
+			Name:    "SomePolicy",
+			Version: "v1.0.0",
+		},
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	specUnion := api.APIConfiguration_Spec{}
+	if err := specUnion.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Test API",
+		Version:     "v1.0",
+		Context:     "/test",
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "SomePolicy",
+				Version: "v1.0.0", // full semver not allowed
+			},
+		},
+		Operations: []api.Operation{
+			{Method: "GET", Path: "/resource"},
+		},
+	}); err != nil {
+		t.Fatalf("Failed to create API config data: %v", err)
+	}
+
+	apiConfig := &api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec:       specUnion,
+	}
+
+	errors := validator.ValidatePolicies(apiConfig)
+	if len(errors) == 0 {
+		t.Fatal("Expected validation error when policy version is full semver (v1.0.0), got none")
+	}
+	var hasVersionError bool
+	for _, e := range errors {
+		if strings.Contains(e.Message, "major-only") || strings.Contains(e.Message, "full semantic version") {
+			hasVersionError = true
+			break
+		}
+	}
+	if !hasVersionError {
+		t.Errorf("Expected error message to mention major-only or full semantic version not allowed, got: %v", errors)
+	}
+}
+
+func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
+	// Policy definitions contain a single v0.x.y version
+	policyDefs := map[string]api.PolicyDefinition{
+		"MyPolicy|v0.1.0": {
+			Name:    "MyPolicy",
+			Version: "v0.1.0",
+		},
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	specUnion := api.APIConfiguration_Spec{}
+	if err := specUnion.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Test API",
+		Version:     "v1.0",
+		Context:     "/test",
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "MyPolicy",
+				Version: "v0", // Major-only version
+			},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Failed to create API config data: %v", err)
+	}
+
+	apiConfig := &api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec:       specUnion,
+	}
+
+	errors := validator.ValidatePolicies(apiConfig)
+	if len(errors) > 0 {
+		t.Errorf("Expected no validation errors for major-only version, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
+	// Policy definitions contain only v1.x.y, but API asks for v0
+	policyDefs := map[string]api.PolicyDefinition{
+		"MyPolicy|v1.0.0": {
+			Name:    "MyPolicy",
+			Version: "v1.0.0",
+		},
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Test API",
+		Version:     "v1.0",
+		Context:     "/test",
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "MyPolicy",
+				Version: "v0", // Major that does not exist
+			},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
+
+	apiConfig := &api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec:       specUnion,
+	}
+
+	errors := validator.ValidatePolicies(apiConfig)
+	if len(errors) != 1 {
+		t.Fatalf("Expected 1 validation error for unresolved major version, got %d: %v", len(errors), errors)
+	}
+	if !contains(errors[0].Message, "major version 'v0' not found") {
+		t.Errorf("Expected major version not found error, got: %s", errors[0].Message)
+	}
+}
+
+func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
+	// Policy definitions contain multiple v0.x.y versions; resolution should fail
+	policyDefs := map[string]api.PolicyDefinition{
+		"MyPolicy|v0.1.0": {
+			Name:    "MyPolicy",
+			Version: "v0.1.0",
+		},
+		"MyPolicy|v0.2.0": {
+			Name:    "MyPolicy",
+			Version: "v0.2.0",
+		},
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Test API",
+		Version:     "v1.0",
+		Context:     "/test",
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "MyPolicy",
+				Version: "v0", // Ambiguous major; multiple matches
+			},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
+
+	apiConfig := &api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec:       specUnion,
+	}
+
+	errors := validator.ValidatePolicies(apiConfig)
+	if len(errors) != 1 {
+		t.Fatalf("Expected 1 validation error for ambiguous major version, got %d: %v", len(errors), errors)
+	}
+	if !contains(errors[0].Message, "multiple matching versions for policy 'MyPolicy' major 'v0'") {
+		t.Errorf("Expected multiple matching versions error, got: %s", errors[0].Message)
 	}
 }
 

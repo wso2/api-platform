@@ -42,7 +42,7 @@ Feature: CORS Policy
             url: http://sample-backend:9080/api/v1
         policies:
           - name: cors
-            version: v0.1.0
+            version: v0
             params:
               allowedOrigins:
                 - "http://example.com"

@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -77,13 +78,26 @@ func (pv *PolicyValidator) ValidatePolicies(apiConfig *api.APIConfiguration) []V
 func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) []ValidationError {
 	var errors []ValidationError
 
+	// Resolve policy version:
+	// - Accept full semantic versions as-is (vX.Y.Z)
+	// - Allow major-only versions (vX) and resolve them to a single matching
+	//   full version (vX.Y.Z) from the loaded policy definitions.
+	resolvedVersion, err := pv.resolvePolicyVersion(policy.Name, policy.Version)
+	if err != nil {
+		errors = append(errors, ValidationError{
+			Field:   fieldPath + ".version",
+			Message: err.Error(),
+		})
+		return errors
+	}
+
 	// Check if policy definition exists
-	key := policy.Name + "|" + policy.Version
+	key := policy.Name + "|" + resolvedVersion
 	policyDef, exists := pv.policyDefinitions[key]
 	if !exists {
 		errors = append(errors, ValidationError{
 			Field:   fieldPath + ".name",
-			Message: fmt.Sprintf("Policy '%s' version '%s' not found in loaded policy definitions", policy.Name, policy.Version),
+			Message: fmt.Sprintf("Policy '%s' version '%s' not found in loaded policy definitions", policy.Name, resolvedVersion),
 		})
 		return errors
 	}
@@ -102,6 +116,62 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 	}
 
 	return errors
+}
+
+var (
+	fullSemverPattern  = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+	majorVersionPattern = regexp.MustCompile(`^v\d+$`)
+)
+
+// resolvePolicyVersion resolves a policy version string. Only major-only
+// versions (e.g., v1) are accepted; they are resolved to the unique full
+// version (vX.Y.Z) from the loaded definitions. Full semantic version
+// (e.g., v1.0.0) is rejected.
+func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, error) {
+	return ResolvePolicyVersion(pv.policyDefinitions, name, version)
+}
+
+// ResolvePolicyVersion resolves a policy version using the given definitions map.
+// Only major-only versions (e.g., v1) are accepted; they are resolved to the
+// unique full version (vX.Y.Z) for that policy name. Full semantic version
+// (e.g., v1.0.0) is rejected. Used by both the validator and the derivation path.
+func ResolvePolicyVersion(definitions map[string]api.PolicyDefinition, name, version string) (string, error) {
+	trimmed := strings.TrimSpace(version)
+	if trimmed == "" {
+		return "", fmt.Errorf("policy '%s' version is required", name)
+	}
+
+	// Full semantic version (e.g., v1.0.0) – reject; only major-only is allowed
+	if fullSemverPattern.MatchString(trimmed) {
+		return "", fmt.Errorf("policy '%s' version must be major-only (e.g., v1); full semantic version (e.g., v1.0.0) is not allowed", name)
+	}
+
+	// Major-only version (e.g., v1) – resolve to a single matching full version
+	if majorVersionPattern.MatchString(trimmed) {
+		var matchingVersions []string
+		majorPrefix := trimmed + "."
+
+		for _, def := range definitions {
+			if def.Name != name {
+				continue
+			}
+			if fullSemverPattern.MatchString(def.Version) && strings.HasPrefix(def.Version, majorPrefix) {
+				matchingVersions = append(matchingVersions, def.Version)
+			}
+		}
+
+		if len(matchingVersions) == 0 {
+			return "", fmt.Errorf("policy '%s' major version '%s' not found in loaded policy definitions", name, trimmed)
+		}
+		if len(matchingVersions) > 1 {
+			return "", fmt.Errorf("multiple matching versions for policy '%s' major '%s'; cannot resolve uniquely", name, trimmed)
+		}
+
+		return matchingVersions[0], nil
+	}
+
+	// Unsupported version format
+	return "", fmt.Errorf("invalid version format '%s' for policy '%s'; expected major-only version (e.g., v1)", version, name)
 }
 
 // validatePolicyParams validates policy parameters against a JSON schema

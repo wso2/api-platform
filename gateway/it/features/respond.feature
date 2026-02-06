@@ -23,7 +23,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: "OK"
@@ -48,7 +48,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 201
                 body: '{"id": 123, "name": "Created Resource", "status": "success"}'
@@ -83,7 +83,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 204
       """
@@ -107,7 +107,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 body: "Default response"
       """
@@ -135,7 +135,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 400
                 body: '{"error": "Bad Request", "message": "Invalid input data"}'
@@ -167,7 +167,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 401
                 body: '{"error": "Unauthorized", "message": "Authentication required"}'
@@ -198,7 +198,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 403
                 body: '{"error": "Forbidden", "message": "Access denied to this resource"}'
@@ -227,7 +227,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 404
                 body: '{"error": "Not Found", "message": "The requested resource does not exist"}'
@@ -255,7 +255,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 429
                 body: '{"error": "Too many requests", "message": "Rate limit exceeded"}'
@@ -293,7 +293,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 500
                 body: '{"error": "Internal Server Error", "message": "An unexpected error occurred"}'
@@ -321,7 +321,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 503
                 body: '{"error": "Service Unavailable", "message": "System under maintenance. Please try again later."}'
@@ -356,7 +356,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 301
                 headers:
@@ -383,7 +383,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 302
                 headers:
@@ -414,7 +414,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '<?xml version="1.0"?><response><status>success</status><message>XML response</message></response>'
@@ -443,7 +443,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '<html><head><title>API Documentation</title></head><body><h1>Welcome</h1><p>This is a static HTML response.</p></body></html>'
@@ -472,7 +472,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: "This is a plain text response with multiple lines.\nLine 2\nLine 3"
@@ -505,7 +505,7 @@ Feature: Respond Policy Integration Tests
           path: /users/:id
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '{"id": 123, "name": "John Doe", "email": "john@example.com", "role": "admin"}'
@@ -537,7 +537,7 @@ Feature: Respond Policy Integration Tests
           path: /v1/users
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 410
                 body: '{"error": "Gone", "message": "This endpoint is deprecated. Please use /v2/users instead.", "migration_guide": "https://docs.example.com/migration"}'
@@ -571,7 +571,7 @@ Feature: Respond Policy Integration Tests
           path: /health
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '{"status": "healthy", "version": "1.0.0", "uptime": 3600}'
@@ -602,7 +602,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 204
                 headers:
@@ -641,7 +641,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
       """
@@ -664,7 +664,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: ""
@@ -689,7 +689,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '{"message": "success"}'
@@ -731,7 +731,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '{"users": [{"id": 1, "name": "User 1"}, {"id": 2, "name": "User 2"}, {"id": 3, "name": "User 3"}, {"id": 4, "name": "User 4"}, {"id": 5, "name": "User 5"}], "total": 5, "page": 1, "pageSize": 10, "metadata": {"timestamp": "2026-01-28T10:00:00Z", "version": "v1"}}'
@@ -761,7 +761,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '{"message": "Special chars: <>&\"''\n\t", "emoji": "🎉✅❌", "unicode": "Hello 世界"}'
@@ -794,7 +794,7 @@ Feature: Respond Policy Integration Tests
           path: /test
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 102
                 body: '{"status": "Processing"}'
@@ -824,7 +824,7 @@ Feature: Respond Policy Integration Tests
           path: /brew-coffee
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 418
                 body: '{"error": "I am a teapot", "message": "This server refuses to brew coffee"}'
@@ -859,7 +859,7 @@ Feature: Respond Policy Integration Tests
           path: /json
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '{"format": "json"}'
@@ -870,7 +870,7 @@ Feature: Respond Policy Integration Tests
           path: /xml
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '<?xml version="1.0"?><response><format>xml</format></response>'
@@ -905,7 +905,7 @@ Feature: Respond Policy Integration Tests
           path: /static
           policies:
             - name: respond
-              version: v0.1.0
+              version: v0
               params:
                 statusCode: 200
                 body: '{"data": "static content"}'

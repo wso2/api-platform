@@ -1208,7 +1208,7 @@ func TestConvertAPIPolicy(t *testing.T) {
 		Params:  &params,
 	}
 
-	result := convertAPIPolicy(policy, "api")
+	result := convertAPIPolicy(policy, "api", "v1.0.0")
 
 	assert.Equal(t, "test-policy", result.Name)
 	assert.Equal(t, "v1.0.0", result.Version)
@@ -1225,7 +1225,7 @@ func TestConvertAPIPolicyNoParams(t *testing.T) {
 		Version: "v1.0.0",
 	}
 
-	result := convertAPIPolicy(policy, "")
+	result := convertAPIPolicy(policy, "", "v1.0.0")
 
 	assert.Equal(t, "test-policy", result.Name)
 	assert.NotNil(t, result.Parameters)
@@ -1975,6 +1975,7 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 // TestBuildStoredPolicyFromAPIWithVhosts tests buildStoredPolicyFromAPI with custom vhosts
 func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 	server := createTestAPIServer()
+	server.policyDefinitions["test-policy|v1.0.0"] = api.PolicyDefinition{Name: "test-policy", Version: "v1.0.0"}
 
 	policies := []api.Policy{
 		{Name: "test-policy", Version: "v1"},
@@ -2032,6 +2033,8 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 // TestBuildStoredPolicyFromAPIOperationPolicies tests operation-level policy merging
 func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 	server := createTestAPIServer()
+	server.policyDefinitions["api-policy|v1.0.0"] = api.PolicyDefinition{Name: "api-policy", Version: "v1.0.0"}
+	server.policyDefinitions["op-policy|v1.0.0"] = api.PolicyDefinition{Name: "op-policy", Version: "v1.0.0"}
 
 	apiPolicies := []api.Policy{
 		{Name: "api-policy", Version: "v1"},
@@ -2201,7 +2204,7 @@ func TestConvertAPIPolicyWithExecutionCondition(t *testing.T) {
 		ExecutionCondition: &execCondition,
 	}
 
-	result := convertAPIPolicy(policy, "route")
+	result := convertAPIPolicy(policy, "route", "v1.0.0")
 
 	assert.Equal(t, "conditional-policy", result.Name)
 	assert.NotNil(t, result.ExecutionCondition)
@@ -2246,7 +2249,7 @@ func TestConvertAPIPolicyNilParams(t *testing.T) {
 		Params:  nil,
 	}
 
-	result := convertAPIPolicy(policy, "api")
+	result := convertAPIPolicy(policy, "api", "v1.0.0")
 
 	assert.Equal(t, "test-policy", result.Name)
 	assert.NotNil(t, result.Parameters)

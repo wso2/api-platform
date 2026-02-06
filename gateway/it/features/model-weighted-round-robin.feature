@@ -34,7 +34,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: gpt-3.5-turbo
@@ -92,7 +92,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: model-a
@@ -129,7 +129,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: fast-model
@@ -167,7 +167,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: model-a
@@ -210,7 +210,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: model-alpha
@@ -251,7 +251,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /models/*/chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: new-model-1
@@ -295,7 +295,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: failing-model
@@ -307,7 +307,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /error500
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: failing-model
@@ -353,7 +353,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: rate-limited-model
@@ -365,7 +365,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /error429
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: rate-limited-model
@@ -404,7 +404,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: model-1
@@ -416,7 +416,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /error500
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: model-1
@@ -465,7 +465,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: model-a
@@ -477,7 +477,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /error500
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: model-a
@@ -527,7 +527,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: selected-model
@@ -555,7 +555,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: selected-model
@@ -584,7 +584,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: selected-model
@@ -616,7 +616,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: selected-model
@@ -645,7 +645,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: only-model
@@ -685,7 +685,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /completions
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: gpt-3.5-turbo
@@ -716,7 +716,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: primary-model
@@ -730,7 +730,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /error500
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: primary-model
@@ -771,7 +771,7 @@ Feature: Model Weighted Round-Robin Load Balancing Policy
           path: /chat
           policies:
             - name: model-weighted-round-robin
-              version: v0.1.0
+              version: v0
               params:
                 models:
                   - model: stable-model-v1

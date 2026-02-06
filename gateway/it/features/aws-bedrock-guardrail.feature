@@ -49,7 +49,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: ""
@@ -93,7 +93,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: ""
@@ -137,7 +137,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     showAssessment: true
@@ -182,7 +182,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /data
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   response:
                     jsonPath: ""
@@ -223,7 +223,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: "$.message"
@@ -282,7 +282,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /anything
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: ""
@@ -331,7 +331,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /anything
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     redactPII: true
@@ -377,7 +377,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: ""
@@ -424,7 +424,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: ""
@@ -465,7 +465,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: ""
@@ -511,7 +511,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /chat
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: "$.data.content"
@@ -573,7 +573,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     jsonPath: "$.nonexistent.field"
@@ -622,7 +622,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0.1.1
+                version: v0
                 params:
                   request:
                     showAssessment: true

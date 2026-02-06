@@ -49,7 +49,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.9
       """
@@ -91,7 +91,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.9
       """
@@ -142,7 +142,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.8
       """
@@ -195,7 +195,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.99
       """
@@ -246,7 +246,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.5
       """
@@ -299,7 +299,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.9
                   jsonPath: "$.messages[0].content"
@@ -357,7 +357,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.9
                   jsonPath: "$.nonexistent.field"
@@ -404,7 +404,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.9
       """
@@ -445,7 +445,7 @@ Feature: Semantic Cache Policy
             path: /status/500
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.9
       """
@@ -496,7 +496,7 @@ Feature: Semantic Cache Policy
             path: /chat
             policies:
               - name: semantic-cache
-                version: v0.1.0
+                version: v0
                 params:
                   similarityThreshold: 0.9
       """

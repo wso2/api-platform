@@ -17,7 +17,7 @@ spec:
       url: https://httpbin.org/anything
   # policies:
   #   - name: jwt-auth
-  #     version: v0.1.0
+  #     version: v0
   #     params:
   #       issuers:
   #         - WSO2KeyManager1
@@ -51,7 +51,7 @@ spec:
       url: https://secure-backend:5443/api/v2
   # policies:
   #   - name: jwt-auth
-  #     version: v0.1.0
+  #     version: v0
   #     params:
   #       issuers:
   #         - WSO2KeyManager1

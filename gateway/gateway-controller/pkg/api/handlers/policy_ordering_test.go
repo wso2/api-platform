@@ -28,17 +28,31 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
-// newTestAPIServer creates a minimal APIServer instance for testing
+// newTestAPIServer creates a minimal APIServer instance for testing.
+// policyDefinitions allow resolving major-only (v1, v2, ...) to full semver for policy ordering tests.
 func newTestAPIServer() *APIServer {
 	vhosts := &config.VHostsConfig{
 		Main:    config.VHostEntry{Default: "localhost"},
 		Sandbox: config.VHostEntry{Default: "sandbox-*"},
 	}
+	defs := map[string]api.PolicyDefinition{
+		"auth|v1.0.0": {Name: "auth", Version: "v1.0.0"},
+		"auth|v2.0.0": {Name: "auth", Version: "v2.0.0"},
+		"auth|v5.0.0": {Name: "auth", Version: "v5.0.0"},
+		"rateLimit|v1.0.0": {Name: "rateLimit", Version: "v1.0.0"},
+		"rateLimit|v2.0.0": {Name: "rateLimit", Version: "v2.0.0"},
+		"rateLimit|v3.0.0": {Name: "rateLimit", Version: "v3.0.0"},
+		"rateLimit|v5.0.0": {Name: "rateLimit", Version: "v5.0.0"},
+		"logging|v1.0.0": {Name: "logging", Version: "v1.0.0"},
+		"logging|v2.0.0": {Name: "logging", Version: "v2.0.0"},
+		"logging|v5.0.0": {Name: "logging", Version: "v5.0.0"},
+		"cors|v1.0.0": {Name: "cors", Version: "v1.0.0"},
+		"validation|v1.0.0": {Name: "validation", Version: "v1.0.0"},
+		"caching|v1.0.0": {Name: "caching", Version: "v1.0.0"},
+	}
 	return &APIServer{
-		routerConfig: &config.RouterConfig{
-			GatewayHost: "localhost",
-			VHosts:      *vhosts,
-		},
+		routerConfig:      &config.RouterConfig{GatewayHost: "localhost", VHosts: *vhosts},
+		policyDefinitions: defs,
 	}
 }
 
@@ -55,9 +69,9 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		{
 			name: "API-level policies only",
 			apiPolicies: []api.Policy{
-				{Name: "auth", Version: "v1.0.0"},
-				{Name: "rateLimit", Version: "v1.0.0"},
-				{Name: "logging", Version: "v1.0.0"},
+				{Name: "auth", Version: "v1"},
+				{Name: "rateLimit", Version: "v1"},
+				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: nil,
 			expectedOrder:     []string{"auth", "rateLimit", "logging"},
@@ -67,8 +81,8 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			name:        "Operation-level policies only",
 			apiPolicies: nil,
 			operationPolicies: []api.Policy{
-				{Name: "cors", Version: "v1.0.0"},
-				{Name: "validation", Version: "v1.0.0"},
+				{Name: "cors", Version: "v1"},
+				{Name: "validation", Version: "v1"},
 			},
 			expectedOrder: []string{"cors", "validation"},
 			description:   "Should preserve operation-level policy declaration order",
@@ -76,12 +90,12 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		{
 			name: "API policies with operation override",
 			apiPolicies: []api.Policy{
-				{Name: "auth", Version: "v1.0.0"},
-				{Name: "rateLimit", Version: "v1.0.0"},
-				{Name: "logging", Version: "v1.0.0"},
+				{Name: "auth", Version: "v1"},
+				{Name: "rateLimit", Version: "v1"},
+				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "auth", Version: "v2.0.0"}, // override with different version
+				{Name: "auth", Version: "v2"}, // override with different version
 			},
 			expectedOrder: []string{"auth", "rateLimit", "logging"},
 			description:   "Single override uses op version, then appends remaining API policies",
@@ -89,14 +103,14 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		{
 			name: "API policies with operation override and additional policies",
 			apiPolicies: []api.Policy{
-				{Name: "auth", Version: "v1.0.0"},
-				{Name: "rateLimit", Version: "v1.0.0"},
-				{Name: "logging", Version: "v1.0.0"},
+				{Name: "auth", Version: "v1"},
+				{Name: "rateLimit", Version: "v1"},
+				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "auth", Version: "v2.0.0"},       // override
-				{Name: "cors", Version: "v1.0.0"},       // new
-				{Name: "validation", Version: "v1.0.0"}, // new
+				{Name: "auth", Version: "v2"},       // override
+				{Name: "cors", Version: "v1"},       // new
+				{Name: "validation", Version: "v1"}, // new
 			},
 			expectedOrder: []string{"auth", "cors", "validation", "rateLimit", "logging"},
 			description:   "Operation policies first in their order, then remaining API policies",
@@ -104,14 +118,14 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		{
 			name: "Multiple overrides",
 			apiPolicies: []api.Policy{
-				{Name: "auth", Version: "v1.0.0"},
-				{Name: "rateLimit", Version: "v1.0.0"},
-				{Name: "logging", Version: "v1.0.0"},
-				{Name: "caching", Version: "v1.0.0"},
+				{Name: "auth", Version: "v1"},
+				{Name: "rateLimit", Version: "v1"},
+				{Name: "logging", Version: "v1"},
+				{Name: "caching", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "rateLimit", Version: "v2.0.0"}, // override second
-				{Name: "logging", Version: "v2.0.0"},   // override third
+				{Name: "rateLimit", Version: "v2"}, // override second
+				{Name: "logging", Version: "v2"},   // override third
 			},
 			expectedOrder: []string{"rateLimit", "logging", "auth", "caching"},
 			description:   "Operation policy order takes precedence, remaining API policies appended",
@@ -119,14 +133,14 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		{
 			name: "Complex scenario - mixed overrides and additions",
 			apiPolicies: []api.Policy{
-				{Name: "auth", Version: "v1.0.0"},
-				{Name: "rateLimit", Version: "v1.0.0"},
-				{Name: "logging", Version: "v1.0.0"},
+				{Name: "auth", Version: "v1"},
+				{Name: "rateLimit", Version: "v1"},
+				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "cors", Version: "v1.0.0"},       // new
-				{Name: "auth", Version: "v2.0.0"},       // override
-				{Name: "validation", Version: "v1.0.0"}, // new
+				{Name: "cors", Version: "v1"},       // new
+				{Name: "auth", Version: "v2"},       // override
+				{Name: "validation", Version: "v1"}, // new
 			},
 			expectedOrder: []string{"cors", "auth", "validation", "rateLimit", "logging"},
 			description:   "Operation policies define order, remaining API policies appended",
@@ -134,14 +148,14 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		{
 			name: "Operation reorders API policies",
 			apiPolicies: []api.Policy{
-				{Name: "auth", Version: "v1.0.0"},
-				{Name: "rateLimit", Version: "v1.0.0"},
-				{Name: "logging", Version: "v1.0.0"},
+				{Name: "auth", Version: "v1"},
+				{Name: "rateLimit", Version: "v1"},
+				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "logging", Version: "v2.0.0"},   // third policy first
-				{Name: "auth", Version: "v2.0.0"},      // first policy second
-				{Name: "rateLimit", Version: "v2.0.0"}, // second policy third
+				{Name: "logging", Version: "v2"},   // third policy first
+				{Name: "auth", Version: "v2"},      // first policy second
+				{Name: "rateLimit", Version: "v2"}, // second policy third
 			},
 			expectedOrder: []string{"logging", "auth", "rateLimit"},
 			description:   "Operation can completely reorder API policies for that specific operation",
@@ -226,34 +240,34 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 // are independent and don't interfere with each other
 func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 	apiPolicies := []api.Policy{
-		{Name: "auth", Version: "v1.0.0"},
-		{Name: "rateLimit", Version: "v1.0.0"},
-		{Name: "logging", Version: "v1.0.0"},
+		{Name: "auth", Version: "v1"},
+		{Name: "rateLimit", Version: "v1"},
+		{Name: "logging", Version: "v1"},
 	}
 
 	// Operation 1: Reorders API policies
 	op1Policies := []api.Policy{
-		{Name: "logging", Version: "v2.0.0"},
-		{Name: "auth", Version: "v2.0.0"},
+		{Name: "logging", Version: "v2"},
+		{Name: "auth", Version: "v2"},
 	}
 
 	// Operation 2: Has its own exclusive policy
 	op2Policies := []api.Policy{
-		{Name: "validation", Version: "v1.0.0"},
+		{Name: "validation", Version: "v1"},
 	}
 
 	// Operation 3: Overrides one and adds new
 	op3Policies := []api.Policy{
-		{Name: "rateLimit", Version: "v3.0.0"},
-		{Name: "cors", Version: "v1.0.0"},
+		{Name: "rateLimit", Version: "v3"},
+		{Name: "cors", Version: "v1"},
 	}
 
 	// Operation 4: No policies (should use API-level)
 	// Operation 5: Different reordering
 	op5Policies := []api.Policy{
-		{Name: "rateLimit", Version: "v5.0.0"},
-		{Name: "logging", Version: "v5.0.0"},
-		{Name: "auth", Version: "v5.0.0"},
+		{Name: "rateLimit", Version: "v5"},
+		{Name: "logging", Version: "v5"},
+		{Name: "auth", Version: "v5"},
 	}
 
 	specUnion := api.APIConfiguration_Spec{}
@@ -389,15 +403,15 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 // to ensure ordering is deterministic across multiple invocations
 func TestPolicyOrderingConsistency(t *testing.T) {
 	apiPolicies := []api.Policy{
-		{Name: "auth", Version: "v1.0.0"},
-		{Name: "rateLimit", Version: "v1.0.0"},
-		{Name: "logging", Version: "v1.0.0"},
-		{Name: "caching", Version: "v1.0.0"},
+		{Name: "auth", Version: "v1"},
+		{Name: "rateLimit", Version: "v1"},
+		{Name: "logging", Version: "v1"},
+		{Name: "caching", Version: "v1"},
 	}
 	operationPolicies := []api.Policy{
-		{Name: "cors", Version: "v1.0.0"},
-		{Name: "auth", Version: "v2.0.0"},
-		{Name: "validation", Version: "v1.0.0"},
+		{Name: "cors", Version: "v1"},
+		{Name: "auth", Version: "v2"},
+		{Name: "validation", Version: "v1"},
 	}
 
 	specUnion := api.APIConfiguration_Spec{}

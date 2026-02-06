@@ -1544,7 +1544,7 @@ func (s *SQLiteStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 			LIMIT 1
 		`
 		var duplicateID, duplicateName string
-		err := s.db.QueryRow(duplicateCheckQuery, apiKey.APIId, apiKey.IndexKey, apiKey.Name).Scan(&duplicateID, &duplicateName)
+		err := tx.QueryRow(duplicateCheckQuery, apiKey.APIId, apiKey.IndexKey, apiKey.Name).Scan(&duplicateID, &duplicateName)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			tx.Rollback()
 			return fmt.Errorf("failed to check for duplicate API key: %w", err)

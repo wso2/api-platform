@@ -452,10 +452,10 @@ func (m *mockDeploymentGatewayRepository) GetByUUID(gatewayID string) (*model.Ga
 }
 
 // ============================================================================
-// DeploymentService.RollbackDeployment Tests
+// DeploymentService.RestoreDeployment Tests
 // ============================================================================
 
-func TestRollbackDeployment(t *testing.T) {
+func TestRestoreDeployment(t *testing.T) {
 	testOrgUUID := "org-123"
 	testAPIUUID := "api-456"
 	testGatewayID := "gateway-789"
@@ -465,6 +465,7 @@ func TestRollbackDeployment(t *testing.T) {
 	tests := []struct {
 		name                  string
 		deploymentID          string
+		gatewayID             string
 		mockDeployment        *model.APIDeployment
 		mockDeploymentError   error
 		mockCurrentDeployment string
@@ -480,8 +481,9 @@ func TestRollbackDeployment(t *testing.T) {
 		verifyUpdatedAt       bool
 	}{
 		{
-			name:         "successful rollback to UNDEPLOYED deployment",
+			name:         "successful restore to UNDEPLOYED deployment",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -501,8 +503,9 @@ func TestRollbackDeployment(t *testing.T) {
 			verifyUpdatedAt:    true,
 		},
 		{
-			name:         "successful rollback to ARCHIVED deployment",
+			name:         "successful restore to ARCHIVED deployment",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "archived-deployment",
@@ -524,6 +527,7 @@ func TestRollbackDeployment(t *testing.T) {
 		{
 			name:                "deployment not found",
 			deploymentID:        testDeploymentID,
+			gatewayID:           testGatewayID,
 			mockDeployment:      nil,
 			mockDeploymentError: nil,
 			wantErr:             true,
@@ -532,13 +536,15 @@ func TestRollbackDeployment(t *testing.T) {
 		{
 			name:                "deployment fetch error",
 			deploymentID:        testDeploymentID,
+			gatewayID:           testGatewayID,
 			mockDeploymentError: errors.New("database error"),
 			wantErr:             true,
 			errContains:         "database error",
 		},
 		{
-			name:         "cannot rollback to already DEPLOYED deployment",
+			name:         "cannot restore to already DEPLOYED deployment",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -554,6 +560,7 @@ func TestRollbackDeployment(t *testing.T) {
 		{
 			name:         "deployment status fetch error",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -568,6 +575,7 @@ func TestRollbackDeployment(t *testing.T) {
 		{
 			name:         "gateway not found",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -584,6 +592,7 @@ func TestRollbackDeployment(t *testing.T) {
 		{
 			name:         "gateway organization mismatch",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -604,6 +613,7 @@ func TestRollbackDeployment(t *testing.T) {
 		{
 			name:         "set current deployment fails",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -646,43 +656,43 @@ func TestRollbackDeployment(t *testing.T) {
 				gatewayRepo: mockGatewayRepo,
 			}
 
-			result, err := service.RollbackDeployment(testAPIUUID, tt.deploymentID, testOrgUUID)
+			result, err := service.RestoreDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID)
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
-				t.Errorf("RollbackDeployment() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("RestoreDeployment() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if tt.wantErr {
 				if tt.expectedErr != nil && !errors.Is(err, tt.expectedErr) && err != tt.expectedErr {
-					t.Errorf("RollbackDeployment() error = %v, expectedErr %v", err, tt.expectedErr)
+					t.Errorf("RestoreDeployment() error = %v, expectedErr %v", err, tt.expectedErr)
 				}
 				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
-					t.Errorf("RollbackDeployment() error = %v, want error containing %q", err, tt.errContains)
+					t.Errorf("RestoreDeployment() error = %v, want error containing %q", err, tt.errContains)
 				}
 				return
 			}
 
 			// Verify successful result
 			if result == nil {
-				t.Fatal("RollbackDeployment() result is nil, expected non-nil")
+				t.Fatal("RestoreDeployment() result is nil, expected non-nil")
 			}
 
 			if result.DeploymentID != tt.deploymentID {
-				t.Errorf("RollbackDeployment() DeploymentID = %v, want %v", result.DeploymentID, tt.deploymentID)
+				t.Errorf("RestoreDeployment() DeploymentID = %v, want %v", result.DeploymentID, tt.deploymentID)
 			}
 
 			if result.Status != string(model.DeploymentStatusDeployed) {
-				t.Errorf("RollbackDeployment() Status = %v, want %v", result.Status, model.DeploymentStatusDeployed)
+				t.Errorf("RestoreDeployment() Status = %v, want %v", result.Status, model.DeploymentStatusDeployed)
 			}
 
 			// Verify updatedAt is returned from SetCurrentDeployment
 			if tt.verifyUpdatedAt {
 				if result.UpdatedAt == nil {
-					t.Error("RollbackDeployment() UpdatedAt is nil, expected non-nil")
+					t.Error("RestoreDeployment() UpdatedAt is nil, expected non-nil")
 				} else if !result.UpdatedAt.Equal(tt.mockSetCurrentTime) {
-					t.Errorf("RollbackDeployment() UpdatedAt = %v, want %v", *result.UpdatedAt, tt.mockSetCurrentTime)
+					t.Errorf("RestoreDeployment() UpdatedAt = %v, want %v", *result.UpdatedAt, tt.mockSetCurrentTime)
 				}
 			}
 
@@ -713,6 +723,7 @@ func TestUndeployDeployment(t *testing.T) {
 	tests := []struct {
 		name                string
 		deploymentID        string
+		gatewayID           string
 		mockDeployment      *model.APIDeployment
 		mockDeploymentError error
 		mockGateway         *model.Gateway
@@ -727,6 +738,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "successful undeploy",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -746,6 +758,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:                "deployment not found",
 			deploymentID:        testDeploymentID,
+			gatewayID:           testGatewayID,
 			mockDeployment:      nil,
 			mockDeploymentError: nil,
 			wantErr:             true,
@@ -754,6 +767,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "deployment not active (UNDEPLOYED)",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -767,6 +781,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "deployment not active (nil status - ARCHIVED)",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -780,6 +795,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "gateway not found",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -794,6 +810,7 @@ func TestUndeployDeployment(t *testing.T) {
 		{
 			name:         "set current deployment fails",
 			deploymentID: testDeploymentID,
+			gatewayID:    testGatewayID,
 			mockDeployment: &model.APIDeployment{
 				DeploymentID: testDeploymentID,
 				Name:         "test-deployment",
@@ -809,6 +826,20 @@ func TestUndeployDeployment(t *testing.T) {
 			mockSetCurrentError: errors.New("database write failed"),
 			wantErr:             true,
 			errContains:         "failed to update deployment status",
+		},
+		{
+			name:         "gateway ID mismatch validation",
+			deploymentID: testDeploymentID,
+			gatewayID:    "wrong-gateway-id",
+			mockDeployment: &model.APIDeployment{
+				DeploymentID: testDeploymentID,
+				Name:         "test-deployment",
+				ApiID:        testAPIUUID,
+				GatewayID:    testGatewayID, // Different from provided gatewayID
+				Status:       &deployedStatus,
+			},
+			wantErr:     true,
+			expectedErr: constants.ErrGatewayIDMismatch,
 		},
 	}
 
@@ -831,7 +862,7 @@ func TestUndeployDeployment(t *testing.T) {
 				gatewayRepo: mockGatewayRepo,
 			}
 
-			result, err := service.UndeployDeployment(testAPIUUID, tt.deploymentID, testOrgUUID)
+			result, err := service.UndeployDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID)
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
@@ -1390,14 +1421,14 @@ func TestRollbackDeployment_WhenAllDeploymentsArchived(t *testing.T) {
 		gatewayRepo: mockGatewayRepo,
 	}
 
-	result, err := service.RollbackDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
+	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
 
 	if err != nil {
-		t.Fatalf("RollbackDeployment() unexpected error: %v", err)
+		t.Fatalf("RestoreDeployment() unexpected error: %v", err)
 	}
 
 	if result == nil {
-		t.Fatal("RollbackDeployment() result is nil, expected non-nil")
+		t.Fatal("RestoreDeployment() result is nil, expected non-nil")
 	}
 
 	if result.Status != string(model.DeploymentStatusDeployed) {
@@ -1446,10 +1477,10 @@ func TestRollbackDeployment_ToArchivedWhenCurrentUndeployed(t *testing.T) {
 		gatewayRepo: mockGatewayRepo,
 	}
 
-	result, err := service.RollbackDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
+	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
 
 	if err != nil {
-		t.Fatalf("RollbackDeployment() unexpected error: %v", err)
+		t.Fatalf("RestoreDeployment() unexpected error: %v", err)
 	}
 
 	if result.DeploymentID != testDeploymentID {
@@ -1626,7 +1657,7 @@ func TestUndeployDeployment_WhenOnlyOneDeploymentExists(t *testing.T) {
 		gatewayRepo: mockGatewayRepo,
 	}
 
-	result, err := service.UndeployDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
+	result, err := service.UndeployDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
 
 	if err != nil {
 		t.Fatalf("UndeployDeployment() unexpected error: %v", err)
@@ -1676,10 +1707,10 @@ func TestRollbackDeployment_CurrentlyDeployedSameID(t *testing.T) {
 		gatewayRepo: mockGatewayRepo,
 	}
 
-	_, err := service.RollbackDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
+	_, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
 
 	if err == nil {
-		t.Fatal("Expected error when rolling back to currently DEPLOYED deployment")
+		t.Fatal("Expected error when restoring to currently DEPLOYED deployment")
 	}
 
 	if !errors.Is(err, constants.ErrDeploymentAlreadyDeployed) {
@@ -1769,6 +1800,7 @@ func TestGetDeployment_ArchivedDeployment(t *testing.T) {
 func TestRollbackDeployment_NonExistentDeployment(t *testing.T) {
 	testOrgUUID := "org-123"
 	testAPIUUID := "api-456"
+	testGatewayID := "gateway-789"
 	testDeploymentID := "non-existent-deploy"
 
 	mockAPIRepo := &mockDeploymentAPIRepository{
@@ -1779,10 +1811,10 @@ func TestRollbackDeployment_NonExistentDeployment(t *testing.T) {
 		apiRepo: mockAPIRepo,
 	}
 
-	_, err := service.RollbackDeployment(testAPIUUID, testDeploymentID, testOrgUUID)
+	_, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
 
 	if err == nil {
-		t.Fatal("Expected error when rolling back to non-existent deployment")
+		t.Fatal("Expected error when restoring to non-existent deployment")
 	}
 
 	if !errors.Is(err, constants.ErrDeploymentNotFound) {
