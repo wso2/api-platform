@@ -4,7 +4,7 @@ Feature: Model Round-Robin Load Balancing Policy
   equal request allocation and automatic suspension on failures.
 
   Background:
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -20,7 +20,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Basic round-robin with two models
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -40,30 +40,30 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: model-a
                   - model: model-b
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # First request goes to model-a
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "original-model", "prompt": "Hello"}
       """
     Then the response status code should be 200
     And the response body should contain "model-a"
     # Second request goes to model-b
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "original-model", "prompt": "Hello"}
       """
     Then the response status code should be 200
     And the response body should contain "model-b"
     # Third request cycles back to model-a
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "original-model", "prompt": "Hello"}
       """
     Then the response status code should be 200
     And the response body should contain "model-a"
     # Fourth request goes to model-b
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "original-model", "prompt": "Hello"}
       """
@@ -71,7 +71,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "model-b"
 
   Scenario: Round-robin with three models
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -92,27 +92,27 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: model-beta
                   - model: model-gamma
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "model-alpha"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "model-beta"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "model-gamma"
     # Cycle back to first model
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -120,7 +120,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "model-alpha"
 
   Scenario: Round-robin with four models
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -142,26 +142,26 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: claude-3-sonnet
                   - model: gemini-pro
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "gpt-3.5-turbo"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "gpt-4"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "claude-3-sonnet"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -173,7 +173,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Model selection with header location
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -196,24 +196,24 @@ Feature: Model Round-Robin Load Balancing Policy
                   location: header
                   identifier: X-AI-Model
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with headers
+    And I wait for 3 seconds
+    When I set the following headers:
       """
       X-AI-Model: original-model
       Content-Type: application/json
       """
-    And body
+    And I send a POST request to "/test/chat" with body:
       """
       {"prompt": "test"}
       """
     Then the response status code should be 200
     And the response header "X-AI-Model" should be "header-model-1"
-    When client sends "POST" request to "/test/chat" with headers
+    When I set the following headers:
       """
       X-AI-Model: original-model
       Content-Type: application/json
       """
-    And body
+    And I send a POST request to "/test/chat" with body:
       """
       {"prompt": "test"}
       """
@@ -225,7 +225,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Model selection with query parameter location
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -249,17 +249,17 @@ Feature: Model Round-Robin Load Balancing Policy
                   location: queryParam
                   identifier: model
       """
-    And wait for health endpoint to be ready
-    When client sends "GET" request to "/test/chat?model=original&prompt=hello"
+    And I wait for the endpoint "http://localhost:8080/test/1.0.0/chat" to be ready
+    When I send a GET request to "/test/chat?model=original&prompt=hello"
     Then the response status code should be 200
     And the response body should contain "model=query-model-1"
-    When client sends "GET" request to "/test/chat?model=original&prompt=hello"
+    When I send a GET request to "/test/chat?model=original&prompt=hello"
     Then the response status code should be 200
     And the response body should contain "model=query-model-2"
-    When client sends "GET" request to "/test/chat?model=original&prompt=hello"
+    When I send a GET request to "/test/chat?model=original&prompt=hello"
     Then the response status code should be 200
     And the response body should contain "model=query-model-3"
-    When client sends "GET" request to "/test/chat?model=original&prompt=hello"
+    When I send a GET request to "/test/chat?model=original&prompt=hello"
     Then the response status code should be 200
     And the response body should contain "model=query-model-1"
 
@@ -268,7 +268,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Model selection with path parameter location
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -291,14 +291,14 @@ Feature: Model Round-Robin Load Balancing Policy
                   location: pathParam
                   identifier: /models/([^/]+)/chat
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/models/original-model/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/models/original-model/chat" with body:
       """
       {"prompt": "test"}
       """
     Then the response status code should be 200
     And the response body should contain "/models/path-model-x/chat"
-    When client sends "POST" request to "/test/models/original-model/chat" with body
+    When I send a POST request to "/test/models/original-model/chat" with body:
       """
       {"prompt": "test"}
       """
@@ -310,7 +310,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Model selection with nested JSONPath
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -333,14 +333,14 @@ Feature: Model Round-Robin Load Balancing Policy
                   location: payload
                   identifier: $.settings.ai.model
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       {"settings": {"ai": {"model": "original"}}, "prompt": "test"}
       """
     Then the response status code should be 200
     And the response body should contain "nested-model-1"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"settings": {"ai": {"model": "original"}}, "prompt": "test"}
       """
@@ -352,7 +352,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Suspend model on 5xx error with recovery
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -385,29 +385,29 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: third-model
                 suspendDuration: 3
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # First request goes to first-model, returns 500 from backend
-    When client sends "POST" request to "/test/error500" with body
+    When I send a POST request to "/test/error500" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 500
     # Next request should skip first-model and use second-model
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "second-model"
     # Next request should use third-model
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "third-model"
     # Next request should use second-model (skip suspended first-model)
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -415,7 +415,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "second-model"
 
   Scenario: Suspend model on 429 rate limit error
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -446,22 +446,22 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: model-2
                 suspendDuration: 3
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # First request returns 429 from backend
-    When client sends "POST" request to "/test/error429" with body
+    When I send a POST request to "/test/error429" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 429
     # Next request should use model-2 (model-1 is suspended)
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "model-2"
     # Another request should still use model-2
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -469,7 +469,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "model-2"
 
   Scenario: All models suspended returns 503
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -500,21 +500,21 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: model-y
                 suspendDuration: 5
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # Trigger 500 error for model-x
-    When client sends "POST" request to "/test/error500" with body
+    When I send a POST request to "/test/error500" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 500
     # Trigger 500 error for model-y
-    When client sends "POST" request to "/test/error500" with body
+    When I send a POST request to "/test/error500" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 500
     # Now all models are suspended, should return 503
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -526,7 +526,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: No suspension when suspendDuration is 0
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -557,22 +557,22 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: model-two
                 suspendDuration: 0
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # First request fails with 500
-    When client sends "POST" request to "/test/error500" with body
+    When I send a POST request to "/test/error500" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 500
     # Next request continues rotation to model-two (no suspension)
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "model-two"
     # Next request rotates back to model-one (not suspended)
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -584,7 +584,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Handle empty request body
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -603,15 +603,15 @@ Feature: Model Round-Robin Load Balancing Policy
                 models:
                   - model: selected-model
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       """
     Then the response status code should be 400
     And the response body should contain "Request body is empty"
 
   Scenario: Handle invalid JSON in request body
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -630,8 +630,8 @@ Feature: Model Round-Robin Load Balancing Policy
                 models:
                   - model: selected-model
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       not valid json [
       """
@@ -639,7 +639,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "Invalid JSON in request body"
 
   Scenario: Handle invalid JSONPath
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -661,8 +661,8 @@ Feature: Model Round-Robin Load Balancing Policy
                   location: payload
                   identifier: $.does.not.exist
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "test"}
       """
@@ -670,7 +670,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "Invalid or missing model"
 
   Scenario: Handle missing model field in payload
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -689,8 +689,8 @@ Feature: Model Round-Robin Load Balancing Policy
                 models:
                   - model: selected-model
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       {"prompt": "test without model field"}
       """
@@ -698,7 +698,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "Invalid or missing model"
 
   Scenario: Single model always returns same model
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -717,20 +717,20 @@ Feature: Model Round-Robin Load Balancing Policy
                 models:
                   - model: only-model
       """
-    And wait for health endpoint to be ready
-    When client sends "POST" request to "/test/chat" with body
+    And I wait for 3 seconds
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "only-model"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 200
     And the response body should contain "only-model"
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -742,7 +742,7 @@ Feature: Model Round-Robin Load Balancing Policy
   # ====================================================================
 
   Scenario: Equal load balancing across multiple AI providers
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -763,9 +763,9 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: anthropic-claude-3
                   - model: google-gemini-pro
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # Each model should get equal share of requests
-    When client sends "POST" request to "/test/completions" with body
+    When I send a POST request to "/test/completions" with body:
       """
       {"model": "any", "messages": [{"role": "user", "content": "Hello"}]}
       """
@@ -773,7 +773,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should contain "openai-gpt-4"
 
   Scenario: High availability with automatic failover
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -806,15 +806,15 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: backup-instance-2
                 suspendDuration: 10
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # Primary instance fails
-    When client sends "POST" request to "/test/error500" with body
+    When I send a POST request to "/test/error500" with body:
       """
       {"model": "any"}
       """
     Then the response status code should be 500
     # System automatically fails over to backup instances
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any"}
       """
@@ -822,7 +822,7 @@ Feature: Model Round-Robin Load Balancing Policy
     And the response body should match pattern "(backup-instance-1|backup-instance-2)"
 
   Scenario: Cost optimization across identical model deployments
-    Given API is deployed with following configuration
+    Given I deploy an API with the following configuration:
       """
       name: test-api
       version: 1.0.0
@@ -843,9 +843,9 @@ Feature: Model Round-Robin Load Balancing Policy
                   - model: gpt-4-region-eu
                   - model: gpt-4-region-asia
       """
-    And wait for health endpoint to be ready
+    And I wait for 3 seconds
     # Distribute load evenly across regions to optimize costs
-    When client sends "POST" request to "/test/chat" with body
+    When I send a POST request to "/test/chat" with body:
       """
       {"model": "any", "prompt": "test"}
       """

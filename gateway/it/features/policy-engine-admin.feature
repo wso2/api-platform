@@ -32,7 +32,7 @@ Feature: Policy Engine Admin API
   Scenario: Config dump endpoint returns valid JSON
     When I send a GET request to the policy-engine config dump endpoint
     Then the response status code should be 200
-    And the response content type should be "application/json"
+    And the response Content-Type should be "application/json"
     And the response should be valid JSON
 
   Scenario: Config dump contains policy registry section
@@ -79,7 +79,7 @@ Feature: Policy Engine Admin API
                     name: X-Test-Header
                     value: test-value
       """
-    And I wait for 3 seconds for xDS synchronization
+    And I wait for 3 seconds
     When I send a GET request to the policy-engine config dump endpoint
     Then the response status code should be 200
     And the response JSON at "routes.total_routes" should be greater than 0
@@ -98,11 +98,11 @@ Feature: Policy Engine Admin API
         - method: GET
           path: /info
       """
-    And I wait for 3 seconds for xDS synchronization
+    And I wait for 3 seconds
     When I send a GET request to the policy-engine config dump endpoint
     Then the config dump should contain route with basePath "/admin-delete-test"
     When I delete the API "admin-delete-test-api" version "v1"
-    And I wait for 3 seconds for xDS synchronization
+    And I wait for 3 seconds
     And I send a GET request to the policy-engine config dump endpoint
     Then the config dump should not contain route with basePath "/admin-delete-test"
 
@@ -126,7 +126,7 @@ Feature: Policy Engine Admin API
                     name: X-Custom-Header
                     value: custom-value
       """
-    And I wait for 3 seconds for xDS synchronization
+    And I wait for 3 seconds
     When I send a GET request to the policy-engine config dump endpoint
     Then the response status code should be 200
     And the config dump should contain policy "modify-headers" for route "/admin-policy-params"
@@ -167,7 +167,7 @@ Feature: Policy Engine Admin API
         - method: POST
           path: /data
       """
-    And I wait for 3 seconds for xDS synchronization
+    And I wait for 3 seconds
     When I send a GET request to the policy-engine config dump endpoint
     Then the response status code should be 200
     And the config dump should contain route with basePath "/xds-sync-1"
@@ -187,7 +187,7 @@ Feature: Policy Engine Admin API
         - method: GET
           path: /original
       """
-    And I wait for 3 seconds for xDS synchronization
+    And I wait for 3 seconds
     When I send a GET request to the policy-engine config dump endpoint
     Then the config dump should contain route with basePath "/xds-update"
     # Update the API with a new operation
@@ -204,7 +204,7 @@ Feature: Policy Engine Admin API
         - method: POST
           path: /new-endpoint
       """
-    And I wait for 3 seconds for xDS synchronization
+    And I wait for 3 seconds
     And I send a GET request to the policy-engine config dump endpoint
     Then the config dump should contain route with basePath "/xds-update"
     And I delete the API "xds-update-api" version "v1"
