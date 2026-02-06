@@ -65,7 +65,9 @@ func NewStaticPolicyVersionResolver(versions map[string]string) *StaticPolicyVer
 }
 
 // NewLoadedPolicyVersionResolver builds a resolver from loaded policy definitions.
-// The highest semantic version per policy name is selected.
+// The highest semantic version per policy name is selected, then converted to
+// a major-only version (e.g., v0) for compatibility with policy version
+// validation rules.
 func NewLoadedPolicyVersionResolver(policyDefinitions map[string]api.PolicyDefinition) *StaticPolicyVersionResolver {
 	versions := make(map[string]string)
 	for _, def := range policyDefinitions {
@@ -73,6 +75,9 @@ func NewLoadedPolicyVersionResolver(policyDefinitions map[string]api.PolicyDefin
 		if !ok || compareSemver(def.Version, existing) > 0 {
 			versions[def.Name] = def.Version
 		}
+	}
+	for name, version := range versions {
+		versions[name] = majorOnlyVersion(version)
 	}
 	return NewStaticPolicyVersionResolver(versions)
 }
@@ -109,6 +114,26 @@ func compareSemver(a, b string) int {
 		return compareInts(aMinor, bMinor)
 	}
 	return compareInts(aPatch, bPatch)
+}
+
+func majorOnlyVersion(v string) string {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return trimmed
+	}
+
+	raw := strings.TrimPrefix(trimmed, "v")
+	parts := strings.Split(raw, ".")
+	if len(parts) == 0 {
+		return trimmed
+	}
+
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return trimmed
+	}
+
+	return fmt.Sprintf("v%d", major)
 }
 
 func parseSemver(v string) (int, int, int, bool) {

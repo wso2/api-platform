@@ -83,7 +83,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -215,7 +215,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -325,7 +325,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -442,7 +442,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -480,7 +480,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -617,7 +617,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -749,7 +749,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -853,7 +853,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -963,7 +963,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1053,7 +1053,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1117,7 +1117,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1130,6 +1130,8 @@ Feature: Token-Based Rate Limiting
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/change-test/chat/completions" to be ready
+
+    Given I set header "Content-Type" to "application/json"
 
     # Request with 5 tokens should now work (new limit is 10)
     When I send a POST request to "http://localhost:8080/change-test/chat/completions" with body:
@@ -1195,7 +1197,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1234,7 +1236,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
               - path: /chat/completions
                 methods: [POST]

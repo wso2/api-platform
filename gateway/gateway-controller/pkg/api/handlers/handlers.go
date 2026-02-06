@@ -92,6 +92,7 @@ func NewAPIServer(
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.GatewayController.Router)
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -104,7 +105,7 @@ func NewAPIServer(
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
-			deploymentService, &systemConfig.GatewayController.Router, policyVersionResolver),
+			deploymentService, &systemConfig.GatewayController.Router, policyVersionResolver, policyValidator),
 		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
 			&systemConfig.GatewayController.APIKey),
 		apiKeyXDSManager:   apiKeyXDSManager,
