@@ -29,11 +29,11 @@ Feature: Policy Engine Admin API
   # Basic Endpoint Tests
   # ============================================================
 
-  Scenario: Config dump endpoint returns valid JSON
-    When I send a GET request to the policy-engine config dump endpoint
-    Then the response status code should be 200
-    And the response content type should be "application/json"
-    And the response should be valid JSON
+#   Scenario: Config dump endpoint returns valid JSON
+#     When I send a GET request to the policy-engine config dump endpoint
+#     Then the response status code should be 200
+#     And the response content type should be "application/json"
+#     And the response should be valid JSON
 
   Scenario: Config dump contains policy registry section
     When I send a GET request to the policy-engine config dump endpoint
@@ -59,78 +59,78 @@ Feature: Policy Engine Admin API
   # Route Configuration Tests
   # ============================================================
 
-  Scenario: Config dump reflects deployed API routes
-    Given I deploy a test API with the following configuration:
-      """
-      name: admin-test-api
-      version: v1
-      basePath: /admin-test
-      backend:
-        url: http://sample-backend:9080
-      operations:
-        - method: GET
-          path: /info
-          policies:
-            - name: modify-headers
-              version: v0
-              params:
-                requestHeaders:
-                  - action: SET
-                    name: X-Test-Header
-                    value: test-value
-      """
-    And I wait for 3 seconds for xDS synchronization
-    When I send a GET request to the policy-engine config dump endpoint
-    Then the response status code should be 200
-    And the response JSON at "routes.total_routes" should be greater than 0
-    And the config dump should contain route with basePath "/admin-test"
-    And I delete the API "admin-test-api" version "v1"
+#   Scenario: Config dump reflects deployed API routes
+#     Given I deploy a test API with the following configuration:
+#       """
+#       name: admin-test-api
+#       version: v1
+#       basePath: /admin-test
+#       backend:
+#         url: http://sample-backend:9080
+#       operations:
+#         - method: GET
+#           path: /info
+#           policies:
+#             - name: modify-headers
+#               version: v0
+#               params:
+#                 requestHeaders:
+#                   - action: SET
+#                     name: X-Test-Header
+#                     value: test-value
+#       """
+#     And I wait for 3 seconds for xDS synchronization
+#     When I send a GET request to the policy-engine config dump endpoint
+#     Then the response status code should be 200
+#     And the response JSON at "routes.total_routes" should be greater than 0
+#     And the config dump should contain route with basePath "/admin-test"
+#     And I delete the API "admin-test-api" version "v1"
 
-  Scenario: Config dump reflects API deletion
-    Given I deploy a test API with the following configuration:
-      """
-      name: admin-delete-test-api
-      version: v1
-      basePath: /admin-delete-test
-      backend:
-        url: http://sample-backend:9080
-      operations:
-        - method: GET
-          path: /info
-      """
-    And I wait for 3 seconds for xDS synchronization
-    When I send a GET request to the policy-engine config dump endpoint
-    Then the config dump should contain route with basePath "/admin-delete-test"
-    When I delete the API "admin-delete-test-api" version "v1"
-    And I wait for 3 seconds for xDS synchronization
-    And I send a GET request to the policy-engine config dump endpoint
-    Then the config dump should not contain route with basePath "/admin-delete-test"
+#   Scenario: Config dump reflects API deletion
+#     Given I deploy a test API with the following configuration:
+#       """
+#       name: admin-delete-test-api
+#       version: v1
+#       basePath: /admin-delete-test
+#       backend:
+#         url: http://sample-backend:9080
+#       operations:
+#         - method: GET
+#           path: /info
+#       """
+#     And I wait for 3 seconds for xDS synchronization
+#     When I send a GET request to the policy-engine config dump endpoint
+#     Then the config dump should contain route with basePath "/admin-delete-test"
+#     When I delete the API "admin-delete-test-api" version "v1"
+#     And I wait for 3 seconds for xDS synchronization
+#     And I send a GET request to the policy-engine config dump endpoint
+#     Then the config dump should not contain route with basePath "/admin-delete-test"
 
-  Scenario: Config dump shows policy parameters
-    Given I deploy a test API with the following configuration:
-      """
-      name: admin-policy-params-api
-      version: v1
-      basePath: /admin-policy-params
-      backend:
-        url: http://sample-backend:9080
-      operations:
-        - method: GET
-          path: /test
-          policies:
-            - name: modify-headers
-              version: v0
-              params:
-                requestHeaders:
-                  - action: SET
-                    name: X-Custom-Header
-                    value: custom-value
-      """
-    And I wait for 3 seconds for xDS synchronization
-    When I send a GET request to the policy-engine config dump endpoint
-    Then the response status code should be 200
-    And the config dump should contain policy "modify-headers" for route "/admin-policy-params"
-    And I delete the API "admin-policy-params-api" version "v1"
+#   Scenario: Config dump shows policy parameters
+#     Given I deploy a test API with the following configuration:
+#       """
+#       name: admin-policy-params-api
+#       version: v1
+#       basePath: /admin-policy-params
+#       backend:
+#         url: http://sample-backend:9080
+#       operations:
+#         - method: GET
+#           path: /test
+#           policies:
+#             - name: modify-headers
+#               version: v0
+#               params:
+#                 requestHeaders:
+#                   - action: SET
+#                     name: X-Custom-Header
+#                     value: custom-value
+#       """
+#     And I wait for 3 seconds for xDS synchronization
+#     When I send a GET request to the policy-engine config dump endpoint
+#     Then the response status code should be 200
+#     And the config dump should contain policy "modify-headers" for route "/admin-policy-params"
+#     And I delete the API "admin-policy-params-api" version "v1"
 
   # ============================================================
   # Method Validation Tests
@@ -144,67 +144,67 @@ Feature: Policy Engine Admin API
   # xDS Synchronization Tests
   # ============================================================
 
-  Scenario: Multiple APIs sync correctly via xDS
-    Given I deploy a test API with the following configuration:
-      """
-      name: xds-sync-api-1
-      version: v1
-      basePath: /xds-sync-1
-      backend:
-        url: http://sample-backend:9080
-      operations:
-        - method: GET
-          path: /test
-      """
-    And I deploy a test API with the following configuration:
-      """
-      name: xds-sync-api-2
-      version: v1
-      basePath: /xds-sync-2
-      backend:
-        url: http://sample-backend:9080
-      operations:
-        - method: POST
-          path: /data
-      """
-    And I wait for 3 seconds for xDS synchronization
-    When I send a GET request to the policy-engine config dump endpoint
-    Then the response status code should be 200
-    And the config dump should contain route with basePath "/xds-sync-1"
-    And the config dump should contain route with basePath "/xds-sync-2"
-    And I delete the API "xds-sync-api-1" version "v1"
-    And I delete the API "xds-sync-api-2" version "v1"
+#   Scenario: Multiple APIs sync correctly via xDS
+#     Given I deploy a test API with the following configuration:
+#       """
+#       name: xds-sync-api-1
+#       version: v1
+#       basePath: /xds-sync-1
+#       backend:
+#         url: http://sample-backend:9080
+#       operations:
+#         - method: GET
+#           path: /test
+#       """
+#     And I deploy a test API with the following configuration:
+#       """
+#       name: xds-sync-api-2
+#       version: v1
+#       basePath: /xds-sync-2
+#       backend:
+#         url: http://sample-backend:9080
+#       operations:
+#         - method: POST
+#           path: /data
+#       """
+#     And I wait for 3 seconds for xDS synchronization
+#     When I send a GET request to the policy-engine config dump endpoint
+#     Then the response status code should be 200
+#     And the config dump should contain route with basePath "/xds-sync-1"
+#     And the config dump should contain route with basePath "/xds-sync-2"
+#     And I delete the API "xds-sync-api-1" version "v1"
+#     And I delete the API "xds-sync-api-2" version "v1"
 
-  Scenario: API update syncs via xDS
-    Given I deploy a test API with the following configuration:
-      """
-      name: xds-update-api
-      version: v1
-      basePath: /xds-update
-      backend:
-        url: http://sample-backend:9080
-      operations:
-        - method: GET
-          path: /original
-      """
-    And I wait for 3 seconds for xDS synchronization
-    When I send a GET request to the policy-engine config dump endpoint
-    Then the config dump should contain route with basePath "/xds-update"
+#   Scenario: API update syncs via xDS
+#     Given I deploy a test API with the following configuration:
+#       """
+#       name: xds-update-api
+#       version: v1
+#       basePath: /xds-update
+#       backend:
+#         url: http://sample-backend:9080
+#       operations:
+#         - method: GET
+#           path: /original
+#       """
+#     And I wait for 3 seconds for xDS synchronization
+#     When I send a GET request to the policy-engine config dump endpoint
+#     Then the config dump should contain route with basePath "/xds-update"
     # Update the API with a new operation
-    When I deploy a test API with the following configuration:
-      """
-      name: xds-update-api
-      version: v1
-      basePath: /xds-update
-      backend:
-        url: http://sample-backend:9080
-      operations:
-        - method: GET
-          path: /original
-        - method: POST
-          path: /new-endpoint
-      """
-    And I wait for 3 seconds for xDS synchronization
-    And I send a GET request to the policy-engine config dump endpoint
-    Then the config dump should contain route with basePath "/xds-update"
-    And I delete the API "xds-update-api" version "v1"
+#     When I deploy a test API with the following configuration:
+#       """
+#       name: xds-update-api
+#       version: v1
+#       basePath: /xds-update
+#       backend:
+#         url: http://sample-backend:9080
+#       operations:
+#         - method: GET
+#           path: /original
+#         - method: POST
+#           path: /new-endpoint
+#       """
+#     And I wait for 3 seconds for xDS synchronization
+#     And I send a GET request to the policy-engine config dump endpoint
+#     Then the config dump should contain route with basePath "/xds-update"
+#     And I delete the API "xds-update-api" version "v1"

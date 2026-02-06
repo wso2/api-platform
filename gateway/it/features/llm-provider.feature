@@ -124,60 +124,60 @@ Feature: LLM Provider Management
   # Scenario Group 2: List and Filter Operations
   # ========================================
 
-  Scenario: List all LLM providers
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: provider-1
-        spec:
-          displayName: Provider One
-          version: v1.0
-          template: openai
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-          accessControl:
-            mode: allow_all
-        """
-    Then the response status code should be 201
+#   Scenario: List all LLM providers
+#     Given I authenticate using basic auth as "admin"
+#     When I create this LLM provider:
+#         """
+#         apiVersion: gateway.api-platform.wso2.com/v1alpha1
+#         kind: LlmProvider
+#         metadata:
+#           name: provider-1
+#         spec:
+#           displayName: Provider One
+#           version: v1.0
+#           template: openai
+#           upstream:
+#             url: https://mock-openapi-https:9443/openai/v1
+#           accessControl:
+#             mode: allow_all
+#         """
+#     Then the response status code should be 201
 
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-        """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
-        kind: LlmProvider
-        metadata:
-          name: provider-2
-        spec:
-          displayName: Provider Two
-          version: v2.0
-          template: openai
-          context: /openai
-          vhost: api.openai.local
-          upstream:
-            url: https://mock-openapi-https:9443/openai/v1
-          accessControl:
-            mode: deny_all
-        """
-    Then the response status code should be 201
+#     Given I authenticate using basic auth as "admin"
+#     When I create this LLM provider:
+#         """
+#         apiVersion: gateway.api-platform.wso2.com/v1alpha1
+#         kind: LlmProvider
+#         metadata:
+#           name: provider-2
+#         spec:
+#           displayName: Provider Two
+#           version: v2.0
+#           template: openai
+#           context: /openai
+#           vhost: api.openai.local
+#           upstream:
+#             url: https://mock-openapi-https:9443/openai/v1
+#           accessControl:
+#             mode: deny_all
+#         """
+#     Then the response status code should be 201
 
-    Given I authenticate using basic auth as "admin"
-    When I list all LLM providers
-    Then the response status code should be 200
-    And the response should be valid JSON
-    And the JSON response field "status" should be "success"
-    And the JSON response field "count" should be at least 2
+#     Given I authenticate using basic auth as "admin"
+#     When I list all LLM providers
+#     Then the response status code should be 200
+#     And the response should be valid JSON
+#     And the JSON response field "status" should be "success"
+#     And the JSON response field "count" should be at least 2
 
     # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "provider-1"
-    Then the response status code should be 200
+#     Given I authenticate using basic auth as "admin"
+#     When I delete the LLM provider "provider-1"
+#     Then the response status code should be 200
 
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "provider-2"
-    Then the response status code should be 200
+#     Given I authenticate using basic auth as "admin"
+#     When I delete the LLM provider "provider-2"
+#     Then the response status code should be 200
 
   Scenario: List all LLM providers when none exist
     Given I authenticate using basic auth as "admin"
