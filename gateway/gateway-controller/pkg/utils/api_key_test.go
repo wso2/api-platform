@@ -1821,10 +1821,16 @@ func TestListAPIKeys_DatabaseFallback(t *testing.T) {
 			Logger:        logger,
 		}
 
-		_, err := service.ListAPIKeys(params)
-		// Might succeed with empty list or return error depending on implementation
-		// Just verify it handles gracefully - either way is acceptable
-		_ = err
+		result, err := service.ListAPIKeys(params)
+		// When both stores fail, we expect either an error or an empty result
+		if err != nil {
+			assert.Error(t, err)
+		} else {
+			// If it succeeds gracefully, result should be valid with empty list
+			assert.NotNil(t, result)
+			assert.NotNil(t, result.Response.ApiKeys)
+			assert.Equal(t, 0, len(*result.Response.ApiKeys))
+		}
 	})
 }
 
