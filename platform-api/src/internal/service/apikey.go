@@ -101,7 +101,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId strin
 		gatewayID := gateway.ID
 
 		log.Printf("[INFO] Broadcasting API key created event: apiHandle=%s gatewayId=%s keyName=%s",
-			apiId, gatewayID, req.Name)
+			apiHandle, gatewayID, req.Name)
 
 		// Broadcast with retries
 		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gatewayID, event)
@@ -172,7 +172,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	// Build the API key updated event
 	// Note: API key is sent as plain text - hashing happens in the gateway/policy-engine
 	event := &model.APIKeyUpdatedEvent{
-		ApiId:     apiId,
+		ApiId:     apiHandle,
 		KeyName:   keyName,
 		ApiKey:    req.ApiKey, // Send plain API key (no hashing in platform-api)
 		ExpiresAt: req.ExpiresAt,

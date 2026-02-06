@@ -192,7 +192,7 @@ func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[INFO] Successfully updated API key: apiId=%s orgId=%s keyName=%s",
+	log.Printf("[INFO] Successfully updated API key: apiHandle=%s orgId=%s keyName=%s",
 		apiHandle, orgId, keyName)
 
 	// Return success response
