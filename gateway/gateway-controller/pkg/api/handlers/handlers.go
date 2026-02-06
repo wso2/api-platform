@@ -21,6 +21,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/wso2/api-platform/common/constants"
@@ -217,6 +218,20 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
+			})
+		} else if validationErr := new(utils.ValidationErrorListError); errors.As(err, &validationErr) {
+			errors := make([]api.ValidationError, len(validationErr.Errors))
+			for i, e := range validationErr.Errors {
+				errors[i] = api.ValidationError{
+					Field:   stringPtr(e.Field),
+					Message: stringPtr(e.Message),
+				}
+			}
+
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Configuration validation failed",
+				Errors:  &errors,
 			})
 		} else {
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -535,7 +550,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "Failed to parse configuration",
+			Message: fmt.Sprintf("Failed to parse configuration: %v", err),
 		})
 		return
 	}

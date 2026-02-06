@@ -127,4 +127,4 @@ Feature: API Deployment and Invocation
     Then the response should be a client error
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "configuration validation failed"
+    And the response body should contain "Configuration validation failed"

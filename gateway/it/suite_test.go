@@ -104,6 +104,7 @@ func TestFeatures(t *testing.T) {
 				"features/certificates.feature",
 				"features/config-dump.feature",
 				"features/api-management.feature",
+				"features/api-error-responses.feature",
 				"features/list-policies.feature",
 				"features/api-keys.feature",
 				"features/api-with-policies.feature",
