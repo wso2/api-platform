@@ -1659,9 +1659,13 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
 	apiCfg := &cfg.Configuration
 
-	// Collect API-level policies (resolve major-only version to full semver for engine)
+	// Collect API-level policies (resolve major-only version to full semver for engine).
+	// Copy under lock so resolution does not read the shared map (safe if map is ever mutated).
 	s.policyDefMu.RLock()
-	defs := s.policyDefinitions
+	defs := make(map[string]api.PolicyDefinition, len(s.policyDefinitions))
+	for k, v := range s.policyDefinitions {
+		defs[k] = v
+	}
 	s.policyDefMu.RUnlock()
 
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
