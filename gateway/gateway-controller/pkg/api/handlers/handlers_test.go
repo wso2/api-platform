@@ -1226,6 +1226,7 @@ func TestConvertAPIPolicyNoParams(t *testing.T) {
 	}
 
 	result := convertAPIPolicy(policy, "", "v1.0.0")
+
 	assert.Equal(t, "test-policy", result.Name)
 	assert.NotNil(t, result.Parameters)
 	assert.Empty(t, result.Parameters["attachedTo"])
@@ -2204,6 +2205,7 @@ func TestConvertAPIPolicyWithExecutionCondition(t *testing.T) {
 	}
 
 	result := convertAPIPolicy(policy, "route", "v1.0.0")
+
 	assert.Equal(t, "conditional-policy", result.Name)
 	assert.NotNil(t, result.ExecutionCondition)
 	assert.Equal(t, execCondition, *result.ExecutionCondition)
@@ -2248,6 +2250,7 @@ func TestConvertAPIPolicyNilParams(t *testing.T) {
 	}
 
 	result := convertAPIPolicy(policy, "api", "v1.0.0")
+
 	assert.Equal(t, "test-policy", result.Name)
 	assert.NotNil(t, result.Parameters)
 	assert.Equal(t, "api", result.Parameters["attachedTo"])

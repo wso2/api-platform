@@ -1649,7 +1649,6 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-
 // buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config
 // Merging rules: When operation has policies, they define the order (can reorder, override, or extend API policies).
 // Remaining API-level policies not mentioned in operation policies are appended at the end.
