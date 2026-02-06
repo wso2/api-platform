@@ -2201,18 +2201,17 @@ func TestEnforceAPIKeyLimit(t *testing.T) {
 		assert.Contains(t, err.Error(), "API key limit exceeded")
 	})
 
-	t.Run("no db and memory store error returns error", func(t *testing.T) {
+	t.Run("no db falls back to memory count of zero and passes", func(t *testing.T) {
 		// Use a store that we won't add any config to
 		store := storage.NewConfigStore()
-		// Don't add any config - CountActiveAPIKeysByUserAndAPI will return error
+		// Don't add any config - CountActiveAPIKeysByUserAndAPI will return 0
 
 		service := NewAPIKeyService(store, nil, nil, &config.APIKeyConfig{
 			APIKeysPerUserPerAPI: 10,
 			Algorithm:            constants.HashingAlgorithmSHA256,
 		})
 
-		// This test verifies the "no db" path when memory store also fails
-		// In this case we return 0 from memory (not an error), so it passes
+		// When there's no db, memory returns 0 (not an error), so limit check passes
 		err := service.enforceAPIKeyLimit("nonexistent-api", "user1", logger)
 		assert.NoError(t, err)
 	})
