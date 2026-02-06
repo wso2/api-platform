@@ -1,7 +1,6 @@
 {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) .Values.gateway.configMap.annotations) -}}
 {{- $gc := .Values.gateway.config.gateway_controller -}}
 {{- $pe := .Values.gateway.config.policy_engine -}}
-{{- $policyEngineHost := printf "%s-policy-engine" (include "gateway-operator.fullname" .) -}}
 {{- $controllerHost := printf "%s-controller" (include "gateway-operator.fullname" .) -}}
 apiVersion: v1
 kind: ConfigMap
@@ -81,22 +80,13 @@ data:
 
     [gateway_controller.router.policy_engine]
     enabled = {{ $gc.router.policy_engine.enabled }}
-    host = "{{ $policyEngineHost }}"
-    port = {{ $gc.router.policy_engine.port }}
+    mode = {{ $gc.router.policy_engine.mode | quote }}
     timeout_ms = {{ $gc.router.policy_engine.timeout_ms }}
     failure_mode_allow = {{ $gc.router.policy_engine.failure_mode_allow }}
     route_cache_action = {{ $gc.router.policy_engine.route_cache_action | quote }}
     allow_mode_override = {{ $gc.router.policy_engine.allow_mode_override }}
     request_header_mode = {{ $gc.router.policy_engine.request_header_mode | quote }}
     message_timeout_ms = {{ $gc.router.policy_engine.message_timeout_ms }}
-
-    [gateway_controller.router.policy_engine.tls]
-    enabled = {{ $gc.router.policy_engine.tls.enabled }}
-    cert_path = {{ $gc.router.policy_engine.tls.cert_path | quote }}
-    key_path = {{ $gc.router.policy_engine.tls.key_path | quote }}
-    ca_path = {{ $gc.router.policy_engine.tls.ca_path | quote }}
-    server_name = {{ $gc.router.policy_engine.tls.server_name | quote }}
-    skip_verify = {{ $gc.router.policy_engine.tls.skip_verify }}
 
     {{- if $gc.auth }}
     {{- if $gc.auth.basic }}
@@ -131,7 +121,7 @@ data:
     format = {{ $gc.logging.format | quote }}
 
     [policy_engine.server]
-    extproc_port = {{ $pe.server.extproc_port }}
+    extproc_socket = {{ $pe.server.extproc_socket | quote }}
 
     [policy_engine.admin]
     enabled = {{ $pe.admin.enabled }}
@@ -178,7 +168,7 @@ data:
     {{- end }}
     {{- if .Values.gateway.config.analytics.grpc_access_logs }}
     [analytics.grpc_access_logs]
-    host = "{{ $policyEngineHost }}"
+    host = "127.0.0.1"
     log_name = {{ .Values.gateway.config.analytics.grpc_access_logs.log_name | quote }}
     buffer_flush_interval = {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_flush_interval | quote }}
     buffer_size_bytes = {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_size_bytes }}
