@@ -51,7 +51,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   deniedPhrases:
@@ -98,7 +98,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   deniedPhrases:
@@ -146,7 +146,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   allowedPhrases:
@@ -191,7 +191,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   allowedPhrases:
@@ -240,7 +240,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   allowedPhrases:
@@ -288,7 +288,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   allowedPhrases:
@@ -339,7 +339,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   allowedPhrases:
@@ -392,7 +392,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   deniedPhrases:
@@ -437,7 +437,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   deniedPhrases:
@@ -494,7 +494,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.messages[0].content"
                   deniedPhrases:
@@ -547,7 +547,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.nonexistent.field"
                   deniedPhrases:
@@ -596,7 +596,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   showAssessment: true
@@ -643,7 +643,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   showAssessment: false
@@ -693,7 +693,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   deniedPhrases:
                     - "test"
@@ -736,7 +736,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   deniedPhrases:
@@ -782,7 +782,7 @@ Feature: Semantic Prompt Guard Policy
             path: /chat
             policies:
               - name: semantic-prompt-guard
-                version: v0.1.0
+                version: v0
                 params:
                   jsonPath: "$.prompt"
                   deniedPhrases:

@@ -1659,11 +1659,23 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
 	apiCfg := &cfg.Configuration
 
-	// Collect API-level policies
+	// Collect API-level policies (resolve major-only version to full semver for engine).
+	// Copy under lock so resolution does not read the shared map (safe if map is ever mutated).
+	s.policyDefMu.RLock()
+	defs := make(map[string]api.PolicyDefinition, len(s.policyDefinitions))
+	for k, v := range s.policyDefinitions {
+		defs[k] = v
+	}
+	s.policyDefMu.RUnlock()
+
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
 	if cfg.GetPolicies() != nil {
 		for _, p := range *cfg.GetPolicies() {
-			apiPolicies[p.Name] = convertAPIPolicy(p, policy.LevelAPI)
+			resolvedVersion, err := config.ResolvePolicyVersion(defs, p.Name, p.Version)
+			if err != nil {
+				continue
+			}
+			apiPolicies[p.Name] = convertAPIPolicy(p, policy.LevelAPI, resolvedVersion)
 		}
 	}
 
@@ -1686,7 +1698,11 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				addedNames := make(map[string]struct{})
 
 				for _, opPolicy := range *ch.Policies {
-					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy, policy.LevelRoute))
+					resolvedVersion, err := config.ResolvePolicyVersion(defs, opPolicy.Name, opPolicy.Version)
+					if err != nil {
+						continue
+					}
+					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy, policy.LevelRoute, resolvedVersion))
 					addedNames[opPolicy.Name] = struct{}{}
 				}
 
@@ -1736,7 +1752,11 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				addedNames := make(map[string]struct{})
 
 				for _, opPolicy := range *op.Policies {
-					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy, policy.LevelRoute))
+					resolvedVersion, err := config.ResolvePolicyVersion(defs, opPolicy.Name, opPolicy.Version)
+					if err != nil {
+						continue
+					}
+					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy, policy.LevelRoute, resolvedVersion))
 					addedNames[opPolicy.Name] = struct{}{}
 				}
 
@@ -1821,8 +1841,9 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	return stored
 }
 
-// convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance
-func convertAPIPolicy(p api.Policy, attachedTo policy.Level) policyenginev1.PolicyInstance {
+// convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
+// resolvedVersion is the full semver (e.g. v1.0.0) to send to the policy engine.
+func convertAPIPolicy(p api.Policy, attachedTo policy.Level, resolvedVersion string) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
 		for k, v := range *p.Params {
@@ -1837,7 +1858,7 @@ func convertAPIPolicy(p api.Policy, attachedTo policy.Level) policyenginev1.Poli
 
 	return policyenginev1.PolicyInstance{
 		Name:               p.Name,
-		Version:            p.Version,
+		Version:            resolvedVersion,
 		Enabled:            true, // Default to enabled
 		ExecutionCondition: p.ExecutionCondition,
 		Parameters:         paramsMap,
@@ -2550,7 +2571,12 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	result, err := s.apiKeyService.UpdateAPIKey(params)
 	if err != nil {
 		// Check error type to determine appropriate status code
-		if strings.Contains(err.Error(), "not found") {
+		if storage.IsOperationNotAllowedError(err) {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),

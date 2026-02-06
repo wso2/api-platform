@@ -507,6 +507,14 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("API key '%s' not found for API '%s'", params.APIKeyName, params.Handle)
 	}
 
+	// Validate that only external API keys can be updated
+	if existingKey.Source != "external" {
+		logger.Warn("Attempted to update a locally generated API key",
+			slog.String("source", existingKey.Source),
+			slog.String("api_key_name", params.APIKeyName))
+		return nil, fmt.Errorf("%w: updates are only allowed for externally generated API keys. For locally generated keys, please use the regenerate endpoint to create a new key", storage.ErrOperationNotAllowed)
+	}
+
 	// Check authorization - only creator can update their own key (unless admin)
 	err = s.canRegenerateAPIKey(user, existingKey, logger)
 	if err != nil {

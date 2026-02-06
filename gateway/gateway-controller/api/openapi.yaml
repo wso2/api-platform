@@ -82,13 +82,13 @@ paths:
                   - url: http://petstore.swagger.io/v2
                 policies:
                   - name: apiKeyValidation
-                    version: v1.0.0
+                    version: v1
                     executionCondition: "request.metadata[authenticated] != true"
                     params:
                       header: X-API-Key
                       mandatory: true
                   - name: setHeaders
-                    version: v1.0.0
+                    version: v1
                     params:
                       requestHeaders:
                         - X-Request-Source: WSO2 API Manager
@@ -99,7 +99,7 @@ paths:
                     path: /pet/{petId}
                     policies:
                       - name: apiKeyValidation
-                        version: v1.0.0
+                        version: v1
                         executionCondition: "request.metadata[authenticated] != true"
                         params:
                           header: X-API-Key
@@ -1977,9 +1977,13 @@ components:
           example: apiKeyValidation
         version:
           type: string
-          description: Semantic version of the policy
-          pattern: '^v\d+\.\d+\.\d+$'
-          example: v1.0.0
+          description: >
+            Version of the policy. Only major-only version is allowed (e.g., v0, v1).
+            Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+            The Gateway Controller resolves the major version to the single matching
+            full version installed in the gateway image.
+          pattern: '^v\d+$'
+          example: v1
         executionCondition:
           type: string
           description: Expression controlling conditional execution of the policy

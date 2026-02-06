@@ -974,7 +974,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - MockKeyManager
@@ -1052,7 +1052,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - DummyKeyManager

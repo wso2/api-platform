@@ -33,6 +33,9 @@ var (
 
 	// ErrDatabaseUnavailable is returned when the database storage is unavailable
 	ErrDatabaseUnavailable = errors.New("database storage is unavailable")
+
+	// ErrOperationNotAllowed is returned when an operation is not permitted
+	ErrOperationNotAllowed = errors.New("operation not allowed")
 )
 
 // IsConflictError checks if an error is a conflict error
@@ -49,4 +52,9 @@ func IsNotFoundError(err error) bool {
 
 func IsDatabaseUnavailableError(err error) bool {
 	return errors.Is(err, ErrDatabaseUnavailable)
+}
+
+// IsOperationNotAllowedError checks if an error is an operation not allowed error
+func IsOperationNotAllowedError(err error) bool {
+	return errors.Is(err, ErrOperationNotAllowed)
 }

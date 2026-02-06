@@ -69,7 +69,7 @@ Feature: API Configuration with Policies
             path: /test
             policies:
               - name: cors
-                version: v0.1.0
+                version: v0
                 params:
                   allowedOrigins:
                     - "*"
@@ -101,7 +101,7 @@ Feature: API Configuration with Policies
             url: http://sample-backend:9080
         policies:
           - name: cors
-            version: v0.1.0
+            version: v0
             params:
               allowedOrigins:
                 - "http://localhost:3000"
@@ -153,7 +153,7 @@ Feature: API Configuration with Policies
             url: http://sample-backend:9080
         policies:
           - name: cors
-            version: v0.1.0
+            version: v0
             params:
               allowedOrigins:
                 - "*"
@@ -186,7 +186,7 @@ Feature: API Configuration with Policies
             url: http://sample-backend:9080
         policies:
           - name: cors
-            version: v0.1.0
+            version: v0
             params:
               allowedOrigins:
                 - "*"
