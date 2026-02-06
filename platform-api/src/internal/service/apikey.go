@@ -44,11 +44,23 @@ func NewAPIKeyService(apiRepo repository.APIRepository, gatewayEventsService *Ga
 
 // CreateAPIKey hashes an external API key and broadcasts it to gateways where the API is deployed.
 // This method is used when external platforms inject API keys to hybrid gateways.
-func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, req *dto.CreateAPIKeyRequest) error {
+func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId string, req *dto.CreateAPIKeyRequest) error {
+	// Resolve API handle to UUID
+	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get API metadata for API key creation: apiHandle=%s error=%v", apiHandle, err)
+		return fmt.Errorf("failed to get API by handle: %w", err)
+	}
+	if apiMetadata == nil {
+		log.Printf("[WARN] API not found by handle: apiHandle=%s orgId=%s", apiHandle, orgId)
+		return constants.ErrAPINotFound
+	}
+	apiId := apiMetadata.ID
+
 	// Validate API exists and get its deployments
 	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
 	if err != nil {
-		log.Printf("[ERROR] Failed to get API for API key creation: apiId=%s error=%v", apiId, err)
+		log.Printf("[ERROR] Failed to get API for API key creation: apiHandle=%s error=%v", apiHandle, err)
 		return fmt.Errorf("failed to get API: %w", err)
 	}
 	if api == nil {
@@ -58,7 +70,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, r
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
-		return fmt.Errorf("failed to get API deployments for API ID: %s: %w", apiId, err)
+		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
 	}
 
 	if len(gateways) == 0 {
@@ -70,7 +82,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, r
 	// Build the API key created event
 	// Note: API key is sent as plain text - hashing happens in the gateway/policy-engine
 	event := &model.APIKeyCreatedEvent{
-		ApiId:         apiId,
+		ApiId:         apiHandle,
 		Name:          req.Name,
 		DisplayName:   req.DisplayName,
 		ApiKey:        req.ApiKey, // Send plain API key (no hashing in platform-api)
@@ -88,7 +100,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, r
 	for _, gateway := range gateways {
 		gatewayID := gateway.ID
 
-		log.Printf("[INFO] Broadcasting API key created event: apiId=%s gatewayId=%s keyName=%s",
+		log.Printf("[INFO] Broadcasting API key created event: apiHandle=%s gatewayId=%s keyName=%s",
 			apiId, gatewayID, req.Name)
 
 		// Broadcast with retries
@@ -96,22 +108,22 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, r
 		if err != nil {
 			failureCount++
 			lastError = err
-			log.Printf("[ERROR] Failed to broadcast API key created event: apiId=%s gatewayId=%s keyName=%s error=%v",
+			log.Printf("[ERROR] Failed to broadcast API key created event: apiHandle=%s gatewayId=%s keyName=%s error=%v",
 				apiId, gatewayID, req.Name, err)
 		} else {
 			successCount++
-			log.Printf("[INFO] Successfully broadcast API key created event: apiId=%s gatewayId=%s keyName=%s",
+			log.Printf("[INFO] Successfully broadcast API key created event: apiHandle=%s gatewayId=%s keyName=%s",
 				apiId, gatewayID, req.Name)
 		}
 	}
 
 	// Log summary
-	log.Printf("[INFO] API key creation broadcast summary: apiId=%s keyName=%s total=%d success=%d failed=%d",
+	log.Printf("[INFO] API key creation broadcast summary: apiHandle=%s keyName=%s total=%d success=%d failed=%d",
 		apiId, req.Name, len(gateways), successCount, failureCount)
 
 	// Return error if all deliveries failed
 	if successCount == 0 {
-		log.Printf("[ERROR] Failed to deliver API key to any gateway: apiId=%s keyName=%s", apiId, req.Name)
+		log.Printf("[ERROR] Failed to deliver API key to any gateway: apiHandle=%s keyName=%s", apiHandle, req.Name)
 		return fmt.Errorf("failed to deliver API key event to any gateway: %w", lastError)
 	}
 
@@ -121,27 +133,39 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiId, orgId string, r
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
-func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiId, orgId, keyName string, req *dto.UpdateAPIKeyRequest) error {
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyName string, req *dto.UpdateAPIKeyRequest) error {
+	// Resolve API handle to UUID
+	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get API metadata for API key update: apiHandle=%s error=%v", apiHandle, err)
+		return fmt.Errorf("failed to get API by handle: %w", err)
+	}
+	if apiMetadata == nil {
+		log.Printf("[WARN] API not found by handle for API key update: apiHandle=%s", apiHandle)
+		return constants.ErrAPINotFound
+	}
+	apiId := apiMetadata.ID
+
 	// Validate API exists and get its deployments
 	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
 	if err != nil {
-		log.Printf("[ERROR] Failed to get API for API key update: apiId=%s error=%v", apiId, err)
+		log.Printf("[ERROR] Failed to get API for API key update: apiHandle=%s error=%v", apiHandle, err)
 		return fmt.Errorf("failed to get API: %w", err)
 	}
 	if api == nil {
-		log.Printf("[WARN] API not found for API key update: apiId=%s", apiId)
+		log.Printf("[WARN] API not found for API key update: apiHandle=%s", apiHandle)
 		return constants.ErrAPINotFound
 	}
 
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
-		log.Printf("[ERROR] Failed to get deployments for API key update: apiId=%s error=%v", apiId, err)
+		log.Printf("[ERROR] Failed to get deployments for API key update: apiHandle=%s error=%v", apiHandle, err)
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
 
 	if len(gateways) == 0 {
-		log.Printf("[WARN] No gateway deployments found for API: apiId=%s", apiId)
+		log.Printf("[WARN] No gateway deployments found for API: apiHandle=%s", apiHandle)
 		return constants.ErrGatewayUnavailable
 	}
 
@@ -195,7 +219,18 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiId, orgId, keyName 
 }
 
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
-func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiId, orgId, keyName string) error {
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyName string) error {
+	// Resolve API handle to UUID
+	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
+	if err != nil {
+		log.Printf("[ERROR] Failed to get API metadata for API key revocation: apiHandle=%s error=%v", apiHandle, err)
+		return fmt.Errorf("failed to get API by handle: %w", err)
+	}
+	if apiMetadata == nil {
+		log.Printf("[WARN] API not found by handle for API key revocation: apiHandle=%s", apiHandle)
+		return constants.ErrAPINotFound
+	}
+	apiId := apiMetadata.ID
 	// Validate API exists and get its deployments
 	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
 	if err != nil {
@@ -217,7 +252,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiId, orgId, keyName 
 
 	// Build the API key revoked event
 	event := &model.APIKeyRevokedEvent{
-		ApiId:   apiId,
+		ApiId:   apiHandle,
 		KeyName: keyName,
 	}
 
@@ -230,7 +265,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiId, orgId, keyName 
 	for _, gateway := range gateways {
 		gatewayID := gateway.ID
 
-		log.Printf("[INFO] Broadcasting API key revoked event: apiId=%s gatewayId=%s keyName=%s",
+		log.Printf("[INFO] Broadcasting API key revoked event: apiHandle=%s gatewayId=%s keyName=%s",
 			apiId, gatewayID, keyName)
 
 		// Broadcast with retries
@@ -238,24 +273,24 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiId, orgId, keyName 
 		if err != nil {
 			failureCount++
 			lastError = err
-			log.Printf("[ERROR] Failed to broadcast API key revoked event: apiId=%s gatewayId=%s keyName=%s error=%v",
+			log.Printf("[ERROR] Failed to broadcast API key revoked event: apiHandle=%s gatewayId=%s keyName=%s error=%v",
 				apiId, gatewayID, keyName, err)
 		} else {
 			successCount++
-			log.Printf("[INFO] Successfully broadcast API key revoked event: apiId=%s gatewayId=%s keyName=%s",
+			log.Printf("[INFO] Successfully broadcast API key revoked event: apiHandle=%s gatewayId=%s keyName=%s",
 				apiId, gatewayID, keyName)
 		}
 	}
 
 	// Log summary
-	log.Printf("[INFO] API key revocation broadcast summary: apiId=%s keyName=%s total=%d success=%d failed=%d",
+	log.Printf("[INFO] API key revocation broadcast summary: apiHandle=%s keyName=%s total=%d success=%d failed=%d",
 		apiId, keyName, len(gateways), successCount, failureCount)
 
 	if failureCount == len(gateways) {
 		return fmt.Errorf("failed to deliver API key revocation to all gateways: %w", lastError)
 	}
 	if failureCount > 0 {
-		log.Printf("[WARN] Partial delivery of API key revocation: apiId=%s keyName=%s failureCount=%d total=%d",
+		log.Printf("[WARN] Partial delivery of API key revocation: apiHandle=%s keyName=%s failureCount=%d total=%d",
 			apiId, keyName, failureCount, len(gateways))
 	}
 

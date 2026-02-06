@@ -508,11 +508,19 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		return
 	}
 
-	// Log the event to console
-	c.logger.Info("Received WebSocket event",
-		slog.String("type", eventType),
-		slog.String("payload", string(message)),
-	)
+	// Log the event to console (skip payload for API key events with sensitive data)
+	isSensitiveEvent := eventType == "apikey.created" || eventType == "apikey.updated" || eventType == "apikey.revoked"
+	if isSensitiveEvent {
+		c.logger.Info("Received WebSocket event",
+			slog.String("type", eventType),
+			slog.String("payload", "[REDACTED - contains sensitive API key data]"),
+		)
+	} else {
+		c.logger.Info("Received WebSocket event",
+			slog.String("type", eventType),
+			slog.String("payload", string(message)),
+		)
+	}
 
 	// Handle specific event types
 	switch eventType {
