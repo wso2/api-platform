@@ -177,7 +177,7 @@ Feature: Analytics Header Filter Policy
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "configuration validation failed"
+    And the response body should contain "Configuration validation failed"
 
   Scenario: Invalid policy configuration - invalid operation value
     Given I authenticate using basic auth as "admin"
@@ -209,7 +209,7 @@ Feature: Analytics Header Filter Policy
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "configuration validation failed"
+    And the response body should contain "Configuration validation failed"
 
   Scenario: Invalid policy configuration - missing headers field
     Given I authenticate using basic auth as "admin"
@@ -239,7 +239,7 @@ Feature: Analytics Header Filter Policy
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
-    And the response body should contain "configuration validation failed"
+    And the response body should contain "Configuration validation failed"
 
   Scenario: Case-insensitive header matching with allow operation
     Given I authenticate using basic auth as "admin"
