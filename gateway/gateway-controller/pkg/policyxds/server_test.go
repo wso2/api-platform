@@ -27,6 +27,9 @@ import (
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -195,4 +198,38 @@ func TestTLSConfig(t *testing.T) {
 		assert.Equal(t, "cert.pem", config.CertFile)
 		assert.Equal(t, "key.pem", config.KeyFile)
 	})
+}
+
+func TestNewServer(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	policyStore := storage.NewPolicyStore()
+	snapshotMgr := NewSnapshotManager(policyStore, logger)
+	apiKeyStore := storage.NewAPIKeyStore(logger)
+	apiKeySnapshotMgr := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, logger)
+	lazyResourceStore := storage.NewLazyResourceStore(logger)
+	lazyResourceSnapshotMgr := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, logger)
+
+	t.Run("creates server without TLS", func(t *testing.T) {
+		server := NewServer(snapshotMgr, apiKeySnapshotMgr, lazyResourceSnapshotMgr, 8080, logger)
+		assert.NotNil(t, server)
+		assert.Equal(t, 8080, server.port)
+		assert.False(t, server.tlsConfig.Enabled)
+		assert.NotNil(t, server.grpcServer)
+		assert.NotNil(t, server.xdsServer)
+	})
+}
+
+func TestServer_Stop(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	policyStore := storage.NewPolicyStore()
+	snapshotMgr := NewSnapshotManager(policyStore, logger)
+	apiKeyStore := storage.NewAPIKeyStore(logger)
+	apiKeySnapshotMgr := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, logger)
+	lazyResourceStore := storage.NewLazyResourceStore(logger)
+	lazyResourceSnapshotMgr := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, logger)
+
+	server := NewServer(snapshotMgr, apiKeySnapshotMgr, lazyResourceSnapshotMgr, 0, logger)
+
+	// Should not panic
+	server.Stop()
 }

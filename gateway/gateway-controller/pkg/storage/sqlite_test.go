@@ -846,3 +846,463 @@ func createTestAPIKey() *models.APIKey {
 		UpdatedAt:    time.Now(),
 	}
 }
+
+// Additional tests for uncovered functions
+
+func TestSQLiteStorage_UpdateConfig_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create initial config
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Update config
+	config.Status = models.StatusDeployed
+	config.DeployedVersion = int64(1)
+	err = storage.UpdateConfig(config)
+	assert.NilError(t, err)
+
+	// Verify update
+	retrieved, err := storage.GetConfig(config.ID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.Status, models.StatusDeployed)
+	assert.Equal(t, retrieved.DeployedVersion, int64(1))
+}
+
+func TestSQLiteStorage_UpdateConfig_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	config := createTestStoredConfig()
+	config.ID = "non-existent"
+	err := storage.UpdateConfig(config)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_GetConfigByHandle(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config with specific handle
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Get by handle
+	retrieved, err := storage.GetConfigByHandle(config.GetHandle())
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.ID, config.ID)
+}
+
+func TestSQLiteStorage_GetConfigByHandle_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	_, err := storage.GetConfigByHandle("non-existent-handle")
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_UpdateLLMProviderTemplate_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create template
+	template := createTestLLMProviderTemplate()
+	err := storage.SaveLLMProviderTemplate(template)
+	assert.NilError(t, err)
+
+	// Update template
+	template.Configuration.Spec.DisplayName = "Updated Template"
+	err = storage.UpdateLLMProviderTemplate(template)
+	assert.NilError(t, err)
+
+	// Verify update
+	retrieved, err := storage.GetLLMProviderTemplate(template.ID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.Configuration.Spec.DisplayName, "Updated Template")
+}
+
+func TestSQLiteStorage_UpdateLLMProviderTemplate_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	template := createTestLLMProviderTemplate()
+	template.ID = "non-existent"
+	err := storage.UpdateLLMProviderTemplate(template)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_DeleteLLMProviderTemplate_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create template
+	template := createTestLLMProviderTemplate()
+	err := storage.SaveLLMProviderTemplate(template)
+	assert.NilError(t, err)
+
+	// Delete it
+	err = storage.DeleteLLMProviderTemplate(template.ID)
+	assert.NilError(t, err)
+
+	// Verify it's gone
+	_, err = storage.GetLLMProviderTemplate(template.ID)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	err := storage.DeleteLLMProviderTemplate("non-existent")
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_GetCertificateByName_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create certificate
+	cert := createTestStoredCertificate()
+	err := storage.SaveCertificate(cert)
+	assert.NilError(t, err)
+
+	// Get by name
+	retrieved, err := storage.GetCertificateByName(cert.Name)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.ID, cert.ID)
+	assert.Equal(t, retrieved.Name, cert.Name)
+}
+
+func TestSQLiteStorage_GetCertificateByName_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	cert, err := storage.GetCertificateByName("non-existent")
+	assert.NilError(t, err)
+	assert.Assert(t, cert == nil) // Returns nil cert, not error
+}
+
+func TestSQLiteStorage_ListCertificates(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create multiple certificates
+	cert1 := createTestStoredCertificate()
+	cert1.Name = "cert-1"
+	err := storage.SaveCertificate(cert1)
+	assert.NilError(t, err)
+
+	cert2 := createTestStoredCertificate()
+	cert2.Name = "cert-2"
+	err = storage.SaveCertificate(cert2)
+	assert.NilError(t, err)
+
+	// List all
+	certs, err := storage.ListCertificates()
+	assert.NilError(t, err)
+	assert.Assert(t, len(certs) >= 2)
+}
+
+func TestSQLiteStorage_DeleteCertificate_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create certificate
+	cert := createTestStoredCertificate()
+	err := storage.SaveCertificate(cert)
+	assert.NilError(t, err)
+
+	// Delete it
+	err = storage.DeleteCertificate(cert.ID)
+	assert.NilError(t, err)
+
+	// Verify it's gone
+	_, err = storage.GetCertificate(cert.ID)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_DeleteCertificate_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	err := storage.DeleteCertificate("non-existent")
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_UpdateAPIKey_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config first (required FK)
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create API key
+	apiKey := createTestAPIKey()
+	apiKey.APIId = config.ID
+	err = storage.SaveAPIKey(apiKey)
+	assert.NilError(t, err)
+
+	// Update it
+	apiKey.Status = models.APIKeyStatusRevoked
+	err = storage.UpdateAPIKey(apiKey)
+	assert.NilError(t, err)
+
+	// Verify update
+	retrieved, err := storage.GetAPIKeyByID(apiKey.ID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.Status, models.APIKeyStatusRevoked)
+}
+
+func TestSQLiteStorage_UpdateAPIKey_ExternalDuplicate(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config first
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create first external API key with index_key
+	indexKey1 := "test-index-key-1"
+	apiKey1 := createTestAPIKey()
+	apiKey1.Name = "key1"
+	apiKey1.APIId = config.ID
+	apiKey1.Source = "external"
+	apiKey1.IndexKey = &indexKey1
+	err = storage.SaveAPIKey(apiKey1)
+	assert.NilError(t, err)
+
+	// Create second external API key with different index_key
+	indexKey2 := "test-index-key-2"
+	apiKey2 := createTestAPIKey()
+	apiKey2.Name = "key2"
+	apiKey2.APIId = config.ID
+	apiKey2.Source = "external"
+	apiKey2.IndexKey = &indexKey2
+	err = storage.SaveAPIKey(apiKey2)
+	assert.NilError(t, err)
+
+	// Try to update key2 to have the same index_key as key1 (should fail)
+	apiKey2.IndexKey = &indexKey1
+	err = storage.UpdateAPIKey(apiKey2)
+	assert.Assert(t, errors.Is(err, ErrConflict))
+}
+
+func TestSQLiteStorage_DeleteAPIKey_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config first
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create API key
+	apiKey := createTestAPIKey()
+	apiKey.APIId = config.ID
+	err = storage.SaveAPIKey(apiKey)
+	assert.NilError(t, err)
+
+	// Delete it using the API key value
+	err = storage.DeleteAPIKey(apiKey.APIKey)
+	assert.NilError(t, err)
+
+	// Verify it's gone
+	_, err = storage.GetAPIKeyByKey(apiKey.APIKey)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_DeleteAPIKey_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	err := storage.DeleteAPIKey("non-existent")
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_GetAPIKeysByAPIAndName(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create API key with specific name
+	apiKey := createTestAPIKey()
+	apiKey.Name = "test-key-name"
+	apiKey.APIId = config.ID
+	err = storage.SaveAPIKey(apiKey)
+	assert.NilError(t, err)
+
+	// Get by API and name
+	key, err := storage.GetAPIKeysByAPIAndName(config.ID, "test-key-name")
+	assert.NilError(t, err)
+	assert.Assert(t, key != nil)
+	assert.Equal(t, key.Name, "test-key-name")
+}
+
+func TestSQLiteStorage_RemoveAPIKeysAPI(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create multiple API keys
+	apiKey1 := createTestAPIKey()
+	apiKey1.APIId = config.ID
+	err = storage.SaveAPIKey(apiKey1)
+	assert.NilError(t, err)
+
+	apiKey2 := createTestAPIKey()
+	apiKey2.APIId = config.ID
+	err = storage.SaveAPIKey(apiKey2)
+	assert.NilError(t, err)
+
+	// Remove all keys for this API
+	err = storage.RemoveAPIKeysAPI(config.ID)
+	assert.NilError(t, err)
+
+	// Verify they're gone
+	keys, err := storage.GetAPIKeysByAPI(config.ID)
+	assert.NilError(t, err)
+	assert.Assert(t, len(keys) == 0)
+}
+
+func TestSQLiteStorage_RemoveAPIKeyAPIAndName(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create API key
+	apiKey := createTestAPIKey()
+	apiKey.Name = "test-key"
+	apiKey.APIId = config.ID
+	err = storage.SaveAPIKey(apiKey)
+	assert.NilError(t, err)
+
+	// Remove by API and name
+	err = storage.RemoveAPIKeyAPIAndName(config.ID, "test-key")
+	assert.NilError(t, err)
+
+	// Verify it's gone
+	_, err = storage.GetAPIKeysByAPIAndName(config.ID, "test-key")
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_GetAllAPIKeys(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create multiple API keys
+	for i := 0; i < 3; i++ {
+		apiKey := createTestAPIKey()
+		apiKey.APIId = config.ID
+		err = storage.SaveAPIKey(apiKey)
+		assert.NilError(t, err)
+	}
+
+	// Get all
+	keys, err := storage.GetAllAPIKeys()
+	assert.NilError(t, err)
+	assert.Assert(t, len(keys) >= 3)
+}
+
+func TestSQLiteStorage_LoadFromDatabase(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create some configs
+	config1 := createTestStoredConfig()
+	err := storage.SaveConfig(config1)
+	assert.NilError(t, err)
+
+	config2 := createTestStoredConfig()
+	err = storage.SaveConfig(config2)
+	assert.NilError(t, err)
+
+	// Load all
+	configStore := NewConfigStore()
+	err = LoadFromDatabase(storage, configStore)
+	assert.NilError(t, err)
+	configs := configStore.GetAll()
+	assert.Assert(t, len(configs) >= 2)
+}
+
+func TestSQLiteStorage_LoadLLMProviderTemplatesFromDatabase(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create templates
+	template1 := createTestLLMProviderTemplate()
+	err := storage.SaveLLMProviderTemplate(template1)
+	assert.NilError(t, err)
+
+	template2 := createTestLLMProviderTemplate()
+	err = storage.SaveLLMProviderTemplate(template2)
+	assert.NilError(t, err)
+
+	// Load all
+	configStore := NewConfigStore()
+	err = LoadLLMProviderTemplatesFromDatabase(storage, configStore)
+	assert.NilError(t, err)
+	templates := configStore.GetAllTemplates()
+	assert.Assert(t, len(templates) >= 2)
+}
+
+func TestSQLiteStorage_LoadAPIKeysFromDatabase(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// Create config
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	// Create API keys
+	for i := 0; i < 3; i++ {
+		apiKey := createTestAPIKey()
+		apiKey.APIId = config.ID
+		err = storage.SaveAPIKey(apiKey)
+		assert.NilError(t, err)
+	}
+
+	// Load all
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	configStore := NewConfigStore()
+	apiKeyStore := NewAPIKeyStore(logger)
+	err = LoadAPIKeysFromDatabase(storage, configStore, apiKeyStore)
+	assert.NilError(t, err)
+	keys := apiKeyStore.GetAll()
+	assert.Assert(t, len(keys) >= 3)
+}
+
+func TestSQLiteStorage_Close(t *testing.T) {
+	storage := setupTestStorage(t)
+
+	// Close should succeed
+	err := storage.Close()
+	assert.NilError(t, err)
+
+	// Second close should also succeed (idempotent)
+	err = storage.Close()
+	assert.NilError(t, err)
+}
