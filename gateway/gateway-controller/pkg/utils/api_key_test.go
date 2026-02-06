@@ -1153,12 +1153,11 @@ func TestCreateAPIKey_DatabaseErrors(t *testing.T) {
 	})
 }
 
-// TestCreateAPIKey_ConfigStoreRollback tests lines 270-284 (ConfigStore rollback)
-func TestCreateAPIKey_ConfigStoreRollback(t *testing.T) {
+// TestCreateAPIKey_SuccessfulCreation tests lines 270-284 (successful API key creation)
+func TestCreateAPIKey_SuccessfulCreation(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	t.Run("ConfigStore failure triggers database rollback", func(t *testing.T) {
-		// Create a store that will fail on StoreAPIKey
+	t.Run("successful API key creation with ConfigStore and database", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		mockDB := newMockStorage()
 
@@ -1170,7 +1169,6 @@ func TestCreateAPIKey_ConfigStoreRollback(t *testing.T) {
 			Algorithm:            constants.HashingAlgorithmSHA256,
 		})
 
-		// Create a key with empty name to trigger store error
 		displayName := "Test Key"
 		params := APIKeyCreationParams{
 			Handle: "test-api",
@@ -1182,7 +1180,7 @@ func TestCreateAPIKey_ConfigStoreRollback(t *testing.T) {
 			Logger:        logger,
 		}
 
-		// ConfigStore.StoreAPIKey should work, so CreateAPIKey should succeed
+		// Should succeed with both ConfigStore and database
 		result, err := service.CreateAPIKey(params)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
