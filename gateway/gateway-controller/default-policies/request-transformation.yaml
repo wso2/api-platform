@@ -1,0 +1,182 @@
+name: request-transformation
+version: v0.1.0
+description: |
+  Transforms incoming requests by rewriting paths, query parameters, and/or HTTP methods before forwarding to upstream services.
+  Supports multiple path rewrite types: prefix replacement, full path replacement, and regex-based substitution.
+  Supports query parameter rewrite rules (replace, remove, add, append, and regex-based substitution).
+  Method rewriting changes the HTTP method of the request.
+  Optional match conditions allow rewrites to apply only when headers and/or query parameters match.
+
+parameters:
+  type: object
+  properties:
+    match:
+      type: object
+      description: Optional match conditions that gate whether rewrites are applied
+      properties:
+        headers:
+          type: array
+          description: All header matchers must succeed for the policy to apply
+          minItems: 1
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Header name to match (case-insensitive)
+                minLength: 1
+              type:
+                type: string
+                description: Match type for the header
+                enum:
+                  - Exact
+                  - Regex
+                  - Present
+              value:
+                type: string
+                description: Value to match (required for Exact and Regex)
+                minLength: 1
+                maxLength: 2048
+            required:
+              - name
+              - type
+        queryParams:
+          type: array
+          description: All query param matchers must succeed for the policy to apply
+          minItems: 1
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Query parameter name to match
+                minLength: 1
+              type:
+                type: string
+                description: Match type for the query parameter
+                enum:
+                  - Exact
+                  - Regex
+                  - Present
+              value:
+                type: string
+                description: Value to match (required for Exact and Regex)
+                minLength: 1
+                maxLength: 2048
+            required:
+              - name
+              - type
+      minProperties: 1
+    pathRewrite:
+      type: object
+      description: Configuration for rewriting the request path
+      properties:
+        type:
+          type: string
+          description: The type of path rewrite to perform
+          enum:
+            - ReplacePrefixMatch
+            - ReplaceFullPath
+            - ReplaceRegexMatch
+        replacePrefixMatch:
+          type: string
+          description: |
+            The value to replace the matched prefix with.
+            Required when type is ReplacePrefixMatch.
+            The prefix to match is determined by the operation path this policy is attached to.
+          maxLength: 2048
+        replaceFullPath:
+          type: string
+          description: |
+            The exact path to replace the entire request path with.
+            Required when type is ReplaceFullPath.
+          minLength: 1
+          maxLength: 2048
+          pattern: "^/.*"
+        replaceRegexMatch:
+          type: object
+          description: |
+            Regex-based path rewrite configuration.
+            Required when type is ReplaceRegexMatch.
+            Uses RE2 regex syntax: https://github.com/google/re2/wiki/Syntax
+          properties:
+            pattern:
+              type: string
+              description: Regular expression pattern to match against the path
+              minLength: 1
+              maxLength: 1024
+            substitution:
+              type: string
+              description: |
+                Replacement string. May include numbered capture groups (e.g., \1, \2).
+              maxLength: 2048
+          required:
+            - pattern
+            - substitution
+      required:
+        - type
+    queryRewrite:
+      type: object
+      description: Configuration for rewriting query parameters
+      properties:
+        rules:
+          type: array
+          description: List of query parameter rewrite rules, applied in order
+          minItems: 1
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+                description: Rewrite action to apply
+                enum:
+                  - Replace
+                  - Remove
+                  - Add
+                  - Append
+                  - ReplaceRegexMatch
+              name:
+                type: string
+                description: Query parameter name to target
+                minLength: 1
+              value:
+                type: string
+                description: Value used by Replace, Add, and Append
+                maxLength: 2048
+              separator:
+                type: string
+                description: Optional separator used by Append (default is empty string)
+                maxLength: 64
+              pattern:
+                type: string
+                description: Regular expression pattern to match against the parameter value
+                minLength: 1
+                maxLength: 1024
+              substitution:
+                type: string
+                description: Replacement string (supports \1, \2, etc. for capture groups)
+                maxLength: 2048
+            required:
+              - action
+              - name
+      required:
+        - rules
+    methodRewrite:
+      type: string
+      description: HTTP method to change the request to
+      enum:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - HEAD
+        - OPTIONS
+  anyOf:
+    - required: [pathRewrite]
+    - required: [queryRewrite]
+    - required: [methodRewrite]
+
+systemParameters:
+  type: object
+  properties: {}

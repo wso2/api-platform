@@ -209,8 +209,8 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 
 	t.Run("API with API-level policies", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
-			{Name: "rate-limit", Version: "v1.0.0"},
+			{Name: "cors", Version: "v0"},
+			{Name: "rate-limit", Version: "v1"},
 		}
 		cfg := createTestStoredConfig("test-api", "v1.0.0", "/test", apiPolicies, nil)
 
@@ -225,10 +225,10 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 
 	t.Run("API with operation-level policies overriding API policies", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
+			{Name: "cors", Version: "v0"},
 		}
 		opPolicies := []api.Policy{
-			{Name: "rate-limit", Version: "v1.0.0"},
+			{Name: "rate-limit", Version: "v1"},
 		}
 		cfg := createTestStoredConfigWithOpPolicies("test-api", "v1.0.0", "/test", apiPolicies, opPolicies)
 
@@ -241,7 +241,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 
 	t.Run("API with sandbox upstream creates routes for both vhosts", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
+			{Name: "cors", Version: "v0"},
 		}
 		cfg := createTestStoredConfigWithSandbox("test-api", "v1.0.0", "/test", apiPolicies)
 
@@ -255,7 +255,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 
 	t.Run("API with custom vhosts", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
+			{Name: "cors", Version: "v0"},
 		}
 		mainVhost := "custom.example.com"
 		sandboxVhost := "custom-sandbox.example.com"
@@ -268,6 +268,77 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		for _, route := range result.Configuration.Routes {
 			assert.Contains(t, route.RouteKey, "custom")
 		}
+	})
+
+	t.Run("API mixing major-only versions for same policy name", func(t *testing.T) {
+		// Ensure an API can reference the same policy name with different
+		// major-only versions (v1 and v2) within a single operation and that
+		// the derived configuration contains two entries with different
+		// resolved versions.
+
+		specUnion := api.APIConfiguration_Spec{}
+		err := specUnion.FromAPIConfigData(api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0.0",
+			Context:     "/test-mixed-majors",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend:8080"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: api.OperationMethodGET,
+					Path:   "/resource",
+					Policies: &[]api.Policy{
+						{
+							Name:    "MultiVersionPolicy",
+							Version: "v1", // major-only v1
+						},
+						{
+							Name:    "MultiVersionPolicy",
+							Version: "v2", // major-only v2
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		cfg := &models.StoredConfig{
+			ID:   "test-mixed-majors-id",
+			Kind: string(api.RestApi),
+			Configuration: api.APIConfiguration{
+				Kind: api.RestApi,
+				Metadata: api.Metadata{
+					Name: "test-api-mixed-majors",
+				},
+				Spec: specUnion,
+			},
+		}
+
+		result := utils.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig)
+		require.NotNil(t, result)
+		require.NotEmpty(t, result.Configuration.Routes)
+
+		route := result.Configuration.Routes[0]
+		require.GreaterOrEqual(t, len(route.Policies), 2)
+
+		var versions []string
+		for _, p := range route.Policies {
+			if p.Name == "MultiVersionPolicy" {
+				versions = append(versions, p.Version)
+			}
+		}
+
+		// Expect two entries for MultiVersionPolicy with different resolved full versions.
+		require.Len(t, versions, 2, "expected two MultiVersionPolicy entries in the route")
+		assert.NotEqual(t, versions[0], versions[1], "expected resolved versions for v1 and v2 majors to differ")
+		assert.Contains(t, versions, "v1.0.0", "v1 major should resolve to v1.0.0")
+		assert.Contains(t, versions, "v2.0.0", "v2 major should resolve to v2.0.0")
 	})
 }
 
@@ -299,6 +370,17 @@ func TestDerivePolicyFromAPIConfig_InvalidConfig(t *testing.T) {
 
 		assert.Nil(t, result)
 	})
+}
+
+// testPolicyDefinitions returns policy definitions used by derivation tests.
+// Enables resolving major-only (v0, v1, v2) to full semver for cors, rate-limit, MultiVersionPolicy.
+func testPolicyDefinitions() map[string]api.PolicyDefinition {
+	return map[string]api.PolicyDefinition{
+		"cors|v0.1.0":                 {Name: "cors", Version: "v0.1.0"},
+		"rate-limit|v1.0.0":           {Name: "rate-limit", Version: "v1.0.0"},
+		"MultiVersionPolicy|v1.0.0":   {Name: "MultiVersionPolicy", Version: "v1.0.0"},
+		"MultiVersionPolicy|v2.0.0":   {Name: "MultiVersionPolicy", Version: "v2.0.0"},
+	}
 }
 
 // Helper functions to create test configs
@@ -629,7 +711,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 
 	t.Run("API with empty vhost main uses default", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
+			{Name: "cors", Version: "v0"},
 		}
 		emptyMain := ""
 		cfg := createTestStoredConfigWithVhosts("test-api", "v1.0.0", "/test", apiPolicies, emptyMain, nil)
@@ -643,7 +725,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 
 	t.Run("API with empty sandbox vhost uses default", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
+			{Name: "cors", Version: "v0"},
 		}
 		emptySandbox := ""
 		cfg := createTestStoredConfigWithVhosts("test-api", "v1.0.0", "/test", apiPolicies, "custom.example.com", &emptySandbox)
@@ -655,13 +737,13 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("Operation policy overrides same-named API policy", func(t *testing.T) {
-		// Both API and operation have 'cors' policy - operation should take precedence
+		// Both API and operation have 'cors' policy - operation should take precedence (params)
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0", Params: &map[string]interface{}{"api": true}},
-			{Name: "rate-limit", Version: "v1.0.0"},
+			{Name: "cors", Version: "v0", Params: &map[string]interface{}{"api": true}},
+			{Name: "rate-limit", Version: "v1"},
 		}
 		opPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.2.0", Params: &map[string]interface{}{"operation": true}},
+			{Name: "cors", Version: "v0", Params: &map[string]interface{}{"operation": true}},
 		}
 		cfg := createTestStoredConfigWithOpPolicies("test-api", "v1.0.0", "/test", apiPolicies, opPolicies)
 
@@ -674,7 +756,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 
 	t.Run("Multiple operations create multiple routes", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
+			{Name: "cors", Version: "v0"},
 		}
 		cfg := createTestStoredConfigMultipleOps("test-api", "v1.0.0", "/test", apiPolicies)
 
@@ -687,7 +769,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 
 	t.Run("Metadata is set correctly", func(t *testing.T) {
 		apiPolicies := []api.Policy{
-			{Name: "cors", Version: "v0.1.0"},
+			{Name: "cors", Version: "v0"},
 		}
 		cfg := createTestStoredConfig("my-test-api", "v2.0.0", "/mycontext", apiPolicies, nil)
 

@@ -37,4 +37,8 @@ type PolicyChain struct {
 	// Computed flag: true if any policy requires response body access
 	// Determines whether ext_proc uses SKIP or BUFFERED mode for response body
 	RequiresResponseBody bool
+
+	// Computed flag: true if any policy has a CEL execution condition
+	// When false, CEL evaluation is skipped entirely during execution
+	HasExecutionConditions bool
 }

@@ -363,7 +363,7 @@ Feature: LLM Provider Management
             mode: allow_all
           policies:
             - name: modify-headers
-              version: v1.0.0
+              version: v1
               paths:
                 - path: /chat/completions
                   methods: [POST]
@@ -379,7 +379,7 @@ Feature: LLM Provider Management
     When I retrieve the LLM provider "policy-provider"
     Then the response status code should be 200
     And the JSON response field "provider.configuration.spec.policies[0].name" should be "modify-headers"
-    And the JSON response field "provider.configuration.spec.policies[0].version" should be "v1.0.0"
+    And the JSON response field "provider.configuration.spec.policies[0].version" should be "v1"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -467,4 +467,144 @@ Feature: LLM Provider Management
     # Cleanup
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "minimal-provider"
+    Then the response status code should be 200
+
+  # ========================================
+  # Scenario Group 11: API Invocation Tests
+  # ========================================
+
+  Scenario: Invoke LLM provider chat completions endpoint via context path
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invoke-context-provider
+        spec:
+          displayName: Invoke Context Provider
+          version: v1.0
+          template: openai
+          context: /llm-invoke-context
+          upstream:
+            url: http://mock-openapi:4010/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-test-key
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And I wait for 3 seconds
+
+    # Invoke chat completions endpoint
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/llm-invoke-context/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [
+          {"role": "user", "content": "Hello, how are you?"}
+        ]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the response body should contain "chat.completion"
+    And the response body should contain "choices"
+    And the JSON response field "object" should be "chat.completion"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "invoke-context-provider"
+    Then the response status code should be 200
+
+  Scenario: Invoke LLM provider - access control deny_all allows exception paths
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invoke-acl-provider
+        spec:
+          displayName: Invoke ACL Provider
+          version: v1.0
+          template: openai
+          context: /llm-acl-test
+          upstream:
+            url: http://mock-openapi:4010/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-test-key
+          accessControl:
+            mode: deny_all
+            exceptions:
+              - path: /chat/completions
+                methods: [POST]
+        """
+    Then the response status code should be 201
+    And I wait for 3 seconds
+
+    # Allowed endpoint should work
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/llm-acl-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Hello"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "invoke-acl-provider"
+    Then the response status code should be 200
+
+  Scenario: Invoke LLM provider - verify upstream auth header is added
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invoke-auth-provider
+        spec:
+          displayName: Invoke Auth Provider
+          version: v1.0
+          template: openai
+          context: /llm-auth-test
+          upstream:
+            url: http://mock-openapi:4010/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-test-auth-key-12345
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And I wait for 3 seconds
+
+    # Request should succeed (mock validates auth header presence)
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/llm-auth-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Test auth"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "invoke-auth-provider"
     Then the response status code should be 200

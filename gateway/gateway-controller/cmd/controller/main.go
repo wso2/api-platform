@@ -201,6 +201,17 @@ func main() {
 		cancel()
 	}
 
+	// Load policy definitions from files (must be before policy derivation and validator)
+	policyLoader := utils.NewPolicyLoader(log)
+	policyDir := cfg.GatewayController.Policies.DefinitionsPath
+	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
+	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
+	if err != nil {
+		log.Error("Failed to load policy definitions", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
+
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
 	var policyManager *policyxds.PolicyManager
@@ -266,17 +277,6 @@ func main() {
 	} else {
 		log.Info("Policy xDS server is disabled")
 	}
-
-	// Load policy definitions from files (must be done before creating validator)
-	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.GatewayController.Policies.DefinitionsPath
-	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
-	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
-	if err != nil {
-		log.Error("Failed to load policy definitions", slog.Any("error", err))
-		os.Exit(1)
-	}
-	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
 	// Load llm provider templates from files
 	templateLoader := utils.NewLLMTemplateLoader(log)
@@ -502,4 +502,3 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	}
 	return authConfig
 }
-

@@ -260,7 +260,8 @@ func (s *Server) Start(port string, certDir string) error {
 	}
 
 	// Add a health endpoint that works with self-signed certs
-	s.router.HEAD("/health", func(c *gin.Context) {
+	s.router.GET("/health", func(c *gin.Context) {
+		c.Status(200)
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 

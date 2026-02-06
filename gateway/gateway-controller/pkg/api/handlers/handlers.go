@@ -1647,12 +1647,6 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config
-// Merging rules: When operation has policies, they define the order (can reorder, override, or extend API policies).
-// Remaining API-level policies not mentioned in operation policies are appended at the end.
-// When operation has no policies, API-level policies are used in their declared order.
-// RouteKey uses the fully qualified route path (context + operation path) and must match the route name format
-// used by the xDS translator for consistency.
 // CreateMCPProxy implements ServerInterface.CreateMCPProxy
 // (POST /mcp-proxies)
 func (s *APIServer) CreateMCPProxy(c *gin.Context) {

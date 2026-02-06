@@ -49,7 +49,7 @@ Feature: LLM Proxy Management Operations
     Then the response should be successful
     And the response should be valid JSON
 
-  # ==================== GET LLM PROXY BY ID ====================
+  # ==================== GET LLM PROXY BY ID ===================
   
   Scenario: Get LLM proxy by non-existent ID returns 404
     When I send a GET request to the "gateway-controller" service at "/llm-proxies/non-existent-proxy-id-12345"
@@ -372,3 +372,217 @@ Feature: LLM Proxy Management Operations
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     And the JSON response field "count" should be 0
+
+  # ==================== API INVOCATION TESTS ====================
+
+  Scenario: Invoke LLM proxy chat completions endpoint
+    # First, create the LLM provider that the proxy will reference
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: invoke-proxy-provider
+      spec:
+        displayName: Invoke Proxy Provider
+        version: v1.0
+        template: openai
+        context: /provider-for-invoke-proxy
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Create LLM proxy with context path
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: invoke-test-proxy
+      spec:
+        displayName: Invoke Test Proxy
+        version: v1.0
+        context: /proxy-invoke-test
+        provider: invoke-proxy-provider
+      """
+    Then the response status should be 201
+    And I wait for 3 seconds
+
+    # Invoke chat completions through the proxy
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/proxy-invoke-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [
+          {"role": "user", "content": "Hello from proxy test!"}
+        ]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+    And the response body should contain "choices"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/invoke-test-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "invoke-proxy-provider"
+    Then the response status code should be 200
+
+  Scenario: Invoke LLM proxy - provider access control allows exception paths
+    # Create provider with restricted access control
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: acl-proxy-provider
+      spec:
+        displayName: ACL Proxy Provider
+        version: v1.0
+        template: openai
+        context: /provider-for-acl-proxy
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: deny_all
+          exceptions:
+            - path: /chat/completions
+              methods: [POST]
+      """
+    Then the response status code should be 201
+
+    # Create LLM proxy
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: acl-invoke-proxy
+      spec:
+        displayName: ACL Invoke Proxy
+        version: v1.0
+        context: /proxy-acl-test
+        provider: acl-proxy-provider
+      """
+    Then the response status should be 201
+    And I wait for 3 seconds
+
+    # Allowed endpoint should work
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/proxy-acl-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Hello"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/acl-invoke-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "acl-proxy-provider"
+    Then the response status code should be 200
+
+  Scenario: Multiple sequential requests through LLM proxy
+    # Create provider
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: multi-request-provider
+      spec:
+        displayName: Multi Request Provider
+        version: v1.0
+        template: openai
+        context: /provider-for-multi-proxy
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Create LLM proxy
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProxy
+      metadata:
+        name: multi-request-proxy
+      spec:
+        displayName: Multi Request Proxy
+        version: v1.0
+        context: /proxy-multi-test
+        provider: multi-request-provider
+      """
+    Then the response status should be 201
+    And I wait for 3 seconds
+
+    # First request
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/proxy-multi-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "First request"}]
+      }
+      """
+    Then the response status code should be 200
+    And the JSON response field "object" should be "chat.completion"
+
+    # Second request
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/proxy-multi-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Second request"}]
+      }
+      """
+    Then the response status code should be 200
+    And the JSON response field "object" should be "chat.completion"
+
+    # Third request with different model
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/proxy-multi-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-3.5-turbo",
+        "messages": [
+          {"role": "system", "content": "Be concise"},
+          {"role": "user", "content": "Third request"}
+        ]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/multi-request-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "multi-request-provider"
+    Then the response status code should be 200

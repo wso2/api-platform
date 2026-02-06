@@ -25,6 +25,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/testutils"
 )
 
 // ==== LoadManifest tests ====
@@ -38,8 +40,7 @@ policies:
     filePath: ./policies/test
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
 	manifest, err := LoadManifest(lockPath)
 
@@ -60,10 +61,9 @@ func TestLoadManifest_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte("invalid: yaml: content: -"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, "invalid: yaml: content: -")
 
-	_, err = LoadManifest(lockPath)
+	_, err := LoadManifest(lockPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse manifest YAML")
@@ -77,10 +77,9 @@ func TestLoadManifest_MissingVersion(t *testing.T) {
     filePath: ./policies/test
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
-	_, err = LoadManifest(lockPath)
+	_, err := LoadManifest(lockPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "manifest version is required")
@@ -95,10 +94,9 @@ policies:
     filePath: ./policies/test
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
-	_, err = LoadManifest(lockPath)
+	_, err := LoadManifest(lockPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported manifest version")
@@ -111,10 +109,9 @@ func TestLoadManifest_NoPolicies(t *testing.T) {
 policies: []
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
-	_, err = LoadManifest(lockPath)
+	_, err := LoadManifest(lockPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "manifest must declare at least one policy")
@@ -128,10 +125,9 @@ policies:
   - filePath: ./policies/test
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
-	_, err = LoadManifest(lockPath)
+	_, err := LoadManifest(lockPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "name is required")
@@ -145,10 +141,9 @@ policies:
   - name: test-policy
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
-	_, err = LoadManifest(lockPath)
+	_, err := LoadManifest(lockPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "either filePath or gomodule must be provided")
@@ -165,10 +160,9 @@ policies:
     filePath: ./policies/test
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
-	_, err = LoadManifest(lockPath)
+	_, err := LoadManifest(lockPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate policy entry")
@@ -185,8 +179,7 @@ policies:
     gomodule: github.com/example/test
 `
 	lockPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err := os.WriteFile(lockPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, lockPath, manifestContent)
 
 	manifest, err := LoadManifest(lockPath)
 
@@ -205,8 +198,7 @@ version: v1.0.0
 description: Test policy
 `
 	policyPath := filepath.Join(tmpDir, "policy-definition.yaml")
-	err := os.WriteFile(policyPath, []byte(policyContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, policyPath, policyContent)
 
 	def, err := ParsePolicyYAML(policyPath)
 
@@ -226,10 +218,9 @@ func TestParsePolicyYAML_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	policyPath := filepath.Join(tmpDir, "policy-definition.yaml")
-	err := os.WriteFile(policyPath, []byte("invalid:: yaml:"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, policyPath, "invalid:: yaml:")
 
-	_, err = ParsePolicyYAML(policyPath)
+	_, err := ParsePolicyYAML(policyPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse YAML")
@@ -240,10 +231,9 @@ func TestParsePolicyYAML_MissingName(t *testing.T) {
 
 	policyContent := `version: v1.0.0`
 	policyPath := filepath.Join(tmpDir, "policy-definition.yaml")
-	err := os.WriteFile(policyPath, []byte(policyContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, policyPath, policyContent)
 
-	_, err = ParsePolicyYAML(policyPath)
+	_, err := ParsePolicyYAML(policyPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "policy name is required")
@@ -254,10 +244,9 @@ func TestParsePolicyYAML_MissingVersion(t *testing.T) {
 
 	policyContent := `name: test-policy`
 	policyPath := filepath.Join(tmpDir, "policy-definition.yaml")
-	err := os.WriteFile(policyPath, []byte(policyContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, policyPath, policyContent)
 
-	_, err = ParsePolicyYAML(policyPath)
+	_, err := ParsePolicyYAML(policyPath)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "policy version is required")
@@ -268,11 +257,11 @@ func TestParsePolicyYAML_MissingVersion(t *testing.T) {
 func TestValidateDirectoryStructure_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"), []byte("name: test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte("module test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "go.mod"), "module test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package test")
 
 	err := ValidateDirectoryStructure(policyDir)
 
@@ -282,10 +271,10 @@ func TestValidateDirectoryStructure_Success(t *testing.T) {
 func TestValidateDirectoryStructure_MissingPolicyYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte("module test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "go.mod"), "module test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package test")
 
 	err := ValidateDirectoryStructure(policyDir)
 
@@ -296,10 +285,10 @@ func TestValidateDirectoryStructure_MissingPolicyYAML(t *testing.T) {
 func TestValidateDirectoryStructure_MissingGoMod(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"), []byte("name: test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package test")
 
 	err := ValidateDirectoryStructure(policyDir)
 
@@ -310,10 +299,10 @@ func TestValidateDirectoryStructure_MissingGoMod(t *testing.T) {
 func TestValidateDirectoryStructure_NoGoFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"), []byte("name: test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte("module test"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "go.mod"), "module test")
 
 	err := ValidateDirectoryStructure(policyDir)
 
@@ -326,11 +315,11 @@ func TestValidateDirectoryStructure_NoGoFiles(t *testing.T) {
 func TestCollectSourceFiles_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "helper.go"), []byte("package test"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "config.yaml"), []byte("key: value"), 0644) // Non-.go file
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "helper.go"), "package test")
+	testutils.WriteFile(t, filepath.Join(policyDir, "config.yaml"), "key: value") // Non-.go file
 
 	files, err := CollectSourceFiles(policyDir)
 
@@ -348,7 +337,7 @@ func TestCollectSourceFiles_DirectoryNotFound(t *testing.T) {
 func TestCollectSourceFiles_Empty(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "empty-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	files, err := CollectSourceFiles(policyDir)
 
@@ -359,10 +348,10 @@ func TestCollectSourceFiles_Empty(t *testing.T) {
 func TestCollectSourceFiles_IgnoresDirectories(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyDir := filepath.Join(tmpDir, "test-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy.go"), []byte("package test"), 0644)
-	os.MkdirAll(filepath.Join(policyDir, "subdir.go"), 0755) // Directory with .go suffix
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package test")
+	testutils.CreateDir(t, filepath.Join(policyDir, "subdir.go")) // Directory with .go suffix
 
 	files, err := CollectSourceFiles(policyDir)
 
@@ -375,31 +364,17 @@ func TestCollectSourceFiles_IgnoresDirectories(t *testing.T) {
 func TestDiscoverPoliciesFromManifest_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create policy directory with all required files
-	policyDir := filepath.Join(tmpDir, "policies", "ratelimit", "v1.0.0")
-	err := os.MkdirAll(policyDir, 0755)
-	require.NoError(t, err)
+	// Create policy directory with all required files using testutils
+	policyDir := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
 
 	// Create policy-definition.yaml
-	policyDefContent := `name: ratelimit
-version: v1.0.0
-displayName: Rate Limit Policy
-description: Limits API request rates
-`
-	err = os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"), []byte(policyDefContent), 0644)
-	require.NoError(t, err)
+	testutils.CreatePolicyDefinitionYAML(t, policyDir, "ratelimit", "v1.0.0")
 
 	// Create go.mod
-	goModContent := `module github.com/example/policies/ratelimit
-
-go 1.23
-`
-	err = os.WriteFile(filepath.Join(policyDir, "go.mod"), []byte(goModContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteGoMod(t, policyDir, "github.com/example/policies/ratelimit")
 
 	// Create a source file
-	err = os.WriteFile(filepath.Join(policyDir, "ratelimit.go"), []byte("package ratelimit\n"), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, filepath.Join(policyDir, "ratelimit.go"), "package ratelimit\n")
 
 	// Create manifest lock file
 	manifestContent := `version: v1
@@ -408,8 +383,7 @@ policies:
     filePath: ./policies/ratelimit/v1.0.0
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	err = os.WriteFile(manifestPath, []byte(manifestContent), 0644)
-	require.NoError(t, err)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	// Discover policies
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
@@ -428,26 +402,18 @@ func TestDiscoverPoliciesFromManifest_MultiplePolicies(t *testing.T) {
 	// Create two policy directories
 	policy1Dir := filepath.Join(tmpDir, "policies", "ratelimit")
 	policy2Dir := filepath.Join(tmpDir, "policies", "jwt-auth")
-	err := os.MkdirAll(policy1Dir, 0755)
-	require.NoError(t, err)
-	err = os.MkdirAll(policy2Dir, 0755)
-	require.NoError(t, err)
+	testutils.CreateDir(t, policy1Dir)
+	testutils.CreateDir(t, policy2Dir)
 
 	// Policy 1: ratelimit
-	os.WriteFile(filepath.Join(policy1Dir, "policy-definition.yaml"),
-		[]byte("name: ratelimit\nversion: v1.0.0\n"), 0644)
-	os.WriteFile(filepath.Join(policy1Dir, "go.mod"),
-		[]byte("module github.com/example/ratelimit\n\ngo 1.23\n"), 0644)
-	os.WriteFile(filepath.Join(policy1Dir, "policy.go"),
-		[]byte("package ratelimit\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policy1Dir, "policy-definition.yaml"), "name: ratelimit\nversion: v1.0.0\n")
+	testutils.WriteGoMod(t, policy1Dir, "github.com/example/ratelimit")
+	testutils.WriteFile(t, filepath.Join(policy1Dir, "policy.go"), "package ratelimit\n")
 
 	// Policy 2: jwt-auth
-	os.WriteFile(filepath.Join(policy2Dir, "policy-definition.yaml"),
-		[]byte("name: jwt-auth\nversion: v0.1.0\n"), 0644)
-	os.WriteFile(filepath.Join(policy2Dir, "go.mod"),
-		[]byte("module github.com/example/jwt-auth\n\ngo 1.23\n"), 0644)
-	os.WriteFile(filepath.Join(policy2Dir, "policy.go"),
-		[]byte("package jwtauth\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policy2Dir, "policy-definition.yaml"), "name: jwt-auth\nversion: v0.1.0\n")
+	testutils.WriteGoMod(t, policy2Dir, "github.com/example/jwt-auth")
+	testutils.WriteFile(t, filepath.Join(policy2Dir, "policy.go"), "package jwtauth\n")
 
 	// Create manifest lock
 	manifestContent := `version: v1
@@ -458,7 +424,7 @@ policies:
     filePath: ./policies/jwt-auth
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -485,7 +451,7 @@ policies:
     filePath: ./nonexistent-policy
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -503,7 +469,7 @@ policies:
   - name: incomplete-policy
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -517,15 +483,12 @@ func TestDiscoverPoliciesFromManifest_NameMismatch(t *testing.T) {
 
 	// Create policy directory with different name in definition
 	policyDir := filepath.Join(tmpDir, "policies", "my-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Policy definition has a different name
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"),
-		[]byte("name: different-name\nversion: v1.0.0\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"),
-		[]byte("module github.com/example/policy\n\ngo 1.23\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"),
-		[]byte("package policy\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: different-name\nversion: v1.0.0\n")
+	testutils.WriteGoMod(t, policyDir, "github.com/example/policy")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package policy\n")
 
 	manifestContent := `version: v1
 policies:
@@ -533,7 +496,7 @@ policies:
     filePath: ./policies/my-policy
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -546,15 +509,12 @@ func TestDiscoverPoliciesFromManifest_MissingVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	policyDir := filepath.Join(tmpDir, "policies", "noversion")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Policy definition without version
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"),
-		[]byte("name: noversion\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"),
-		[]byte("module github.com/example/noversion\n\ngo 1.23\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"),
-		[]byte("package noversion\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: noversion\n")
+	testutils.WriteGoMod(t, policyDir, "github.com/example/noversion")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package noversion\n")
 
 	manifestContent := `version: v1
 policies:
@@ -562,7 +522,7 @@ policies:
     filePath: ./policies/noversion
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -576,10 +536,9 @@ func TestDiscoverPoliciesFromManifest_InvalidPolicyStructure(t *testing.T) {
 
 	// Create policy directory without go.mod
 	policyDir := filepath.Join(tmpDir, "policies", "invalid")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"),
-		[]byte("name: invalid\nversion: v1.0.0\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: invalid\nversion: v1.0.0\n")
 	// Missing go.mod
 
 	manifestContent := `version: v1
@@ -588,7 +547,7 @@ policies:
     filePath: ./policies/invalid
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -604,14 +563,11 @@ func TestDiscoverPoliciesFromManifest_WithBaseDir(t *testing.T) {
 	// Create policy in a different location
 	policiesBaseDir := filepath.Join(tmpDir, "custom-policies")
 	policyDir := filepath.Join(policiesBaseDir, "ratelimit")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"),
-		[]byte("name: ratelimit\nversion: v1.0.0\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"),
-		[]byte("module github.com/example/ratelimit\n\ngo 1.23\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"),
-		[]byte("package ratelimit\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: ratelimit\nversion: v1.0.0\n")
+	testutils.WriteGoMod(t, policyDir, "github.com/example/ratelimit")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package ratelimit\n")
 
 	// Manifest uses relative path
 	manifestContent := `version: v1
@@ -620,8 +576,8 @@ policies:
     filePath: ./ratelimit
 `
 	manifestPath := filepath.Join(tmpDir, "manifest", "policy-manifest-lock.yaml")
-	os.MkdirAll(filepath.Dir(manifestPath), 0755)
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.CreateDir(t, filepath.Dir(manifestPath))
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	// Provide custom baseDir
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, policiesBaseDir)
@@ -638,7 +594,7 @@ func TestDiscoverPoliciesFromManifest_EmptyManifest(t *testing.T) {
 policies: []
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -652,15 +608,12 @@ func TestDiscoverPoliciesFromManifest_InvalidPolicyDefinition(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	policyDir := filepath.Join(tmpDir, "policies", "baddef")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Invalid YAML in policy definition
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"),
-		[]byte("invalid: yaml: content:::"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"),
-		[]byte("module github.com/example/baddef\n\ngo 1.23\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"),
-		[]byte("package baddef\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "invalid: yaml: content:::")
+	testutils.WriteGoMod(t, policyDir, "github.com/example/baddef")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package baddef\n")
 
 	manifestContent := `version: v1
 policies:
@@ -668,7 +621,7 @@ policies:
     filePath: ./policies/baddef
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -681,7 +634,7 @@ func TestDiscoverPoliciesFromManifest_WithSystemParameters(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	policyDir := filepath.Join(tmpDir, "policies", "sysparam-policy")
-	os.MkdirAll(policyDir, 0755)
+	testutils.CreateDir(t, policyDir)
 
 	// Policy with system parameters
 	policyDefContent := `name: sysparam-policy
@@ -693,12 +646,9 @@ systemParameters:
       type: array
       "wso2/defaultValue": "${config.keymanagers}"
 `
-	os.WriteFile(filepath.Join(policyDir, "policy-definition.yaml"),
-		[]byte(policyDefContent), 0644)
-	os.WriteFile(filepath.Join(policyDir, "go.mod"),
-		[]byte("module github.com/example/sysparam\n\ngo 1.23\n"), 0644)
-	os.WriteFile(filepath.Join(policyDir, "policy.go"),
-		[]byte("package sysparam\n"), 0644)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), policyDefContent)
+	testutils.WriteGoMod(t, policyDir, "github.com/example/sysparam")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package sysparam\n")
 
 	manifestContent := `version: v1
 policies:
@@ -706,7 +656,7 @@ policies:
     filePath: ./policies/sysparam-policy
 `
 	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
-	os.WriteFile(manifestPath, []byte(manifestContent), 0644)
+	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
 
@@ -715,4 +665,158 @@ policies:
 	assert.Equal(t, "sysparam-policy", policies[0].Name)
 	// SystemParameters should be extracted
 	assert.NotNil(t, policies[0].SystemParameters)
+}
+
+// ==== Tests for extractModulePathFromGoMod ====
+
+func TestExtractModulePathFromGoMod_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	goModContent := `module github.com/example/test-policy
+
+go 1.23
+
+require github.com/stretchr/testify v1.8.0
+`
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	testutils.WriteFile(t, goModPath, goModContent)
+
+	modulePath, err := extractModulePathFromGoMod(goModPath)
+
+	require.NoError(t, err)
+	assert.Equal(t, "github.com/example/test-policy", modulePath)
+}
+
+func TestExtractModulePathFromGoMod_FileNotFound(t *testing.T) {
+	_, err := extractModulePathFromGoMod("/nonexistent/go.mod")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read go.mod")
+}
+
+func TestExtractModulePathFromGoMod_InvalidGoMod(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	testutils.WriteFile(t, goModPath, "this is not valid go.mod syntax!!!")
+
+	_, err := extractModulePathFromGoMod(goModPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse go.mod")
+}
+
+func TestExtractModulePathFromGoMod_MissingModuleDirective(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// go.mod with no module directive
+	goModContent := `go 1.23
+
+require github.com/stretchr/testify v1.8.0
+`
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	testutils.WriteFile(t, goModPath, goModContent)
+
+	_, err := extractModulePathFromGoMod(goModPath)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "module directive missing")
+}
+
+// ==== Tests for resolveModuleInfo ====
+
+func TestResolveModuleInfo_InvalidModule(t *testing.T) {
+	// Test with a non-existent module
+	_, err := resolveModuleInfo("github.com/nonexistent-org-12345/nonexistent-module@v1.0.0")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to run 'go mod download")
+}
+
+func TestResolveModuleInfo_InvalidModuleFormat(t *testing.T) {
+	// Test with an invalid module format
+	_, err := resolveModuleInfo("not-a-valid-module-path")
+
+	assert.Error(t, err)
+}
+
+// ==== Tests for ValidateDirectoryStructure error paths ====
+
+func TestValidateDirectoryStructure_UnreadableDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a directory and make it unreadable
+	testDir := filepath.Join(tmpDir, "unreadable")
+	testutils.CreateDir(t, testDir)
+
+	// Create required files first
+	testutils.WriteFile(t, filepath.Join(testDir, "policy-definition.yaml"), "name: test\nversion: v1.0.0")
+	testutils.WriteFile(t, filepath.Join(testDir, "go.mod"), "module test\n\ngo 1.23")
+
+	// Now make directory unreadable (skip on Windows)
+	err := os.Chmod(testDir, 0000)
+	if err != nil {
+		t.Skip("Cannot change directory permissions on this OS")
+	}
+	defer os.Chmod(testDir, 0755) // Restore for cleanup
+
+	// If the directory is still readable (e.g., privileged CI), skip to avoid false failures.
+	if _, err := os.ReadDir(testDir); err == nil {
+		t.Skip("Directory still readable after chmod; skipping permission test")
+	}
+
+	err = ValidateDirectoryStructure(testDir)
+
+	// Should fail due to permission error
+	assert.Error(t, err)
+}
+
+// ==== Tests for DiscoverPoliciesFromManifest with gomodule entries ====
+
+func TestDiscoverPoliciesFromManifest_GomoduleEntry_InvalidModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	manifestContent := `version: v1
+policies:
+  - name: remote-policy
+    gomodule: github.com/nonexistent-org-12345/fake-policy@v1.0.0
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	testutils.WriteFile(t, manifestPath, manifestContent)
+
+	_, err := DiscoverPoliciesFromManifest(manifestPath, "")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to resolve gomodule")
+}
+
+func TestDiscoverPoliciesFromManifest_MixedEntries(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a local policy
+	policyDir := filepath.Join(tmpDir, "policies", "local-policy")
+	testutils.CreateDir(t, policyDir)
+
+	policyDefContent := `name: local-policy
+version: v1.0.0
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), policyDefContent)
+	testutils.WriteGoMod(t, policyDir, "github.com/example/local")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package local\n")
+
+	// Manifest with local entry only (remote would fail and we test that separately)
+	manifestContent := `version: v1
+policies:
+  - name: local-policy
+    filePath: ./policies/local-policy
+`
+	manifestPath := filepath.Join(tmpDir, "policy-manifest-lock.yaml")
+	testutils.WriteFile(t, manifestPath, manifestContent)
+
+	policies, err := DiscoverPoliciesFromManifest(manifestPath, "")
+
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	assert.Equal(t, "local-policy", policies[0].Name)
+	assert.True(t, policies[0].IsFilePathEntry)
 }

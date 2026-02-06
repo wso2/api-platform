@@ -56,7 +56,7 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
-	functionalityType string) (*dto.GatewayResponse, error) {
+	functionalityType string, properties map[string]interface{}) (*dto.GatewayResponse, error) {
 	// 1. Validate inputs
 	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
 		return nil, err
@@ -90,6 +90,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Name:              name,
 		DisplayName:       displayName,
 		Description:       description,
+		Properties:        properties,
 		Vhost:             vhost,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
@@ -141,6 +142,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Name:              gateway.Name,
 		DisplayName:       gateway.DisplayName,
 		Description:       gateway.Description,
+		Properties:        gateway.Properties,
 		Vhost:             gateway.Vhost,
 		IsCritical:        gateway.IsCritical,
 		FunctionalityType: gateway.FunctionalityType,
@@ -177,6 +179,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 			Name:              gw.Name,
 			DisplayName:       gw.DisplayName,
 			Description:       gw.Description,
+			Properties:        gw.Properties,
 			Vhost:             gw.Vhost,
 			IsCritical:        gw.IsCritical,
 			FunctionalityType: gw.FunctionalityType,
@@ -226,6 +229,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 		Name:              gateway.Name,
 		DisplayName:       gateway.DisplayName,
 		Description:       gateway.Description,
+		Properties:        gateway.Properties,
 		Vhost:             gateway.Vhost,
 		IsCritical:        gateway.IsCritical,
 		FunctionalityType: gateway.FunctionalityType,
@@ -239,7 +243,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 
 // UpdateGateway updates gateway details
 func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, displayName *string,
-	isCritical *bool) (*dto.GatewayResponse, error) {
+	isCritical *bool, properties *map[string]interface{}) (*dto.GatewayResponse, error) {
 	// Get existing gateway
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
@@ -261,6 +265,9 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 	if isCritical != nil {
 		gateway.IsCritical = *isCritical
 	}
+	if properties != nil {
+		gateway.Properties = *properties
+	}
 	gateway.UpdatedAt = time.Now()
 
 	err = s.gatewayRepo.UpdateGateway(gateway)
@@ -274,6 +281,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 		Name:              gateway.Name,
 		DisplayName:       gateway.DisplayName,
 		Description:       gateway.Description,
+		Properties:        gateway.Properties,
 		Vhost:             gateway.Vhost,
 		IsCritical:        gateway.IsCritical,
 		FunctionalityType: gateway.FunctionalityType,

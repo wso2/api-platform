@@ -253,7 +253,7 @@ func BenchmarkExecuteRequestPolicies(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				_, _ = exec.ExecuteRequestPolicies(
-					context.Background(), policies, reqCtx, specs, "PetStore", "bench-route")
+					context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", sc.withCEL)
 			}
 		})
 	}
@@ -281,7 +281,7 @@ func BenchmarkExecuteRequestPolicies_WithModifications(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = exec.ExecuteRequestPolicies(
-			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route")
+			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }
 
@@ -308,7 +308,7 @@ func BenchmarkExecuteRequestPolicies_ShortCircuit(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = exec.ExecuteRequestPolicies(
-			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route")
+			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }
 
@@ -338,7 +338,7 @@ func BenchmarkExecuteRequestPolicies_WithDisabled(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = exec.ExecuteRequestPolicies(
-			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route")
+			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }
 
@@ -371,7 +371,7 @@ func BenchmarkExecuteRequestPolicies_CELSkipping(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		celEval.counter = 0 // Reset counter for consistent behavior
 		_, _ = exec.ExecuteRequestPolicies(
-			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route")
+			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", true)
 	}
 }
 
@@ -422,7 +422,7 @@ func BenchmarkExecuteResponsePolicies(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				_, _ = exec.ExecuteResponsePolicies(
-					context.Background(), policies, respCtx, specs, "PetStore", "bench-route")
+					context.Background(), policies, respCtx, specs, "PetStore", "bench-route", sc.withCEL)
 			}
 		})
 	}
@@ -455,7 +455,7 @@ func BenchmarkExecuteRequestPolicies_Parallel(b *testing.B) {
 			// Create fresh context per iteration to avoid data races
 			reqCtx := buildTestRequestContext()
 			_, _ = exec.ExecuteRequestPolicies(
-				context.Background(), policies, reqCtx, specs, "PetStore", "bench-route")
+				context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 		}
 	})
 }
@@ -486,6 +486,6 @@ func BenchmarkExecuteRequestPolicies_RealisticWorkload(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		reqCtx := buildTestRequestContext()
 		_, _ = exec.ExecuteRequestPolicies(
-			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route")
+			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }

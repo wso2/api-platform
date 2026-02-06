@@ -27,7 +27,7 @@ spec:
   provider: wso2-openai-provider
   policies:
     - name: semanticPromptGuard
-      version: v1.0.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [ POST ]
@@ -53,7 +53,7 @@ spec:
                 "If you don't know the answer, just say that you don't know. Don't try to make up an answer."
                 ]
     - name: multiModelRouting
-      version: v1.0.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [ POST ]
@@ -62,7 +62,7 @@ spec:
               - gpt-5.1
               - gpt-4.5
     - name: multiProviderRouting
-      version: v1.0.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [ POST ]
@@ -77,7 +77,7 @@ spec:
               - name: wso2-azure-provider
                 version: v1.0
     - name: oAuth
-      version: v1.0.0
+      version: v1
       paths:
         - path: /
           methods: [ "*" ]

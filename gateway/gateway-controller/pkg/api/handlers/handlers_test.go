@@ -1976,6 +1976,7 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 // TestBuildStoredPolicyFromAPIWithVhosts tests buildStoredPolicyFromAPI with custom vhosts
 func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 	server := createTestAPIServer()
+	server.policyDefinitions["test-policy|v1.0.0"] = api.PolicyDefinition{Name: "test-policy", Version: "v1.0.0"}
 
 	policies := []api.Policy{
 		{Name: "test-policy", Version: "v1"},
@@ -2033,6 +2034,8 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 // TestBuildStoredPolicyFromAPIOperationPolicies tests operation-level policy merging
 func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 	server := createTestAPIServer()
+	server.policyDefinitions["api-policy|v1.0.0"] = api.PolicyDefinition{Name: "api-policy", Version: "v1.0.0"}
+	server.policyDefinitions["op-policy|v1.0.0"] = api.PolicyDefinition{Name: "op-policy", Version: "v1.0.0"}
 
 	apiPolicies := []api.Policy{
 		{Name: "api-policy", Version: "v1"},
