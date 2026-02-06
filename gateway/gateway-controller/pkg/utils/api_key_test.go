@@ -1176,12 +1176,10 @@ func TestCreateAPIKey_ConfigStoreRollback(t *testing.T) {
 			Logger:        logger,
 		}
 
-		// This should succeed since ConfigStore.StoreAPIKey should work
+		// ConfigStore.StoreAPIKey should work, so CreateAPIKey should succeed
 		result, err := service.CreateAPIKey(params)
-		// If store works, this passes
-		if err == nil {
-			assert.NotNil(t, result)
-		}
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
 	})
 }
 
