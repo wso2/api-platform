@@ -629,7 +629,17 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 
 	// Update policy engine xDS snapshot (if policy manager is available)
 	if c.policyManager != nil && result != nil {
-		storedPolicy := utils.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig)
+		var storedPolicy *models.StoredPolicyConfig
+
+		// Guard against nil systemConfig before deriving policies
+		if c.systemConfig != nil {
+			storedPolicy = utils.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig)
+		} else {
+			c.logger.Warn("Cannot derive policies: systemConfig is nil",
+				slog.String("api_id", apiID),
+				slog.String("correlation_id", deployedEvent.CorrelationID))
+		}
+
 		if storedPolicy != nil {
 			if err := c.policyManager.AddPolicy(storedPolicy); err != nil {
 				c.logger.Error("Failed to update policy engine snapshot",
