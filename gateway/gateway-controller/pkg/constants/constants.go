@@ -70,6 +70,7 @@ const (
 	// External Processor (ext_proc) Filter
 	ExtProcFilterName                    = "api_platform.policy_engine.envoy.filters.http.ext_proc"
 	ExtProcConfigType                    = "type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor"
+	ExtProcMetadataNamespace             = ExtProcFilterName
 	ExtProcRouteCacheActionDefault       = "DEFAULT"
 	ExtProcRouteCacheActionRetain        = "RETAIN"
 	ExtProcRouteCacheActionClear         = "CLEAR"

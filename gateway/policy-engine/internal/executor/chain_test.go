@@ -97,7 +97,7 @@ func TestExecuteRequestPolicies_EmptyPolicyList(t *testing.T) {
 	ctx := context.Background()
 	reqCtx := testutils.NewTestRequestContext()
 
-	result, err := executor.ExecuteRequestPolicies(ctx, []policy.Policy{}, reqCtx, []policy.PolicySpec{}, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, []policy.Policy{}, reqCtx, []policy.PolicySpec{}, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -114,7 +114,7 @@ func TestExecuteRequestPolicies_SinglePolicy_NoAction(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, nil)}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -132,7 +132,7 @@ func TestExecuteRequestPolicies_DisabledPolicy_Skipped(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", false, nil)}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -149,7 +149,7 @@ func TestExecuteRequestPolicies_ConditionFalse_Skipped(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("request.method == 'POST'"))}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", true)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -166,7 +166,7 @@ func TestExecuteRequestPolicies_ConditionTrue_Executed(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("request.method == 'GET'"))}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", true)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -183,7 +183,7 @@ func TestExecuteRequestPolicies_ConditionEvaluationError(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("invalid.expression"))}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", true)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -205,7 +205,7 @@ func TestExecuteRequestPolicies_ShortCircuit(t *testing.T) {
 		newPolicySpec("noop", "v1.0.0", true, nil),
 	}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.True(t, result.ShortCircuited)
@@ -224,7 +224,7 @@ func TestExecuteRequestPolicies_HeaderModification(t *testing.T) {
 	}
 	specs := []policy.PolicySpec{newPolicySpec("header-mod", "v1.0.0", true, nil)}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -253,7 +253,7 @@ func TestExecuteRequestPolicies_MultiplePolicies(t *testing.T) {
 		newPolicySpec("noop", "v1.0.0", true, nil),
 	}
 
-	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route")
+	result, err := executor.ExecuteRequestPolicies(ctx, policies, reqCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 3)
@@ -279,7 +279,7 @@ func TestExecuteResponsePolicies_EmptyPolicyList(t *testing.T) {
 	ctx := context.Background()
 	respCtx := testutils.NewTestResponseContext()
 
-	result, err := executor.ExecuteResponsePolicies(ctx, []policy.Policy{}, respCtx, []policy.PolicySpec{}, "api", "route")
+	result, err := executor.ExecuteResponsePolicies(ctx, []policy.Policy{}, respCtx, []policy.PolicySpec{}, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -295,7 +295,7 @@ func TestExecuteResponsePolicies_SinglePolicy(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, nil)}
 
-	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route")
+	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -312,7 +312,7 @@ func TestExecuteResponsePolicies_DisabledPolicy(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", false, nil)}
 
-	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route")
+	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -329,7 +329,7 @@ func TestExecuteResponsePolicies_ConditionFalse(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("response.status == 404"))}
 
-	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route")
+	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", true)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -346,7 +346,7 @@ func TestExecuteResponsePolicies_ConditionError(t *testing.T) {
 	policies := []policy.Policy{&testutils.NoopPolicy{}}
 	specs := []policy.PolicySpec{newPolicySpec("noop", "v1.0.0", true, testutils.PtrString("invalid"))}
 
-	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route")
+	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", true)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -364,7 +364,7 @@ func TestExecuteResponsePolicies_HeaderModification(t *testing.T) {
 	}
 	specs := []policy.PolicySpec{newPolicySpec("header-mod", "v1.0.0", true, nil)}
 
-	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route")
+	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
@@ -399,7 +399,7 @@ func TestExecuteResponsePolicies_ReverseOrder(t *testing.T) {
 		newPolicySpec("third", "v1.0.0", true, nil),
 	}
 
-	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route")
+	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
 
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 3)
