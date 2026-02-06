@@ -26,7 +26,6 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 // newTestAPIServer creates a minimal APIServer instance for testing.
@@ -209,7 +208,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 
 			// Call the function
 			server := newTestAPIServer()
-			result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig) // Verify result is not nil when policies exist
+			result := server.buildStoredPolicyFromAPI(cfg) // Verify result is not nil when policies exist
 			if len(tt.expectedOrder) > 0 {
 				require.NotNil(t, result, tt.description)
 				require.Len(t, result.Configuration.Routes, 1, "Should have one route")
@@ -323,7 +322,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 	}
 
 	server := newTestAPIServer()
-	result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+	result := server.buildStoredPolicyFromAPI(cfg)
 	require.NotNil(t, result)
 	require.Len(t, result.Configuration.Routes, 5, "Should have 5 routes")
 
@@ -450,7 +449,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 	var firstOrder []string
 	server := newTestAPIServer()
 	for i := 0; i < 100; i++ {
-		result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+		result := server.buildStoredPolicyFromAPI(cfg)
 		require.NotNil(t, result)
 		require.Len(t, result.Configuration.Routes, 1)
 

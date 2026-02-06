@@ -33,8 +33,9 @@ import (
 // derivePolicyFromAPIConfig derives a policy configuration from an API stored config.
 // Handles both RestApi and WebSubApi kinds. This is a shared utility used by:
 // - APIDeploymentService (WebSocket event path)
-// - APIServer handlers (REST API path)
-// - main.go startup (loading existing configs)
+// - APIServer handlers (REST API path) - TODO: Refactor this to use the implementation in utils
+// - main.go startup (loading existing configs) - TODO: Refactor this to use the implementation in utils
+
 func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
 

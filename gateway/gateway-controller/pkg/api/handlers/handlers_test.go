@@ -40,7 +40,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 func init() {
@@ -1209,7 +1208,7 @@ func TestConvertAPIPolicy(t *testing.T) {
 		Params:  &params,
 	}
 
-	result := utils.ConvertAPIPolicyToModel(policy, "api")
+	result := convertAPIPolicy(policy, "api", "v1.0.0")
 
 	assert.Equal(t, "test-policy", result.Name)
 	assert.Equal(t, "v1.0.0", result.Version)
@@ -1226,8 +1225,7 @@ func TestConvertAPIPolicyNoParams(t *testing.T) {
 		Version: "v1.0.0",
 	}
 
-	result := utils.ConvertAPIPolicyToModel(policy, "")
-
+	result := convertAPIPolicy(policy, "", "v1.0.0")
 	assert.Equal(t, "test-policy", result.Name)
 	assert.NotNil(t, result.Parameters)
 	assert.Empty(t, result.Parameters["attachedTo"])
@@ -1267,7 +1265,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 		},
 	}
 
-	result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+	result := server.buildStoredPolicyFromAPI(cfg)
 	assert.Nil(t, result)
 }
 
@@ -1527,7 +1525,7 @@ func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 		},
 	}
 
-	result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+	result := server.buildStoredPolicyFromAPI(cfg)
 	assert.Nil(t, result)
 }
 
@@ -1871,7 +1869,7 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 		},
 	}
 
-	result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+	result := server.buildStoredPolicyFromAPI(cfg)
 	// Should return nil because the spec can't be parsed as WebhookAPIData without proper setup
 	assert.Nil(t, result)
 }
@@ -2025,7 +2023,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 		},
 	}
 
-	result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+	result := server.buildStoredPolicyFromAPI(cfg)
 	assert.NotNil(t, result)
 	// Should have 2 routes (one for main vhost, one for sandbox)
 	assert.Equal(t, 2, len(result.Configuration.Routes))
@@ -2077,7 +2075,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 		},
 	}
 
-	result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+	result := server.buildStoredPolicyFromAPI(cfg)
 	assert.NotNil(t, result)
 	assert.Equal(t, 1, len(result.Configuration.Routes))
 	// Should have both operation-level and API-level policies
@@ -2144,7 +2142,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 		},
 	}
 
-	result := utils.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig)
+	result := server.buildStoredPolicyFromAPI(cfg)
 	// Should return nil since we don't have valid spec data
 	assert.Nil(t, result)
 }
@@ -2205,8 +2203,7 @@ func TestConvertAPIPolicyWithExecutionCondition(t *testing.T) {
 		ExecutionCondition: &execCondition,
 	}
 
-	result := utils.ConvertAPIPolicyToModel(policy, "route")
-
+	result := convertAPIPolicy(policy, "route", "v1.0.0")
 	assert.Equal(t, "conditional-policy", result.Name)
 	assert.NotNil(t, result.ExecutionCondition)
 	assert.Equal(t, execCondition, *result.ExecutionCondition)
@@ -2250,8 +2247,7 @@ func TestConvertAPIPolicyNilParams(t *testing.T) {
 		Params:  nil,
 	}
 
-	result := utils.ConvertAPIPolicyToModel(policy, "api")
-
+	result := convertAPIPolicy(policy, "api", "v1.0.0")
 	assert.Equal(t, "test-policy", result.Name)
 	assert.NotNil(t, result.Parameters)
 	assert.Equal(t, "api", result.Parameters["attachedTo"])
