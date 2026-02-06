@@ -2605,6 +2605,11 @@ components:
           description: Type of gateway functionality
           default: regular
           example: "regular"
+        properties:
+          type: object
+          additionalProperties: true
+          description: Custom key-value properties for the gateway
+          example: {"region": "us-west", "tier": "premium"}
 
     GatewayResponse:
       type: object
@@ -2631,6 +2636,11 @@ components:
           type: string
           description: Description of the gateway
           example: "Production gateway for handling API traffic"
+        properties:
+          type: object
+          additionalProperties: true
+          description: Custom key-value properties for the gateway
+          example: {"region": "us-west", "tier": "premium"}
         vhost:
           type: string
           description: Virtual host (domain name) for the gateway
@@ -2676,6 +2686,11 @@ components:
           type: boolean
           description: Whether the gateway is critical for production
           example: true
+        properties:
+          type: object
+          additionalProperties: true
+          description: Custom key-value properties for the gateway
+          example: {"region": "us-west", "tier": "premium"}
 
     Pagination:
       type: object

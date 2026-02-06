@@ -23,22 +23,24 @@ import (
 
 // CreateGatewayRequest represents the request body for registering a new gateway
 type CreateGatewayRequest struct {
-	Name              string `json:"name" binding:"required"`
-	DisplayName       string `json:"displayName" binding:"required"`
-	Description       string `json:"description,omitempty"`
-	Vhost             string `json:"vhost" binding:"required"`
-	IsCritical        bool   `json:"isCritical,omitempty"`
-	FunctionalityType string `json:"functionalityType" binding:"required"`
+	Name              string                 `json:"name" binding:"required"`
+	DisplayName       string                 `json:"displayName" binding:"required"`
+	Description       string                 `json:"description,omitempty"`
+	Vhost             string                 `json:"vhost" binding:"required"`
+	IsCritical        bool                   `json:"isCritical,omitempty"`
+	FunctionalityType string                 `json:"functionalityType" binding:"required"`
+	Properties        map[string]interface{} `json:"properties,omitempty"`
 }
 
 // GatewayResponse represents a gateway in API responses
 type GatewayResponse struct {
-	ID                string    `json:"id"`
-	OrganizationID    string    `json:"organizationId"`
-	Name              string    `json:"name"`
-	DisplayName       string    `json:"displayName"`
-	Description       string    `json:"description,omitempty"`
-	Vhost             string    `json:"vhost"`
+	ID                string                 `json:"id"`
+	OrganizationID    string                 `json:"organizationId"`
+	Name              string                 `json:"name"`
+	DisplayName       string                 `json:"displayName"`
+	Description       string                 `json:"description,omitempty"`
+	Properties        map[string]interface{} `json:"properties,omitempty"`
+	Vhost             string                 `json:"vhost"`
 	IsCritical        bool      `json:"isCritical"`
 	FunctionalityType string    `json:"functionalityType"`
 	IsActive          bool      `json:"isActive"`
@@ -55,9 +57,10 @@ type GatewayListResponse struct {
 
 // UpdateGatewayRequest represents the request body for updating gateway details
 type UpdateGatewayRequest struct {
-	DisplayName *string `json:"displayName,omitempty"`
-	Description *string `json:"description,omitempty"`
-	IsCritical  *bool   `json:"isCritical,omitempty"`
+	DisplayName *string                 `json:"displayName,omitempty"`
+	Description *string                 `json:"description,omitempty"`
+	IsCritical  *bool                   `json:"isCritical,omitempty"`
+	Properties  *map[string]interface{} `json:"properties,omitempty"`
 }
 
 // TokenRotationResponse represents the response when rotating a gateway token
