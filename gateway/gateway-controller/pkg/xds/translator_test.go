@@ -345,697 +345,697 @@ func TestResolveUpstreamCluster_InvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid main upstream URL")
 }
  
- // testRouterConfig creates a minimal valid router config for testing
- func testRouterConfig() *config.RouterConfig {
-	 return &config.RouterConfig{
-		 ListenerPort: 8080,
-		 VHosts: config.VHostsConfig{
-			 Main:    config.VHostEntry{Default: "localhost"},
-			 Sandbox: config.VHostEntry{Default: "sandbox.localhost"},
-		 },
-		 EnvoyUpstreamCluster: config.EnvoyUpstreamClusterConfig{
-			 ConnectTimeoutInMs: 5000,
-		 },
-		 PolicyEngine: config.PolicyEngineConfig{
-			 Enabled: false,
-		 },
-		 AccessLogs: config.AccessLogsConfig{
-			 Enabled: false,
-		 },
-		 HTTPListener: config.HTTPListenerConfig{
-			 ServerHeaderTransformation: commonconstants.OVERWRITE,
-		 },
-	 }
- }
- 
- // testConfig creates a minimal valid config for testing
- func testConfig() *config.Config {
-	 return &config.Config{
-		 GatewayController: config.GatewayController{
-			 Router: *testRouterConfig(),
-			 ControlPlane: config.ControlPlaneConfig{
-				 Host:             "localhost",
-				 ReconnectInitial: time.Second,
-				 ReconnectMax:     30 * time.Second,
-				 PollingInterval:  5 * time.Second,
-			 },
-		 },
-	 }
- }
- 
- func TestTranslator_CreateTLSProtocolVersion(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tests := []struct {
-		 name     string
-		 version  string
-		 expected tlsv3.TlsParameters_TlsProtocol
-	 }{
-		 {name: "TLS 1.0", version: constants.TLSVersion10, expected: tlsv3.TlsParameters_TLSv1_0},
-		 {name: "TLS 1.1", version: constants.TLSVersion11, expected: tlsv3.TlsParameters_TLSv1_1},
-		 {name: "TLS 1.2", version: constants.TLSVersion12, expected: tlsv3.TlsParameters_TLSv1_2},
-		 {name: "TLS 1.3", version: constants.TLSVersion13, expected: tlsv3.TlsParameters_TLSv1_3},
-		 {name: "Unknown version", version: "TLSv2.0", expected: tlsv3.TlsParameters_TLS_AUTO},
-		 {name: "Empty version", version: "", expected: tlsv3.TlsParameters_TLS_AUTO},
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 result := translator.createTLSProtocolVersion(tt.version)
-			 assert.Equal(t, tt.expected, result)
-		 })
-	 }
- }
- 
- func TestTranslator_ParseCipherSuites(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tests := []struct {
-		 name     string
-		 ciphers  string
-		 expected []string
-	 }{
-		 {
-			 name:     "Single cipher",
-			 ciphers:  "ECDHE-RSA-AES256-GCM-SHA384",
-			 expected: []string{"ECDHE-RSA-AES256-GCM-SHA384"},
-		 },
-		 {
-			 name:     "Multiple ciphers",
-			 ciphers:  "ECDHE-RSA-AES256-GCM-SHA384,ECDHE-RSA-AES128-GCM-SHA256",
-			 expected: []string{"ECDHE-RSA-AES256-GCM-SHA384", "ECDHE-RSA-AES128-GCM-SHA256"},
-		 },
-		 {
-			 name:     "Ciphers with spaces",
-			 ciphers:  "CIPHER1 , CIPHER2 , CIPHER3",
-			 expected: []string{"CIPHER1", "CIPHER2", "CIPHER3"},
-		 },
-		 {
-			 name:     "Empty string",
-			 ciphers:  "",
-			 expected: nil,
-		 },
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 result := translator.parseCipherSuites(tt.ciphers)
-			 assert.Equal(t, tt.expected, result)
-		 })
-	 }
- }
- 
- func TestTranslator_PathToRegex(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tests := []struct {
-		 name     string
-		 path     string
-		 expected string
-	 }{
-		 {
-			 name:     "Simple path",
-			 path:     "/api/users",
-			 expected: "^/api/users$",
-		 },
-		 {
-			 name:     "Path with parameter",
-			 path:     "/api/users/{id}",
-			 expected: "^/api/users/[^/]+$",
-		 },
-		 {
-			 name:     "Path with multiple parameters",
-			 path:     "/api/{resource}/{id}",
-			 expected: "^/api/[^/]+/[^/]+$",
-		 },
-		 {
-			 name:     "Path with dots (version)",
-			 path:     "/api/v1.0/users",
-			 expected: "^/api/v1\\.0/users$",
-		 },
-		 {
-			 name:     "Root path",
-			 path:     "/",
-			 expected: "^/$",
-		 },
-		 {
-			 name:     "Path with special chars",
-			 path:     "/api/data.json",
-			 expected: "^/api/data\\.json$",
-		 },
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 result := translator.pathToRegex(tt.path)
-			 assert.Equal(t, tt.expected, result)
-		 })
-	 }
- }
- 
- func TestTranslator_SanitizeClusterName(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tests := []struct {
-		 name     string
-		 hostname string
-		 scheme   string
-		 expected string
-	 }{
-		 {
-			 name:     "Simple hostname HTTP",
-			 hostname: "localhost",
-			 scheme:   "http",
-			 expected: "cluster_http_localhost",
-		 },
-		 {
-			 name:     "Dotted hostname HTTPS",
-			 hostname: "api.example.com",
-			 scheme:   "https",
-			 expected: "cluster_https_api_example_com",
-		 },
-		 {
-			 name:     "Hostname with port",
-			 hostname: "localhost:8080",
-			 scheme:   "http",
-			 expected: "cluster_http_localhost_8080",
-		 },
-		 {
-			 name:     "Complex hostname",
-			 hostname: "api.v1.prod.example.com:443",
-			 scheme:   "https",
-			 expected: "cluster_https_api_v1_prod_example_com_443",
-		 },
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 result := translator.sanitizeClusterName(tt.hostname, tt.scheme)
-			 assert.Equal(t, tt.expected, result)
-		 })
-	 }
- }
- 
- func TestGetValueFromSourceConfig(t *testing.T) {
-	 tests := []struct {
-		 name         string
-		 sourceConfig any
-		 key          string
-		 expected     any
-		 expectError  bool
-	 }{
-		 {
-			 name: "Simple key",
-			 sourceConfig: map[string]interface{}{
-				 "key1": "value1",
-			 },
-			 key:         "key1",
-			 expected:    "value1",
-			 expectError: false,
-		 },
-		 {
-			 name: "Nested key",
-			 sourceConfig: map[string]interface{}{
-				 "outer": map[string]interface{}{
-					 "inner": "nested_value",
-				 },
-			 },
-			 key:         "outer.inner",
-			 expected:    "nested_value",
-			 expectError: false,
-		 },
-		 {
-			 name: "Deeply nested key",
-			 sourceConfig: map[string]interface{}{
-				 "a": map[string]interface{}{
-					 "b": map[string]interface{}{
-						 "c": "deep_value",
-					 },
-				 },
-			 },
-			 key:         "a.b.c",
-			 expected:    "deep_value",
-			 expectError: false,
-		 },
-		 {
-			 name:         "Nil sourceConfig",
-			 sourceConfig: nil,
-			 key:          "key",
-			 expected:     nil,
-			 expectError:  true,
-		 },
-		 {
-			 name: "Key not found",
-			 sourceConfig: map[string]interface{}{
-				 "key1": "value1",
-			 },
-			 key:         "nonexistent",
-			 expected:    nil,
-			 expectError: true,
-		 },
-		 {
-			 name: "Invalid nested path",
-			 sourceConfig: map[string]interface{}{
-				 "key1": "value1",
-			 },
-			 key:         "key1.nested",
-			 expected:    nil,
-			 expectError: true,
-		 },
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 result, err := getValueFromSourceConfig(tt.sourceConfig, tt.key)
-			 if tt.expectError {
-				 assert.Error(t, err)
-			 } else {
-				 assert.NoError(t, err)
-				 assert.Equal(t, tt.expected, result)
-			 }
-		 })
-	 }
- }
- 
- func TestConvertToInterface(t *testing.T) {
-	 tests := []struct {
-		 name     string
-		 input    map[string]string
-		 expected map[string]interface{}
-	 }{
-		 {
-			 name:     "Empty map",
-			 input:    map[string]string{},
-			 expected: map[string]interface{}{},
-		 },
-		 {
-			 name: "Single entry",
-			 input: map[string]string{
-				 "key": "value",
-			 },
-			 expected: map[string]interface{}{
-				 "key": "value",
-			 },
-		 },
-		 {
-			 name: "Multiple entries",
-			 input: map[string]string{
-				 "status":     "%RESPONSE_CODE%",
-				 "duration":   "%DURATION%",
-				 "user_agent": "%REQ(User-Agent)%",
-			 },
-			 expected: map[string]interface{}{
-				 "status":     "%RESPONSE_CODE%",
-				 "duration":   "%DURATION%",
-				 "user_agent": "%REQ(User-Agent)%",
-			 },
-		 },
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 result := convertToInterface(tt.input)
-			 assert.Equal(t, tt.expected, result)
-		 })
-	 }
- }
- 
- func TestNewTranslator_WithoutCerts(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
- 
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
-	 assert.NotNil(t, translator)
-	 assert.Nil(t, translator.GetCertStore())
- }
- 
- func TestTranslator_ExtractTemplateHandle_NilSourceConfig(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 storedCfg := &models.StoredConfig{
-		 SourceConfiguration: nil,
-	 }
- 
-	 result := translator.extractTemplateHandle(storedCfg, nil)
-	 assert.Equal(t, "", result)
- }
- 
- func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 storedCfg := &models.StoredConfig{
-		 SourceConfiguration: nil,
-	 }
- 
-	 result := translator.extractProviderName(storedCfg, nil)
-	 assert.Equal(t, "", result)
- }
- 
- func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
-	 // Note: createAccessLogConfig should only be called when access logs are enabled.
-	 // The check for enabled is done at the caller level. When called directly with disabled
-	 // access logs (format defaults to empty, which falls through to text format check),
-	 // it should return an error about missing text_format.
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 routerCfg.AccessLogs.Enabled = false
-	 // When format is empty, it falls through to text format check
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 logs, err := translator.createAccessLogConfig()
-	 // Without format configured, it returns error (this is expected behavior)
-	 assert.Error(t, err)
-	 assert.Nil(t, logs)
- }
- 
- func TestTranslator_CreateAccessLogConfig_JSON(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 routerCfg.AccessLogs = config.AccessLogsConfig{
-		 Enabled: true,
-		 Format:  "json",
-		 JSONFields: map[string]string{
-			 "status":   "%RESPONSE_CODE%",
-			 "duration": "%DURATION%",
-		 },
-	 }
-	 cfg := testConfig()
-	 cfg.GatewayController.Router = *routerCfg
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 logs, err := translator.createAccessLogConfig()
-	 assert.NoError(t, err)
-	 assert.NotEmpty(t, logs)
- }
- 
- func TestTranslator_CreateAccessLogConfig_Text(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 routerCfg.AccessLogs = config.AccessLogsConfig{
-		 Enabled:    true,
-		 Format:     "text",
-		 TextFormat: "[%START_TIME%] %REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL% %RESPONSE_CODE%",
-	 }
-	 cfg := testConfig()
-	 cfg.GatewayController.Router = *routerCfg
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 logs, err := translator.createAccessLogConfig()
-	 assert.NoError(t, err)
-	 assert.NotEmpty(t, logs)
- }
- 
- func TestTranslator_CreateAccessLogConfig_JSONMissingFields(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 routerCfg.AccessLogs = config.AccessLogsConfig{
-		 Enabled:    true,
-		 Format:     "json",
-		 JSONFields: nil,
-	 }
-	 cfg := testConfig()
-	 cfg.GatewayController.Router = *routerCfg
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 logs, err := translator.createAccessLogConfig()
-	 assert.Error(t, err)
-	 assert.Nil(t, logs)
-	 assert.Contains(t, err.Error(), "json_fields not configured")
- }
- 
- func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 routerCfg.PolicyEngine = config.PolicyEngineConfig{
-		 Enabled:   true,
-		 Host:      "localhost",
-		 Port:      50051,
-		 TimeoutMs: 1000,
-		 TLS: config.PolicyEngineTLS{
-			 Enabled: false,
-		 },
-	 }
-	 cfg := testConfig()
-	 cfg.GatewayController.Router = *routerCfg
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 cluster := translator.createPolicyEngineCluster()
-	 assert.NotNil(t, cluster)
-	 assert.Equal(t, constants.PolicyEngineClusterName, cluster.Name)
- }
- 
- func TestTranslator_CreateExtProcFilter(t *testing.T) {
-	 logger := createTestLogger()
- 
-	 tests := []struct {
-		 name             string
-		 routeCacheAction string
-		 headerMode       string
-	 }{
-		 {name: "Default settings", routeCacheAction: "DEFAULT", headerMode: "DEFAULT"},
-		 {name: "Retain cache", routeCacheAction: constants.ExtProcRouteCacheActionRetain, headerMode: "SEND"},
-		 {name: "Clear cache", routeCacheAction: constants.ExtProcRouteCacheActionClear, headerMode: "SKIP"},
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 routerCfg := testRouterConfig()
-			 routerCfg.PolicyEngine = config.PolicyEngineConfig{
-				 Enabled:           true,
-				 Host:              "localhost",
-				 Port:              50051,
-				 TimeoutMs:         1000,
-				 MessageTimeoutMs:  500,
-				 RouteCacheAction:  tt.routeCacheAction,
-				 RequestHeaderMode: tt.headerMode,
-			 }
-			 cfg := testConfig()
-			 cfg.GatewayController.Router = *routerCfg
-			 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-			 filter, err := translator.createExtProcFilter()
-			 assert.NoError(t, err)
-			 assert.NotNil(t, filter)
-			 assert.Equal(t, constants.ExtProcFilterName, filter.Name)
-		 })
-	 }
- }
- 
- func TestTranslator_CreateRouteConfiguration(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 // Test with nil virtual hosts
-	 routeConfig := translator.createRouteConfiguration(nil)
-	 assert.NotNil(t, routeConfig)
-	 assert.Equal(t, SharedRouteConfigName, routeConfig.Name)
- }
- 
- func TestTranslator_TranslateConfigs_EmptyConfigs(t *testing.T) {
-	 logger := createTestLogger()
- 
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 // Test with empty configs
-	 resources, err := translator.TranslateConfigs([]*models.StoredConfig{}, "test-correlation-id")
-	 require.NoError(t, err)
-	 assert.NotNil(t, resources)
- }
- 
- func TestTranslator_GetCertStore_Nil(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 assert.Nil(t, translator.GetCertStore())
- }
- 
- func TestTranslator_ExtractTemplateHandle_InvalidKind(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 storedCfg := &models.StoredConfig{
-		 SourceConfiguration: map[string]interface{}{
-			 "kind": 123, // Invalid type
-		 },
-	 }
- 
-	 result := translator.extractTemplateHandle(storedCfg, nil)
-	 assert.Equal(t, "", result)
- }
- 
- func TestTranslator_ExtractProviderName_InvalidKind(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 storedCfg := &models.StoredConfig{
-		 SourceConfiguration: map[string]interface{}{
-			 "kind": 123, // Invalid type
-		 },
-	 }
- 
-	 result := translator.extractProviderName(storedCfg, nil)
-	 assert.Equal(t, "", result)
- }
- 
- func TestTranslator_CreateTracingConfig_Disabled(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 cfg.TracingConfig.Enabled = false
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tracingCfg, err := translator.createTracingConfig()
-	 assert.NoError(t, err)
-	 assert.Nil(t, tracingCfg)
- }
- 
- func TestTranslator_CreateTracingConfig_Enabled(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 cfg.TracingConfig.Enabled = true
-	 cfg.TracingConfig.Endpoint = "otel-collector:4317"
-	 cfg.TracingConfig.SamplingRate = 0.5
-	 cfg.GatewayController.Router.TracingServiceName = "test-service"
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tracingCfg, err := translator.createTracingConfig()
-	 assert.NoError(t, err)
-	 assert.NotNil(t, tracingCfg)
- }
- 
- func TestTranslator_CreateOTELCollectorCluster(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 cfg.TracingConfig.Enabled = true
-	 cfg.TracingConfig.Endpoint = "otel-collector:4317"
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 cluster := translator.createOTELCollectorCluster()
-	 assert.NotNil(t, cluster)
-	 assert.Equal(t, OTELCollectorClusterName, cluster.Name)
- }
- 
- func TestTranslator_CreateOTELCollectorCluster_Disabled(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 cfg.TracingConfig.Enabled = false
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 cluster := translator.createOTELCollectorCluster()
-	 assert.Nil(t, cluster)
- }
- 
- func TestTranslator_CreateALSCluster(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 cfg.Analytics.GRPCAccessLogCfg.Host = "analytics-server"
-	 cfg.Analytics.AccessLogsServiceCfg.ALSServerPort = 18090
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 cluster := translator.createALSCluster()
-	 assert.NotNil(t, cluster)
- }
- 
- func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 cfg.Analytics.GRPCAccessLogCfg = config.GRPCAccessLogConfig{
-		 Host:    "als-server",
-		 LogName: "test-log",
-	 }
-	 cfg.Analytics.AccessLogsServiceCfg.ALSServerPort = 18090
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 accessLog, err := translator.createGRPCAccessLog()
-	 assert.NoError(t, err)
-	 assert.NotNil(t, accessLog)
- }
- 
- func TestTranslator_CreateDynamicForwardProxyCluster(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 cluster := translator.createDynamicForwardProxyCluster()
-	 assert.NotNil(t, cluster)
-	 assert.Equal(t, DynamicForwardProxyClusterName, cluster.Name)
- }
- 
- func TestTranslator_CreateSDSCluster(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 cluster := translator.createSDSCluster()
-	 assert.NotNil(t, cluster)
- }
- 
- func TestTranslator_CreateUpstreamTLSContext(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 // Test with no certificate
-	 tlsContext := translator.createUpstreamTLSContext(nil, "example.com")
-	 assert.NotNil(t, tlsContext)
-	 assert.Equal(t, "example.com", tlsContext.Sni)
- 
-	 // Test with certificate
-	 certPem := []byte("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----")
-	 tlsContextWithCert := translator.createUpstreamTLSContext(certPem, "secure.example.com")
-	 assert.NotNil(t, tlsContextWithCert)
-	 assert.Equal(t, "secure.example.com", tlsContextWithCert.Sni)
- }
- 
- func TestTranslator_ResolveUpstreamCluster_SimpleURL(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 urlStr := "http://backend:8080"
-	 upstream := &api.Upstream{
-		 Url: &urlStr,
-	 }
- 
+// testRouterConfig creates a minimal valid router config for testing
+func testRouterConfig() *config.RouterConfig {
+	return &config.RouterConfig{
+		ListenerPort: 8080,
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "localhost"},
+			Sandbox: config.VHostEntry{Default: "sandbox.localhost"},
+		},
+		EnvoyUpstreamCluster: config.EnvoyUpstreamClusterConfig{
+			ConnectTimeoutInMs: 5000,
+		},
+		PolicyEngine: config.PolicyEngineConfig{
+			Enabled: false,
+		},
+		AccessLogs: config.AccessLogsConfig{
+			Enabled: false,
+		},
+		HTTPListener: config.HTTPListenerConfig{
+			ServerHeaderTransformation: commonconstants.OVERWRITE,
+		},
+	}
+}
+ 
+// testConfig creates a minimal valid config for testing
+func testConfig() *config.Config {
+	return &config.Config{
+		GatewayController: config.GatewayController{
+			Router: *testRouterConfig(),
+			ControlPlane: config.ControlPlaneConfig{
+				Host:             "localhost",
+				ReconnectInitial: time.Second,
+				ReconnectMax:     30 * time.Second,
+				PollingInterval:  5 * time.Second,
+			},
+		},
+	}
+}
+ 
+func TestTranslator_CreateTLSProtocolVersion(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name     string
+		version  string
+		expected tlsv3.TlsParameters_TlsProtocol
+	}{
+		{name: "TLS 1.0", version: constants.TLSVersion10, expected: tlsv3.TlsParameters_TLSv1_0},
+		{name: "TLS 1.1", version: constants.TLSVersion11, expected: tlsv3.TlsParameters_TLSv1_1},
+		{name: "TLS 1.2", version: constants.TLSVersion12, expected: tlsv3.TlsParameters_TLSv1_2},
+		{name: "TLS 1.3", version: constants.TLSVersion13, expected: tlsv3.TlsParameters_TLSv1_3},
+		{name: "Unknown version", version: "TLSv2.0", expected: tlsv3.TlsParameters_TLS_AUTO},
+		{name: "Empty version", version: "", expected: tlsv3.TlsParameters_TLS_AUTO},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := translator.createTLSProtocolVersion(tt.version)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+ 
+func TestTranslator_ParseCipherSuites(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name     string
+		ciphers  string
+		expected []string
+	}{
+		{
+			name:     "Single cipher",
+			ciphers:  "ECDHE-RSA-AES256-GCM-SHA384",
+			expected: []string{"ECDHE-RSA-AES256-GCM-SHA384"},
+		},
+		{
+			name:     "Multiple ciphers",
+			ciphers:  "ECDHE-RSA-AES256-GCM-SHA384,ECDHE-RSA-AES128-GCM-SHA256",
+			expected: []string{"ECDHE-RSA-AES256-GCM-SHA384", "ECDHE-RSA-AES128-GCM-SHA256"},
+		},
+		{
+			name:     "Ciphers with spaces",
+			ciphers:  "CIPHER1 , CIPHER2 , CIPHER3",
+			expected: []string{"CIPHER1", "CIPHER2", "CIPHER3"},
+		},
+		{
+			name:     "Empty string",
+			ciphers:  "",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := translator.parseCipherSuites(tt.ciphers)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestTranslator_PathToRegex(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name     string
+		path     string
+		expected string
+	}{
+		{
+			name:     "Simple path",
+			path:     "/api/users",
+			expected: "^/api/users$",
+		},
+		{
+			name:     "Path with parameter",
+			path:     "/api/users/{id}",
+			expected: "^/api/users/[^/]+$",
+		},
+		{
+			name:     "Path with multiple parameters",
+			path:     "/api/{resource}/{id}",
+			expected: "^/api/[^/]+/[^/]+$",
+		},
+		{
+			name:     "Path with dots (version)",
+			path:     "/api/v1.0/users",
+			expected: "^/api/v1\\.0/users$",
+		},
+		{
+			name:     "Root path",
+			path:     "/",
+			expected: "^/$",
+		},
+		{
+			name:     "Path with special chars",
+			path:     "/api/data.json",
+			expected: "^/api/data\\.json$",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := translator.pathToRegex(tt.path)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestTranslator_SanitizeClusterName(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name     string
+		hostname string
+		scheme   string
+		expected string
+	}{
+		{
+			name:     "Simple hostname HTTP",
+			hostname: "localhost",
+			scheme:   "http",
+			expected: "cluster_http_localhost",
+		},
+		{
+			name:     "Dotted hostname HTTPS",
+			hostname: "api.example.com",
+			scheme:   "https",
+			expected: "cluster_https_api_example_com",
+		},
+		{
+			name:     "Hostname with port",
+			hostname: "localhost:8080",
+			scheme:   "http",
+			expected: "cluster_http_localhost_8080",
+		},
+		{
+			name:     "Complex hostname",
+			hostname: "api.v1.prod.example.com:443",
+			scheme:   "https",
+			expected: "cluster_https_api_v1_prod_example_com_443",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := translator.sanitizeClusterName(tt.hostname, tt.scheme)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetValueFromSourceConfig(t *testing.T) {
+	tests := []struct {
+		name         string
+		sourceConfig any
+		key          string
+		expected     any
+		expectError  bool
+	}{
+		{
+			name: "Simple key",
+			sourceConfig: map[string]interface{}{
+				"key1": "value1",
+			},
+			key:         "key1",
+			expected:    "value1",
+			expectError: false,
+		},
+		{
+			name: "Nested key",
+			sourceConfig: map[string]interface{}{
+				"outer": map[string]interface{}{
+					"inner": "nested_value",
+				},
+			},
+			key:         "outer.inner",
+			expected:    "nested_value",
+			expectError: false,
+		},
+		{
+			name: "Deeply nested key",
+			sourceConfig: map[string]interface{}{
+				"a": map[string]interface{}{
+					"b": map[string]interface{}{
+						"c": "deep_value",
+					},
+				},
+			},
+			key:         "a.b.c",
+			expected:    "deep_value",
+			expectError: false,
+		},
+		{
+			name:         "Nil sourceConfig",
+			sourceConfig: nil,
+			key:          "key",
+			expected:     nil,
+			expectError:  true,
+		},
+		{
+			name: "Key not found",
+			sourceConfig: map[string]interface{}{
+				"key1": "value1",
+			},
+			key:         "nonexistent",
+			expected:    nil,
+			expectError: true,
+		},
+		{
+			name: "Invalid nested path",
+			sourceConfig: map[string]interface{}{
+				"key1": "value1",
+			},
+			key:         "key1.nested",
+			expected:    nil,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := getValueFromSourceConfig(tt.sourceConfig, tt.key)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestConvertToInterface(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    map[string]string
+		expected map[string]interface{}
+	}{
+		{
+			name:     "Empty map",
+			input:    map[string]string{},
+			expected: map[string]interface{}{},
+		},
+		{
+			name: "Single entry",
+			input: map[string]string{
+				"key": "value",
+			},
+			expected: map[string]interface{}{
+				"key": "value",
+			},
+		},
+		{
+			name: "Multiple entries",
+			input: map[string]string{
+				"status":     "%RESPONSE_CODE%",
+				"duration":   "%DURATION%",
+				"user_agent": "%REQ(User-Agent)%",
+			},
+			expected: map[string]interface{}{
+				"status":     "%RESPONSE_CODE%",
+				"duration":   "%DURATION%",
+				"user_agent": "%REQ(User-Agent)%",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertToInterface(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestNewTranslator_WithoutCerts(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+	assert.NotNil(t, translator)
+	assert.Nil(t, translator.GetCertStore())
+}
+
+func TestTranslator_ExtractTemplateHandle_NilSourceConfig(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	storedCfg := &models.StoredConfig{
+		SourceConfiguration: nil,
+	}
+
+	result := translator.extractTemplateHandle(storedCfg, nil)
+	assert.Equal(t, "", result)
+}
+
+func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	storedCfg := &models.StoredConfig{
+		SourceConfiguration: nil,
+	}
+
+	result := translator.extractProviderName(storedCfg, nil)
+	assert.Equal(t, "", result)
+}
+
+func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
+	// Note: createAccessLogConfig should only be called when access logs are enabled.
+	// The check for enabled is done at the caller level. When called directly with disabled
+	// access logs (format defaults to empty, which falls through to text format check),
+	// it should return an error about missing text_format.
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs.Enabled = false
+	// When format is empty, it falls through to text format check
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	logs, err := translator.createAccessLogConfig()
+	// Without format configured, it returns error (this is expected behavior)
+	assert.Error(t, err)
+	assert.Nil(t, logs)
+}
+
+func TestTranslator_CreateAccessLogConfig_JSON(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs = config.AccessLogsConfig{
+		Enabled: true,
+		Format:  "json",
+		JSONFields: map[string]string{
+			"status":   "%RESPONSE_CODE%",
+			"duration": "%DURATION%",
+		},
+	}
+	cfg := testConfig()
+	cfg.GatewayController.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	logs, err := translator.createAccessLogConfig()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, logs)
+}
+
+func TestTranslator_CreateAccessLogConfig_Text(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs = config.AccessLogsConfig{
+		Enabled:    true,
+		Format:     "text",
+		TextFormat: "[%START_TIME%] %REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL% %RESPONSE_CODE%",
+	}
+	cfg := testConfig()
+	cfg.GatewayController.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	logs, err := translator.createAccessLogConfig()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, logs)
+}
+
+func TestTranslator_CreateAccessLogConfig_JSONMissingFields(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs = config.AccessLogsConfig{
+		Enabled:    true,
+		Format:     "json",
+		JSONFields: nil,
+	}
+	cfg := testConfig()
+	cfg.GatewayController.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	logs, err := translator.createAccessLogConfig()
+	assert.Error(t, err)
+	assert.Nil(t, logs)
+	assert.Contains(t, err.Error(), "json_fields not configured")
+}
+
+func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.PolicyEngine = config.PolicyEngineConfig{
+		Enabled:   true,
+		Host:      "localhost",
+		Port:      50051,
+		TimeoutMs: 1000,
+		TLS: config.PolicyEngineTLS{
+			Enabled: false,
+		},
+	}
+	cfg := testConfig()
+	cfg.GatewayController.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	cluster := translator.createPolicyEngineCluster()
+	assert.NotNil(t, cluster)
+	assert.Equal(t, constants.PolicyEngineClusterName, cluster.Name)
+}
+
+func TestTranslator_CreateExtProcFilter(t *testing.T) {
+	logger := createTestLogger()
+
+	tests := []struct {
+		name             string
+		routeCacheAction string
+		headerMode       string
+	}{
+		{name: "Default settings", routeCacheAction: "DEFAULT", headerMode: "DEFAULT"},
+		{name: "Retain cache", routeCacheAction: constants.ExtProcRouteCacheActionRetain, headerMode: "SEND"},
+		{name: "Clear cache", routeCacheAction: constants.ExtProcRouteCacheActionClear, headerMode: "SKIP"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			routerCfg := testRouterConfig()
+			routerCfg.PolicyEngine = config.PolicyEngineConfig{
+				Enabled:           true,
+				Host:              "localhost",
+				Port:              50051,
+				TimeoutMs:         1000,
+				MessageTimeoutMs:  500,
+				RouteCacheAction:  tt.routeCacheAction,
+				RequestHeaderMode: tt.headerMode,
+			}
+			cfg := testConfig()
+			cfg.GatewayController.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			filter, err := translator.createExtProcFilter()
+			assert.NoError(t, err)
+			assert.NotNil(t, filter)
+			assert.Equal(t, constants.ExtProcFilterName, filter.Name)
+		})
+	}
+}
+
+func TestTranslator_CreateRouteConfiguration(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	// Test with nil virtual hosts
+	routeConfig := translator.createRouteConfiguration(nil)
+	assert.NotNil(t, routeConfig)
+	assert.Equal(t, SharedRouteConfigName, routeConfig.Name)
+}
+
+func TestTranslator_TranslateConfigs_EmptyConfigs(t *testing.T) {
+	logger := createTestLogger()
+
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	// Test with empty configs
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{}, "test-correlation-id")
+	require.NoError(t, err)
+	assert.NotNil(t, resources)
+}
+
+func TestTranslator_GetCertStore_Nil(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	assert.Nil(t, translator.GetCertStore())
+}
+
+func TestTranslator_ExtractTemplateHandle_InvalidKind(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	storedCfg := &models.StoredConfig{
+		SourceConfiguration: map[string]interface{}{
+			"kind": 123, // Invalid type
+		},
+	}
+
+	result := translator.extractTemplateHandle(storedCfg, nil)
+	assert.Equal(t, "", result)
+}
+
+func TestTranslator_ExtractProviderName_InvalidKind(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	storedCfg := &models.StoredConfig{
+		SourceConfiguration: map[string]interface{}{
+			"kind": 123, // Invalid type
+		},
+	}
+
+	result := translator.extractProviderName(storedCfg, nil)
+	assert.Equal(t, "", result)
+}
+
+func TestTranslator_CreateTracingConfig_Disabled(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.TracingConfig.Enabled = false
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tracingCfg, err := translator.createTracingConfig()
+	assert.NoError(t, err)
+	assert.Nil(t, tracingCfg)
+}
+
+func TestTranslator_CreateTracingConfig_Enabled(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.TracingConfig.Enabled = true
+	cfg.TracingConfig.Endpoint = "otel-collector:4317"
+	cfg.TracingConfig.SamplingRate = 0.5
+	cfg.GatewayController.Router.TracingServiceName = "test-service"
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tracingCfg, err := translator.createTracingConfig()
+	assert.NoError(t, err)
+	assert.NotNil(t, tracingCfg)
+}
+
+func TestTranslator_CreateOTELCollectorCluster(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.TracingConfig.Enabled = true
+	cfg.TracingConfig.Endpoint = "otel-collector:4317"
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	cluster := translator.createOTELCollectorCluster()
+	assert.NotNil(t, cluster)
+	assert.Equal(t, OTELCollectorClusterName, cluster.Name)
+}
+
+func TestTranslator_CreateOTELCollectorCluster_Disabled(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.TracingConfig.Enabled = false
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	cluster := translator.createOTELCollectorCluster()
+	assert.Nil(t, cluster)
+}
+
+func TestTranslator_CreateALSCluster(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Analytics.GRPCAccessLogCfg.Host = "analytics-server"
+	cfg.Analytics.AccessLogsServiceCfg.ALSServerPort = 18090
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	cluster := translator.createALSCluster()
+	assert.NotNil(t, cluster)
+}
+
+func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Analytics.GRPCAccessLogCfg = config.GRPCAccessLogConfig{
+		Host:    "als-server",
+		LogName: "test-log",
+	}
+	cfg.Analytics.AccessLogsServiceCfg.ALSServerPort = 18090
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createGRPCAccessLog()
+	assert.NoError(t, err)
+	assert.NotNil(t, accessLog)
+}
+
+func TestTranslator_CreateDynamicForwardProxyCluster(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	cluster := translator.createDynamicForwardProxyCluster()
+	assert.NotNil(t, cluster)
+	assert.Equal(t, DynamicForwardProxyClusterName, cluster.Name)
+}
+
+func TestTranslator_CreateSDSCluster(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	cluster := translator.createSDSCluster()
+	assert.NotNil(t, cluster)
+}
+
+func TestTranslator_CreateUpstreamTLSContext(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	// Test with no certificate
+	tlsContext := translator.createUpstreamTLSContext(nil, "example.com")
+	assert.NotNil(t, tlsContext)
+	assert.Equal(t, "example.com", tlsContext.Sni)
+
+	// Test with certificate
+	certPem := []byte("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----")
+	tlsContextWithCert := translator.createUpstreamTLSContext(certPem, "secure.example.com")
+	assert.NotNil(t, tlsContextWithCert)
+	assert.Equal(t, "secure.example.com", tlsContextWithCert.Sni)
+}
+
+func TestTranslator_ResolveUpstreamCluster_SimpleURL(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	urlStr := "http://backend:8080"
+	upstream := &api.Upstream{
+		Url: &urlStr,
+	}
+
 	clusterName, parsedURL, timeout, err := translator.resolveUpstreamCluster("test-upstream", upstream, nil)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, clusterName)
@@ -1043,18 +1043,18 @@ func TestResolveUpstreamCluster_InvalidURL(t *testing.T) {
 	assert.Nil(t, timeout)
 	assert.Equal(t, "backend", parsedURL.Hostname())
 }
- 
- func TestTranslator_ResolveUpstreamCluster_HTTPSUrl(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 urlStr := "https://secure-backend:443/api"
-	 upstream := &api.Upstream{
-		 Url: &urlStr,
-	 }
- 
+
+func TestTranslator_ResolveUpstreamCluster_HTTPSUrl(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	urlStr := "https://secure-backend:443/api"
+	upstream := &api.Upstream{
+		Url: &urlStr,
+	}
+
 	clusterName, parsedURL, timeout, err := translator.resolveUpstreamCluster("secure-upstream", upstream, nil)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, clusterName)
@@ -1062,272 +1062,272 @@ func TestResolveUpstreamCluster_InvalidURL(t *testing.T) {
 	assert.Nil(t, timeout)
 	assert.Equal(t, "https", parsedURL.Scheme)
 }
- 
- func TestTranslator_ResolveUpstreamCluster_MissingURL(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 upstream := &api.Upstream{
-		 Url: nil, // No URL
-	 }
- 
+
+func TestTranslator_ResolveUpstreamCluster_MissingURL(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	upstream := &api.Upstream{
+		Url: nil, // No URL
+	}
+
 	_, _, _, err := translator.resolveUpstreamCluster("no-url-upstream", upstream, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no no-url-upstream upstream configured")
 }
- 
- func strPtr(s string) *string {
-	 return &s
- }
- 
- func TestTranslator_CreateCluster(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tests := []struct {
-		 name       string
-		 clusterNm  string
-		 urlStr     string
-		 certs      map[string][]byte
-		 hasCluster bool
-	 }{
-		 {name: "HTTP cluster", clusterNm: "http-cluster", urlStr: "http://localhost:8080", certs: nil, hasCluster: true},
-		 {name: "HTTPS cluster", clusterNm: "https-cluster", urlStr: "https://secure.example.com:443", certs: nil, hasCluster: true},
-	 }
- 
-	 for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
-			 parsedURL, err := parseURL(tt.urlStr)
-			 require.NoError(t, err)
-			 cluster := translator.createCluster(tt.clusterNm, parsedURL, tt.certs, nil)
-			 if tt.hasCluster {
-				 assert.NotNil(t, cluster)
-				 assert.Equal(t, tt.clusterNm, cluster.Name)
-			 }
-		 })
-	 }
- }
- 
- func parseURL(rawURL string) (*url.URL, error) {
-	 return url.Parse(rawURL)
- }
- 
- func TestTranslator_CreateListener_HTTP(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 routerCfg.ListenerPort = 8080
-	 cfg := testConfig()
-	 cfg.GatewayController.Router = *routerCfg
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 listener, routeConfig, err := translator.createListener(nil, false)
-	 assert.NoError(t, err)
-	 assert.NotNil(t, listener)
-	 assert.NotNil(t, routeConfig)
-	 assert.Contains(t, listener.Name, "8080")
- }
- 
- func TestTranslator_CreateDownstreamTLSContext_NoCert(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 tlsContext, err := translator.createDownstreamTLSContext()
-	 // Should fail because no certs are configured
-	 assert.Error(t, err)
-	 assert.Nil(t, tlsContext)
- }
- 
- func TestTranslator_CreateRoute_Basic(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 route := translator.createRoute(
-		 "api-123",      // apiId
-		 "test-api",     // apiName
-		 "v1",           // apiVersion
-		 "/api",         // context
-		 "GET",          // method
-		 "/users",       // path
-		 "test-cluster", // clusterName
-		 "",             // upstreamPath
-		 "localhost",    // vhost
-		 "API",          // apiKind
-		 "",             // templateHandle
-		 "",             // providerName
-		 nil,            // hostRewrite
-		 "proj-001",     // projectID
-		 nil,            // timeoutCfg
-	 )
- 
-	 assert.NotNil(t, route)
-	 assert.Contains(t, route.Name, "GET")
-	 assert.Contains(t, route.Name, "/api/users")
- }
- 
- func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 storedCfg := &models.StoredConfig{
-		 Kind: string(api.LlmProvider),
-		 SourceConfiguration: map[string]interface{}{
-			 "kind": string(api.LlmProvider),
-			 "spec": map[string]interface{}{
-				 "template": "openai-template",
-			 },
-		 },
-	 }
- 
-	 result := translator.extractTemplateHandle(storedCfg, nil)
-	 assert.Equal(t, "openai-template", result)
- }
- 
- func TestTranslator_ExtractProviderName_ValidLLMProvider(t *testing.T) {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 translator := NewTranslator(logger, routerCfg, nil, cfg)
- 
-	 storedCfg := &models.StoredConfig{
-		 Kind: string(api.LlmProvider),
-		 SourceConfiguration: map[string]interface{}{
-			 "kind": string(api.LlmProvider),
-			 "metadata": map[string]interface{}{
-				 "name": "openai-provider",
-			 },
-		 },
-	 }
- 
-	 result := translator.extractProviderName(storedCfg, nil)
-	 assert.Equal(t, "openai-provider", result)
- }
- 
- // Tests for lines 184-200: WebSub API translation error handling
- func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
-	 translator := createTestTranslator()
- 
-	 // Create invalid WebSub API config that will cause translation error
-	 invalidConfig := &models.StoredConfig{
-		 ID:   "test-websub-invalid",
-		 Kind: "WebSubApi",
-		 Configuration: api.APIConfiguration{
-			 Metadata: api.Metadata{
-				 Name: "test-websub-api",
-			 },
-			 Kind:       api.WebSubApi,
-			 ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			 Spec:       api.APIConfiguration_Spec{
-				 // Invalid spec that will cause AsWebhookAPIData to fail
-			 },
-		 },
-	 }
- 
-	 result, err := translator.TranslateConfigs([]*models.StoredConfig{invalidConfig}, "test-correlation")
- 
-	 // Should handle the error gracefully and continue
-	 assert.NoError(t, err)
-	 assert.NotNil(t, result)
- }
- 
- // Tests for lines 1439-1493: createRoutePerTopic method
- func TestTranslator_CreateRoutePerTopic(t *testing.T) {
-	 t.Run("Create route with all parameters", func(t *testing.T) {
-		 translator := createTestTranslator()
- 
-		 route := translator.createRoutePerTopic(
-			 "api-123",
-			 "Test API",
-			 "v1.0.0",
-			 "/test",
-			 "POST",
-			 "/channel1",
-			 "test-cluster",
-			 "localhost",
-			 "WebSubApi",
-			 "project-123",
-		 )
- 
-		 assert.NotNil(t, route)
-		 assert.NotEmpty(t, route.Name)
-		 assert.Equal(t, "/test/channel1", route.GetMatch().GetPath())
-		 assert.Equal(t, "/hub", route.GetRoute().PrefixRewrite)
-		 assert.Equal(t, "test-cluster", route.GetRoute().GetCluster())
- 
-		 // Verify metadata contains project ID
-		 assert.NotNil(t, route.Metadata)
-		 metadata := route.Metadata.FilterMetadata["wso2.route"]
-		 assert.NotNil(t, metadata)
-	 })
- 
-	 t.Run("Create route with version placeholder in context", func(t *testing.T) {
-		 translator := createTestTranslator()
- 
-		 route := translator.createRoutePerTopic(
-			 "api-123",
-			 "Test API",
-			 "v1.0.0",
-			 "/test/$version", // Context with version placeholder
-			 "POST",
-			 "/channel1",
-			 "test-cluster",
-			 "localhost",
-			 "WebSubApi",
-			 "project-123",
-		 )
- 
-		 assert.NotNil(t, route)
-		 // ConstructFullPath replaces $version with actual version
-		 assert.Equal(t, "/test/v1.0.0/channel1", route.GetMatch().GetPath())
-	 })
- }
- 
- // Tests for lines 1568-1629: TLS context creation for policy engine
- func TestTranslator_CreatePolicyEngineCluster_TLS(t *testing.T) {
-	 t.Run("TLS with client certificates", func(t *testing.T) {
-		 translator := createTestTranslator()
-		 translator.routerConfig.PolicyEngine.TLS.Enabled = true
-		 translator.routerConfig.PolicyEngine.TLS.CertPath = "/path/to/client.crt"
-		 translator.routerConfig.PolicyEngine.TLS.KeyPath = "/path/to/client.key"
-		 translator.routerConfig.PolicyEngine.TLS.CAPath = "/path/to/ca.crt"
-		 translator.routerConfig.PolicyEngine.TLS.ServerName = "policy-engine.example.com"
-		 translator.routerConfig.PolicyEngine.TLS.SkipVerify = false
- 
-		 cluster := translator.createPolicyEngineCluster()
-		 assert.NotNil(t, cluster)
-		 assert.NotNil(t, cluster.TransportSocket)
-		 assert.Equal(t, "envoy.transport_sockets.tls", cluster.TransportSocket.Name)
-	 })
- 
-	 t.Run("TLS without client certificates", func(t *testing.T) {
-		 translator := createTestTranslator()
-		 translator.routerConfig.PolicyEngine.TLS.Enabled = true
-		 translator.routerConfig.PolicyEngine.TLS.CertPath = ""
-		 translator.routerConfig.PolicyEngine.TLS.KeyPath = ""
-		 translator.routerConfig.PolicyEngine.TLS.CAPath = "/path/to/ca.crt"
-		 translator.routerConfig.PolicyEngine.TLS.SkipVerify = false
- 
-		 cluster := translator.createPolicyEngineCluster()
-		 assert.NotNil(t, cluster)
-		 assert.NotNil(t, cluster.TransportSocket)
-	 })
- }
- 
- func createTestTranslator() *Translator {
-	 logger := createTestLogger()
-	 routerCfg := testRouterConfig()
-	 cfg := testConfig()
-	 return NewTranslator(logger, routerCfg, nil, cfg)
- }
+
+func strPtr(s string) *string {
+	return &s
+}
+
+func TestTranslator_CreateCluster(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name       string
+		clusterNm  string
+		urlStr     string
+		certs      map[string][]byte
+		hasCluster bool
+	}{
+		{name: "HTTP cluster", clusterNm: "http-cluster", urlStr: "http://localhost:8080", certs: nil, hasCluster: true},
+		{name: "HTTPS cluster", clusterNm: "https-cluster", urlStr: "https://secure.example.com:443", certs: nil, hasCluster: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsedURL, err := parseURL(tt.urlStr)
+			require.NoError(t, err)
+			cluster := translator.createCluster(tt.clusterNm, parsedURL, tt.certs, nil)
+			if tt.hasCluster {
+				assert.NotNil(t, cluster)
+				assert.Equal(t, tt.clusterNm, cluster.Name)
+			}
+		})
+	}
+}
+
+func parseURL(rawURL string) (*url.URL, error) {
+	return url.Parse(rawURL)
+}
+
+func TestTranslator_CreateListener_HTTP(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.ListenerPort = 8080
+	cfg := testConfig()
+	cfg.GatewayController.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	listener, routeConfig, err := translator.createListener(nil, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, listener)
+	assert.NotNil(t, routeConfig)
+	assert.Contains(t, listener.Name, "8080")
+}
+
+func TestTranslator_CreateDownstreamTLSContext_NoCert(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tlsContext, err := translator.createDownstreamTLSContext()
+	// Should fail because no certs are configured
+	assert.Error(t, err)
+	assert.Nil(t, tlsContext)
+}
+
+func TestTranslator_CreateRoute_Basic(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	route := translator.createRoute(
+		"api-123",      // apiId
+		"test-api",     // apiName
+		"v1",           // apiVersion
+		"/api",         // context
+		"GET",          // method
+		"/users",       // path
+		"test-cluster", // clusterName
+		"",             // upstreamPath
+		"localhost",    // vhost
+		"API",          // apiKind
+		"",             // templateHandle
+		"",             // providerName
+		nil,            // hostRewrite
+		"proj-001",     // projectID
+		nil,            // timeoutCfg
+	)
+
+	assert.NotNil(t, route)
+	assert.Contains(t, route.Name, "GET")
+	assert.Contains(t, route.Name, "/api/users")
+}
+
+func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	storedCfg := &models.StoredConfig{
+		Kind: string(api.LlmProvider),
+		SourceConfiguration: map[string]interface{}{
+			"kind": string(api.LlmProvider),
+			"spec": map[string]interface{}{
+				"template": "openai-template",
+			},
+		},
+	}
+
+	result := translator.extractTemplateHandle(storedCfg, nil)
+	assert.Equal(t, "openai-template", result)
+}
+
+func TestTranslator_ExtractProviderName_ValidLLMProvider(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	storedCfg := &models.StoredConfig{
+		Kind: string(api.LlmProvider),
+		SourceConfiguration: map[string]interface{}{
+			"kind": string(api.LlmProvider),
+			"metadata": map[string]interface{}{
+				"name": "openai-provider",
+			},
+		},
+	}
+
+	result := translator.extractProviderName(storedCfg, nil)
+	assert.Equal(t, "openai-provider", result)
+}
+
+// Tests for lines 184-200: WebSub API translation error handling
+func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
+	translator := createTestTranslator()
+
+	// Create invalid WebSub API config that will cause translation error
+	invalidConfig := &models.StoredConfig{
+		ID:   "test-websub-invalid",
+		Kind: "WebSubApi",
+		Configuration: api.APIConfiguration{
+			Metadata: api.Metadata{
+				Name: "test-websub-api",
+			},
+			Kind:       api.WebSubApi,
+			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Spec:       api.APIConfiguration_Spec{
+				// Invalid spec that will cause AsWebhookAPIData to fail
+			},
+		},
+	}
+
+	result, err := translator.TranslateConfigs([]*models.StoredConfig{invalidConfig}, "test-correlation")
+
+	// Should handle the error gracefully and continue
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+// Tests for lines 1439-1493: createRoutePerTopic method
+func TestTranslator_CreateRoutePerTopic(t *testing.T) {
+	t.Run("Create route with all parameters", func(t *testing.T) {
+		translator := createTestTranslator()
+
+		route := translator.createRoutePerTopic(
+			"api-123",
+			"Test API",
+			"v1.0.0",
+			"/test",
+			"POST",
+			"/channel1",
+			"test-cluster",
+			"localhost",
+			"WebSubApi",
+			"project-123",
+		)
+
+		assert.NotNil(t, route)
+		assert.NotEmpty(t, route.Name)
+		assert.Equal(t, "/test/channel1", route.GetMatch().GetPath())
+		assert.Equal(t, "/hub", route.GetRoute().PrefixRewrite)
+		assert.Equal(t, "test-cluster", route.GetRoute().GetCluster())
+
+		// Verify metadata contains project ID
+		assert.NotNil(t, route.Metadata)
+		metadata := route.Metadata.FilterMetadata["wso2.route"]
+		assert.NotNil(t, metadata)
+	})
+
+	t.Run("Create route with version placeholder in context", func(t *testing.T) {
+		translator := createTestTranslator()
+
+		route := translator.createRoutePerTopic(
+			"api-123",
+			"Test API",
+			"v1.0.0",
+			"/test/$version", // Context with version placeholder
+			"POST",
+			"/channel1",
+			"test-cluster",
+			"localhost",
+			"WebSubApi",
+			"project-123",
+		)
+
+		assert.NotNil(t, route)
+		// ConstructFullPath replaces $version with actual version
+		assert.Equal(t, "/test/v1.0.0/channel1", route.GetMatch().GetPath())
+	})
+}
+
+// Tests for lines 1568-1629: TLS context creation for policy engine
+func TestTranslator_CreatePolicyEngineCluster_TLS(t *testing.T) {
+	t.Run("TLS with client certificates", func(t *testing.T) {
+		translator := createTestTranslator()
+		translator.routerConfig.PolicyEngine.TLS.Enabled = true
+		translator.routerConfig.PolicyEngine.TLS.CertPath = "/path/to/client.crt"
+		translator.routerConfig.PolicyEngine.TLS.KeyPath = "/path/to/client.key"
+		translator.routerConfig.PolicyEngine.TLS.CAPath = "/path/to/ca.crt"
+		translator.routerConfig.PolicyEngine.TLS.ServerName = "policy-engine.example.com"
+		translator.routerConfig.PolicyEngine.TLS.SkipVerify = false
+
+		cluster := translator.createPolicyEngineCluster()
+		assert.NotNil(t, cluster)
+		assert.NotNil(t, cluster.TransportSocket)
+		assert.Equal(t, "envoy.transport_sockets.tls", cluster.TransportSocket.Name)
+	})
+
+	t.Run("TLS without client certificates", func(t *testing.T) {
+		translator := createTestTranslator()
+		translator.routerConfig.PolicyEngine.TLS.Enabled = true
+		translator.routerConfig.PolicyEngine.TLS.CertPath = ""
+		translator.routerConfig.PolicyEngine.TLS.KeyPath = ""
+		translator.routerConfig.PolicyEngine.TLS.CAPath = "/path/to/ca.crt"
+		translator.routerConfig.PolicyEngine.TLS.SkipVerify = false
+
+		cluster := translator.createPolicyEngineCluster()
+		assert.NotNil(t, cluster)
+		assert.NotNil(t, cluster.TransportSocket)
+	})
+}
+
+func createTestTranslator() *Translator {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	return NewTranslator(logger, routerCfg, nil, cfg)
+}
 // Tests for lines 310-351: Event gateway WebSub hub configuration
 func TestTranslator_TranslateConfigs_WebSubHub_Enabled(t *testing.T) {
 	t.Run("Event gateway enabled creates WebSub listeners and clusters", func(t *testing.T) {
