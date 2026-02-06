@@ -666,6 +666,7 @@ func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 	tests := []struct {
 		name             string
 		enabled          bool
+		mode             string
 		host             string
 		port             uint32
 		timeoutMs        uint32
@@ -676,32 +677,24 @@ func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 		errContains      string
 	}{
 		{name: "Disabled - skip validation", enabled: false, wantErr: false},
-		{
-			name:             "Valid config",
-			enabled:          true,
-			host:             "localhost",
-			port:             50051,
-			timeoutMs:        1000,
-			messageTimeoutMs: 500,
-			routeCacheAction: "DEFAULT",
-			headerMode:       "DEFAULT",
-			wantErr:          false,
-		},
-		{name: "Missing host", enabled: true, host: "", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "host is required"},
-		{name: "Zero port", enabled: true, host: "localhost", port: 0, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "port is required"},
-		{name: "Port too high", enabled: true, host: "localhost", port: 70000, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "port must be between"},
-		{name: "Zero timeout", enabled: true, host: "localhost", port: 50051, timeoutMs: 0, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "timeout_ms must be positive"},
-		{name: "Zero message timeout", enabled: true, host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 0, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "message_timeout_ms must be positive"},
-		{name: "Invalid route cache action", enabled: true, host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "INVALID", headerMode: "DEFAULT", wantErr: true, errContains: "route_cache_action must be one of"},
-		{name: "Invalid header mode", enabled: true, host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "INVALID", wantErr: true, errContains: "request_header_mode must be one of"},
-		{name: "Valid RETAIN action", enabled: true, host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "RETAIN", headerMode: "SEND", wantErr: false},
-		{name: "Valid CLEAR action", enabled: true, host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "CLEAR", headerMode: "SKIP", wantErr: false},
+		{name: "Valid UDS mode (default)", enabled: true, mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: false},
+		{name: "Valid TCP mode", enabled: true, mode: "tcp", host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: false},
+		{name: "TCP missing host", enabled: true, mode: "tcp", host: "", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "host is required"},
+		{name: "TCP zero port", enabled: true, mode: "tcp", host: "localhost", port: 0, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "port is required"},
+		{name: "TCP port too high", enabled: true, mode: "tcp", host: "localhost", port: 70000, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "port must be between"},
+		{name: "Zero timeout", enabled: true, mode: "uds", timeoutMs: 0, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "timeout_ms must be positive"},
+		{name: "Zero message timeout", enabled: true, mode: "uds", timeoutMs: 1000, messageTimeoutMs: 0, routeCacheAction: "DEFAULT", headerMode: "DEFAULT", wantErr: true, errContains: "message_timeout_ms must be positive"},
+		{name: "Invalid route cache action", enabled: true, mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "INVALID", headerMode: "DEFAULT", wantErr: true, errContains: "route_cache_action must be one of"},
+		{name: "Invalid header mode", enabled: true, mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", headerMode: "INVALID", wantErr: true, errContains: "request_header_mode must be one of"},
+		{name: "Valid RETAIN action", enabled: true, mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "RETAIN", headerMode: "SEND", wantErr: false},
+		{name: "Valid CLEAR action", enabled: true, mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "CLEAR", headerMode: "SKIP", wantErr: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
 			cfg.GatewayController.Router.PolicyEngine.Enabled = tt.enabled
+			cfg.GatewayController.Router.PolicyEngine.Mode = tt.mode
 			cfg.GatewayController.Router.PolicyEngine.Host = tt.host
 			cfg.GatewayController.Router.PolicyEngine.Port = tt.port
 			cfg.GatewayController.Router.PolicyEngine.TimeoutMs = tt.timeoutMs
@@ -739,6 +732,7 @@ func TestConfig_ValidatePolicyEngineTLS(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
 			cfg.GatewayController.Router.PolicyEngine.Enabled = true
+			cfg.GatewayController.Router.PolicyEngine.Mode = "tcp" // TLS only supported in TCP mode
 			cfg.GatewayController.Router.PolicyEngine.Host = "localhost"
 			cfg.GatewayController.Router.PolicyEngine.Port = 50051
 			cfg.GatewayController.Router.PolicyEngine.TimeoutMs = 1000
@@ -759,10 +753,10 @@ func TestConfig_ValidatePolicyEngineTLS(t *testing.T) {
 	}
 }
 
-func TestConfig_ValidatePolicyEngineSocket(t *testing.T) {
+func TestConfig_ValidatePolicyEngineMode(t *testing.T) {
 	tests := []struct {
 		name        string
-		socket      string
+		mode        string
 		host        string
 		port        uint32
 		tlsEnabled  bool
@@ -770,33 +764,35 @@ func TestConfig_ValidatePolicyEngineSocket(t *testing.T) {
 		errContains string
 	}{
 		{
-			name:   "Valid UDS socket path",
-			socket: "/var/run/policy-engine.sock",
-			host:   "",
-			port:   0,
+			name: "Valid UDS mode (default)",
+			mode: "uds",
 		},
 		{
-			name:   "Valid TCP mode (no socket)",
-			socket: "",
-			host:   "localhost",
-			port:   50051,
+			name: "Valid UDS mode (empty defaults to uds)",
+			mode: "",
 		},
 		{
-			name:        "Relative socket path",
-			socket:      "var/run/policy-engine.sock",
+			name: "Valid TCP mode",
+			mode: "tcp",
+			host: "localhost",
+			port: 50051,
+		},
+		{
+			name:        "Invalid mode",
+			mode:        "invalid",
 			wantErr:     true,
-			errContains: "socket must be an absolute path",
+			errContains: "mode must be 'uds' or 'tcp'",
 		},
 		{
 			name:        "UDS with TLS enabled",
-			socket:      "/var/run/policy-engine.sock",
+			mode:        "uds",
 			tlsEnabled:  true,
 			wantErr:     true,
 			errContains: "tls cannot be enabled when using Unix domain socket",
 		},
 		{
 			name:        "TCP mode missing host",
-			socket:      "",
+			mode:        "tcp",
 			host:        "",
 			port:        50051,
 			wantErr:     true,
@@ -804,7 +800,7 @@ func TestConfig_ValidatePolicyEngineSocket(t *testing.T) {
 		},
 		{
 			name:        "TCP mode missing port",
-			socket:      "",
+			mode:        "tcp",
 			host:        "localhost",
 			port:        0,
 			wantErr:     true,
@@ -816,7 +812,7 @@ func TestConfig_ValidatePolicyEngineSocket(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
 			cfg.GatewayController.Router.PolicyEngine.Enabled = true
-			cfg.GatewayController.Router.PolicyEngine.Socket = tt.socket
+			cfg.GatewayController.Router.PolicyEngine.Mode = tt.mode
 			cfg.GatewayController.Router.PolicyEngine.Host = tt.host
 			cfg.GatewayController.Router.PolicyEngine.Port = tt.port
 			cfg.GatewayController.Router.PolicyEngine.TimeoutMs = 1000

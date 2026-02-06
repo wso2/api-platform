@@ -135,7 +135,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories
-RUN mkdir -p /app /var/run /coverage /etc/policy-engine
+RUN mkdir -p /app /var/run /coverage
 
 # Copy compiled Policy Engine binary from policy-compiler stage
 COPY --from=policy-compiler /workspace/output/policy-engine/policy-engine /app/policy-engine
@@ -144,9 +144,6 @@ RUN chmod +x /app/policy-engine
 # Copy Envoy configuration files from router context
 COPY --from=router config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY --from=router config/config-override.yaml /etc/envoy/config-override.yaml
-
-# Copy Policy Engine configuration
-COPY configs/policy-engine-config.toml /etc/policy-engine/config.toml
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

@@ -497,13 +497,11 @@ func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {
 func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 	logger := createTestLogger()
 
-	t.Run("UDS mode with socket path", func(t *testing.T) {
+	t.Run("UDS mode (default)", func(t *testing.T) {
 		routerCfg := testRouterConfig()
 		routerCfg.PolicyEngine = config.PolicyEngineConfig{
 			Enabled:           true,
-			Socket:            "/var/run/policy-engine.sock",
-			Host:              "", // Not used in UDS mode
-			Port:              0,  // Not used in UDS mode
+			Mode:              "uds",
 			TimeoutMs:         1000,
 			MessageTimeoutMs:  500,
 			RouteCacheAction:  "DEFAULT",
@@ -520,19 +518,19 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 		// Verify cluster type is STATIC for UDS
 		assert.Equal(t, cluster.Cluster_STATIC, c.ClusterDiscoveryType.(*cluster.Cluster_Type).Type)
 
-		// Verify the address is a Pipe (UDS)
+		// Verify the address is a Pipe (UDS) with constant path
 		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
 		addr := lbEndpoint.GetEndpoint().Address
 		pipe := addr.GetPipe()
 		assert.NotNil(t, pipe, "Expected Pipe address for UDS mode")
-		assert.Equal(t, "/var/run/policy-engine.sock", pipe.Path)
+		assert.Equal(t, constants.DefaultPolicyEngineSocketPath, pipe.Path)
 	})
 
 	t.Run("TCP mode with host:port", func(t *testing.T) {
 		routerCfg := testRouterConfig()
 		routerCfg.PolicyEngine = config.PolicyEngineConfig{
 			Enabled:           true,
-			Socket:            "", // Empty = TCP mode
+			Mode:              "tcp",
 			Host:              "policy-engine",
 			Port:              9001,
 			TimeoutMs:         1000,

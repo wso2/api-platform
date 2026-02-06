@@ -23,9 +23,9 @@
 
 set -e
 
-# Logging function
+# Logging function for entrypoint messages
 log() {
-    echo "[unified-gw] $(date '+%Y-%m-%d %H:%M:%S') $1"
+    echo "[ent] $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
 # Default configuration
@@ -78,9 +78,11 @@ shutdown() {
 # Set up signal handlers
 trap shutdown SIGTERM SIGINT SIGQUIT
 
-# Start Policy Engine
+# Start Policy Engine with [pol] log prefix
 log "Starting Policy Engine..."
-/app/policy-engine -config "${POLICY_ENGINE_CONFIG}" &
+/app/policy-engine -config "${POLICY_ENGINE_CONFIG}" \
+    > >(while IFS= read -r line; do echo "[pol] $line"; done) \
+    2> >(while IFS= read -r line; do echo "[pol] $line" >&2; done) &
 PE_PID=$!
 log "Policy Engine started (PID $PE_PID)"
 
@@ -108,13 +110,15 @@ while [ ! -S "${POLICY_ENGINE_SOCKET}" ]; do
 done
 log "Policy Engine socket ready: ${POLICY_ENGINE_SOCKET}"
 
-# Start Envoy
+# Start Envoy (Router) with [rtr] log prefix
 log "Starting Envoy..."
 /usr/local/bin/envoy \
     -c /etc/envoy/envoy.yaml \
     --config-yaml "${CONFIG_OVERRIDE}" \
     --log-level "${LOG_LEVEL}" \
-    "$@" &
+    "$@" \
+    > >(while IFS= read -r line; do echo "[rtr] $line"; done) \
+    2> >(while IFS= read -r line; do echo "[rtr] $line" >&2; done) &
 ENVOY_PID=$!
 log "Envoy started (PID $ENVOY_PID)"
 

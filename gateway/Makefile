@@ -28,9 +28,7 @@ DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 
 # Image names
 CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/gateway-controller
-POLICY_ENGINE_IMAGE := $(DOCKER_REGISTRY)/policy-engine
 GATEWAY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/gateway-builder
-ROUTER_IMAGE := $(DOCKER_REGISTRY)/gateway-router
 UNIFIED_GATEWAY_IMAGE := $(DOCKER_REGISTRY)/unified-gateway
 
 .DEFAULT_GOAL := help
@@ -44,8 +42,6 @@ help: ## Show this help message
 	@echo '  make build-local                                - Build all gateway component Docker images locally (faster)'
 	@echo '  make build-controller                           - Build gateway-controller Docker image'
 	@echo '  make build-gateway-builder                      - Build gateway-builder Docker image'
-	@echo '  make build-policy-engine                        - Build policy-engine Docker images'
-	@echo '  make build-router                               - Build router Docker image'
 	@echo '  make build-unified-gateway                      - Build unified-gateway Docker image (Router + Policy Engine)'
 	@echo '  make build-local-unified-gateway                - Build unified-gateway Docker image locally (faster)'
 	@echo ''
@@ -53,8 +49,6 @@ help: ## Show this help message
 	@echo '  make build-and-push-multiarch                   - Build and push all gateway components for multiple architectures'
 	@echo '  make build-and-push-multiarch-controller        - Build and push controller for multiple architectures'
 	@echo '  make build-and-push-multiarch-gateway-builder   - Build and push gateway-builder for multiple architectures'
-	@echo '  make build-and-push-multiarch-policy-engine     - Build and push policy-engine for multiple architectures'
-	@echo '  make build-and-push-multiarch-router            - Build and push router for multiple architectures'
 	@echo '  make build-and-push-multiarch-unified-gateway   - Build and push unified-gateway for multiple architectures'
 	@echo ''
 	@echo 'Test Targets:'
@@ -83,13 +77,13 @@ help: ## Show this help message
 
 # Build Targets
 .PHONY: build
-build: build-controller build-gateway-builder build-policy-engine build-router ## Build all gateway components
+build: build-controller build-gateway-builder build-unified-gateway ## Build all gateway components
 
 .PHONY: build-local
-build-local: build-local-controller build-local-gateway-builder build-local-policy-engine build-local-router ## Build all gateway components locally (faster)
+build-local: build-local-controller build-local-gateway-builder build-local-unified-gateway ## Build all gateway components locally (faster)
 
 .PHONY: build-coverage
-build-coverage: build-gateway-builder build-controller-coverage build-policy-engine-coverage build-router ## Build all coverage-instrumented gateway components
+build-coverage: build-gateway-builder build-controller-coverage build-unified-gateway-coverage ## Build all coverage-instrumented gateway components
 
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
@@ -106,11 +100,6 @@ build-controller-coverage: ## Build coverage-instrumented gateway-controller Doc
 	@echo "Building coverage-instrumented controller Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-controller build-coverage-image VERSION=$(VERSION)
 
-.PHONY: build-policy-engine-coverage
-build-policy-engine-coverage: ## Build coverage-instrumented policy-engine Docker image
-	@echo "Building coverage-instrumented policy-engine Docker image ($(VERSION))..."
-	$(MAKE) -C policy-engine build-coverage-image VERSION=$(VERSION)
-
 .PHONY: build-gateway-builder
 build-gateway-builder: ## Build gateway-builder Docker image
 	@echo "Building gateway-builder Docker image ($(VERSION))..."
@@ -120,26 +109,6 @@ build-gateway-builder: ## Build gateway-builder Docker image
 build-local-gateway-builder: ## Build gateway-builder Docker image locally (faster)
 	@echo "Building gateway-builder Docker image locally ($(VERSION))..."
 	$(MAKE) -C gateway-builder build-local VERSION=$(VERSION)
-
-.PHONY: build-policy-engine
-build-policy-engine: ## Build policy-engine Docker images
-	@echo "Building policy-engine images ($(VERSION))..."
-	$(MAKE) -C policy-engine build VERSION=$(VERSION)
-
-.PHONY: build-local-policy-engine
-build-local-policy-engine: ## Build policy-engine Docker images locally (faster)
-	@echo "Building policy-engine images locally ($(VERSION))..."
-	$(MAKE) -C policy-engine build-local VERSION=$(VERSION)
-
-.PHONY: build-router
-build-router: ## Build router Docker image
-	@echo "Building router Docker image ($(VERSION))..."
-	$(MAKE) -C router build VERSION=$(VERSION)
-
-.PHONY: build-local-router
-build-local-router: ## Build router Docker image locally (faster)
-	@echo "Building router Docker image locally ($(VERSION))..."
-	$(MAKE) -C router build-local VERSION=$(VERSION)
 
 .PHONY: build-unified-gateway
 build-unified-gateway: ## Build unified-gateway Docker image (Router + Policy Engine)
@@ -158,7 +127,7 @@ build-unified-gateway-coverage: ## Build coverage-instrumented unified-gateway D
 
 # Multi-arch Build and Push Targets
 .PHONY: build-and-push-multiarch
-build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-gateway-builder build-and-push-multiarch-policy-engine build-and-push-multiarch-router ## Build and push all gateway components for multiple architectures
+build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-gateway-builder build-and-push-multiarch-unified-gateway ## Build and push all gateway components for multiple architectures
 
 .PHONY: build-and-push-multiarch-controller
 build-and-push-multiarch-controller: ## Build and push gateway-controller Docker image for multiple architectures
@@ -169,16 +138,6 @@ build-and-push-multiarch-controller: ## Build and push gateway-controller Docker
 build-and-push-multiarch-gateway-builder: ## Build and push gateway-builder Docker image for multiple architectures
 	@echo "Building and pushing multi-arch gateway-builder Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-builder build-and-push-multiarch VERSION=$(VERSION)
-
-.PHONY: build-and-push-multiarch-policy-engine
-build-and-push-multiarch-policy-engine: ## Build and push policy-engine Docker images for multiple architectures
-	@echo "Building and pushing multi-arch policy-engine images ($(VERSION))..."
-	$(MAKE) -C policy-engine build-and-push-multiarch VERSION=$(VERSION)
-
-.PHONY: build-and-push-multiarch-router
-build-and-push-multiarch-router: ## Build and push router Docker image for multiple architectures
-	@echo "Building and pushing multi-arch router Docker image ($(VERSION))..."
-	$(MAKE) -C router build-and-push-multiarch VERSION=$(VERSION)
 
 .PHONY: build-and-push-multiarch-unified-gateway
 build-and-push-multiarch-unified-gateway: ## Build and push unified-gateway Docker image for multiple architectures
@@ -253,6 +212,4 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 clean: ## Clean all build artifacts
 	$(MAKE) -C gateway-controller clean
 	$(MAKE) -C gateway-builder clean
-	$(MAKE) -C policy-engine clean
-	$(MAKE) -C router clean
 	$(MAKE) -C unified-gateway clean

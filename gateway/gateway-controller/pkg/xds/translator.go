@@ -1544,16 +1544,7 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 	// Build the endpoint address (UDS or TCP)
 	var address *core.Address
 
-	if policyEngine.Socket != "" {
-		// UDS mode - use Unix domain socket
-		address = &core.Address{
-			Address: &core.Address_Pipe{
-				Pipe: &core.Pipe{
-					Path: policyEngine.Socket,
-				},
-			},
-		}
-	} else {
+	if policyEngine.Mode == "tcp" {
 		// TCP mode - use host:port
 		address = &core.Address{
 			Address: &core.Address_SocketAddress{
@@ -1563,6 +1554,15 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 					PortSpecifier: &core.SocketAddress_PortValue{
 						PortValue: policyEngine.Port,
 					},
+				},
+			},
+		}
+	} else {
+		// UDS mode (default) - use Unix domain socket with constant path
+		address = &core.Address{
+			Address: &core.Address_Pipe{
+				Pipe: &core.Pipe{
+					Path: constants.DefaultPolicyEngineSocketPath,
 				},
 			},
 		}
@@ -1584,9 +1584,9 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 	// Determine cluster discovery type based on connection mode
 	// UDS uses STATIC (no DNS resolution needed), TCP uses STRICT_DNS
-	clusterType := cluster.Cluster_STRICT_DNS
-	if policyEngine.Socket != "" {
-		clusterType = cluster.Cluster_STATIC
+	clusterType := cluster.Cluster_STATIC
+	if policyEngine.Mode == "tcp" {
+		clusterType = cluster.Cluster_STRICT_DNS
 	}
 
 	// Create the cluster with HTTP/2 support for gRPC

@@ -35,6 +35,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/admin"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
@@ -90,14 +91,19 @@ func main() {
 	ctx := context.Background()
 
 	// Log startup info based on listen mode
-	if cfg.PolicyEngine.Server.ExtProcSocket != "" {
+	serverMode := cfg.PolicyEngine.Server.Mode
+	if serverMode == "" {
+		serverMode = "uds" // Default to UDS
+	}
+	if serverMode == "uds" {
 		slog.InfoContext(ctx, "Policy Engine starting",
 			"version", Version,
 			"git_commit", GitCommit,
 			"build_date", BuildDate,
 			"config_file", *configFile,
 			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
-			"extproc_socket", cfg.PolicyEngine.Server.ExtProcSocket)
+			"server_mode", serverMode,
+			"extproc_socket", constants.DefaultPolicyEngineSocketPath)
 	} else {
 		slog.InfoContext(ctx, "Policy Engine starting",
 			"version", Version,
@@ -105,6 +111,7 @@ func main() {
 			"build_date", BuildDate,
 			"config_file", *configFile,
 			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
+			"server_mode", serverMode,
 			"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
 	}
 
@@ -173,10 +180,12 @@ func main() {
 	// Create and start ext_proc gRPC server
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName)
 
+	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener
-	if cfg.PolicyEngine.Server.ExtProcSocket != "" {
-		// UDS mode - cleanup stale socket file
-		socketPath := cfg.PolicyEngine.Server.ExtProcSocket
+	switch serverMode {
+	case "uds":
+		// UDS mode (default) - use constant socket path
+		socketPath := constants.DefaultPolicyEngineSocketPath
 		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 			slog.WarnContext(ctx, "Failed to remove existing socket file", "path", socketPath, "error", err)
 		}
@@ -193,7 +202,7 @@ func main() {
 		}
 
 		slog.InfoContext(ctx, "Policy Engine listening on Unix socket", "path", socketPath)
-	} else {
+	case "tcp":
 		// TCP mode
 		lis, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.ExtProcPort))
 		if err != nil {
@@ -290,11 +299,11 @@ func main() {
 
 	grpcServer.GracefulStop()
 
-	// Cleanup Unix socket if used
-	if cfg.PolicyEngine.Server.ExtProcSocket != "" {
-		if err := os.Remove(cfg.PolicyEngine.Server.ExtProcSocket); err != nil && !os.IsNotExist(err) {
+	// Cleanup Unix socket if used (UDS mode)
+	if serverMode == "uds" {
+		if err := os.Remove(constants.DefaultPolicyEngineSocketPath); err != nil && !os.IsNotExist(err) {
 			slog.WarnContext(ctx, "Failed to cleanup socket file on shutdown",
-				"path", cfg.PolicyEngine.Server.ExtProcSocket, "error", err)
+				"path", constants.DefaultPolicyEngineSocketPath, "error", err)
 		}
 	}
 

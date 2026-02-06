@@ -81,7 +81,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestValidate_ExtProcPort tests extproc port validation
+// TestValidate_ExtProcPort tests extproc port validation (TCP mode only)
 func TestValidate_ExtProcPort(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -127,6 +127,7 @@ func TestValidate_ExtProcPort(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
+			cfg.PolicyEngine.Server.Mode = "tcp" // Port validation only applies in TCP mode
 			cfg.PolicyEngine.Server.ExtProcPort = tt.port
 
 			err := cfg.Validate()
@@ -138,6 +139,110 @@ func TestValidate_ExtProcPort(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidate_ServerMode tests server mode validation (same pattern as gateway-controller)
+func TestValidate_ServerMode(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      string
+		port      int
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name:      "UDS mode explicit",
+			mode:      "uds",
+			port:      0, // Port ignored in UDS mode
+			expectErr: false,
+		},
+		{
+			name:      "UDS mode default (empty string)",
+			mode:      "",
+			port:      0, // Port ignored in UDS mode
+			expectErr: false,
+		},
+		{
+			name:      "TCP mode with valid port",
+			mode:      "tcp",
+			port:      9001,
+			expectErr: false,
+		},
+		{
+			name:      "TCP mode with invalid port - zero",
+			mode:      "tcp",
+			port:      0,
+			expectErr: true,
+			errMsg:    "invalid extproc_port",
+		},
+		{
+			name:      "TCP mode with invalid port - too high",
+			mode:      "tcp",
+			port:      70000,
+			expectErr: true,
+			errMsg:    "invalid extproc_port",
+		},
+		{
+			name:      "invalid mode",
+			mode:      "invalid",
+			port:      9001,
+			expectErr: true,
+			errMsg:    "server.mode must be 'uds' or 'tcp'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.PolicyEngine.Server.Mode = tt.mode
+			cfg.PolicyEngine.Server.ExtProcPort = tt.port
+
+			err := cfg.Validate()
+			if tt.expectErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidate_UDS_PortConflict tests that UDS mode skips port conflict checks
+func TestValidate_UDS_PortConflict(t *testing.T) {
+	t.Run("UDS mode - admin port conflict with extproc port ignored", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.PolicyEngine.Server.Mode = "uds"
+		cfg.PolicyEngine.Server.ExtProcPort = 9002 // Same as admin port but should be ignored
+		cfg.PolicyEngine.Admin.Enabled = true
+		cfg.PolicyEngine.Admin.Port = 9002
+
+		err := cfg.Validate()
+		assert.NoError(t, err, "Port conflict check should be skipped when UDS mode is used")
+	})
+
+	t.Run("TCP mode - admin port conflict with extproc port detected", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.PolicyEngine.Server.Mode = "tcp"
+		cfg.PolicyEngine.Server.ExtProcPort = 9002
+		cfg.PolicyEngine.Admin.Enabled = true
+		cfg.PolicyEngine.Admin.Port = 9002
+
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "admin.port cannot be same as server.extproc_port")
+	})
+
+	t.Run("UDS mode - metrics port conflict with extproc port ignored", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.PolicyEngine.Server.Mode = "uds"
+		cfg.PolicyEngine.Server.ExtProcPort = 9003 // Same as metrics port but should be ignored
+		cfg.PolicyEngine.Metrics.Enabled = true
+		cfg.PolicyEngine.Metrics.Port = 9003
+
+		err := cfg.Validate()
+		assert.NoError(t, err, "Port conflict check should be skipped when UDS mode is used")
+	})
 }
 
 // TestValidate_AdminConfig tests admin configuration validation
@@ -186,8 +291,9 @@ func TestValidate_AdminConfig(t *testing.T) {
 			errMsg:    "invalid admin.port",
 		},
 		{
-			name: "admin port conflicts with extproc port",
+			name: "admin port conflicts with extproc port (TCP mode)",
 			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Server.Mode = "tcp" // Port conflict only checked in TCP mode
 				cfg.PolicyEngine.Admin.Enabled = true
 				cfg.PolicyEngine.Admin.Port = 9001 // same as extproc
 				cfg.PolicyEngine.Server.ExtProcPort = 9001
@@ -257,8 +363,9 @@ func TestValidate_MetricsConfig(t *testing.T) {
 			errMsg:    "invalid metrics.port",
 		},
 		{
-			name: "metrics port conflicts with extproc port",
+			name: "metrics port conflicts with extproc port (TCP mode)",
 			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Server.Mode = "tcp" // Port conflict only checked in TCP mode
 				cfg.PolicyEngine.Metrics.Enabled = true
 				cfg.PolicyEngine.Metrics.Port = 9001
 				cfg.PolicyEngine.Server.ExtProcPort = 9001
@@ -1198,9 +1305,11 @@ func TestLoad_InvalidConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.toml")
 
+	// Use an invalid server mode to trigger validation error
 	invalidConfig := `
 [policy_engine.server]
-extproc_port = 0
+mode = "invalid"
+extproc_port = 9001
 
 [policy_engine.admin]
 enabled = true

@@ -45,38 +45,26 @@ services:
     networks:
       - gateway-network
 
-  policy-engine:
-    image: ghcr.io/wso2/api-platform/policy-engine:0.7.0-SNAPSHOT
-    command: ["-config", "/etc/policy-engine/config.toml", "-xds-server", "gateway-controller:18001"]
-    mem_limit: 60m
-    mem_reservation: 60m
-    cpus: 0.050
+  unified-gateway:
+    image: ghcr.io/wso2/api-platform/unified-gateway:0.7.0-SNAPSHOT
+    mem_limit: 180m
+    mem_reservation: 180m
+    cpus: 0.175
     ports:
-      - "9002:9002"   # Admin API
-      - "9003:9003"   # Metrics
-    environment:
-      - APIP_GW_POLICY__ENGINE_METRICS_PORT=9003
-    volumes:
-      - ./configs/config.toml:/etc/policy-engine/config.toml:ro
-    networks:
-      - gateway-network
-
-  router:
-    image: ghcr.io/wso2/api-platform/gateway-router:0.7.0-SNAPSHOT
-    mem_limit: 120m
-    mem_reservation: 120m
-    cpus: 0.125
-    ports:
-      - "8080:8080"   # HTTP traffic
-      - "8443:8443"   # HTTPS traffic
+      - "8080:8080"   # HTTP traffic (Envoy)
+      - "8443:8443"   # HTTPS traffic (Envoy)
       - "9901:9901"   # Envoy admin
       - "8081:8081"
       - "8082:8082"
       - "8083:8083"
+      - "9002:9002"   # Policy Engine admin
+      - "9003:9003"   # Policy Engine metrics
     environment:
-      - XDS_SERVER_HOST=${ROUTER_XDS_SERVER_HOST:-gateway-controller}
+      - XDS_SERVER_HOST=gateway-controller
       - XDS_SERVER_PORT=18000
       - LOG_LEVEL=info
+    volumes:
+      - ./configs/config.toml:/etc/policy-engine/config.toml:ro
     networks:
       - gateway-network
 
