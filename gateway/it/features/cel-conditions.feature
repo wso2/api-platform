@@ -44,7 +44,7 @@ Feature: CEL Execution Conditions
           path: /resource
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Method == "POST"'
               params:
                 requestHeaders:
@@ -55,7 +55,7 @@ Feature: CEL Execution Conditions
           path: /resource
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Method == "POST"'
               params:
                 requestHeaders:
@@ -91,7 +91,7 @@ Feature: CEL Execution Conditions
           path: /data
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Method in ["POST", "PUT", "DELETE"]'
               params:
                 requestHeaders:
@@ -102,7 +102,7 @@ Feature: CEL Execution Conditions
           path: /data
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Method in ["POST", "PUT", "DELETE"]'
               params:
                 requestHeaders:
@@ -113,7 +113,7 @@ Feature: CEL Execution Conditions
           path: /data
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Method in ["POST", "PUT", "DELETE"]'
               params:
                 requestHeaders:
@@ -160,7 +160,7 @@ Feature: CEL Execution Conditions
           path: /check
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'has(request.Headers["x-special-token"])'
               params:
                 requestHeaders:
@@ -193,7 +193,7 @@ Feature: CEL Execution Conditions
           path: /premium
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'has(request.Headers["x-tier"]) && request.Headers["x-tier"][0] == "premium"'
               params:
                 requestHeaders:
@@ -230,7 +230,7 @@ Feature: CEL Execution Conditions
           path: /public/info
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Path.startsWith("/cel-path-prefix/1.0.0/admin")'
               params:
                 requestHeaders:
@@ -241,7 +241,7 @@ Feature: CEL Execution Conditions
           path: /admin/settings
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Path.startsWith("/cel-path-prefix/1.0.0/admin")'
               params:
                 requestHeaders:
@@ -278,7 +278,7 @@ Feature: CEL Execution Conditions
           path: /secure
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Method == "POST" && has(request.Headers["x-auth-token"])'
               params:
                 requestHeaders:
@@ -289,7 +289,7 @@ Feature: CEL Execution Conditions
           path: /secure
           policies:
             - name: modify-headers
-              version: v0.1.1
+              version: v0
               executionCondition: 'request.Method == "POST" && has(request.Headers["x-auth-token"])'
               params:
                 requestHeaders:

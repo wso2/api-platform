@@ -51,7 +51,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -102,7 +102,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -144,7 +144,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -197,7 +197,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     onlyDNS: true
@@ -251,7 +251,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.url"
@@ -309,7 +309,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.data.link"
@@ -372,7 +372,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     jsonPath: "$.nonexistent.field"
@@ -424,7 +424,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 1000
@@ -470,7 +470,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     showAssessment: true
@@ -520,7 +520,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -561,7 +561,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -607,7 +607,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -662,7 +662,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -704,7 +704,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     timeout: 5000
@@ -759,7 +759,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     showAssessment: true

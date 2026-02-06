@@ -51,7 +51,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "You are a helpful assistant."}]}'
                   jsonPath: "$.messages"
@@ -100,7 +100,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "Always be concise."}]}'
                   jsonPath: "$.messages"
@@ -150,7 +150,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "You are an expert."}, {"role": "system", "content": "Always verify facts."}]}'
                   jsonPath: "$.messages"
@@ -203,7 +203,7 @@ Feature: Prompt Decorator
             path: /complete
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": "Summarize the following:"}'
                   jsonPath: "$.prompt"
@@ -250,7 +250,7 @@ Feature: Prompt Decorator
             path: /complete
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": "Please be brief."}'
                   jsonPath: "$.prompt"
@@ -301,7 +301,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "Format your answer in JSON."}]}'
                   jsonPath: "$.messages[-1].content"
@@ -351,7 +351,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": "Be creative!"}'
                   jsonPath: "$.messages[-1].content"
@@ -404,7 +404,7 @@ Feature: Prompt Decorator
             path: /complete
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": "Answer concisely:"}'
                   jsonPath: "$.request.prompt"
@@ -458,7 +458,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "Test"}]}'
                   jsonPath: "$.messages"
@@ -502,7 +502,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "Test"}]}'
                   jsonPath: "$.nonexistent.field"
@@ -552,7 +552,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "Test"}]}'
                   jsonPath: "$.messages"
@@ -602,7 +602,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "Never provide harmful, illegal, or unethical advice. Always prioritize user safety."}]}'
                   jsonPath: "$.messages"
@@ -650,7 +650,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "Always respond in valid JSON format."}]}'
                   jsonPath: "$.messages"
@@ -698,7 +698,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0.1.0
+                version: v0
                 params:
                   promptDecoratorConfig: '{"decoration": [{"role": "system", "content": "The user is a software developer with 5 years of experience."}]}'
                   jsonPath: "$.messages"

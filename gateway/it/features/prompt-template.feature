@@ -51,7 +51,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "translate", "prompt": "Translate from [[from]] to [[to]]: [[text]]"}]'
       """
@@ -96,7 +96,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "greeting", "prompt": "You are a friendly assistant. Greet the user warmly."}]'
       """
@@ -145,7 +145,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "translate", "prompt": "Translate from [[from]] to [[to]]: [[text]]"}, {"name": "summarize", "prompt": "Summarize in [[length]] sentences: [[content]]"}]'
       """
@@ -199,7 +199,7 @@ Feature: Prompt Template
             path: /chat
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "system", "prompt": "You are a [[role]] assistant."}, {"name": "task", "prompt": "Your task is to [[action]]."}]'
       """
@@ -252,7 +252,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "analyze", "prompt": "Analyze this: [[text]]"}]'
       """
@@ -297,7 +297,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "format", "prompt": "Format: [[pattern]]"}]'
       """
@@ -345,7 +345,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "question", "prompt": "Answer this question: [[q]]"}]'
       """
@@ -389,7 +389,7 @@ Feature: Prompt Template
             path: /chat
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "intro", "prompt": "I need help with [[topic]]."}]'
       """
@@ -439,7 +439,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "existing", "prompt": "This exists"}]'
       """
@@ -486,7 +486,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "test", "prompt": "Test"}]'
       """
@@ -526,7 +526,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "test", "prompt": "Test [[param]]"}]'
       """
@@ -574,7 +574,7 @@ Feature: Prompt Template
             path: /translate
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "translate", "prompt": "You are a professional translator. Translate the following text from [[sourceLang]] to [[targetLang]]. Maintain the original tone and context.\n\nText: [[text]]\n\nTranslation:"}]'
       """
@@ -618,7 +618,7 @@ Feature: Prompt Template
             path: /review
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "review", "prompt": "Review this [[language]] code for bugs, performance issues, and best practices:\n\n[[code]]"}]'
       """
@@ -662,7 +662,7 @@ Feature: Prompt Template
             path: /analyze
             policies:
               - name: prompt-template
-                version: v0.1.0
+                version: v0
                 params:
                   promptTemplateConfig: '[{"name": "sentiment", "prompt": "Analyze the sentiment of the following text. Classify as positive, negative, or neutral:\n\n[[text]]"}]'
       """

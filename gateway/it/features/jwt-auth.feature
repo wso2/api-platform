@@ -47,7 +47,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -81,7 +81,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -116,7 +116,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -152,7 +152,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -187,7 +187,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - wrong-issuer-km
@@ -223,7 +223,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -259,7 +259,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -297,7 +297,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -333,7 +333,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -372,7 +372,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks
@@ -407,7 +407,7 @@ Feature: JWT Authentication
             path: /protected
             policies:
               - name: jwt-auth
-                version: v0.1.2
+                version: v0
                 params:
                   issuers:
                     - mock-jwks

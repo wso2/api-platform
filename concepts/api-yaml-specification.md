@@ -59,6 +59,7 @@ data:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Policy name (e.g., `apiKey`, `jwt`, `rateLimit`) |
+| `version` | string | Yes | Policy version; must be **major-only** (e.g., `v0`, `v1`). Full semantic versions (e.g., `v1.0.0`) are not allowed. |
 | `params` | object | No | Policy-specific parameters |
 
 ---

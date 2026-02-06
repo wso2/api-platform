@@ -205,6 +205,17 @@ func main() {
 		cancel()
 	}
 
+	// Load policy definitions from files (must be before policy derivation and validator)
+	policyLoader := utils.NewPolicyLoader(log)
+	policyDir := cfg.GatewayController.Policies.DefinitionsPath
+	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
+	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
+	if err != nil {
+		log.Error("Failed to load policy definitions", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
+
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
 	var policyManager *policyxds.PolicyManager
@@ -227,7 +238,7 @@ func main() {
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
 				if apiConfig.Configuration.Kind == api.RestApi {
-					storedPolicy := derivePolicyFromAPIConfig(apiConfig, cfg)
+					storedPolicy := derivePolicyFromAPIConfig(apiConfig, cfg, policyDefinitions)
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {
 							log.Warn("Failed to load policy from API",
@@ -270,17 +281,6 @@ func main() {
 	} else {
 		log.Info("Policy xDS server is disabled")
 	}
-
-	// Load policy definitions from files (must be done before creating validator)
-	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.GatewayController.Policies.DefinitionsPath
-	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
-	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
-	if err != nil {
-		log.Error("Failed to load policy definitions", slog.Any("error", err))
-		os.Exit(1)
-	}
-	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
 	// Load llm provider templates from files
 	templateLoader := utils.NewLLMTemplateLoader(log)
@@ -507,9 +507,10 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	return authConfig
 }
 
-// derivePolicyFromAPIConfig derives a policy configuration from an API configuration
-// This is a simplified version of the buildStoredPolicyFromAPI function from handlers
-func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Config) *models.StoredPolicyConfig {
+// derivePolicyFromAPIConfig derives a policy configuration from an API configuration.
+// Policy versions (major-only in API) are resolved to full semver using policyDefinitions
+// so the policy engine receives full version strings.
+func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Config, policyDefinitions map[string]api.PolicyDefinition) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
 	routerConfig := &fullConfig.GatewayController.Router
 	apiData, err := apiCfg.Spec.AsAPIConfigData()
@@ -517,11 +518,15 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Conf
 		return nil
 	}
 
-	// Collect API-level policies
+	// Collect API-level policies (resolve major-only version to full semver)
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
 	if apiData.Policies != nil {
 		for _, p := range *apiData.Policies {
-			apiPolicies[p.Name] = convertAPIPolicyToModel(p, policy.LevelAPI)
+			resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, p.Name, p.Version)
+			if err != nil {
+				continue // skip policy if resolution fails (e.g. definitions not loaded)
+			}
+			apiPolicies[p.Name] = convertAPIPolicyToModel(p, policy.LevelAPI, resolvedVersion)
 		}
 	}
 
@@ -531,12 +536,16 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Conf
 		var finalPolicies []policyenginev1.PolicyInstance
 
 		if op.Policies != nil && len(*op.Policies) > 0 {
-			// Operation has policies
+			// Operation has policies (resolve major-only version to full semver)
 			finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
 			addedNames := make(map[string]struct{})
 
 			for _, opPolicy := range *op.Policies {
-				finalPolicies = append(finalPolicies, convertAPIPolicyToModel(opPolicy, policy.LevelRoute))
+				resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
+				if err != nil {
+					continue
+				}
+				finalPolicies = append(finalPolicies, convertAPIPolicyToModel(opPolicy, policy.LevelRoute, resolvedVersion))
 				addedNames[opPolicy.Name] = struct{}{}
 			}
 
@@ -615,8 +624,9 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Conf
 	}
 }
 
-// convertAPIPolicyToModel converts generated api.Policy to policyenginev1.PolicyInstance
-func convertAPIPolicyToModel(p api.Policy, attachedTo policy.Level) policyenginev1.PolicyInstance {
+// convertAPIPolicyToModel converts generated api.Policy to policyenginev1.PolicyInstance.
+// resolvedVersion is the full semver (e.g. v1.0.0) to send to the policy engine.
+func convertAPIPolicyToModel(p api.Policy, attachedTo policy.Level, resolvedVersion string) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
 		for k, v := range *p.Params {
@@ -631,7 +641,7 @@ func convertAPIPolicyToModel(p api.Policy, attachedTo policy.Level) policyengine
 
 	return policyenginev1.PolicyInstance{
 		Name:               p.Name,
-		Version:            p.Version,
+		Version:            resolvedVersion,
 		Enabled:            true, // Default to enabled
 		ExecutionCondition: p.ExecutionCondition,
 		Parameters:         paramsMap,

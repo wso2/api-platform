@@ -49,7 +49,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 10
@@ -90,7 +90,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 50
@@ -133,7 +133,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 10
@@ -175,7 +175,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 1
@@ -216,7 +216,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 20
@@ -257,7 +257,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 10
@@ -300,7 +300,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 5
@@ -342,7 +342,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 5
@@ -385,7 +385,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 10
@@ -427,7 +427,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 5
@@ -472,7 +472,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 20
@@ -517,7 +517,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 20
@@ -561,7 +561,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 50
@@ -606,7 +606,7 @@ Feature: Content Length Guardrail Policy
             path: /validate
             policies:
               - name: content-length-guardrail
-                version: v0.1.0
+                version: v0
                 params:
                   request:
                     min: 50
