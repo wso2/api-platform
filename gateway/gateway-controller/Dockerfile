@@ -2,8 +2,6 @@
 # Using Debian-based image for better cross-compilation support
 FROM --platform=$BUILDPLATFORM golang:1.25.5-bookworm AS builder
 ARG TARGETARCH
-
-# Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
 
@@ -12,8 +10,7 @@ ARG ENABLE_COVERAGE=false
 
 WORKDIR /build
 
-# Install build dependencies for SQLite (CGO requirement)
-# Install cross-compilation toolchains based on target architecture
+# Install build dependencies for SQLite (CGO) and cross-compilation toolchains
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
@@ -31,20 +28,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=sdk go.mod go.sum /sdk/
 COPY --from=common go.mod go.sum /common/
 
-# Copy main component go mod files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy full source code for SDK and Common
 COPY --from=sdk . /sdk
 COPY --from=common . /common
-
-# Copy component source code
 COPY . ./
 
-# Build the binary with CGO enabled (required for mattn/go-sqlite3)
-# Set CC for cross-compilation based on target architecture
-# Add -cover flag when ENABLE_COVERAGE=true for coverage instrumentation
+# Build with CGO (required for SQLite), set CC for cross-compilation, add -cover flag if enabled
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         export CC=x86_64-linux-gnu-gcc; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
@@ -66,14 +57,12 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
               -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o controller cmd/controller/main.go
 
-# Stage 2: Create minimal runtime image
-# Using Debian slim for glibc compatibility with builder stage
+# Stage 2: Runtime image (Debian slim for glibc compatibility)
 FROM debian:bookworm-slim
 
 # Re-declare ARG after FROM to use it in this stage
 ARG ENABLE_COVERAGE=false
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     wget \
@@ -81,32 +70,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy binary from builder
 COPY --from=builder /build/controller .
-
-# Copy default configuration file
-
-
-# Copy policy definitions
 COPY default-policies /app/default-policies
-
-# Copy lua scripts
 COPY lua /app/lua
-
-# Copy default llm provider templates
 COPY default-llm-provider-templates /app/default-llm-provider-templates
 
-# Create data directory for SQLite database
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage; fi
 
-# Create coverage output directory if coverage is enabled
-RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage; fi
+RUN groupadd -r -g 10001 wso2 && \
+    useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
+    chown -R wso2:wso2 /app/data && \
+    chmod -R 755 /app/data && \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        chown -R wso2:wso2 /coverage && \
+        chmod -R 755 /coverage; \
+    fi
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage
 
-# Expose ports
+USER wso2
+
 EXPOSE 9090 18000
 
-# Run the application
 ENTRYPOINT ["/app/controller"]
