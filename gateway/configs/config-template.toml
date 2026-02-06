@@ -102,9 +102,6 @@ route_idle_timeout_in_seconds = 300
 server_header_transformation = "OVERWRITE"
 server_header_value = "WSO2 API Platform"
 
-[gateway_controller.router.lua.request_transformation]
-script_path = "./lua/request_transformation.lua"
-
 [gateway_controller.router.policy_engine]
 enabled = true
 host = "policy-engine"
