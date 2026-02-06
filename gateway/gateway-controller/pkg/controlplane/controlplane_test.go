@@ -160,7 +160,7 @@ func createTestClient(t *testing.T) *Client {
 		},
 	}
 
-	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil)
+	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil)
 }
 
 func TestNewClient(t *testing.T) {
@@ -265,7 +265,7 @@ func TestClient_isShuttingDown_ContextCancelled(t *testing.T) {
 	}
 
 	routerConfig := &config.RouterConfig{}
-	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil)
+	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil)
 
 	// Cancel context
 	client.cancel()
@@ -326,7 +326,7 @@ func TestClient_Start_NoToken(t *testing.T) {
 	}
 
 	routerConfig := &config.RouterConfig{}
-	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil)
+	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil)
 
 	// Start should return nil and not attempt connection when no token
 	err := client.Start()

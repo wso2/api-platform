@@ -73,7 +73,7 @@ func createTestClientWithHost(t *testing.T, host string) *Client {
 		},
 	}
 
-	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil)
+	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil)
 }
 
 func TestClient_ConnectToMockServer(t *testing.T) {
@@ -217,7 +217,7 @@ func TestClient_calculateNextRetryDelay_EdgeCases(t *testing.T) {
 		ReconnectMax:     10 * time.Millisecond,
 	}
 	routerConfig := &config.RouterConfig{}
-	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil)
+	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil)
 
 	// Test multiple retries
 	for i := 0; i < 20; i++ {

@@ -347,7 +347,7 @@ func TestBuildDynamicMetadata_WithoutPath(t *testing.T) {
 		"key": "value",
 	})
 
-	result := buildDynamicMetadata(analyticsStruct, nil)
+	result := buildDynamicMetadata(analyticsStruct, nil, nil)
 
 	require.NotNil(t, result)
 	require.NotNil(t, result.Fields)
@@ -361,7 +361,7 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 	})
 	path := "/new/path"
 
-	result := buildDynamicMetadata(analyticsStruct, &path)
+	result := buildDynamicMetadata(analyticsStruct, &path, nil)
 
 	require.NotNil(t, result)
 	// Should include path in metadata
@@ -391,7 +391,7 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 		Results: []executor.RequestPolicyResult{},
 	}
 
-	headerMutation, bodyMutation, analyticsData, pathMutation, immResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, _, pathMutation, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -426,7 +426,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, _, _, _, immResp, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -457,7 +457,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 		},
 	}
 
-	headerMutation, bodyMutation, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, _, _, immResp, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -498,7 +498,7 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, immResp)
@@ -533,7 +533,7 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, _, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, _, _, _, _, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	// Skipped policy actions should not be applied
@@ -565,11 +565,11 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 		},
 	}
 
-	_, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)
-	assert.Contains(t, *pathMutation, "added=param")
+	assert.Contains(t, pathMutation, "added=param")
 }
 
 func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
@@ -596,9 +596,9 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 		},
 	}
 
-	_, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)
-	assert.Equal(t, "/new/path", *pathMutation)
+	assert.Equal(t, "/new/path", pathMutation)
 }
