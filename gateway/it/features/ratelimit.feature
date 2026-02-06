@@ -1555,3 +1555,142 @@ Feature: Rate Limiting
       """
     Then the response status code should be 429
     And the response body should contain "Rate limit exceeded"
+
+  # Scenario: API-scoped quota limiter is not deleted when one route is reconfigured
+  #   Given I authenticate using basic auth as "admin"
+  #   # Deploy initial API with two routes sharing an API-scoped quota
+  #   When I deploy this API configuration:
+  #     """
+  #     apiVersion: gateway.api-platform.wso2.com/v1alpha1
+  #     kind: RestApi
+  #     metadata:
+  #       name: ratelimit-shared-quota-api
+  #     spec:
+  #       displayName: RateLimit Shared Quota Test API
+  #       version: v1.0
+  #       context: /ratelimit-shared-quota/$version
+  #       upstream:
+  #         main:
+  #           url: http://sample-backend:9080/api/v1
+  #       operations:
+  #         - method: GET
+  #           path: /health
+  #         - method: GET
+  #           path: /route1
+  #           policies:
+  #             - name: advanced-ratelimit
+  #               version: v0.1.3
+  #               params:
+  #                 quotas:
+  #                   - name: shared-api-quota
+  #                     limits:
+  #                       - limit: 10
+  #                         duration: "1h"
+  #                     keyExtraction:
+  #                       - type: apiname
+  #         - method: GET
+  #           path: /route2
+  #           policies:
+  #             - name: advanced-ratelimit
+  #               version: v0.1.3
+  #               params:
+  #                 quotas:
+  #                   - name: shared-api-quota
+  #                     limits:
+  #                       - limit: 10
+  #                         duration: "1h"
+  #                     keyExtraction:
+  #                       - type: apiname
+  #     """
+  #   Then the response should be successful
+  #   And I wait for the endpoint "http://localhost:8080/ratelimit-shared-quota/v1.0/health" to be ready
+
+  #   # Consume 2 requests from route1 (shared quota: 2/10 used, 8 remaining)
+  #   When I send 2 GET requests to "http://localhost:8080/ratelimit-shared-quota/v1.0/route1"
+  #   Then the response status code should be 200
+
+  #   # Consume 2 requests from route2 (shared quota: 4/10 used, 6 remaining)
+  #   When I send 2 GET requests to "http://localhost:8080/ratelimit-shared-quota/v1.0/route2"
+  #   Then the response status code should be 200
+
+  #   # Consume 1 more request from route1 (shared quota: 5/10 used, 5 remaining)
+  #   When I send a GET request to "http://localhost:8080/ratelimit-shared-quota/v1.0/route1"
+  #   Then the response status code should be 200
+  #   And the response header "X-RateLimit-Remaining" should be "5"
+
+  #   # Update the API: route1 now uses a route-scoped quota instead of the shared API-scoped quota
+  #   # This triggers cleanup of route1's reference to the shared quota
+  #   # BUG (before fix): The shared limiter would be deleted, breaking route2
+  #   # FIX (after fix): Ref count goes from 2->1, limiter preserved for route2
+  #   When I update the API "ratelimit-shared-quota-api" with this configuration:
+  #     """
+  #     apiVersion: gateway.api-platform.wso2.com/v1alpha1
+  #     kind: RestApi
+  #     metadata:
+  #       name: ratelimit-shared-quota-api
+  #     spec:
+  #       displayName: RateLimit Shared Quota Test API
+  #       version: v1.0
+  #       context: /ratelimit-shared-quota/$version
+  #       upstream:
+  #         main:
+  #           url: http://sample-backend:9080/api/v1
+  #       operations:
+  #         - method: GET
+  #           path: /health
+  #         - method: GET
+  #           path: /route1
+  #           policies:
+  #             - name: advanced-ratelimit
+  #               version: v0.1.3
+  #               params:
+  #                 quotas:
+  #                   - name: route-specific-quota
+  #                     limits:
+  #                       - limit: 5
+  #                         duration: "1h"
+  #                     keyExtraction:
+  #                       - type: routename
+  #         - method: GET
+  #           path: /route2
+  #           policies:
+  #             - name: advanced-ratelimit
+  #               version: v0.1.3
+  #               params:
+  #                 quotas:
+  #                   - name: shared-api-quota
+  #                     limits:
+  #                       - limit: 10
+  #                         duration: "1h"
+  #                     keyExtraction:
+  #                       - type: apiname
+  #     """
+  #   Then the response should be successful
+  #   And I wait for 2 seconds
+
+  #   # CRITICAL TEST: route2 should still have 5 remaining requests
+  #   # If the bug exists, the shared limiter would have been deleted and
+  #   # route2 would have a fresh limiter with 10 remaining (state lost)
+  #   When I send a GET request to "http://localhost:8080/ratelimit-shared-quota/v1.0/route2"
+  #   Then the response status code should be 200
+  #   And the response header "X-RateLimit-Remaining" should be "4"
+
+  #   # Continue consuming from route2 to exhaust the shared quota
+  #   # 5 remaining - 4 = 1 left
+  #   When I send 3 GET requests to "http://localhost:8080/ratelimit-shared-quota/v1.0/route2"
+  #   Then the response status code should be 200
+
+  #   # 1 remaining - 1 = 0 left (exhausted)
+  #   When I send a GET request to "http://localhost:8080/ratelimit-shared-quota/v1.0/route2"
+  #   Then the response status code should be 200
+  #   And the response header "X-RateLimit-Remaining" should be "0"
+
+  #   # This request should be rate limited - quota exhausted
+  #   When I send a GET request to "http://localhost:8080/ratelimit-shared-quota/v1.0/route2"
+  #   Then the response status code should be 429
+  #   And the response body should contain "Rate limit exceeded"
+
+  #   # route1 should have its own separate quota (5 remaining)
+  #   When I send a GET request to "http://localhost:8080/ratelimit-shared-quota/v1.0/route1"
+  #   Then the response status code should be 200
+  #   And the response header "X-RateLimit-Remaining" should be "4"

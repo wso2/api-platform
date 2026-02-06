@@ -56,6 +56,7 @@ type LLMDeploymentService struct {
 	deploymentService   *APIDeploymentService
 	parser              *config.Parser
 	validator           *config.LLMValidator
+	policyValidator     *config.PolicyValidator
 	transformer         Transformer
 	routerConfig        *config.RouterConfig
 }
@@ -65,7 +66,11 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
-	deploymentService *APIDeploymentService, routerConfig *config.RouterConfig) *LLMDeploymentService {
+	deploymentService *APIDeploymentService,
+	routerConfig *config.RouterConfig,
+	policyVersionResolver PolicyVersionResolver,
+	policyValidator *config.PolicyValidator,
+) *LLMDeploymentService {
 	service := &LLMDeploymentService{
 		store:               store,
 		db:                  db,
@@ -75,7 +80,8 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 		deploymentService:   deploymentService,
 		parser:              config.NewParser(),
 		validator:           config.NewLLMValidator(),
-		transformer:         NewLLMProviderTransformer(store, routerConfig),
+		policyValidator:     policyValidator,
+		transformer:         NewLLMProviderTransformer(store, routerConfig, policyVersionResolver),
 	}
 
 	// Initialize OOB templates
@@ -115,6 +121,21 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM provider to API configuration: %w", err)
 	}
+
+	// Validate policies against loaded policy definitions
+	// if s.policyValidator != nil {
+	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
+	// 	if len(policyErrors) > 0 {
+	// 		errs := make([]string, 0, len(policyErrors))
+	// 		for i, e := range policyErrors {
+	// 			if params.Logger != nil {
+	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+	// 			}
+	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+	// 		}
+	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
+	// 	}
+	// }
 
 	// Generate API ID if not provided
 	apiID := params.ID
@@ -217,6 +238,21 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM proxy to API configuration: %w", err)
 	}
+
+	// Validate policies against loaded policy definitions
+	// if s.policyValidator != nil {
+	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
+	// 	if len(policyErrors) > 0 {
+	// 		errs := make([]string, 0, len(policyErrors))
+	// 		for i, e := range policyErrors {
+	// 			if params.Logger != nil {
+	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+	// 			}
+	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+	// 		}
+	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
+	// 	}
+	// }
 
 	// Generate API ID if not provided
 	apiID := params.ID

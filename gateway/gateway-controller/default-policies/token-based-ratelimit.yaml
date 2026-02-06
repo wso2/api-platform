@@ -1,0 +1,137 @@
+name: token-based-ratelimit
+version: v0.1.0
+description: |
+  A specialized rate limiting policy for LLMs that limits usage based on token counts.
+  It dynamically resolves token extraction paths (JSON paths) from the LLM Provider Template
+  and delegates the actual rate limiting to the advanced-ratelimit engine.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    promptTokenLimits:
+      type: array
+      description: Rate limits for prompt (input) tokens.
+      items:
+        type: object
+        required: ["count", "duration"]
+        properties:
+          count:
+            type: integer
+            description: Maximum number of tokens allowed in the duration.
+            minimum: 1
+          duration:
+            type: string
+            description: Time window for the limit (e.g., "1m", "1h", "24h").
+            pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+    completionTokenLimits:
+      type: array
+      description: Rate limits for completion (output) tokens.
+      items:
+        type: object
+        required: ["count", "duration"]
+        properties:
+          count:
+            type: integer
+            description: Maximum number of tokens allowed in the duration.
+            minimum: 1
+          duration:
+            type: string
+            description: Time window for the limit (e.g., "1m", "1h", "24h").
+            pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+    totalTokenLimits:
+      type: array
+      description: Rate limits for total (prompt + completion) tokens.
+      items:
+        type: object
+        required: ["count", "duration"]
+        properties:
+          count:
+            type: integer
+            description: Maximum number of tokens allowed in the duration.
+            minimum: 1
+          duration:
+            type: string
+            description: Time window for the limit (e.g., "1m", "1h", "24h").
+            pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties:
+    algorithm:
+      type: string
+      description: |
+        Rate limiting algorithm to use:
+        - gcra: Generic Cell Rate Algorithm (default).
+        - fixed-window: Simple fixed time window counter.
+      enum: ["gcra", "fixed-window"]
+      default: "gcra"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.algorithm}"
+
+    backend:
+      type: string
+      description: |
+        Rate limit storage backend. 'memory' or 'redis'.
+      enum: ["memory", "redis"]
+      default: "memory"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.backend}"
+
+    redis:
+      type: object
+      description: Redis configuration (only used when backend=redis)
+      additionalProperties: false
+      properties:
+        host:
+          type: string
+          default: "localhost"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.host}"
+        port:
+          type: integer
+          default: 6379
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.port}"
+        password:
+          type: string
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.password}"
+        username:
+          type: string
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.username}"
+        db:
+          type: integer
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.db}"
+        keyPrefix:
+          type: string
+          default: "ratelimit:v1:"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.keyprefix}"
+        failureMode:
+          type: string
+          enum: ["open", "closed"]
+          default: "open"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.failuremode}"
+        connectionTimeout:
+          type: string
+          default: "5s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.connectiontimeout}"
+        readTimeout:
+          type: string
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.readtimeout}"
+        writeTimeout:
+          type: string
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.redis.writetimeout}"
+
+    memory:
+      type: object
+      description: In-memory storage configuration (only used when backend=memory)
+      additionalProperties: false
+      properties:
+        maxEntries:
+          type: integer
+          default: 10000
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.maxentries}"
+        cleanupInterval:
+          type: string
+          default: "5m"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.memory.cleanupinterval}"

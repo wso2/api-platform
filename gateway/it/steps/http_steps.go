@@ -323,6 +323,12 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 	}
 
 	log.Printf("DEBUG: Received response from %s: status=%d", url, resp.StatusCode)
+	// Log response headers
+	for name, values := range resp.Header {
+		for _, value := range values {
+			log.Printf("DEBUG: Response header %s: %s", name, value)
+		}
+	}
 
 	h.lastResponse = resp
 
@@ -332,6 +338,13 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	// Log response body for debugging (truncate if too large)
+	bodyStr := string(h.lastBody)
+	if len(bodyStr) > 500 {
+		bodyStr = bodyStr[:500] + "..."
+	}
+	log.Printf("DEBUG: Response body: %s", bodyStr)
 
 	return nil
 }
@@ -376,6 +389,12 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 	}
 
 	log.Printf("DEBUG: Received response from %s: status=%d", url, resp.StatusCode)
+	// Log response headers
+	for name, values := range resp.Header {
+		for _, value := range values {
+			log.Printf("DEBUG: Response header %s: %s", name, value)
+		}
+	}
 
 	h.lastResponse = resp
 
@@ -385,6 +404,13 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	// Log response body for debugging (truncate if too large)
+	bodyStr := string(h.lastBody)
+	if len(bodyStr) > 500 {
+		bodyStr = bodyStr[:500] + "..."
+	}
+	log.Printf("DEBUG: Response body: %s", bodyStr)
 
 	return nil
 }
