@@ -1090,7 +1090,7 @@ Feature: Token-Based Rate Limiting
     Then the response status code should be 200
 
     # Small delay to allow cleanup
-    When I wait for "2" seconds
+    When I wait for 2 seconds
 
     # Recreate provider with limit of 10 (should get fresh quota)
     When I create this LLM provider:
