@@ -1408,6 +1408,49 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 		assert.Contains(t, err.Error(), "not found")
 	})
 
+	t.Run("update API key - local key not allowed", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		mockDB := newMockStorage()
+
+		testConfig := createTestAPIConfig("api-1", "test-api")
+		_ = store.Add(testConfig)
+
+		// Create a LOCAL key (not external)
+		key := &models.APIKey{
+			ID:        "key-1",
+			Name:      "test-key",
+			APIKey:    "hashed-key",
+			APIId:     "api-1",
+			Status:    models.APIKeyStatusActive,
+			CreatedBy: "user1",
+			Source:    "local", // Local keys cannot be updated
+		}
+		_ = store.StoreAPIKey(key)
+
+		service := NewAPIKeyService(store, mockDB, nil, &config.APIKeyConfig{
+			APIKeysPerUserPerAPI: 10,
+			Algorithm:            constants.HashingAlgorithmSHA256,
+		})
+
+		newKey := "apip_test_key_123456789012345678901234567890123456"
+		displayName := "Updated Key"
+		params := APIKeyUpdateParams{
+			Handle:     "test-api",
+			APIKeyName: "test-key",
+			Request: api.APIKeyCreationRequest{
+				ApiKey:      &newKey,
+				DisplayName: &displayName,
+			},
+			User:          &commonmodels.AuthContext{UserID: "user1"},
+			CorrelationID: "corr-123",
+			Logger:        logger,
+		}
+
+		_, err := service.UpdateAPIKey(params)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "updates are only allowed for externally generated API keys")
+	})
+
 	t.Run("update API key - unauthorized user error", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		mockDB := newMockStorage()
@@ -1415,6 +1458,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 		testConfig := createTestAPIConfig("api-1", "test-api")
 		_ = store.Add(testConfig)
 
+		// Create an EXTERNAL key
 		key := &models.APIKey{
 			ID:        "key-1",
 			Name:      "test-key",
@@ -1422,6 +1466,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 			APIId:     "api-1",
 			Status:    models.APIKeyStatusActive,
 			CreatedBy: "original-user",
+			Source:    "external", // External keys can be updated
 		}
 		_ = store.StoreAPIKey(key)
 
@@ -1457,6 +1502,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 		testConfig := createTestAPIConfig("api-1", "test-api")
 		_ = store.Add(testConfig)
 
+		// Create an EXTERNAL key
 		key := &models.APIKey{
 			ID:        "key-1",
 			Name:      "test-key",
@@ -1464,6 +1510,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 			APIId:     "api-1",
 			Status:    models.APIKeyStatusActive,
 			CreatedBy: "user1",
+			Source:    "external", // External keys can be updated
 		}
 		_ = store.StoreAPIKey(key)
 		mockDB.apiKeys["key-1"] = key
@@ -1500,6 +1547,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 		testConfig := createTestAPIConfig("api-1", "test-api")
 		_ = store.Add(testConfig)
 
+		// Create an EXTERNAL key
 		key := &models.APIKey{
 			ID:        "key-1",
 			Name:      "test-key",
@@ -1507,6 +1555,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 			APIId:     "api-1",
 			Status:    models.APIKeyStatusActive,
 			CreatedBy: "user1",
+			Source:    "external", // External keys can be updated
 		}
 		_ = store.StoreAPIKey(key)
 		mockDB.apiKeys["key-1"] = key
@@ -1545,6 +1594,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 		testConfig := createTestAPIConfig("api-1", "test-api")
 		_ = store.Add(testConfig)
 
+		// Create an EXTERNAL key
 		key := &models.APIKey{
 			ID:        "key-1",
 			Name:      "test-key",
@@ -1552,6 +1602,7 @@ func TestUpdateAPIKey_FullFlow(t *testing.T) {
 			APIId:     "api-1",
 			Status:    models.APIKeyStatusActive,
 			CreatedBy: "user1",
+			Source:    "external", // External keys can be updated
 		}
 		_ = store.StoreAPIKey(key)
 		mockDB.apiKeys["key-1"] = key
@@ -2315,6 +2366,7 @@ func TestExternalAPIKeyFunctions(t *testing.T) {
 		testConfig := createTestAPIConfig("api-1", "test-api")
 		_ = store.Add(testConfig)
 
+		// Must be external key for update to work
 		key := &models.APIKey{
 			ID:        "key-1",
 			Name:      "test-key",
@@ -2322,6 +2374,7 @@ func TestExternalAPIKeyFunctions(t *testing.T) {
 			APIId:     "api-1",
 			Status:    models.APIKeyStatusActive,
 			CreatedBy: "user1",
+			Source:    "external", // External keys can be updated
 		}
 		_ = store.StoreAPIKey(key)
 		mockDB.apiKeys["key-1"] = key
