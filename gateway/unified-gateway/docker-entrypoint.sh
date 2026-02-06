@@ -125,41 +125,25 @@ log "Envoy started (PID $ENVOY_PID)"
 log "Unified Gateway running - Policy Engine (PID $PE_PID), Envoy (PID $ENVOY_PID)"
 
 # Monitor both processes - exit if either dies
-while true; do
-    # Check if Policy Engine is still running
-    if ! kill -0 "$PE_PID" 2>/dev/null; then
-        wait "$PE_PID" 2>/dev/null
-        EXIT_CODE=$?
-        log "Policy Engine exited with code $EXIT_CODE"
+wait -n "$PE_PID" "$ENVOY_PID"
+EXIT_CODE=$?
 
-        # Terminate Envoy
-        if kill -0 "$ENVOY_PID" 2>/dev/null; then
-            log "Terminating Envoy due to Policy Engine exit..."
-            kill -TERM "$ENVOY_PID" 2>/dev/null || true
-            wait "$ENVOY_PID" 2>/dev/null || true
-        fi
-
-        rm -f "${POLICY_ENGINE_SOCKET}"
-        exit $EXIT_CODE
+# Determine which process exited and clean up the other
+if ! kill -0 "$PE_PID" 2>/dev/null; then
+    log "Policy Engine exited with code $EXIT_CODE"
+    if kill -0 "$ENVOY_PID" 2>/dev/null; then
+        log "Terminating Envoy due to Policy Engine exit..."
+        kill -TERM "$ENVOY_PID" 2>/dev/null || true
+        wait "$ENVOY_PID" 2>/dev/null || true
     fi
-
-    # Check if Envoy is still running
-    if ! kill -0 "$ENVOY_PID" 2>/dev/null; then
-        wait "$ENVOY_PID" 2>/dev/null
-        EXIT_CODE=$?
-        log "Envoy exited with code $EXIT_CODE"
-
-        # Terminate Policy Engine
-        if kill -0 "$PE_PID" 2>/dev/null; then
-            log "Terminating Policy Engine due to Envoy exit..."
-            kill -TERM "$PE_PID" 2>/dev/null || true
-            wait "$PE_PID" 2>/dev/null || true
-        fi
-
-        rm -f "${POLICY_ENGINE_SOCKET}"
-        exit $EXIT_CODE
+else
+    log "Envoy exited with code $EXIT_CODE"
+    if kill -0 "$PE_PID" 2>/dev/null; then
+        log "Terminating Policy Engine due to Envoy exit..."
+        kill -TERM "$PE_PID" 2>/dev/null || true
+        wait "$PE_PID" 2>/dev/null || true
     fi
+fi
 
-    # Sleep before next check
-    sleep 1
-done
+rm -f "${POLICY_ENGINE_SOCKET}"
+exit $EXIT_CODE
