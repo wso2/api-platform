@@ -850,17 +850,19 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 
 // mockStorage implements storage.Storage interface for testing
 type mockStorage struct {
-	apiKeys            map[string]*models.APIKey
-	configs            map[string]*models.StoredConfig
-	saveError          error
-	getError           error
-	updateError        error
-	countError         error
-	removeError        error
-	keyCount           int
-	returnConflict     bool
-	conflictOnceOnSave bool
-	saveCallCount      int
+	apiKeys              map[string]*models.APIKey
+	configs              map[string]*models.StoredConfig
+	saveError            error
+	getError             error
+	updateError          error
+	countError           error
+	removeError          error
+	keyCount             int
+	returnConflict       bool
+	conflictOnceOnSave   bool
+	conflictOnceOnUpdate bool
+	saveCallCount        int
+	updateCallCount      int
 }
 
 func newMockStorage() *mockStorage {
@@ -956,6 +958,10 @@ func (m *mockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey
 	return nil, m.getError
 }
 func (m *mockStorage) UpdateAPIKey(apiKey *models.APIKey) error {
+	m.updateCallCount++
+	if m.conflictOnceOnUpdate && m.updateCallCount == 1 {
+		return storage.ErrConflict
+	}
 	if m.returnConflict {
 		return storage.ErrConflict
 	}
@@ -1653,10 +1659,8 @@ func TestRegenerateAPIKey_DatabaseErrors(t *testing.T) {
 		_ = store.StoreAPIKey(key)
 		mockDB.apiKeys["key-1"] = key
 
-		// Simulate conflict that resolves on retry
-		callCount := 0
-		mockDB.updateError = nil
-		mockDB.returnConflict = false
+		// Simulate conflict on first UpdateAPIKey call, then succeed on retry
+		mockDB.conflictOnceOnUpdate = true
 
 		service := NewAPIKeyService(store, mockDB, mockXDS, &config.APIKeyConfig{
 			APIKeysPerUserPerAPI: 10,
@@ -1673,9 +1677,10 @@ func TestRegenerateAPIKey_DatabaseErrors(t *testing.T) {
 		}
 
 		result, err := service.RegenerateAPIKey(params)
-		_ = callCount
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
+		// Verify retry happened - should have called UpdateAPIKey twice
+		assert.Equal(t, 2, mockDB.updateCallCount)
 	})
 
 	t.Run("regenerate - database error", func(t *testing.T) {
