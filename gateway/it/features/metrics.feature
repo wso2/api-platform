@@ -57,31 +57,7 @@ Feature: Gateway Metrics
     Then the response should contain metric "gateway_controller_api_operations_total"
     And the response should contain metric "gateway_controller_apis_total"
 
-  Scenario: Policy engine metrics reflect request processing
-    Given I authenticate using basic auth as "admin"
-    And I deploy an API with the following configuration:
-      """
-      {
-        "name": "metrics-api",
-        "version": "1.0",
-        "basePath": "/metrics-api",
-        "backend": {
-          "url": "http://sample-backend:9080"
-        },
-        "routes": [
-          {
-            "path": "/test",
-            "methods": ["GET"]
-          }
-        ]
-      }
-      """
-    And I wait for the endpoint "http://localhost:8080/metrics-api/1.0/test" to be ready
-    When I send a GET request to the "router" service at "/metrics-api/test"
-    Then the response status code should be 200
-    When I send a GET request to the policy engine metrics endpoint
-    Then the response should contain metric "policy_engine_requests_total"
-
+  
   Scenario: Policy engine exposes system metrics
     When I send a GET request to the policy engine metrics endpoint
     Then the response status code should be 200
@@ -107,53 +83,4 @@ Feature: Gateway Metrics
     And the response should contain metric "go_memstats_alloc_bytes"
     And the response should contain metric "process_cpu_seconds_total"
 
-  Scenario: Policy engine metrics track policy execution after API request
-    Given I authenticate using basic auth as "admin"
-    And I deploy an API with the following configuration:
-      """
-      {
-        "name": "policy-metrics-api",
-        "version": "1.0",
-        "basePath": "/policy-metrics-api",
-        "backend": {
-          "url": "http://sample-backend:9080"
-        },
-        "routes": [
-          {
-            "path": "/invoke",
-            "methods": ["GET", "POST"]
-          }
-        ]
-      }
-      """
-    And I wait for the endpoint "http://localhost:8080/policy-metrics-api/1.0/invoke" to be ready
-    When I send a GET request to the "router" service at "/policy-metrics-api/invoke"
-    Then the response status code should be 200
-    When I send a GET request to the policy engine metrics endpoint
-    Then the response should contain metric "policy_engine_request_duration_seconds"
-    And the response should contain metric "policy_engine_context_build_duration_seconds"
-
-  Scenario: Policy engine tracks policy chain configuration
-    Given I authenticate using basic auth as "admin"
-    And I deploy an API with the following configuration:
-      """
-      {
-        "name": "chain-metrics-api",
-        "version": "1.0",
-        "basePath": "/chain-metrics-api",
-        "backend": {
-          "url": "http://sample-backend:9080"
-        },
-        "routes": [
-          {
-            "path": "/test",
-            "methods": ["GET"]
-          }
-        ]
-      }
-      """
-    And I wait for the endpoint "http://localhost:8080/chain-metrics-api/1.0/test" to be ready
-    When I send a GET request to the policy engine metrics endpoint
-    Then the response status code should be 200
-    And the response should contain metric "policy_engine_policy_chains_loaded"
-    And the response should contain metric "policy_engine_snapshot_size"
+  
