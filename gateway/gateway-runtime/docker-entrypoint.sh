@@ -18,7 +18,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Unified Gateway Entrypoint Script
+# Gateway Runtime Entrypoint Script
 # Manages both Policy Engine and Envoy processes
 #
 # Process-specific args can be passed using prefixed flags:
@@ -26,7 +26,7 @@
 #   --pol.<flag> <value>   → forwarded to Policy Engine
 #
 # Examples:
-#   docker run unified-gateway --rtr.component-log-level upstream:debug --pol.log-format text
+#   docker run gateway-runtime --rtr.component-log-level upstream:debug --pol.log-format text
 #   In Kubernetes:
 #     args: ["--rtr.concurrency", "4", "--pol.log-format", "text"]
 
@@ -77,7 +77,7 @@ export LOG_LEVEL="${LOG_LEVEL:-info}"
 
 POLICY_ENGINE_SOCKET="/app/policy-engine.sock"
 
-log "Starting Unified Gateway"
+log "Starting Gateway Runtime"
 log "  xDS Server: ${XDS_SERVER_HOST}:${XDS_SERVER_PORT}"
 log "  Log Level: ${LOG_LEVEL}"
 log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"
@@ -166,7 +166,7 @@ log "Starting Envoy..."
 ENVOY_PID=$!
 log "Envoy started (PID $ENVOY_PID)"
 
-log "Unified Gateway running - Policy Engine (PID $PE_PID), Envoy (PID $ENVOY_PID)"
+log "Gateway Runtime running - Policy Engine (PID $PE_PID), Envoy (PID $ENVOY_PID)"
 
 # Monitor both processes - exit if either dies
 wait -n "$PE_PID" "$ENVOY_PID"

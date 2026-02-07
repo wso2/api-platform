@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Unified Gateway Dockerfile
+# Gateway Runtime Dockerfile
 # Combines Envoy Router and Policy Engine into a single container
 
 # Stage 1: Builder Base

@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Makefile for Unified Gateway (Router + Policy Engine)
+# Makefile for Gateway Runtime (Router + Policy Engine)
 
 # Version management
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
@@ -24,18 +24,18 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
-IMAGE_NAME := $(DOCKER_REGISTRY)/unified-gateway
+IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
 .PHONY: help build build-local build-coverage-image push clean build-and-push-multiarch
 
 help: ## Show this help message
-	@echo 'Unified Gateway Build (Version: $(VERSION))'
+	@echo 'Gateway Runtime Build (Version: $(VERSION))'
 	@echo ''
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-25s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build: ## Build Unified Gateway Docker image using buildx
-	@echo "Building Unified Gateway Docker image ($(IMAGE_NAME):$(VERSION))..."
+build: ## Build Gateway Runtime Docker image using buildx
+	@echo "Building Gateway Runtime Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
@@ -54,8 +54,8 @@ build: ## Build Unified Gateway Docker image using buildx
 	@rm -rf target
 	@echo "Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
 
-build-local: ## Build Unified Gateway Docker image locally (faster, no buildx)
-	@echo "Building Unified Gateway Docker image locally ($(IMAGE_NAME):$(VERSION))..."
+build-local: ## Build Gateway Runtime Docker image locally (faster, no buildx)
+	@echo "Building Gateway Runtime Docker image locally ($(IMAGE_NAME):$(VERSION))..."
 	@mkdir -p target && cp ../build.yaml target/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
@@ -73,8 +73,8 @@ build-local: ## Build Unified Gateway Docker image locally (faster, no buildx)
 	@rm -rf target
 	@echo "Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
 
-build-coverage-image: ## Build Unified Gateway Docker image with coverage instrumentation
-	@echo "Building Unified Gateway coverage image ($(IMAGE_NAME)-coverage:$(VERSION))..."
+build-coverage-image: ## Build Gateway Runtime Docker image with coverage instrumentation
+	@echo "Building Gateway Runtime coverage image ($(IMAGE_NAME)-coverage:$(VERSION))..."
 	@mkdir -p target && cp ../build.yaml target/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
@@ -97,8 +97,8 @@ push: ## Push Docker image to registry
 	docker push $(IMAGE_NAME):$(VERSION)
 	docker push $(IMAGE_NAME):latest
 
-build-and-push-multiarch: ## Build and push Unified Gateway Docker image for multiple architectures (amd64, arm64)
-	@echo "Building and pushing multi-arch Unified Gateway Docker image ($(VERSION))..."
+build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for multiple architectures (amd64, arm64)
+	@echo "Building and pushing multi-arch Gateway Runtime Docker image ($(VERSION))..."
 	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \

@@ -45,8 +45,8 @@ services:
     networks:
       - gateway-network
 
-  unified-gateway:
-    image: ghcr.io/wso2/api-platform/unified-gateway:0.7.0-SNAPSHOT
+  gateway-runtime:
+    image: ghcr.io/wso2/api-platform/gateway-runtime:0.7.0-SNAPSHOT
     mem_limit: 180m
     mem_reservation: 180m
     cpus: 0.175

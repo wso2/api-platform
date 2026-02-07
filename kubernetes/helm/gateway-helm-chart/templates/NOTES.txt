@@ -31,32 +31,32 @@ To access the Controller REST API:
 Then visit: http://localhost:{{ .Values.gateway.controller.service.ports.rest }}
 {{- end }}
 
-{{- if .Values.gateway.unifiedGateway.deployment.enabled }}
+{{- if .Values.gateway.gatewayRuntime.deployment.enabled }}
 
-Unified Gateway (Router + Policy Engine) has been deployed:
-  - Service: {{ include "gateway-operator.fullname" . }}-unified-gateway
-  - HTTP Port: {{ .Values.gateway.unifiedGateway.service.ports.http }}
-  - HTTPS Port: {{ .Values.gateway.unifiedGateway.service.ports.https }}
-  - Envoy Admin Port: {{ .Values.gateway.unifiedGateway.service.ports.envoyAdmin }}
-  - Policy Engine Admin Port: {{ .Values.gateway.unifiedGateway.service.ports.policyEngineAdmin }}
+Gateway Runtime (Router + Policy Engine) has been deployed:
+  - Service: {{ include "gateway-operator.fullname" . }}-gateway-runtime
+  - HTTP Port: {{ .Values.gateway.gatewayRuntime.service.ports.http }}
+  - HTTPS Port: {{ .Values.gateway.gatewayRuntime.service.ports.https }}
+  - Envoy Admin Port: {{ .Values.gateway.gatewayRuntime.service.ports.envoyAdmin }}
+  - Policy Engine Admin Port: {{ .Values.gateway.gatewayRuntime.service.ports.policyEngineAdmin }}
 
-To access the Unified Gateway:
-  {{- if eq .Values.gateway.unifiedGateway.service.type "LoadBalancer" }}
+To access the Gateway Runtime:
+  {{- if eq .Values.gateway.gatewayRuntime.service.type "LoadBalancer" }}
   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
   You can watch the status by running:
-    $ kubectl get svc {{ include "gateway-operator.fullname" . }}-unified-gateway -n {{ .Release.Namespace }} -w
+    $ kubectl get svc {{ include "gateway-operator.fullname" . }}-gateway-runtime -n {{ .Release.Namespace }} -w
 
   Once available, get the external IP:
-    $ export SERVICE_IP=$(kubectl get svc {{ include "gateway-operator.fullname" . }}-unified-gateway -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-    $ echo http://$SERVICE_IP:{{ .Values.gateway.unifiedGateway.service.ports.http }}
-  {{- else if eq .Values.gateway.unifiedGateway.service.type "NodePort" }}
-    $ export NODE_PORT=$(kubectl get svc {{ include "gateway-operator.fullname" . }}-unified-gateway -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[0].nodePort}')
+    $ export SERVICE_IP=$(kubectl get svc {{ include "gateway-operator.fullname" . }}-gateway-runtime -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    $ echo http://$SERVICE_IP:{{ .Values.gateway.gatewayRuntime.service.ports.http }}
+  {{- else if eq .Values.gateway.gatewayRuntime.service.type "NodePort" }}
+    $ export NODE_PORT=$(kubectl get svc {{ include "gateway-operator.fullname" . }}-gateway-runtime -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[0].nodePort}')
     $ export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
     $ echo http://$NODE_IP:$NODE_PORT
   {{- else }}
-    $ kubectl port-forward svc/{{ include "gateway-operator.fullname" . }}-unified-gateway {{ .Values.gateway.unifiedGateway.service.ports.http }}:{{ .Values.gateway.unifiedGateway.service.ports.http }} -n {{ .Release.Namespace }}
+    $ kubectl port-forward svc/{{ include "gateway-operator.fullname" . }}-gateway-runtime {{ .Values.gateway.gatewayRuntime.service.ports.http }}:{{ .Values.gateway.gatewayRuntime.service.ports.http }} -n {{ .Release.Namespace }}
 
-  Then visit: http://localhost:{{ .Values.gateway.unifiedGateway.service.ports.http }}
+  Then visit: http://localhost:{{ .Values.gateway.gatewayRuntime.service.ports.http }}
   {{- end }}
 {{- end }}
 

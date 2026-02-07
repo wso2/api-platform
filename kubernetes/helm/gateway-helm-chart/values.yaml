@@ -21,7 +21,7 @@ serviceAccount:
 gateway:
   # Shared configuration mounted as:
   #   - gateway-controller: /etc/gateway-controller/config.toml
-  #   - unified-gateway (policy engine): /etc/policy-engine/config.toml
+  #   - gateway-runtime (policy engine): /etc/policy-engine/config.toml
   config:
     gateway_controller:
       auth:
@@ -210,7 +210,7 @@ gateway:
 
     policy_engine:
       server:
-        # ext_proc socket path — must match the constant in the unified-gateway image
+        # ext_proc socket path — must match the constant in the gateway-runtime image
         extproc_socket: /var/run/policy-engine.sock
 
       # Admin HTTP server configuration
@@ -428,11 +428,11 @@ gateway:
       tolerations: []
       affinity: {}
 
-  # Unified Gateway - Router (Envoy) and Policy Engine in a single container,
+  # Gateway Runtime - Router (Envoy) and Policy Engine in a single container,
   # communicating via Unix domain socket (UDS)
-  unifiedGateway:
+  gatewayRuntime:
     image:
-      repository: ghcr.io/wso2/api-platform/unified-gateway
+      repository: ghcr.io/wso2/api-platform/gateway-runtime
       tag: "0.7.0-SNAPSHOT"
       pullPolicy: Always
     imagePullSecrets: []
