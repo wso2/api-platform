@@ -194,7 +194,7 @@ func (s *SQLiteStorage) initSchema() error {
 			);`); err != nil {
 				return fmt.Errorf("failed to migrate schema to version 5 (api_keys): %w", err)
 			}
-			
+
 			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);`); err != nil {
 				return fmt.Errorf("failed to create api_keys key index: %w", err)
 			}
@@ -1204,20 +1204,20 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		}
 	}()
 
-	// Before inserting, check for duplicates if this is an external key                                
-	if apiKey.Source == "external" && apiKey.IndexKey != nil {   
-		var count int                                                                                 
+	// Before inserting, check for duplicates if this is an external key
+	if apiKey.Source == "external" && apiKey.IndexKey != nil {
+		var count int
 		checkQuery := `SELECT COUNT(*) FROM api_keys                                                  
-						WHERE apiId = ? AND index_key = ? AND source = 'external'`                     
-		err := tx.QueryRow(checkQuery, apiKey.APIId, apiKey.IndexKey).Scan(&count)                    
-		if err != nil {                                                                               
-				tx.Rollback()                                                                         
-				return fmt.Errorf("failed to check for duplicate API key: %w", err)                   
-		}                                                                                             
-		if count > 0 {                                                                                
-				tx.Rollback()                                                                         
-				return fmt.Errorf("%w: API key value already exists for this API", ErrConflict)       
-		}  
+						WHERE apiId = ? AND index_key = ? AND source = 'external'`
+		err := tx.QueryRow(checkQuery, apiKey.APIId, apiKey.IndexKey).Scan(&count)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to check for duplicate API key: %w", err)
+		}
+		if count > 0 {
+			tx.Rollback()
+			return fmt.Errorf("%w: API key value already exists for this API", ErrConflict)
+		}
 	}
 
 	// First, check if an API key with the same apiId and name exists

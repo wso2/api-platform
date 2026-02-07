@@ -630,15 +630,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	if c.policyManager == nil {
-		c.logger.Error("Failed to update policy engine snapshot: policy manager is not available",
-			slog.String("api_id", apiID),
-			slog.String("correlation_id", deployedEvent.CorrelationID),
-		)
-		return
-	}
-
-	// Update policy engine xDS snapshot
+	// Update policy engine xDS snapshot (best-effort)
 	if c.policyManager != nil && result != nil {
 		var storedPolicy *models.StoredPolicyConfig
 
@@ -671,6 +663,12 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 					slog.String("correlation_id", deployedEvent.CorrelationID))
 			}
 		}
+	} else if c.policyManager == nil {
+		c.logger.Error("Failed to update policy engine snapshot: policy manager is not available",
+			slog.String("api_id", apiID),
+			slog.String("correlation_id", deployedEvent.CorrelationID),
+		)
+		return
 	}
 
 	c.logger.Info("Successfully processed API deployment event",
@@ -767,7 +765,6 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	var expiresAt *time.Time
 	var duration *int
 	now := time.Now()
-
 
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		ApiKey:        &payload.ApiKey,

@@ -751,7 +751,7 @@ func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 		req := &api.APIKeyCreationRequest{
 			Name: &name,
 			ExpiresIn: &struct {
-				Duration int                                      `json:"duration" yaml:"duration"`
+				Duration int                                    `json:"duration" yaml:"duration"`
 				Unit     api.APIKeyCreationRequestExpiresInUnit `json:"unit" yaml:"unit"`
 			}{
 				Duration: 3600,

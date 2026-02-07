@@ -29,21 +29,21 @@ import (
 
 // APIKeyStore manages API keys in memory with thread-safe operations
 type APIKeyStore struct {
-	mu              sync.RWMutex
-	apiKeys         map[string]*models.APIKey            // key: configID:APIKeyName → Value: *APIKey
-	apiKeysByAPI    map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
-	externalKeyIndex map[string]map[string]*string // Key: configID → Value: map[indexKey]*string
-	resourceVersion int64
-	logger          *slog.Logger
+	mu               sync.RWMutex
+	apiKeys          map[string]*models.APIKey            // key: configID:APIKeyName → Value: *APIKey
+	apiKeysByAPI     map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
+	externalKeyIndex map[string]map[string]*string        // Key: configID → Value: map[indexKey]*string
+	resourceVersion  int64
+	logger           *slog.Logger
 }
 
 // NewAPIKeyStore creates a new API key store
 func NewAPIKeyStore(logger *slog.Logger) *APIKeyStore {
 	return &APIKeyStore{
-		apiKeys:      make(map[string]*models.APIKey),
-		apiKeysByAPI: make(map[string]map[string]*models.APIKey),
+		apiKeys:          make(map[string]*models.APIKey),
+		apiKeysByAPI:     make(map[string]map[string]*models.APIKey),
 		externalKeyIndex: make(map[string]map[string]*string),
-		logger:       logger,
+		logger:           logger,
 	}
 }
 

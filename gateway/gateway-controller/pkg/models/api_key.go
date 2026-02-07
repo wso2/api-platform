@@ -34,11 +34,11 @@ const (
 // APIKey represents an API key for an API
 type APIKey struct {
 	ID           string       `json:"id" db:"id"`
-	Name         string       `json:"name" db:"name"`                       // URL-safe identifier (auto-generated, immutable)
-	DisplayName  string       `json:"displayName" db:"display_name"`       // Human-readable name (user-provided, mutable)
-	APIKey       string       `json:"apiKey" db:"api_key"`                 // Stores hashed API key
+	Name         string       `json:"name" db:"name"`                   // URL-safe identifier (auto-generated, immutable)
+	DisplayName  string       `json:"displayName" db:"display_name"`    // Human-readable name (user-provided, mutable)
+	APIKey       string       `json:"apiKey" db:"api_key"`              // Stores hashed API key
 	MaskedAPIKey string       `json:"maskedApiKey" db:"masked_api_key"` // Stores masked API key for display
-	PlainAPIKey  string       `json:"-" db:"-"`                           // Temporary field for plain API key (not persisted)
+	PlainAPIKey  string       `json:"-" db:"-"`                         // Temporary field for plain API key (not persisted)
 	APIId        string       `json:"apiId" db:"apiId"`
 	Operations   string       `json:"operations" db:"operations"`
 	Status       APIKeyStatus `json:"status" db:"status"`
@@ -50,9 +50,9 @@ type APIKey struct {
 	Duration     *int         `json:"-" db:"expires_in_duration"`
 
 	// Source tracking for external key support
-	Source        string  `json:"source" db:"source"`                   // "local" | "external"
+	Source        string  `json:"source" db:"source"`                 // "local" | "external"
 	ExternalRefId *string `json:"externalRefId" db:"external_ref_id"` // Cloud APIM key ID or other external reference
-	IndexKey      *string `json:"indexKey" db:"index_key"`             // Pre-computed SHA-256 hash for O(1) lookup (external plain text keys only)
+	IndexKey      *string `json:"indexKey" db:"index_key"`            // Pre-computed SHA-256 hash for O(1) lookup (external plain text keys only)
 }
 
 // IsValid checks if the API key is valid (active and not expired)
