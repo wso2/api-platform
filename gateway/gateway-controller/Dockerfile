@@ -11,7 +11,9 @@ ARG ENABLE_COVERAGE=false
 WORKDIR /build
 
 # Install build dependencies for SQLite (CGO) and cross-compilation toolchains
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
     libsqlite3-dev \
@@ -19,8 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
         apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
-    fi \
-    && rm -rf /var/lib/apt/lists/*
+    fi
 
 # Copy go mod files for dependencies (needed for go.mod replace directive)
 # Copying only the mod files first ensures that the go mod download cache 
@@ -29,14 +30,17 @@ COPY --from=sdk go.mod go.sum /sdk/
 COPY --from=common go.mod go.sum /common/
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY --from=sdk . /sdk
 COPY --from=common . /common
 COPY . ./
 
 # Build with CGO (required for SQLite), set CC for cross-compilation, add -cover flag if enabled
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    if [ "$TARGETARCH" = "amd64" ]; then \
         export CC=x86_64-linux-gnu-gcc; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
         export CC=aarch64-linux-gnu-gcc; \
@@ -51,7 +55,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=${TARGETARCH} \
-    go build $COVER_FLAG -a \
+    go build $COVER_FLAG \
     -ldflags "-X main.Version=${VERSION} \
               -X main.GitCommit=${GIT_COMMIT} \
               -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -63,10 +67,11 @@ FROM debian:bookworm-slim
 # Re-declare ARG after FROM to use it in this stage
 ARG ENABLE_COVERAGE=false
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+    wget
 
 WORKDIR /app
 

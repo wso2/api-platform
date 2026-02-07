@@ -36,23 +36,30 @@ RUN apk add --no-cache \
 
 WORKDIR /workspace
 
+# Download SDK dependencies first (cached by go.mod/go.sum changes)
 COPY --from=sdk go.mod go.sum /api-platform/sdk/
 WORKDIR /api-platform/sdk
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
+# Download gateway-builder dependencies (cached by go.mod/go.sum changes)
 COPY --from=gateway-builder go.mod go.sum /api-platform/gateway/gateway-builder/
 WORKDIR /api-platform/gateway/gateway-builder
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
+# Copy full source for build
 COPY --from=sdk . /api-platform/sdk
 COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
 
+# Build gateway-builder binary (cache mounts persist across rebuilds)
 WORKDIR /api-platform/gateway/gateway-builder
-RUN CGO_ENABLED=0 \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=${BUILDARCH} \
     go build \
-    -a -installsuffix cgo \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
@@ -67,13 +74,13 @@ ENV VERSION=${VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV BUILD_DATE=${BUILD_DATE}
 
-COPY --from=sdk go.mod go.sum /api-platform/sdk/
-RUN go mod download
-
+# Download policy-engine dependencies (cached by go.mod/go.sum changes)
 WORKDIR /api-platform/gateway/policy-engine
 COPY --from=policy-engine go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
+# Copy all source and policy files
 COPY --from=policy-engine . /api-platform/gateway/policy-engine
 COPY --from=sdk . /api-platform/sdk
 COPY --from=system-policies . /workspace/system-policies/
@@ -85,7 +92,10 @@ RUN mkdir -p /workspace/output
 WORKDIR /workspace
 
 # Run gateway builder with manifest, conditionally enable coverage
-RUN [ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true || true; \
+# Cache mounts let the builder's internal go build reuse compiled packages
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    [ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true || true; \
     /usr/local/bin/gateway-builder \
         -manifest /workspace/policies/policy-manifest.yaml \
         -system-manifest-lock /workspace/system-policies/system-policy-manifest-lock.yaml \
@@ -98,12 +108,12 @@ FROM envoyproxy/envoy:v1.35.3
 ARG ENABLE_COVERAGE=false
 
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     tini \
     gettext-base \
-    ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates
 
 RUN mkdir -p /app /var/run /coverage
 
