@@ -78,7 +78,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err = r.db.Exec(query,
+	_, err = r.db.Exec(r.db.Rebind(query),
 		t.UUID, t.OrganizationUUID, t.ID, t.Name, t.Description, t.CreatedBy,
 		string(configJSON),
 		t.CreatedAt, t.UpdatedAt,
@@ -87,11 +87,11 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 }
 
 func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-	row := r.db.QueryRow(`
+	row := r.db.QueryRow(r.db.Rebind(`
 		SELECT uuid, organization_uuid, handle, name, description, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE handle = ? AND organization_uuid = ?
-	`, templateID, orgUUID)
+	`), templateID, orgUUID)
 
 	var t model.LLMProviderTemplate
 	var configJSON sql.NullString
@@ -123,13 +123,13 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 }
 
 func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProviderTemplate, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT uuid, organization_uuid, handle, name, description, created_by, configuration, created_at, updated_at
 		FROM llm_provider_templates
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
-	`, orgUUID, limit, offset)
+	`), orgUUID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 		SET name = ?, description = ?, configuration = ?, updated_at = ?
 		WHERE handle = ? AND organization_uuid = ?
 	`
-	result, err := r.db.Exec(query,
+	result, err := r.db.Exec(r.db.Rebind(query),
 		t.Name, t.Description,
 		string(configJSON),
 		t.UpdatedAt,
@@ -206,7 +206,7 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 }
 
 func (r *LLMProviderTemplateRepo) Delete(templateID, orgUUID string) error {
-	result, err := r.db.Exec(`DELETE FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ?`, templateID, orgUUID)
+	result, err := r.db.Exec(r.db.Rebind(`DELETE FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ?`), templateID, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -222,7 +222,7 @@ func (r *LLMProviderTemplateRepo) Delete(templateID, orgUUID string) error {
 
 func (r *LLMProviderTemplateRepo) Exists(templateID, orgUUID string) (bool, error) {
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ?`, templateID, orgUUID).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_provider_templates WHERE handle = ? AND organization_uuid = ?`), templateID, orgUUID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -231,7 +231,7 @@ func (r *LLMProviderTemplateRepo) Exists(templateID, orgUUID string) (bool, erro
 
 func (r *LLMProviderTemplateRepo) Count(orgUUID string) (int, error) {
 	var count int
-	if err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_provider_templates WHERE organization_uuid = ?`, orgUUID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_provider_templates WHERE organization_uuid = ?`), orgUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -297,7 +297,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(query,
+	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.OrganizationUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Template,
 		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec, string(modelProvidersJSON), string(rateLimitingJSON),
 		string(accessControlJSON), policiesColumn, string(securityJSON), p.Status,
@@ -314,12 +314,12 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 }
 
 func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
-	row := r.db.QueryRow(`
+	row := r.db.QueryRow(r.db.Rebind(`
 		SELECT uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
 			upstream_url, upstream_auth, openapi_spec, model_list, rate_limiting, access_control, policies, security, status, created_at, updated_at
 		FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?
-	`, providerID, orgUUID)
+	`), providerID, orgUUID)
 
 	var p model.LLMProvider
 	var upstreamURL, openAPISpec, modelProvidersRaw sql.NullString
@@ -375,14 +375,14 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT uuid, organization_uuid, handle, name, description, created_by, version, context, vhost, template,
 			upstream_url, upstream_auth, openapi_spec, model_list, rate_limiting, access_control, policies, security, status, created_at, updated_at
 		FROM llm_providers
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
-	`, orgUUID, limit, offset)
+	`), orgUUID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +442,7 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 
 func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
 	var count int
-	if err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_providers WHERE organization_uuid = ?`, orgUUID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_providers WHERE organization_uuid = ?`), orgUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -491,7 +491,7 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(query,
+	result, err := tx.Exec(r.db.Rebind(query),
 		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Template,
 		p.UpstreamURL, string(upstreamAuthJSON), p.OpenAPISpec, string(modelProvidersJSON), string(rateLimitingJSON),
 		string(accessControlJSON), policiesColumn, string(securityJSON), p.Status, p.UpdatedAt,
@@ -520,7 +520,7 @@ func (r *LLMProviderRepo) Delete(providerID, orgUUID string) error {
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(`DELETE FROM llm_providers WHERE handle = ? AND organization_uuid = ?`, providerID, orgUUID)
+	result, err := tx.Exec(r.db.Rebind(`DELETE FROM llm_providers WHERE handle = ? AND organization_uuid = ?`), providerID, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -540,7 +540,7 @@ func (r *LLMProviderRepo) Delete(providerID, orgUUID string) error {
 
 func (r *LLMProviderRepo) Exists(providerID, orgUUID string) (bool, error) {
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_providers WHERE handle = ? AND organization_uuid = ?`, providerID, orgUUID).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_providers WHERE handle = ? AND organization_uuid = ?`), providerID, orgUUID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -588,7 +588,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(query,
+	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.OrganizationUUID, p.ProjectUUID, p.ID, p.Name, p.Description, p.CreatedBy, p.Version, p.Context, p.VHost, p.Provider,
 		p.OpenAPISpec, policiesColumn, string(securityJSON), p.Status,
 		p.CreatedAt, p.UpdatedAt,
@@ -604,12 +604,12 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 }
 
 func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error) {
-	row := r.db.QueryRow(`
+	row := r.db.QueryRow(r.db.Rebind(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?
-	`, proxyID, orgUUID)
+	`), proxyID, orgUUID)
 
 	var p model.LLMProxy
 	var openAPISpec, policiesJSON, securityJSON sql.NullString
@@ -641,14 +641,14 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 }
 
 func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
-	`, orgUUID, limit, offset)
+	`), orgUUID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -684,14 +684,14 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 }
 
 func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
-	`, orgUUID, projectUUID, limit, offset)
+	`), orgUUID, projectUUID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -727,14 +727,14 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 }
 
 func (r *LLMProxyRepo) ListByProvider(orgUUID, providerID string, limit, offset int) ([]*model.LLMProxy, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT uuid, organization_uuid, project_uuid, handle, name, description, created_by, version, context, vhost, provider,
 				openapi_spec, policies, security, status, created_at, updated_at
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND provider = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
-	`, orgUUID, providerID, limit, offset)
+	`), orgUUID, providerID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +771,7 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerID string, limit, offset 
 
 func (r *LLMProxyRepo) Count(orgUUID string) (int, error) {
 	var count int
-	if err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ?`, orgUUID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ?`), orgUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -779,7 +779,7 @@ func (r *LLMProxyRepo) Count(orgUUID string) (int, error) {
 
 func (r *LLMProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
 	var count int
-	if err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND project_uuid = ?`, orgUUID, projectUUID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND project_uuid = ?`), orgUUID, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -787,7 +787,7 @@ func (r *LLMProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) 
 
 func (r *LLMProxyRepo) CountByProvider(orgUUID, providerID string) (int, error) {
 	var count int
-	if err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND provider = ?`, orgUUID, providerID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND provider = ?`), orgUUID, providerID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -817,7 +817,7 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(query,
+	result, err := tx.Exec(r.db.Rebind(query),
 		p.Name, p.Description, p.Version, p.Context, p.VHost, p.Provider,
 		p.OpenAPISpec, policiesColumn, string(securityJSON), p.Status, p.UpdatedAt,
 		p.ID, p.OrganizationUUID,
@@ -845,7 +845,7 @@ func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(`DELETE FROM llm_proxies WHERE handle = ? AND organization_uuid = ?`, proxyID, orgUUID)
+	result, err := tx.Exec(r.db.Rebind(`DELETE FROM llm_proxies WHERE handle = ? AND organization_uuid = ?`), proxyID, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -865,7 +865,7 @@ func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {
 
 func (r *LLMProxyRepo) Exists(proxyID, orgUUID string) (bool, error) {
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM llm_proxies WHERE handle = ? AND organization_uuid = ?`, proxyID, orgUUID).Scan(&count)
+	err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM llm_proxies WHERE handle = ? AND organization_uuid = ?`), proxyID, orgUUID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
