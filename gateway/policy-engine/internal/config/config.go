@@ -117,7 +117,11 @@ type TracingConfig struct {
 
 // ServerConfig holds ext_proc server configuration
 type ServerConfig struct {
-	// ExtProcPort is the port for the ext_proc gRPC server
+	// Mode is the connection mode: "uds" (default) or "tcp"
+	// In UDS mode, the socket path is a constant (not configurable)
+	Mode string `koanf:"mode"`
+
+	// ExtProcPort is the port for the ext_proc gRPC server (TCP mode only)
 	ExtProcPort int `koanf:"extproc_port"`
 }
 
@@ -275,6 +279,7 @@ func defaultConfig() *Config {
 	return &Config{
 		PolicyEngine: PolicyEngine{
 			Server: ServerConfig{
+				Mode:        "", // Empty defaults to "uds"
 				ExtProcPort: 9001,
 			},
 			Admin: AdminConfig{
@@ -307,7 +312,7 @@ func defaultConfig() *Config {
 			},
 			Logging: LoggingConfig{
 				Level:  "info",
-				Format: "json",
+				Format: "text",
 			},
 			TracingServiceName: "policy-engine",
 		},
@@ -347,9 +352,17 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	// Validate server config
-	if c.PolicyEngine.Server.ExtProcPort <= 0 || c.PolicyEngine.Server.ExtProcPort > 65535 {
-		return fmt.Errorf("invalid extproc_port: %d (must be 1-65535)", c.PolicyEngine.Server.ExtProcPort)
+	// Validate connection mode (same pattern as gateway-controller)
+	switch c.PolicyEngine.Server.Mode {
+	case "uds", "":
+		// UDS mode (default) - socket path is a constant, no additional validation needed
+	case "tcp":
+		// TCP mode - validate port
+		if c.PolicyEngine.Server.ExtProcPort <= 0 || c.PolicyEngine.Server.ExtProcPort > 65535 {
+			return fmt.Errorf("invalid extproc_port: %d (must be 1-65535)", c.PolicyEngine.Server.ExtProcPort)
+		}
+	default:
+		return fmt.Errorf("server.mode must be 'uds' or 'tcp', got: %s", c.PolicyEngine.Server.Mode)
 	}
 
 	// Validate admin config
@@ -357,7 +370,8 @@ func (c *Config) Validate() error {
 		if c.PolicyEngine.Admin.Port <= 0 || c.PolicyEngine.Admin.Port > 65535 {
 			return fmt.Errorf("invalid admin.port: %d (must be 1-65535)", c.PolicyEngine.Admin.Port)
 		}
-		if c.PolicyEngine.Admin.Port == c.PolicyEngine.Server.ExtProcPort {
+		// Only check port conflict if using TCP mode
+		if c.PolicyEngine.Server.Mode == "tcp" && c.PolicyEngine.Admin.Port == c.PolicyEngine.Server.ExtProcPort {
 			return fmt.Errorf("admin.port cannot be same as server.extproc_port")
 		}
 		if len(c.PolicyEngine.Admin.AllowedIPs) == 0 {
@@ -370,7 +384,8 @@ func (c *Config) Validate() error {
 		if c.PolicyEngine.Metrics.Port <= 0 || c.PolicyEngine.Metrics.Port > 65535 {
 			return fmt.Errorf("invalid metrics.port: %d (must be 1-65535)", c.PolicyEngine.Metrics.Port)
 		}
-		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Server.ExtProcPort {
+		// Only check port conflict if using TCP mode
+		if c.PolicyEngine.Server.Mode == "tcp" && c.PolicyEngine.Metrics.Port == c.PolicyEngine.Server.ExtProcPort {
 			return fmt.Errorf("metrics.port cannot be same as server.extproc_port")
 		}
 		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Admin.Port {

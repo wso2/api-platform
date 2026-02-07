@@ -1,0 +1,40 @@
+{{- $unified := .Values.gateway.gatewayRuntime -}}
+{{- $deployment := $unified.deployment -}}
+{{- if $deployment.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-gateway-runtime
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "gateway-runtime" $unified.service.labels) | nindent 4 }}
+  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $unified.service.annotations) }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $unified.service.type }}
+  ports:
+    - port: {{ $unified.service.ports.http }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ $unified.service.ports.https }}
+      targetPort: https
+      protocol: TCP
+      name: https
+    - port: {{ $unified.service.ports.envoyAdmin }}
+      targetPort: envoy-admin
+      protocol: TCP
+      name: envoy-admin
+    - port: {{ $unified.service.ports.policyEngineAdmin }}
+      targetPort: pe-admin
+      protocol: TCP
+      name: pe-admin
+    - port: {{ $unified.service.ports.policyEngineMetrics }}
+      targetPort: pe-metrics
+      protocol: TCP
+      name: pe-metrics
+  selector:
+    {{- include "gateway-operator.componentSelectorLabels" (list . "gateway-runtime") | nindent 4 }}
+{{- end }}

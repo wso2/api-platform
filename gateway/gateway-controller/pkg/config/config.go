@@ -299,15 +299,16 @@ type HTTPListenerConfig struct {
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
 type PolicyEngineConfig struct {
 	Enabled           bool            `koanf:"enabled"`
-	Host              string          `koanf:"host"` // Policy engine hostname/IP
-	Port              uint32          `koanf:"port"` // Policy engine ext_proc port
+	Mode              string          `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	Host              string          `koanf:"host"` // Policy engine hostname/IP (TCP mode only)
+	Port              uint32          `koanf:"port"` // Policy engine ext_proc port (TCP mode only)
 	TimeoutMs         uint32          `koanf:"timeout_ms"`
 	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
 	RouteCacheAction  string          `koanf:"route_cache_action"`
 	AllowModeOverride bool            `koanf:"allow_mode_override"`
 	RequestHeaderMode string          `koanf:"request_header_mode"`
 	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
-	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration
+	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
 }
 
 // PolicyEngineTLS holds policy engine TLS configuration
@@ -467,7 +468,7 @@ func defaultConfig() *Config {
 				},
 				AccessLogs: AccessLogsConfig{
 					Enabled: true,
-					Format:  "json",
+					Format:  "text",
 					JSONFields: map[string]string{
 						"start_time":            "%START_TIME%",
 						"method":                "%REQ(:METHOD)%",
@@ -527,8 +528,9 @@ func defaultConfig() *Config {
 				},
 				PolicyEngine: PolicyEngineConfig{
 					Enabled:           true,
-					Host:              "policy-engine",
-					Port:              9001,
+					Mode:              "uds",           // UDS mode by default
+					Host:              "policy-engine", // Only used in TCP mode
+					Port:              9001,            // Only used in TCP mode
 					TimeoutMs:         60000,
 					FailureModeAllow:  false,
 					RouteCacheAction:  "RETAIN",
@@ -569,7 +571,7 @@ func defaultConfig() *Config {
 			},
 			Logging: LoggingConfig{
 				Level:  "info",
-				Format: "json",
+				Format: "text",
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -1060,18 +1062,26 @@ func (c *Config) validatePolicyEngineConfig() error {
 		return nil
 	}
 
-	// Validate host
-	if policyEngine.Host == "" {
-		return fmt.Errorf("router.policy_engine.host is required when policy engine is enabled")
-	}
-
-	// Validate port
-	if policyEngine.Port == 0 {
-		return fmt.Errorf("router.policy_engine.port is required when policy engine is enabled")
-	}
-
-	if policyEngine.Port > 65535 {
-		return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
+	// Validate connection mode
+	switch policyEngine.Mode {
+	case "uds", "":
+		// UDS mode (default) - TLS is not supported with UDS (local communication)
+		if policyEngine.TLS.Enabled {
+			return fmt.Errorf("router.policy_engine.tls cannot be enabled when using Unix domain socket mode")
+		}
+	case "tcp":
+		// TCP mode - validate host and port
+		if policyEngine.Host == "" {
+			return fmt.Errorf("router.policy_engine.host is required when mode is tcp")
+		}
+		if policyEngine.Port == 0 {
+			return fmt.Errorf("router.policy_engine.port is required when mode is tcp")
+		}
+		if policyEngine.Port > 65535 {
+			return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
+		}
+	default:
+		return fmt.Errorf("router.policy_engine.mode must be 'uds' or 'tcp', got: %s", policyEngine.Mode)
 	}
 
 	// Validate timeout

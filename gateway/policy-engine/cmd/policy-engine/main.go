@@ -35,6 +35,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/admin"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
@@ -89,13 +90,30 @@ func main() {
 	slog.SetDefault(logger)
 	ctx := context.Background()
 
-	slog.InfoContext(ctx, "Policy Engine starting",
-		"version", Version,
-		"git_commit", GitCommit,
-		"build_date", BuildDate,
-		"config_file", *configFile,
-		"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
-		"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
+	// Log startup info based on listen mode
+	serverMode := cfg.PolicyEngine.Server.Mode
+	if serverMode == "" {
+		serverMode = "uds" // Default to UDS
+	}
+	if serverMode == "uds" {
+		slog.InfoContext(ctx, "Policy Engine starting",
+			"version", Version,
+			"git_commit", GitCommit,
+			"build_date", BuildDate,
+			"config_file", *configFile,
+			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
+			"server_mode", serverMode,
+			"extproc_socket", constants.DefaultPolicyEngineSocketPath)
+	} else {
+		slog.InfoContext(ctx, "Policy Engine starting",
+			"version", Version,
+			"git_commit", GitCommit,
+			"build_date", BuildDate,
+			"config_file", *configFile,
+			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
+			"server_mode", serverMode,
+			"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
+	}
 
 	// Initialize tracing (if enabled in config)
 	tracingShutdown, err := tracing.InitTracer(cfg)
@@ -162,18 +180,41 @@ func main() {
 	// Create and start ext_proc gRPC server
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName)
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.ExtProcPort))
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to listen on port",
-			"port", cfg.PolicyEngine.Server.ExtProcPort,
-			"error", err)
-		os.Exit(1)
+	// Create listener based on mode (same pattern as gateway-controller)
+	var lis net.Listener
+	switch serverMode {
+	case "uds":
+		// UDS mode (default) - use constant socket path
+		socketPath := constants.DefaultPolicyEngineSocketPath
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+			slog.WarnContext(ctx, "Failed to remove existing socket file", "path", socketPath, "error", err)
+		}
+
+		lis, err = net.Listen("unix", socketPath)
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to listen on Unix socket", "path", socketPath, "error", err)
+			os.Exit(1)
+		}
+
+		// Set socket permissions (readable/writable by owner and group)
+		if err := os.Chmod(socketPath, 0660); err != nil {
+			slog.WarnContext(ctx, "Failed to set socket permissions", "path", socketPath, "error", err)
+		}
+
+		slog.InfoContext(ctx, "Policy Engine listening on Unix socket", "path", socketPath)
+	case "tcp":
+		// TCP mode
+		lis, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.ExtProcPort))
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to listen on port", "port", cfg.PolicyEngine.Server.ExtProcPort, "error", err)
+			os.Exit(1)
+		}
+
+		slog.InfoContext(ctx, "Policy Engine listening on TCP port", "port", cfg.PolicyEngine.Server.ExtProcPort)
 	}
 
 	grpcServer := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(grpcServer, extprocServer)
-
-	slog.InfoContext(ctx, "Policy Engine listening", "port", cfg.PolicyEngine.Server.ExtProcPort)
 
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server
@@ -257,6 +298,15 @@ func main() {
 	}
 
 	grpcServer.GracefulStop()
+
+	// Cleanup Unix socket if used (UDS mode)
+	if serverMode == "uds" {
+		if err := os.Remove(constants.DefaultPolicyEngineSocketPath); err != nil && !os.IsNotExist(err) {
+			slog.WarnContext(ctx, "Failed to cleanup socket file on shutdown",
+				"path", constants.DefaultPolicyEngineSocketPath, "error", err)
+		}
+	}
+
 	slog.InfoContext(ctx, "Policy Engine shut down successfully")
 }
 
