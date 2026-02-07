@@ -630,7 +630,15 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Update policy engine xDS snapshot (if policy manager is available)
+	if c.policyManager == nil {
+		c.logger.Error("Failed to update policy engine snapshot: policy manager is not available",
+			slog.String("api_id", apiID),
+			slog.String("correlation_id", deployedEvent.CorrelationID),
+		)
+		return
+	}
+
+	// Update policy engine xDS snapshot
 	if c.policyManager != nil && result != nil {
 		var storedPolicy *models.StoredPolicyConfig
 

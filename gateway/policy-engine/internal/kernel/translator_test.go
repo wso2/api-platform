@@ -569,7 +569,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)
-	assert.Contains(t, pathMutation, "added=param")
+	assert.Contains(t, *pathMutation, "added=param")
 }
 
 func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
@@ -600,5 +600,5 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)
-	assert.Equal(t, "/new/path", pathMutation)
+	assert.Equal(t, "/new/path", *pathMutation)
 }
