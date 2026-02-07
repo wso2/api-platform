@@ -173,9 +173,9 @@ data:
               # Cipher suites (comma-separated)
               ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
 
-            # Upstream configuration
-            envoy_upstream:
-              # TLS configuration for upstream connections
+            # Downstream configuration (route timeouts and TLS)
+            envoy_downstream:
+              # TLS configuration for downstream connections
               tls:
                 minimum_protocol_version: TLS1_2
                 maximum_protocol_version: TLS1_3
@@ -185,11 +185,16 @@ data:
                 verify_host_name: true
                 disable_ssl_verification: false
 
-              # Timeout configurations for upstream connections
+              # Timeout configurations for route-level timeouts
               timeouts:
                 route_timeout_in_seconds: 60
                 max_route_timeout_in_seconds: 60
                 route_idle_timeout_in_seconds: 300
+
+            # Upstream configuration (cluster-level settings)
+            envoy_upstream:
+              # Connect timeout for upstream clusters
+              connect_timeout_in_seconds: 5
 
             # Policy Engine ext_proc filter configuration
             policy_engine:

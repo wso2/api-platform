@@ -93,18 +93,18 @@ type resolvedTimeout struct {
 func NewTranslator(logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
 	// Initialize certificate store if custom certs path is configured
 	var cs *certstore.CertStore
-	if routerConfig.Upstream.TLS.CustomCertsPath != "" {
+	if routerConfig.Downstream.TLS.CustomCertsPath != "" {
 		cs = certstore.NewCertStore(
 			logger,
 			db,
-			routerConfig.Upstream.TLS.CustomCertsPath,
-			routerConfig.Upstream.TLS.TrustedCertPath,
+			routerConfig.Downstream.TLS.CustomCertsPath,
+			routerConfig.Downstream.TLS.TrustedCertPath,
 		)
 
 		// Load certificates at initialization
 		if _, err := cs.LoadCertificates(); err != nil {
 			logger.Warn("Failed to initialize certificate store, will use system certs only",
-				slog.String("custom_certs_path", routerConfig.Upstream.TLS.CustomCertsPath),
+				slog.String("custom_certs_path", routerConfig.Downstream.TLS.CustomCertsPath),
 				slog.Any("error", err))
 			cs = nil // Don't use cert store if initialization failed
 		}
@@ -1383,11 +1383,11 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Currently the route level timeouts are configurable using the global configuration.
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout:     durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInMs) * time.Millisecond,
+			Timeout: durationpb.New(
+				time.Duration(t.routerConfig.Downstream.Timeouts.RouteTimeoutInMs) * time.Millisecond,
 			),
 			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInMs) * time.Millisecond,
+				time.Duration(t.routerConfig.Downstream.Timeouts.RouteIdleTimeoutInMs) * time.Millisecond,
 			),
 			ClusterSpecifier: &route.RouteAction_Cluster{
 				Cluster: clusterName,
@@ -1890,12 +1890,12 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 		CommonTlsContext: &tlsv3.CommonTlsContext{
 			TlsParams: &tlsv3.TlsParameters{
 				TlsMinimumProtocolVersion: t.createTLSProtocolVersion(
-					t.routerConfig.Upstream.TLS.MinimumProtocolVersion,
+					t.routerConfig.Downstream.TLS.MinimumProtocolVersion,
 				),
 				TlsMaximumProtocolVersion: t.createTLSProtocolVersion(
-					t.routerConfig.Upstream.TLS.MaximumProtocolVersion,
+					t.routerConfig.Downstream.TLS.MaximumProtocolVersion,
 				),
-				CipherSuites: t.parseCipherSuites(t.routerConfig.Upstream.TLS.Ciphers),
+				CipherSuites: t.parseCipherSuites(t.routerConfig.Downstream.TLS.Ciphers),
 			},
 		},
 	}
@@ -1907,7 +1907,7 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 	}
 
 	// Configure SSL verification unless disabled
-	if !t.routerConfig.Upstream.TLS.DisableSslVerification {
+	if !t.routerConfig.Downstream.TLS.DisableSslVerification {
 		// Priority order for trusted CA certificates:
 		// 1. SDS secret reference (if cert store is available) - Uses dynamic secret discovery
 		// 2. Certificate parameter (per-upstream cert, currently unused but kept for future)
@@ -1961,13 +1961,13 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 					},
 				},
 			}
-		} else if t.routerConfig.Upstream.TLS.TrustedCertPath != "" {
+		} else if t.routerConfig.Downstream.TLS.TrustedCertPath != "" {
 			// Fall back to system cert path
 			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
 				ValidationContext: &tlsv3.CertificateValidationContext{
 					TrustedCa: &core.DataSource{
 						Specifier: &core.DataSource_Filename{
-							Filename: t.routerConfig.Upstream.TLS.TrustedCertPath,
+							Filename: t.routerConfig.Downstream.TLS.TrustedCertPath,
 						},
 					},
 				},
@@ -1975,7 +1975,7 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 		}
 
 		// Add hostname verification if enabled
-		if t.routerConfig.Upstream.TLS.VerifyHostName {
+		if t.routerConfig.Downstream.TLS.VerifyHostName {
 			sanType := tlsv3.SubjectAltNameMatcher_DNS
 			if isIP {
 				sanType = tlsv3.SubjectAltNameMatcher_IP_ADDRESS
