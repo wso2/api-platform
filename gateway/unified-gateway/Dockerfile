@@ -22,9 +22,9 @@
 # Stage 1: Builder Base
 FROM --platform=$BUILDPLATFORM golang:1.25.6-alpine3.23 AS builder-base
 ARG BUILDARCH
-ARG VERSION=0.0.1-SNAPSHOT
+ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
-ARG BUILD_DATE
+ARG BUILD_DATE=unknown
 
 # Coverage build argument - set to "true" for coverage-instrumented builds
 ARG ENABLE_COVERAGE=false
@@ -84,20 +84,13 @@ RUN mkdir -p /workspace/output
 
 WORKDIR /workspace
 
-# Run gateway builder with manifest, set COVERAGE=true for coverage-instrumented builds
-RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        COVERAGE=true /usr/local/bin/gateway-builder \
-            -manifest /workspace/policies/policy-manifest.yaml \
-            -system-manifest-lock /workspace/system-policies/system-policy-manifest-lock.yaml \
-            -policy-engine-src /api-platform/gateway/policy-engine \
-            -out-dir /workspace/output; \
-    else \
-        /usr/local/bin/gateway-builder \
-            -manifest /workspace/policies/policy-manifest.yaml \
-            -system-manifest-lock /workspace/system-policies/system-policy-manifest-lock.yaml \
-            -policy-engine-src /api-platform/gateway/policy-engine \
-            -out-dir /workspace/output; \
-    fi
+# Run gateway builder with manifest, conditionally enable coverage
+RUN [ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true || true; \
+    /usr/local/bin/gateway-builder \
+        -manifest /workspace/policies/policy-manifest.yaml \
+        -system-manifest-lock /workspace/system-policies/system-policy-manifest-lock.yaml \
+        -policy-engine-src /api-platform/gateway/policy-engine \
+        -out-dir /workspace/output
 
 # Stage 3: Runtime
 FROM envoyproxy/envoy:v1.35.3
@@ -131,8 +124,7 @@ ENV GOCOVERDIR=/coverage
 
 ENV XDS_SERVER_HOST=gateway-controller \
     XDS_SERVER_PORT=18000 \
-    LOG_LEVEL=info \
-    POLICY_ENGINE_CONFIG=/etc/policy-engine/config.toml
+    LOG_LEVEL=info
 
 USER wso2
 

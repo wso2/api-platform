@@ -50,6 +50,7 @@ services:
     mem_limit: 180m
     mem_reservation: 180m
     cpus: 0.175
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
     ports:
       - "8080:8080"   # HTTP traffic (Envoy)
       - "8443:8443"   # HTTPS traffic (Envoy)

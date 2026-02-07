@@ -20,6 +20,15 @@
 
 # Unified Gateway Entrypoint Script
 # Manages both Policy Engine and Envoy processes
+#
+# Process-specific args can be passed using prefixed flags:
+#   --rtr.<flag> <value>   → forwarded to Router (Envoy)
+#   --pol.<flag> <value>   → forwarded to Policy Engine
+#
+# Examples:
+#   docker run unified-gateway --rtr.component-log-level upstream:debug --pol.log-format text
+#   In Kubernetes:
+#     args: ["--rtr.concurrency", "4", "--pol.log-format", "text"]
 
 set -e
 
@@ -28,11 +37,43 @@ log() {
     echo "[ent] $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
+# Parse process-specific args from command line.
+# Uses dot (.) as the prefix separator (e.g. --rtr.flag, --pol.flag) because no
+# standard CLI flag contains a dot, making prefix detection unambiguous.
+# --rtr.X → ROUTER_ARGS, --pol.X → PE_ARGS, unrecognized → warning
+ROUTER_ARGS=()
+PE_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --rtr.*)
+            ROUTER_ARGS+=("--${1#--rtr.}")
+            shift
+            # Consume the value if next arg is not a flag
+            if [[ $# -gt 0 && "$1" != --* ]]; then
+                ROUTER_ARGS+=("$1")
+                shift
+            fi
+            ;;
+        --pol.*)
+            PE_ARGS+=("--${1#--pol.}")
+            shift
+            if [[ $# -gt 0 && "$1" != --* ]]; then
+                PE_ARGS+=("$1")
+                shift
+            fi
+            ;;
+        *)
+            log "ERROR: Unrecognized arg '$1' (use --rtr. or --pol. prefix)"
+            exit 1
+            ;;
+    esac
+done
+
 # Default configuration
 export XDS_SERVER_HOST="${XDS_SERVER_HOST:-gateway-controller}"
 export XDS_SERVER_PORT="${XDS_SERVER_PORT:-18000}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
-export POLICY_ENGINE_CONFIG="${POLICY_ENGINE_CONFIG:-/etc/policy-engine/config.toml}"
 
 POLICY_ENGINE_SOCKET="/app/policy-engine.sock"
 
@@ -40,6 +81,8 @@ log "Starting Unified Gateway"
 log "  xDS Server: ${XDS_SERVER_HOST}:${XDS_SERVER_PORT}"
 log "  Log Level: ${LOG_LEVEL}"
 log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"
+[[ ${#ROUTER_ARGS[@]} -gt 0 ]] && log "  Router extra args: ${ROUTER_ARGS[*]}"
+[[ ${#PE_ARGS[@]} -gt 0 ]] && log "  Policy Engine extra args: ${PE_ARGS[*]}"
 
 # Cleanup stale socket from previous runs
 rm -f "${POLICY_ENGINE_SOCKET}"
@@ -81,7 +124,7 @@ trap shutdown SIGTERM SIGINT SIGQUIT
 
 # Start Policy Engine with [pol] log prefix
 log "Starting Policy Engine..."
-/app/policy-engine -config "${POLICY_ENGINE_CONFIG}" \
+/app/policy-engine "${PE_ARGS[@]}" \
     > >(while IFS= read -r line; do echo "[pol] $line"; done) \
     2> >(while IFS= read -r line; do echo "[pol] $line" >&2; done) &
 PE_PID=$!
@@ -117,7 +160,7 @@ log "Starting Envoy..."
     -c /etc/envoy/envoy.yaml \
     --config-yaml "${CONFIG_OVERRIDE}" \
     --log-level "${LOG_LEVEL}" \
-    "$@" \
+    "${ROUTER_ARGS[@]}" \
     > >(while IFS= read -r line; do echo "[rtr] $line"; done) \
     2> >(while IFS= read -r line; do echo "[rtr] $line" >&2; done) &
 ENVOY_PID=$!
