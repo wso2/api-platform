@@ -123,8 +123,8 @@ RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh
 
 RUN groupadd -r -g 10001 wso2 && \
     useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
-    chown -R wso2:wso2 /app /var/run /coverage && \
-    chmod -R 755 /app /var/run /coverage
+    chown -R wso2:wso2 /app /coverage && \
+    chmod -R 755 /app /coverage
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage

@@ -34,7 +34,7 @@ export XDS_SERVER_PORT="${XDS_SERVER_PORT:-18000}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 export POLICY_ENGINE_CONFIG="${POLICY_ENGINE_CONFIG:-/etc/policy-engine/config.toml}"
 
-POLICY_ENGINE_SOCKET="/var/run/policy-engine.sock"
+POLICY_ENGINE_SOCKET="/app/policy-engine.sock"
 
 log "Starting Unified Gateway"
 log "  xDS Server: ${XDS_SERVER_HOST}:${XDS_SERVER_PORT}"

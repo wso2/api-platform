@@ -82,7 +82,7 @@ const (
 
 	// Policy Engine
 	PolicyEngineClusterName         = "api-platform/policy-engine"
-	DefaultPolicyEngineSocketPath   = "/var/run/policy-engine.sock"
+	DefaultPolicyEngineSocketPath   = "/app/policy-engine.sock"
 
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"
