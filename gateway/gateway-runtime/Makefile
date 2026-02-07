@@ -26,7 +26,7 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
-.PHONY: help build build-local build-coverage-image push clean build-and-push-multiarch
+.PHONY: help build build-local build-coverage-image push clean build-and-push-multiarch test
 
 help: ## Show this help message
 	@echo 'Gateway Runtime Build (Version: $(VERSION))'
@@ -40,10 +40,8 @@ build: ## Build Gateway Runtime Docker image using buildx
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context gateway-builder=../gateway-builder \
-		--build-context policy-engine=../policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context router=../router \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -60,10 +58,8 @@ build-local: ## Build Gateway Runtime Docker image locally (faster, no buildx)
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context gateway-builder=../gateway-builder \
-		--build-context policy-engine=../policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context router=../router \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -79,10 +75,8 @@ build-coverage-image: ## Build Gateway Runtime Docker image with coverage instru
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context gateway-builder=../gateway-builder \
-		--build-context policy-engine=../policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context router=../router \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -103,10 +97,8 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context gateway-builder=../gateway-builder \
-		--build-context policy-engine=../policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context router=../router \
 		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
@@ -117,6 +109,9 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		.
 	@rm -rf target
 	@echo "Multi-arch Docker image built and pushed: $(IMAGE_NAME):$(VERSION)"
+
+test: ## Run policy-engine tests
+	cd policy-engine && go test -v $$(go list ./... | grep -v /testutils) -cover
 
 clean: ## Clean Docker images
 	@echo "Cleaning Docker images..."

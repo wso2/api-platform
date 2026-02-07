@@ -75,13 +75,13 @@ ENV GIT_COMMIT=${GIT_COMMIT}
 ENV BUILD_DATE=${BUILD_DATE}
 
 # Download policy-engine dependencies (cached by go.mod/go.sum changes)
-WORKDIR /api-platform/gateway/policy-engine
-COPY --from=policy-engine go.mod go.sum ./
+WORKDIR /api-platform/gateway/gateway-runtime/policy-engine
+COPY policy-engine/go.mod policy-engine/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 # Copy all source and policy files
-COPY --from=policy-engine . /api-platform/gateway/policy-engine
+COPY policy-engine/ /api-platform/gateway/gateway-runtime/policy-engine/
 COPY --from=sdk . /api-platform/sdk
 COPY --from=system-policies . /workspace/system-policies/
 COPY --from=dev-policies . /workspace/policies/dev-policies/
@@ -99,7 +99,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     /usr/local/bin/gateway-builder \
         -manifest /workspace/policies/policy-manifest.yaml \
         -system-manifest-lock /workspace/system-policies/system-policy-manifest-lock.yaml \
-        -policy-engine-src /api-platform/gateway/policy-engine \
+        -policy-engine-src /api-platform/gateway/gateway-runtime/policy-engine \
         -out-dir /workspace/output
 
 # Stage 3: Runtime
@@ -118,8 +118,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN mkdir -p /app /var/run /coverage
 
 COPY --from=policy-compiler /workspace/output/policy-engine/policy-engine /app/policy-engine
-COPY --from=router config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
-COPY --from=router config/config-override.yaml /etc/envoy/config-override.yaml
+COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
+COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh

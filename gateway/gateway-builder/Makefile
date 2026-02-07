@@ -58,7 +58,7 @@ help: ## Show this help message
 build: ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@docker buildx build -f Dockerfile \
-		--build-context policy-engine=../policy-engine \
+		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
@@ -73,7 +73,7 @@ build: ## Build Docker image using buildx
 build-local: ## Build Docker image locally (faster, no buildx)
 	@echo "Building Docker image locally ($(IMAGE_NAME):$(VERSION))..."
 	@DOCKER_BUILDKIT=1 docker build -f Dockerfile \
-		--build-context policy-engine=../policy-engine \
+		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
@@ -93,7 +93,7 @@ push: ## Push Docker image to registry
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
-		--build-context policy-engine=../policy-engine \
+		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \

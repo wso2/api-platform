@@ -6,8 +6,8 @@ use (
 	./common
 	./gateway/gateway-builder
 	./gateway/gateway-controller
+	./gateway/gateway-runtime/policy-engine
 	./gateway/it
-	./gateway/policy-engine
 	./gateway/sample-policies/count-letters
 	./gateway/sample-policies/uppercase-body
 	./platform-api/src

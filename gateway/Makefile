@@ -158,7 +158,7 @@ test-gateway-builder: ## Test gateway-builder
 
 .PHONY: test-policy-engine
 test-policy-engine: ## Test policy-engine
-	$(MAKE) -C policy-engine test
+	$(MAKE) -C gateway-runtime test
 
 .PHONY: test-integration
 test-integration: ## Run integration tests

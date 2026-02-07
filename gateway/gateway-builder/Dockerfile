@@ -81,7 +81,7 @@ RUN apk add --no-cache \
 COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builder
 
 # Copy Policy Engine framework source code
-COPY --from=policy-engine . /api-platform/gateway/policy-engine
+COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
 COPY --from=sdk . /api-platform/sdk
