@@ -132,7 +132,6 @@ ENV GOCOVERDIR=/coverage
 ENV XDS_SERVER_HOST=gateway-controller \
     XDS_SERVER_PORT=18000 \
     LOG_LEVEL=info \
-    POLICY_ENGINE_SOCKET=/var/run/policy-engine.sock \
     POLICY_ENGINE_CONFIG=/etc/policy-engine/config.toml
 
 USER wso2
