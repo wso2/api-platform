@@ -33,6 +33,11 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
+import (
+	"encoding/json"
+	"os"
+)
+
 const (
 	// EnvPrefix is the prefix for environment variables used to configure the gateway-controller
 	EnvPrefix = "APIP_GW_"
@@ -406,6 +411,10 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
+	if err := loadBasicAuthUsersFromEnv(k); err != nil {
+		return nil, err
+	}
+	
 	// Unmarshal into Config struct with DecodeHook for duration strings
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
@@ -424,6 +433,26 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func loadBasicAuthUsersFromEnv(k *koanf.Koanf) error {
+	envKey := EnvPrefix + "GATEWAY_CONTROLLER_AUTH_BASIC_USERS_JSON"
+
+	raw := os.Getenv(envKey)
+	if strings.TrimSpace(raw) == "" {
+		return nil // env var not set - do nothing
+	}
+
+	var users []AuthUser
+	if err := json.Unmarshal([]byte(raw), &users); err != nil {
+		return fmt.Errorf(
+			"invalid JSON in %s: %w", envKey, err,
+		)
+	}
+
+	//Override the users array directly in Koanf
+	k.Set("gateway_controller.auth.basic.users", users)
+	return nil
 }
 
 // defaultConfig returns a Config struct with default configuration values
