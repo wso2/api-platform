@@ -41,21 +41,10 @@ jobs:
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           wait: 300s
 
-      - name: Build Gateway Controller image
+      - name: Build Gateway
         run: |
-          cd gateway/gateway-controller
-          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local
-
-      - name: Build Policy Engine image
-        run: |
-          cd gateway/policy-engine
-          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local
-
-      - name: Build Router image
-        run: |
-          cd gateway/router
-          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local
-
+          cd gateway
+          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build
       - name: Build Operator image
         run: |
           cd kubernetes/gateway-operator

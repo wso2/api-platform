@@ -64,6 +64,7 @@ spec:
         - name: gateway-runtime
           image: "{{ $unified.image.repository }}:{{ $unified.image.tag }}"
           imagePullPolicy: {{ $unified.image.pullPolicy }}
+          args: ["--pol.config", "/etc/policy-engine/config.toml"]
           {{- with $deployment.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
