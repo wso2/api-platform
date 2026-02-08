@@ -35,6 +35,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -636,7 +637,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 
 		// Guard against nil systemConfig before deriving policies
 		if c.systemConfig != nil {
-			storedPolicy = utils.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig, c.policyDefinitions)
+			storedPolicy = policy.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig, c.policyDefinitions)
 		} else {
 			c.logger.Warn("Cannot derive policies: systemConfig is nil",
 				slog.String("api_id", apiID),

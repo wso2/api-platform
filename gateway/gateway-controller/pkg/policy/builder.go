@@ -16,26 +16,30 @@
  * under the License.
  */
 
-package utils
+package policy
 
 import (
 	"strings"
 	"time"
+	"log/slog"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policyv1alpha "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
-// derivePolicyFromAPIConfig derives a policy configuration from an API stored config.
+// DerivePolicyFromAPIConfig derives a policy configuration from an API stored config.
 // Handles both RestApi and WebSubApi kinds. This is a shared utility used by:
 // - APIDeploymentService (WebSocket event path)
-// - APIServer handlers (REST API path) - TODO: Refactor this to use the implementation in utils
-// - main.go startup (loading existing configs) - TODO: Refactor this to use the implementation in utils
-
+// - APIServer handlers (REST API path) - TODO: Refactor this to use the implementation
+// - main.go startup (loading existing configs)
+//
+// Policy execution order: System Policies -> API Level Policies -> Operation Level Policies
+// Each level does not override the previous one; policies are executed in the given order.
 func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config, policyDefinitions map[string]api.PolicyDefinition) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
 
@@ -45,10 +49,10 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 		for _, p := range *cfg.GetPolicies() {
 			resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, p.Name, p.Version)
 			if err != nil {
-				// Skip policy if version resolution fails
+				slog.Error("Failed to resolve policy version for API-level policy", "policy_name", p.Name, "error", err)
 				continue
 			}
-			apiPolicies[p.Name] = ConvertAPIPolicyToModel(p, policy.LevelAPI, resolvedVersion)
+			apiPolicies[p.Name] = ConvertAPIPolicyToModel(p, policyv1alpha.LevelAPI, resolvedVersion)
 		}
 	}
 
@@ -59,45 +63,36 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsWebhookAPIData()
 		if err != nil {
+			slog.Error("Failed to convert spec to WebhookAPIData", "error", err)
 			return nil
 		}
 		for _, ch := range apiData.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
+			// Policy execution order: API Level Policies -> Operation Level Policies
+			// Start with API-level policies
+			if apiData.Policies != nil {
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
+				for _, p := range *apiData.Policies {
+					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
+				}
+			}
+
+			// Append operation-level policies (they don't override, just execute after API-level)
 			if ch.Policies != nil && len(*ch.Policies) > 0 {
-				// Operation has policies: use operation policy order as authoritative
-				// This allows operations to reorder, override, or extend API-level policies
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
-				addedNames := make(map[string]struct{})
 				for _, opPolicy := range *ch.Policies {
 					resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
+						slog.Error("Failed to resolve policy version for operation-level policy", "policy_name", opPolicy.Name, "channel_name", ch.Name, "error", err)
 						continue
 					}
-					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policy.LevelRoute, resolvedVersion))
-					addedNames[opPolicy.Name] = struct{}{}
-				}
-				// Add any API-level policies not mentioned in operation policies (append at end)
-				if apiData.Policies != nil {
-					for _, apiPolicy := range *apiData.Policies {
-						if _, exists := addedNames[apiPolicy.Name]; !exists {
-							finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
-						}
-					}
-				}
-			} else {
-				// No operation policies: use API-level policies in their declared order
-				if apiData.Policies != nil {
-					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
-					for _, p := range *apiData.Policies {
-						finalPolicies = append(finalPolicies, apiPolicies[p.Name])
-					}
+					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, resolvedVersion))
 				}
 			}
 
 			routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, ch.Name, routerConfig.GatewayHost)
 			props := make(map[string]any)
-			injectedPolicies := InjectSystemPolicies(finalPolicies, systemConfig, props)
+			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)
 
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
@@ -109,40 +104,30 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsAPIConfigData()
 		if err != nil {
-			// Handle error appropriately (e.g., log or return)
+			slog.Error("Failed to convert spec to APIConfigData", "error", err)
 			return nil
 		}
 		for _, op := range apiData.Operations {
 			var finalPolicies []policyenginev1.PolicyInstance
 
+			// Policy execution order: API Level Policies -> Operation Level Policies
+			// Start with API-level policies
+			if apiData.Policies != nil {
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
+				for _, p := range *apiData.Policies {
+					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
+				}
+			}
+
+			// Append operation-level policies (they don't override, just execute after API-level)
 			if op.Policies != nil && len(*op.Policies) > 0 {
-				// Operation has policies: use operation policy order as authoritative
-				// This allows operations to reorder, override, or extend API-level policies
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
-				addedNames := make(map[string]struct{})
 				for _, opPolicy := range *op.Policies {
 					resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
+						slog.Error("Failed to resolve policy version for operation-level policy", "policy_name", opPolicy.Name, "operation_method", op.Method, "operation_path", op.Path, "error", err)
 						continue
 					}
-					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policy.LevelRoute, resolvedVersion))
-					addedNames[opPolicy.Name] = struct{}{}
-				}
-				// Add any API-level policies not mentioned in operation policies (append at end)
-				if apiData.Policies != nil {
-					for _, apiPolicy := range *apiData.Policies {
-						if _, exists := addedNames[apiPolicy.Name]; !exists {
-							finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
-						}
-					}
-				}
-			} else {
-				// No operation policies: use API-level policies in their declared order
-				if apiData.Policies != nil {
-					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
-					for _, p := range *apiData.Policies {
-						finalPolicies = append(finalPolicies, apiPolicies[p.Name])
-					}
+					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, resolvedVersion))
 				}
 			}
 
@@ -169,7 +154,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			// populatePropsForSystemPolicies(cfg.SourceConfiguration, props)
 
 			for _, vhost := range vhosts {
-				injectedPolicies := InjectSystemPolicies(finalPolicies, systemConfig, props)
+				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)
 
 				routes = append(routes, policyenginev1.PolicyChain{
 					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
@@ -207,7 +192,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 }
 
 // ConvertAPIPolicyToModel converts generated api.Policy to policyenginev1.PolicyInstance
-func ConvertAPIPolicyToModel(p api.Policy, attachedTo policy.Level, resolvedVersion string) policyenginev1.PolicyInstance {
+func ConvertAPIPolicyToModel(p api.Policy, attachedTo policyv1alpha.Level, resolvedVersion string) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
 		for k, v := range *p.Params {

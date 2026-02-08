@@ -26,6 +26,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
@@ -135,7 +136,7 @@ func TestConvertAPIPolicyToModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := convertAPIPolicyToModel(tt.policy, tt.attachedTo, tt.expected.version)
+			result := policybuilder.ConvertAPIPolicyToModel(tt.policy, tt.attachedTo, tt.expected.version)
 
 			assert.Equal(t, tt.expected.name, result.Name)
 			assert.Equal(t, tt.expected.version, result.Version)
@@ -168,7 +169,7 @@ func TestConvertAPIPolicyToModel_ParamsCopied(t *testing.T) {
 		Params:  &originalParams,
 	}
 
-	result := convertAPIPolicyToModel(p, policy.LevelAPI, "v1.0.0")
+	result := policybuilder.ConvertAPIPolicyToModel(p, policy.LevelAPI, "v1.0.0")
 
 	// Verify params are copied correctly
 	assert.Equal(t, "value1", result.Parameters["key1"])
@@ -195,7 +196,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 	t.Run("API with no policies returns nil", func(t *testing.T) {
 		cfg := createTestStoredConfig("test-api", "v1.0.0", "/test", nil, nil)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, nil)
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, nil)
 
 		// With system policies injection, result may not be nil
 		// The behavior depends on InjectSystemPolicies
@@ -213,7 +214,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		}
 		cfg := createTestStoredConfig("test-api", "v1.0.0", "/test", apiPolicies, nil)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		assert.Contains(t, result.ID, "test-api-id")
@@ -231,7 +232,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		}
 		cfg := createTestStoredConfigWithOpPolicies("test-api", "v1.0.0", "/test", apiPolicies, opPolicies)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		// Operation policies should be present, plus API-level cors
@@ -244,7 +245,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		}
 		cfg := createTestStoredConfigWithSandbox("test-api", "v1.0.0", "/test", apiPolicies)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		// Should have routes for both main and sandbox vhosts
@@ -260,7 +261,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		sandboxVhost := "custom-sandbox.example.com"
 		cfg := createTestStoredConfigWithVhosts("test-api", "v1.0.0", "/test", apiPolicies, mainVhost, &sandboxVhost)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		// Routes should use custom vhosts
@@ -319,7 +320,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 			},
 		}
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 		require.NotNil(t, result)
 		require.NotEmpty(t, result.Configuration.Routes)
 
@@ -365,7 +366,7 @@ func TestDerivePolicyFromAPIConfig_InvalidConfig(t *testing.T) {
 			},
 		}
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, nil)
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, nil)
 
 		assert.Nil(t, result)
 	})
@@ -690,7 +691,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 	})
 }
 
-// Additional edge case tests for derivePolicyFromAPIConfig
+// Additional edge case tests for policybuilder.DerivePolicyFromAPIConfig
 
 func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 	fullConfig := &config.Config{
@@ -715,7 +716,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 		emptyMain := ""
 		cfg := createTestStoredConfigWithVhosts("test-api", "v1.0.0", "/test", apiPolicies, emptyMain, nil)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		// Should fall back to default vhost
@@ -729,7 +730,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 		emptySandbox := ""
 		cfg := createTestStoredConfigWithVhosts("test-api", "v1.0.0", "/test", apiPolicies, "custom.example.com", &emptySandbox)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		assert.NotEmpty(t, result.Configuration.Routes)
@@ -746,7 +747,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 		}
 		cfg := createTestStoredConfigWithOpPolicies("test-api", "v1.0.0", "/test", apiPolicies, opPolicies)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		// The result should have routes with policies
@@ -759,7 +760,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 		}
 		cfg := createTestStoredConfigMultipleOps("test-api", "v1.0.0", "/test", apiPolicies)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		// Should have routes for each operation
@@ -772,7 +773,7 @@ func TestDerivePolicyFromAPIConfig_EdgeCases(t *testing.T) {
 		}
 		cfg := createTestStoredConfig("my-test-api", "v2.0.0", "/mycontext", apiPolicies, nil)
 
-		result := derivePolicyFromAPIConfig(cfg, fullConfig, testPolicyDefinitions())
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.GatewayController.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
 		assert.Equal(t, "Test API", result.Configuration.Metadata.APIName)

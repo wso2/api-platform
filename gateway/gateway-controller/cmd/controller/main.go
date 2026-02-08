@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -25,13 +24,11 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
 // Version information (set via ldflags during build)
@@ -238,7 +235,7 @@ func main() {
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
 				if apiConfig.Configuration.Kind == api.RestApi {
-					storedPolicy := derivePolicyFromAPIConfig(apiConfig, cfg, policyDefinitions)
+					storedPolicy := policybuilder.DerivePolicyFromAPIConfig(apiConfig, &cfg.GatewayController.Router, cfg, policyDefinitions)
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {
 							log.Warn("Failed to load policy from API",
@@ -505,145 +502,4 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		SkipPaths:     []string{"/health"},
 	}
 	return authConfig
-}
-
-// derivePolicyFromAPIConfig derives a policy configuration from an API configuration.
-// Policy versions (major-only in API) are resolved to full semver using policyDefinitions
-// so the policy engine receives full version strings.
-func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Config, policyDefinitions map[string]api.PolicyDefinition) *models.StoredPolicyConfig {
-	apiCfg := &cfg.Configuration
-	routerConfig := &fullConfig.GatewayController.Router
-	apiData, err := apiCfg.Spec.AsAPIConfigData()
-	if err != nil {
-		return nil
-	}
-
-	// Collect API-level policies (resolve major-only version to full semver)
-	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
-	if apiData.Policies != nil {
-		for _, p := range *apiData.Policies {
-			resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, p.Name, p.Version)
-			if err != nil {
-				continue // skip policy if resolution fails (e.g. definitions not loaded)
-			}
-			apiPolicies[p.Name] = convertAPIPolicyToModel(p, policy.LevelAPI, resolvedVersion)
-		}
-	}
-
-	// Build routes with merged policies
-	routes := make([]policyenginev1.PolicyChain, 0)
-	for _, op := range apiData.Operations {
-		var finalPolicies []policyenginev1.PolicyInstance
-
-		if op.Policies != nil && len(*op.Policies) > 0 {
-			// Operation has policies (resolve major-only version to full semver)
-			finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
-			addedNames := make(map[string]struct{})
-
-			for _, opPolicy := range *op.Policies {
-				resolvedVersion, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
-				if err != nil {
-					continue
-				}
-				finalPolicies = append(finalPolicies, convertAPIPolicyToModel(opPolicy, policy.LevelRoute, resolvedVersion))
-				addedNames[opPolicy.Name] = struct{}{}
-			}
-
-			// Add remaining API-level policies
-			if apiData.Policies != nil {
-				for _, apiPolicy := range *apiData.Policies {
-					if _, exists := addedNames[apiPolicy.Name]; !exists {
-						finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
-					}
-				}
-			}
-		} else {
-			// No operation policies: use API-level policies
-			if apiData.Policies != nil {
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
-				for _, p := range *apiData.Policies {
-					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
-				}
-			}
-		}
-
-		// Determine effective vhosts (fallback to global router defaults when not provided)
-		effectiveMainVHost := routerConfig.VHosts.Main.Default
-		effectiveSandboxVHost := routerConfig.VHosts.Sandbox.Default
-		if apiData.Vhosts != nil {
-			if strings.TrimSpace(apiData.Vhosts.Main) != "" {
-				effectiveMainVHost = apiData.Vhosts.Main
-			}
-			if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
-				effectiveSandboxVHost = *apiData.Vhosts.Sandbox
-			}
-		}
-
-		vhosts := []string{effectiveMainVHost}
-		if apiData.Upstream.Sandbox != nil && apiData.Upstream.Sandbox.Url != nil &&
-			strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "" {
-			vhosts = append(vhosts, effectiveSandboxVHost)
-		}
-
-		for _, vhost := range vhosts {
-			// Inject system policies into the chain
-			props := make(map[string]any)
-			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, fullConfig, props)
-
-			routes = append(routes, policyenginev1.PolicyChain{
-				RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
-				Policies: injectedPolicies,
-			})
-		}
-	}
-
-	// If there are no policies at all (including system policies), return nil
-	policyCount := 0
-	for _, r := range routes {
-		policyCount += len(r.Policies)
-	}
-	if policyCount == 0 {
-		return nil
-	}
-
-	now := time.Now().Unix()
-	return &models.StoredPolicyConfig{
-		ID: cfg.ID + "-policies",
-		Configuration: policyenginev1.Configuration{
-			Routes: routes,
-			Metadata: policyenginev1.Metadata{
-				CreatedAt:       now,
-				UpdatedAt:       now,
-				ResourceVersion: 0,
-				APIName:         apiData.DisplayName,
-				Version:         apiData.Version,
-				Context:         apiData.Context,
-			},
-		},
-		Version: 0,
-	}
-}
-
-// convertAPIPolicyToModel converts generated api.Policy to policyenginev1.PolicyInstance.
-// resolvedVersion is the full semver (e.g. v1.0.0) to send to the policy engine.
-func convertAPIPolicyToModel(p api.Policy, attachedTo policy.Level, resolvedVersion string) policyenginev1.PolicyInstance {
-	paramsMap := make(map[string]interface{})
-	if p.Params != nil {
-		for k, v := range *p.Params {
-			paramsMap[k] = v
-		}
-	}
-
-	// Add attachedTo metadata to parameters
-	if attachedTo != "" {
-		paramsMap["attachedTo"] = string(attachedTo)
-	}
-
-	return policyenginev1.PolicyInstance{
-		Name:               p.Name,
-		Version:            resolvedVersion,
-		Enabled:            true, // Default to enabled
-		ExecutionCondition: p.ExecutionCondition,
-		Parameters:         paramsMap,
-	}
 }
