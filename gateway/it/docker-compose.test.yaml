@@ -58,7 +58,7 @@ services:
     image: ghcr.io/wso2/api-platform/gateway-runtime-coverage:0.7.0-SNAPSHOT
     mem_limit: 384m
     mem_reservation: 384m
-    cpus: 0.3
+    cpus: 0.5
     command: ["--pol.config", "/etc/policy-engine/config.toml"]
     ports:
       - "8080:8080"   # HTTP traffic (Envoy)

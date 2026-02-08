@@ -46,7 +46,8 @@ jobs:
       - name: Build Gateway
         run: |
           cd gateway
-          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build
+          export DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }}
+          make build VERSION=${{ env.VERSION }}
       - name: Build Operator image
         run: |
           cd kubernetes/gateway-operator
@@ -816,7 +817,7 @@ jobs:
         run: |
           # Port forward the router
           sleep 10
-          kubectl port-forward svc/test-gateway-gateway-runtime 8080:8080 &
+          kubectl port-forward svc/test-gateway-gateway-gateway-runtime 8080:8080 &
           sleep 10
 
           echo "Testing API invocation..."
@@ -1033,13 +1034,13 @@ jobs:
           echo "Waiting for deployment update..."
           # Give the operator a moment to detect and start the upgrade
           sleep 5
-          kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gateway-runtime --timeout=180s
+          kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gateway-gateway-runtime --timeout=180s
           
           echo "Deployment metadata updated. Waiting for rollout to complete..."
           
           # Wait for the deployments to finish rolling out to ensure stability
           kubectl rollout status deployment/test-gateway-gateway-controller --timeout=300s
-          kubectl rollout status deployment/test-gateway-gateway-runtime --timeout=300s
+          kubectl rollout status deployment/test-gateway-gateway-gateway-runtime --timeout=300s
           
           echo "Waiting for Gateway CR to be Programmed..."
           kubectl wait --for=condition=Programmed apigateway/test-gateway --timeout=180s
@@ -1257,14 +1258,14 @@ jobs:
           
           # Wait for the router deployment to be fully ready
           echo "Waiting for scoped gateway router deployment rollout..."
-          kubectl rollout status deployment/scoped-gateway-gateway-runtime -n scoped-test --timeout=120s
+          kubectl rollout status deployment/scoped-gateway-gateway-gateway-runtime -n scoped-test --timeout=120s
           
           # Additional wait for Envoy to initialize and start listening
           echo "Waiting for router to be ready to accept connections..."
           sleep 10
           
           # Port forward the scoped gateway router
-          kubectl port-forward svc/scoped-gateway-gateway-runtime -n scoped-test 9090:8080 &
+          kubectl port-forward svc/scoped-gateway-gateway-gateway-runtime -n scoped-test 9090:8080 &
           PF_PID=$!
           sleep 5
           
