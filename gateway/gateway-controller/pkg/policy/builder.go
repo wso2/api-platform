@@ -74,7 +74,10 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			if apiData.Policies != nil {
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
 				for _, p := range *apiData.Policies {
-					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
+					// Only append if the policy was successfully resolved (exists in apiPolicies map)
+				if v, ok := apiPolicies[p.Name]; ok {
+					finalPolicies = append(finalPolicies, v)
+				}
 				}
 			}
 
@@ -115,7 +118,10 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			if apiData.Policies != nil {
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
 				for _, p := range *apiData.Policies {
-					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
+					// Only append if the policy was successfully resolved (exists in apiPolicies map)
+				if v, ok := apiPolicies[p.Name]; ok {
+					finalPolicies = append(finalPolicies, v)
+				}
 				}
 			}
 

@@ -95,10 +95,10 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "auth", Version: "v2"}, // override with different version
+				{Name: "auth", Version: "v2"}, // does not override, appends after API policies
 			},
-			expectedOrder: []string{"auth", "rateLimit", "logging"},
-			description:   "Single override uses op version, then appends remaining API policies",
+			expectedOrder: []string{"auth", "rateLimit", "logging", "auth"},
+			description:   "API policies execute first, then operation policies (no override)",
 		},
 		{
 			name: "API policies with operation override and additional policies",
@@ -108,12 +108,12 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "auth", Version: "v2"},       // override
+				{Name: "auth", Version: "v2"},       // does not override, appends
 				{Name: "cors", Version: "v1"},       // new
 				{Name: "validation", Version: "v1"}, // new
 			},
-			expectedOrder: []string{"auth", "cors", "validation", "rateLimit", "logging"},
-			description:   "Operation policies first in their order, then remaining API policies",
+			expectedOrder: []string{"auth", "rateLimit", "logging", "auth", "cors", "validation"},
+			description:   "API policies execute first, then operation policies in order (allows duplicates)",
 		},
 		{
 			name: "Multiple overrides",
@@ -124,11 +124,11 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				{Name: "caching", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "rateLimit", Version: "v2"}, // override second
-				{Name: "logging", Version: "v2"},   // override third
+				{Name: "rateLimit", Version: "v2"}, // does not override, appends
+				{Name: "logging", Version: "v2"},   // does not override, appends
 			},
-			expectedOrder: []string{"rateLimit", "logging", "auth", "caching"},
-			description:   "Operation policy order takes precedence, remaining API policies appended",
+			expectedOrder: []string{"auth", "rateLimit", "logging", "caching", "rateLimit", "logging"},
+			description:   "API policies execute first, then operation policies (allows duplicate policy names)",
 		},
 		{
 			name: "Complex scenario - mixed overrides and additions",
@@ -139,11 +139,11 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			},
 			operationPolicies: []api.Policy{
 				{Name: "cors", Version: "v1"},       // new
-				{Name: "auth", Version: "v2"},       // override
+				{Name: "auth", Version: "v2"},       // does not override, appends
 				{Name: "validation", Version: "v1"}, // new
 			},
-			expectedOrder: []string{"cors", "auth", "validation", "rateLimit", "logging"},
-			description:   "Operation policies define order, remaining API policies appended",
+			expectedOrder: []string{"auth", "rateLimit", "logging", "cors", "auth", "validation"},
+			description:   "API policies execute first, then operation policies in order",
 		},
 		{
 			name: "Operation reorders API policies",
@@ -153,12 +153,12 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				{Name: "logging", Version: "v1"},
 			},
 			operationPolicies: []api.Policy{
-				{Name: "logging", Version: "v2"},   // third policy first
-				{Name: "auth", Version: "v2"},      // first policy second
-				{Name: "rateLimit", Version: "v2"}, // second policy third
+				{Name: "logging", Version: "v2"},   // appends after API policies
+				{Name: "auth", Version: "v2"},      // appends after API policies
+				{Name: "rateLimit", Version: "v2"}, // appends after API policies
 			},
-			expectedOrder: []string{"logging", "auth", "rateLimit"},
-			description:   "Operation can completely reorder API policies for that specific operation",
+			expectedOrder: []string{"auth", "rateLimit", "logging", "logging", "auth", "rateLimit"},
+			description:   "API policies execute first, operation policies append (execution order matters, not declaration)",
 		},
 	}
 	specUnion := api.APIConfiguration_Spec{}
@@ -220,14 +220,18 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 
 				assert.Equal(t, tt.expectedOrder, actualOrder, tt.description)
 
-				// Verify the operation override is actually using the operation version
+				// Verify policy versions for the append behavior test
 				if tt.name == "API policies with operation override" {
-					// Find auth policy and verify it's v2.0.0
+					// Should have two auth policies: first from API (v1.0.0), second from operation (v2.0.0)
+					authPolicies := []string{}
 					for _, p := range result.Configuration.Routes[0].Policies {
 						if p.Name == "auth" {
-							assert.Equal(t, "v2.0.0", p.Version, "Override should use operation version")
+							authPolicies = append(authPolicies, p.Version)
 						}
 					}
+					require.Len(t, authPolicies, 2, "Should have two auth policies (one from API, one from operation)")
+					assert.Equal(t, "v1.0.0", authPolicies[0], "First auth should be from API level")
+					assert.Equal(t, "v2.0.0", authPolicies[1], "Second auth should be from operation level")
 				}
 			} else {
 				assert.Nil(t, result, "Should return nil when no policies")
@@ -326,27 +330,27 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 	require.NotNil(t, result)
 	require.Len(t, result.Configuration.Routes, 5, "Should have 5 routes")
 
-	// Expected orders for each operation
+	// Expected orders for each operation (API policies execute first, then operation policies)
 	expectedOrders := map[string][]string{
 		"GET|/test/resource1|localhost": {
-			// op1: [logging(v2), auth(v2)] + remaining API [rateLimit]
-			"logging", "auth", "rateLimit",
+			// API: [auth(v1), rateLimit(v1), logging(v1)] + op1: [logging(v2), auth(v2)]
+			"auth", "rateLimit", "logging", "logging", "auth",
 		},
 		"POST|/test/resource2|localhost": {
-			// op2: [validation] + all API [auth, rateLimit, logging]
-			"validation", "auth", "rateLimit", "logging",
+			// API: [auth(v1), rateLimit(v1), logging(v1)] + op2: [validation]
+			"auth", "rateLimit", "logging", "validation",
 		},
 		"PUT|/test/resource3|localhost": {
-			// op3: [rateLimit(v3), cors] + remaining API [auth, logging]
-			"rateLimit", "cors", "auth", "logging",
+			// API: [auth(v1), rateLimit(v1), logging(v1)] + op3: [rateLimit(v3), cors]
+			"auth", "rateLimit", "logging", "rateLimit", "cors",
 		},
 		"DELETE|/test/resource4|localhost": {
-			// No op policies: use API order
+			// No op policies: API: [auth(v1), rateLimit(v1), logging(v1)]
 			"auth", "rateLimit", "logging",
 		},
 		"PATCH|/test/resource5|localhost": {
-			// op5: [rateLimit(v5), logging(v5), auth(v5)] - all API policies covered
-			"rateLimit", "logging", "auth",
+			// API: [auth(v1), rateLimit(v1), logging(v1)] + op5: [rateLimit(v5), logging(v5), auth(v5)]
+			"auth", "rateLimit", "logging", "rateLimit", "logging", "auth",
 		},
 	}
 
@@ -363,24 +367,23 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		assert.Equal(t, expectedOrder, actualOrder,
 			"Route %s should have correct policy order", route.RouteKey)
 
-		// Verify version overrides for specific routes
+		// Verify policy versions (API policies first with v1.0.0, then operation policies with their versions)
 		switch route.RouteKey {
 		case "GET|/test/resource1|localhost":
-			// Should have v2.0.0 for logging and auth
-			for _, p := range route.Policies {
-				if p.Name == "logging" || p.Name == "auth" {
-					assert.Equal(t, "v2.0.0", p.Version,
-						"Route GET should use operation version for %s", p.Name)
-				}
-			}
+			// Expected: auth(v1), rateLimit(v1), logging(v1), logging(v2), auth(v2)
+			require.Len(t, route.Policies, 5)
+			assert.Equal(t, "v1.0.0", route.Policies[0].Version, "First auth should be API version")
+			assert.Equal(t, "v1.0.0", route.Policies[1].Version, "rateLimit should be API version")
+			assert.Equal(t, "v1.0.0", route.Policies[2].Version, "First logging should be API version")
+			assert.Equal(t, "v2.0.0", route.Policies[3].Version, "Second logging should be operation version")
+			assert.Equal(t, "v2.0.0", route.Policies[4].Version, "Second auth should be operation version")
 		case "PUT|/test/resource3|localhost":
-			// Should have v3.0.0 for rateLimit
-			for _, p := range route.Policies {
-				if p.Name == "rateLimit" {
-					assert.Equal(t, "v3.0.0", p.Version,
-						"Route PUT should use operation version for rateLimit")
-				}
-			}
+			// Expected: auth(v1), rateLimit(v1), logging(v1), rateLimit(v3), cors
+			require.Len(t, route.Policies, 5)
+			assert.Equal(t, "v1.0.0", route.Policies[0].Version, "auth should be API version")
+			assert.Equal(t, "v1.0.0", route.Policies[1].Version, "First rateLimit should be API version")
+			assert.Equal(t, "v1.0.0", route.Policies[2].Version, "logging should be API version")
+			assert.Equal(t, "v3.0.0", route.Policies[3].Version, "Second rateLimit should be operation version")
 		case "DELETE|/test/resource4|localhost":
 			// Should use API versions (v1.0.0) for all
 			for _, p := range route.Policies {
@@ -388,11 +391,14 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 					"Route DELETE should use API version for %s", p.Name)
 			}
 		case "PATCH|/test/resource5|localhost":
-			// Should have v5.0.0 for all three
-			for _, p := range route.Policies {
-				assert.Equal(t, "v5.0.0", p.Version,
-					"Route PATCH should use operation version for %s", p.Name)
-			}
+			// Expected: auth(v1), rateLimit(v1), logging(v1), rateLimit(v5), logging(v5), auth(v5)
+			require.Len(t, route.Policies, 6)
+			assert.Equal(t, "v1.0.0", route.Policies[0].Version, "First auth should be API version")
+			assert.Equal(t, "v1.0.0", route.Policies[1].Version, "First rateLimit should be API version")
+			assert.Equal(t, "v1.0.0", route.Policies[2].Version, "First logging should be API version")
+			assert.Equal(t, "v5.0.0", route.Policies[3].Version, "Second rateLimit should be operation version")
+			assert.Equal(t, "v5.0.0", route.Policies[4].Version, "Second logging should be operation version")
+			assert.Equal(t, "v5.0.0", route.Policies[5].Version, "Second auth should be operation version")
 		}
 	}
 
@@ -467,8 +473,8 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 	}
 
 	// Verify the expected order
-	// Operation policies: cors, auth, validation (in that order)
-	// Remaining API policies not in operation: rateLimit, logging, caching
-	expectedOrder := []string{"cors", "auth", "validation", "rateLimit", "logging", "caching"}
-	assert.Equal(t, expectedOrder, firstOrder, "Final order should match expected")
+	// API policies execute first: auth(v1), rateLimit, logging, caching
+	// Then operation policies append: cors, auth(v2), validation
+	expectedOrder := []string{"auth", "rateLimit", "logging", "caching", "cors", "auth", "validation"}
+	assert.Equal(t, expectedOrder, firstOrder, "Final order should match expected (API policies first, then operation policies)")
 }
