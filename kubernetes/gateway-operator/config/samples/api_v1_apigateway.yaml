@@ -187,14 +187,14 @@ data:
 
               # Timeout configurations for route-level timeouts
               timeouts:
-                route_timeout_in_seconds: 60
-                max_route_timeout_in_seconds: 60
-                route_idle_timeout_in_seconds: 300
+                route_timeout_in_ms: 60000
+                max_route_timeout_in_ms: 60000
+                route_idle_timeout_in_ms: 300000
 
             # Upstream configuration (cluster-level settings)
             envoy_upstream:
               # Connect timeout for upstream clusters
-              connect_timeout_in_seconds: 5
+              connect_timeout_in_ms: 5000
 
             # Policy Engine ext_proc filter configuration
             policy_engine:

@@ -162,12 +162,12 @@ gateway:
             verify_host_name: true
             disable_ssl_verification: false
           timeouts:
-            route_timeout_in_seconds: 60
-            max_route_timeout_in_seconds: 60
-            route_idle_timeout_in_seconds: 300
+            route_timeout_in_ms: 60000
+            max_route_timeout_in_ms: 60000
+            route_idle_timeout_in_ms: 300000
         envoy_upstream:
           # Upstream cluster connection timeout
-          connect_timeout_in_seconds: 5
+          connect_timeout_in_ms: 5000
       logging:
         level: info
         format: json

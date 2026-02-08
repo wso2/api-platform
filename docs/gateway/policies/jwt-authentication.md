@@ -10,7 +10,6 @@ The JWT Authentication policy validates JWT access tokens using one or more JWKS
 - Supports remote JWKS endpoints and local certificates
 - Configurable issuer, audience, scope, and claim validation
 - Claim-to-header mappings for downstream services
-- Configurable user ID claim extraction for analytics
 - Configurable JWKS cache and retry settings
 - Allowed signing algorithm allowlist
 - Authorization header scheme enforcement and clock skew tolerance
@@ -65,7 +64,6 @@ Each entry in `keymanagers` must include a unique `name` and either `jwks.remote
 | `requiredScopes` | array | No | Required scopes. Uses space-delimited `scope` claim or array `scp` claim. |
 | `requiredClaims` | object | No | Map of claim name to expected value. |
 | `claimMappings` | object | No | Map of claim name to downstream header name. |
-| `userIdClaim` | string | No | Claim name to extract the user ID from the JWT token for analytics. If not specified, defaults to `sub`. |
 | `authHeaderPrefix` | string | No | Overrides the configured authorization header scheme for this route. |
 | `userIdClaim` | string | No | Claim name to extract user ID for analytics. Defaults to `sub`. |
 
@@ -226,4 +224,4 @@ spec:
 2. Support multiple issuers for multi-tenant or federated authentication.
 3. Enforce scopes and claims for fine-grained access control.
 4. Propagate user identity to upstream services via claim mappings.
-5. Extract user identifiers from custom claims (username, account_id) for analytics purposes.
+5. Specify user identifiers from custom claims (username, account_id) for analytics purposes.

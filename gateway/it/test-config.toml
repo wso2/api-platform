@@ -118,8 +118,8 @@ verify_host_name = true
 disable_ssl_verification = false
 
 [gateway_controller.router.envoy_downstream.timeouts]
-route_timeout_in_ms = 6000
-max_route_timeout_in_ms = 6000
+route_timeout_in_ms = 60000
+max_route_timeout_in_ms = 60000
 route_idle_timeout_in_ms = 300000
 
 [gateway_controller.router.envoy_upstream]

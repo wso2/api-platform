@@ -133,8 +133,8 @@ gateway_controller:
 
       # Timeout configurations for upstream connections (milliseconds; 6000 = 6s for fast backend_timeout it scenario global-default)
       timeouts:
-        route_timeout_in_ms: 6000
-        max_route_timeout_in_ms: 6000
+        route_timeout_in_ms: 60000
+        max_route_timeout_in_ms: 60000
         route_idle_timeout_in_ms: 300000
 
     # Upstream connect timeout (previously envoy_upstream_cluster)
