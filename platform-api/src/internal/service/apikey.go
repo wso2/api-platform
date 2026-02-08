@@ -101,7 +101,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId strin
 		gatewayID := gateway.ID
 
 		log.Printf("[INFO] Broadcasting API key created event: apiHandle=%s gatewayId=%s keyName=%s",
-			apiId, gatewayID, req.Name)
+			apiHandle, gatewayID, req.Name)
 
 		// Broadcast with retries
 		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gatewayID, event)
@@ -172,7 +172,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	// Build the API key updated event
 	// Note: API key is sent as plain text - hashing happens in the gateway/policy-engine
 	event := &model.APIKeyUpdatedEvent{
-		ApiId:     apiId,
+		ApiId:     apiHandle,
 		KeyName:   keyName,
 		ApiKey:    req.ApiKey, // Send plain API key (no hashing in platform-api)
 		ExpiresAt: req.ExpiresAt,
@@ -187,30 +187,30 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	for _, gateway := range gateways {
 		gatewayID := gateway.ID
 
-		log.Printf("[INFO] Broadcasting API key updated event: apiId=%s gatewayId=%s keyName=%s",
-			apiId, gatewayID, keyName)
+		log.Printf("[INFO] Broadcasting API key updated event: apiHandle=%s gatewayId=%s keyName=%s",
+			apiHandle, gatewayID, keyName)
 
 		// Broadcast with retries
 		err := s.gatewayEventsService.BroadcastAPIKeyUpdatedEvent(gatewayID, event)
 		if err != nil {
 			failureCount++
 			lastError = err
-			log.Printf("[ERROR] Failed to broadcast API key updated event: apiId=%s gatewayId=%s keyName=%s error=%v",
-				apiId, gatewayID, keyName, err)
+			log.Printf("[ERROR] Failed to broadcast API key updated event: apiHandle=%s gatewayId=%s keyName=%s error=%v",
+				apiHandle, gatewayID, keyName, err)
 		} else {
 			successCount++
-			log.Printf("[INFO] Successfully broadcast API key updated event: apiId=%s gatewayId=%s keyName=%s",
-				apiId, gatewayID, keyName)
+			log.Printf("[INFO] Successfully broadcast API key updated event: apiHandle=%s gatewayId=%s keyName=%s",
+				apiHandle, gatewayID, keyName)
 		}
 	}
 
 	// Log summary
-	log.Printf("[INFO] API key update broadcast summary: apiId=%s keyName=%s total=%d success=%d failed=%d",
-		apiId, keyName, len(gateways), successCount, failureCount)
+	log.Printf("[INFO] API key update broadcast summary: apiHandle=%s keyName=%s total=%d success=%d failed=%d",
+		apiHandle, keyName, len(gateways), successCount, failureCount)
 
 	// Return error if all deliveries failed
 	if successCount == 0 {
-		log.Printf("[ERROR] Failed to deliver API key update to any gateway: apiId=%s keyName=%s", apiId, keyName)
+		log.Printf("[ERROR] Failed to deliver API key update to any gateway: apiHandle=%s keyName=%s", apiHandle, keyName)
 		return fmt.Errorf("failed to deliver API key update event to any gateway: %w", lastError)
 	}
 

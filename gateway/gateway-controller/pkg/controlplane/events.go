@@ -46,7 +46,7 @@ type APIDeployedEvent struct {
 // APIKeyCreatedEventPayload represents the payload of an API key created event.
 type APIKeyCreatedEventPayload struct {
 	ApiId         string  `json:"apiId"`
-	ApiKey        string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
+	ApiKey        string  `json:"apiKey"`         // Plain text API key (will be hashed by gateway)
 	Name          string  `json:"name,omitempty"` //  URL-safe identifier (3-63 chars, lowercase alphanumeric with hyphens)
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 	Operations    string  `json:"operations"`
@@ -71,7 +71,7 @@ type APIKeyUpdatedEventPayload struct {
 	ApiId         string  `json:"apiId"`
 	KeyName       string  `json:"keyName"`
 	ApiKey        string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
-	ExternalRefId string `json:"externalRefId"`
+	ExternalRefId string  `json:"externalRefId"`
 	Operations    string  `json:"operations"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
 	ExpiresIn     *struct {

@@ -35,6 +35,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -107,6 +109,9 @@ type Client struct {
 	apiUtilsService   *utils.APIUtilsService
 	apiKeyService     *utils.APIKeyService
 	routerConfig      *config.RouterConfig
+	policyManager     *policyxds.PolicyManager
+	systemConfig      *config.Config
+	policyDefinitions map[string]api.PolicyDefinition
 }
 
 // NewClient creates a new control plane client
@@ -120,6 +125,9 @@ func NewClient(
 	routerConfig *config.RouterConfig,
 	apiKeyXDSManager utils.XDSManager,
 	apiKeyConfig *config.APIKeyConfig,
+	policyManager *policyxds.PolicyManager,
+	systemConfig *config.Config,
+	policyDefinitions map[string]api.PolicyDefinition,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -134,6 +142,9 @@ func NewClient(
 		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
 		apiKeyService:     utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig),
 		routerConfig:      routerConfig,
+		policyManager:     policyManager,
+		systemConfig:      systemConfig,
+		policyDefinitions: policyDefinitions,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -611,10 +622,52 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	)
 
 	// Create API configuration from YAML using the deployment service
-	if err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.CorrelationID, c.deploymentService); err != nil {
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.CorrelationID, c.deploymentService)
+	if err != nil {
 		c.logger.Error("Failed to create API from YAML",
 			slog.String("api_id", apiID),
 			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Update policy engine xDS snapshot (best-effort)
+	if c.policyManager != nil && result != nil {
+		var storedPolicy *models.StoredPolicyConfig
+
+		// Guard against nil systemConfig before deriving policies
+		if c.systemConfig != nil {
+			storedPolicy = policy.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig, c.policyDefinitions)
+		} else {
+			c.logger.Warn("Cannot derive policies: systemConfig is nil",
+				slog.String("api_id", apiID),
+				slog.String("correlation_id", deployedEvent.CorrelationID))
+		}
+
+		if storedPolicy != nil {
+			if err := c.policyManager.AddPolicy(storedPolicy); err != nil {
+				c.logger.Error("Failed to update policy engine snapshot",
+					slog.Any("error", err),
+					slog.String("api_id", apiID),
+					slog.String("correlation_id", deployedEvent.CorrelationID))
+			} else {
+				c.logger.Info("Successfully updated policy engine snapshot",
+					slog.String("api_id", apiID),
+					slog.String("policy_id", storedPolicy.ID))
+			}
+		} else if result.IsUpdate {
+			// No policies but this is an update, so remove any existing policies
+			if err := c.policyManager.RemovePolicy(result.StoredConfig.ID + "-policies"); err != nil {
+				c.logger.Error("Failed to remove policy from policy engine",
+					slog.Any("error", err),
+					slog.String("api_id", apiID),
+					slog.String("correlation_id", deployedEvent.CorrelationID))
+			}
+		}
+	} else if c.policyManager == nil {
+		c.logger.Error("Failed to update policy engine snapshot: policy manager is not available",
+			slog.String("api_id", apiID),
+			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
 		return
 	}
@@ -714,10 +767,10 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
-
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		ApiKey:        &payload.ApiKey,
 		DisplayName:   payload.DisplayName,
+		Name:          &payload.Name,
 		ExternalRefId: payload.ExternalRefId,
 	}
 	if payload.ExpiresAt != nil {
@@ -934,6 +987,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		ApiKey:        &payload.ApiKey,
 		DisplayName:   &payload.DisplayName,
 		ExternalRefId: &payload.ExternalRefId,
+		Name:          &payload.KeyName,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time

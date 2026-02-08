@@ -157,9 +157,9 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 
 // CreateAPIFromYAML creates an API configuration from YAML data using the deployment service
 func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, correlationID string,
-	deploymentService *APIDeploymentService) error {
+	deploymentService *APIDeploymentService) (*APIDeploymentResult, error) {
 	// Use the deployment service to handle the API configuration deployment
-	_, err := deploymentService.DeployAPIConfiguration(APIDeploymentParams{
+	result, err := deploymentService.DeployAPIConfiguration(APIDeploymentParams{
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		APIID:         apiID, // Use the API ID from the deployment event
@@ -168,10 +168,10 @@ func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, corre
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to deploy API configuration from YAML: %w", err)
+		return nil, fmt.Errorf("failed to deploy API configuration from YAML: %w", err)
 	}
 
-	return nil
+	return result, nil
 }
 
 // SaveAPIDefinition saves the API definition zip file to disk
