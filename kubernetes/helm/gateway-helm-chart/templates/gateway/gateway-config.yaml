@@ -133,7 +133,7 @@ data:
 
     [policy_engine.xds]
     enabled = {{ $pe.xds.enabled }}
-    server_address = "{{ $controllerHost }}:{{ .Values.gateway.controller.service.ports.policy }}"
+    # server_address is set via -xds-server flag (injected by gateway-runtime entrypoint)
     node_id = {{ $pe.xds.node_id | quote }}
     cluster = {{ $pe.xds.cluster | quote }}
     connect_timeout = {{ $pe.xds.connect_timeout | quote }}

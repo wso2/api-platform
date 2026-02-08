@@ -164,7 +164,7 @@ mode = "xds"
 
 [policy_engine.xds]
 enabled = true
-server_address = "gateway-controller:18001"
+# server_address is set via -xds-server flag (injected by gateway-runtime entrypoint)
 node_id = "policy-engine-1"
 cluster = "policy-engine-cluster"
 connect_timeout = "10s"

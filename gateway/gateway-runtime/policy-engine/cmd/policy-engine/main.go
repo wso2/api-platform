@@ -157,7 +157,11 @@ func main() {
 	var xdsClient *xdsclient.Client
 	switch cfg.PolicyEngine.ConfigMode.Mode {
 	case "xds":
-		xdsClient, err = initializeXDSClient(ctx, cfg, k, reg)
+		if *xdsServerAddr == "" {
+			slog.ErrorContext(ctx, "Error: -xds-server flag is required when config mode is 'xds'")
+			os.Exit(1)
+		}
+		xdsClient, err = initializeXDSClient(ctx, cfg, *xdsServerAddr, k, reg)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to initialize xDS client", "error", err)
 			os.Exit(1)
@@ -319,11 +323,6 @@ func applyFlagOverrides(cfg *config.Config) {
 		cfg.PolicyEngine.XDS.Enabled = false
 	}
 
-	// Override xDS server address if provided
-	if *xdsServerAddr != "" {
-		cfg.PolicyEngine.XDS.ServerAddress = *xdsServerAddr
-	}
-
 	// Override xDS node ID if provided
 	if *xdsNodeID != "" {
 		cfg.PolicyEngine.XDS.NodeID = *xdsNodeID
@@ -359,14 +358,14 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 }
 
 // initializeXDSClient initializes and starts the xDS client
-func initializeXDSClient(ctx context.Context, cfg *config.Config, k *kernel.Kernel, reg *registry.PolicyRegistry) (*xdsclient.Client, error) {
+func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr string, k *kernel.Kernel, reg *registry.PolicyRegistry) (*xdsclient.Client, error) {
 	slog.InfoContext(ctx, "Initializing xDS client",
-		"server", cfg.PolicyEngine.XDS.ServerAddress,
+		"server", serverAddr,
 		"node_id", cfg.PolicyEngine.XDS.NodeID,
 		"cluster", cfg.PolicyEngine.XDS.Cluster)
 
 	xdsConfig := &xdsclient.Config{
-		ServerAddress:         cfg.PolicyEngine.XDS.ServerAddress,
+		ServerAddress:         serverAddr,
 		NodeID:                cfg.PolicyEngine.XDS.NodeID,
 		Cluster:               cfg.PolicyEngine.XDS.Cluster,
 		ConnectTimeout:        cfg.PolicyEngine.XDS.ConnectTimeout,

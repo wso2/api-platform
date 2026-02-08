@@ -282,8 +282,7 @@ data:
             # Enable xDS client
             enabled: true
 
-            # xDS server address (typically the gateway-controller xDS server)
-            server_address: gateway-controller:18001
+            # server_address is set via -xds-server flag (from GATEWAY_CONTROLLER_HOST env var)
 
             # Node identifier for this policy engine instance
             # Used by xDS server to identify this client

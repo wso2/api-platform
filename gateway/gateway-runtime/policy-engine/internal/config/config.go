@@ -149,9 +149,6 @@ type XDSConfig struct {
 	// Enabled indicates whether xDS client should be started
 	Enabled bool `koanf:"enabled"`
 
-	// ServerAddress is the xDS server address (e.g., "localhost:18000")
-	ServerAddress string `koanf:"server_address"`
-
 	// NodeID identifies this policy engine instance to the xDS server
 	NodeID string `koanf:"node_id"`
 
@@ -296,7 +293,6 @@ func defaultConfig() *Config {
 			},
 			XDS: XDSConfig{
 				Enabled:               true,
-				ServerAddress:         "gateway-controller:18001",
 				NodeID:                "policy-engine",
 				Cluster:               "policy-engine-cluster",
 				ConnectTimeout:        10 * time.Second,
@@ -448,10 +444,6 @@ func (c *Config) Validate() error {
 
 // validateXDSConfig validates xDS configuration
 func (c *Config) validateXDSConfig() error {
-	if c.PolicyEngine.XDS.ServerAddress == "" {
-		return fmt.Errorf("xds.server_address is required when xDS is enabled")
-	}
-
 	if c.PolicyEngine.XDS.NodeID == "" {
 		return fmt.Errorf("xds.node_id is required when xDS is enabled")
 	}
