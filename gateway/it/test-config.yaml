@@ -119,8 +119,8 @@ gateway_controller:
       # Cipher suites (comma-separated)
       ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
 
-    # Upstream configuration
-    envoy_upstream:
+    # Downstream configuration (previously envoy_upstream)
+    envoy_downstream:
       # TLS configuration for upstream connections
       tls:
         minimum_protocol_version: TLS1_2
@@ -131,11 +131,16 @@ gateway_controller:
         verify_host_name: true
         disable_ssl_verification: false
 
-      # Timeout configurations for upstream connections
+      # Timeout configurations for upstream connections (milliseconds; 6000 = 6s for fast backend_timeout it scenario global-default)
       timeouts:
-        route_timeout_in_seconds: 60
-        max_route_timeout_in_seconds: 60
-        route_idle_timeout_in_seconds: 300
+        route_timeout_in_ms: 60000
+        max_route_timeout_in_ms: 60000
+        route_idle_timeout_in_ms: 300000
+
+    # Upstream connect timeout (previously envoy_upstream_cluster)
+    envoy_upstream:
+      connect_timeout_in_ms: 5000
+      
     tracing_service_name: router
 
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -38,6 +38,306 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
+func TestResolveUpstreamDefinition_Found(t *testing.T) {
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "test-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	def, err := resolveUpstreamDefinition("test-upstream", definitions)
+
+	require.NoError(t, err)
+	assert.NotNil(t, def)
+	assert.Equal(t, "test-upstream", def.Name)
+}
+
+func TestResolveUpstreamDefinition_NotFound(t *testing.T) {
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "existing-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	def, err := resolveUpstreamDefinition("non-existent", definitions)
+
+	assert.Error(t, err)
+	assert.Nil(t, def)
+	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+}
+
+func TestResolveUpstreamDefinition_NoDefinitions(t *testing.T) {
+	def, err := resolveUpstreamDefinition("test-upstream", nil)
+
+	assert.Error(t, err)
+	assert.Nil(t, def)
+	assert.Contains(t, err.Error(), "no definitions provided")
+}
+
+func TestParseTimeout_Valid(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected time.Duration
+	}{
+		{
+			name:     "seconds",
+			input:    "30s",
+			expected: 30 * time.Second,
+		},
+		{
+			name:     "minutes",
+			input:    "2m",
+			expected: 2 * time.Minute,
+		},
+		{
+			name:     "milliseconds",
+			input:    "500ms",
+			expected: 500 * time.Millisecond,
+		},
+		{
+			name:     "hours",
+			input:    "1h",
+			expected: 1 * time.Hour,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			duration, err := parseTimeout(&tt.input)
+
+			require.NoError(t, err)
+			require.NotNil(t, duration)
+			assert.Equal(t, tt.expected, *duration)
+		})
+	}
+}
+
+func TestParseTimeout_Invalid(t *testing.T) {
+	invalid := "invalid"
+	duration, err := parseTimeout(&invalid)
+
+	assert.Error(t, err)
+	assert.Nil(t, duration)
+	assert.Contains(t, err.Error(), "invalid timeout format")
+}
+
+func TestParseTimeout_Nil(t *testing.T) {
+	duration, err := parseTimeout(nil)
+
+	assert.NoError(t, err)
+	assert.Nil(t, duration)
+}
+
+func TestParseTimeout_Empty(t *testing.T) {
+	empty := ""
+	duration, err := parseTimeout(&empty)
+
+	assert.NoError(t, err)
+	assert.Nil(t, duration)
+}
+
+func TestResolveUpstreamCluster_WithDirectURL(t *testing.T) {
+	translator := &Translator{}
+	url := "http://backend:8080/api"
+	upstream := &api.Upstream{
+		Url: &url,
+	}
+
+	clusterName, parsedURL, timeout, err := translator.resolveUpstreamCluster("main", upstream, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, "cluster_http_backend_8080", clusterName)
+	assert.NotNil(t, parsedURL)
+	assert.Equal(t, "http", parsedURL.Scheme)
+	assert.Equal(t, "backend:8080", parsedURL.Host)
+	assert.Equal(t, "/api", parsedURL.Path)
+	assert.Nil(t, timeout, "Direct URL should not have timeout override")
+}
+
+func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
+	translator := &Translator{}
+	ref := "my-upstream"
+	timeoutStr := "45s"
+	upstream := &api.Upstream{
+		Ref: &ref,
+	}
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Timeout: &api.UpstreamTimeout{
+				Connect: &timeoutStr,
+			},
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend-1:9000/v2"},
+				},
+			},
+		},
+	}
+
+	clusterName, parsedURL, timeout, err := translator.resolveUpstreamCluster("main", upstream, definitions)
+
+	require.NoError(t, err)
+	assert.Equal(t, "cluster_http_backend-1_9000", clusterName)
+	assert.NotNil(t, parsedURL)
+	assert.Equal(t, "http", parsedURL.Scheme)
+	assert.Equal(t, "backend-1:9000", parsedURL.Host)
+	assert.Equal(t, "/v2", parsedURL.Path)
+	require.NotNil(t, timeout)
+	require.NotNil(t, timeout.Connect)
+	assert.Equal(t, 45*time.Second, *timeout.Connect)
+}
+
+func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
+	translator := &Translator{}
+	ref := "my-upstream"
+	upstream := &api.Upstream{
+		Ref: &ref,
+	}
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	clusterName, parsedURL, timeout, err := translator.resolveUpstreamCluster("main", upstream, definitions)
+
+	require.NoError(t, err)
+	assert.Equal(t, "cluster_http_backend_8080", clusterName)
+	assert.NotNil(t, parsedURL)
+	assert.Nil(t, timeout, "No timeout in definition should result in nil timeout")
+}
+
+func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
+	translator := &Translator{}
+	ref := "non-existent"
+	upstream := &api.Upstream{
+		Ref: &ref,
+	}
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "other-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	_, _, _, err := translator.resolveUpstreamCluster("main", upstream, definitions)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to resolve main upstream ref")
+	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+}
+
+func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
+	translator := &Translator{}
+	ref := "my-upstream"
+	invalidTimeout := "invalid"
+	upstream := &api.Upstream{
+		Ref: &ref,
+	}
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Timeout: &api.UpstreamTimeout{
+				Connect: &invalidTimeout,
+			},
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	_, _, _, err := translator.resolveUpstreamCluster("main", upstream, definitions)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid timeout in upstream definition")
+}
+
+func TestResolveUpstreamCluster_WithRef_NoURLs(t *testing.T) {
+	translator := &Translator{}
+	ref := "my-upstream"
+	upstream := &api.Upstream{
+		Ref: &ref,
+	}
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{},
+		},
+	}
+
+	_, _, _, err := translator.resolveUpstreamCluster("main", upstream, definitions)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "has no URLs configured")
+}
+
+func TestResolveUpstreamCluster_NoURLOrRef(t *testing.T) {
+	translator := &Translator{}
+	upstream := &api.Upstream{}
+
+	_, _, _, err := translator.resolveUpstreamCluster("main", upstream, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no main upstream configured")
+}
+
+func TestResolveUpstreamCluster_InvalidURL(t *testing.T) {
+	translator := &Translator{}
+	invalidURL := "not a valid url"
+	upstream := &api.Upstream{
+		Url: &invalidURL,
+	}
+
+	_, _, _, err := translator.resolveUpstreamCluster("main", upstream, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid main upstream URL")
+}
+
 // testRouterConfig creates a minimal valid router config for testing
 func testRouterConfig() *config.RouterConfig {
 	return &config.RouterConfig{
@@ -45,6 +345,9 @@ func testRouterConfig() *config.RouterConfig {
 		VHosts: config.VHostsConfig{
 			Main:    config.VHostEntry{Default: "localhost"},
 			Sandbox: config.VHostEntry{Default: "sandbox.localhost"},
+		},
+		EnvoyUpstreamCluster: config.EnvoyUpstreamClusterConfig{
+			ConnectTimeoutInMs: 5000,
 		},
 		PolicyEngine: config.PolicyEngineConfig{
 			Enabled: false,
@@ -726,10 +1029,11 @@ func TestTranslator_ResolveUpstreamCluster_SimpleURL(t *testing.T) {
 		Url: &urlStr,
 	}
 
-	clusterName, parsedURL, err := translator.resolveUpstreamCluster("test-upstream", upstream)
+	clusterName, parsedURL, timeout, err := translator.resolveUpstreamCluster("test-upstream", upstream, nil)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, clusterName)
 	assert.NotNil(t, parsedURL)
+	assert.Nil(t, timeout)
 	assert.Equal(t, "backend", parsedURL.Hostname())
 }
 
@@ -744,10 +1048,11 @@ func TestTranslator_ResolveUpstreamCluster_HTTPSUrl(t *testing.T) {
 		Url: &urlStr,
 	}
 
-	clusterName, parsedURL, err := translator.resolveUpstreamCluster("secure-upstream", upstream)
+	clusterName, parsedURL, timeout, err := translator.resolveUpstreamCluster("secure-upstream", upstream, nil)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, clusterName)
 	assert.NotNil(t, parsedURL)
+	assert.Nil(t, timeout)
 	assert.Equal(t, "https", parsedURL.Scheme)
 }
 
@@ -761,7 +1066,7 @@ func TestTranslator_ResolveUpstreamCluster_MissingURL(t *testing.T) {
 		Url: nil, // No URL
 	}
 
-	_, _, err := translator.resolveUpstreamCluster("no-url-upstream", upstream)
+	_, _, _, err := translator.resolveUpstreamCluster("no-url-upstream", upstream, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no no-url-upstream upstream configured")
 }
@@ -791,7 +1096,7 @@ func TestTranslator_CreateCluster(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			parsedURL, err := parseURL(tt.urlStr)
 			require.NoError(t, err)
-			cluster := translator.createCluster(tt.clusterNm, parsedURL, tt.certs)
+			cluster := translator.createCluster(tt.clusterNm, parsedURL, tt.certs, nil)
 			if tt.hasCluster {
 				assert.NotNil(t, cluster)
 				assert.Equal(t, tt.clusterNm, cluster.Name)
@@ -852,6 +1157,7 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 		"",             // providerName
 		nil,            // hostRewrite
 		"proj-001",     // projectID
+		nil,            // timeoutCfg
 	)
 
 	assert.NotNil(t, route)

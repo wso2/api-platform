@@ -148,12 +148,12 @@ gateway:
             ca_path: ""
             server_name: ""
             skip_verify: false
-        envoy_upstream:
-          # TLS settings for upstreams (Envoy) used by router when connecting to upstreams
+        envoy_downstream:
+          # TLS settings for downstream (Envoy) used by router when handling requests
           tls:
             minimum_protocol_version: TLS1_2
             maximum_protocol_version: TLS1_3
-            # Arc of cipher suites accepted for upstream TLS connections
+            # Arc of cipher suites accepted for downstream TLS connections
             ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
             # trusted_cert_path and custom_certs_path match defaults from controller example
             trusted_cert_path: /etc/ssl/certs/ca-certificates.crt
@@ -162,9 +162,12 @@ gateway:
             verify_host_name: true
             disable_ssl_verification: false
           timeouts:
-            route_timeout_in_seconds: 60
-            max_route_timeout_in_seconds: 60
-            route_idle_timeout_in_seconds: 300
+            route_timeout_in_ms: 60000
+            max_route_timeout_in_ms: 60000
+            route_idle_timeout_in_ms: 300000
+        envoy_upstream:
+          # Upstream cluster connection timeout
+          connect_timeout_in_ms: 5000
       logging:
         level: info
         format: json

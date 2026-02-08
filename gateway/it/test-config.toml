@@ -108,7 +108,7 @@ minimum_protocol_version = "TLS1_2"
 maximum_protocol_version = "TLS1_3"
 ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
 
-[gateway_controller.router.envoy_upstream.tls]
+[gateway_controller.router.envoy_downstream.tls]
 minimum_protocol_version = "TLS1_2"
 maximum_protocol_version = "TLS1_3"
 ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
@@ -117,10 +117,13 @@ custom_certs_path = "./certificates"
 verify_host_name = true
 disable_ssl_verification = false
 
-[gateway_controller.router.envoy_upstream.timeouts]
-route_timeout_in_seconds = 60
-max_route_timeout_in_seconds = 60
-route_idle_timeout_in_seconds = 300
+[gateway_controller.router.envoy_downstream.timeouts]
+route_timeout_in_ms = 60000
+max_route_timeout_in_ms = 60000
+route_idle_timeout_in_ms = 300000
+
+[gateway_controller.router.envoy_upstream]
+connect_timeout_in_ms = 5000
 
 [gateway_controller.router.policy_engine]
 enabled = true

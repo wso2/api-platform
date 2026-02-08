@@ -188,9 +188,40 @@ spec:
               role: X-User-Role
 ```
 
+### Example 4: Custom User ID Claim for Analytics
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: jwt-auth-claims-api
+spec:
+  displayName: JWT Auth Claims API
+  version: v1.0
+  context: /jwt-auth-claims/$version
+  upstream:
+    main:
+      url: http://sample-backend:9080/api/v1
+  operations:
+    - method: GET
+      path: /profile
+      policies:
+        - name: jwt-auth
+          version: v0
+          params:
+            issuers:
+              - PrimaryIDP
+            claimMappings:
+              sub: X-User-ID
+              email: X-User-Email
+              role: X-User-Role
+            userIdClaim: username
+```
+
 ## Use Cases
 
 1. Secure APIs by requiring valid JWT tokens from trusted identity providers.
 2. Support multiple issuers for multi-tenant or federated authentication.
 3. Enforce scopes and claims for fine-grained access control.
 4. Propagate user identity to upstream services via claim mappings.
+5. Specify user identifiers from custom claims (username, account_id) for analytics purposes.
