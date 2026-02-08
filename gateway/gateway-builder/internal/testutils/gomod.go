@@ -50,7 +50,7 @@ func WriteGoModWithVersion(t *testing.T, dir, moduleName, goVersion string) {
 // Parent directories are created if they don't exist.
 func WritePolicyEngineGoMod(t *testing.T, dir string) {
 	t.Helper()
-	WriteGoMod(t, dir, "github.com/wso2/api-platform/gateway/policy-engine")
+	WriteGoMod(t, dir, "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine")
 }
 
 // WriteGoModWithRequire creates a go.mod file with a require directive.

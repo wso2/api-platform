@@ -19,10 +19,9 @@ serviceAccount:
 # Component-level configuration
 
 gateway:
-  # Shared configuration for gateway-controller and policy-engine
-  # This config is mounted as:
+  # Shared configuration mounted as:
   #   - gateway-controller: /etc/gateway-controller/config.toml
-  #   - policy-engine: /etc/policy-engine/config.toml
+  #   - gateway-runtime (policy engine): /etc/policy-engine/config.toml
   config:
     gateway_controller:
       auth:
@@ -176,11 +175,8 @@ gateway:
           # Enable or disable policy engine ext_proc filter
           enabled: true
 
-          # Policy engine host (hostname or IP address)
-          host: policy-engine
-
-          # Policy engine ext_proc port
-          port: 9001
+          # Connection mode: "uds" (Unix domain socket, default) or "tcp"
+          mode: uds
 
           # Timeout for gRPC service connection (in milliseconds)
           timeout_ms: 60000
@@ -202,26 +198,6 @@ gateway:
           # Message timeout for policy engine processing (in milliseconds)
           message_timeout_ms: 60000
 
-          # TLS configuration for policy engine connection
-          tls:
-            # Enable TLS for secure communication with policy engine
-            enabled: false
-
-            # Client certificate path (for mutual TLS authentication)
-            cert_path: ""
-
-            # Client private key path (for mutual TLS authentication)
-            key_path: ""
-
-            # CA certificate path (for server certificate validation)
-            ca_path: ""
-
-            # Server name for SNI (optional, defaults to host)
-            server_name: ""
-
-            # Skip server certificate verification (insecure, development only)
-            skip_verify: false
-
       # Logging configuration
       logging:
         # Log level: "debug", "info", "warn", or "error"
@@ -234,8 +210,8 @@ gateway:
 
     policy_engine:
       server:
-        # Port for ext_proc gRPC server (receives requests from Envoy)
-        extproc_port: 9001
+        # ext_proc socket path — must match the constant in the gateway-runtime image
+        extproc_socket: /var/run/policy-engine.sock
 
       # Admin HTTP server configuration
       admin:
@@ -262,8 +238,7 @@ gateway:
         # Enable xDS client
         enabled: true
 
-        # xDS server address (typically the gateway-controller xDS server)
-        server_address: gateway-controller:18001
+        # server_address is set via -xds-server flag (from GATEWAY_CONTROLLER_HOST env var)
 
         # Node identifier for this policy engine instance
         # Used by xDS server to identify this client
@@ -452,9 +427,11 @@ gateway:
       tolerations: []
       affinity: {}
 
-  router:
+  # Gateway Runtime - Router (Envoy) and Policy Engine in a single container,
+  # communicating via Unix domain socket (UDS)
+  gatewayRuntime:
     image:
-      repository: ghcr.io/wso2/api-platform/gateway-router
+      repository: ghcr.io/wso2/api-platform/gateway-runtime
       tag: "0.7.0-SNAPSHOT"
       pullPolicy: Always
     imagePullSecrets: []
@@ -465,14 +442,22 @@ gateway:
       ports:
         http: 8080
         https: 8443
-        admin: 9901
+        envoyAdmin: 9901
+        policyEngineAdmin: 9002
+        policyEngineMetrics: 9003
     deployment:
       enabled: true
       replicaCount: 1
       env:
-        xdsServerHost: ""
-        xdsServerPort: ""
+        gatewayControllerHost: ""
+        logLevel: info
       extraEnv: []
+      # extraEnvFrom:
+      #   - configMapRef:
+      #       name: my-config-map
+      extraEnvFrom: []
+      extraVolumeMounts: []
+      extraVolumes: []
       labels: {}
       annotations: {}
       podAnnotations: {}
@@ -481,7 +466,7 @@ gateway:
       livenessProbe:
         httpGet:
           path: /server_info
-          port: admin
+          port: envoy-admin
         initialDelaySeconds: 30
         periodSeconds: 10
         timeoutSeconds: 5
@@ -489,7 +474,7 @@ gateway:
       readinessProbe:
         httpGet:
           path: /server_info
-          port: admin
+          port: envoy-admin
         initialDelaySeconds: 10
         periodSeconds: 5
         timeoutSeconds: 3
@@ -503,64 +488,6 @@ gateway:
         # requests:
         #   cpu: 500m
         #   memory: 512Mi
-      podSecurityContext: {}
-      securityContext: {}
-      nodeSelector: {}
-      tolerations: []
-      affinity: {}
-
-  policyEngine:
-    image:
-      repository: ghcr.io/wso2/api-platform/policy-engine
-      tag: "0.7.0-SNAPSHOT"
-      pullPolicy: Always
-    imagePullSecrets: []
-    service:
-      type: ClusterIP
-      annotations: {}
-      labels: {}
-      ports:
-        ext: 9001
-        admin: 9002
-    deployment:
-      enabled: true
-      replicaCount: 1
-      env:
-        xdsServerAddress: ""
-      extraEnv: []
-      # extraEnvFrom:
-      #   - configMapRef:
-      #       name: my-config-map
-      extraEnvFrom: []
-      labels: {}
-      annotations: {}
-      podAnnotations: {}
-      podLabels: {}
-      priorityClassName: ""
-      # Basic health checks — adjust if policy-engine exposes HTTP health endpoints
-      livenessProbe:
-        tcpSocket:
-          port: ext
-        initialDelaySeconds: 10
-        periodSeconds: 10
-        timeoutSeconds: 5
-        failureThreshold: 3
-      readinessProbe:
-        tcpSocket:
-          port: ext
-        initialDelaySeconds: 5
-        periodSeconds: 5
-        timeoutSeconds: 3
-        failureThreshold: 3
-      # Resource limits and requests
-      # Uncomment and adjust based on your workload
-      resources: {}
-        # limits:
-        #   cpu: 500m
-        #   memory: 512Mi
-        # requests:
-        #   cpu: 250m
-        #   memory: 256Mi
       podSecurityContext: {}
       securityContext: {}
       nodeSelector: {}

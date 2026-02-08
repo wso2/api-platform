@@ -5,14 +5,14 @@ description: Helm chart for deploying the Gateway Operator components
 version: 0.2.0
 appVersion: "0.7.0-SNAPSHOT"
 type: application
-home: https://github.com/Tharsanan1/apip-operator
+home: https://github.com/wso2/api-platform
 sources:
-  - https://github.com/Tharsanan1/apip-operator
+  - https://github.com/wso2/api-platform
 keywords:
   - gateway
   - envoy
   - wso2
   - api-platform
 maintainers:
-  - name: apip-operator-maintainers
-    email: noreply@example.com
+  - name: ap-gateway-operator-maintainers
+    email: contact@wso2.com

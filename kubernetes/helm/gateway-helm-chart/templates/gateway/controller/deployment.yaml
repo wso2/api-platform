@@ -90,8 +90,8 @@ spec:
               value: {{ $controller.storage.type | quote }}
             - name: APIP_GW_STORAGE_SQLITE_PATH
               value: {{ $controller.storage.sqlitePath | quote }}
-            - name: XDS_SERVER_HOST
-              value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.xdsServerHost | quote }}
+            - name: GATEWAY_CONTROLLER_HOST
+              value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.gatewayControllerHost | quote }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}

@@ -301,8 +301,7 @@ gateway:
         mode: xds
       xds:
         enabled: true
-        # defaults to controller service:port when empty
-        server_address: ""
+        # server_address is set via -xds-server flag (from GATEWAY_CONTROLLER_HOST env var)
         node_id: policy-engine-1
         cluster: policy-engine-cluster
         connect_timeout: 10s

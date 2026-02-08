@@ -140,7 +140,7 @@ func TestDefaultConstants(t *testing.T) {
 	assert.Equal(t, "policy-manifest.yaml", DefaultManifestFile)
 	assert.Equal(t, "system-policy-manifest-lock.yaml", DefaultSystemPolicyManifestLockFile)
 	assert.Equal(t, "output", DefaultOutputDir)
-	assert.Equal(t, "/api-platform/gateway/policy-engine", DefaultPolicyEngineSrc)
+	assert.Equal(t, "/api-platform/gateway/gateway-runtime/policy-engine", DefaultPolicyEngineSrc)
 }
 
 // captureOutput is a helper to capture stdout during test execution

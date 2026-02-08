@@ -273,10 +273,8 @@ spec:
     spec:
       containers:
         - env:
-            - name: XDS_SERVER_HOST
+            - name: GATEWAY_CONTROLLER_HOST
               value: gateway-controller
-            - name: XDS_SERVER_PORT
-              value: "18000"
           image: wso2/gateway-router:latest
           imagePullPolicy: IfNotPresent
           livenessProbe:

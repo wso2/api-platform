@@ -1541,17 +1541,31 @@ func (t *Translator) createCluster(
 func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 	policyEngine := t.routerConfig.PolicyEngine
 
-	// Build the endpoint address
-	address := &core.Address{
-		Address: &core.Address_SocketAddress{
-			SocketAddress: &core.SocketAddress{
-				Protocol: core.SocketAddress_TCP,
-				Address:  policyEngine.Host,
-				PortSpecifier: &core.SocketAddress_PortValue{
-					PortValue: policyEngine.Port,
+	// Build the endpoint address (UDS or TCP)
+	var address *core.Address
+
+	if policyEngine.Mode == "tcp" {
+		// TCP mode - use host:port
+		address = &core.Address{
+			Address: &core.Address_SocketAddress{
+				SocketAddress: &core.SocketAddress{
+					Protocol: core.SocketAddress_TCP,
+					Address:  policyEngine.Host,
+					PortSpecifier: &core.SocketAddress_PortValue{
+						PortValue: policyEngine.Port,
+					},
 				},
 			},
-		},
+		}
+	} else {
+		// UDS mode (default) - use Unix domain socket with constant path
+		address = &core.Address{
+			Address: &core.Address_Pipe{
+				Pipe: &core.Pipe{
+					Path: constants.DefaultPolicyEngineSocketPath,
+				},
+			},
+		}
 	}
 
 	// Create the load balancing endpoint
@@ -1568,11 +1582,18 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
 	}
 
+	// Determine cluster discovery type based on connection mode
+	// UDS uses STATIC (no DNS resolution needed), TCP uses STRICT_DNS
+	clusterType := cluster.Cluster_STATIC
+	if policyEngine.Mode == "tcp" {
+		clusterType = cluster.Cluster_STRICT_DNS
+	}
+
 	// Create the cluster with HTTP/2 support for gRPC
 	c := &cluster.Cluster{
 		Name:                 constants.PolicyEngineClusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: clusterType},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
 			ClusterName: constants.PolicyEngineClusterName,
@@ -1777,7 +1798,7 @@ func (t *Translator) createSDSCluster() *cluster.Cluster {
 	// In containerized environments, Envoy connects to the gateway-controller container
 	// Use the same host/port configuration as the main xDS connection
 	xdsHost := "gateway-controller" // Default for Docker Compose
-	if envHost := os.Getenv("XDS_SERVER_HOST"); envHost != "" {
+	if envHost := os.Getenv("GATEWAY_CONTROLLER_HOST"); envHost != "" {
 		xdsHost = envHost
 	}
 

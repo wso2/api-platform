@@ -511,7 +511,7 @@ func TestUpdateGoMod_DuplicateReplaceDirective(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create go.mod that already has a replace directive
-	goModContent := `module github.com/wso2/api-platform/gateway/policy-engine
+	goModContent := `module github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine
 
 go 1.23
 

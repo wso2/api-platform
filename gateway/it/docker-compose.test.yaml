@@ -16,8 +16,9 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Integration test Docker Compose configuration
-# Uses coverage-enabled image (build with: make build-coverage-image)
+# Integration test Docker Compose configuration for Gateway Runtime
+# Uses the gateway-runtime container (Router + Policy Engine combined)
+# Build coverage images with: make build-gateway-runtime-coverage
 
 services:
   gateway-controller:
@@ -43,62 +44,50 @@ services:
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
       - ./coverage/gateway-controller:/coverage
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "http://localhost:9090/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
+    #   interval: 5s
+    #   timeout: 3s
+    #   retries: 10
+    #   start_period: 10s
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
-  policy-engine:
-    container_name: it-policy-engine
-    image: ghcr.io/wso2/api-platform/policy-engine-coverage:0.7.0-SNAPSHOT
-    mem_limit: 128m
-    mem_reservation: 128m
-    cpus: 0.2
-    command: ["-config", "/etc/policy-engine/config.toml", "-xds-server", "it-gateway-controller:18001"]
+  gateway-runtime:
+    container_name: it-gateway-runtime
+    image: ghcr.io/wso2/api-platform/gateway-runtime-coverage:0.7.0-SNAPSHOT
+    mem_limit: 384m
+    mem_reservation: 384m
+    cpus: 0.5
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
     ports:
-      - "9002:9002"   # Admin API
-      - "9003:9003"   # Metrics
+      - "8080:8080"   # HTTP traffic (Envoy)
+      - "8443:8443"   # HTTPS traffic (Envoy)
+      - "9901:9901"   # Envoy admin
+      - "9002:9002"   # Policy Engine admin
+      - "9003:9003"   # Policy Engine metrics
     environment:
+      - GATEWAY_CONTROLLER_HOST=it-gateway-controller
+      - LOG_LEVEL=info
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
       - GOCOVERDIR=/coverage
     volumes:
+      - ./coverage/gateway-runtime:/coverage
       - ./test-config.toml:/etc/policy-engine/config.toml:ro
-      - ./coverage/policy-engine:/coverage
-    networks:
-      - it-gateway-network
-
-  router:
-    container_name: it-router
-    image: ghcr.io/wso2/api-platform/gateway-router:0.7.0-SNAPSHOT
-    mem_limit: 256m
-    mem_reservation: 256m
-    cpus: 0.2
-    ports:
-      - "8080:8080"   # HTTP traffic
-      - "8443:8443"   # HTTPS traffic
-      - "9901:9901"   # Envoy admin
-    environment:
-      - XDS_SERVER_HOST=it-gateway-controller
-      - XDS_SERVER_PORT=18000
-      - LOG_LEVEL=info
     depends_on:
-      gateway-controller:
-        condition: service_healthy
+      # gateway-controller:
+      #   condition: service_healthy
       mock-openapi:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9901"]
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9901 && echo > /dev/tcp/localhost/9002"]
       interval: 5s
       timeout: 3s
       retries: 10
       start_period: 15s
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   sample-backend:
     container_name: it-sample-backend
@@ -107,7 +96,7 @@ services:
       - "9080:9080"
     command: ["-addr", ":9080", "-pretty"]
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   mcp-server-backend:
     image: rakhitharr/mcp-everything:v3
@@ -116,7 +105,7 @@ services:
     ports:
       - "3001:3001"
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Echo backend for testing cost extraction - returns request body in response JSON
   echo-backend:
@@ -125,7 +114,7 @@ services:
     ports:
       - "9081:80"
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Mock JWKS server for JWT authentication testing
   mock-jwks:
@@ -137,7 +126,7 @@ services:
     ports:
       - "8082:8080"
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Generic mock server for various test scenarios
   mock-openapi:
@@ -164,14 +153,14 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Wrap the mock-openapi with an HTTPS endpoint using Nginx
   mock-openapi-https:
     image: nginx:1.25
     container_name: it-mock-openapi-https
     ports:
-      - "9443:8443"   # 👈 host calls nginx on 9443
+      - "9443:8443"
     volumes:
       - ./mock-api/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../gateway-controller/listener-certs:/etc/nginx/certs:ro
@@ -179,7 +168,7 @@ services:
       mock-openapi:
         condition: service_healthy
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Mock Azure Content Safety for content moderation policy testing
   mock-azure-content-safety:
@@ -191,7 +180,7 @@ services:
     ports:
       - "8084:8080"
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Mock AWS Bedrock Guardrail for guardrail policy testing
   mock-aws-bedrock-guardrail:
@@ -203,7 +192,7 @@ services:
     ports:
       - "8083:8080"
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Mock Embedding Provider for semantic cache testing
   mock-embedding-provider:
@@ -215,7 +204,7 @@ services:
     ports:
       - "8085:8080"
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Mock Analytics Collector for analytics testing
   mock-analytics-collector:
@@ -227,7 +216,7 @@ services:
     ports:
       - "8086:8080"
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
 
   # Redis with RediSearch for semantic cache vector storage
   redis:
@@ -238,7 +227,7 @@ services:
     environment:
       - REDIS_ARGS=--requirepass redis
     networks:
-      - it-gateway-network
+      - it-gateway-runtime-network
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "redis", "ping"]
       interval: 5s
@@ -251,5 +240,5 @@ volumes:
     driver: local
 
 networks:
-  it-gateway-network:
+  it-gateway-runtime-network:
     driver: bridge

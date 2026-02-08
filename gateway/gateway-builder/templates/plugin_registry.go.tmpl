@@ -24,7 +24,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 {{- range .Policies }}
 	{{ .ImportAlias }} "{{ .ImportPath }}"
@@ -32,8 +32,8 @@ import (
 )
 
 func init() {
-	// Set up JSON logger early so init() logs match main() logs
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	// Set up text logger early so init() logs match main() logs
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	
 	ctx := context.Background()
 	slog.InfoContext(ctx, "Registering policies from Builder compilation")
@@ -50,9 +50,9 @@ func init() {
 		}{{ else }}nil{{ end }},
 	}
 	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.GetPolicy); err != nil {
-		slog.ErrorContext(ctx, "Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)
+		slog.ErrorContext(ctx, "Failed to register policy {{ .Name }} version {{ .Version }}", "error", err)
 	} else {
-		slog.InfoContext(ctx, "Registered policy", "policy", "{{ .Name }}", "version", "{{ .Version }}")
+		slog.InfoContext(ctx, "Registered policy {{ .Name }} version {{ .Version }}")
 	}
 	{{- end }}
 }

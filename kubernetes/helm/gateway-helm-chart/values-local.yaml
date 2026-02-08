@@ -11,12 +11,7 @@ gateway:
       tag: "latest"
       pullPolicy: IfNotPresent
 
-  router:
-    image:
-      tag: "latest"
-      pullPolicy: IfNotPresent
-
-  policyEngine:
+  gatewayRuntime:
     image:
       tag: "latest"
       pullPolicy: IfNotPresent

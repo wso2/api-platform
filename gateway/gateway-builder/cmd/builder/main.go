@@ -40,7 +40,7 @@ const (
 	DefaultManifestFile                 = "policy-manifest.yaml"
 	DefaultSystemPolicyManifestLockFile = "system-policy-manifest-lock.yaml"
 	DefaultOutputDir                    = "output"
-	DefaultPolicyEngineSrc              = "/api-platform/gateway/policy-engine"
+	DefaultPolicyEngineSrc              = "/api-platform/gateway/gateway-runtime/policy-engine"
 )
 
 // Version information (set via ldflags during build)
