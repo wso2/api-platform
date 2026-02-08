@@ -30,6 +30,9 @@ type GatewayEventDTO struct {
 
 	// CorrelationID provides request tracing identifier
 	CorrelationID string `json:"correlationId"`
+
+	// UserId is an optional temporary user identifier (from x-user-id header)
+	UserId string `json:"userId,omitempty"`
 }
 
 // ConnectionAckDTO represents the acknowledgment message sent when a gateway connects.

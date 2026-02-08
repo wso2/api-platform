@@ -95,8 +95,11 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 		req.DisplayName = name
 	}
 
+	// Extract optional x-user-id header for temporary user identification
+	userId := c.GetHeader("x-user-id")
+
 	// Create the API key and broadcast to gateways
-	err := h.apiKeyService.CreateAPIKey(c.Request.Context(), apiHandle, orgId, &req)
+	err := h.apiKeyService.CreateAPIKey(c.Request.Context(), apiHandle, orgId, userId, &req)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -170,8 +173,11 @@ func (h *APIKeyHandler) UpdateAPIKey(c *gin.Context) {
 		return
 	}
 
+	// Extract optional x-user-id header for temporary user identification
+	userId := c.GetHeader("x-user-id")
+
 	// Update the API key and broadcast to gateways
-	err := h.apiKeyService.UpdateAPIKey(c.Request.Context(), apiHandle, orgId, keyName, &req)
+	err := h.apiKeyService.UpdateAPIKey(c.Request.Context(), apiHandle, orgId, keyName, userId, &req)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
@@ -229,8 +235,11 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		return
 	}
 
+	// Extract optional x-user-id header for temporary user identification
+	userId := c.GetHeader("x-user-id")
+
 	// Revoke the API key and broadcast to gateways
-	err := h.apiKeyService.RevokeAPIKey(c.Request.Context(), apiHandle, orgId, keyName)
+	err := h.apiKeyService.RevokeAPIKey(c.Request.Context(), apiHandle, orgId, keyName, userId)
 	if err != nil {
 		// Handle specific error cases
 		if errors.Is(err, constants.ErrAPINotFound) {
