@@ -44,7 +44,7 @@ func NewAPIKeyService(apiRepo repository.APIRepository, gatewayEventsService *Ga
 
 // CreateAPIKey hashes an external API key and broadcasts it to gateways where the API is deployed.
 // This method is used when external platforms inject API keys to hybrid gateways.
-func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId string, req *dto.CreateAPIKeyRequest) error {
+func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, userId string, req *dto.CreateAPIKeyRequest) error {
 	// Resolve API handle to UUID
 	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId strin
 			apiId, gatewayID, req.Name)
 
 		// Broadcast with retries
-		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gatewayID, event)
+		err := s.gatewayEventsService.BroadcastAPIKeyCreatedEvent(gatewayID, userId, event)
 		if err != nil {
 			failureCount++
 			lastError = err
@@ -133,7 +133,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId strin
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
-func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyName string, req *dto.UpdateAPIKeyRequest) error {
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string, req *dto.UpdateAPIKeyRequest) error {
 	// Resolve API handle to UUID
 	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
@@ -191,7 +191,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 			apiId, gatewayID, keyName)
 
 		// Broadcast with retries
-		err := s.gatewayEventsService.BroadcastAPIKeyUpdatedEvent(gatewayID, event)
+		err := s.gatewayEventsService.BroadcastAPIKeyUpdatedEvent(gatewayID, userId, event)
 		if err != nil {
 			failureCount++
 			lastError = err
@@ -219,7 +219,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 }
 
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
-func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyName string) error {
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyName, userId string) error {
 	// Resolve API handle to UUID
 	apiMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgId)
 	if err != nil {
@@ -269,7 +269,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 			apiId, gatewayID, keyName)
 
 		// Broadcast with retries
-		err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, event)
+		err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userId, event)
 		if err != nil {
 			failureCount++
 			lastError = err
