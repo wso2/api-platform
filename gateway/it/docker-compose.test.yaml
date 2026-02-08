@@ -1,0 +1,245 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Integration test Docker Compose configuration for Gateway Runtime
+# Uses the gateway-runtime container (Router + Policy Engine combined)
+# Build coverage images with: make build-gateway-runtime-coverage
+
+services:
+  gateway-controller:
+    container_name: it-gateway-controller
+    image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.7.0-SNAPSHOT
+    mem_limit: 128m
+    mem_reservation: 128m
+    cpus: 0.1
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    ports:
+      - "9090:9090"   # REST API
+      - "18000:18000" # xDS gRPC
+      - "18001:18001"
+      - "9091:9091"   # Metrics
+    environment:
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - APIP_GW_GATEWAY__CONTROLLER_LOGGING_LEVEL=debug
+      - GOCOVERDIR=/coverage
+    volumes:
+      - controller-data-tests:/app/data
+      - ./test-config.toml:/etc/gateway-controller/config.toml:ro
+      - ../gateway-controller/certificates:/app/certificates
+      - ../gateway-controller/listener-certs:/app/listener-certs:ro
+      - ./coverage/gateway-controller:/coverage
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
+    #   interval: 5s
+    #   timeout: 3s
+    #   retries: 10
+    #   start_period: 10s
+    networks:
+      - it-gateway-runtime-network
+
+  gateway-runtime:
+    container_name: it-gateway-runtime
+    image: ghcr.io/wso2/api-platform/gateway-runtime-coverage:0.7.0-SNAPSHOT
+    mem_limit: 384m
+    mem_reservation: 384m
+    cpus: 0.3
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    ports:
+      - "8080:8080"   # HTTP traffic (Envoy)
+      - "8443:8443"   # HTTPS traffic (Envoy)
+      - "9901:9901"   # Envoy admin
+      - "9002:9002"   # Policy Engine admin
+      - "9003:9003"   # Policy Engine metrics
+    environment:
+      - XDS_SERVER_HOST=it-gateway-controller
+      - XDS_SERVER_PORT=18000
+      - LOG_LEVEL=info
+      # Override AWS Bedrock Runtime endpoint for testing with mock service
+      - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
+      - GOCOVERDIR=/coverage
+    volumes:
+      - ./coverage/gateway-runtime:/coverage
+      - ./test-config.toml:/etc/policy-engine/config.toml:ro
+    depends_on:
+      # gateway-controller:
+      #   condition: service_healthy
+      mock-openapi:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9901 && echo > /dev/tcp/localhost/9002"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    networks:
+      - it-gateway-runtime-network
+
+  sample-backend:
+    container_name: it-sample-backend
+    image: renukafernando/request-info:latest
+    ports:
+      - "9080:9080"
+    command: ["-addr", ":9080", "-pretty"]
+    networks:
+      - it-gateway-runtime-network
+
+  mcp-server-backend:
+    image: rakhitharr/mcp-everything:v3
+    pull_policy: missing
+    container_name: mcp-server-backend
+    ports:
+      - "3001:3001"
+    networks:
+      - it-gateway-runtime-network
+
+  # Echo backend for testing cost extraction - returns request body in response JSON
+  echo-backend:
+    container_name: it-echo-backend
+    image: kennethreitz/httpbin:latest
+    ports:
+      - "9081:80"
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock JWKS server for JWT authentication testing
+  mock-jwks:
+    container_name: it-mock-jwks
+    image: ghcr.io/wso2/api-platform/mock-jwks:latest
+    build:
+      context: ../../tests/mock-servers/mock-jwks
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Generic mock server for various test scenarios
+  mock-openapi:
+    container_name: it-mock-openapi
+    image: stoplight/prism:5.14.3
+    command:
+      [
+        "mock",
+        "/api/openapi.yaml",
+        "--host",
+        "0.0.0.0",
+        "--errors",
+        "--verboseLevel",
+        "info"
+      ]
+    ports:
+      - "4010:4010"
+    volumes:
+      - ./mock-api:/api:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:4010/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - it-gateway-runtime-network
+
+  # Wrap the mock-openapi with an HTTPS endpoint using Nginx
+  mock-openapi-https:
+    image: nginx:1.25
+    container_name: it-mock-openapi-https
+    ports:
+      - "9443:8443"
+    volumes:
+      - ./mock-api/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../gateway-controller/listener-certs:/etc/nginx/certs:ro
+    depends_on:
+      mock-openapi:
+        condition: service_healthy
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock Azure Content Safety for content moderation policy testing
+  mock-azure-content-safety:
+    container_name: it-mock-azure-content-safety
+    image: ghcr.io/wso2/api-platform/mock-azure-content-safety:latest
+    build:
+      context: ../../tests/mock-servers/mock-azure-content-safety
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock AWS Bedrock Guardrail for guardrail policy testing
+  mock-aws-bedrock-guardrail:
+    container_name: it-mock-aws-bedrock-guardrail
+    image: ghcr.io/wso2/api-platform/mock-aws-bedrock-guardrail:latest
+    build:
+      context: ../../tests/mock-servers/mock-aws-bedrock-guardrail
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock Embedding Provider for semantic cache testing
+  mock-embedding-provider:
+    container_name: it-mock-embedding-provider
+    image: ghcr.io/wso2/api-platform/mock-embedding-provider:latest
+    build:
+      context: ../../tests/mock-servers/mock-embedding-provider
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock Analytics Collector for analytics testing
+  mock-analytics-collector:
+    container_name: it-mock-analytics-collector
+    image: ghcr.io/wso2/api-platform/mock-analytics-collector:latest
+    build:
+      context: ../../tests/mock-servers/mock-analytics-collector
+      dockerfile: Dockerfile
+    ports:
+      - "8086:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Redis with RediSearch for semantic cache vector storage
+  redis:
+    container_name: it-redis
+    image: redis/redis-stack-server:latest
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_ARGS=--requirepass redis
+    networks:
+      - it-gateway-runtime-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  controller-data-tests:
+    driver: local
+
+networks:
+  it-gateway-runtime-network:
+    driver: bridge
