@@ -83,12 +83,11 @@ Environment variables use `APIP_GW_` prefix:
 
 See [gateway-controller/README.md](gateway-controller/README.md) for full configuration options.
 
-### Router
+### Gateway Runtime
 
 | Variable | Description |
 |----------|-------------|
-| `XDS_SERVER_HOST` | Gateway-Controller hostname |
-| `XDS_SERVER_PORT` | xDS port (default: 18000) |
+| `GATEWAY_CONTROLLER_HOST` | Gateway-Controller hostname (default: `gateway-controller`). The well-known xDS ports (18000 for Router, 18001 for Policy Engine) are derived automatically. |
 
 ## Component Documentation
 

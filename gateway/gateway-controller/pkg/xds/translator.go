@@ -1798,7 +1798,7 @@ func (t *Translator) createSDSCluster() *cluster.Cluster {
 	// In containerized environments, Envoy connects to the gateway-controller container
 	// Use the same host/port configuration as the main xDS connection
 	xdsHost := "gateway-controller" // Default for Docker Compose
-	if envHost := os.Getenv("XDS_SERVER_HOST"); envHost != "" {
+	if envHost := os.Getenv("GATEWAY_CONTROLLER_HOST"); envHost != "" {
 		xdsHost = envHost
 	}
 

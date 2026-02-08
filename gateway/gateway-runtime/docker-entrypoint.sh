@@ -71,14 +71,28 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Default configuration
-export XDS_SERVER_HOST="${XDS_SERVER_HOST:-gateway-controller}"
-export XDS_SERVER_PORT="${XDS_SERVER_PORT:-18000}"
+# GATEWAY_CONTROLLER_HOST is the primary user-facing env var to configure connectivity
+# to the gateway controller. The xDS ports default to well-known values:
+#   - ROUTER_XDS_PORT (18000): Router (Envoy) route/cluster/listener configs
+#   - POLICY_ENGINE_XDS_PORT (18001): Policy Engine policy chain configs
+export GATEWAY_CONTROLLER_HOST="${GATEWAY_CONTROLLER_HOST:-gateway-controller}"
+export ROUTER_XDS_PORT="${ROUTER_XDS_PORT:-18000}"
+export POLICY_ENGINE_XDS_PORT="${POLICY_ENGINE_XDS_PORT:-18001}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
+export XDS_SERVER_HOST="${GATEWAY_CONTROLLER_HOST}"
+export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
+
+# Policy Engine xDS address
+PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
 
 POLICY_ENGINE_SOCKET="/app/policy-engine.sock"
 
 log "Starting Gateway Runtime"
-log "  xDS Server: ${XDS_SERVER_HOST}:${XDS_SERVER_PORT}"
+log "  Gateway Controller: ${GATEWAY_CONTROLLER_HOST}"
+log "  Router xDS: ${GATEWAY_CONTROLLER_HOST}:${ROUTER_XDS_PORT}"
+log "  Policy Engine xDS: ${PE_XDS_SERVER}"
 log "  Log Level: ${LOG_LEVEL}"
 log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"
 [[ ${#ROUTER_ARGS[@]} -gt 0 ]] && log "  Router extra args: ${ROUTER_ARGS[*]}"
@@ -124,7 +138,7 @@ trap shutdown SIGTERM SIGINT SIGQUIT
 
 # Start Policy Engine with [pol] log prefix
 log "Starting Policy Engine..."
-/app/policy-engine "${PE_ARGS[@]}" \
+/app/policy-engine -xds-server "${PE_XDS_SERVER}" "${PE_ARGS[@]}" \
     > >(while IFS= read -r line; do echo "[pol] $line"; done) \
     2> >(while IFS= read -r line; do echo "[pol] $line" >&2; done) &
 PE_PID=$!

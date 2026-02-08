@@ -450,8 +450,7 @@ gateway:
       enabled: true
       replicaCount: 1
       env:
-        xdsServerHost: ""
-        xdsServerPort: ""
+        gatewayControllerHost: ""
         logLevel: info
       extraEnv: []
       # extraEnvFrom:

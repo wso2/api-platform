@@ -132,8 +132,7 @@ RUN groupadd -r -g 10001 wso2 && \
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage
 
-ENV XDS_SERVER_HOST=gateway-controller \
-    XDS_SERVER_PORT=18000 \
+ENV GATEWAY_CONTROLLER_HOST=gateway-controller \
     LOG_LEVEL=info
 
 USER wso2

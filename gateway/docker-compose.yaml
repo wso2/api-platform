@@ -61,8 +61,7 @@ services:
       - "9002:9002"   # Policy Engine admin
       - "9003:9003"   # Policy Engine metrics
     environment:
-      - XDS_SERVER_HOST=gateway-controller
-      - XDS_SERVER_PORT=18000
+      - GATEWAY_CONTROLLER_HOST=gateway-controller
       - LOG_LEVEL=info
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro

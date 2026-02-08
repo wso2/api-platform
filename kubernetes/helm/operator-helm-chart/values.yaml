@@ -516,8 +516,7 @@ gateway:
           enabled: true
           replicaCount: 1
           env:
-            xdsServerHost: ""
-            xdsServerPort: ""
+            gatewayControllerHost: ""
           extraEnv: []
           labels: {}
           annotations: {}
