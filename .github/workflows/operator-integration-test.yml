@@ -34,6 +34,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
@@ -58,8 +60,7 @@ jobs:
       - name: Load images into Kind
         run: |
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-controller:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
-          kind load docker-image ${{ env.DOCKER_REGISTRY }}/policy-engine:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
-          kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-router:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-runtime:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/mock-jwks:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
 
@@ -710,9 +711,9 @@ jobs:
                     tolerations: []
                     affinity: {}
 
-                router:
+                gatewayRuntime:
                   image:
-                    repository: localhost/gateway-router
+                    repository: localhost/gateway-runtime
                     tag: "test"
                     pullPolicy: Never
                   imagePullSecrets: []
@@ -723,13 +724,12 @@ jobs:
                     ports:
                       http: 8080
                       https: 8443
-                      admin: 9901
+                      envoyAdmin: 9901
+                      policyEngineAdmin: 9002
+                      policyEngineMetrics: 9003
                   deployment:
                     enabled: true
                     replicaCount: 1
-                    env:
-                      xdsServerHost: ""
-                      xdsServerPort: ""
                     extraEnv: []
                     labels: {}
                     annotations: {}
@@ -739,7 +739,7 @@ jobs:
                     livenessProbe:
                       httpGet:
                         path: /server_info
-                        port: admin
+                        port: envoy-admin
                       initialDelaySeconds: 30
                       periodSeconds: 10
                       timeoutSeconds: 5
@@ -747,74 +747,12 @@ jobs:
                     readinessProbe:
                       httpGet:
                         path: /server_info
-                        port: admin
+                        port: envoy-admin
                       initialDelaySeconds: 10
                       periodSeconds: 5
                       timeoutSeconds: 3
                       failureThreshold: 6
-                    # Resource limits and requests
-                    # Uncomment and adjust based on your workload
                     resources: {}
-                      # limits:
-                      #   cpu: 1000m
-                      #   memory: 1Gi
-                      # requests:
-                      #   cpu: 500m
-                      #   memory: 512Mi
-                    podSecurityContext: {}
-                    securityContext: {}
-                    nodeSelector: {}
-                    tolerations: []
-                    affinity: {}
-
-                policyEngine:
-                  image:
-                    repository: localhost/policy-engine
-                    tag: "test"
-                    pullPolicy: Never
-                  imagePullSecrets: []
-                  service:
-                    type: ClusterIP
-                    annotations: {}
-                    labels: {}
-                    ports:
-                      ext: 9001
-                      admin: 9002
-                  deployment:
-                    enabled: true
-                    replicaCount: 1
-                    env:
-                      xdsServerAddress: ""
-                    extraEnv: []
-                    labels: {}
-                    annotations: {}
-                    podAnnotations: {}
-                    podLabels: {}
-                    priorityClassName: ""
-                    # Basic health checks — adjust if policy-engine exposes HTTP health endpoints
-                    livenessProbe:
-                      tcpSocket:
-                        port: ext
-                      initialDelaySeconds: 10
-                      periodSeconds: 10
-                      timeoutSeconds: 5
-                      failureThreshold: 3
-                    readinessProbe:
-                      tcpSocket:
-                        port: ext
-                      initialDelaySeconds: 5
-                      periodSeconds: 5
-                      timeoutSeconds: 3
-                      failureThreshold: 3
-                    # Resource limits and requests
-                    # Uncomment and adjust based on your workload
-                    resources: {}
-                      # limits:
-                      #   cpu: 500m
-                      #   memory: 512Mi
-                      # requests:
-                      #   cpu: 250m
-                      #   memory: 256Mi
                     podSecurityContext: {}
                     securityContext: {}
                     nodeSelector: {}
@@ -878,7 +816,7 @@ jobs:
         run: |
           # Port forward the router
           sleep 10
-          kubectl port-forward svc/test-gateway-gateway-router 8080:8080 &
+          kubectl port-forward svc/test-gateway-gateway-runtime 8080:8080 &
           sleep 10
 
           echo "Testing API invocation..."
@@ -1095,14 +1033,13 @@ jobs:
           echo "Waiting for deployment update..."
           # Give the operator a moment to detect and start the upgrade
           sleep 5
-          kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gateway-router --timeout=180s
+          kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gateway-runtime --timeout=180s
           
           echo "Deployment metadata updated. Waiting for rollout to complete..."
           
           # Wait for the deployments to finish rolling out to ensure stability
           kubectl rollout status deployment/test-gateway-gateway-controller --timeout=300s
-          kubectl rollout status deployment/test-gateway-gateway-router --timeout=300s
-          kubectl rollout status deployment/test-gateway-gateway-policy-engine --timeout=300s || true
+          kubectl rollout status deployment/test-gateway-gateway-runtime --timeout=300s
           
           echo "Waiting for Gateway CR to be Programmed..."
           kubectl wait --for=condition=Programmed apigateway/test-gateway --timeout=180s
@@ -1320,14 +1257,14 @@ jobs:
           
           # Wait for the router deployment to be fully ready
           echo "Waiting for scoped gateway router deployment rollout..."
-          kubectl rollout status deployment/scoped-gateway-gateway-router -n scoped-test --timeout=120s
+          kubectl rollout status deployment/scoped-gateway-gateway-runtime -n scoped-test --timeout=120s
           
           # Additional wait for Envoy to initialize and start listening
           echo "Waiting for router to be ready to accept connections..."
           sleep 10
           
           # Port forward the scoped gateway router
-          kubectl port-forward svc/scoped-gateway-gateway-router -n scoped-test 9090:8080 &
+          kubectl port-forward svc/scoped-gateway-gateway-runtime -n scoped-test 9090:8080 &
           PF_PID=$!
           sleep 5
           
@@ -1444,20 +1381,12 @@ jobs:
           kubectl logs -n scoped-test -l app.kubernetes.io/component=controller --tail=200 || true
           
           echo ""
-          echo "=== Router Logs ==="
-          kubectl logs -l app.kubernetes.io/component=router --tail=200 || true
+          echo "=== Gateway Runtime Logs ==="
+          kubectl logs -l app.kubernetes.io/component=gateway-runtime --tail=200 || true
 
           echo ""
-          echo "=== Scoped Router Logs ==="
-          kubectl logs -n scoped-test -l app.kubernetes.io/component=router --tail=200 || true
-
-          echo ""
-          echo "=== Policy Engine Logs ==="
-          kubectl logs -l app.kubernetes.io/component=policy-engine --tail=200 || true
-
-          echo ""
-          echo "=== Scoped Policy Engine Logs ==="
-          kubectl logs -n scoped-test -l app.kubernetes.io/component=policy-engine --tail=200 || true
+          echo "=== Scoped Gateway Runtime Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/component=gateway-runtime --tail=200 || true
 
           echo ""
           echo "=== All Pods ==="
