@@ -167,10 +167,11 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 }
 
 // ValidateAPIKey validates the provided API key against the internal APIkey store
-// Supports both local and external keys using unified hash-based lookup
-func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string) (bool, error) {
-	aks.mu.RLock()
-	defer aks.mu.RUnlock()
+// Supports both local keys (with format: key_id) and external keys (any format)
+// Returns: (isValid bool, apiKey *APIKey, error)
+func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string) (bool, *APIKey, error) {
+	aks.mu.Lock()
+	defer aks.mu.Unlock()
 
 	// Normalize the provided API key
 	providedAPIKey = strings.TrimSpace(providedAPIKey)
@@ -192,18 +193,18 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 
 	// Check if the API key belongs to the specified API
 	if targetAPIKey.APIId != apiId {
-		return false, nil
+		return false, nil, nil
 	}
 
 	// Check if the API key is active
 	if targetAPIKey.Status != Active {
-		return false, nil
+		return false, nil, nil
 	}
 
 	// Check if the API key has expired
 	if targetAPIKey.Status == Expired || (targetAPIKey.ExpiresAt != nil && time.Now().After(*targetAPIKey.ExpiresAt)) {
 		targetAPIKey.Status = Expired
-		return false, nil
+		return false, nil, nil
 	}
 
 	// Check if the API key has access to the requested operation
@@ -211,13 +212,13 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	// Example: ["GET /{country_code}/{city}", "POST /data"], ["*"] for allow all operations
 	var operations []string
 	if err := json.Unmarshal([]byte(targetAPIKey.Operations), &operations); err != nil {
-		return false, fmt.Errorf("invalid operations format: %w", err)
+		return false, nil, fmt.Errorf("invalid operations format: %w", err)
 	}
 
 	// Check if wildcard is present
 	for _, op := range operations {
 		if strings.TrimSpace(op) == "*" {
-			return true, nil
+			return true, targetAPIKey, nil
 		}
 	}
 
@@ -225,12 +226,12 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	requestedOperation := fmt.Sprintf("%s %s", operationMethod, apiOperation)
 	for _, op := range operations {
 		if strings.TrimSpace(op) == requestedOperation {
-			return true, nil
+			return true, targetAPIKey, nil
 		}
 	}
 
 	// Operation not found in allowed list
-	return false, nil
+	return false, nil, nil
 }
 
 // RevokeAPIKey revokes a specific API key by plain text API key value
