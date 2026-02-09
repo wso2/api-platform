@@ -35,31 +35,15 @@ Feature: Gateway Metrics
     And the response should contain Prometheus metrics
 
   Scenario: Gateway controller metrics reflect API operations
-    Given I authenticate using basic auth as "admin"
-    When I deploy an API with the following configuration:
-      """
-      {
-        "name": "metrics-test-api",
-        "version": "1.0",
-        "basePath": "/metrics-test-api",
-        "backend": {
-          "url": "http://sample-backend:9080"
-        },
-        "routes": [
-          {
-            "path": "/test",
-            "methods": ["GET"]
-          }
-        ]
-      }
-      """
+    Given I am authenticated as "admin" with password "admin"
+    When I create a new API with name "metrics-test-api"
     And I send a GET request to the gateway controller metrics endpoint
     Then the response should contain metric "gateway_controller_api_operations_total"
     And the response should contain metric "gateway_controller_apis_total"
 
   Scenario: Policy engine metrics reflect request processing
-    Given I authenticate using basic auth as "admin"
-    And I deploy an API with the following configuration:
+    Given I am authenticated as "admin" with password "admin"
+    And I create a new API with the following configuration:
       """
       {
         "name": "metrics-api",
@@ -76,8 +60,8 @@ Feature: Gateway Metrics
         ]
       }
       """
-    And I wait for the endpoint "http://localhost:8080/metrics-api/1.0/test" to be ready
-    When I send a GET request to the "router" service at "/metrics-api/test"
+    And I wait for API deployment to complete
+    When I send a GET request to "/metrics-api/test" through the router
     Then the response status code should be 200
     When I send a GET request to the policy engine metrics endpoint
     Then the response should contain metric "policy_engine_requests_total"
@@ -108,8 +92,8 @@ Feature: Gateway Metrics
     And the response should contain metric "process_cpu_seconds_total"
 
   Scenario: Policy engine metrics track policy execution after API request
-    Given I authenticate using basic auth as "admin"
-    And I deploy an API with the following configuration:
+    Given I am authenticated as "admin" with password "admin"
+    And I create a new API with the following configuration:
       """
       {
         "name": "policy-metrics-api",
@@ -126,16 +110,16 @@ Feature: Gateway Metrics
         ]
       }
       """
-    And I wait for the endpoint "http://localhost:8080/policy-metrics-api/1.0/invoke" to be ready
-    When I send a GET request to the "router" service at "/policy-metrics-api/invoke"
+    And I wait for API deployment to complete
+    When I send a GET request to "/policy-metrics-api/invoke" through the router
     Then the response status code should be 200
     When I send a GET request to the policy engine metrics endpoint
     Then the response should contain metric "policy_engine_request_duration_seconds"
     And the response should contain metric "policy_engine_context_build_duration_seconds"
 
   Scenario: Policy engine tracks policy chain configuration
-    Given I authenticate using basic auth as "admin"
-    And I deploy an API with the following configuration:
+    Given I am authenticated as "admin" with password "admin"
+    And I create a new API with the following configuration:
       """
       {
         "name": "chain-metrics-api",
@@ -152,7 +136,7 @@ Feature: Gateway Metrics
         ]
       }
       """
-    And I wait for the endpoint "http://localhost:8080/chain-metrics-api/1.0/test" to be ready
+    And I wait for API deployment to complete
     When I send a GET request to the policy engine metrics endpoint
     Then the response status code should be 200
     And the response should contain metric "policy_engine_policy_chains_loaded"
