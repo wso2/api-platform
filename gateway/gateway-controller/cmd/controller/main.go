@@ -50,6 +50,10 @@ func main() {
 		os.Exit(1)
 	}
 
+
+
+
+	
 	// Load configuration
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
