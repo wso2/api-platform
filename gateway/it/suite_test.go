@@ -74,7 +74,7 @@ func TestFeatures(t *testing.T) {
 			Format: "pretty",
 			Paths: []string{
 				"features/health.feature",
-				// "features/metrics.feature",
+				"features/metrics.feature",
 				"features/api_deploy.feature",
 				"features/mcp_deploy.feature",
 				"features/ratelimit.feature",
