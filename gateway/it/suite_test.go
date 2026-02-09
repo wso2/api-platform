@@ -76,6 +76,7 @@ func TestFeatures(t *testing.T) {
 				"features/health.feature",
 				"features/metrics.feature",
 				"features/api_deploy.feature",
+				"features/backend_timeout.feature",
 				"features/mcp_deploy.feature",
 				"features/ratelimit.feature",
 				"features/jwt-auth.feature",
@@ -270,6 +271,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterMetricsSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
+		RegisterBackendTimeoutSteps(ctx, testState)
 		RegisterMCPSteps(ctx, testState, httpSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)

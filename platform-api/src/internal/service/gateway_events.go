@@ -216,13 +216,13 @@ func (s *GatewayEventsService) BroadcastUndeploymentEvent(gatewayID string, unde
 // - Up to 2 attempts per call (no backoff; caller should handle broader retry logic if needed)
 // - Payload size validation
 // - Delivery statistics tracking
-func (s *GatewayEventsService) BroadcastAPIKeyCreatedEvent(gatewayID string, event *model.APIKeyCreatedEvent) error {
+func (s *GatewayEventsService) BroadcastAPIKeyCreatedEvent(gatewayID, userId string, event *model.APIKeyCreatedEvent) error {
 	const maxAttempts = 2
 
 	var lastError error
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		err := s.broadcastAPIKeyCreated(gatewayID, event)
+		err := s.broadcastAPIKeyCreated(gatewayID, userId, event)
 		if err == nil {
 			return nil
 		}
@@ -245,14 +245,14 @@ func (s *GatewayEventsService) BroadcastAPIKeyCreatedEvent(gatewayID string, eve
 // - Up to 2 attempts per call (no backoff; caller should handle broader retry logic if needed)
 // - Payload size validation
 // - Delivery statistics tracking
-func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID string, event *model.APIKeyRevokedEvent) error {
+func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID, userId string, event *model.APIKeyRevokedEvent) error {
 	const maxAttempts = 2
 
 	var lastError error
 
 	// Up to 2 attempts (no backoff)
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		err := s.broadcastAPIKeyRevoked(gatewayID, event)
+		err := s.broadcastAPIKeyRevoked(gatewayID, userId, event)
 		if err == nil {
 			return nil
 		}
@@ -268,7 +268,7 @@ func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID string, eve
 }
 
 // broadcastAPIKeyCreated is the internal implementation for broadcasting API key created events
-func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID string, event *model.APIKeyCreatedEvent) error {
+func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID, userId string, event *model.APIKeyCreatedEvent) error {
 	// Create correlation ID for tracing
 	correlationID := uuid.New().String()
 
@@ -290,6 +290,7 @@ func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID string, event *m
 		Payload:       event,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
+		UserId:        userId,
 	}
 
 	// Serialize complete event
@@ -338,7 +339,7 @@ func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID string, event *m
 }
 
 // broadcastAPIKeyRevoked is the internal implementation for broadcasting API key revoked events
-func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID string, event *model.APIKeyRevokedEvent) error {
+func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID, userId string, event *model.APIKeyRevokedEvent) error {
 	// Create correlation ID for tracing
 	correlationID := uuid.New().String()
 
@@ -360,6 +361,7 @@ func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID string, event *m
 		Payload:       event,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
+		UserId:        userId,
 	}
 
 	// Serialize complete event
@@ -415,14 +417,14 @@ func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID string, event *m
 // - Up to 2 attempts per call (no backoff; caller should handle broader retry logic if needed)
 // - Payload size validation
 // - Delivery statistics tracking
-func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID string, event *model.APIKeyUpdatedEvent) error {
+func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID, userId string, event *model.APIKeyUpdatedEvent) error {
 	const maxAttempts = 2
 
 	var lastError error
 
 	// Up to 2 attempts (no backoff)
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		err := s.broadcastAPIKeyUpdated(gatewayID, event)
+		err := s.broadcastAPIKeyUpdated(gatewayID, userId, event)
 		if err == nil {
 			return nil
 		}
@@ -438,7 +440,7 @@ func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID string, eve
 }
 
 // broadcastAPIKeyUpdated is the internal implementation for broadcasting API key updated events
-func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID string, event *model.APIKeyUpdatedEvent) error {
+func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID, userId string, event *model.APIKeyUpdatedEvent) error {
 	// Create correlation ID for tracing
 	correlationID := uuid.New().String()
 
@@ -460,6 +462,7 @@ func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID string, event *m
 		Payload:       event,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
+		UserId:        userId,
 	}
 
 	// Serialize complete event

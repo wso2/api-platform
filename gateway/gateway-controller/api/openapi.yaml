@@ -1871,6 +1871,11 @@ components:
           minLength: 1
           maxLength: 200
           example: /weather
+        upstreamDefinitions:
+          type: array
+          description: List of reusable upstream definitions with optional timeout configurations
+          items:
+            $ref: "#/components/schemas/UpstreamDefinition"
         upstream:
           type: object
           required:
@@ -1908,6 +1913,56 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/Operation"
+
+    UpstreamDefinition:
+      type: object
+      required:
+        - name
+        - upstreams
+      description: Reusable upstream configuration with optional timeout and load balancing settings
+      properties:
+        name:
+          type: string
+          description: Unique identifier for this upstream definition
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          example: my-upstream-1
+        timeout:
+          $ref: "#/components/schemas/UpstreamTimeout"
+        upstreams:
+          type: array
+          description: List of backend targets with optional weights
+          minItems: 1
+          items:
+            type: object
+            required:
+              - urls
+            properties:
+              urls:
+                type: array
+                description: Backend URLs for this upstream target
+                minItems: 1
+                items:
+                  type: string
+                  format: uri
+                  example: http://prod-backend-1:5000/api/v2
+              weight:
+                type: integer
+                description: Weight for load balancing (optional, default 100)
+                minimum: 0
+                maximum: 100
+                example: 80
+
+    UpstreamTimeout:
+      type: object
+      description: Timeout configuration for upstream requests
+      properties:
+        connect:
+          type: string
+          description: Connection timeout duration (e.g., "5s", "500ms")
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 5s
 
     Upstream:
       type: object

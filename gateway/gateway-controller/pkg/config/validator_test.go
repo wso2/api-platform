@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
 
@@ -568,4 +569,304 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 		}
 		assert.True(t, hasLabelError, "WebSubApi should reject labels with spaces in keys")
 	})
+}
+
+func TestValidateUpstreamDefinitions_Valid(t *testing.T) {
+	validator := NewAPIValidator()
+
+	timeout := "30s"
+	weight := 80
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream-1",
+			Timeout: &api.UpstreamTimeout{
+				Connect: &timeout,
+			},
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls:   []string{"http://backend-1:8080"},
+					Weight: &weight,
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	assert.Empty(t, errors)
+}
+
+func TestValidateUpstreamDefinitions_DuplicateNames(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend-1:8080"},
+				},
+			},
+		},
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend-2:8080"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[1].name", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "Duplicate upstream definition name")
+}
+
+func TestValidateUpstreamDefinitions_MissingName(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].name", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "name is required")
+}
+
+func TestValidateUpstreamDefinitions_NoUpstreams(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name:      "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "At least one upstream target is required")
+}
+
+func TestValidateUpstreamDefinitions_NoURLs(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "At least one URL is required")
+}
+
+func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"not-a-valid-url"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.NotEmpty(t, errors)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls[0]", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "must use http or https scheme")
+}
+
+func TestValidateUpstreamDefinitions_InvalidURL_MissingHost(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls[0]", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "URL must include a host")
+}
+
+func TestValidateUpstreamDefinitions_InvalidWeight(t *testing.T) {
+	validator := NewAPIValidator()
+
+	invalidWeight := 150
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls:   []string{"http://backend:8080"},
+					Weight: &invalidWeight,
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].weight", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "Weight must be between 0 and 100")
+}
+
+func TestValidateUpstreamDefinitions_NoTimeout(t *testing.T) {
+	validator := NewAPIValidator()
+
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	assert.Empty(t, errors, "No timeout should be valid")
+}
+
+func TestValidateUpstreamRef_ValidRef(t *testing.T) {
+	validator := NewAPIValidator()
+
+	ref := "my-upstream"
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamRef("main", &ref, definitions)
+	assert.Empty(t, errors)
+}
+
+func TestValidateUpstreamRef_RefNotFound(t *testing.T) {
+	validator := NewAPIValidator()
+
+	ref := "non-existent"
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamRef("main", &ref, definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstream.main.ref", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "Referenced upstream definition 'non-existent' not found")
+}
+
+func TestValidateUpstreamRef_NoDefinitions(t *testing.T) {
+	validator := NewAPIValidator()
+
+	ref := "my-upstream"
+
+	errors := validator.validateUpstreamRef("main", &ref, nil)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstream.main.ref", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "no upstreamDefinitions provided")
+}
+
+func TestValidateUpstream_WithRefAndDefinitions(t *testing.T) {
+	validator := NewAPIValidator()
+
+	ref := "my-upstream"
+	upstream := &api.Upstream{
+		Ref: &ref,
+	}
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name: "my-upstream",
+			Upstreams: []struct {
+				Urls   []string `json:"urls" yaml:"urls"`
+				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{
+					Urls: []string{"http://backend:8080"},
+				},
+			},
+		},
+	}
+
+	errors := validator.validateUpstream("main", upstream, definitions)
+	assert.Empty(t, errors)
 }

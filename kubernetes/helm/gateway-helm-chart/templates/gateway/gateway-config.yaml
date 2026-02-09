@@ -65,19 +65,19 @@ data:
     maximum_protocol_version = {{ $gc.router.downstream_tls.maximum_protocol_version | quote }}
     ciphers = {{ $gc.router.downstream_tls.ciphers | quote }}
 
-    [gateway_controller.router.envoy_upstream.tls]
-    minimum_protocol_version = {{ $gc.router.envoy_upstream.tls.minimum_protocol_version | quote }}
-    maximum_protocol_version = {{ $gc.router.envoy_upstream.tls.maximum_protocol_version | quote }}
-    ciphers = {{ $gc.router.envoy_upstream.tls.ciphers | quote }}
-    trusted_cert_path = {{ $gc.router.envoy_upstream.tls.trusted_cert_path | quote }}
-    custom_certs_path = {{ $gc.router.envoy_upstream.tls.custom_certs_path | quote }}
-    verify_host_name = {{ $gc.router.envoy_upstream.tls.verify_host_name }}
-    disable_ssl_verification = {{ $gc.router.envoy_upstream.tls.disable_ssl_verification }}
+    [gateway_controller.router.upstream.tls]
+    minimum_protocol_version = {{ $gc.router.upstream.tls.minimum_protocol_version | quote }}
+    maximum_protocol_version = {{ $gc.router.upstream.tls.maximum_protocol_version | quote }}
+    ciphers = {{ $gc.router.upstream.tls.ciphers | quote }}
+    trusted_cert_path = {{ $gc.router.upstream.tls.trusted_cert_path | quote }}
+    custom_certs_path = {{ $gc.router.upstream.tls.custom_certs_path | quote }}
+    verify_host_name = {{ $gc.router.upstream.tls.verify_host_name }}
+    disable_ssl_verification = {{ $gc.router.upstream.tls.disable_ssl_verification }}
 
-    [gateway_controller.router.envoy_upstream.timeouts]
-    route_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.route_timeout_in_seconds }}
-    max_route_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.max_route_timeout_in_seconds }}
-    route_idle_timeout_in_seconds = {{ $gc.router.envoy_upstream.timeouts.route_idle_timeout_in_seconds }}
+    [gateway_controller.router.upstream.timeouts]
+    route_timeout_in_ms = {{ $gc.router.upstream.timeouts.route_timeout_in_ms }}
+    route_idle_timeout_in_ms = {{ $gc.router.upstream.timeouts.route_idle_timeout_in_ms }}
+    connect_timeout_in_ms = {{ $gc.router.upstream.timeouts.connect_timeout_in_ms }}
 
     [gateway_controller.router.policy_engine]
     enabled = {{ $gc.router.policy_engine.enabled }}

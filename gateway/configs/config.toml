@@ -2,6 +2,10 @@
 [analytics]
 enabled = false
 
+[[analytics.publishers]]
+type = "moesif"
+enabled = true
+
 [analytics.publishers.settings]
 application_id = "<MOESIF_APPLICATION_ID>"
 
