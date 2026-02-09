@@ -38,20 +38,20 @@ Feature: Gateway Metrics
     Given I authenticate using basic auth as "admin"
     When I deploy an API with the following configuration:
       """
-      {
-        "name": "metrics-test-api",
-        "version": "1.0",
-        "basePath": "/metrics-test-api",
-        "backend": {
-          "url": "http://sample-backend:9080"
-        },
-        "routes": [
-          {
-            "path": "/test",
-            "methods": ["GET"]
-          }
-        ]
-      }
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: metrics-test-api
+      spec:
+        displayName: Metrics Test API
+        context: /metrics-test-api
+        version: 1.0.0
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - path: /test
+            method: GET
       """
     And I send a GET request to the gateway controller metrics endpoint
     Then the response should contain metric "gateway_controller_api_operations_total"
