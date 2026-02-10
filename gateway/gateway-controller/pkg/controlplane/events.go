@@ -43,6 +43,37 @@ type APIDeployedEvent struct {
 	CorrelationID string                  `json:"correlationId"`
 }
 
+// LLMProviderDeployedEventPayload represents the payload of an LLM provider deployment event
+type LLMProviderDeployedEventPayload struct {
+	ProviderID   string `json:"providerId"`
+	Environment  string `json:"environment"`
+	DeploymentID string `json:"deploymentId"`
+	VHost        string `json:"vhost"`
+}
+
+// LLMProviderDeployedEvent represents the complete LLM provider deployment event
+type LLMProviderDeployedEvent struct {
+	Type          string                          `json:"type"`
+	Payload       LLMProviderDeployedEventPayload `json:"payload"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
+}
+
+// LLMProviderUndeployedEventPayload represents the payload of an LLM provider undeployment event
+type LLMProviderUndeployedEventPayload struct {
+	ProviderID  string `json:"providerId"`
+	Environment string `json:"environment"`
+	VHost       string `json:"vhost"`
+}
+
+// LLMProviderUndeployedEvent represents the complete LLM provider undeployment event
+type LLMProviderUndeployedEvent struct {
+	Type          string                            `json:"type"`
+	Payload       LLMProviderUndeployedEventPayload `json:"payload"`
+	Timestamp     string                            `json:"timestamp"`
+	CorrelationID string                            `json:"correlationId"`
+}
+
 // APIUndeployedEventPayload represents the payload of an API undeployment event
 type APIUndeployedEventPayload struct {
 	APIID       string `json:"apiId"`
