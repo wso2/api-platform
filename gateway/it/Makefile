@@ -24,22 +24,23 @@ COVERAGE_IMAGES := gateway-controller-coverage gateway-runtime-coverage
 
 COMPOSE_FILE ?= docker-compose.test.yaml
 
-# Ensure :test tagged images exist; if not, tag from :VERSION
+# Refresh :test tags from :VERSION images when available.
+# If :VERSION is unavailable but :test already exists, keep using :test.
 # Tries coverage image first (from make build-coverage), then falls back to
 # non-coverage image (from make build-local) for local development convenience.
 ensure-test-tags:
 	@for img in $(COVERAGE_IMAGES); do \
-		if ! docker image inspect $(DOCKER_REGISTRY)/$$img:test >/dev/null 2>&1; then \
-			base=$${img%-coverage}; \
-			if docker image inspect $(DOCKER_REGISTRY)/$$img:$(VERSION) >/dev/null 2>&1; then \
-				echo "Tagging $(DOCKER_REGISTRY)/$$img:$(VERSION) -> :test"; \
-				docker tag $(DOCKER_REGISTRY)/$$img:$(VERSION) $(DOCKER_REGISTRY)/$$img:test; \
-			elif docker image inspect $(DOCKER_REGISTRY)/$$base:$(VERSION) >/dev/null 2>&1; then \
-				echo "Tagging $(DOCKER_REGISTRY)/$$base:$(VERSION) -> $(DOCKER_REGISTRY)/$$img:test"; \
-				docker tag $(DOCKER_REGISTRY)/$$base:$(VERSION) $(DOCKER_REGISTRY)/$$img:test; \
-			else \
-				echo "Error: No image found for $$img. Run 'make build-coverage' or 'make build-local' in gateway/ first." && exit 1; \
-			fi; \
+		base=$${img%-coverage}; \
+		if docker image inspect $(DOCKER_REGISTRY)/$$img:$(VERSION) >/dev/null 2>&1; then \
+			echo "Tagging $(DOCKER_REGISTRY)/$$img:$(VERSION) -> $(DOCKER_REGISTRY)/$$img:test"; \
+			docker tag $(DOCKER_REGISTRY)/$$img:$(VERSION) $(DOCKER_REGISTRY)/$$img:test; \
+		elif docker image inspect $(DOCKER_REGISTRY)/$$base:$(VERSION) >/dev/null 2>&1; then \
+			echo "Tagging $(DOCKER_REGISTRY)/$$base:$(VERSION) -> $(DOCKER_REGISTRY)/$$img:test"; \
+			docker tag $(DOCKER_REGISTRY)/$$base:$(VERSION) $(DOCKER_REGISTRY)/$$img:test; \
+		elif docker image inspect $(DOCKER_REGISTRY)/$$img:test >/dev/null 2>&1; then \
+			echo "Using existing $(DOCKER_REGISTRY)/$$img:test (no :$(VERSION) image found)"; \
+		else \
+			echo "Error: No image found for $$img (:$(VERSION) or :test). Run 'make build-coverage' or 'make build-local' in gateway/ first." && exit 1; \
 		fi; \
 	done
 
