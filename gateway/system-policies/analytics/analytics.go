@@ -32,7 +32,7 @@ const (
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
 
 	// AuthContext key for user ID (used for analytics)
-	AuthContextKeyUserID    = "x-wso2-user-id"
+	AuthContextKeyUserID = "x-wso2-user-id"
 
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
@@ -59,22 +59,22 @@ var (
 type AnalyticsPolicy struct{}
 
 type McpRequestAnalyticsProperties struct {
-    JsonRpcMethod  string         `json:"jsonRpcMethod,omitempty"`
-    Capability     string         `json:"capability,omitempty"`
-    CapabilityName string         `json:"capabilityName,omitempty"`
-    ClientInfo     *McpClientInfo `json:"clientInfo,omitempty"`
+	JsonRpcMethod  string         `json:"jsonRpcMethod,omitempty"`
+	Capability     string         `json:"capability,omitempty"`
+	CapabilityName string         `json:"capabilityName,omitempty"`
+	ClientInfo     *McpClientInfo `json:"clientInfo,omitempty"`
 	ServerInfo     *McpServerInfo `json:"serverInfo,omitempty"`
 }
 
 type McpClientInfo struct {
-    RequestedProtocolVersion string `json:"requestedProtocolVersion"`
-    Name                     string `json:"name"`
-    Version                  string `json:"version"`
+	RequestedProtocolVersion string `json:"requestedProtocolVersion"`
+	Name                     string `json:"name"`
+	Version                  string `json:"version"`
 }
 
 type McpServerInfo struct {
-	ProtocolVersion string                 `json:"protocolVersion,omitempty"`
-	ServerInfo      *McpServerInfoDetails  `json:"serverInfo,omitempty"`
+	ProtocolVersion string                `json:"protocolVersion,omitempty"`
+	ServerInfo      *McpServerInfoDetails `json:"serverInfo,omitempty"`
 }
 
 type McpServerInfoDetails struct {
@@ -83,8 +83,8 @@ type McpServerInfoDetails struct {
 }
 
 type McpResponseAnalyticsProperties struct {
-    IsError   bool `json:"isError,omitempty"`
-    ErrorCode int  `json:"errorCode,omitempty"`
+	IsError   bool `json:"isError,omitempty"`
+	ErrorCode int  `json:"errorCode,omitempty"`
 }
 
 // LLMTokenInfo holds extracted token-related information from LLM provider responses
@@ -123,7 +123,7 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("Analytics system policy: OnRequest called")
 	allowPayloads := getAllowPayloadsFlag(params)
-    // Store tokenInfo in analytics metadata for publishing
+	// Store tokenInfo in analytics metadata for publishing
 	analyticsMetadata := make(map[string]any)
 
 	// When allow_payloads is enabled, capture the raw request body into analytics metadata.
@@ -131,7 +131,6 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 		slog.Debug("Capturing request payload for analytics")
 		analyticsMetadata["request_payload"] = string(ctx.Body.Content)
 	}
-
 
 	// Extract common analytics data from the request
 	// Based on the API kind, collect the analytics data
@@ -147,7 +146,7 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 		// Currently no data is collected
 	case KindMCP:
 		// Collect analytics data specific for MCP scenario from request
-		if ctx.Headers != nil  && len(ctx.Headers.GetAll()) > 0 {
+		if ctx.Headers != nil && len(ctx.Headers.GetAll()) > 0 {
 			// Need to get the mcp-session-id from headers
 			sessionIDs := ctx.Headers.Get("mcp-session-id")
 			if len(sessionIDs) > 0 {
@@ -184,9 +183,9 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 
 			// Populate client info
 			clientInfo := McpClientInfo{
-				RequestedProtocolVersion: extractStringFromJsonpath(mcpPayload,ProtocolVersionJsonPath),
-				Name:                     extractStringFromJsonpath(mcpPayload,ClientNameJsonPath),
-				Version:                  extractStringFromJsonpath(mcpPayload,ClientVersionJsonPath),
+				RequestedProtocolVersion: extractStringFromJsonpath(mcpPayload, ProtocolVersionJsonPath),
+				Name:                     extractStringFromJsonpath(mcpPayload, ClientNameJsonPath),
+				Version:                  extractStringFromJsonpath(mcpPayload, ClientVersionJsonPath),
 			}
 			// Only set ClientInfo pointer if at least one field is non-empty so that omitempty can exclude it from JSON
 			if clientInfo.RequestedProtocolVersion != "" || clientInfo.Name != "" || clientInfo.Version != "" {
@@ -244,13 +243,11 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 	analyticsMetadata := make(map[string]any)
 
 	// Extract user ID from AuthContext if available (set by jwt-auth policy)
-	if ctx.SharedContext.AuthContext != nil {
-		if userID, ok := ctx.SharedContext.AuthContext[AuthContextKeyUserID]; ok && userID != "" {
-			analyticsMetadata[AuthContextKeyUserID] = userID
-			slog.Debug("Analytics system policy: User ID extracted from AuthContext",
-				"userID", userID,
-			)
-		}
+	if ctx.SharedContext.AuthContext != nil && ctx.SharedContext.AuthContext.UserID != "" {
+		analyticsMetadata[AuthContextKeyUserID] = ctx.SharedContext.AuthContext.UserID
+		slog.Debug("Analytics system policy: User ID extracted from AuthContext",
+			"userID", ctx.SharedContext.AuthContext.UserID,
+		)
 	}
 
 	// Based on the API kind, collect the analytics data
@@ -315,7 +312,7 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 		}
 	case KindMCP:
 		// Collect the analytics data specific for MCP specific scenario
-		if ctx.ResponseHeaders != nil  && len(ctx.ResponseHeaders.GetAll()) > 0 {
+		if ctx.ResponseHeaders != nil && len(ctx.ResponseHeaders.GetAll()) > 0 {
 			if analyticsMetadata["mcp_session_id"] == nil {
 				sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")
 				if len(sessionIDs) > 0 {
@@ -328,7 +325,7 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 		if ctx != nil && ctx.ResponseBody != nil && len(ctx.ResponseBody.Content) > 0 {
 			var mcpResponsePayload map[string]interface{}
 			responseContent := ctx.ResponseBody.Content
-			
+
 			// Check if response is in SSE format by inspecting content-type or content structure
 			isSSE := false
 			if ctx.ResponseHeaders != nil {
@@ -337,12 +334,12 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 					isSSE = true
 				}
 			}
-			
+
 			// Also check content structure if header check didn't confirm SSE
 			if !isSSE && (strings.HasPrefix(string(responseContent), "event:") || strings.Contains(string(responseContent), "\ndata:")) {
 				isSSE = true
 			}
-			
+
 			// Parse SSE format if detected
 			if isSSE {
 				jsonData, err := parseSSEResponse(responseContent)
@@ -352,7 +349,7 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 					responseContent = jsonData
 				}
 			}
-			
+
 			// Unmarshal the JSON (either from SSE data field or direct response)
 			if err := json.Unmarshal(responseContent, &mcpResponsePayload); err != nil {
 				slog.Error("Failed to unmarshal MCP response body for server info analytics", "error", err)
@@ -362,12 +359,12 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 					Name:    extractStringFromJsonpath(mcpResponsePayload, ServerInfoNameJsonPath),
 					Version: extractStringFromJsonpath(mcpResponsePayload, ServerInfoVersionJsonPath),
 				}
-				
+
 				// Populate server info
 				serverInfo := McpServerInfo{
 					ProtocolVersion: extractStringFromJsonpath(mcpResponsePayload, ServerProtocolVersionJsonPath),
 				}
-				
+
 				// Only set ServerInfo pointer if at least one field is non-empty
 				if serverInfoDetails.Name != "" || serverInfoDetails.Version != "" {
 					serverInfo.ServerInfo = &serverInfoDetails

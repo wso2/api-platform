@@ -15,6 +15,47 @@ type Body struct {
 	Present bool
 }
 
+// AuthContext holds authentication data produced by auth policies (jwt, oauth2, apikey, basic-auth)
+// and consumed by downstream policies (analytics, rate limiting, etc.).
+type AuthContext struct {
+	// Authenticated indicates whether the request passed authentication.
+	Authenticated bool
+
+	// AuthType identifies the mechanism that authenticated the request.
+	// Values: "jwt", "oauth2", "apikey", "basic", or empty if unauthenticated.
+	AuthType string
+
+	// Subject is the authenticated principal identifier.
+	// JWT "sub" claim, basic-auth username, API key owner/app ID, etc.
+	Subject string
+
+	// Issuer is the token issuer (JWT "iss" claim, IdP URL).
+	// Empty for non-token auth types.
+	Issuer string
+
+	// Audience is the intended audience (JWT "aud" claim).
+	// Empty for non-token auth types.
+	Audience string
+
+	// Scopes contains granted OAuth2/JWT scopes as a set for O(1) lookup.
+	// Nil for non-token auth types.
+	Scopes map[string]bool
+
+	// AppID is the application identifier associated with the authenticated request.
+	// For API key auth, this is the application that owns the key.
+	// For OAuth2, this may be the client_id. Empty if not applicable.
+	AppID string
+
+	// UserID is the user identifier associated with the authenticated request.
+	// By default, this is the same as Subject, but can be set separately by auth policies if needed.
+	UserID string
+
+	// Properties holds additional auth-related key-value data for
+	// inter-policy communication that does not fit the typed fields above.
+	// Examples: email, custom JWT claims, API key tier.
+	Properties map[string]string
+}
+
 // SharedContext contains data shared across request and response phases
 type SharedContext struct {
 	// ProjectID is the project ID which the API is associated with
@@ -55,8 +96,8 @@ type SharedContext struct {
 	OperationPath string
 
 	// AuthContext stores authentication-related information
-	// Policies can read/write this map to share auth data (e.g., user ID)
-	AuthContext map[string]string
+	// Populated by auth policies, consumed by downstream policies
+	AuthContext *AuthContext
 }
 
 // RequestContext is mutable context for request phase containing current request state

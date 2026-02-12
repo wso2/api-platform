@@ -359,7 +359,10 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		APIContext:    routeMetadata.Context,
 		OperationPath: routeMetadata.OperationPath,
 		Metadata:      make(map[string]interface{}),
-		AuthContext:   make(map[string]string),
+		AuthContext: &policy.AuthContext{
+			Properties: make(map[string]string),
+			Scopes:     make(map[string]bool),
+		},
 	}
 	// Add template handle to metadata for LLM provider/proxy scenarios
 	if routeMetadata.TemplateHandle != "" {
