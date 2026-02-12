@@ -341,7 +341,7 @@ func (s *DevPortalService) UpdateDevPortal(uuid, orgUUID string, req *dto.Update
 	if req.Hostname != nil {
 		devPortal.Hostname = *req.Hostname
 	}
-	if req.APIKey != nil {
+	if req.APIKey != nil && strings.Trim(*req.APIKey, "*") != "" {
 		devPortal.APIKey = *req.APIKey
 	}
 	if req.HeaderKeyName != nil {

@@ -1,20 +1,35 @@
 // src/pages/PortalManagement.tsx
-import React, { useCallback, useMemo, useState } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Box, Typography } from "@mui/material";
-import { DevPortalProvider, useDevPortals } from "../context/DevPortalContext";
-import { useNotifications } from "../context/NotificationContext";
-import ErrorBoundary from "../components/ErrorBoundary";
-import PortalList from "./portals/PortalList";
-import PortalForm from "./portals/PortalForm";
-import ThemeContainer from "./portals/ThemeContainer";
-import { PORTAL_CONSTANTS } from "../constants/portal";
-import { getPortalMode, getPortalIdFromPath, navigateToPortalList, navigateToPortalCreate, navigateToPortalTheme, navigateToPortalEdit } from "../utils/portalUtils";
-import type { PortalManagementProps, PortalFormData } from "../types/portal";
+import React, { useCallback, useMemo, useState } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Box, Typography } from '@mui/material';
+import { DevPortalProvider, useDevPortals } from '../context/DevPortalContext';
+import { useNotifications } from '../context/NotificationContext';
+import ErrorBoundary from '../components/ErrorBoundary';
+import PortalList from './portals/PortalList';
+import PortalForm from './portals/PortalForm';
+import ThemeContainer from './portals/ThemeContainer';
+import { PORTAL_CONSTANTS } from '../constants/portal';
+import {
+  getPortalMode,
+  getPortalIdFromPath,
+  navigateToPortalList,
+  navigateToPortalCreate,
+  navigateToPortalTheme,
+  navigateToPortalEdit,
+} from '../utils/portalUtils';
+import type { CreatePortalPayload, UpdatePortalPayload } from '../hooks/devportals';
+
+type PortalManagementProps = Record<string, never>;
 
 const PortalManagementContent: React.FC<PortalManagementProps> = () => {
   // Context access (from DevPortalProvider)
-  const { devportals, loading, error, createDevPortal, updateDevPortal, activateDevPortal } = useDevPortals();
+  const {
+    devportals,
+    loading,
+    createDevPortal,
+    updateDevPortal,
+    activateDevPortal,
+  } = useDevPortals();
 
   // Router access
   const navigate = useNavigate();
@@ -24,14 +39,17 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
   const [creatingPortal, setCreatingPortal] = useState(false);
   const { showNotification } = useNotifications();
 
-  const mode = useMemo(() => getPortalMode(location.pathname), [location.pathname]);
+  const mode = useMemo(
+    () => getPortalMode(location.pathname),
+    [location.pathname]
+  );
   const selectedPortalId = useMemo(
     () => getPortalIdFromPath(location.pathname) || params.portalId || null,
     [location.pathname, params.portalId]
   );
 
   const selectedPortal = useMemo(
-    () => devportals.find(p => p.uuid === selectedPortalId),
+    () => devportals.find((p) => p.uuid === selectedPortalId),
     [devportals, selectedPortalId]
   );
 
@@ -46,63 +64,90 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
   );
 
   const navigateToTheme = useCallback(
-    (portalId: string) => navigateToPortalTheme(navigate, location.pathname, portalId),
+    (portalId: string) =>
+      navigateToPortalTheme(navigate, location.pathname, portalId),
     [navigate, location.pathname]
   );
 
   const navigateToEdit = useCallback(
-    (portalId: string) => navigateToPortalEdit(navigate, location.pathname, portalId),
+    (portalId: string) =>
+      navigateToPortalEdit(navigate, location.pathname, portalId),
     [navigate, location.pathname]
   );
 
-  const handlePortalClick = useCallback((portalId: string) => {
-    navigateToTheme(portalId);
-  }, [navigateToTheme]);
+  const handlePortalClick = useCallback(
+    (portalId: string) => {
+      navigateToTheme(portalId);
+    },
+    [navigateToTheme]
+  );
 
-  const handlePortalActivate = useCallback(async (portalId: string) => {
-    try {
-      await activateDevPortal(portalId);
-      showNotification(PORTAL_CONSTANTS.MESSAGES.PORTAL_ACTIVATED, 'success');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.ACTIVATION_FAILED;
-      showNotification(errorMessage, 'error');
-    }
-  }, [activateDevPortal, showNotification]);
+  const handlePortalActivate = useCallback(
+    async (portalId: string) => {
+      try {
+        await activateDevPortal(portalId);
+        showNotification(PORTAL_CONSTANTS.MESSAGES.PORTAL_ACTIVATED, 'success');
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : PORTAL_CONSTANTS.MESSAGES.ACTIVATION_FAILED;
+        showNotification(errorMessage, 'error');
+      }
+    },
+    [activateDevPortal, showNotification]
+  );
 
-  const handlePortalEdit = useCallback((portalId: string) => {
-    navigateToEdit(portalId);
-  }, [navigateToEdit]);
+  const handlePortalEdit = useCallback(
+    (portalId: string) => {
+      navigateToEdit(portalId);
+    },
+    [navigateToEdit]
+  );
 
-  const handleCreatePortal = React.useCallback(async (formData: PortalFormData) => {
-    setCreatingPortal(true);
-    try {
-      const createdPortal = await createDevPortal(formData);
-      const activationMessage = createdPortal.isActive
-        ? 'Developer portal created and activated successfully.'
-        : 'Developer portal created successfully, but not activated.';
-      showNotification(activationMessage, 'success');
-      // Navigate to theme screen for the new portal
-      navigateToTheme(createdPortal.uuid);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.CREATION_FAILED;
-      showNotification(errorMessage, 'error');
-    } finally {
-      setCreatingPortal(false);
-    }
-  }, [createDevPortal, navigateToTheme, showNotification]);
+  const handleCreatePortal = React.useCallback(
+    async (formData: CreatePortalPayload | UpdatePortalPayload) => {
+      const fullData = formData as CreatePortalPayload;
+      setCreatingPortal(true);
+      try {
+        const createdPortal = await createDevPortal(fullData);
+        const activationMessage = createdPortal.isEnabled
+          ? 'Developer portal created and enabled successfully.'
+          : 'Developer portal created successfully, but not enabled.';
+        showNotification(activationMessage, 'success');
+        // Navigate to theme screen for the new portal
+        navigateToTheme(createdPortal.uuid);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : PORTAL_CONSTANTS.MESSAGES.CREATION_FAILED;
+        showNotification(errorMessage, 'error');
+      } finally {
+        setCreatingPortal(false);
+      }
+    },
+    [createDevPortal, navigateToTheme, showNotification]
+  );
 
-  const handleUpdatePortal = useCallback(async (formData: PortalFormData) => {
-    if (!selectedPortalId) return;
+  const handleUpdatePortal = useCallback(
+    async (formData: UpdatePortalPayload) => {
+      if (!selectedPortalId) return;
 
-    try {
-      await updateDevPortal(selectedPortalId, formData);
-      showNotification('Developer Portal updated successfully.', 'success');
-      navigateToList();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.CREATION_FAILED;
-      showNotification(errorMessage, 'error');
-    }
-  }, [selectedPortalId, updateDevPortal, navigateToList, showNotification]);
+      try {
+        await updateDevPortal(selectedPortalId, formData);
+        showNotification('Developer Portal updated successfully.', 'success');
+        navigateToList();
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : PORTAL_CONSTANTS.MESSAGES.UPDATE_FAILED;
+        showNotification(errorMessage, 'error');
+      }
+    },
+    [selectedPortalId, updateDevPortal, navigateToList, showNotification]
+  );
 
   const renderContent = () => {
     switch (mode) {
@@ -111,7 +156,6 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
           <PortalList
             portals={devportals}
             loading={loading}
-            error={error}
             onPortalClick={handlePortalClick}
             onPortalActivate={handlePortalActivate}
             onPortalEdit={handlePortalEdit}
@@ -133,15 +177,20 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
           <PortalForm
             onSubmit={handleUpdatePortal}
             onCancel={navigateToList}
-            initialData={selectedPortal ? {
-              name: selectedPortal.name,
-              identifier: selectedPortal.identifier,
-              description: selectedPortal.description,
-              apiUrl: selectedPortal.apiUrl,
-              hostname: selectedPortal.hostname,
-              apiKey: '', // API key needs to be re-entered for security
-              headerKeyName: '', // Header key name needs to be re-entered
-            } : undefined}
+            initialData={
+              selectedPortal
+                ? {
+                    name: selectedPortal.name,
+                    identifier: selectedPortal.identifier,
+                    description: selectedPortal.description,
+                    apiUrl: selectedPortal.apiUrl,
+                    hostname: selectedPortal.hostname,
+                    apiKey: PORTAL_CONSTANTS.API_KEY_MASK, // Masked for security
+                    headerKeyName: selectedPortal.headerKeyName,
+                    visibility: selectedPortal.visibility,
+                  }
+                : undefined
+            }
             isEdit={true}
           />
         );
@@ -162,7 +211,7 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
 
   return (
     <ErrorBoundary>
-      <Box sx={{ overflowX: "auto" }}>
+      <Box sx={{ overflowX: 'auto' }}>
         {/* Header */}
         {mode === PORTAL_CONSTANTS.MODES.LIST && (
           <Box>
@@ -173,7 +222,8 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
             </Box>
 
             <Typography variant="body2" sx={{ mt: 0.5, mb: 3, maxWidth: 760 }}>
-              Define visibility of your portal and publish your first API. You can modify your selections later.
+              Define visibility of your portal and publish your first API. You
+              can modify your selections later.
             </Typography>
           </Box>
         )}
