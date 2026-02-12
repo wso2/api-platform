@@ -12,6 +12,10 @@ on:
 jobs:
   integration-test:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,6 +24,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -27,25 +32,44 @@ jobs:
       - name: Build coverage-instrumented images
         run: |
           cd gateway
+          # Use cache-from and cache-to for faster builds in subsequent runs
+          export DOCKER_METADATA_OUTPUT_JSON='{"tags":["test"],"labels":{"org.opencontainers.image.version":"test"}}'
           make build-coverage VERSION=test
 
       - name: Build mock server images
         run: |
-          for mock in mock-jwks mock-azure-content-safety mock-aws-bedrock-guardrail mock-embedding-provider mock-analytics-collector; do
+          mocks=("mock-jwks" "mock-azure-content-safety" "mock-aws-bedrock-guardrail" "mock-embedding-provider" "mock-analytics-collector")
+          for mock in "${mocks[@]}"; do
             echo "Building $mock..."
-            docker build -t ghcr.io/wso2/api-platform/$mock:latest tests/mock-servers/$mock
+            docker build -t ghcr.io/wso2/api-platform/$mock:latest tests/mock-servers/$mock &
           done
+          wait
+          echo "All mock images built."
 
-      - name: Run integration tests
+      - name: Run integration tests (Group ${{ matrix.group }})
         run: |
+          case ${{ matrix.group }} in
+            1)
+              FEATURES="features/health.feature,features/metrics.feature,features/api_deploy.feature,features/mcp_deploy.feature,features/ratelimit.feature,features/jwt-auth.feature,features/cors.feature,features/word-count-guardrail.feature,features/sentence-count-guardrail.feature,features/url-guardrail.feature,features/regex-guardrail.feature"
+              ;;
+            2)
+              FEATURES="features/prompt-decorator.feature,features/prompt-template.feature,features/pii-masking-regex.feature,features/json-schema-guardrail.feature,features/llm-provider-templates.feature,features/analytics-header-filter.feature,features/lazy-resources-xds.feature,features/content-length-guardrail.feature,features/azure-content-safety.feature,features/aws-bedrock-guardrail.feature,features/semantic-cache.feature"
+              ;;
+            3)
+              FEATURES="features/semantic-prompt-guard.feature,features/modify-headers.feature,features/request-rewrite.feature,features/respond.feature,features/llm-provider.feature,features/certificates.feature,features/config-dump.feature,features/api-management.feature,features/api-error-responses.feature,features/list-policies.feature,features/api-keys.feature"
+              ;;
+            4)
+              FEATURES="features/api-with-policies.feature,features/llm-proxies.feature,features/search-deployments.feature,features/policy-engine-admin.feature,features/cel-conditions.feature,features/analytics-basic.feature,features/backend_timeout.feature,features/llm-cost-based-ratelimit.feature,features/model-round-robin.feature,features/model-weighted-round-robin.feature"
+              ;;
+          esac
           cd gateway
-          make test-integration
+          IT_FEATURE_PATHS="$FEATURES" make test-integration
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-report
+          name: coverage-report-group-${{ matrix.group }}
           path: gateway/it/coverage/output
           retention-days: 7
 
@@ -53,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-reports
+          name: test-reports-group-${{ matrix.group }}
           path: gateway/it/reports/
           retention-days: 7
 
