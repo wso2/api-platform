@@ -27,6 +27,7 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
+BUILDX_CACHE_ARGS ?=
 
 .PHONY: help generate build build-local test generate-listener-certs push build-coverage-image
 
@@ -48,6 +49,7 @@ test: ## Run unit and integration tests
 build: generate test ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
@@ -76,6 +78,7 @@ push: ## Push Docker image to registry
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--platform linux/amd64,linux/arm64 \
@@ -88,6 +91,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 
 build-coverage-image: test ## Build coverage-instrumented gateway-controller image
 	docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \

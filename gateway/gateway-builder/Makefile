@@ -30,6 +30,7 @@ DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-builder
 IMAGE_TAG := $(VERSION)
 FULL_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
+BUILDX_CACHE_ARGS ?=
 
 .DEFAULT_GOAL := help
 
@@ -58,6 +59,7 @@ help: ## Show this help message
 build: ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context sdk=../../sdk \
@@ -93,6 +95,7 @@ push: ## Push Docker image to registry
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context sdk=../../sdk \

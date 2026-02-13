@@ -25,6 +25,7 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
+BUILDX_CACHE_ARGS ?=
 
 .PHONY: help build build-local build-coverage-image push clean build-and-push-multiarch test
 
@@ -38,6 +39,7 @@ build: ## Build Gateway Runtime Docker image using buildx
 	@echo "Building Gateway Runtime Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
@@ -74,7 +76,8 @@ build-local: ## Build Gateway Runtime Docker image locally (faster, no buildx)
 build-coverage-image: test ## Build Gateway Runtime Docker image with coverage instrumentation
 	@echo "Building Gateway Runtime coverage image ($(IMAGE_NAME)-coverage:$(VERSION))..."
 	@mkdir -p target && cp ../build.yaml target/
-	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
+	docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
@@ -85,6 +88,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \
+		--load \
 		.
 	@rm -rf target
 	@echo "Coverage image built successfully: $(IMAGE_NAME)-coverage:$(VERSION)"
@@ -98,6 +102,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 	@echo "Building and pushing multi-arch Gateway Runtime Docker image ($(VERSION))..."
 	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build -f Dockerfile \
+		$(BUILDX_CACHE_ARGS) \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
