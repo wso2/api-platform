@@ -6,12 +6,22 @@ on:
     branches:
       - main
     paths:
-      - 'gateway/**'
-      - '.github/workflows/gateway-integration-test.yml'
+      - "gateway/**"
+      - "tests/mock-servers/**"
+      - "samples/sample-service/**"
+      - ".github/workflows/gateway-integration-test.yml"
+      - ".github/workflows/gateway-integration-test-postgres.yml"
+
+permissions:
+  contents: read
 
 jobs:
-  integration-test:
+  build-images:
     runs-on: ubuntu-24.04
+    env:
+      BUILDX_CACHE_ARGS: >-
+        --cache-from type=gha,scope=gateway-it-pr-build
+        --cache-to type=gha,mode=max,scope=gateway-it-pr-build
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,7 +29,17 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: "1.25"
+          cache: true
+          cache-dependency-path: |
+            go.work.sum
+            gateway/gateway-controller/go.sum
+            gateway/gateway-builder/go.sum
+            gateway/gateway-runtime/policy-engine/go.sum
+            gateway/it/go.sum
+            gateway/system-policies/analytics/go.sum
+            gateway/sample-policies/count-letters/go.sum
+            gateway/sample-policies/uppercase-body/go.sum
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -41,16 +61,114 @@ jobs:
           cd samples/sample-service
           make build
 
+      - name: Export reusable integration images
+        run: |
+          mkdir -p /tmp/ci-images
+          docker save \
+            ghcr.io/wso2/api-platform/gateway-controller-coverage:test \
+            ghcr.io/wso2/api-platform/gateway-runtime-coverage:test \
+            ghcr.io/wso2/api-platform/sample-service:latest \
+            ghcr.io/wso2/api-platform/mock-jwks:latest \
+            ghcr.io/wso2/api-platform/mock-azure-content-safety:latest \
+            ghcr.io/wso2/api-platform/mock-aws-bedrock-guardrail:latest \
+            ghcr.io/wso2/api-platform/mock-embedding-provider:latest \
+            ghcr.io/wso2/api-platform/mock-analytics-collector:latest | gzip > /tmp/ci-images/gateway-it-images.tar.gz
+
+      - name: Upload reusable integration images
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-it-images
+          path: /tmp/ci-images/gateway-it-images.tar.gz
+          retention-days: 1
+
+  integration-test:
+    runs-on: ubuntu-24.04
+    needs: build-images
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: sqlite
+            compose_file: docker-compose.test.yaml
+            suffix: normal
+          - mode: postgres
+            compose_file: docker-compose.test.postgres.yaml
+            suffix: postgres
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+          cache-dependency-path: |
+            go.work.sum
+            gateway/it/go.sum
+
+      - name: Download reusable integration images
+        uses: actions/download-artifact@v4
+        with:
+          name: gateway-it-images
+          path: /tmp/ci-images
+
+      - name: Load reusable integration images
+        run: |
+          gzip -dc /tmp/ci-images/gateway-it-images.tar.gz | docker load
+
+      - name: Record test start time
+        run: echo "TEST_START_TS=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Verify gateway-controller uses PostgreSQL
+        if: matrix.mode == 'postgres'
+        run: |
+          set -euo pipefail
+          cd gateway/it
+
+          PROJECT="gateway-it-postgres-verify"
+          cleanup() {
+            docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml up -d postgres gateway-controller
+
+          timeout 90 bash -c 'until curl -fsS http://localhost:9090/health >/dev/null; do sleep 2; done'
+
+          docker logs it-gateway-controller > /tmp/gateway-controller.log 2>&1 || true
+          grep -Eq "Initializing PostgreSQL storage|PostgreSQL schema up to date" /tmp/gateway-controller.log
+
+          schema_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
+            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM schema_migrations WHERE id = 1 AND version >= 1;")"
+          [ "$schema_count" = "1" ]
+
+          conn_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
+            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name = 'gateway-controller';")"
+          [ "${conn_count:-0}" -ge 1 ]
+
       - name: Run integration tests
         run: |
           cd gateway
-          make test-integration
+          COMPOSE_FILE=${{ matrix.compose_file }} make test-integration
+
+      - name: Publish test duration metrics
+        if: always()
+        run: |
+          end_ts="$(date +%s)"
+          start_ts="${TEST_START_TS:-$end_ts}"
+          duration="$((end_ts - start_ts))"
+          minutes="$((duration / 60))"
+          seconds="$((duration % 60))"
+          echo "### Gateway integration timing" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Mode: \`${{ matrix.mode }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Duration: ${minutes}m ${seconds}s (${duration}s)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-report
+          name: coverage-report-${{ matrix.suffix }}
           path: gateway/it/coverage/output
           retention-days: 7
 
@@ -58,7 +176,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-reports
+          name: test-reports-${{ matrix.suffix }}
           path: gateway/it/reports/
           retention-days: 7
 
