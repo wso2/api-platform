@@ -1,6 +1,6 @@
 version: v1
 gateway:
-  version: 0.8.0
+  version: 0.9.0-SNAPSHOT
 policies:
   - name: add-headers
     gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
