@@ -36,6 +36,7 @@ const (
 	OperationPathKey   = Wso2MetadataPrefix + "operation-path"
 	APIKindKey         = Wso2MetadataPrefix + "api-kind"
 	ProjectIDKey       = Wso2MetadataPrefix + "project-id"
+	UserIDKey          = Wso2MetadataPrefix + "user-id"
 )
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
@@ -95,6 +96,10 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		}
 		if sharedCtx.ProjectID != "" {
 			fields[ProjectIDKey] = structpb.NewStringValue(sharedCtx.ProjectID)
+		}
+		// Extract UserID from AuthContext if available
+		if sharedCtx.AuthContext != nil && sharedCtx.AuthContext.UserID != "" {
+			fields[UserIDKey] = structpb.NewStringValue(sharedCtx.AuthContext.UserID)
 		}
 	}
 
