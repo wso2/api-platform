@@ -15,6 +15,33 @@ type Body struct {
 	Present bool
 }
 
+// JWTAuthDetails holds fields specific to JWT/OAuth2 token-based auth.
+type JWTAuthDetails struct {
+	// Subject is the "sub" claim from the token.
+	Subject string
+
+	// Issuer is the token issuer ("iss" claim, IdP URL).
+	Issuer string
+
+	// Audience is the intended audience ("aud" claim). Can be multiple values.
+	Audience []string
+
+	// Claims holds additional token claims that don't fit the typed fields.
+	Claims map[string]string
+}
+
+// APIKeyAuthDetails holds fields specific to API key authentication.
+// Placeholder for future auth-type-specific fields.
+type APIKeyAuthDetails struct {
+	// Todo: API key tier, rate limit info, etc.
+}
+
+// BasicAuthDetails holds fields specific to basic authentication.
+// Placeholder for future auth-type-specific fields.
+type BasicAuthDetails struct {
+	// Todo: Basic auth specific metadata
+}
+
 // AuthContext holds authentication data produced by auth policies (jwt, oauth2, apikey, basic-auth)
 // and consumed by downstream policies (analytics, rate limiting, etc.).
 type AuthContext struct {
@@ -25,34 +52,24 @@ type AuthContext struct {
 	// Values: "jwt", "oauth2", "apikey", "basic", or empty if unauthenticated.
 	AuthType string
 
-	// Subject is the authenticated principal identifier.
-	// JWT "sub" claim, basic-auth username, API key owner/app ID, etc.
-	Subject string
-
-	// Issuer is the token issuer (JWT "iss" claim, IdP URL).
-	// Empty for non-token auth types.
-	Issuer string
-
-	// Audience is the intended audience (JWT "aud" claim).
-	// Empty for non-token auth types.
-	Audience string
-
-	// Scopes contains granted OAuth2/JWT scopes as a set for O(1) lookup.
-	// Nil for non-token auth types.
-	Scopes map[string]bool
-
-	// AppID is the application identifier associated with the authenticated request.
-	// For API key auth, this is the application that owns the key.
-	// For OAuth2, this may be the client_id. Empty if not applicable.
-	AppID string
-
-	// UserID is the user identifier associated with the authenticated request.
-	// By default, this is the same as Subject, but can be set separately by auth policies if needed.
+	// UserID is the user identifier extracted from the authentication source.
 	UserID string
 
-	// Properties holds additional auth-related key-value data for
-	// inter-policy communication that does not fit the typed fields above.
-	// Examples: email, custom JWT claims, API key tier.
+	// AppID is the application identifier associated with the request.
+	// e.g., client_id for OAuth2, application owning the API key, etc.
+	AppID string
+
+	// Scopes contains granted scopes as a set for O(1) lookup.
+	// Applicable for OAuth2/JWT and potentially API key auth.
+	Scopes map[string]bool
+
+	// Auth-type-specific details. Only the relevant one is non-nil.
+	JWT    *JWTAuthDetails
+	APIKey *APIKeyAuthDetails
+	Basic  *BasicAuthDetails
+
+	// Properties holds additional key-value data for inter-policy communication
+	// that does not fit the typed fields above.
 	Properties map[string]string
 }
 
