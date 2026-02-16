@@ -32,6 +32,8 @@
                 "APIP_GW_CONTROLLER_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
                 "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-policies",
                 "APIP_GW_ROUTER_LUA_REQUEST__TRANSFORMATION_SCRIPT__PATH": "${workspaceFolder}/gateway/gateway-controller/lua/request_transformation.lua",
+                "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
             }
         },
         {

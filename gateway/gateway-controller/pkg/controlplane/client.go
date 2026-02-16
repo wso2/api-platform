@@ -1252,12 +1252,18 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM proxy configuration from YAML using the deployment service
-	_, err = c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.CorrelationID, c.llmDeploymentService)
+	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM proxy from YAML",
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		return
+	}
+
+	// Update policy engine xDS snapshot (best-effort)
+	if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
+		// Error already logged in updatePolicyForDeployment
 		return
 	}
 
@@ -1335,12 +1341,18 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM provider configuration from YAML using the deployment service
-	_, err = c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.CorrelationID, c.llmDeploymentService)
+	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM provider from YAML",
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
+		return
+	}
+
+	// Update policy engine xDS snapshot (best-effort)
+	if err := c.updatePolicyForDeployment(providerID, deployedEvent.CorrelationID, result); err != nil {
+		// Error already logged in updatePolicyForDeployment
 		return
 	}
 
