@@ -369,8 +369,9 @@ type LoggingConfig struct {
 
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
-	Host               string        `koanf:"host"`                 // Control plane hostname
+	Host               string        `koanf:"host"`                 // Control plane host:port (e.g. platform-api:9243 for cloud; on-prem: apim.example.com:9443 or host.docker.internal:9443)
 	Token              string        `koanf:"token"`                // Registration token (api-key)
+	OnPrem             bool          `koanf:"on_prem"`              // If true, use on-prem path (/internal/data/v1/ws); else cloud path (/api/internal/v1/ws)
 	ReconnectInitial   time.Duration `koanf:"reconnect_initial"`    // Initial retry delay
 	ReconnectMax       time.Duration `koanf:"reconnect_max"`        // Maximum retry delay
 	PollingInterval    time.Duration `koanf:"polling_interval"`     // Reconciliation polling interval
@@ -406,6 +407,8 @@ func LoadConfig(configPath string) (*Config, error) {
 		switch s {
 		case "controlplane_host":
 			return "controller.controlplane.host"
+		case "controlplane_on_prem":
+			return "controller.controlplane.on_prem"
 		case "gateway_registration_token":
 			return "controller.controlplane.token"
 		case "reconnect_initial":
@@ -519,6 +522,7 @@ func defaultConfig() *Config {
 			ControlPlane: ControlPlaneConfig{
 				Host:               "localhost:9243",
 				Token:              "",
+				OnPrem:             false,
 				ReconnectInitial:   1 * time.Second,
 				ReconnectMax:       5 * time.Minute,
 				PollingInterval:    15 * time.Minute,
@@ -934,7 +938,7 @@ func (c *Config) validateEventGatewayConfig() error {
 
 // validateControlPlaneConfig validates the control plane configuration
 func (c *Config) validateControlPlaneConfig() error {
-	// Host validation - required if control plane is configured
+	// Host is required; all URLs are built from host in code (path depends on on_prem).
 	if c.Controller.ControlPlane.Host == "" {
 		return fmt.Errorf("controlplane.host is required")
 	}
