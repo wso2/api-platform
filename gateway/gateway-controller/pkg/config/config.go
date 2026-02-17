@@ -385,6 +385,7 @@ type LoggingConfig struct {
 type ControlPlaneConfig struct {
 	Host                 string        `koanf:"host"`                   // Control plane hostname
 	Token                string        `koanf:"token"`                  // Registration token (api-key)
+	OnPrem             bool          `koanf:"on_prem"`              // If true, use on-prem path (/internal/data/v1/ws); else cloud path (/api/internal/v1/ws)
 	ReconnectInitial     time.Duration `koanf:"reconnect_initial"`      // Initial retry delay
 	ReconnectMax         time.Duration `koanf:"reconnect_max"`          // Maximum retry delay
 	PollingInterval      time.Duration `koanf:"polling_interval"`       // Reconciliation polling interval
@@ -421,6 +422,8 @@ func LoadConfig(configPath string) (*Config, error) {
 		switch s {
 		case "controlplane_host":
 			return "controller.controlplane.host"
+		case "controlplane_on_prem":
+			return "controller.controlplane.on_prem"
 		case "gateway_registration_token":
 			return "controller.controlplane.token"
 		case "reconnect_initial":
@@ -536,6 +539,7 @@ func defaultConfig() *Config {
 			ControlPlane: ControlPlaneConfig{
 				Host:                  "",
 				Token:                 "",
+				OnPrem:                false,
 				ReconnectInitial:      1 * time.Second,
 				ReconnectMax:          5 * time.Minute,
 				PollingInterval:       15 * time.Minute,

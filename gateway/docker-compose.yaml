@@ -39,6 +39,7 @@ services:
       - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
       - APIP_GW_SUBSCRIPTIONS_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${APIP_GW_SUBSCRIPTIONS_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY}
+      - APIP_GW_CONTROLPLANE_ON_PREM=${GATEWAY_CONTROLPLANE_ON_PREM:-false}
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro

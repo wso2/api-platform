@@ -212,7 +212,8 @@ func (c *Client) Start() error {
 
 	c.logger.Info("Starting control plane client",
 		slog.String("host", c.config.Host),
-		slog.String("websocket_url", c.getWebSocketURL()),
+		slog.String("websocket_url", c.getWebSocketConnectURL()),
+		slog.Bool("on_prem", c.config.OnPrem),
 	)
 
 	// Start connection in background
@@ -252,7 +253,8 @@ func (c *Client) Connect() error {
 	c.setState(Connecting)
 
 	c.logger.Info("Connecting to control plane",
-		slog.String("url", c.getWebSocketURL()),
+		slog.String("url", c.getWebSocketConnectURL()),
+		slog.Bool("on_prem", c.config.OnPrem),
 		slog.Int("retry_count", c.state.RetryCount),
 	)
 
@@ -273,8 +275,8 @@ func (c *Client) Connect() error {
 	headers := http.Header{}
 	headers.Add("api-key", c.config.Token)
 
-	// Dial WebSocket
-	wsURL := c.getWebSocketURL() + "/gateways/connect"
+	// Dial WebSocket: URL built from host (path depends on OnPrem)
+	wsURL := c.getWebSocketConnectURL()
 	conn, resp, err := dialer.Dial(wsURL, headers)
 	if err != nil {
 		if resp != nil {
@@ -2678,16 +2680,25 @@ func (c *Client) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig,
 	return c.apiUtilsService.PushAPIDeployment(apiID, apiConfig, deploymentID)
 }
 
-// getWebSocketURL constructs the base WebSocket URL from configuration
+// getWebSocketURL constructs the base WebSocket URL from configuration.
+// If OnPrem is true, uses on-prem path (/internal/data/v1/ws); otherwise cloud path (/api/internal/v1/ws).
 func (c *Client) getWebSocketURL() string {
-	return fmt.Sprintf("wss://%s/api/internal/v1/ws",
-		c.config.Host,
-	)
+	if c.config.OnPrem {
+		return fmt.Sprintf("wss://%s/internal/data/v1/ws", c.config.Host)
+	}
+	return fmt.Sprintf("wss://%s/api/internal/v1/ws", c.config.Host)
 }
 
-// getRestAPIBaseURL constructs the base REST API URL from configuration
+// getWebSocketConnectURL returns the full WebSocket URL for gateway connect.
+func (c *Client) getWebSocketConnectURL() string {
+	return c.getWebSocketURL() + "/gateways/connect"
+}
+
+// getRestAPIBaseURL constructs the base REST API URL from configuration.
+// If OnPrem is true, uses on-prem path (/internal/data/v1); otherwise cloud path (/api/internal/v1).
 func (c *Client) getRestAPIBaseURL() string {
-	return fmt.Sprintf("https://%s/api/internal/v1",
-		c.config.Host,
-	)
+	if c.config.OnPrem {
+		return fmt.Sprintf("https://%s/internal/data/v1", c.config.Host)
+	}
+	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
 }
