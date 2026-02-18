@@ -709,9 +709,10 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if err != nil {
 							return "", fmt.Errorf("invalid token reset window for resource %s: %w", r.Resource, err)
 						}
-						policyMethods := []api.LLMPolicyPathMethods{}
-						if len(r.Methods) > 0 {
-							policyMethods = make([]api.LLMPolicyPathMethods, 0, len(r.Methods))
+						policyMethods := make([]api.LLMPolicyPathMethods, 0, len(r.Methods))
+						if len(r.Methods) == 0 {
+							policyMethods = append(policyMethods, "*")
+						} else {
 							for _, m := range r.Methods {
 								policyMethods = append(policyMethods, api.LLMPolicyPathMethods(m))
 							}
@@ -735,9 +736,10 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if err != nil {
 							return "", fmt.Errorf("invalid request reset window for resource %s: %w", r.Resource, err)
 						}
-						policyMethods := []api.LLMPolicyPathMethods{}
-						if len(r.Methods) > 0 {
-							policyMethods = make([]api.LLMPolicyPathMethods, 0, len(r.Methods))
+						policyMethods := make([]api.LLMPolicyPathMethods, 0, len(r.Methods))
+						if len(r.Methods) == 0 {
+							policyMethods = append(policyMethods, "*")
+						} else {
 							for _, m := range r.Methods {
 								policyMethods = append(policyMethods, api.LLMPolicyPathMethods(m))
 							}

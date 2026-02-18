@@ -1522,8 +1522,12 @@ func mapResourceWiseRateLimitingModelToAPI(in *model.ResourceWiseRateLimitingCon
 	resources := make([]api.RateLimitingResourceLimit, 0, len(in.Resources))
 	for _, r := range in.Resources {
 		methods := make([]api.RateLimitingResourceLimitMethods, 0, len(r.Methods))
-		for _, m := range r.Methods {
-			methods = append(methods, api.RateLimitingResourceLimitMethods(m))
+		if len(r.Methods) == 0 {
+			methods = append(methods, api.RateLimitingResourceLimitMethodsAsterisk)
+		} else {
+			for _, m := range r.Methods {
+				methods = append(methods, api.RateLimitingResourceLimitMethods(m))
+			}
 		}
 		resources = append(resources, api.RateLimitingResourceLimit{Resource: r.Resource, Methods: methods, Limit: mapRateLimitingLimitModelToAPIValue(&r.Limit)})
 	}
