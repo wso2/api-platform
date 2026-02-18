@@ -88,6 +88,7 @@ type CostRateLimit struct {
 }
 
 type RateLimitingResourceLimit struct {
+	Methods  []string                `json:"methods" db:"-"`
 	Resource string                  `json:"resource" db:"-"`
 	Limit    RateLimitingLimitConfig `json:"limit" db:"-"`
 }

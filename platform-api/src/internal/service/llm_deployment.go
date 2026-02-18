@@ -709,10 +709,16 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if err != nil {
 							return "", fmt.Errorf("invalid token reset window for resource %s: %w", r.Resource, err)
 						}
-						// TODO: the methods should be coming as input
+						policyMethods := []api.LLMPolicyPathMethods{}
+						if len(r.Methods) > 0 {
+							policyMethods = make([]api.LLMPolicyPathMethods, 0, len(r.Methods))
+							for _, m := range r.Methods {
+								policyMethods = append(policyMethods, api.LLMPolicyPathMethods(m))
+							}
+						}
 						addOrAppendPolicyPath(&policies, tokenBasedRateLimitPolicyName, rateLimitPolicyVersion, api.LLMPolicyPath{
 							Path:    r.Resource,
-							Methods: []api.LLMPolicyPathMethods{"*"},
+							Methods: policyMethods,
 							Params: map[string]interface{}{
 								"totalTokenLimits": []map[string]interface{}{
 									{
@@ -729,10 +735,16 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if err != nil {
 							return "", fmt.Errorf("invalid request reset window for resource %s: %w", r.Resource, err)
 						}
-						// TODO: the methods should be coming as input
+						policyMethods := []api.LLMPolicyPathMethods{}
+						if len(r.Methods) > 0 {
+							policyMethods = make([]api.LLMPolicyPathMethods, 0, len(r.Methods))
+							for _, m := range r.Methods {
+								policyMethods = append(policyMethods, api.LLMPolicyPathMethods(m))
+							}
+						}
 						addOrAppendPolicyPath(&policies, advancedRateLimitPolicyName, rateLimitPolicyVersion, api.LLMPolicyPath{
 							Path:    r.Resource,
-							Methods: []api.LLMPolicyPathMethods{"*"},
+							Methods: policyMethods,
 							Params: map[string]interface{}{
 								"quotas": []map[string]interface{}{
 									{

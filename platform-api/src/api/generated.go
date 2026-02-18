@@ -254,16 +254,28 @@ const (
 	Week   RateLimitResetWindowUnit = "week"
 )
 
+// Defines values for RateLimitingResourceLimitMethods.
+const (
+	RateLimitingResourceLimitMethodsAsterisk RateLimitingResourceLimitMethods = "*"
+	RateLimitingResourceLimitMethodsDELETE   RateLimitingResourceLimitMethods = "DELETE"
+	RateLimitingResourceLimitMethodsGET      RateLimitingResourceLimitMethods = "GET"
+	RateLimitingResourceLimitMethodsHEAD     RateLimitingResourceLimitMethods = "HEAD"
+	RateLimitingResourceLimitMethodsOPTIONS  RateLimitingResourceLimitMethods = "OPTIONS"
+	RateLimitingResourceLimitMethodsPATCH    RateLimitingResourceLimitMethods = "PATCH"
+	RateLimitingResourceLimitMethodsPOST     RateLimitingResourceLimitMethods = "POST"
+	RateLimitingResourceLimitMethodsPUT      RateLimitingResourceLimitMethods = "PUT"
+)
+
 // Defines values for RouteExceptionMethods.
 const (
-	Asterisk RouteExceptionMethods = "*"
-	DELETE   RouteExceptionMethods = "DELETE"
-	GET      RouteExceptionMethods = "GET"
-	HEAD     RouteExceptionMethods = "HEAD"
-	OPTIONS  RouteExceptionMethods = "OPTIONS"
-	PATCH    RouteExceptionMethods = "PATCH"
-	POST     RouteExceptionMethods = "POST"
-	PUT      RouteExceptionMethods = "PUT"
+	RouteExceptionMethodsAsterisk RouteExceptionMethods = "*"
+	RouteExceptionMethodsDELETE   RouteExceptionMethods = "DELETE"
+	RouteExceptionMethodsGET      RouteExceptionMethods = "GET"
+	RouteExceptionMethodsHEAD     RouteExceptionMethods = "HEAD"
+	RouteExceptionMethodsOPTIONS  RouteExceptionMethods = "OPTIONS"
+	RouteExceptionMethodsPATCH    RouteExceptionMethods = "PATCH"
+	RouteExceptionMethodsPOST     RouteExceptionMethods = "POST"
+	RouteExceptionMethodsPUT      RouteExceptionMethods = "PUT"
 )
 
 // Defines values for TimeUnit.
@@ -1923,11 +1935,15 @@ type RateLimitingLimitConfig struct {
 // RateLimitingResourceLimit defines model for RateLimitingResourceLimit.
 type RateLimitingResourceLimit struct {
 	// Limit Limit definition with independent request/token/cost dimensions. If all dimensions are disabled (or absent), rate limiting is off for that scope.
-	Limit RateLimitingLimitConfig `json:"limit" yaml:"limit"`
+	Limit   RateLimitingLimitConfig            `json:"limit" yaml:"limit"`
+	Methods []RateLimitingResourceLimitMethods `binding:"required" json:"methods" yaml:"methods"`
 
 	// Resource Explicit resource path to apply the limit to.
 	Resource string `binding:"required" json:"resource" yaml:"resource"`
 }
+
+// RateLimitingResourceLimitMethods defines model for RateLimitingResourceLimit.Methods.
+type RateLimitingResourceLimitMethods string
 
 // RateLimitingScopeConfig Rate limiting configuration for a scope (provider or consumer). Either global or resource-wise limits can be defined.
 type RateLimitingScopeConfig struct {
