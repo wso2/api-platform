@@ -54,9 +54,45 @@ type SharedContext struct {
 	// with resolved parameters (e.g., "/petstore/v1.0.0/pets/123")
 	OperationPath string
 
-	// AuthContext stores authentication-related information
-	// Policies can read/write this map to share auth data (e.g., user ID)
-	AuthContext map[string]string
+	// AuthContext stores typed authentication information set by auth policies
+	// Policies can read/write this to share auth data with downstream policies
+	AuthContext *AuthContext
+}
+
+// AuthContext holds typed authentication information for a single auth layer.
+// For chained authentication (e.g., API Key + JWT), use the Next field to form a linked list.
+type AuthContext struct {
+	// Authenticated indicates whether authentication succeeded
+	Authenticated bool
+
+	// AuthType identifies the authentication method (e.g., "jwt", "apikey", "basic")
+	AuthType string
+
+	// UserID is the authenticated user's identifier
+	UserID string
+
+	// Issuer is the token issuer (e.g., for JWT)
+	Issuer string
+
+	// Audience contains the intended recipients of the token
+	Audience []string
+
+	// Scopes holds granted permission scopes
+	Scopes map[string]bool
+
+	// CredentialID is the credential-specific identifier:
+	// - JWT: OAuth consumer key
+	// - API Key: key name
+	// - mTLS: certificate thumbprint
+	// - Basic Auth: username
+	CredentialID string
+
+	// Properties is an escape hatch for auth-type-specific metadata
+	// not covered by the typed fields above
+	Properties map[string]string
+
+	// Next links the next AuthContext in a chain for multi-layer authentication
+	Next *AuthContext
 }
 
 // RequestContext is mutable context for request phase containing current request state
