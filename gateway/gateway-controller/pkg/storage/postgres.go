@@ -327,6 +327,19 @@ func isPostgresAPIKeyUniqueConstraintError(err error) bool {
 	}
 }
 
+func isPostgresSecretUniqueConstraintError(err error) bool {
+	pgErr := extractPgError(err)
+	if pgErr == nil || pgErr.Code != pgUniqueViolationCode {
+		return false
+	}
+	switch pgErr.ConstraintName {
+	case "secrets_handle_key":
+		return true
+	default:
+		return strings.Contains(pgErr.TableName, "secrets")
+	}
+}
+
 func extractPgError(err error) *pgconn.PgError {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
