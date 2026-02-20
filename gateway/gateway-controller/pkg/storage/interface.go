@@ -239,10 +239,11 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic.
 	SaveSecret(secret *models.Secret) error
 
-	// GetSecrets retrieves all secrets.
+	// GetSecrets retrieves metadata for all secrets.
 	//
-	// Returns an empty slice if no secrets exist.
-	GetSecrets() ([]string, error)
+	// Returns non-sensitive metadata (handle, display_name, timestamps) without
+	// ciphertext or values. Returns an empty slice if no secrets exist.
+	GetSecrets() ([]models.SecretMeta, error)
 
 	// GetSecret retrieves a secret by handle.
 	//

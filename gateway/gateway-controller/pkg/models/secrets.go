@@ -25,9 +25,19 @@ import "time"
 // Provider and KeyVersion are not stored as separate fields; they are encoded
 // inside the Ciphertext envelope (enc:<provider>:v1:<key-version>:<base64>).
 type Secret struct {
-	Handle     string    // User-provided unique identifier (primary key)
-	Value      string    // Plaintext secret data (in-memory only, never persisted)
-	Ciphertext []byte    // Encrypted secret with self-describing metadata (stored in database)
-	CreatedAt  time.Time // Creation timestamp (UTC)
-	UpdatedAt  time.Time // Last modification timestamp (UTC)
+	Handle      string    // User-provided unique identifier (primary key)
+	DisplayName string    // Human-readable display name (stored for list views)
+	Value       string    // Plaintext secret data (in-memory only, never persisted)
+	Ciphertext  []byte    // Encrypted secret with self-describing metadata (stored in database)
+	CreatedAt   time.Time // Creation timestamp (UTC)
+	UpdatedAt   time.Time // Last modification timestamp (UTC)
+}
+
+// SecretMeta contains non-sensitive metadata for list operations.
+// Used by GetSecrets to provide rich list views without exposing secret material.
+type SecretMeta struct {
+	Handle      string    // User-provided unique identifier
+	DisplayName string    // Human-readable display name
+	CreatedAt   time.Time // Creation timestamp (UTC)
+	UpdatedAt   time.Time // Last modification timestamp (UTC)
 }

@@ -3953,8 +3953,31 @@ components:
           type: array
           description: List of secrets (without values for security)
           items:
-            type: string
-            example: "secret_12345"
+            type: object
+            properties:
+              id:
+                type: string
+                description: Unique secret identifier (handle)
+                example: "openai-api-key"
+              displayName:
+                type: string
+                description: Human-readable display name
+                example: "OpenAI API Key"
+              createdAt:
+                type: string
+                format: date-time
+                description: Timestamp when the secret was created (UTC)
+                example: "2026-01-05T10:00:00Z"
+              updatedAt:
+                type: string
+                format: date-time
+                description: Timestamp when the secret was last updated (UTC)
+                example: "2026-01-05T10:30:00Z"
+            required:
+              - id
+              - displayName
+              - createdAt
+              - updatedAt
         totalCount:
           type: integer
           description: Total number of secrets

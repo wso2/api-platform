@@ -215,15 +215,20 @@ func (m *mockStorageForDeletion) SaveSecret(secret *models.Secret) error {
 	return nil
 }
 
-func (m *mockStorageForDeletion) GetSecrets() ([]string, error) {
+func (m *mockStorageForDeletion) GetSecrets() ([]models.SecretMeta, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
-	ids := make([]string, 0, len(m.secrets))
-	for handle := range m.secrets {
-		ids = append(ids, handle)
+	secrets := make([]models.SecretMeta, 0, len(m.secrets))
+	for handle, secret := range m.secrets {
+		secrets = append(secrets, models.SecretMeta{
+			Handle:      handle,
+			DisplayName: secret.DisplayName,
+			CreatedAt:   secret.CreatedAt,
+			UpdatedAt:   secret.UpdatedAt,
+		})
 	}
-	return ids, nil
+	return secrets, nil
 }
 
 func (m *mockStorageForDeletion) GetSecret(handle string) (*models.Secret, error) {

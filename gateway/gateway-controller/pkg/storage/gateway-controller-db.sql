@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 -- Table for encrypted secrets
 CREATE TABLE IF NOT EXISTS secrets (
     handle TEXT PRIMARY KEY NOT NULL,   -- secret identifier (e.g., wso2-openai-api-key)
+    display_name TEXT NOT NULL,         -- human-readable name for list views
     ciphertext BLOB NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

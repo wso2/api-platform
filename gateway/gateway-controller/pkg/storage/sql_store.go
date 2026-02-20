@@ -1619,13 +1619,14 @@ func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 	table := "secrets"
 
 	query := `
-	INSERT INTO secrets (handle, ciphertext, created_at, updated_at)
-	VALUES (?, ?, ?, ?)
+	INSERT INTO secrets (handle, display_name, ciphertext, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?)
 	`
 
 	now := time.Now().UTC()
 	_, err := s.exec(query,
 		secret.Handle,
+		secret.DisplayName,
 		secret.Ciphertext,
 		now,
 		now,
@@ -1656,12 +1657,12 @@ func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 	return nil
 }
 
-// GetSecrets retrieves all secrets
-func (s *sqlStore) GetSecrets() ([]string, error) {
+// GetSecrets retrieves metadata for all secrets (no ciphertext)
+func (s *sqlStore) GetSecrets() ([]models.SecretMeta, error) {
 	startTime := time.Now()
 	table := "secrets"
 
-	query := `SELECT handle FROM secrets ORDER BY created_at DESC`
+	query := `SELECT handle, display_name, created_at, updated_at FROM secrets ORDER BY created_at DESC`
 
 	rows, err := s.query(query)
 	if err != nil {
@@ -1671,15 +1672,15 @@ func (s *sqlStore) GetSecrets() ([]string, error) {
 	}
 	defer rows.Close()
 
-	var ids []string
+	var secrets []models.SecretMeta
 	for rows.Next() {
-		var handle string
-		if err := rows.Scan(&handle); err != nil {
+		var secret models.SecretMeta
+		if err := rows.Scan(&secret.Handle, &secret.DisplayName, &secret.CreatedAt, &secret.UpdatedAt); err != nil {
 			metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
 			metrics.StorageErrorsTotal.WithLabelValues("read", "scan_error").Inc()
-			return nil, fmt.Errorf("failed to scan handle: %w", err)
+			return nil, fmt.Errorf("failed to scan secret meta: %w", err)
 		}
-		ids = append(ids, handle)
+		secrets = append(secrets, secret)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -1692,10 +1693,10 @@ func (s *sqlStore) GetSecrets() ([]string, error) {
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
 
 	s.logger.Debug("Secrets retrieved successfully",
-		slog.Int("count", len(ids)),
+		slog.Int("count", len(secrets)),
 	)
 
-	return ids, nil
+	return secrets, nil
 }
 
 // GetSecret retrieves a secret by Handle
@@ -1704,7 +1705,7 @@ func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
 	table := "secrets"
 
 	query := `
-	SELECT handle, ciphertext, created_at, updated_at
+	SELECT handle, display_name, ciphertext, created_at, updated_at
 	FROM secrets
 	WHERE handle = ?
 	`
@@ -1712,6 +1713,7 @@ func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
 	var secret models.Secret
 	err := s.queryRow(query, handle).Scan(
 		&secret.Handle,
+		&secret.DisplayName,
 		&secret.Ciphertext,
 		&secret.CreatedAt,
 		&secret.UpdatedAt,
@@ -1750,20 +1752,21 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 
 	query := `
 	UPDATE secrets
-	SET ciphertext = ?, updated_at = ?
+	SET display_name = ?, ciphertext = ?, updated_at = ?
 	WHERE handle = ?
-	RETURNING handle, ciphertext, created_at, updated_at
+	RETURNING handle, display_name, ciphertext, created_at, updated_at
 	`
 
 	now := time.Now().UTC()
 	row := s.queryRow(query,
+		secret.DisplayName,
 		secret.Ciphertext,
 		now,
 		secret.Handle,
 	)
 
 	var updated models.Secret
-	err := row.Scan(&updated.Handle, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
+	err := row.Scan(&updated.Handle, &updated.DisplayName, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()

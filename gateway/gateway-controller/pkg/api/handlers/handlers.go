@@ -2242,7 +2242,7 @@ func (s *APIServer) ListSecrets(c *gin.Context) {
 		return
 	}
 
-	ids, err := s.secretService.GetSecrets(correlationID)
+	secretsMeta, err := s.secretService.GetSecrets(correlationID)
 	if err != nil {
 		log.Error("Failed to retrieve secretsList",
 			slog.String("correlation_id", correlationID),
@@ -2255,9 +2255,25 @@ func (s *APIServer) ListSecrets(c *gin.Context) {
 		return
 	}
 
-	secretsList := make([]string, 0, len(ids))
-	for _, id := range ids {
-		secretsList = append(secretsList, id)
+	// Convert []SecretMeta to API response type
+	secretsList := make([]struct {
+		CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+		DisplayName string    `json:"displayName" yaml:"displayName"`
+		Id          string    `json:"id" yaml:"id"`
+		UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+	}, 0, len(secretsMeta))
+	for _, meta := range secretsMeta {
+		secretsList = append(secretsList, struct {
+			CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+			DisplayName string    `json:"displayName" yaml:"displayName"`
+			Id          string    `json:"id" yaml:"id"`
+			UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+		}{
+			CreatedAt:   meta.CreatedAt,
+			DisplayName: meta.DisplayName,
+			Id:          meta.Handle,
+			UpdatedAt:   meta.UpdatedAt,
+		})
 	}
 
 	c.JSON(http.StatusOK, api.SecretListResponse{

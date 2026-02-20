@@ -116,11 +116,12 @@ func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error
 
 	// Create secret model
 	secret := &models.Secret{
-		Handle:     handle,
-		Value:      "", // Don't store plaintext
-		Ciphertext: []byte(ciphertext),
-		CreatedAt:  time.Now().UTC(),
-		UpdatedAt:  time.Now().UTC(),
+		Handle:      handle,
+		DisplayName: secretConfig.Spec.DisplayName,
+		Value:       "", // Don't store plaintext
+		Ciphertext:  []byte(ciphertext),
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
 	}
 
 	// Persist encrypted secret
@@ -145,13 +146,13 @@ func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error
 	return secret, nil
 }
 
-// GetSecrets retrieves all secret handles/IDs
-func (s *SecretService) GetSecrets(correlationID string) ([]string, error) {
+// GetSecrets retrieves metadata for all secrets (no sensitive data)
+func (s *SecretService) GetSecrets(correlationID string) ([]models.SecretMeta, error) {
 	s.logger.Info("Retrieving all secrets",
 		slog.String("correlation_id", correlationID),
 	)
 
-	// Retrieve all secret handles from storage
+	// Retrieve all secret metadata from storage (no ciphertext)
 	secrets, err := s.storage.GetSecrets()
 	if err != nil {
 		s.logger.Error("Failed to retrieve secrets",
@@ -284,8 +285,9 @@ func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*model
 
 	// Update secret model
 	secret := &models.Secret{
-		Handle:     handle,
-		Ciphertext: []byte(ciphertext),
+		Handle:      handle,
+		DisplayName: secretConfig.Spec.DisplayName,
+		Ciphertext:  []byte(ciphertext),
 	}
 
 	// Persist updated secret — single round-trip, returns model with timestamps.

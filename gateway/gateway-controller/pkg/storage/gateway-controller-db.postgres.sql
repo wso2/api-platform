@@ -174,6 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
 -- provider and key_version are self-describing inside the ciphertext envelope
 CREATE TABLE IF NOT EXISTS secrets (
     handle TEXT PRIMARY KEY NOT NULL,
+    display_name TEXT NOT NULL,
     ciphertext BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
