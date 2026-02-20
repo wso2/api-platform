@@ -29,6 +29,10 @@ func (e *ErrProviderNotFound) Error() string {
 	return fmt.Sprintf("no encryption provider found for: %s", e.ProviderName)
 }
 
+func (e *ErrProviderNotFound) Unwrap() error {
+	return nil
+}
+
 // ErrEncryptionFailed indicates encryption operation failed
 type ErrEncryptionFailed struct {
 	ProviderName string
@@ -67,6 +71,10 @@ func (e *ErrInvalidKeySize) Error() string {
 	return fmt.Sprintf("invalid key size: expected %d bytes, got %d bytes", e.Expected, e.Actual)
 }
 
+func (e *ErrInvalidKeySize) Unwrap() error {
+	return nil
+}
+
 // ErrKeyNotFound indicates encryption key file not found
 type ErrKeyNotFound struct {
 	KeyPath string
@@ -74,4 +82,8 @@ type ErrKeyNotFound struct {
 
 func (e *ErrKeyNotFound) Error() string {
 	return fmt.Sprintf("encryption key not found: %s", e.KeyPath)
+}
+
+func (e *ErrKeyNotFound) Unwrap() error {
+	return nil
 }
