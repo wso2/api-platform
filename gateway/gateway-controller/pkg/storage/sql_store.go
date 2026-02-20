@@ -1619,15 +1619,13 @@ func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 	table := "secrets"
 
 	query := `
-	INSERT INTO secrets (handle, provider, key_version, ciphertext, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?)
+	INSERT INTO secrets (handle, ciphertext, created_at, updated_at)
+	VALUES (?, ?, ?, ?)
 	`
 
 	now := time.Now().UTC()
 	_, err := s.exec(query,
 		secret.Handle,
-		secret.Provider,
-		secret.KeyVersion,
 		secret.Ciphertext,
 		now,
 		now,
@@ -1653,8 +1651,6 @@ func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 
 	s.logger.Debug("Secret saved successfully",
 		slog.String("secret_handle", secret.Handle),
-		slog.String("provider", secret.Provider),
-		slog.String("key_version", secret.KeyVersion),
 	)
 
 	return nil
@@ -1708,7 +1704,7 @@ func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
 	table := "secrets"
 
 	query := `
-	SELECT handle, provider, key_version, ciphertext, created_at, updated_at
+	SELECT handle, ciphertext, created_at, updated_at
 	FROM secrets
 	WHERE handle = ?
 	`
@@ -1716,8 +1712,6 @@ func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
 	var secret models.Secret
 	err := s.queryRow(query, handle).Scan(
 		&secret.Handle,
-		&secret.Provider,
-		&secret.KeyVersion,
 		&secret.Ciphertext,
 		&secret.CreatedAt,
 		&secret.UpdatedAt,
@@ -1744,7 +1738,6 @@ func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
 
 	s.logger.Debug("Secret retrieved successfully",
 		slog.String("secret_handle", secret.Handle),
-		slog.String("provider", secret.Provider),
 	)
 
 	return &secret, nil
@@ -1757,15 +1750,12 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) error {
 
 	query := `
 	UPDATE secrets
-	SET handle = ?, provider = ?, key_version = ?, ciphertext = ?, updated_at = ?
+	SET ciphertext = ?, updated_at = ?
 	WHERE handle = ?
 	`
 
 	now := time.Now().UTC()
 	result, err := s.exec(query,
-		secret.Handle,
-		secret.Provider,
-		secret.KeyVersion,
 		secret.Ciphertext,
 		now,
 		secret.Handle,
@@ -1799,8 +1789,6 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) error {
 
 	s.logger.Debug("Secret updated successfully",
 		slog.String("secret_handle", secret.Handle),
-		slog.String("provider", secret.Provider),
-		slog.String("key_version", secret.KeyVersion),
 	)
 
 	return nil

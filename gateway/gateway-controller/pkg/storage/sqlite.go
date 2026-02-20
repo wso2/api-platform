@@ -92,7 +92,7 @@ func (s *SQLiteStorage) initSchema() error {
 	}
 
 	if version == 0 {
-		s.logger.Info("Initializing database schema (version 10)")
+		s.logger.Info("Initializing database schema (version 11)")
 		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
@@ -817,6 +817,81 @@ func (s *SQLiteStorage) initSchema() error {
 
 			s.logger.Info("Schema migrated to version 10 (secrets: handle is PRIMARY KEY)")
 			version = 10
+		}
+
+		if version == 10 {
+			// Migration to version 11: drop redundant provider and key_version columns from secrets.
+			// These values are already self-describing inside the ciphertext envelope
+			// (enc:<provider>:v1:<key-version>:<base64>) and are never read from the DB columns.
+			s.logger.Info("Migrating schema to version 11 (secrets: drop provider and key_version columns)")
+
+			if _, err := s.db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
+				return fmt.Errorf("failed to disable foreign keys for migration to version 11: %w", err)
+			}
+
+			tx, err := s.db.BeginTx(context.Background(), nil)
+			if err != nil {
+				s.db.Exec("PRAGMA foreign_keys = ON")
+				return fmt.Errorf("failed to begin transaction for migration to version 11: %w", err)
+			}
+			defer func() {
+				if err != nil {
+					if rbErr := tx.Rollback(); rbErr != nil {
+						s.logger.Error("Failed to rollback migration transaction", slog.Any("error", rbErr))
+					}
+					s.db.Exec("PRAGMA foreign_keys = ON")
+				}
+			}()
+
+			// Only rebuild if the provider column still exists
+			var providerExists int
+			if qErr := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('secrets') WHERE name='provider'`).Scan(&providerExists); qErr != nil {
+				return fmt.Errorf("failed to check secrets.provider column: %w", qErr)
+			}
+
+			if providerExists > 0 {
+				if _, err = tx.Exec(`CREATE TABLE secrets_new_v11 (
+					handle TEXT PRIMARY KEY NOT NULL,
+					ciphertext BLOB NOT NULL,
+					created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+				);`); err != nil {
+					return fmt.Errorf("failed to create secrets_new_v11 table: %w", err)
+				}
+
+				if _, err = tx.Exec(`
+					INSERT INTO secrets_new_v11 (handle, ciphertext, created_at, updated_at)
+					SELECT handle, ciphertext, created_at, updated_at
+					FROM secrets;
+				`); err != nil {
+					return fmt.Errorf("failed to copy data to secrets_new_v11: %w", err)
+				}
+
+				if _, err = tx.Exec(`DROP TABLE secrets;`); err != nil {
+					return fmt.Errorf("failed to drop old secrets table in version 11 migration: %w", err)
+				}
+				if _, err = tx.Exec(`ALTER TABLE secrets_new_v11 RENAME TO secrets;`); err != nil {
+					return fmt.Errorf("failed to rename secrets_new_v11: %w", err)
+				}
+				if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);`); err != nil {
+					return fmt.Errorf("failed to create idx_secrets_updated_at in version 11 migration: %w", err)
+				}
+			}
+
+			if _, err = tx.Exec("PRAGMA user_version = 11"); err != nil {
+				return fmt.Errorf("failed to set schema version to 11: %w", err)
+			}
+
+			if err = tx.Commit(); err != nil {
+				return fmt.Errorf("failed to commit migration to version 11: %w", err)
+			}
+
+			if _, err := s.db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+				return fmt.Errorf("failed to re-enable foreign keys after migration to version 11: %w", err)
+			}
+
+			s.logger.Info("Schema migrated to version 11 (secrets: removed provider and key_version columns)")
+			version = 11
 		}
 	}
 

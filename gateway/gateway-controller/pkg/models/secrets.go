@@ -22,12 +22,12 @@ import "time"
 
 // Secret represents a secret in the storage layer.
 // Handle (metadata.name) is the sole identifier — no separate UUID is generated.
+// Provider and KeyVersion are not stored as separate fields; they are encoded
+// inside the Ciphertext envelope (enc:<provider>:v1:<key-version>:<base64>).
 type Secret struct {
 	Handle     string    // User-provided unique identifier (primary key)
 	Value      string    // Plaintext secret data (in-memory only, never persisted)
-	Provider   string    // Encryption provider identifier
-	KeyVersion string    // Key version used for encryption
-	Ciphertext []byte    // Encrypted secret with metadata (stored in database)
+	Ciphertext []byte    // Encrypted secret with self-describing metadata (stored in database)
 	CreatedAt  time.Time // Creation timestamp (UTC)
 	UpdatedAt  time.Time // Last modification timestamp (UTC)
 }

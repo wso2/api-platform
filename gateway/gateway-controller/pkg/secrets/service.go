@@ -118,8 +118,6 @@ func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error
 	secret := &models.Secret{
 		Handle:     handle,
 		Value:      "", // Don't store plaintext
-		Provider:   payload.Provider,
-		KeyVersion: payload.KeyVersion,
 		Ciphertext: []byte(ciphertext),
 		CreatedAt:  time.Now().UTC(),
 		UpdatedAt:  time.Now().UTC(),
@@ -302,8 +300,6 @@ func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*model
 	// Update secret model
 	secret := &models.Secret{
 		Handle:     handle,
-		Provider:   payload.Provider,
-		KeyVersion: payload.KeyVersion,
 		Ciphertext: []byte(ciphertext),
 	}
 
