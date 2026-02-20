@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 8
+-- Version: 9
 
 -- Main table for deployments
 CREATE TABLE IF NOT EXISTS deployments (
@@ -169,6 +169,18 @@ CREATE INDEX IF NOT EXISTS idx_deployments_gateway_id ON deployments(gateway_id)
 CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);
 CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider_templates(gateway_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
+
+-- Table for encrypted secrets (handle is the sole identifier — no separate UUID)
+CREATE TABLE IF NOT EXISTS secrets (
+    handle TEXT PRIMARY KEY NOT NULL,
+    provider TEXT NOT NULL,
+    key_version TEXT NOT NULL,
+    ciphertext BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
 
 -- Schema migration metadata
 CREATE TABLE IF NOT EXISTS schema_migrations (

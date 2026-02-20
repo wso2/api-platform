@@ -1619,13 +1619,12 @@ func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 	table := "secrets"
 
 	query := `
-	INSERT INTO secrets (id, handle, provider, key_version, ciphertext, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO secrets (handle, provider, key_version, ciphertext, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now().UTC()
 	_, err := s.exec(query,
-		secret.ID,
 		secret.Handle,
 		secret.Provider,
 		secret.KeyVersion,
@@ -1709,14 +1708,13 @@ func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
 	table := "secrets"
 
 	query := `
-	SELECT id, handle, provider, key_version, ciphertext, created_at, updated_at
+	SELECT handle, provider, key_version, ciphertext, created_at, updated_at
 	FROM secrets
 	WHERE handle = ?
 	`
 
 	var secret models.Secret
 	err := s.queryRow(query, handle).Scan(
-		&secret.ID,
 		&secret.Handle,
 		&secret.Provider,
 		&secret.KeyVersion,

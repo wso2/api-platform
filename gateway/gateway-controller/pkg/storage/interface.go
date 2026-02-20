@@ -235,7 +235,7 @@ type Storage interface {
 
 	// SaveSecret persists a new encrypted secret.
 	//
-	// Returns an error if a secret with the same ID already exists.
+	// Returns an error if a secret with the same handle already exists.
 	// Implementations should ensure this operation is atomic.
 	SaveSecret(secret *models.Secret) error
 
@@ -244,7 +244,7 @@ type Storage interface {
 	// Returns an empty slice if no secrets exist.
 	GetSecrets() ([]string, error)
 
-	// GetSecret retrieves a secret by ID.
+	// GetSecret retrieves a secret by handle.
 	//
 	// Returns error if the secret does not exist.
 	GetSecret(handle string) (*models.Secret, error)

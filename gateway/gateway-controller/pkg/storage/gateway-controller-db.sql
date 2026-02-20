@@ -181,8 +181,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 -- Table for encrypted secrets
 CREATE TABLE IF NOT EXISTS secrets (
-    id TEXT PRIMARY KEY NOT NULL,
-    handle TEXT NOT NULL UNIQUE,        -- secret identifier (e.g., wso2-openai-api-key)
+    handle TEXT PRIMARY KEY NOT NULL,   -- secret identifier (e.g., wso2-openai-api-key)
     provider TEXT NOT NULL,
     key_version TEXT NOT NULL,
     ciphertext BLOB NOT NULL,
@@ -202,5 +201,5 @@ CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 
--- Set schema version to 9 (removed index_key column, switched to hash-based indexing)
-PRAGMA user_version = 9;
+-- Set schema version to 10 (secrets table: handle is PRIMARY KEY, removed unused id column)
+PRAGMA user_version = 10;

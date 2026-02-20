@@ -24,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
@@ -41,7 +40,6 @@ const (
 type SecretParams struct {
 	Data          []byte       // Raw configuration data (YAML/JSON)
 	ContentType   string       // Content type for parsing
-	ID            string       // Optional ID; if empty, generated
 	CorrelationID string       // Correlation ID for tracking
 	Logger        *slog.Logger // Logger
 }
@@ -118,7 +116,6 @@ func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error
 
 	// Create secret model
 	secret := &models.Secret{
-		ID:         generateUUID(),
 		Handle:     handle,
 		Value:      "", // Don't store plaintext
 		Provider:   payload.Provider,
@@ -368,9 +365,4 @@ func (s *SecretService) Delete(id string, correlationID string) error {
 	)
 
 	return nil
-}
-
-// generateUUID generates a new UUID string
-func generateUUID() string {
-	return uuid.New().String()
 }

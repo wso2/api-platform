@@ -20,10 +20,10 @@ package models
 
 import "time"
 
-// Secret represents a secret in the storage layer
+// Secret represents a secret in the storage layer.
+// Handle (metadata.name) is the sole identifier — no separate UUID is generated.
 type Secret struct {
-	ID         string    // UUID
-	Handle     string    // User-provided unique identifier
+	Handle     string    // User-provided unique identifier (primary key)
 	Value      string    // Plaintext secret data (in-memory only, never persisted)
 	Provider   string    // Encryption provider identifier
 	KeyVersion string    // Key version used for encryption
