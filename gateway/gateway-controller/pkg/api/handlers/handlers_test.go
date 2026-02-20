@@ -411,15 +411,15 @@ func (m *MockStorage) GetSecret(handle string) (*models.Secret, error) {
 	return nil, errors.New("secret not found")
 }
 
-func (m *MockStorage) UpdateSecret(secret *models.Secret) error {
+func (m *MockStorage) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 	if m.updateErr != nil {
-		return m.updateErr
+		return nil, m.updateErr
 	}
 	if _, ok := m.secrets[secret.Handle]; !ok {
-		return errors.New("secret not found")
+		return nil, errors.New("secret not found")
 	}
 	m.secrets[secret.Handle] = secret
-	return nil
+	return secret, nil
 }
 
 func (m *MockStorage) DeleteSecret(handle string) error {

@@ -251,9 +251,9 @@ type Storage interface {
 
 	// UpdateSecret updates an existing secret.
 	//
-	// Returns error if the secret does not exist.
-	// Implementations should ensure this operation is atomic.
-	UpdateSecret(secret *models.Secret) error
+	// Returns the updated secret (including database-assigned timestamps) or error
+	// if the secret does not exist. Implementations should ensure this operation is atomic.
+	UpdateSecret(secret *models.Secret) (*models.Secret, error)
 
 	// DeleteSecret permanently removes a secret.
 	//

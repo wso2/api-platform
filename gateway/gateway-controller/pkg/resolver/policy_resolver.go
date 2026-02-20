@@ -30,6 +30,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 )
 
+// secretTemplateRegex matches $secret{key} patterns in policy parameters.
+// Compiled once at package initialization to avoid recompilation on each call.
+var secretTemplateRegex = regexp.MustCompile(`\$secret\{([^}]+)\}`)
+
 // PolicyResolver resolves resolve policy params
 type PolicyResolver struct {
 	policyDefinitions map[string]api.PolicyDefinition
@@ -312,36 +316,41 @@ func (pr *PolicyResolver) resolveSecretTemplates(templateStr string) (string, er
 		return "", fmt.Errorf("secret service is not initialized properly")
 	}
 
-	// Pattern to match $secret{key}
-	secretPattern := `\$secret\{([^}]+)\}`
-	re := regexp.MustCompile(secretPattern)
-
-	var resolveErr error
-	resolved := re.ReplaceAllStringFunc(templateStr, func(match string) string {
-		// Extract the secret key from $secret{key}
-		matches := re.FindStringSubmatch(match)
-		if len(matches) < 2 {
-			resolveErr = fmt.Errorf("invalid secret template format: %s", match)
-			return match
-		}
-
-		secretKey := matches[1]
-
-		// Decrypt the secret key
-		decryptedSecret, err := pr.secretsService.Get(secretKey, "")
-		if err != nil {
-			resolveErr = fmt.Errorf("failed to decrypt secret '%s': %w", secretKey, err)
-			return match
-		}
-
-		return decryptedSecret.Value
-	})
-
-	if resolveErr != nil {
-		return "", resolveErr
+	// Find all matches first to check if there's any work to do
+	matches := secretTemplateRegex.FindAllStringSubmatchIndex(templateStr, -1)
+	if matches == nil {
+		// No templates to resolve, return original
+		return templateStr, nil
 	}
 
-	return resolved, nil
+	var result strings.Builder
+	lastEnd := 0
+
+	for _, match := range matches {
+		// match[0], match[1] = full match start/end
+		// match[2], match[3] = capture group start/end (the secret key)
+		fullStart, fullEnd := match[0], match[1]
+		keyStart, keyEnd := match[2], match[3]
+
+		// Append text before this match
+		result.WriteString(templateStr[lastEnd:fullStart])
+
+		// Extract and resolve the secret key
+		secretKey := templateStr[keyStart:keyEnd]
+		decryptedSecret, err := pr.secretsService.Get(secretKey, "")
+		if err != nil {
+			// Return immediately on first error — preserves first failure and avoids extra work
+			return "", fmt.Errorf("failed to decrypt secret '%s': %w", secretKey, err)
+		}
+
+		result.WriteString(decryptedSecret.Value)
+		lastEnd = fullEnd
+	}
+
+	// Append remaining text after last match
+	result.WriteString(templateStr[lastEnd:])
+
+	return result.String(), nil
 }
 
 // navigateToParents navigates to all parent objects that contain the target field

@@ -1743,8 +1743,8 @@ func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
 	return &secret, nil
 }
 
-// UpdateSecret updates an existing secret
-func (s *sqlStore) UpdateSecret(secret *models.Secret) error {
+// UpdateSecret updates an existing secret and returns the updated model with timestamps
+func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 	startTime := time.Now()
 	table := "secrets"
 
@@ -1752,36 +1752,31 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) error {
 	UPDATE secrets
 	SET ciphertext = ?, updated_at = ?
 	WHERE handle = ?
+	RETURNING handle, ciphertext, created_at, updated_at
 	`
 
 	now := time.Now().UTC()
-	result, err := s.exec(query,
+	row := s.queryRow(query,
 		secret.Ciphertext,
 		now,
 		secret.Handle,
 	)
 
+	var updated models.Secret
+	err := row.Scan(&updated.Handle, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("update", "not_found").Inc()
+			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, secret.Handle)
+		}
 		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
 		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
 		s.logger.Error("Failed to update secret",
 			slog.String("secret_handle", secret.Handle),
 			slog.Any("error", err),
 		)
-		return fmt.Errorf("failed to update secret: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
-		metrics.StorageErrorsTotal.WithLabelValues("update", "rows_affected_error").Inc()
-		return fmt.Errorf("failed to check rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
-		metrics.StorageErrorsTotal.WithLabelValues("update", "not_found").Inc()
-		return fmt.Errorf("%w: id=%s", ErrNotFound, secret.Handle)
+		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
 
 	metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "success").Inc()
@@ -1791,7 +1786,7 @@ func (s *sqlStore) UpdateSecret(secret *models.Secret) error {
 		slog.String("secret_handle", secret.Handle),
 	)
 
-	return nil
+	return &updated, nil
 }
 
 // DeleteSecret permanently removes a secret

@@ -262,25 +262,10 @@ func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*model
 			len(validationErrors), combinedMsg)
 	}
 
-	// Check if secret exists
-	exists, err := s.storage.SecretExists(handle)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check secret existence: %w", err)
-	}
-	if !exists {
-		return nil, fmt.Errorf("secret configuration not found: id=%s", handle)
-	}
-
-	// Check for metadata.name conflicts
+	// Validate that the handle in the URL matches the handle in the payload.
+	// Renaming secrets is not supported to avoid complexity and accidental changes.
 	if secretConfig.Metadata.Name != handle {
-		conflict, err := s.storage.SecretExists(secretConfig.Metadata.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check conflicting secret existence: %w", err)
-		}
-		if conflict {
-			return nil, fmt.Errorf("unable to change the secret id because a secret with the id '%s'"+
-				" already exists", secretConfig.Metadata.Name)
-		}
+		return nil, fmt.Errorf("secret id in payload ('%s') does not match the URL path id ('%s'): renaming secrets is not supported", secretConfig.Metadata.Name, handle)
 	}
 
 	// Encrypt with current primary key (automatic key migration)
@@ -303,20 +288,19 @@ func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*model
 		Ciphertext: []byte(ciphertext),
 	}
 
-	// Persist updated secret
-	if err := s.storage.UpdateSecret(secret); err != nil {
+	// Persist updated secret — single round-trip, returns model with timestamps.
+	// Relies on atomic UPDATE ... WHERE handle = ? returning rows affected = 0 for "not found".
+	updatedSecret, err := s.storage.UpdateSecret(secret)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("secret configuration not found: id=%s", handle)
+		}
 		s.logger.Error("Failed to update secret",
 			slog.String("secret_handle", handle),
 			slog.String("correlation_id", params.CorrelationID),
 			slog.Any("error", err),
 		)
 		return nil, fmt.Errorf("storage update failed: %w", err)
-	}
-
-	// Retrieve updated secret with timestamps
-	updatedSecret, err := s.storage.GetSecret(handle)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve updated secret: %w", err)
 	}
 
 	s.logger.Info("Secret updated successfully",

@@ -236,15 +236,15 @@ func (m *mockStorageForDeletion) GetSecret(handle string) (*models.Secret, error
 	return nil, storage.ErrNotFound
 }
 
-func (m *mockStorageForDeletion) UpdateSecret(secret *models.Secret) error {
+func (m *mockStorageForDeletion) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
 	if m.updateErr != nil {
-		return m.updateErr
+		return nil, m.updateErr
 	}
 	if _, ok := m.secrets[secret.Handle]; !ok {
-		return storage.ErrNotFound
+		return nil, storage.ErrNotFound
 	}
 	m.secrets[secret.Handle] = secret
-	return nil
+	return secret, nil
 }
 
 func (m *mockStorageForDeletion) DeleteSecret(handle string) error {
