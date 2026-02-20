@@ -202,7 +202,7 @@ func main() {
 			}
 
 			// Create provider manager
-			encryptionProviderManager, err = encryption.NewProviderManager(providers, db, log)
+			encryptionProviderManager, err = encryption.NewProviderManager(providers, log)
 			if err != nil {
 				log.Error("Failed to initialize provider manager", slog.Any("error", err))
 			}

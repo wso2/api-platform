@@ -199,5 +199,5 @@ CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 
--- Set schema version to 11 (secrets table: removed redundant provider/key_version columns — already embedded in ciphertext envelope)
-PRAGMA user_version = 11;
+-- Set schema version to 9 (removed index_key column, switched to hash-based indexing)
+PRAGMA user_version = 9;

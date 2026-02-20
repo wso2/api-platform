@@ -179,10 +179,6 @@ CREATE TABLE IF NOT EXISTS secrets (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Drop redundant columns if they exist on already-migrated databases (schema v9 → v10)
-ALTER TABLE secrets DROP COLUMN IF EXISTS provider;
-ALTER TABLE secrets DROP COLUMN IF EXISTS key_version;
-
 CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
 
 -- Schema migration metadata

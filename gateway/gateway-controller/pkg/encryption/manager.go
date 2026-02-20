@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
 // EncryptionProvider defines the interface for encryption implementations
@@ -52,12 +50,11 @@ type EncryptedPayload struct {
 // ProviderManager orchestrates the encryption provider chain
 type ProviderManager struct {
 	providers []EncryptionProvider
-	storage   storage.Storage
 	logger    *slog.Logger
 }
 
 // NewProviderManager creates a new provider manager with the given providers
-func NewProviderManager(providers []EncryptionProvider, storage storage.Storage, logger *slog.Logger) (*ProviderManager, error) {
+func NewProviderManager(providers []EncryptionProvider, logger *slog.Logger) (*ProviderManager, error) {
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("at least one encryption provider is required")
 	}
@@ -76,7 +73,6 @@ func NewProviderManager(providers []EncryptionProvider, storage storage.Storage,
 
 	return &ProviderManager{
 		providers: providers,
-		storage:   storage,
 		logger:    logger,
 	}, nil
 }
