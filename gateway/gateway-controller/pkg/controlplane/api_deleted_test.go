@@ -35,9 +35,11 @@ import (
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
 type mockStorageForDeletion struct {
 	configs            map[string]*models.StoredConfig
+	secrets            map[string]*models.Secret
 	deleteErr          error
 	getErr             error
 	removeKeyErr       error
+	updateErr          error
 	deleteCallCount    int
 	removeKeyCallCount int
 }
@@ -45,6 +47,7 @@ type mockStorageForDeletion struct {
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
 		configs: make(map[string]*models.StoredConfig),
+		secrets: make(map[string]*models.Secret),
 	}
 }
 
@@ -201,6 +204,66 @@ func (m *mockStorageForDeletion) DeleteCertificate(id string) error {
 
 func (m *mockStorageForDeletion) GetCertificateByName(name string) (*models.StoredCertificate, error) {
 	return nil, storage.ErrNotFound
+}
+
+// Secret methods (not used in deletion tests but required by interface)
+func (m *mockStorageForDeletion) SaveSecret(secret *models.Secret) error {
+	if m.deleteErr != nil { // reuse existing error fields only if needed
+		return m.deleteErr
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSecrets() ([]string, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	ids := make([]string, 0, len(m.secrets))
+	for handle := range m.secrets {
+		ids = append(ids, handle)
+	}
+	return ids, nil
+}
+
+func (m *mockStorageForDeletion) GetSecret(handle string) (*models.Secret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if s, ok := m.secrets[handle]; ok {
+		return s, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) UpdateSecret(secret *models.Secret) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if _, ok := m.secrets[secret.Handle]; !ok {
+		return storage.ErrNotFound
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSecret(handle string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.secrets[handle]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(m.secrets, handle)
+	return nil
+}
+
+func (m *mockStorageForDeletion) SecretExists(handle string) (bool, error) {
+	if m.getErr != nil {
+		return false, m.getErr
+	}
+	_, ok := m.secrets[handle]
+	return ok, nil
 }
 
 // LLMProviderTemplate methods (not used in deletion tests but required by interface)

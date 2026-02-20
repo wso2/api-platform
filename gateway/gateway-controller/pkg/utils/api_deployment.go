@@ -33,6 +33,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -70,6 +71,7 @@ type APIDeploymentService struct {
 	parser          *config.Parser
 	validator       config.Validator
 	routerConfig    *config.RouterConfig
+	policyResolver  *resolver.PolicyResolver
 	httpClient      *http.Client
 }
 
@@ -80,6 +82,7 @@ func NewAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	policyResolver *resolver.PolicyResolver,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
 		store:           store,
@@ -89,10 +92,12 @@ func NewAPIDeploymentService(
 		validator:       validator,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		routerConfig:    routerConfig,
+		policyResolver:  policyResolver,
 	}
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
+// Important: The APIDeploymentResult contains resolved secrets. Do not expose them in responses.
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
 	var apiConfig api.APIConfiguration
 	// Parse configuration
@@ -283,6 +288,24 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
+	// Get resolved stored config before persisting
+	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		// Aggregate errors into a single error message
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.GetHandle()),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+
 	// Try to save/update the configuration
 	isUpdate, err = s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
@@ -318,7 +341,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}()
 
 	return &APIDeploymentResult{
-		StoredConfig: storedCfg,
+		StoredConfig: resolvedCfg,
 		IsUpdate:     isUpdate,
 	}, nil
 }

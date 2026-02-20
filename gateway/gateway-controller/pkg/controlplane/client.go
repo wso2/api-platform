@@ -33,6 +33,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -109,6 +110,7 @@ type Client struct {
 	validator            config.Validator
 	deploymentService    *utils.APIDeploymentService
 	apiUtilsService      *utils.APIUtilsService
+	policyResolver       *resolver.PolicyResolver
 	apiKeyService        *utils.APIKeyService
 	llmDeploymentService *utils.LLMDeploymentService
 	apiKeyXDSManager     utils.XDSManager
@@ -134,18 +136,20 @@ func NewClient(
 	policyDefinitions map[string]api.PolicyDefinition,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
+	policyResolver *resolver.PolicyResolver,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
-		config:            cfg,
-		logger:            logger,
-		store:             store,
-		db:                db,
-		snapshotManager:   snapshotManager,
-		parser:            config.NewParser(),
-		validator:         validator,
-		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
+		config:          cfg,
+		logger:          logger,
+		store:           store,
+		db:              db,
+		snapshotManager: snapshotManager,
+		parser:          config.NewParser(),
+		validator:       validator,
+		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig,
+			policyResolver),
 		apiKeyService:     utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig),
 		apiKeyXDSManager:  apiKeyXDSManager,
 		routerConfig:      routerConfig,

@@ -115,6 +115,9 @@ COPY default-policies /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
 
+# Copy default aesgcm keys
+COPY aesgcm-keys /app/aesgcm-keys
+
 RUN mkdir -p /app/data && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage; fi
 

@@ -55,6 +55,7 @@ type MockStorage struct {
 	templates   map[string]*models.StoredLLMProviderTemplate
 	apiKeys     map[string]*models.APIKey
 	certs       []*models.StoredCertificate
+	secrets     map[string]*models.Secret
 	saveErr     error
 	getErr      error
 	updateErr   error
@@ -68,6 +69,7 @@ func NewMockStorage() *MockStorage {
 		templates: make(map[string]*models.StoredLLMProviderTemplate),
 		apiKeys:   make(map[string]*models.APIKey),
 		certs:     make([]*models.StoredCertificate, 0),
+		secrets:   make(map[string]*models.Secret),
 	}
 }
 
@@ -376,6 +378,67 @@ func (m *MockStorage) DeleteCertificate(id string) error {
 		}
 	}
 	return errors.New("certificate not found")
+}
+
+// Secret management methods
+
+func (m *MockStorage) SaveSecret(secret *models.Secret) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *MockStorage) GetSecrets() ([]string, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	ids := make([]string, 0, len(m.secrets))
+	for handle := range m.secrets {
+		ids = append(ids, handle)
+	}
+	return ids, nil
+}
+
+func (m *MockStorage) GetSecret(handle string) (*models.Secret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if secret, ok := m.secrets[handle]; ok {
+		return secret, nil
+	}
+	return nil, errors.New("secret not found")
+}
+
+func (m *MockStorage) UpdateSecret(secret *models.Secret) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if _, ok := m.secrets[secret.Handle]; !ok {
+		return errors.New("secret not found")
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *MockStorage) DeleteSecret(handle string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.secrets[handle]; !ok {
+		return errors.New("secret not found")
+	}
+	delete(m.secrets, handle)
+	return nil
+}
+
+func (m *MockStorage) SecretExists(handle string) (bool, error) {
+	if m.getErr != nil {
+		return false, m.getErr
+	}
+	_, ok := m.secrets[handle]
+	return ok, nil
 }
 
 func (m *MockStorage) Close() error {
