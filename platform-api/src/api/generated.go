@@ -1935,8 +1935,8 @@ type RateLimitingLimitConfig struct {
 // RateLimitingResourceLimit defines model for RateLimitingResourceLimit.
 type RateLimitingResourceLimit struct {
 	// Limit Limit definition with independent request/token/cost dimensions. If all dimensions are disabled (or absent), rate limiting is off for that scope.
-	Limit   RateLimitingLimitConfig            `json:"limit" yaml:"limit"`
-	Methods []RateLimitingResourceLimitMethods `binding:"required" json:"methods" yaml:"methods"`
+	Limit   RateLimitingLimitConfig             `json:"limit" yaml:"limit"`
+	Methods *[]RateLimitingResourceLimitMethods `json:"methods,omitempty" yaml:"methods,omitempty"`
 
 	// Resource Explicit resource path to apply the limit to.
 	Resource string `binding:"required" json:"resource" yaml:"resource"`

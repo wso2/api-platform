@@ -1202,9 +1202,12 @@ func mapResourceWiseRateLimitingAPIToModel(in *api.ResourceWiseRateLimitingConfi
 	}
 	resources := make([]model.RateLimitingResourceLimit, 0, len(in.Resources))
 	for _, r := range in.Resources {
-		methods := make([]string, 0, len(r.Methods))
-		for _, m := range r.Methods {
-			methods = append(methods, string(m))
+		methods := make([]string, 0)
+		if r.Methods != nil {
+			methods = make([]string, 0, len(*r.Methods))
+			for _, m := range *r.Methods {
+				methods = append(methods, string(m))
+			}
 		}
 		resources = append(resources, model.RateLimitingResourceLimit{
 			Methods:  methods,
@@ -1529,7 +1532,8 @@ func mapResourceWiseRateLimitingModelToAPI(in *model.ResourceWiseRateLimitingCon
 				methods = append(methods, api.RateLimitingResourceLimitMethods(m))
 			}
 		}
-		resources = append(resources, api.RateLimitingResourceLimit{Resource: r.Resource, Methods: methods, Limit: mapRateLimitingLimitModelToAPIValue(&r.Limit)})
+		methodsCopy := methods
+		resources = append(resources, api.RateLimitingResourceLimit{Resource: r.Resource, Methods: &methodsCopy, Limit: mapRateLimitingLimitModelToAPIValue(&r.Limit)})
 	}
 	return &api.ResourceWiseRateLimitingConfig{
 		Default:   mapRateLimitingLimitModelToAPIValue(&in.Default),

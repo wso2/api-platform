@@ -5293,7 +5293,6 @@ components:
     RateLimitingResourceLimit:
       type: object
       required:
-        - methods
         - resource
         - limit
       properties:
