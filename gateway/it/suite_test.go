@@ -129,6 +129,7 @@ func getFeaturePaths() []string {
 		"features/cel-conditions.feature",
 		"features/analytics-basic.feature",
 		"features/token-based-ratelimit.feature",
+		"features/sandbox-routing.feature",
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))

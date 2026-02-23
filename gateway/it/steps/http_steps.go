@@ -42,6 +42,7 @@ type HTTPSteps struct {
 	lastResponse *http.Response
 	lastBody     []byte
 	headers      map[string]string
+	requestHost  string
 }
 
 // NewHTTPSteps creates a new HTTPSteps instance
@@ -59,6 +60,7 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I set header "([^"]*)" to "([^"]*)"$`, h.iSetHeader)
 	ctx.Step(`^I set the following headers:$`, h.iSetHeaders)
 	ctx.Step(`^I clear all headers$`, h.iClearHeaders)
+	ctx.Step(`^I set request host to "([^"]*)"$`, h.iSetRequestHost)
 
 	// HTTP method steps
 	ctx.Step(`^I send a GET request to \"([^\"]*)\"$`, h.ISendGETRequest)
@@ -91,6 +93,7 @@ func (h *HTTPSteps) Reset() {
 	h.lastResponse = nil
 	h.lastBody = nil
 	h.headers = make(map[string]string)
+	h.requestHost = ""
 }
 
 // SetHeader sets a header for subsequent requests
@@ -157,7 +160,29 @@ func (h *HTTPSteps) iSetHeaders(table *godog.Table) error {
 // iClearHeaders clears all headers
 func (h *HTTPSteps) iClearHeaders() error {
 	h.headers = make(map[string]string)
+	h.requestHost = ""
 	return nil
+}
+
+// iSetRequestHost sets an explicit HTTP Host value for subsequent requests.
+func (h *HTTPSteps) iSetRequestHost(host string) error {
+	h.requestHost = strings.TrimSpace(host)
+	return nil
+}
+
+func (h *HTTPSteps) resolveRequestHost(tempHeaderName, tempHeaderValue string) string {
+	if h.requestHost != "" {
+		return h.requestHost
+	}
+	if strings.EqualFold(tempHeaderName, "Host") {
+		return strings.TrimSpace(tempHeaderValue)
+	}
+	for name, value := range h.headers {
+		if strings.EqualFold(name, "Host") {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // ISendGETRequest sends a GET request
@@ -301,6 +326,9 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 
 	// Apply temporary header (overrides if exists)
 	req.Header.Set(headerName, headerValue)
+	if host := h.resolveRequestHost(headerName, headerValue); host != "" {
+		req.Host = host
+	}
 
 	// Set Content-Type for requests with body
 	if body != nil && req.Header.Get("Content-Type") == "" {
@@ -364,6 +392,9 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 	// Apply headers
 	for name, value := range h.headers {
 		req.Header.Set(name, value)
+	}
+	if host := h.resolveRequestHost("", ""); host != "" {
+		req.Host = host
 	}
 
 	// Set Content-Type for requests with body

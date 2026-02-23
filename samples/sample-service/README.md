@@ -7,6 +7,7 @@ A simple HTTP service that returns request details (method, path, query, headers
 | Endpoint | Method | Description |
 |---|---|---|
 | `/health` | GET | Health check, returns `{"status": "healthy"}` |
+| `/sandbox/whoami` | GET | Sandbox identity endpoint, returns deterministic sandbox payload for routing tests |
 | `/` | Any | Echoes request info (method, path, query, headers, body) and stores it as the last captured request |
 | `/captured-request` | GET | Returns the last request captured by `/`. Returns `204 No Content` if no request has been received yet |
 
