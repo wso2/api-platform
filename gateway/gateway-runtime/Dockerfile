@@ -124,7 +124,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Stage 3a: dlv installer (builds dlv for the debug stage)
 FROM golang:1.25.7-bookworm AS debug-dlv-builder
-RUN go install github.com/go-delve/delve/cmd/dlv@latest
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
 # Stage 3b: Debug Runtime (policy-engine wrapped in dlv, port 2346)
 FROM envoyproxy/envoy:v1.35.3 AS debug

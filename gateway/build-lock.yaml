@@ -4,7 +4,7 @@ policies:
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
     - name: token-based-ratelimit
-      version: v0.8.1
+      version: v0.8.2
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
     - name: advanced-ratelimit
       version: v0.3.1
@@ -25,7 +25,7 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v0
     - name: basic-ratelimit
-      version: v0.8.1
+      version: v0.8.2
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0
     - name: content-length-guardrail
       version: v0.2.0

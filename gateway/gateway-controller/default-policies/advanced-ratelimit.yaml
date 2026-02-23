@@ -1,5 +1,5 @@
 name: advanced-ratelimit
-version: v0.3.0
+version: v0.3.1
 description: |
   Rate limiting policy supporting multiple algorithms (GCRA, Fixed Window), multi-dimensional quotas,
   weighted rate limiting, flexible key extraction, and both in-memory and Redis backends. Supports
@@ -309,14 +309,14 @@ systemParameters:
       type: string
       description: |
         Rate limiting algorithm to use:
-        - gcra: Generic Cell Rate Algorithm (default). Provides smooth rate limiting
+        - gcra: Generic Cell Rate Algorithm. Provides smooth rate limiting
           with burst support and token bucket semantics. Better for consistent traffic
           shaping and burst handling.
-        - fixed-window: Simple fixed time window counter. Divides time into fixed
-          intervals and counts requests per window. Lower computational overhead,
+        - fixed-window: Simple fixed time window counter (default). Divides time into
+          fixed intervals and counts requests per window. Lower computational overhead,
           but can allow up to 2x burst at window boundaries.
       enum: ["gcra", "fixed-window"]
-      default: "gcra"
+      default: "fixed-window"
       "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.algorithm}"
 
     backend:

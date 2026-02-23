@@ -77,7 +77,9 @@ FROM golang:1.25.7-bookworm AS debug
 WORKDIR /app
 
 # Install dlv (Delve debugger)
-RUN go install github.com/go-delve/delve/cmd/dlv@v1.26.0
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
 # Copy debug-compiled binary and required runtime assets
 COPY --from=builder /build/controller .
@@ -94,7 +96,7 @@ ENTRYPOINT ["/go/bin/dlv", "exec", "/app/controller", \
             "--api-version=2", "--accept-multiclient", "--"]
 
 # Stage 2: Runtime image (Debian slim for glibc compatibility)
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS production
 
 # Re-declare ARGs after FROM to use them in this stage
 ARG VERSION=0.0.1-SNAPSHOT

@@ -52,6 +52,7 @@ build: generate test ## Build Docker image using buildx
 		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--load \
@@ -71,6 +72,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--push \
@@ -83,6 +85,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
+		--target production \
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \
 		--load \
 		.

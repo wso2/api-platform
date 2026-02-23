@@ -46,6 +46,7 @@ build: ## Build Gateway Runtime Docker image using buildx
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--load \
@@ -92,6 +93,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
+		--target production \
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \
 		.
 	@rm -rf target
@@ -115,6 +117,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--push \

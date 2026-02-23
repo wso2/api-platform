@@ -23,7 +23,7 @@ metadata:
 spec:
   displayName: OpenAI
   metadata:
-    endpointUrl: https://api.openai.com
+    endpointUrl: https://api.openai.com/v1
     auth:
       type: apiKey
       header: Authorization

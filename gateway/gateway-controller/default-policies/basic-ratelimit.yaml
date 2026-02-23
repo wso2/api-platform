@@ -1,8 +1,8 @@
 name: basic-ratelimit
-version: v0.8.1
+version: v0.8.2
 description: |
-  Enforces request rate limits by restricting how many requests are allowed
-  within one or more configured time windows.
+  Limits request rates by restricting the number of requests allowed within one
+  or more defined time windows.
 
 parameters:
   type: object
@@ -42,14 +42,14 @@ systemParameters:
       type: string
       description: |
         Rate limiting algorithm to use:
-        - gcra: Generic Cell Rate Algorithm (default). Provides smooth rate limiting
+        - gcra: Generic Cell Rate Algorithm. Provides smooth rate limiting
           with burst support and token bucket semantics. Better for consistent traffic
           shaping and burst handling.
-        - fixed-window: Simple fixed time window counter. Divides time into fixed
-          intervals and counts requests per window. Lower computational overhead,
+        - fixed-window: Simple fixed time window counter (default). Divides time into
+          fixed intervals and counts requests per window. Lower computational overhead,
           but can allow up to 2x burst at window boundaries.
       enum: ["gcra", "fixed-window"]
-      default: "gcra"
+      default: "fixed-window"
       "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.algorithm}"
 
     backend:

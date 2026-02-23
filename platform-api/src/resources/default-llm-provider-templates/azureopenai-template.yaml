@@ -26,14 +26,14 @@ spec:
     auth:
       type: apiKey
       header: api-key
-    logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/azure.openai/icon.png
-    openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/azure.openai/openapi.yaml
+    logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/refs/heads/main/openapi/azure.openai.v2/icon.png
+    openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/refs/heads/main/openapi/azure.openai.v2/openapi.yaml
   promptTokens:
     location: payload
-    identifier: $.usage.prompt_tokens
+    identifier: $.usage.input_tokens
   completionTokens:
     location: payload
-    identifier: $.usage.completion_tokens
+    identifier: $.usage.output_tokens
   totalTokens:
     location: payload
     identifier: $.usage.total_tokens

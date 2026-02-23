@@ -1,5 +1,5 @@
 name: token-based-ratelimit
-version: v0.8.1
+version: v0.8.2
 description: |
   Enforces token-based rate limits for LLM traffic by resolving token extraction
   paths from provider templates and delegating enforcement to the
@@ -84,10 +84,10 @@ systemParameters:
       type: string
       description: |
         Rate limiting algorithm to use:
-        - gcra: Generic Cell Rate Algorithm (default).
-        - fixed-window: Simple fixed time window counter.
+        - gcra: Generic Cell Rate Algorithm.
+        - fixed-window: Simple fixed time window counter (default).
       enum: ["gcra", "fixed-window"]
-      default: "gcra"
+      default: "fixed-window"
       "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.algorithm}"
 
     backend:

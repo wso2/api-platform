@@ -40,25 +40,30 @@ COPY --from=common . /workspace/common
 
 # Pre-download Go dependencies for common
 WORKDIR /workspace/common
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy SDK (needed for go.mod replace directive)
 COPY --from=sdk . /workspace/sdk
 
 # Pre-download Go dependencies for SDK
 WORKDIR /workspace/sdk
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy Gateway Builder application (includes templates)
 COPY . /workspace/gateway/gateway-builder
 
 # Pre-download Go dependencies for runtime
 WORKDIR /workspace/gateway/gateway-builder
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Build the Gateway Builder binary with version information
 # Use explicit cross-compilation to avoid QEMU emulation issues
-RUN CGO_ENABLED=0 \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=${TARGETARCH} \
     go build \

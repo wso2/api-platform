@@ -34,7 +34,7 @@ services:
       - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
       - APIP_GW_CONTROLLER_METRICS_PORT=9091
-      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-vYrcyaVAJNOhHNXYrQq5wFcsjpidF3QKVEabIw5cu-Y}
+      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-connect.bijira.dev}
     volumes:
       - controller-data:/app/data
@@ -67,7 +67,7 @@ services:
       - "2346:2346"   # dlv remote debug port
     environment:
       - GATEWAY_CONTROLLER_HOST=gateway-controller
-      - MOESIF_KEY=${MOESIF_KEY:-eyJhcHAiOiI0OTM6MzgxNSIsInZlciI6IjIuMSIsIm9yZyI6IjE3Nzo3MTgiLCJpYXQiOjE3Njk5MDQwMDB9.xnT7P86DgPz4rYdXKNbkA3HTjBL92OY1_UK8ZHFvumA}
+      - MOESIF_KEY=${MOESIF_KEY:-}
       - LOG_LEVEL=info
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
