@@ -784,7 +784,8 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	// Extract API ID
 	apiID := undeployedEvent.Payload.APIID
 	if apiID == "" {
-		c.logger.Error("API ID is empty in undeployment event")
+		c.logger.Error("API ID is empty in undeployment event",
+			slog.String("correlation_id", undeployedEvent.CorrelationID))
 		return
 	}
 
@@ -801,6 +802,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		if storage.IsNotFoundError(err) {
 			c.logger.Warn("API configuration not found for undeployment",
 				slog.String("api_id", apiID),
+				slog.String("correlation_id", undeployedEvent.CorrelationID)
 			)
 			// Not an error - the API might already be undeployed or deleted
 			return
@@ -824,6 +826,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		if err := c.db.UpdateConfig(apiConfig); err != nil {
 			c.logger.Error("Failed to update config status in database",
 				slog.String("api_id", apiID),
+				slog.String("correlation_id", undeployedEvent.CorrelationID
 				slog.Any("error", err),
 			)
 			return
@@ -834,6 +837,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	if err := c.store.Update(apiConfig); err != nil {
 		c.logger.Error("Failed to update config status in memory store",
 			slog.String("api_id", apiID),
+			slog.String("correlation_id", undeployedEvent.CorrelationID),
 			slog.Any("error", err),
 		)
 		return
