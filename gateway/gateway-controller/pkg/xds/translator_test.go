@@ -910,6 +910,55 @@ func TestTranslator_TranslateConfigs_EmptyConfigs(t *testing.T) {
 	assert.NotNil(t, resources)
 }
 
+func TestTranslator_GetVHostDomains(t *testing.T) {
+	logger := createTestLogger()
+
+	t.Run("fallback domains when explicit domain lists are empty", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.example.com")
+		assert.Equal(t, []string{"api.example.com", "api.example.com:*"}, domains)
+	})
+
+	t.Run("expands configured main domains when vhost equals main default", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"*.wso2.com", "*.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*.wso2.com")
+		assert.Equal(t, []string{"*.wso2.com", "*.wso2.com:*", "*.foo.com", "*.foo.com:*"}, domains)
+	})
+
+	t.Run("expands configured sandbox domains when vhost equals sandbox default", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Sandbox.Default = "*-sandbox.wso2.com"
+		routerCfg.VHosts.Sandbox.Domains = []string{"*-sandbox.wso2.com", "*-sandbox.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*-sandbox.wso2.com")
+		assert.Equal(t, []string{"*-sandbox.wso2.com", "*-sandbox.wso2.com:*", "*-sandbox.foo.com", "*-sandbox.foo.com:*"}, domains)
+	})
+
+	t.Run("api-level vhost override uses fallback pair only", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"*.wso2.com", "*.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("custom.wso2.com")
+		assert.Equal(t, []string{"custom.wso2.com", "custom.wso2.com:*"}, domains)
+	})
+}
+
 func TestTranslator_GetCertStore_Nil(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()

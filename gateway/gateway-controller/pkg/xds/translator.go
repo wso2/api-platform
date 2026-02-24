@@ -260,7 +260,7 @@ func (t *Translator) TranslateConfigs(
 		})
 		virtualHost := &route.VirtualHost{
 			Name:    vhost,
-			Domains: []string{vhost, vhost + ":*"},
+			Domains: t.getVHostDomains(vhost),
 			Routes:  routes,
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
@@ -402,6 +402,31 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	return resources, nil
+}
+
+// getVHostDomains returns Envoy domain patterns for a resolved vhost.
+// If the vhost equals a configured default and that default has explicit domains,
+// all configured domains are used; otherwise it falls back to the vhost itself.
+func (t *Translator) getVHostDomains(effectiveVHost string) []string {
+	expand := func(domains []string) []string {
+		expanded := make([]string, 0, len(domains)*2)
+		for _, domain := range domains {
+			expanded = append(expanded, domain, domain+":*")
+		}
+		return expanded
+	}
+
+	mainVHost := t.config.Router.VHosts.Main
+	if effectiveVHost == mainVHost.Default && len(mainVHost.Domains) > 0 {
+		return expand(mainVHost.Domains)
+	}
+
+	sandboxVHost := t.config.Router.VHosts.Sandbox
+	if effectiveVHost == sandboxVHost.Default && len(sandboxVHost.Domains) > 0 {
+		return expand(sandboxVHost.Domains)
+	}
+
+	return []string{effectiveVHost, effectiveVHost + ":*"}
 }
 
 // translateAsyncAPIConfig translates a single API configuration
