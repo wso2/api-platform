@@ -60,16 +60,26 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-http-check/v1.0/health" to be ready
 
     # Valid reachable URL - should pass (sample-backend is reachable)
-    When I send a POST request to "http://localhost:8080/url-http-check/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-http-check/v1.0/validate" with body:
       """
-      Check this URL: http://sample-backend:9080/api/v1/health
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://sample-backend:9080/api/v1/health"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Invalid/unreachable URL - should fail
-    When I send a POST request to "http://localhost:8080/url-http-check/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-http-check/v1.0/validate" with body:
       """
-      Check this URL: http://nonexistent-host-12345.invalid/test
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://nonexistent-host-12345.invalid/test"}
+        ]
+      }
       """
     Then the response status code should be 422
     And the response should be valid JSON
@@ -111,9 +121,14 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-no-urls/v1.0/health" to be ready
 
     # Request without URLs - should pass
-    When I send a POST request to "http://localhost:8080/url-no-urls/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-no-urls/v1.0/validate" with body:
       """
-      This is a message with no URLs at all, just plain text.
+      {
+        "messages": [
+          {"role": "user", "content": "This is a message with no URLs at all, just plain text."}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -153,16 +168,26 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-multiple/v1.0/health" to be ready
 
     # Multiple valid URLs - should pass
-    When I send a POST request to "http://localhost:8080/url-multiple/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-multiple/v1.0/validate" with body:
       """
-      Check these URLs: http://sample-backend:9080/health and http://sample-backend:9080/api/v1/health
+      {
+        "messages": [
+          {"role": "user", "content": "Check these URLs: http://sample-backend:9080/health and http://sample-backend:9080/api/v1/health"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Multiple URLs with one invalid - should fail
-    When I send a POST request to "http://localhost:8080/url-multiple/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-multiple/v1.0/validate" with body:
       """
-      Check http://sample-backend:9080/health and http://invalid-domain-xyz.invalid/test
+      {
+        "messages": [
+          {"role": "user", "content": "Check http://sample-backend:9080/health and http://invalid-domain-xyz.invalid/test"}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -207,16 +232,26 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-dns-only/v1.0/health" to be ready
 
     # URL with resolvable domain - should pass
-    When I send a POST request to "http://localhost:8080/url-dns-only/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-dns-only/v1.0/validate" with body:
       """
-      Check this URL: http://sample-backend:9080/test
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://sample-backend:9080/test"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # URL with non-resolvable domain - should fail
-    When I send a POST request to "http://localhost:8080/url-dns-only/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-dns-only/v1.0/validate" with body:
       """
-      Check this URL: http://nonexistent-domain-xyz12345.invalid/test
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://nonexistent-domain-xyz12345.invalid/test"}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -433,9 +468,14 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-timeout/v1.0/health" to be ready
 
     # Valid URL with short timeout - should still pass for reachable URLs
-    When I send a POST request to "http://localhost:8080/url-timeout/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-timeout/v1.0/validate" with body:
       """
-      Check this URL: http://sample-backend:9080/health
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://sample-backend:9080/health"}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -480,9 +520,14 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-assessment/v1.0/health" to be ready
 
     # Request that fails - should include assessment details with invalid URLs
-    When I send a POST request to "http://localhost:8080/url-assessment/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-assessment/v1.0/validate" with body:
       """
-      Check this URL: http://invalid-domain-xyz123.invalid/test
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://invalid-domain-xyz123.invalid/test"}
+        ]
+      }
       """
     Then the response status code should be 422
     And the response should be valid JSON
@@ -528,9 +573,15 @@ Feature: URL Guardrail
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/url-empty/v1.0/health" to be ready
 
-    # Empty body has no URLs - should pass
-    When I send a POST request to "http://localhost:8080/url-empty/v1.0/validate" with body:
+    # Empty content has no URLs - should pass
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-empty/v1.0/validate" with body:
       """
+      {
+        "messages": [
+          {"role": "user", "content": ""}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -570,9 +621,14 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-malformed/v1.0/health" to be ready
 
     # Malformed URL should be caught by regex or treated as invalid
-    When I send a POST request to "http://localhost:8080/url-malformed/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-malformed/v1.0/validate" with body:
       """
-      This has text that looks like a URL: htp://wrong-protocol.com
+      {
+        "messages": [
+          {"role": "user", "content": "This has text that looks like a URL: htp://wrong-protocol.com"}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -618,16 +674,26 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-combined/v1.0/health" to be ready
 
     # Request with valid URL - should pass request validation
-    When I send a POST request to "http://localhost:8080/url-combined/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-combined/v1.0/validate" with body:
       """
-      Check this URL: http://sample-backend:9080/health
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://sample-backend:9080/health"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Request with invalid URL - should fail at request phase
-    When I send a POST request to "http://localhost:8080/url-combined/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-combined/v1.0/validate" with body:
       """
-      Check this URL: http://invalid-domain-xyz.invalid/test
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://invalid-domain-xyz.invalid/test"}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -671,9 +737,14 @@ Feature: URL Guardrail
     And I wait for the endpoint "http://localhost:8080/url-special-chars/v1.0/health" to be ready
 
     # URL with query parameters and paths
-    When I send a POST request to "http://localhost:8080/url-special-chars/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/url-special-chars/v1.0/validate" with body:
       """
-      Check this URL: http://sample-backend:9080/api/v1/test?param=value&other=123
+      {
+        "messages": [
+          {"role": "user", "content": "Check this URL: http://sample-backend:9080/api/v1/test?param=value&other=123"}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -712,19 +783,27 @@ Feature: URL Guardrail
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/url-plaintext/v1.0/health" to be ready
 
-    # Plain text with valid URL
-    When I set header "Content-Type" to "text/plain"
+    # LLM-style content with valid URL
+    When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/url-plaintext/v1.0/validate" with body:
       """
-      Please check http://sample-backend:9080/health for status
+      {
+        "messages": [
+          {"role": "user", "content": "Please check http://sample-backend:9080/health for status"}
+        ]
+      }
       """
     Then the response status code should be 200
 
-    # Plain text with invalid URL
-    When I set header "Content-Type" to "text/plain"
+    # LLM-style content with invalid URL
+    When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/url-plaintext/v1.0/validate" with body:
       """
-      Please check http://nonexistent-host-abc.invalid/health
+      {
+        "messages": [
+          {"role": "user", "content": "Please check http://nonexistent-host-abc.invalid/health"}
+        ]
+      }
       """
     Then the response status code should be 422
 

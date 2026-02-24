@@ -61,16 +61,26 @@ Feature: Sentence Count Guardrail
     And I wait for the endpoint "http://localhost:8080/sentence-count-max/v1.0/health" to be ready
 
     # Request with 2 sentences - should pass (within limit)
-    When I send a POST request to "http://localhost:8080/sentence-count-max/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-max/v1.0/validate" with body:
       """
-      Hello world. This is fine.
+      {
+        "messages": [
+          {"role": "user", "content": "Hello world. This is fine."}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Request with 5 sentences - should be blocked (exceeds max of 3)
-    When I send a POST request to "http://localhost:8080/sentence-count-max/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-max/v1.0/validate" with body:
       """
-      One. Two. Three. Four. Five.
+      {
+        "messages": [
+          {"role": "user", "content": "One. Two. Three. Four. Five."}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -111,16 +121,26 @@ Feature: Sentence Count Guardrail
     And I wait for the endpoint "http://localhost:8080/sentence-count-min/v1.0/health" to be ready
 
     # Request with 1 sentence - should be blocked (below min of 3)
-    When I send a POST request to "http://localhost:8080/sentence-count-min/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-min/v1.0/validate" with body:
       """
-      Only one sentence here.
+      {
+        "messages": [
+          {"role": "user", "content": "Only one sentence here."}
+        ]
+      }
       """
     Then the response status code should be 422
 
     # Request with 4 sentences - should pass (above min)
-    When I send a POST request to "http://localhost:8080/sentence-count-min/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-min/v1.0/validate" with body:
       """
-      First sentence. Second sentence. Third sentence. Fourth sentence.
+      {
+        "messages": [
+          {"role": "user", "content": "First sentence. Second sentence. Third sentence. Fourth sentence."}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -342,23 +362,38 @@ Feature: Sentence Count Guardrail
     And I wait for the endpoint "http://localhost:8080/sentence-count-invert/v1.0/health" to be ready
 
     # Request with 3 sentences (within 2-4 range) - should FAIL because invert=true
-    When I send a POST request to "http://localhost:8080/sentence-count-invert/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-invert/v1.0/validate" with body:
       """
-      One sentence. Two sentences. Three sentences.
+      {
+        "messages": [
+          {"role": "user", "content": "One sentence. Two sentences. Three sentences."}
+        ]
+      }
       """
     Then the response status code should be 422
 
     # Request with 1 sentence (outside 2-4 range) - should PASS because invert=true
-    When I send a POST request to "http://localhost:8080/sentence-count-invert/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-invert/v1.0/validate" with body:
       """
-      Only one sentence here.
+      {
+        "messages": [
+          {"role": "user", "content": "Only one sentence here."}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Request with 6 sentences (outside 2-4 range) - should PASS because invert=true
-    When I send a POST request to "http://localhost:8080/sentence-count-invert/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-invert/v1.0/validate" with body:
       """
-      One. Two. Three. Four. Five. Six sentences here!
+      {
+        "messages": [
+          {"role": "user", "content": "One. Two. Three. Four. Five. Six sentences here!"}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -452,9 +487,15 @@ Feature: Sentence Count Guardrail
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-empty/v1.0/health" to be ready
 
-    # Empty body has 0 sentences - should fail (below min of 1)
-    When I send a POST request to "http://localhost:8080/sentence-count-empty/v1.0/validate" with body:
+    # Empty content has 0 sentences - should fail (below min of 1)
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-empty/v1.0/validate" with body:
       """
+      {
+        "messages": [
+          {"role": "user", "content": ""}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -495,30 +536,50 @@ Feature: Sentence Count Guardrail
     And I wait for the endpoint "http://localhost:8080/sentence-count-boundary/v1.0/health" to be ready
 
     # Exactly 2 sentences (min boundary) - should pass
-    When I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
       """
-      First sentence. Second sentence.
+      {
+        "messages": [
+          {"role": "user", "content": "First sentence. Second sentence."}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Exactly 4 sentences (max boundary) - should pass
-    When I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
       """
-      One. Two. Three. Four.
+      {
+        "messages": [
+          {"role": "user", "content": "One. Two. Three. Four."}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # 1 sentence (below min) - should fail
-    When I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
       """
-      Only one sentence.
+      {
+        "messages": [
+          {"role": "user", "content": "Only one sentence."}
+        ]
+      }
       """
     Then the response status code should be 422
 
     # 5 sentences (above max) - should fail
-    When I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-boundary/v1.0/validate" with body:
       """
-      One. Two. Three. Four. Five.
+      {
+        "messages": [
+          {"role": "user", "content": "One. Two. Three. Four. Five."}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -566,16 +627,26 @@ Feature: Sentence Count Guardrail
     And I wait for the endpoint "http://localhost:8080/sentence-count-combined/v1.0/health" to be ready
 
     # Request within limit - should pass request validation
-    When I send a POST request to "http://localhost:8080/sentence-count-combined/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-combined/v1.0/validate" with body:
       """
-      Two sentences here. This should pass.
+      {
+        "messages": [
+          {"role": "user", "content": "Two sentences here. This should pass."}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Request exceeds limit - should fail at request phase
-    When I send a POST request to "http://localhost:8080/sentence-count-combined/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-combined/v1.0/validate" with body:
       """
-      One. Two. Three. Four. Five. Six sentences total!
+      {
+        "messages": [
+          {"role": "user", "content": "One. Two. Three. Four. Five. Six sentences total!"}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -620,16 +691,26 @@ Feature: Sentence Count Guardrail
     And I wait for the endpoint "http://localhost:8080/sentence-count-punctuation/v1.0/health" to be ready
 
     # Multiple exclamation marks - "Hello!!! World???" should count based on [.!?] splitting
-    When I send a POST request to "http://localhost:8080/sentence-count-punctuation/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-punctuation/v1.0/validate" with body:
       """
-      Hello!!! World???
+      {
+        "messages": [
+          {"role": "user", "content": "Hello!!! World???"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Mixed punctuation - should be counted correctly
-    When I send a POST request to "http://localhost:8080/sentence-count-punctuation/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/sentence-count-punctuation/v1.0/validate" with body:
       """
-      What! Really? Yes.
+      {
+        "messages": [
+          {"role": "user", "content": "What! Really? Yes."}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -669,19 +750,27 @@ Feature: Sentence Count Guardrail
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-plaintext/v1.0/health" to be ready
 
-    # Plain text content - should count sentences correctly
-    When I set header "Content-Type" to "text/plain"
+    # LLM-style content payload - should count sentences correctly
+    When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/sentence-count-plaintext/v1.0/validate" with body:
       """
-      This is plain text. It has three sentences. All should be counted.
+      {
+        "messages": [
+          {"role": "user", "content": "This is plain text. It has three sentences. All should be counted."}
+        ]
+      }
       """
     Then the response status code should be 200
 
-    # Plain text exceeding limit
-    When I set header "Content-Type" to "text/plain"
+    # LLM-style content exceeding limit
+    When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/sentence-count-plaintext/v1.0/validate" with body:
       """
-      One. Two. Three. Four. Five. Six. This exceeds the limit!
+      {
+        "messages": [
+          {"role": "user", "content": "One. Two. Three. Four. Five. Six. This exceeds the limit!"}
+        ]
+      }
       """
     Then the response status code should be 422
 

@@ -61,16 +61,26 @@ Feature: Word Count Guardrail
     And I wait for the endpoint "http://localhost:8080/word-count-max/v1.0/health" to be ready
 
     # Request with 5 words - should pass (within limit)
-    When I send a POST request to "http://localhost:8080/word-count-max/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-max/v1.0/validate" with body:
       """
-      This has exactly five words
+      {
+        "messages": [
+          {"role": "user", "content": "This has exactly five words"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Request with 15 words - should be blocked (exceeds max of 10)
-    When I send a POST request to "http://localhost:8080/word-count-max/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-max/v1.0/validate" with body:
       """
-      This is a much longer message that contains way more than ten words and should fail validation
+      {
+        "messages": [
+          {"role": "user", "content": "This is a much longer message that contains way more than ten words and should fail validation"}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -111,16 +121,26 @@ Feature: Word Count Guardrail
     And I wait for the endpoint "http://localhost:8080/word-count-min/v1.0/health" to be ready
 
     # Request with 2 words - should be blocked (below min of 5)
-    When I send a POST request to "http://localhost:8080/word-count-min/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-min/v1.0/validate" with body:
       """
-      Too short
+      {
+        "messages": [
+          {"role": "user", "content": "Too short"}
+        ]
+      }
       """
     Then the response status code should be 422
 
     # Request with 7 words - should pass (above min)
-    When I send a POST request to "http://localhost:8080/word-count-min/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-min/v1.0/validate" with body:
       """
-      This message has exactly seven words total
+      {
+        "messages": [
+          {"role": "user", "content": "This message has exactly seven words total"}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -229,23 +249,38 @@ Feature: Word Count Guardrail
     And I wait for the endpoint "http://localhost:8080/word-count-invert/v1.0/health" to be ready
 
     # Request with 7 words (within 5-10 range) - should FAIL because invert=true
-    When I send a POST request to "http://localhost:8080/word-count-invert/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-invert/v1.0/validate" with body:
       """
-      This has exactly seven words here
+      {
+        "messages": [
+          {"role": "user", "content": "This has exactly seven words here"}
+        ]
+      }
       """
     Then the response status code should be 422
 
     # Request with 3 words (outside 5-10 range) - should PASS because invert=true
-    When I send a POST request to "http://localhost:8080/word-count-invert/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-invert/v1.0/validate" with body:
       """
-      Only three words
+      {
+        "messages": [
+          {"role": "user", "content": "Only three words"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Request with 15 words (outside 5-10 range) - should PASS because invert=true
-    When I send a POST request to "http://localhost:8080/word-count-invert/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-invert/v1.0/validate" with body:
       """
-      This is a much longer message that has way more than ten words so it passes
+      {
+        "messages": [
+          {"role": "user", "content": "This is a much longer message that has way more than ten words so it passes"}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -382,30 +417,50 @@ Feature: Word Count Guardrail
     And I wait for the endpoint "http://localhost:8080/word-count-boundary/v1.0/health" to be ready
 
     # Exactly 5 words (min boundary) - should pass
-    When I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
       """
-      One two three four five
+      {
+        "messages": [
+          {"role": "user", "content": "One two three four five"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Exactly 10 words (max boundary) - should pass
-    When I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
       """
-      One two three four five six seven eight nine ten
+      {
+        "messages": [
+          {"role": "user", "content": "One two three four five six seven eight nine ten"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # 4 words (below min) - should fail
-    When I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
       """
-      One two three four
+      {
+        "messages": [
+          {"role": "user", "content": "One two three four"}
+        ]
+      }
       """
     Then the response status code should be 422
 
     # 11 words (above max) - should fail
-    When I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-boundary/v1.0/validate" with body:
       """
-      One two three four five six seven eight nine ten eleven
+      {
+        "messages": [
+          {"role": "user", "content": "One two three four five six seven eight nine ten eleven"}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -453,16 +508,26 @@ Feature: Word Count Guardrail
     And I wait for the endpoint "http://localhost:8080/word-count-combined/v1.0/health" to be ready
 
     # Request within limit - should pass request validation
-    When I send a POST request to "http://localhost:8080/word-count-combined/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-combined/v1.0/validate" with body:
       """
-      Five words in this request
+      {
+        "messages": [
+          {"role": "user", "content": "Five words in this request"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Request exceeds limit - should fail at request phase
-    When I send a POST request to "http://localhost:8080/word-count-combined/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-combined/v1.0/validate" with body:
       """
-      This is a much longer message that contains way more than ten words and should fail
+      {
+        "messages": [
+          {"role": "user", "content": "This is a much longer message that contains way more than ten words and should fail"}
+        ]
+      }
       """
     Then the response status code should be 422
 
@@ -624,16 +689,26 @@ Feature: Word Count Guardrail
     And I wait for the endpoint "http://localhost:8080/word-count-punctuation/v1.0/health" to be ready
 
     # Punctuation should not affect word count - "Hello... world!!!" = 2 words
-    When I send a POST request to "http://localhost:8080/word-count-punctuation/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-punctuation/v1.0/validate" with body:
       """
-      Hello... world!!! How are you?
+      {
+        "messages": [
+          {"role": "user", "content": "Hello... world!!! How are you?"}
+        ]
+      }
       """
     Then the response status code should be 200
 
     # Hyphenated words count as one - "well-known" = 1 word
-    When I send a POST request to "http://localhost:8080/word-count-punctuation/v1.0/validate" with body:
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/word-count-punctuation/v1.0/validate" with body:
       """
-      This is a well-known fact
+      {
+        "messages": [
+          {"role": "user", "content": "This is a well-known fact"}
+        ]
+      }
       """
     Then the response status code should be 200
 
@@ -673,19 +748,27 @@ Feature: Word Count Guardrail
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-plaintext/v1.0/health" to be ready
 
-    # Plain text content - should count words correctly
-    When I set header "Content-Type" to "text/plain"
+    # LLM-style content payload - should count words correctly
+    When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/word-count-plaintext/v1.0/validate" with body:
       """
-      This is plain text with seven words
+      {
+        "messages": [
+          {"role": "user", "content": "This is plain text with seven words"}
+        ]
+      }
       """
     Then the response status code should be 200
 
-    # Plain text exceeding limit
-    When I set header "Content-Type" to "text/plain"
+    # LLM-style content exceeding limit
+    When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/word-count-plaintext/v1.0/validate" with body:
       """
-      This plain text message has way more than the allowed ten words limit
+      {
+        "messages": [
+          {"role": "user", "content": "This plain text message has way more than the allowed ten words limit"}
+        ]
+      }
       """
     Then the response status code should be 422
 
