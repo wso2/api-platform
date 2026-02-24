@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 8
+-- Version: 10
 
 -- Main table for deployments
 CREATE TABLE IF NOT EXISTS deployments (
@@ -97,6 +97,26 @@ CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
+
+-- Table for organization states (used by eventhub for multi-replica sync)
+CREATE TABLE IF NOT EXISTS organization_states (
+    organization TEXT PRIMARY KEY,
+    version_id TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table for events (used by eventhub for multi-replica sync)
+CREATE TABLE IF NOT EXISTS events (
+    organization_id TEXT NOT NULL,
+    processed_timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    originated_timestamp TIMESTAMPTZ NOT NULL,
+    event_type TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+    entity_id TEXT NOT NULL,
+    correlation_id TEXT NOT NULL DEFAULT '',
+    event_data TEXT NOT NULL,
+    PRIMARY KEY (organization_id, processed_timestamp)
+);
 
 -- Migration-safe column additions for existing deployments
 ALTER TABLE deployments ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';

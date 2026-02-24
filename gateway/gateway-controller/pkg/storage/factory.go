@@ -22,15 +22,25 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
+
+// ConnectionPoolConfig contains generic connection pool settings.
+type ConnectionPoolConfig struct {
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+}
 
 // BackendConfig contains the minimal storage backend configuration required by NewStorage.
 type BackendConfig struct {
 	Type       string
 	SQLitePath string
 	Postgres   PostgresConnectionConfig
+	Pool       ConnectionPoolConfig
 	GatewayID  string
 }
 
@@ -38,7 +48,7 @@ type BackendConfig struct {
 func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 	switch cfg.Type {
 	case "sqlite":
-		backend, err := newSQLiteStorage(cfg.SQLitePath, logger)
+		backend, err := newSQLiteStorage(cfg.SQLitePath, cfg.Pool, logger)
 		if err != nil {
 			if strings.Contains(err.Error(), "database is locked") {
 				return nil, fmt.Errorf("%w: %w", ErrDatabaseLocked, err)
