@@ -1,25 +1,57 @@
 name: "🚀 Improvement Request"
 description: Suggest an improvement to the product.
+title: "[Improvement]: "
 labels: ["Type/Improvement"]
+type: Improvement
 body:
-  - type: textarea
-    id: limitation
+  - type: dropdown
+    id: area
     attributes:
-      label: Current Limitation
-      description: Describe the the current limitation.
+      label: Please select the area the issue is related to
+      multiple: true
+      options:
+        - Area/Management (Management API or Management Portal UI)
+        - Area/Gateway (Routing, API deployment in gateway etc.)
+        - Area/Policies (Policies, Policy Hub, Policy Engine etc)
+        - Area/APIDesigner (API Designer VSCode extension)
+        - Area/DeveloperPortal (Developer Portal API, Developer Portal UI)
+        - Area/AIGateway (AI Gateway runtime/control plane)
+        - Area/AIPolicies (AI Gateway Policies, Guardrails)
+        - Area/Operator (Kubernetes operator for AI Gateway or Regular Gateway)
+        - Area/Other (Anything else which does not match above categories)
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: aspect
+    attributes:
+      label: Please select the aspect the issue is related to
+      multiple: true
+      options:
+        - Aspect/API (API backends, definitions, contracts, interfaces, OpenAPI)
+        - Aspect/UI (Frontend layouts, components, styling)
+        - Aspect/Configuration (Config files, settings, env vars, defaults)
+        - Aspect/Logging (Log formats, instrumentation, improvements)
+        - Aspect/Monitoring (Metrics, observability, health checks, alerts)
+        - Aspect/Performance (Latency, optimizations, load issues)
+        - Aspect/Testing (Test coverage, integration tests)
+        - Aspect/AI (AI/LLM integration, MCP, AI readiness)
+        - Aspect/UX (User experience, flows, usability, clarity)
+        - Aspect/Other (Anything else which does not match above categories)
+      default: 0
     validations:
       required: true
   - type: textarea
-    id: suggestion
+    id: suggested_improvement
     attributes:
       label: Suggested Improvement
-      description: Describe the the improvement you suggest.
+      description: Describe the current limitation and the improvement you suggest.
     validations:
       required: true
   - type: input
-    id: version
+    id: related_issues
     attributes:
-      label: Version
-      description: Enter component version.
+      label: Related Issues
+      description: Link any related issues or pull requests.
     validations:
       required: false

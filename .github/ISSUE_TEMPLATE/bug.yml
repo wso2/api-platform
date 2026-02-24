@@ -1,6 +1,8 @@
 name: "🐞 Report a Bug"
 description: Create an issue if something does not work as expected.
+title: "[Bug]: "
 labels: ["Type/Bug"]
+type: Bug
 body:
   - type: dropdown
     id: area
