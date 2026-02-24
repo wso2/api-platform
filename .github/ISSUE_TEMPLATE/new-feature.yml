@@ -2,7 +2,7 @@ name: "💡 New Feature Request"
 description: Suggest new functionality and features for the product.
 title: "[Feature]: "
 labels: ["Type/NewFeature"]
-type: Feature
+type: feature
 body:
   - type: dropdown
     id: area

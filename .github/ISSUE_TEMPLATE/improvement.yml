@@ -2,7 +2,7 @@ name: "🚀 Improvement Request"
 description: Suggest an improvement to the product.
 title: "[Improvement]: "
 labels: ["Type/Improvement"]
-type: Improvement
+type: improvement
 body:
   - type: dropdown
     id: area

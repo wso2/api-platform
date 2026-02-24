@@ -1,7 +1,7 @@
 name: "✍️ Create a Task"
 description: Create a new task.
 title: "[Task]: "
-type: Task
+type: task
 labels: ["Type/Task"]
 body:
   - type: dropdown
