@@ -270,10 +270,8 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(result.StoredConfig.ID, correlationID, log)
 	}
 
 	// Return success response (id is the handle)
@@ -1266,10 +1264,8 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		return
 	}
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(stored.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(stored.ID, correlationID, log)
 	}
 
 	log.Info("LLM provider created successfully",
@@ -1517,10 +1513,8 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		return
 	}
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(stored.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(stored.ID, correlationID, log)
 	}
 
 	log.Info("LLM proxy created successfully",
@@ -1819,10 +1813,8 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(cfg.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(cfg.ID, correlationID, log)
 	}
 
 	// Build and add policy config derived from API configuration if policies are present
@@ -2094,9 +2086,9 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	})
 }
 
-// waitForDeploymentAndNotify waits for API deployment to complete and notifies platform API
+// waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
 // This is only called for APIs created directly via gateway endpoint (not from platform API)
-func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID string, log *slog.Logger) {
+func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID string, log *slog.Logger) {
 	// Create a logger with correlation ID if provided
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
@@ -2111,7 +2103,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 	for {
 		select {
 		case <-timeout.C:
-			log.Warn("Timeout waiting for API deployment to complete for platform API notification",
+			log.Warn("Timeout waiting for API deployment to complete before pushing to control plane",
 				slog.String("config_id", configID))
 			return
 
@@ -2124,29 +2116,25 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			}
 
 			if cfg.Status == models.StatusDeployed {
-				// // API successfully deployed, notify platform API
-				log.Info("API deployed successfully, notifying platform API",
+				log.Info("API deployed successfully, pushing to control plane",
 					slog.String("config_id", configID),
 					slog.String("displayName", cfg.GetDisplayName()))
 
-				// Extract API ID from stored config (use config ID as API ID)
 				apiID := configID
-
-				// Use empty deployment ID for now (can be made configurable later)
 				deploymentID := ""
 
-				if err := s.controlPlaneClient.NotifyAPIDeployment(apiID, cfg, deploymentID); err != nil {
-					log.Error("Failed to notify platform-api of successful deployment",
+				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
+					log.Error("Failed to push deployment to control plane",
 						slog.String("api_id", apiID),
 						slog.Any("error", err))
 				} else {
-					log.Info("Successfully notified platform API of deployment",
+					log.Info("Successfully pushed deployment to control plane",
 						slog.String("api_id", apiID))
 				}
 				return
 
 			} else if cfg.Status == models.StatusFailed {
-				log.Warn("API deployment failed, skipping platform API notification",
+				log.Warn("API deployment failed, skipping control plane push",
 					slog.String("config_id", configID),
 					slog.String("displayName", cfg.GetDisplayName()))
 				return

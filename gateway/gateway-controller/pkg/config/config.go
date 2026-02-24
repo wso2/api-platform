@@ -369,12 +369,13 @@ type LoggingConfig struct {
 
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
-	Host               string        `koanf:"host"`                 // Control plane hostname
-	Token              string        `koanf:"token"`                // Registration token (api-key)
-	ReconnectInitial   time.Duration `koanf:"reconnect_initial"`    // Initial retry delay
-	ReconnectMax       time.Duration `koanf:"reconnect_max"`        // Maximum retry delay
-	PollingInterval    time.Duration `koanf:"polling_interval"`     // Reconciliation polling interval
-	InsecureSkipVerify bool          `koanf:"insecure_skip_verify"` // Skip TLS certificate verification (default: true for dev)
+	Host                 string        `koanf:"host"`                   // Control plane hostname
+	Token                string        `koanf:"token"`                  // Registration token (api-key)
+	ReconnectInitial     time.Duration `koanf:"reconnect_initial"`      // Initial retry delay
+	ReconnectMax         time.Duration `koanf:"reconnect_max"`          // Maximum retry delay
+	PollingInterval      time.Duration `koanf:"polling_interval"`       // Reconciliation polling interval
+	InsecureSkipVerify   bool          `koanf:"insecure_skip_verify"`   // Skip TLS certificate verification (default: true for dev)
+	DeploymentPushEnabled bool         `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -517,12 +518,13 @@ func defaultConfig() *Config {
 				Port:    9091,
 			},
 			ControlPlane: ControlPlaneConfig{
-				Host:               "",
-				Token:              "",
-				ReconnectInitial:   1 * time.Second,
-				ReconnectMax:       5 * time.Minute,
-				PollingInterval:    15 * time.Minute,
-				InsecureSkipVerify: true,
+				Host:                  "",
+				Token:                 "",
+				ReconnectInitial:      1 * time.Second,
+				ReconnectMax:          5 * time.Minute,
+				PollingInterval:       15 * time.Minute,
+				InsecureSkipVerify:    true,
+				DeploymentPushEnabled: false,
 			},
 		},
 		Router: RouterConfig{
