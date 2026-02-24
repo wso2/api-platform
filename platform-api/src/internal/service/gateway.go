@@ -58,9 +58,9 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
-	functionalityType string, properties map[string]interface{}) (*api.GatewayResponse, error) {
+	functionalityType string, properties map[string]interface{}, version string) (*api.GatewayResponse, error) {
 	// 1. Validate inputs
-	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
+	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType, version); err != nil {
 		return nil, err
 	}
 
@@ -87,6 +87,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate gateway ID: %w", err)
 	}
+	gatewayVersion := strings.TrimSpace(version)
 
 	// 5. Create Gateway model
 	gateway := &model.Gateway{
@@ -99,6 +100,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Vhost:             vhost,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
+		Version:           gatewayVersion,
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
@@ -173,7 +175,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 
 // UpdateGateway updates gateway details
 func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, displayName *string,
-	isCritical *bool, properties *map[string]interface{}) (*api.GatewayResponse, error) {
+	isCritical *bool, properties *map[string]interface{}, version *string) (*api.GatewayResponse, error) {
 	// Get existing gateway
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
@@ -198,6 +200,13 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 	if properties != nil {
 		gateway.Properties = *properties
 	}
+	if version != nil {
+		trimmedVersion := strings.TrimSpace(*version)
+		if trimmedVersion != "" {
+			gateway.Version = trimmedVersion
+		}
+	}
+
 	gateway.UpdatedAt = time.Now()
 
 	err = s.gatewayRepo.UpdateGateway(gateway)
@@ -508,7 +517,7 @@ func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType stri
 }
 
 // validateGatewayInput validates gateway registration inputs
-func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, functionalityType string) error {
+func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, functionalityType, version string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
 		return errors.New("organization ID is required")
@@ -553,6 +562,12 @@ func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, f
 	vhost = strings.TrimSpace(vhost)
 	if vhost == "" {
 		return errors.New("vhost is required")
+	}
+
+	// Version Validation
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return errors.New("version is required")
 	}
 
 	// Gateway type validation
@@ -618,6 +633,7 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 		IsCritical:        &gateway.IsCritical,
 		FunctionalityType: &functionalityType,
 		IsActive:          &gateway.IsActive,
+		Version:           &gateway.Version,
 		CreatedAt:         &gateway.CreatedAt,
 		UpdatedAt:         &gateway.UpdatedAt,
 	}
