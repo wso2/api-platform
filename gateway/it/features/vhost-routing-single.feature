@@ -107,6 +107,14 @@ Feature: Gateway vhost routing with single-domain defaults
     And the JSON response field "path" should be "/whoami"
 
     When I clear all headers
+    And I set request host to "custom-sandbox.wso2.com"
+    And I send a GET request to "http://localhost:8080/vhost-single-override/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "environment" should be "sandbox"
+    And the JSON response field "path" should be "/sandbox/whoami"
+
+    When I clear all headers
     And I set request host to "api.wso2.com"
     And I send a GET request to "http://localhost:8080/vhost-single-override/v1.0/whoami"
     Then the response status code should be 404
