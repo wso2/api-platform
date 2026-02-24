@@ -47,13 +47,13 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  requestHeadersToFilter:
-                    operation: deny
+                  request:
+                    mode: deny
                     headers:
                       - "authorization"
                       - "x-api-key"
-                  responseHeadersToFilter:
-                    operation: allow
+                  response:
+                    mode: allow
                     headers:
                       - "content-type"
                       - "x-custom-header"
@@ -92,8 +92,8 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  requestHeadersToFilter:
-                    operation: allow
+                  request:
+                    mode: allow
                     headers:
                       - "content-type"
                       - "user-agent"
@@ -132,8 +132,8 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  responseHeadersToFilter:
-                    operation: deny
+                  response:
+                    mode: deny
                     headers:
                       - "server"
                       - "x-powered-by"
@@ -148,7 +148,7 @@ Feature: Analytics Header Filter Policy
     Then the response should be successful
     And the response should be valid JSON
 
-  Scenario: Invalid policy configuration - missing operation field
+  Scenario: Invalid policy configuration - missing mode field
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -170,7 +170,7 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  requestHeadersToFilter:
+                  request:
                     headers:
                       - "authorization"
       """
@@ -179,7 +179,7 @@ Feature: Analytics Header Filter Policy
     And the JSON response field "status" should be "error"
     And the response body should contain "Configuration validation failed"
 
-  Scenario: Invalid policy configuration - invalid operation value
+  Scenario: Invalid policy configuration - invalid mode value
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -201,8 +201,8 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  requestHeadersToFilter:
-                    operation: invalid
+                  request:
+                    mode: invalid
                     headers:
                       - "authorization"
       """
@@ -211,7 +211,7 @@ Feature: Analytics Header Filter Policy
     And the JSON response field "status" should be "error"
     And the response body should contain "Configuration validation failed"
 
-  Scenario: Invalid policy configuration - missing headers field
+  Scenario: Invalid policy configuration - invalid headers field type
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -233,15 +233,16 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  responseHeadersToFilter:
-                    operation: allow
+                  response:
+                    mode: allow
+                    headers: "authorization"
       """
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the response body should contain "Configuration validation failed"
 
-  Scenario: Case-insensitive header matching with allow operation
+  Scenario: Case-insensitive header matching with allow mode
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -263,8 +264,8 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  requestHeadersToFilter:
-                    operation: allow
+                  request:
+                    mode: allow
                     headers:
                       - "Content-Type"
                       - "USER-AGENT"
@@ -283,7 +284,7 @@ Feature: Analytics Header Filter Policy
     Then the response should be successful
     And the response should be valid JSON
 
-  Scenario: Empty headers array with deny operation
+  Scenario: Empty headers array with deny mode
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -305,11 +306,11 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  requestHeadersToFilter:
-                    operation: deny
+                  request:
+                    mode: deny
                     headers: []
-                  responseHeadersToFilter:
-                    operation: allow
+                  response:
+                    mode: allow
                     headers: []
       """
     Then the response should be successful
