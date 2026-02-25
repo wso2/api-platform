@@ -22,6 +22,23 @@ const (
 	ExtProcFilterName = "api_platform.policy_engine.envoy.filters.http.ext_proc"
 	ExtProcFilter     = "envoy.filters.http.ext_proc"
 
+	// Dynamic metadata key for target upstream/cluster routing
+	// Used by policies to dynamically select which upstream definition to route to
+	TargetUpstreamNameKey = "target_upstream_name"
+
+	// Dynamic metadata key for the full cluster name (with prefix)
+	// This is read by Lua filter to set the x-target-upstream header
+	TargetUpstreamClusterKey = "target_upstream_cluster"
+
+	// Header name for target upstream cluster routing
+	// This header is set by the policy engine when SetUpstreamName is used
+	// Envoy routes configured with cluster_header will read this to determine the target cluster
+	TargetUpstreamHeader = "x-target-upstream"
+
+	// UpstreamDefinitionClusterPrefix is the prefix used for clusters created from upstreamDefinitions
+	// Must match the gateway-controller constant
+	UpstreamDefinitionClusterPrefix = "upstream_"
+
 	// Policy Engine Socket Path (matches gateway-controller constant)
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"
 

@@ -59,6 +59,10 @@ type PolicyExecutionContext struct {
 	// Dynamic metadata to be shared across request and response phases
 	dynamicMetadata map[string]map[string]interface{}
 
+	// Default upstream cluster for dynamic cluster routing
+	// Set from route metadata when the route uses cluster_header routing
+	defaultUpstreamCluster string
+
 	// Reference to server components
 	server *ExternalProcessorServer
 }

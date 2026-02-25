@@ -454,7 +454,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil)
+	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, "")
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
@@ -515,9 +515,17 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	}
 
 	for _, op := range apiData.Operations {
-		// Use mainClusterName by default; path rewrite based on main upstream path
+		// Determine if dynamic cluster selection should be used
+		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
+		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+		defaultCluster := ""
+		if useClusterHeader {
+			// Default to the main cluster (with the upstream_ prefix for cluster_header lookup)
+			defaultCluster = mainClusterName
+		}
+
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, defaultCluster)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -542,11 +550,70 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sbRoutesList := make([]*route.Route, 0)
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
+			// Sandbox routes don't support dynamic cluster selection
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, false, "")
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
+	}
+
+	// -------- UPSTREAM DEFINITIONS (for dynamic cluster selection via SetUpstreamName) --------
+	// Create clusters for all upstreamDefinitions so policies can route to them dynamically
+	if apiData.UpstreamDefinitions != nil {
+		for _, def := range *apiData.UpstreamDefinitions {
+			// Skip if no upstreams configured
+			if len(def.Upstreams) == 0 || len(def.Upstreams[0].Urls) == 0 {
+				t.logger.Warn("Skipping upstream definition with no URLs",
+					slog.String("name", def.Name),
+					slog.String("api", apiData.DisplayName))
+				continue
+			}
+
+			// Use the definition name as cluster name (with prefix for clarity)
+			defClusterName := constants.UpstreamDefinitionClusterPrefix + def.Name
+
+			// Parse the first URL from the definition
+			rawURL := def.Upstreams[0].Urls[0]
+			parsedURL, err := url.Parse(rawURL)
+			if err != nil {
+				t.logger.Warn("Invalid URL in upstream definition, skipping",
+					slog.String("name", def.Name),
+					slog.String("url", rawURL),
+					slog.Any("error", err))
+				continue
+			}
+
+			// Validate URL scheme
+			if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+				t.logger.Warn("Invalid upstream definition URL: must include host and http/https scheme",
+					slog.String("name", def.Name),
+					slog.String("url", rawURL))
+				continue
+			}
+
+			// Extract timeout if specified
+			var defConnectTimeout *time.Duration
+			if def.Timeout != nil {
+				resolved, err := resolveTimeoutFromDefinition(&def)
+				if err != nil {
+					t.logger.Warn("Invalid timeout in upstream definition, using default",
+						slog.String("name", def.Name),
+						slog.Any("error", err))
+				} else if resolved != nil {
+					defConnectTimeout = resolved.Connect
+				}
+			}
+
+			// Create the cluster for this upstream definition
+			defCluster := t.createCluster(defClusterName, parsedURL, nil, defConnectTimeout)
+			clusters = append(clusters, defCluster)
+
+			t.logger.Debug("Created cluster for upstream definition",
+				slog.String("definition_name", def.Name),
+				slog.String("cluster_name", defClusterName),
+				slog.String("url", rawURL))
+		}
 	}
 
 	return routesList, clusters, nil
@@ -1338,8 +1405,10 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 }
 
 // createRoute creates a route for an operation
+// When useClusterHeader is true, the route uses cluster_header for dynamic cluster selection,
+// and defaultCluster specifies the cluster to use when no policy overrides it.
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, defaultCluster string) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -1390,10 +1459,21 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 			IdleTimeout: durationpb.New(
 				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
 			),
-			ClusterSpecifier: &route.RouteAction_Cluster{
-				Cluster: clusterName,
-			},
 		},
+	}
+
+	// Set cluster specifier based on whether dynamic cluster selection is enabled
+	if useClusterHeader {
+		// Use cluster_header for dynamic cluster selection
+		// The cluster name will be read from the x-target-upstream header
+		routeAction.Route.ClusterSpecifier = &route.RouteAction_ClusterHeader{
+			ClusterHeader: constants.TargetUpstreamHeader,
+		}
+	} else {
+		// Use static cluster
+		routeAction.Route.ClusterSpecifier = &route.RouteAction_Cluster{
+			Cluster: clusterName,
+		}
 	}
 
 	// Set host rewrite based on configuration
@@ -1450,6 +1530,10 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Add projectID if available
 	if projectID != "" {
 		metaMap["project_id"] = projectID
+	}
+	// Add default_upstream_cluster for dynamic cluster selection (Lua needs this for fallback)
+	if useClusterHeader && defaultCluster != "" {
+		metaMap["default_upstream_cluster"] = defaultCluster
 	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{

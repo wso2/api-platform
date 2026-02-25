@@ -41,6 +41,20 @@ local function resolve_target_method(metadata)
   return nil
 end
 
+local function resolve_target_upstream_cluster(metadata)
+  if metadata == nil then
+    return nil
+  end
+
+  -- Look for target_upstream_cluster in the metadata
+  local cluster = metadata["target_upstream_cluster"]
+  if cluster ~= nil and type(cluster) == "string" then
+    return cluster
+  end
+
+  return nil
+end
+
 function envoy_on_request(handle)
   local stream_info = handle:streamInfo()
   if stream_info == nil then
@@ -53,6 +67,15 @@ function envoy_on_request(handle)
   end
 
   local extproc_metadata = dynamic_metadata:get("api_platform.policy_engine.envoy.filters.http.ext_proc")
+
+  -- Handle dynamic upstream cluster routing
+  -- Set x-target-upstream header from dynamic metadata for cluster_header routing
+  local target_cluster = resolve_target_upstream_cluster(extproc_metadata)
+  if target_cluster ~= nil then
+    handle:headers():replace("x-target-upstream", target_cluster)
+  end
+
+  -- Handle HTTP method rewriting
   local target_method = resolve_target_method(extproc_metadata)
   if target_method == nil then
     return

@@ -28,6 +28,7 @@ type UpstreamRequestModifications struct {
 	Body                     []byte                    // nil = no change, []byte{} = clear
 	Path                     *string                   // nil = no change
 	Method                   *string                   // nil = no change
+	SetUpstreamName          *string                   // Name of upstreamDefinition to route to (nil = no change)
 	AnalyticsMetadata        map[string]any            // Custom analytics metadata (key-value pairs)
 	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
 	DropHeadersFromAnalytics DropHeaderAction          // Request headers to exclude from analytics event

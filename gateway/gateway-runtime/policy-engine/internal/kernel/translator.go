@@ -89,6 +89,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerMutation = &extprocv3.HeaderMutation{}
 	var finalBodyLength int
 	bodyModified := false
+	var targetUpstreamName *string // Track the target upstream for cluster routing
 
 	path := execCtx.requestContext.Path
 
@@ -170,8 +171,45 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					analyticsData["request_headers"] = finalizedHeaders
 					execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
 				}
+
+				// Handle SetUpstreamName for dynamic cluster routing (last one wins)
+				if mods.SetUpstreamName != nil && *mods.SetUpstreamName != "" {
+					targetUpstreamName = mods.SetUpstreamName
+				}
 			}
 		}
+	}
+
+	// Handle dynamic cluster routing via dynamic metadata.
+	// The Lua filter will read this metadata and set the x-target-upstream header
+	// before route matching occurs. This avoids needing to clear the route cache.
+	// 1. If a policy set SetUpstreamName, use it (with upstream_ prefix)
+	// 2. Otherwise, if the route has a default upstream cluster, use it (no prefix, already full name)
+	extProcNS := constants.ExtProcFilterName
+	if targetUpstreamName != nil {
+		// Policy explicitly set the upstream - add the prefix for upstream definition cluster
+		clusterName := constants.UpstreamDefinitionClusterPrefix + *targetUpstreamName
+
+		// Set dynamic metadata for Lua filter to read and set the header
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
+		dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
+
+		// Also store in execution context for potential response phase use
+		if execCtx.dynamicMetadata[extProcNS] == nil {
+			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
+		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
+	} else if execCtx.defaultUpstreamCluster != "" {
+		// No policy set upstream, but route uses cluster_header routing
+		// Set the default cluster (already includes full cluster name, no prefix needed)
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = execCtx.defaultUpstreamCluster
 	}
 
 	// Remove any content-length headers from policy operations if we're managing it ourselves

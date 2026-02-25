@@ -352,6 +352,9 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	// Create execution context for this request-response lifecycle
 	*execCtx = newPolicyExecutionContext(s, routeMetadata.RouteName, chain)
 
+	// Set default upstream cluster for dynamic cluster routing
+	(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
+
 	// Build request context from Envoy headers with route metadata
 	// Request ID will be extracted from x-request-id header or generated if not present
 	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
@@ -391,17 +394,18 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 
 // RouteMetadata contains metadata about the route
 type RouteMetadata struct {
-	RouteName      string
-	APIId          string
-	APIName        string
-	APIVersion     string
-	Context        string
-	OperationPath  string
-	Vhost          string
-	APIKind        string
-	TemplateHandle string
-	ProviderName   string
-	ProjectID      string
+	RouteName              string
+	APIId                  string
+	APIName                string
+	APIVersion             string
+	Context                string
+	OperationPath          string
+	Vhost                  string
+	APIKind                string
+	TemplateHandle         string
+	ProviderName           string
+	ProjectID              string
+	DefaultUpstreamCluster string // Default cluster for dynamic cluster routing
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata.
@@ -443,6 +447,7 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 				metadata.TemplateHandle = cachedMeta.TemplateHandle
 				metadata.ProviderName = cachedMeta.ProviderName
 				metadata.ProjectID = cachedMeta.ProjectID
+				metadata.DefaultUpstreamCluster = cachedMeta.DefaultUpstreamCluster
 			} else {
 				// Cache miss - parse the protobuf text format string
 				var envoyMetadata core.Metadata
@@ -480,6 +485,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 						}
 						if projectIDValue, ok := routeStruct.Fields["project_id"]; ok {
 							metadata.ProjectID = projectIDValue.GetStringValue()
+						}
+						if defaultClusterValue, ok := routeStruct.Fields["default_upstream_cluster"]; ok {
+							metadata.DefaultUpstreamCluster = defaultClusterValue.GetStringValue()
 						}
 					}
 					// Cache the parsed metadata for future requests
