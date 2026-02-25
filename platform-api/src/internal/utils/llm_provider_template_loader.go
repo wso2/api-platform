@@ -61,7 +61,22 @@ type llmProviderTemplateYAML struct {
 		RemainingTokens  *extractionIdentifierYAML        `yaml:"remainingTokens"`
 		RequestModel     *extractionIdentifierYAML        `yaml:"requestModel"`
 		ResponseModel    *extractionIdentifierYAML        `yaml:"responseModel"`
+		ResourceMappings *llmProviderTemplateResourceMappingsYAML `yaml:"resourceMappings"`
 	} `yaml:"spec"`
+}
+
+type llmProviderTemplateResourceMappingYAML struct {
+	Resource         string                    `yaml:"resource"`
+	PromptTokens     *extractionIdentifierYAML `yaml:"promptTokens"`
+	CompletionTokens *extractionIdentifierYAML `yaml:"completionTokens"`
+	TotalTokens      *extractionIdentifierYAML `yaml:"totalTokens"`
+	RemainingTokens  *extractionIdentifierYAML `yaml:"remainingTokens"`
+	RequestModel     *extractionIdentifierYAML `yaml:"requestModel"`
+	ResponseModel    *extractionIdentifierYAML `yaml:"responseModel"`
+}
+
+type llmProviderTemplateResourceMappingsYAML struct {
+	Resources []llmProviderTemplateResourceMappingYAML `yaml:"resources"`
 }
 
 func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProviderTemplate, error) {
@@ -113,6 +128,7 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 			RemainingTokens:  mapExtractionIdentifier(doc.Spec.RemainingTokens),
 			RequestModel:     mapExtractionIdentifier(doc.Spec.RequestModel),
 			ResponseModel:    mapExtractionIdentifier(doc.Spec.ResponseModel),
+			ResourceMappings: mapTemplateResourceMappings(doc.Spec.ResourceMappings),
 		})
 	}
 
@@ -151,4 +167,42 @@ func mapTemplateMetadata(in *llmProviderTemplateMetadataYAML) *model.LLMProvider
 		return nil
 	}
 	return out
+}
+
+func mapTemplateResourceMappings(in *llmProviderTemplateResourceMappingsYAML) *model.LLMProviderTemplateResourceMappings {
+	if in == nil {
+		return nil
+	}
+	out := &model.LLMProviderTemplateResourceMappings{}
+	if len(in.Resources) > 0 {
+		resources := make([]model.LLMProviderTemplateResourceMapping, 0, len(in.Resources))
+		for _, r := range in.Resources {
+			mapped := mapTemplateResourceMapping(&r)
+			if mapped != nil {
+				resources = append(resources, *mapped)
+			}
+		}
+		out.Resources = resources
+	}
+	if len(out.Resources) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mapTemplateResourceMapping(in *llmProviderTemplateResourceMappingYAML) *model.LLMProviderTemplateResourceMapping {
+	if in == nil {
+		return nil
+	}
+	return &model.LLMProviderTemplateResourceMapping{
+		Resource: strings.TrimSpace(in.Resource),
+		LLMProviderTemplateExtractionFields: model.LLMProviderTemplateExtractionFields{
+			PromptTokens:     mapExtractionIdentifier(in.PromptTokens),
+			CompletionTokens: mapExtractionIdentifier(in.CompletionTokens),
+			TotalTokens:      mapExtractionIdentifier(in.TotalTokens),
+			RemainingTokens:  mapExtractionIdentifier(in.RemainingTokens),
+			RequestModel:     mapExtractionIdentifier(in.RequestModel),
+			ResponseModel:    mapExtractionIdentifier(in.ResponseModel),
+		},
+	}
 }

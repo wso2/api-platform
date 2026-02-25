@@ -1576,6 +1576,7 @@ type LLMProviderTemplate struct {
 	Name            string                `binding:"required" json:"name" yaml:"name"`
 	PromptTokens    *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 	RemainingTokens *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
 	RequestModel    *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 	ResponseModel   *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
 	TotalTokens     *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
@@ -1613,6 +1614,24 @@ type LLMProviderTemplateListResponse struct {
 	Pagination Pagination                    `json:"pagination" yaml:"pagination"`
 }
 
+// LLMProviderTemplateResourceMapping defines model for LLMProviderTemplateResourceMapping.
+type LLMProviderTemplateResourceMapping struct {
+	CompletionTokens *ExtractionIdentifier       `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
+	PromptTokens     *ExtractionIdentifier       `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier       `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier       `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+
+	// Resource Resource path pattern this mapping applies to (for example /responses or /chat/*)
+	Resource *string `json:"resource,omitempty" yaml:"resource,omitempty"`
+	ResponseModel *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens   *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+}
+
+// LLMProviderTemplateResourceMappings defines model for LLMProviderTemplateResourceMappings.
+type LLMProviderTemplateResourceMappings struct {
+	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
+}
+
 // LLMProviderTemplateMetadata defines model for LLMProviderTemplateMetadata.
 type LLMProviderTemplateMetadata struct {
 	Auth *LLMProviderTemplateAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
@@ -1626,7 +1645,6 @@ type LLMProviderTemplateMetadata struct {
 	// OpenapiSpecUrl URL to the OpenAPI specification for the provider
 	OpenapiSpecUrl *string `json:"openapiSpecUrl,omitempty" yaml:"openapiSpecUrl,omitempty"`
 }
-
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
 	// Context Base path for all REST API routes (must start with /, no trailing slash)
