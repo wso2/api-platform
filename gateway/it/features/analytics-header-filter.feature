@@ -170,7 +170,7 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  request:
+                  requestHeadersToFilter:
                     headers:
                       - "authorization"
       """
@@ -201,8 +201,8 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  request:
-                    mode: invalid
+                  requestHeadersToFilter:
+                    operation: invalid
                     headers:
                       - "authorization"
       """
@@ -233,8 +233,8 @@ Feature: Analytics Header Filter Policy
               - name: analytics-header-filter
                 version: v0
                 params:
-                  response:
-                    mode: allow
+                  responseHeadersToFilter:
+                    operation: allow
                     headers: "authorization"
       """
     Then the response status code should be 400
