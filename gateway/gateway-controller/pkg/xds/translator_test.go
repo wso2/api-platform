@@ -1299,6 +1299,8 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 		nil,            // hostRewrite
 		"proj-001",     // projectID
 		nil,            // timeoutCfg
+		false,          // useClusterHeader
+		"",             // defaultCluster
 	)
 
 	assert.NotNil(t, route)
