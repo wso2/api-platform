@@ -20,10 +20,11 @@ package kernel
 
 import (
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
-	"google.golang.org/protobuf/types/known/structpb"
 	"log/slog"
 	"strings"
+
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -188,10 +189,12 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	extProcNS := constants.ExtProcFilterName
 	if targetUpstreamName != nil {
 		// Policy explicitly set the upstream - add the prefix, kind, and API ID for scoped cluster name
-		// Format: upstream_<kind>_<apiId>_<defName>
+		// Format: upstream_<kind>_<apiId>_<sanitizedDefName>
+		// Sanitize the definition name (replace dots and colons for valid Envoy cluster name)
 		apiKind := execCtx.requestContext.SharedContext.APIKind
 		apiId := execCtx.requestContext.SharedContext.APIId
-		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + *targetUpstreamName
+		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
+		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
 
 		// Set dynamic metadata for Lua filter to read and set the header
 		if dynamicMetadata[extProcNS] == nil {
@@ -726,4 +729,12 @@ func setContentLengthHeader(mutation *extprocv3.HeaderMutation, bodyLength int) 
 		},
 		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 	})
+}
+
+// sanitizeUpstreamDefinitionName sanitizes an upstream definition name for use in Envoy cluster names.
+// Envoy cluster names cannot contain dots or colons.
+func sanitizeUpstreamDefinitionName(name string) string {
+	sanitized := strings.ReplaceAll(name, ".", "_")
+	sanitized = strings.ReplaceAll(sanitized, ":", "_")
+	return sanitized
 }

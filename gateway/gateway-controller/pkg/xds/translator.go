@@ -567,9 +567,13 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 				return nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", def.Name)
 			}
 
+			// Sanitize definition name for use in Envoy cluster name
+			// Envoy cluster names must not contain dots or colons
+			sanitizedDefName := sanitizeUpstreamDefinitionName(def.Name)
+
 			// Use the definition name as cluster name, scoped by kind and API ID to avoid conflicts
-			// Format: upstream_<kind>_<apiId>_<defName>
-			defClusterName := constants.UpstreamDefinitionClusterPrefix + cfg.Kind + "_" + cfg.ID + "_" + def.Name
+			// Format: upstream_<kind>_<apiId>_<sanitizedDefName>
+			defClusterName := constants.UpstreamDefinitionClusterPrefix + cfg.Kind + "_" + cfg.ID + "_" + sanitizedDefName
 
 			// Parse the first URL from the definition
 			rawURL := def.Upstreams[0].Urls[0]
@@ -2362,6 +2366,14 @@ func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
 	name = strings.ReplaceAll(name, ":", "_")
 	// Include scheme to differentiate HTTP and HTTPS clusters for the same host
 	return "cluster_" + scheme + "_" + name
+}
+
+// sanitizeUpstreamDefinitionName sanitizes an upstream definition name for use in Envoy cluster names.
+// Envoy cluster names cannot contain dots or colons.
+func sanitizeUpstreamDefinitionName(name string) string {
+	sanitized := strings.ReplaceAll(name, ".", "_")
+	sanitized = strings.ReplaceAll(sanitized, ":", "_")
+	return sanitized
 }
 
 // createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
