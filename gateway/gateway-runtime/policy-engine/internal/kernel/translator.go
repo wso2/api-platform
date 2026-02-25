@@ -187,8 +187,11 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	// 2. Otherwise, if the route has a default upstream cluster, use it (no prefix, already full name)
 	extProcNS := constants.ExtProcFilterName
 	if targetUpstreamName != nil {
-		// Policy explicitly set the upstream - add the prefix for upstream definition cluster
-		clusterName := constants.UpstreamDefinitionClusterPrefix + *targetUpstreamName
+		// Policy explicitly set the upstream - add the prefix, kind, and API ID for scoped cluster name
+		// Format: upstream_<kind>_<apiId>_<defName>
+		apiKind := execCtx.requestContext.SharedContext.APIKind
+		apiId := execCtx.requestContext.SharedContext.APIId
+		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + *targetUpstreamName
 
 		// Set dynamic metadata for Lua filter to read and set the header
 		if dynamicMetadata[extProcNS] == nil {

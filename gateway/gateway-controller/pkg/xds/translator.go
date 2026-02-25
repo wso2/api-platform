@@ -562,34 +562,25 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	// Create clusters for all upstreamDefinitions so policies can route to them dynamically
 	if apiData.UpstreamDefinitions != nil {
 		for _, def := range *apiData.UpstreamDefinitions {
-			// Skip if no upstreams configured
+			// Validate upstreams are configured
 			if len(def.Upstreams) == 0 || len(def.Upstreams[0].Urls) == 0 {
-				t.logger.Warn("Skipping upstream definition with no URLs",
-					slog.String("name", def.Name),
-					slog.String("api", apiData.DisplayName))
-				continue
+				return nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", def.Name)
 			}
 
-			// Use the definition name as cluster name (with prefix for clarity)
-			defClusterName := constants.UpstreamDefinitionClusterPrefix + def.Name
+			// Use the definition name as cluster name, scoped by kind and API ID to avoid conflicts
+			// Format: upstream_<kind>_<apiId>_<defName>
+			defClusterName := constants.UpstreamDefinitionClusterPrefix + cfg.Kind + "_" + cfg.ID + "_" + def.Name
 
 			// Parse the first URL from the definition
 			rawURL := def.Upstreams[0].Urls[0]
 			parsedURL, err := url.Parse(rawURL)
 			if err != nil {
-				t.logger.Warn("Invalid URL in upstream definition, skipping",
-					slog.String("name", def.Name),
-					slog.String("url", rawURL),
-					slog.Any("error", err))
-				continue
+				return nil, nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
 			}
 
 			// Validate URL scheme
 			if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-				t.logger.Warn("Invalid upstream definition URL: must include host and http/https scheme",
-					slog.String("name", def.Name),
-					slog.String("url", rawURL))
-				continue
+				return nil, nil, fmt.Errorf("invalid upstream definition '%s' URL: must include host and http/https scheme", def.Name)
 			}
 
 			// Extract timeout if specified
@@ -597,10 +588,9 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 			if def.Timeout != nil {
 				resolved, err := resolveTimeoutFromDefinition(&def)
 				if err != nil {
-					t.logger.Warn("Invalid timeout in upstream definition, using default",
-						slog.String("name", def.Name),
-						slog.Any("error", err))
-				} else if resolved != nil {
+					return nil, nil, fmt.Errorf("invalid timeout in upstream definition '%s': %w", def.Name, err)
+				}
+				if resolved != nil {
 					defConnectTimeout = resolved.Connect
 				}
 			}
