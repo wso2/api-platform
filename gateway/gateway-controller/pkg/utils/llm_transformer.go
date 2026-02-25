@@ -70,11 +70,6 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		return nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", providerConfig.Spec.Template, err)
 	}
 
-	templateParams, err := buildTemplateParams(tmpl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build template params: %w", err)
-	}
-
 	// Step 2: Configure API metadata and basic spec
 	output.Kind = api.RestApi
 	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
@@ -208,13 +203,6 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 						operationRegistry[key] = op
 					}
 
-					// Attach policy to matching operations using pathsMatch helper
-					pol := api.Policy{
-						Name:    llmPol.Name,
-						Version: llmPol.Version,
-						Params:  mergeParams(pathEntry.Params, templateParams),
-					}
-
 					for opKey, op := range operationRegistry {
 						// Only consider operations with matching method
 						if opKey.method != policyMethod {
@@ -223,6 +211,15 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 						// Use pathsMatch to determine if policy applies to this operation
 						if pathsMatch(op.Path, pathEntry.Path) {
+							templateParams, err := buildTemplateParams(tmpl, op.Path)
+							if err != nil {
+								return nil, fmt.Errorf("failed to build template params: %w", err)
+							}
+							pol := api.Policy{
+								Name:    llmPol.Name,
+								Version: llmPol.Version,
+								Params:  mergeParams(pathEntry.Params, templateParams),
+							}
 							if op.Policies == nil {
 								op.Policies = &[]api.Policy{pol}
 							} else {
@@ -271,12 +268,6 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	tmpl, err := t.store.GetTemplateByHandle(provider.Spec.Template)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
-	}
-
-	// Build template params for injection into policies
-	templateParams, err := buildTemplateParams(tmpl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build template params: %w", err)
 	}
 
 	output.Kind = api.RestApi
@@ -441,13 +432,6 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							operationRegistry[key] = op
 						}
 
-						// Find matching operations and attach policy
-						pol := api.Policy{
-							Name:    llmPol.Name,
-							Version: llmPol.Version,
-							Params:  mergeParams(pathEntry.Params, templateParams),
-						}
-
 						for opKey, op := range operationRegistry {
 							if opKey.method != policyMethod {
 								continue
@@ -459,6 +443,15 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							}
 
 							if pathsMatch(op.Path, pathEntry.Path) {
+								templateParams, err := buildTemplateParams(tmpl, op.Path)
+								if err != nil {
+									return nil, fmt.Errorf("failed to build template params: %w", err)
+								}
+								pol := api.Policy{
+									Name:    llmPol.Name,
+									Version: llmPol.Version,
+									Params:  mergeParams(pathEntry.Params, templateParams),
+								}
 								if op.Policies == nil {
 									op.Policies = &[]api.Policy{pol}
 								} else {
@@ -539,19 +532,21 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							}
 						}
 
-						// Find and attach policy to matching operations
-						pol := api.Policy{
-							Name:    llmPol.Name,
-							Version: llmPol.Version,
-							Params:  mergeParams(pathEntry.Params, templateParams),
-						}
-
 						for opKey, op := range operationRegistry {
 							if opKey.method != policyMethod {
 								continue
 							}
 
 							if pathsMatch(op.Path, pathEntry.Path) {
+								templateParams, err := buildTemplateParams(tmpl, op.Path)
+								if err != nil {
+									return nil, fmt.Errorf("failed to build template params: %w", err)
+								}
+								pol := api.Policy{
+									Name:    llmPol.Name,
+									Version: llmPol.Version,
+									Params:  mergeParams(pathEntry.Params, templateParams),
+								}
 								if op.Policies == nil {
 									op.Policies = &[]api.Policy{pol}
 								} else {
@@ -618,8 +613,8 @@ func GetHostAdditionPolicyParams(value string) (map[string]interface{}, error) {
 	return m, nil
 }
 
-// buildTemplateParams extracts all template parameters from the LLM provider template
-func buildTemplateParams(template *models.StoredLLMProviderTemplate) (map[string]interface{}, error) {
+// buildTemplateParams extracts template parameters from the LLM provider template for the given resource path
+func buildTemplateParams(template *models.StoredLLMProviderTemplate, resourcePath string) (map[string]interface{}, error) {
 	if template == nil {
 		return nil, fmt.Errorf("template is nil")
 	}
@@ -627,56 +622,100 @@ func buildTemplateParams(template *models.StoredLLMProviderTemplate) (map[string
 	templateParams := make(map[string]interface{})
 
 	spec := template.Configuration.Spec
+	applyExtractionFieldsFromBaseSpec(templateParams, &spec)
 
-	// Extract requestModel if available
-	if spec.RequestModel != nil {
-		requestModel := make(map[string]interface{})
-		requestModel["location"] = spec.RequestModel.Location
-		requestModel["identifier"] = spec.RequestModel.Identifier
-		templateParams["requestModel"] = requestModel
-	}
-
-	// Extract responseModel if available
-	if spec.ResponseModel != nil {
-		responseModel := make(map[string]interface{})
-		responseModel["location"] = spec.ResponseModel.Location
-		responseModel["identifier"] = spec.ResponseModel.Identifier
-		templateParams["responseModel"] = responseModel
-	}
-
-	// Extract promptTokens if available
-	if spec.PromptTokens != nil {
-		promptTokens := make(map[string]interface{})
-		promptTokens["location"] = spec.PromptTokens.Location
-		promptTokens["identifier"] = spec.PromptTokens.Identifier
-		templateParams["promptTokens"] = promptTokens
-	}
-
-	// Extract completionTokens if available
-	if spec.CompletionTokens != nil {
-		completionTokens := make(map[string]interface{})
-		completionTokens["location"] = spec.CompletionTokens.Location
-		completionTokens["identifier"] = spec.CompletionTokens.Identifier
-		templateParams["completionTokens"] = completionTokens
-	}
-
-	// Extract totalTokens if available
-	if spec.TotalTokens != nil {
-		totalTokens := make(map[string]interface{})
-		totalTokens["location"] = spec.TotalTokens.Location
-		totalTokens["identifier"] = spec.TotalTokens.Identifier
-		templateParams["totalTokens"] = totalTokens
-	}
-
-	// Extract remainingTokens if available
-	if spec.RemainingTokens != nil {
-		remainingTokens := make(map[string]interface{})
-		remainingTokens["location"] = spec.RemainingTokens.Location
-		remainingTokens["identifier"] = spec.RemainingTokens.Identifier
-		templateParams["remainingTokens"] = remainingTokens
+	selectedMapping := selectTemplateResourceMapping(spec.ResourceMappings, resourcePath)
+	if selectedMapping != nil {
+		applyExtractionFieldsFromMapping(templateParams, selectedMapping)
 	}
 
 	return templateParams, nil
+}
+
+func applyExtractionFieldsFromBaseSpec(templateParams map[string]interface{}, spec *api.LLMProviderTemplateData) {
+	if spec == nil {
+		return
+	}
+	setExtractionParam(templateParams, "requestModel", spec.RequestModel)
+	setExtractionParam(templateParams, "responseModel", spec.ResponseModel)
+	setExtractionParam(templateParams, "promptTokens", spec.PromptTokens)
+	setExtractionParam(templateParams, "completionTokens", spec.CompletionTokens)
+	setExtractionParam(templateParams, "totalTokens", spec.TotalTokens)
+	setExtractionParam(templateParams, "remainingTokens", spec.RemainingTokens)
+}
+
+func applyExtractionFieldsFromMapping(templateParams map[string]interface{}, mapping *api.LLMProviderTemplateResourceMapping) {
+	if mapping == nil {
+		return
+	}
+	setExtractionParam(templateParams, "requestModel", mapping.RequestModel)
+	setExtractionParam(templateParams, "responseModel", mapping.ResponseModel)
+	setExtractionParam(templateParams, "promptTokens", mapping.PromptTokens)
+	setExtractionParam(templateParams, "completionTokens", mapping.CompletionTokens)
+	setExtractionParam(templateParams, "totalTokens", mapping.TotalTokens)
+	setExtractionParam(templateParams, "remainingTokens", mapping.RemainingTokens)
+}
+
+func setExtractionParam(templateParams map[string]interface{}, key string, identifier *api.ExtractionIdentifier) {
+	if identifier == nil {
+		return
+	}
+	templateParams[key] = map[string]interface{}{
+		"location":   identifier.Location,
+		"identifier": identifier.Identifier,
+	}
+}
+
+func selectTemplateResourceMapping(mappings *api.LLMProviderTemplateResourceMappings,
+	resourcePath string) *api.LLMProviderTemplateResourceMapping {
+	if mappings == nil {
+		return nil
+	}
+
+	var selected *api.LLMProviderTemplateResourceMapping
+	if mappings.Resources == nil {
+		return selected
+	}
+
+	for i := range *mappings.Resources {
+		candidate := &(*mappings.Resources)[i]
+		candidateResource := ""
+		if candidate.Resource != nil {
+			candidateResource = *candidate.Resource
+		}
+		if candidateResource == "" || !pathsMatch(resourcePath, candidateResource) {
+			continue
+		}
+
+		if selected == nil {
+			selected = candidate
+			continue
+		}
+
+		selectedResource := ""
+		if selected.Resource != nil {
+			selectedResource = *selected.Resource
+		}
+		if shouldPreferTemplateResourceMapping(candidateResource, selectedResource) {
+			selected = candidate
+		}
+	}
+
+	return selected
+}
+
+func shouldPreferTemplateResourceMapping(candidatePath, selectedPath string) bool {
+	candidateHasWildcard := strings.Contains(candidatePath, "*")
+	selectedHasWildcard := strings.Contains(selectedPath, "*")
+
+	if !candidateHasWildcard && selectedHasWildcard {
+		return true
+	}
+	if candidateHasWildcard && !selectedHasWildcard {
+		return false
+	}
+
+	return len(candidatePath) > len(selectedPath)
 }
 
 // mergeParams merges base parameters with additional parameters (deep copy to avoid mutation)

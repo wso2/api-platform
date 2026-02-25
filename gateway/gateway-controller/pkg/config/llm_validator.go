@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
@@ -174,6 +175,72 @@ func (v *LLMValidator) validateTemplateSpec(spec *api.LLMProviderTemplateData) [
 	if spec.RemainingTokens != nil {
 		errors = append(errors, v.validateExtractionIdentifier("spec.remainingTokens",
 			spec.RemainingTokens)...)
+	}
+
+	if spec.ResourceMappings != nil {
+		errors = append(errors, v.validateTemplateResourceMappings("spec.resourceMappings", spec.ResourceMappings)...)
+	}
+
+	return errors
+}
+
+func (v *LLMValidator) validateTemplateResourceMappings(fieldPrefix string,
+	mappings *api.LLMProviderTemplateResourceMappings) []ValidationError {
+	var errors []ValidationError
+
+	if mappings == nil {
+		return errors
+	}
+
+	if mappings.Resources != nil {
+		for i := range *mappings.Resources {
+			errors = append(errors, v.validateTemplateResourceMapping(
+				fmt.Sprintf("%s.resources[%d]", fieldPrefix, i),
+				&(*mappings.Resources)[i],
+				false,
+			)...)
+		}
+	}
+
+	return errors
+}
+
+func (v *LLMValidator) validateTemplateResourceMapping(fieldPrefix string,
+	mapping *api.LLMProviderTemplateResourceMapping, isDefault bool) []ValidationError {
+	var errors []ValidationError
+
+	if mapping == nil {
+		return errors
+	}
+
+	resource := ""
+	if mapping.Resource != nil {
+		resource = strings.TrimSpace(*mapping.Resource)
+	}
+	if !isDefault && resource == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".resource",
+			Message: "resource is required for non-default mappings",
+		})
+	}
+
+	if mapping.PromptTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".promptTokens", mapping.PromptTokens)...)
+	}
+	if mapping.CompletionTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".completionTokens", mapping.CompletionTokens)...)
+	}
+	if mapping.TotalTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".totalTokens", mapping.TotalTokens)...)
+	}
+	if mapping.RemainingTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".remainingTokens", mapping.RemainingTokens)...)
+	}
+	if mapping.RequestModel != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".requestModel", mapping.RequestModel)...)
+	}
+	if mapping.ResponseModel != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".responseModel", mapping.ResponseModel)...)
 	}
 
 	return errors

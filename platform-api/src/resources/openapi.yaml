@@ -5028,6 +5028,34 @@ components:
           description: URL to the OpenAPI specification for the provider
           example: https://api.openai.com/openapi.json
 
+    LLMProviderTemplateResourceMapping:
+      type: object
+      properties:
+        resource:
+          type: string
+          description: Resource path pattern this mapping applies to (for example /responses or /chat/*)
+          example: /responses
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+
+    LLMProviderTemplateResourceMappings:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProviderTemplateResourceMapping'
+
     LLMProviderTemplate:
       type: object
       required:
@@ -5068,6 +5096,8 @@ components:
           $ref: '#/components/schemas/ExtractionIdentifier'
         responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        resourceMappings:
+          $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
         createdAt:
           type: string
           format: date-time

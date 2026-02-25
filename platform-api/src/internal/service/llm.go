@@ -94,6 +94,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+		ResourceMappings: mapTemplateResourceMappingsAPI(req.ResourceMappings),
 	}
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -177,6 +178,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
+		ResourceMappings: mapTemplateResourceMappingsAPI(req.ResourceMappings),
 	}
 
 	if err := s.repo.Update(m); err != nil {
@@ -1229,8 +1231,83 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		RemainingTokens:  mapExtractionIdentifierModelToAPI(m.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierModelToAPI(m.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(m.ResponseModel),
+		ResourceMappings: mapTemplateResourceMappingsModelToAPI(m.ResourceMappings),
 		CreatedAt:        timePtr(m.CreatedAt),
 		UpdatedAt:        timePtr(m.UpdatedAt),
+	}
+}
+
+func mapTemplateResourceMappingsAPI(in *api.LLMProviderTemplateResourceMappings) *model.LLMProviderTemplateResourceMappings {
+	if in == nil {
+		return nil
+	}
+	out := &model.LLMProviderTemplateResourceMappings{}
+	if in.Resources != nil {
+		resources := make([]model.LLMProviderTemplateResourceMapping, 0, len(*in.Resources))
+		for _, r := range *in.Resources {
+			mapped := mapTemplateResourceMappingAPI(&r)
+			if mapped != nil {
+				resources = append(resources, *mapped)
+			}
+		}
+		out.Resources = resources
+	}
+	if len(out.Resources) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) *model.LLMProviderTemplateResourceMapping {
+	if in == nil {
+		return nil
+	}
+	return &model.LLMProviderTemplateResourceMapping{
+		Resource: valueOrEmpty(in.Resource),
+		LLMProviderTemplateExtractionFields: model.LLMProviderTemplateExtractionFields{
+			PromptTokens:     mapExtractionIdentifierAPI(in.PromptTokens),
+			CompletionTokens: mapExtractionIdentifierAPI(in.CompletionTokens),
+			TotalTokens:      mapExtractionIdentifierAPI(in.TotalTokens),
+			RemainingTokens:  mapExtractionIdentifierAPI(in.RemainingTokens),
+			RequestModel:     mapExtractionIdentifierAPI(in.RequestModel),
+			ResponseModel:    mapExtractionIdentifierAPI(in.ResponseModel),
+		},
+	}
+}
+
+func mapTemplateResourceMappingsModelToAPI(in *model.LLMProviderTemplateResourceMappings) *api.LLMProviderTemplateResourceMappings {
+	if in == nil {
+		return nil
+	}
+	out := &api.LLMProviderTemplateResourceMappings{}
+	if len(in.Resources) > 0 {
+		resources := make([]api.LLMProviderTemplateResourceMapping, 0, len(in.Resources))
+		for _, r := range in.Resources {
+			mapped := mapTemplateResourceMappingModelToAPI(&r)
+			if mapped != nil {
+				resources = append(resources, *mapped)
+			}
+		}
+		out.Resources = &resources
+	}
+	if out.Resources == nil || len(*out.Resources) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceMapping) *api.LLMProviderTemplateResourceMapping {
+	if in == nil {
+		return nil
+	}
+	return &api.LLMProviderTemplateResourceMapping{
+		Resource:         stringPtrIfNotEmpty(strings.TrimSpace(in.Resource)),
+		PromptTokens:     mapExtractionIdentifierModelToAPI(in.PromptTokens),
+		CompletionTokens: mapExtractionIdentifierModelToAPI(in.CompletionTokens),
+		TotalTokens:      mapExtractionIdentifierModelToAPI(in.TotalTokens),
+		RemainingTokens:  mapExtractionIdentifierModelToAPI(in.RemainingTokens),
+		RequestModel:     mapExtractionIdentifierModelToAPI(in.RequestModel),
+		ResponseModel:    mapExtractionIdentifierModelToAPI(in.ResponseModel),
 	}
 }
 

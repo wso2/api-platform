@@ -96,7 +96,7 @@ func TestGetHostAdditionPolicyParams(t *testing.T) {
 
 func TestBuildTemplateParams(t *testing.T) {
 	t.Run("Nil template returns error", func(t *testing.T) {
-		params, err := buildTemplateParams(nil)
+		params, err := buildTemplateParams(nil, "/*")
 		assert.Error(t, err)
 		assert.Nil(t, params)
 	})
@@ -107,7 +107,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				Spec: api.LLMProviderTemplateData{},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
 		assert.Empty(t, params)
@@ -124,7 +124,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "requestModel")
 
@@ -144,7 +144,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "responseModel")
 	})
@@ -160,7 +160,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "promptTokens")
 	})
@@ -176,7 +176,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "completionTokens")
 	})
@@ -192,7 +192,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "totalTokens")
 	})
@@ -208,7 +208,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "remainingTokens")
 	})
@@ -226,11 +226,45 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Len(t, params, 6)
 	})
+
+	t.Run("Resource mapping override is selected", func(t *testing.T) {
+		defaultModel := "$.model"
+		responsesModel := "$.response.model"
+		template := &models.StoredLLMProviderTemplate{
+			Configuration: api.LLMProviderTemplate{
+				Spec: api.LLMProviderTemplateData{
+					RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
+					ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+						Default: &api.LLMProviderTemplateResourceMapping{
+							Resource:     strPtr("/*"),
+							RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
+						},
+						Resources: &[]api.LLMProviderTemplateResourceMapping{
+							{
+								Resource:     strPtr("/responses"),
+								RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: responsesModel},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		responsesParams, err := buildTemplateParams(template, "/responses")
+		assert.NoError(t, err)
+		assert.Equal(t, responsesModel, responsesParams["requestModel"].(map[string]interface{})["identifier"])
+
+		defaultParams, err := buildTemplateParams(template, "/chat/completions")
+		assert.NoError(t, err)
+		assert.Equal(t, defaultModel, defaultParams["requestModel"].(map[string]interface{})["identifier"])
+	})
 }
+
+func strPtr(v string) *string { return &v }
 
 func TestMergeParams(t *testing.T) {
 	t.Run("Merge empty maps", func(t *testing.T) {
