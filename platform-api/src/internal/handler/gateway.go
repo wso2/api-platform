@@ -245,6 +245,13 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 				"Gateway not found"))
 			return
 		}
+		// Similar to how it is handled in CreateGateway, check for validation errors and return 400 Bad Request
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "required") || strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "must")  {
+			h.slogger.Error("Invalid gateway update request", "error", err)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			return
+		}
 		h.slogger.Error("Failed to update gateway", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to update gateway"))
