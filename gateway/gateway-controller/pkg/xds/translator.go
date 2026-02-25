@@ -1491,6 +1491,12 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		Action: routeAction,
 	}
 
+	// When using cluster_header routing, strip the x-target-upstream header
+	// before forwarding to the upstream to avoid leaking cluster topology
+	if useClusterHeader {
+		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
+	}
+
 	// Only add headers if not a wildcard path
 	if !isWildcardPath {
 		r.Match = &route.RouteMatch{
