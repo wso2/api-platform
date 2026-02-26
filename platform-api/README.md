@@ -134,33 +134,42 @@ Keep this connection open to receive real-time deployment events.
 **6. Create an API**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/apis \
+curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-oauth2-token>' \
   -d '{
-    "name": "Weather API",
-    "displayName": "Weather Information API",
-    "description": "API for retrieving weather information",
-    "context": "/weather",
-    "version": "v1.0",
-    "projectId": "<project-uuid>",
-    "type": "HTTP",
-    "transport": ["http", "https"],
-    "lifeCycleStatus": "CREATED"
-  }'
+      "id": "weather-api",
+      "name": "Weather API",
+      "displayName": "Weather API",
+      "description": "Weather API with main and sandbox upstreams",
+      "context": "/weather",
+      "version": "v1.0",
+      "projectId": "<project-uuid>",
+      "lifeCycleStatus": "CREATED",
+      "transport": ["http","https"],
+      "vhosts": {
+         "main": "example.wso2.com",
+         "sandbox": "sand-example.wso2.com"
+       },
+       "upstream": {
+         "main": { "url": "http://sample-backend:5000" },
+         "sandbox": { "url": "http://sample-backend:5000/sandbox" }
+       }
+    }'
 ```
 
 **7. Deploy API to Gateway**
 
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
+curl -k -X POST 'https://localhost:9243/api/v1/rest-apis/weather-api/deployments' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-oauth2-token>' \
-  -d '[{
-    "gatewayId": "<gateway-uuid>",
-    "vhost": "mg.wso2.com"
-  }]'
+  -d '{
+    "name": "weather-v1-prod",
+    "base": "current",
+    "gatewayId": "<gateway-uuid>"
+}'
 ```
 
 Expected response:
