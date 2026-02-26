@@ -3156,6 +3156,24 @@ components:
           readOnly: true
           example: "2023-10-12T10:30:00Z"
 
+    APIVhosts:
+      title: API Virtual Hosts
+      description: Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
+      required:
+        - main
+      type: object
+      properties:
+        main:
+          type: string
+          description: Virtual host for production (main) traffic
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9\.\-]*[a-zA-Z0-9]$'
+          example: api.example.com
+        sandbox:
+          type: string
+          description: Virtual host for sandbox traffic (optional)
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9\.\-]*[a-zA-Z0-9]$'
+          example: sandbox-api.example.com
+
     RESTAPI:
       title: API object
       required:
@@ -3256,7 +3274,9 @@ components:
           description: List of channels exposed by this API
           items:
             $ref: '#/components/schemas/Channel'
-  
+        vhosts:
+          $ref: '#/components/schemas/APIVhosts'
+
     SecurityConfig:
       title: Security Configuration
       description: Defines security mechanisms (API key, OAuth2) applicable to the API

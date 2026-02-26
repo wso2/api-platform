@@ -19,10 +19,12 @@ package service
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
@@ -496,6 +498,138 @@ func statusPtr(s string) *api.RESTAPILifeCycleStatus {
 func createStatusPtr(s string) *api.CreateRESTAPIRequestLifeCycleStatus {
 	status := api.CreateRESTAPIRequestLifeCycleStatus(s)
 	return &status
+}
+
+// TestCreateRequestFromAPIYAMLDataMapsVhosts verifies that vhosts in YAML data are mapped to the request.
+func TestCreateRequestFromAPIYAMLDataMapsVhosts(t *testing.T) {
+	service := &APIService{
+		apiRepo: &mockAPIRepository{},
+		apiUtil: &utils.APIUtil{},
+	}
+	sandbox := "sandbox-api.example.com"
+
+	yamlData := &dto.APIYAMLData{
+		DisplayName: "Test API",
+		Version:     "1.0",
+		Context:     "/test",
+		Vhosts: &dto.VhostsYAML{
+			Main:    "api.example.com",
+			Sandbox: &sandbox,
+		},
+	}
+
+	req := service.createRequestFromAPIYAMLData(yamlData)
+
+	if req.Vhosts == nil {
+		t.Fatal("expected Vhosts to be set on create request")
+	}
+	if req.Vhosts.Main != "api.example.com" {
+		t.Errorf("Vhosts.Main = %q, want %q", req.Vhosts.Main, "api.example.com")
+	}
+	if req.Vhosts.Sandbox == nil || *req.Vhosts.Sandbox != sandbox {
+		t.Errorf("Vhosts.Sandbox = %v, want %q", req.Vhosts.Sandbox, sandbox)
+	}
+}
+
+// TestValidateCreateAPIRequest_InvalidVhostsMain verifies that empty vhosts.main is rejected.
+func TestValidateCreateAPIRequest_InvalidVhostsMain(t *testing.T) {
+	projectID := openapi_types.UUID(uuid.MustParse("11111111-1111-1111-1111-111111111111"))
+	service := &APIService{
+		apiRepo: &mockAPIRepository{},
+	}
+
+	req := &api.CreateRESTAPIRequest{
+		Name:      "Test API",
+		Context:   "/test",
+		Version:   "v1",
+		ProjectId: projectID,
+		Upstream:  api.Upstream{},
+		Vhosts:    &api.APIVhosts{Main: ""},
+	}
+
+	err := service.validateCreateAPIRequest(req, "org-1")
+	if err == nil {
+		t.Fatal("expected error for empty vhosts.main, got nil")
+	}
+	if !strings.Contains(err.Error(), "vhosts.main is required") {
+		t.Errorf("error = %q, want to contain 'vhosts.main is required'", err.Error())
+	}
+}
+
+// TestValidateCreateAPIRequest_InvalidVhostsSandbox verifies that a malformed sandbox vhost is rejected.
+func TestValidateCreateAPIRequest_InvalidVhostsSandbox(t *testing.T) {
+	projectID := openapi_types.UUID(uuid.MustParse("11111111-1111-1111-1111-111111111111"))
+	service := &APIService{
+		apiRepo: &mockAPIRepository{},
+	}
+	badSandbox := "-invalid-host"
+
+	req := &api.CreateRESTAPIRequest{
+		Name:      "Test API",
+		Context:   "/test",
+		Version:   "v1",
+		ProjectId: projectID,
+		Upstream:  api.Upstream{},
+		Vhosts: &api.APIVhosts{
+			Main:    "api.example.com",
+			Sandbox: &badSandbox,
+		},
+	}
+
+	err := service.validateCreateAPIRequest(req, "org-1")
+	if err == nil {
+		t.Fatal("expected error for invalid vhosts.sandbox, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid vhosts.sandbox value") {
+		t.Errorf("error = %q, want to contain 'invalid vhosts.sandbox value'", err.Error())
+	}
+}
+
+// TestValidateCreateAPIRequest_ValidVhosts verifies that a well-formed vhosts object is accepted.
+func TestValidateCreateAPIRequest_ValidVhosts(t *testing.T) {
+	projectID := openapi_types.UUID(uuid.MustParse("11111111-1111-1111-1111-111111111111"))
+	service := &APIService{
+		apiRepo: &mockAPIRepository{},
+	}
+	sandbox := "sandbox-api.example.com"
+
+	req := &api.CreateRESTAPIRequest{
+		Name:      "Test API",
+		Context:   "/test",
+		Version:   "v1",
+		ProjectId: projectID,
+		Upstream:  api.Upstream{},
+		Vhosts: &api.APIVhosts{
+			Main:    "api.example.com",
+			Sandbox: &sandbox,
+		},
+	}
+
+	err := service.validateCreateAPIRequest(req, "org-1")
+	if err != nil {
+		t.Errorf("validateCreateAPIRequest() unexpected error = %v", err)
+	}
+}
+
+// TestValidateUpdateAPIRequest_ValidVhosts verifies that vhosts validation also works in the update path.
+func TestValidateUpdateAPIRequest_ValidVhosts(t *testing.T) {
+	service := &APIService{
+		apiRepo: &mockAPIRepository{},
+	}
+	sandbox := "sandbox-api.example.com"
+
+	existing := &model.API{Handle: "my-api", Version: "v1"}
+	req := &api.UpdateRESTAPIRequest{
+		Vhosts: &api.APIVhosts{
+			Main:    "api.example.com",
+			Sandbox: &sandbox,
+		},
+	}
+
+	err := service.validateUpdateAPIRequest(existing, req, "org-1")
+	if err != nil {
+		t.Errorf("validateUpdateAPIRequest() unexpected error = %v", err)
+	}
 }
 
 // Note: contains() and findSubstring() helper functions are defined in gateway_test.go

@@ -18,6 +18,7 @@
 package utils
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -580,5 +581,199 @@ func TestAPIYAMLDataToRESTAPIPreservesPolicies(t *testing.T) {
 
 	if !reflect.DeepEqual(restAPI.Policies, expectedPolicies) {
 		t.Errorf("API policies = %v, want %v", restAPI.Policies, expectedPolicies)
+	}
+}
+
+// TestRESTAPIToModelMapsVhosts verifies that RESTAPIToModel maps both main and sandbox vhosts.
+func TestRESTAPIToModelMapsVhosts(t *testing.T) {
+	util := &APIUtil{}
+	sandbox := "sandbox-api.example.com"
+
+	projectID := "00000000-0000-0000-0000-000000000001"
+	restAPI := &api.RESTAPI{
+		Name:    "Test API",
+		Context: "/test",
+		Version: "1.0",
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{},
+		},
+		Vhosts: &api.APIVhosts{
+			Main:    "api.example.com",
+			Sandbox: &sandbox,
+		},
+	}
+	parsedUUID, _ := ParseOpenAPIUUID(projectID)
+	restAPI.ProjectId = *parsedUUID
+
+	result := util.RESTAPIToModel(restAPI, "org-1")
+
+	if result.Configuration.Vhosts == nil {
+		t.Fatal("expected Configuration.Vhosts to be set")
+	}
+	if result.Configuration.Vhosts.Main != "api.example.com" {
+		t.Errorf("Main vhost = %q, want %q", result.Configuration.Vhosts.Main, "api.example.com")
+	}
+	if result.Configuration.Vhosts.Sandbox == nil || *result.Configuration.Vhosts.Sandbox != sandbox {
+		t.Errorf("Sandbox vhost = %v, want %q", result.Configuration.Vhosts.Sandbox, sandbox)
+	}
+}
+
+// TestModelToRESTAPIRoundTripVhosts verifies that vhosts survive a ModelToRESTAPI roundtrip.
+func TestModelToRESTAPIRoundTripVhosts(t *testing.T) {
+	util := &APIUtil{}
+	sandbox := "sandbox-api.example.com"
+	context := "/test"
+
+	apiModel := &model.API{
+		Handle:    "test-api",
+		Name:      "Test API",
+		Version:   "1.0",
+		ProjectID: "00000000-0000-0000-0000-000000000001",
+		Configuration: model.RestAPIConfig{
+			Context: &context,
+			Vhosts: &model.VhostsConfig{
+				Main:    "api.example.com",
+				Sandbox: &sandbox,
+			},
+		},
+	}
+
+	result, err := util.ModelToRESTAPI(apiModel)
+	if err != nil {
+		t.Fatalf("ModelToRESTAPI() error = %v", err)
+	}
+	if result.Vhosts == nil {
+		t.Fatal("expected Vhosts to be set in RESTAPI")
+	}
+	if result.Vhosts.Main != "api.example.com" {
+		t.Errorf("Vhosts.Main = %q, want %q", result.Vhosts.Main, "api.example.com")
+	}
+	if result.Vhosts.Sandbox == nil || *result.Vhosts.Sandbox != sandbox {
+		t.Errorf("Vhosts.Sandbox = %v, want %q", result.Vhosts.Sandbox, sandbox)
+	}
+}
+
+// TestModelToRESTAPILegacyVhostFallback verifies that a model deserialized from a legacy DB row
+// (with "vhost" but no "vhosts") exposes it as vhosts.main in the REST API response.
+func TestModelToRESTAPILegacyVhostFallback(t *testing.T) {
+	util := &APIUtil{}
+
+	// Simulate reading a legacy DB row that has "vhost" but no "vhosts"
+	legacyJSON := `{"context":"/legacy","vhost":"legacy.example.com"}`
+	var config model.RestAPIConfig
+	if err := json.Unmarshal([]byte(legacyJSON), &config); err != nil {
+		t.Fatalf("json.Unmarshal error = %v", err)
+	}
+
+	apiModel := &model.API{
+		Handle:        "legacy-api",
+		Name:          "Legacy API",
+		Version:       "1.0",
+		ProjectID:     "00000000-0000-0000-0000-000000000001",
+		Configuration: config,
+	}
+
+	result, err := util.ModelToRESTAPI(apiModel)
+	if err != nil {
+		t.Fatalf("ModelToRESTAPI() error = %v", err)
+	}
+	if result.Vhosts == nil {
+		t.Fatal("expected Vhosts to be populated from legacy vhost field")
+	}
+	if result.Vhosts.Main != "legacy.example.com" {
+		t.Errorf("Vhosts.Main = %q, want %q", result.Vhosts.Main, "legacy.example.com")
+	}
+	if result.Vhosts.Sandbox != nil {
+		t.Errorf("Vhosts.Sandbox should be nil, got %v", result.Vhosts.Sandbox)
+	}
+}
+
+// TestGenerateDeploymentYAMLIncludesVhosts verifies that the generated YAML contains vhosts.main and vhosts.sandbox.
+func TestGenerateDeploymentYAMLIncludesVhosts(t *testing.T) {
+	util := &APIUtil{}
+	context := "/test"
+	sandbox := "sandbox-api.example.com"
+
+	apiModel := &model.API{
+		Handle:    "test-api",
+		Name:      "Test API",
+		Version:   "1.0",
+		ProjectID: "project-123",
+		Kind:      constants.RestApi,
+		Configuration: model.RestAPIConfig{
+			Context: &context,
+			Vhosts: &model.VhostsConfig{
+				Main:    "api.example.com",
+				Sandbox: &sandbox,
+			},
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://backend.example.com"},
+			},
+			Operations: []model.Operation{
+				{Request: &model.OperationRequest{Method: "GET", Path: "/test"}},
+			},
+		},
+	}
+
+	yamlString, err := util.GenerateAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("GenerateAPIDeploymentYAML() error = %v", err)
+	}
+
+	var deployment dto.APIDeploymentYAML
+	if err := yaml.Unmarshal([]byte(yamlString), &deployment); err != nil {
+		t.Fatalf("failed to unmarshal deployment YAML: %v", err)
+	}
+
+	if deployment.Spec.Vhosts == nil {
+		t.Fatal("expected spec.vhosts to be set in deployment YAML")
+	}
+	if deployment.Spec.Vhosts.Main != "api.example.com" {
+		t.Errorf("spec.vhosts.main = %q, want %q", deployment.Spec.Vhosts.Main, "api.example.com")
+	}
+	if deployment.Spec.Vhosts.Sandbox == nil || *deployment.Spec.Vhosts.Sandbox != sandbox {
+		t.Errorf("spec.vhosts.sandbox = %v, want %q", deployment.Spec.Vhosts.Sandbox, sandbox)
+	}
+}
+
+// TestGenerateDeploymentYAMLLegacyVhostFallback verifies that a model deserialized from a legacy DB row
+// (with "vhost" but no "vhosts") produces spec.vhosts.main in the deployment YAML.
+func TestGenerateDeploymentYAMLLegacyVhostFallback(t *testing.T) {
+	util := &APIUtil{}
+
+	// Simulate reading a legacy DB row that has "vhost" but no "vhosts"
+	legacyJSON := `{"context":"/legacy","vhost":"legacy.example.com","upstream":{"main":{"url":"https://backend.example.com"}},"operations":[{"request":{"method":"GET","path":"/legacy"}}]}`
+	var config model.RestAPIConfig
+	if err := json.Unmarshal([]byte(legacyJSON), &config); err != nil {
+		t.Fatalf("json.Unmarshal error = %v", err)
+	}
+
+	apiModel := &model.API{
+		Handle:        "legacy-api",
+		Name:          "Legacy API",
+		Version:       "1.0",
+		ProjectID:     "project-123",
+		Kind:          constants.RestApi,
+		Configuration: config,
+	}
+
+	yamlString, err := util.GenerateAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("GenerateAPIDeploymentYAML() error = %v", err)
+	}
+
+	var deployment dto.APIDeploymentYAML
+	if err := yaml.Unmarshal([]byte(yamlString), &deployment); err != nil {
+		t.Fatalf("failed to unmarshal deployment YAML: %v", err)
+	}
+
+	if deployment.Spec.Vhosts == nil {
+		t.Fatal("expected spec.vhosts to be set from legacy vhost field")
+	}
+	if deployment.Spec.Vhosts.Main != "legacy.example.com" {
+		t.Errorf("spec.vhosts.main = %q, want %q", deployment.Spec.Vhosts.Main, "legacy.example.com")
+	}
+	if deployment.Spec.Vhosts.Sandbox != nil {
+		t.Errorf("spec.vhosts.sandbox should be nil for legacy fallback, got %v", deployment.Spec.Vhosts.Sandbox)
 	}
 }

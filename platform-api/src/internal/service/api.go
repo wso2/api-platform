@@ -616,6 +616,19 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		}
 	}
 
+	// Validate vhosts if provided
+	if req.Vhosts != nil {
+		if strings.TrimSpace(req.Vhosts.Main) == "" {
+			return fmt.Errorf("vhosts.main is required when vhosts is specified")
+		}
+		if !s.isValidVHost(req.Vhosts.Main) {
+			return fmt.Errorf("invalid vhosts.main value: %s", req.Vhosts.Main)
+		}
+		if req.Vhosts.Sandbox != nil && !s.isValidVHost(*req.Vhosts.Sandbox) {
+			return fmt.Errorf("invalid vhosts.sandbox value: %s", *req.Vhosts.Sandbox)
+		}
+	}
+
 	return nil
 }
 
@@ -659,6 +672,9 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 	if !s.isEmptyUpstream(req.Upstream) {
 		existingAPI.Upstream = req.Upstream
 	}
+	if req.Vhosts != nil {
+		existingAPI.Vhosts = req.Vhosts
+	}
 
 	return existingAPI, nil
 }
@@ -695,6 +711,19 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 		}
 	}
 
+	// Validate vhosts if provided
+	if req.Vhosts != nil {
+		if strings.TrimSpace(req.Vhosts.Main) == "" {
+			return fmt.Errorf("vhosts.main is required when vhosts is specified")
+		}
+		if !s.isValidVHost(req.Vhosts.Main) {
+			return fmt.Errorf("invalid vhosts.main value: %s", req.Vhosts.Main)
+		}
+		if req.Vhosts.Sandbox != nil && !s.isValidVHost(*req.Vhosts.Sandbox) {
+			return fmt.Errorf("invalid vhosts.sandbox value: %s", *req.Vhosts.Sandbox)
+		}
+	}
+
 	return nil
 }
 
@@ -719,8 +748,7 @@ func (s *APIService) isValidVersion(version string) bool {
 
 // isValidVHost validates vhost format
 func (s *APIService) isValidVHost(vhost string) bool {
-	// Basic hostname validation pattern as per RFC 1123
-	pattern := `^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-ZaZ0-9\-]*[A-ZaZ0-9])$`
+	pattern := `^[a-zA-Z0-9][a-zA-Z0-9\.\-]*[a-zA-Z0-9]$`
 	matched, _ := regexp.MatchString(pattern, vhost)
 	return matched
 }
@@ -1348,6 +1376,7 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 		Transport:       req.Transport,
 		Upstream:        req.Upstream,
 		Version:         req.Version,
+		Vhosts:          req.Vhosts,
 	}
 }
 
@@ -1412,6 +1441,14 @@ func (s *APIService) createRequestFromAPIYAMLData(yamlData *dto.APIYAMLData) *ap
 	req.Name = yamlData.DisplayName
 	req.Context = yamlData.Context
 	req.Version = yamlData.Version
+
+	// Vhosts
+	if yamlData.Vhosts != nil {
+		req.Vhosts = &api.APIVhosts{
+			Main:    yamlData.Vhosts.Main,
+			Sandbox: yamlData.Vhosts.Sandbox,
+		}
+	}
 
 	// Upstream
 	if yamlData.Upstream != nil {
@@ -1509,6 +1546,7 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 	UpdatedAt       *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 	Upstream        api.Upstream                                            `json:"upstream" yaml:"upstream"`
 	Version         string                                                  `binding:"required" json:"version" yaml:"version"`
+	Vhosts          *api.APIVhosts                                          `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 } {
 	if restAPI == nil {
 		return nil
@@ -1547,6 +1585,7 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 		UpdatedAt       *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 		Upstream        api.Upstream                                            `json:"upstream" yaml:"upstream"`
 		Version         string                                                  `binding:"required" json:"version" yaml:"version"`
+		Vhosts          *api.APIVhosts                                          `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 	}{
 		Channels:        restAPI.Channels,
 		Context:         restAPI.Context,
@@ -1564,6 +1603,7 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 		UpdatedAt:       restAPI.UpdatedAt,
 		Upstream:        restAPI.Upstream,
 		Version:         restAPI.Version,
+		Vhosts:          restAPI.Vhosts,
 	}
 }
 
@@ -1584,6 +1624,7 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 	UpdatedAt       *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 	Upstream        api.Upstream                                     `json:"upstream" yaml:"upstream"`
 	Version         string                                           `binding:"required" json:"version" yaml:"version"`
+	Vhosts          *api.APIVhosts                                   `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 } {
 	if restAPI == nil {
 		return nil
@@ -1617,6 +1658,7 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 		UpdatedAt       *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 		Upstream        api.Upstream                                     `json:"upstream" yaml:"upstream"`
 		Version         string                                           `binding:"required" json:"version" yaml:"version"`
+		Vhosts          *api.APIVhosts                                   `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 	}{
 		Channels:        restAPI.Channels,
 		Context:         restAPI.Context,
@@ -1634,6 +1676,7 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 		UpdatedAt:       restAPI.UpdatedAt,
 		Upstream:        restAPI.Upstream,
 		Version:         restAPI.Version,
+		Vhosts:          restAPI.Vhosts,
 	}
 }
 
