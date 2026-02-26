@@ -790,3 +790,204 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "env-routing-main-ref-policy-v1.0"
     Then the response should be successful
+
+  # An API deployed with main-only must NOT serve traffic on the sandbox vhost.
+  # Prevents a regression where the router falls through to the main upstream
+  # for unmatched sandbox-vhost requests.
+  Scenario: Requests to sandbox vhost are rejected when API has no sandbox upstream
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: env-routing-no-sandbox-v1.0
+      spec:
+        displayName: Env-Routing-No-Sandbox-API
+        version: v1.0
+        context: /env-no-sandbox/$version
+        vhosts:
+          main: no-sandbox-main.local
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/env-no-sandbox/v1.0/whoami" to be ready with host "no-sandbox-main.local"
+
+    When I clear all headers
+    And I set request host to "no-sandbox-main.local"
+    And I send a GET request to "http://localhost:8080/env-no-sandbox/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/whoami"
+
+    When I clear all headers
+    And I set request host to "no-sandbox-sandbox.local"
+    And I send a GET request to "http://localhost:8080/env-no-sandbox/v1.0/whoami"
+    Then the response status code should be 404
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "env-routing-no-sandbox-v1.0"
+    Then the response should be successful
+
+  # Validates URL scheme check on the direct upstream.sandbox.url field.
+  # This exercises a different code path from the upstreamDefinitions URL validation
+  # and produces a distinct error message ("Upstream URL must use http or https scheme").
+  Scenario: Deploy API with invalid URL scheme in direct sandbox url should fail
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: env-routing-invalid-sandbox-url-v1.0
+      spec:
+        displayName: Env-Routing-Invalid-Sandbox-URL-API
+        version: v1.0
+        context: /env-invalid-sandbox-url/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: ftp://sample-backend:9080
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "Upstream URL must use http or https scheme"
+
+  # Completes the 2×2 policy matrix (main×sandbox) × (url×ref).
+  # The other three combinations are covered by existing scenarios.
+  Scenario: Policy effects should apply for main url and sandbox url routes
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: env-routing-both-url-policy-v1.0
+      spec:
+        displayName: Env-Routing-Both-URL-Policy-API
+        version: v1.0
+        context: /env-both-url-policy/$version
+        vhosts:
+          main: main-both-url-policy.local
+          sandbox: sandbox-both-url-policy.local
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+            policies:
+              - name: modify-headers
+                version: v0
+                params:
+                  responseHeaders:
+                    - action: SET
+                      name: X-Both-URL-Policy
+                      value: applied
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/env-both-url-policy/v1.0/whoami" to be ready with host "main-both-url-policy.local"
+
+    When I clear all headers
+    And I set request host to "main-both-url-policy.local"
+    And I send a GET request to "http://localhost:8080/env-both-url-policy/v1.0/whoami"
+    Then the response should be successful
+    And the response should have header "X-Both-URL-Policy" with value "applied"
+
+    When I clear all headers
+    And I set request host to "sandbox-both-url-policy.local"
+    And I send a GET request to "http://localhost:8080/env-both-url-policy/v1.0/whoami"
+    Then the response should be successful
+    And the response should have header "X-Both-URL-Policy" with value "applied"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "env-routing-both-url-policy-v1.0"
+    Then the response should be successful
+
+  # Simulates the common operational flow of first deploying to production only,
+  # then later enabling sandbox by re-deploying with a sandbox upstream added.
+  Scenario: Sandbox routing becomes available after redeploying API with sandbox upstream added
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: env-routing-redeploy-sandbox-v1.0
+      spec:
+        displayName: Env-Routing-Redeploy-Sandbox-API
+        version: v1.0
+        context: /env-redeploy-sandbox/$version
+        vhosts:
+          main: redeploy-main.local
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/env-redeploy-sandbox/v1.0/whoami" to be ready with host "redeploy-main.local"
+
+    When I clear all headers
+    And I set request host to "redeploy-main.local"
+    And I send a GET request to "http://localhost:8080/env-redeploy-sandbox/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/whoami"
+
+    When I clear all headers
+    And I set request host to "redeploy-sandbox.local"
+    And I send a GET request to "http://localhost:8080/env-redeploy-sandbox/v1.0/whoami"
+    Then the response status code should be 404
+
+    Given I authenticate using basic auth as "admin"
+    When I update the API "env-routing-redeploy-sandbox-v1.0" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: env-routing-redeploy-sandbox-v1.0
+      spec:
+        displayName: Env-Routing-Redeploy-Sandbox-API
+        version: v1.0
+        context: /env-redeploy-sandbox/$version
+        vhosts:
+          main: redeploy-main.local
+          sandbox: redeploy-sandbox.local
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/env-redeploy-sandbox/v1.0/whoami" to be ready with host "redeploy-sandbox.local"
+
+    When I clear all headers
+    And I set request host to "redeploy-sandbox.local"
+    And I send a GET request to "http://localhost:8080/env-redeploy-sandbox/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "environment" should be "sandbox"
+    And the JSON response field "path" should be "/sandbox/whoami"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "env-routing-redeploy-sandbox-v1.0"
+    Then the response should be successful
