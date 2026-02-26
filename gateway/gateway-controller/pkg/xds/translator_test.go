@@ -972,6 +972,27 @@ func TestTranslator_GetVHostDomains(t *testing.T) {
 		domains := translator.getVHostDomains("custom.wso2.com")
 		assert.Equal(t, []string{"custom.wso2.com", "custom.wso2.com:*"}, domains)
 	})
+
+	t.Run("port-qualified domain is not expanded with :*", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.example.com:8443")
+		assert.Equal(t, []string{"api.example.com:8443"}, domains)
+	})
+
+	t.Run("port-qualified domain in configured list is not expanded with :*", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "api.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"api.wso2.com", "api.wso2.com:8443"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.wso2.com")
+		assert.Equal(t, []string{"api.wso2.com", "api.wso2.com:*", "api.wso2.com:8443"}, domains)
+	})
 }
 
 func TestTranslator_GetCertStore_Nil(t *testing.T) {

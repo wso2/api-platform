@@ -408,10 +408,25 @@ func (t *Translator) TranslateConfigs(
 // If the vhost equals a configured default and that default has explicit domains,
 // all configured domains are used; otherwise it falls back to the vhost itself.
 func (t *Translator) getVHostDomains(effectiveVHost string) []string {
+	// appendDomainPatterns appends domain and, for bare hostnames only, domain+":*".
+	// Port-qualified entries (e.g. "api.example.com:8443") are left as-is because
+	// appending ":*" to them produces an invalid Envoy domain pattern.
+	appendDomainPatterns := func(out []string, domain string) []string {
+		domain = strings.TrimSpace(domain)
+		if domain == "" {
+			return out
+		}
+		out = append(out, domain)
+		if !strings.Contains(domain, ":") {
+			out = append(out, domain+":*")
+		}
+		return out
+	}
+
 	expand := func(domains []string) []string {
 		expanded := make([]string, 0, len(domains)*2)
 		for _, domain := range domains {
-			expanded = append(expanded, domain, domain+":*")
+			expanded = appendDomainPatterns(expanded, domain)
 		}
 		return expanded
 	}
@@ -426,7 +441,8 @@ func (t *Translator) getVHostDomains(effectiveVHost string) []string {
 		return expand(sandboxVHost.Domains)
 	}
 
-	return []string{effectiveVHost, effectiveVHost + ":*"}
+	out := make([]string, 0, 2)
+	return appendDomainPatterns(out, effectiveVHost)
 }
 
 // translateAsyncAPIConfig translates a single API configuration

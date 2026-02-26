@@ -40,6 +40,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// labelRe matches a single valid DNS label per RFC 1035:
+// 1–63 alphanumeric chars, interior hyphens allowed, no leading/trailing hyphens.
+var labelRe = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
+
 // APIService handles business logic for API operations
 type APIService struct {
 	apiRepo              repository.APIRepository
@@ -746,11 +750,20 @@ func (s *APIService) isValidVersion(version string) bool {
 	return matched && len(version) > 0 && len(version) <= 30
 }
 
-// isValidVHost validates vhost format
+// isValidVHost validates vhost format by checking each DNS label individually.
+// This rejects consecutive dots (empty labels) and labels with leading/trailing hyphens
+// that the old whole-string regex permitted.
 func (s *APIService) isValidVHost(vhost string) bool {
-	pattern := `^[a-zA-Z0-9][a-zA-Z0-9\.\-]*[a-zA-Z0-9]$`
-	matched, _ := regexp.MatchString(pattern, vhost)
-	return matched
+	if vhost == "" {
+		return false
+	}
+	labels := strings.Split(vhost, ".")
+	for _, label := range labels {
+		if !labelRe.MatchString(label) {
+			return false
+		}
+	}
+	return true
 }
 
 // generateDefaultOperations creates default CRUD operations for an API
