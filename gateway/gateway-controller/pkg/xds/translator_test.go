@@ -982,6 +982,18 @@ func TestTranslator_GetVHostDomains(t *testing.T) {
 		assert.Equal(t, []string{"api.example.com:8443"}, domains)
 	})
 
+	t.Run("whitespace-only domain list falls back to effective vhost", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"   ", "  "}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*.wso2.com")
+		assert.Equal(t, []string{"*.wso2.com", "*.wso2.com:*"}, domains)
+	})
+
 	t.Run("port-qualified domain in configured list is not expanded with :*", func(t *testing.T) {
 		routerCfg := testRouterConfig()
 		routerCfg.VHosts.Main.Default = "api.wso2.com"
