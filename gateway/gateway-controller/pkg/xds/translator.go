@@ -433,12 +433,16 @@ func (t *Translator) getVHostDomains(effectiveVHost string) []string {
 
 	mainVHost := t.config.Router.VHosts.Main
 	if effectiveVHost == mainVHost.Default && len(mainVHost.Domains) > 0 {
-		return expand(mainVHost.Domains)
+		if expanded := expand(mainVHost.Domains); len(expanded) > 0 {
+			return expanded
+		}
 	}
 
 	sandboxVHost := t.config.Router.VHosts.Sandbox
 	if effectiveVHost == sandboxVHost.Default && len(sandboxVHost.Domains) > 0 {
-		return expand(sandboxVHost.Domains)
+		if expanded := expand(sandboxVHost.Domains); len(expanded) > 0 {
+			return expanded
+		}
 	}
 
 	out := make([]string, 0, 2)
