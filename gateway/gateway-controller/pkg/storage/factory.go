@@ -28,10 +28,11 @@ import (
 
 // BackendConfig contains the minimal storage backend configuration required by NewStorage.
 type BackendConfig struct {
-	Type       string
-	SQLitePath string
-	Postgres   PostgresConnectionConfig
-	GatewayID  string
+	Type                         string
+	SQLitePath                   string
+	Postgres                     PostgresConnectionConfig
+	GatewayID                    string
+	SubscriptionTokenEncryptionKey string
 }
 
 // NewStorage creates the configured persistent storage backend.
@@ -46,12 +47,14 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 			return nil, err
 		}
 
-		store := newSQLStore(backend.db, backend.logger, "sqlite", cfg.GatewayID)
+		store := newSQLStore(backend.db, backend.logger, "sqlite", cfg.GatewayID, cfg.SubscriptionTokenEncryptionKey)
 		store.rebindQuery = func(query string) string { return query }
 		store.isConfigUniqueViolation = isUniqueConstraintError
 		store.isCertificateUniqueViolation = isCertificateUniqueConstraintError
 		store.isTemplateUniqueViolation = isTemplateUniqueConstraintError
 		store.isAPIKeyUniqueViolation = isAPIKeyUniqueConstraintError
+		store.isSubscriptionUniqueViolation = isSubscriptionUniqueConstraintError
+		store.isSubscriptionPlanUniqueViolation = isSubscriptionPlanUniqueConstraintError
 		return store, nil
 
 	case "postgres":
@@ -60,12 +63,14 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 			return nil, err
 		}
 
-		store := newSQLStore(backend.db, backend.logger, "postgres", cfg.GatewayID)
+		store := newSQLStore(backend.db, backend.logger, "postgres", cfg.GatewayID, cfg.SubscriptionTokenEncryptionKey)
 		store.rebindQuery = func(query string) string { return sqlx.Rebind(sqlx.DOLLAR, query) }
 		store.isConfigUniqueViolation = isPostgresUniqueConstraintError
 		store.isCertificateUniqueViolation = isPostgresCertificateUniqueConstraintError
 		store.isTemplateUniqueViolation = isPostgresTemplateUniqueConstraintError
 		store.isAPIKeyUniqueViolation = isPostgresAPIKeyUniqueConstraintError
+		store.isSubscriptionUniqueViolation = isPostgresSubscriptionUniqueConstraintError
+		store.isSubscriptionPlanUniqueViolation = isPostgresSubscriptionPlanUniqueConstraintError
 		return store, nil
 
 	default:
