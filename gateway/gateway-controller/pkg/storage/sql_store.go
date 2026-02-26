@@ -43,6 +43,7 @@ type sqlStore struct {
 	isCertificateUniqueViolation func(error) bool
 	isTemplateUniqueViolation    func(error) bool
 	isAPIKeyUniqueViolation      func(error) bool
+	isSubscriptionUniqueViolation func(error) bool
 
 	backendName string
 }
@@ -59,6 +60,7 @@ func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId 
 		isCertificateUniqueViolation: func(error) bool { return false },
 		isTemplateUniqueViolation:    func(error) bool { return false },
 		isAPIKeyUniqueViolation:      func(error) bool { return false },
+		isSubscriptionUniqueViolation: func(error) bool { return false },
 	}
 }
 
@@ -1609,4 +1611,147 @@ func (s *sqlStore) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, er
 	}
 
 	return count, nil
+}
+
+// SaveSubscription persists a new subscription.
+func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
+	if sub == nil {
+		return fmt.Errorf("failed to insert subscription: nil subscription")
+	}
+	if sub.GatewayID == "" {
+		sub.GatewayID = s.gatewayId
+	}
+	now := time.Now()
+	sub.CreatedAt = now
+	sub.UpdatedAt = now
+	query := `
+		INSERT INTO subscriptions (id, gateway_id, api_id, application_id, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.exec(query, sub.ID, sub.GatewayID, sub.APIID, sub.ApplicationID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
+	if err != nil {
+		if s.isSubscriptionUniqueViolation(err) {
+			return fmt.Errorf("%w: application already subscribed to this API", ErrConflict)
+		}
+		return fmt.Errorf("failed to insert subscription: %w", err)
+	}
+	return nil
+}
+
+// GetSubscriptionByID retrieves a subscription by ID and gateway.
+func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
+	if gatewayID == "" {
+		gatewayID = s.gatewayId
+	}
+	query := `
+		SELECT id, api_id, application_id, gateway_id, status, created_at, updated_at
+		FROM subscriptions
+		WHERE id = ? AND gateway_id = ?
+	`
+	sub := &models.Subscription{}
+	err := s.queryRow(query, id, gatewayID).Scan(
+		&sub.ID,
+		&sub.APIID,
+		&sub.ApplicationID,
+		&sub.GatewayID,
+		&sub.Status,
+		&sub.CreatedAt,
+		&sub.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return sub, nil
+}
+
+// ListSubscriptionsByAPI returns subscriptions for an API with optional filters.
+// If apiID is empty, subscriptions for all APIs on this gateway are returned (subject to other filters).
+func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
+	if gatewayID == "" {
+		gatewayID = s.gatewayId
+	}
+	query := `
+		SELECT id, api_id, application_id, gateway_id, status, created_at, updated_at
+		FROM subscriptions
+		WHERE gateway_id = ?
+	`
+	args := []interface{}{gatewayID}
+	if apiID != "" {
+		query += ` AND api_id = ?`
+		args = append(args, apiID)
+	}
+	if applicationID != nil && *applicationID != "" {
+		query += ` AND application_id = ?`
+		args = append(args, *applicationID)
+	}
+	if status != nil && *status != "" {
+		query += ` AND status = ?`
+		args = append(args, *status)
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := s.query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+	}
+	defer rows.Close()
+	var list []*models.Subscription
+	for rows.Next() {
+		sub := &models.Subscription{}
+		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, sub)
+	}
+	return list, rows.Err()
+}
+
+// UpdateSubscription updates an existing subscription.
+func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
+	if sub == nil {
+		return fmt.Errorf("failed to update subscription: nil subscription")
+	}
+	if sub.GatewayID == "" {
+		sub.GatewayID = s.gatewayId
+	}
+	sub.UpdatedAt = time.Now()
+	query := `
+		UPDATE subscriptions
+		SET status = ?, updated_at = ?
+		WHERE id = ? AND gateway_id = ?
+	`
+	result, err := s.exec(query, string(sub.Status), sub.UpdatedAt, sub.ID, sub.GatewayID)
+	if err != nil {
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected when updating subscription: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: subscription not found: %s", ErrNotFound, sub.ID)
+	}
+	return nil
+}
+
+// DeleteSubscription removes a subscription by ID and gateway.
+func (s *sqlStore) DeleteSubscription(id, gatewayID string) error {
+	if gatewayID == "" {
+		gatewayID = s.gatewayId
+	}
+	query := `DELETE FROM subscriptions WHERE id = ? AND gateway_id = ?`
+	result, err := s.exec(query, id, gatewayID)
+	if err != nil {
+		return fmt.Errorf("failed to delete subscription: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected when deleting subscription: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: subscription not found: %s", ErrNotFound, id)
+	}
+	return nil
 }

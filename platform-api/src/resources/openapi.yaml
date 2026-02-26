@@ -737,6 +737,171 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /subscriptions:
+    post:
+      summary: Create subscription
+      description: |
+        Creates an application-level subscription for the specified API.
+        The application is identified by applicationId (from DevPortal/STS). Only one subscription per API-application pair is allowed.
+      operationId: CreateSubscription
+      tags:
+        - Subscriptions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriptionRequest'
+      responses:
+        '201':
+          description: Subscription created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List subscriptions
+      description: |
+        Returns application-level subscriptions filtered by API and/or application.
+        Optional query parameters apiId, applicationId and status filter the list.
+      operationId: ListSubscriptions
+      tags:
+        - Subscriptions
+      parameters:
+        - name: apiId
+          in: query
+          required: false
+          description: Filter by API ID (UUID or handle)
+          schema:
+            type: string
+        - name: applicationId
+          in: query
+          required: false
+          description: Filter by application ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Filter by status (ACTIVE, INACTIVE, REVOKED)
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, REVOKED]
+      responses:
+        '200':
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscriptions/{subscriptionId}:
+    get:
+      summary: Get subscription by ID
+      description: Returns a single subscription by ID (scoped to organization).
+      operationId: GetSubscription
+      tags:
+        - Subscriptions
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          description: Subscription UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update subscription
+      description: Updates a subscription (e.g. status).
+      operationId: UpdateSubscription
+      tags:
+        - Subscriptions
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          description: Subscription UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriptionRequest'
+      responses:
+        '200':
+          description: Updated subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete subscription
+      description: Removes the application subscription for the API.
+      operationId: DeleteSubscription
+      tags:
+        - Subscriptions
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          description: Subscription UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Subscription deleted (no content)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{apiId}/devportals/publish:
     post:
       summary: Publish REST API to DevPortal
@@ -4085,6 +4250,73 @@ components:
           type: string
           description: The internal ID of the updated key
           example: "production-key-01"
+
+    CreateSubscriptionRequest:
+      type: object
+      required:
+        - apiId
+        - applicationId
+      properties:
+        apiId:
+          type: string
+          description: API handle or UUID (REST API identifier)
+          example: "c9f2b6ae-1234-5678-9abc-def012345678"
+        applicationId:
+          type: string
+          description: Application ID (from DevPortal/STS)
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        status:
+          type: string
+          description: Subscription status (default ACTIVE)
+          enum: [ACTIVE, INACTIVE, REVOKED]
+          default: ACTIVE
+
+    UpdateSubscriptionRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          description: New subscription status
+          enum: [ACTIVE, INACTIVE, REVOKED]
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Subscription UUID
+        apiId:
+          type: string
+          format: uuid
+          description: REST API UUID
+        applicationId:
+          type: string
+          description: Application ID
+        organizationId:
+          type: string
+          format: uuid
+          description: Organization UUID
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SubscriptionListResponse:
+      type: object
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
+        count:
+          type: integer
+          description: Number of subscriptions returned
 
     Error:
       title: Error object returned

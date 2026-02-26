@@ -91,7 +91,7 @@ func (s *SQLiteStorage) initSchema() error {
 	}
 
 	if version == 0 {
-		s.logger.Info("Initializing database schema (version 8)")
+		s.logger.Info("Initializing database schema (version 10)")
 		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
@@ -714,6 +714,38 @@ func (s *SQLiteStorage) initSchema() error {
 			s.logger.Info("Schema migrated to version 9 (removed index_key)")
 			version = 9
 		}
+
+		if version == 9 {
+			// Add subscriptions table for application-level API subscriptions
+			s.logger.Info("Migrating schema to version 10 (subscriptions table)")
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS subscriptions (
+				id TEXT PRIMARY KEY,
+				gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+				api_id TEXT NOT NULL,
+				application_id TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY (api_id) REFERENCES deployments(id) ON DELETE CASCADE,
+				UNIQUE(api_id, application_id, gateway_id)
+			);`); err != nil {
+				return fmt.Errorf("failed to create subscriptions table: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_subscriptions_api_id ON subscriptions(api_id);`); err != nil {
+				return fmt.Errorf("failed to create subscriptions api_id index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);`); err != nil {
+				return fmt.Errorf("failed to create subscriptions application_id index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);`); err != nil {
+				return fmt.Errorf("failed to create subscriptions gateway_id index: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 10"); err != nil {
+				return fmt.Errorf("failed to set schema version to 10: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 10 (subscriptions table)")
+			version = 10
+		}
 	}
 
 	s.logger.Info("Database schema up to date", slog.Int("version", version))
@@ -746,4 +778,11 @@ func isAPIKeyUniqueConstraintError(err error) bool {
 	return err != nil &&
 		(err.Error() == sqliteUniqueAPIKeysKey ||
 			err.Error() == sqliteUniqueAPIKeysID)
+}
+
+// SQLite UNIQUE constraint message for subscriptions (api_id, application_id, gateway_id)
+const sqliteUniqueSubscriptions = "UNIQUE constraint failed: subscriptions.api_id, subscriptions.application_id, subscriptions.gateway_id"
+
+func isSubscriptionUniqueConstraintError(err error) bool {
+	return err != nil && err.Error() == sqliteUniqueSubscriptions
 }

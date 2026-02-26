@@ -225,3 +225,21 @@ spec:
 3. Enforce scopes and claims for fine-grained access control.
 4. Propagate user identity to upstream services via claim mappings.
 5. Specify user identifiers from custom claims (username, account_id) for analytics purposes.
+
+## Application-level Subscriptions Integration
+
+When using **application-level subscriptions**, the JWT auth policy should also map an application identifier claim (for example, `azp` or `client_id`) into the internal metadata key `x-wso2-application-id`. This metadata is then used by the `subscriptionValidation` system policy at the gateway to enforce that:
+
+- The calling application (identified by `x-wso2-application-id`) has an active subscription to the target API.
+- Requests without an active subscription are rejected with a configurable `403` response.
+
+You can achieve this by configuring `claimMappings` so that the chosen claim is written to `x-wso2-application-id`, for example:
+
+```yaml
+policies:
+  - name: jwt-auth
+    version: v0
+    params:
+      claimMappings:
+        azp: x-wso2-application-id
+```

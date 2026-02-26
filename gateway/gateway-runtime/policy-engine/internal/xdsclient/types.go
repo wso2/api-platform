@@ -32,6 +32,9 @@ const (
 	// LazyResourceTypeURL is the custom type URL for lazy resources
 	LazyResourceTypeURL = "api-platform.wso2.org/v1.LazyResources"
 
+	// SubscriptionStateTypeURL is the custom type URL for subscription state
+	SubscriptionStateTypeURL = "api-platform.wso2.org/v1.SubscriptionState"
+
 	// Default configuration values
 	DefaultConnectTimeout        = 10 * time.Second
 	DefaultRequestTimeout        = 5 * time.Second

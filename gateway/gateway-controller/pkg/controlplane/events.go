@@ -194,3 +194,50 @@ type APIKeyRevokedEvent struct {
 	CorrelationID string                    `json:"correlationId"`
 	UserId        string                    `json:"userId"`
 }
+
+// SubscriptionCreatedEventPayload represents the payload of a subscription created event.
+type SubscriptionCreatedEventPayload struct {
+	APIID          string `json:"apiId"`
+	SubscriptionID string `json:"subscriptionId"`
+	ApplicationID  string `json:"applicationId"`
+	Status         string `json:"status"`
+}
+
+// SubscriptionCreatedEvent represents the complete subscription.created event.
+type SubscriptionCreatedEvent struct {
+	Type          string                         `json:"type"`
+	Payload       SubscriptionCreatedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
+}
+
+// SubscriptionUpdatedEventPayload represents the payload of a subscription updated event.
+type SubscriptionUpdatedEventPayload struct {
+	APIID          string `json:"apiId"`
+	SubscriptionID string `json:"subscriptionId"`
+	ApplicationID  string `json:"applicationId"`
+	Status         string `json:"status"`
+}
+
+// SubscriptionUpdatedEvent represents the complete subscription.updated event.
+type SubscriptionUpdatedEvent struct {
+	Type          string                         `json:"type"`
+	Payload       SubscriptionUpdatedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
+}
+
+// SubscriptionDeletedEventPayload represents the payload of a subscription deleted event.
+type SubscriptionDeletedEventPayload struct {
+	APIID          string `json:"apiId"`
+	SubscriptionID string `json:"subscriptionId"`
+	ApplicationID  string `json:"applicationId"`
+}
+
+// SubscriptionDeletedEvent represents the complete subscription.deleted event.
+type SubscriptionDeletedEvent struct {
+	Type          string                         `json:"type"`
+	Payload       SubscriptionDeletedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
+}

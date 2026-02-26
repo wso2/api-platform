@@ -49,7 +49,10 @@ CREATE TABLE IF NOT EXISTS artifacts (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE RESTRICT,
     UNIQUE(handle, organization_uuid),
-    UNIQUE(name, version, organization_uuid)
+    UNIQUE(name, version, organization_uuid),
+    -- Ensure (uuid, organization_uuid) pairs are unique so they can be safely
+    -- referenced from subscriptions to enforce API–organization consistency.
+    UNIQUE(uuid, organization_uuid)
 );
 
 -- REST APIs table
@@ -63,6 +66,25 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     configuration JSONB NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
+);
+
+-- Subscriptions table (application-level subscriptions for REST APIs)
+CREATE TABLE IF NOT EXISTS subscriptions (
+    uuid VARCHAR(40) PRIMARY KEY,
+    api_uuid VARCHAR(40) NOT NULL,
+    application_id VARCHAR(255) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    -- Enforce that the subscription's organization matches the API's organization
+    -- by tying (api_uuid, organization_uuid) back to the owning artifact.
+    FOREIGN KEY (api_uuid, organization_uuid)
+      REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
+    UNIQUE(api_uuid, application_id),
+    CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVOKED'))
 );
 
 -- Gateways table (scoped to organizations)
@@ -243,6 +265,10 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_api_uuid ON subscriptions(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_organization_uuid ON subscriptions(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_artifact_deployments_artifact_gateway ON deployments(artifact_uuid, gateway_uuid);

@@ -49,6 +49,9 @@ type Config struct {
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 	APIKey               APIKeyConfig           `koanf:"api_key"`
+	// Subscriptions controls application-level subscription behaviour for APIs.
+	// When nil, subscription validation system policy remains disabled.
+	Subscriptions *SubscriptionsConfig `koanf:"subscriptions"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -60,6 +63,13 @@ type AnalyticsConfig struct {
 	// AllowPayloads controls whether request and response bodies are captured
 	// into analytics metadata and forwarded to analytics publishers.
 	AllowPayloads bool `koanf:"allow_payloads"`
+}
+
+// SubscriptionsConfig holds configuration for application-level subscriptions.
+type SubscriptionsConfig struct {
+	// EnableValidation toggles automatic injection of the subscriptionValidation
+	// system policy into API policy chains.
+	EnableValidation bool `koanf:"enable_validation"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers

@@ -1,0 +1,47 @@
+name: subscription-validation
+version: v0.1.0
+description: |
+  Validates that the calling application has an active subscription to the
+  requested API. Uses application_id from request metadata (typically set
+  by the authentication policy) and API id from route metadata. If no active
+  subscription is found, the request is rejected with a configurable
+  forbidden status code and message.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    enabled:
+      type: boolean
+      default: true
+      description: >
+        When false, the subscription validation check is disabled and the
+        policy is effectively a no-op.
+    applicationIdMetadataKey:
+      type: string
+      default: x-wso2-application-id
+      description: >
+        Metadata key in the request shared context that contains the
+        application identifier. This should be populated by the upstream
+        authentication policy (e.g. JWT) from a claim such as azp or
+        client_id.
+    forbiddenStatusCode:
+      type: integer
+      default: 403
+      description: >
+        HTTP status code returned when the application does not have an
+        active subscription to the API. Must be a 4xx client error code.
+      minimum: 400
+      maximum: 599
+    forbiddenMessage:
+      type: string
+      default: Subscription required for this API
+      description: >
+        Human-readable message included in the error response body when
+        subscription validation fails.
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties: {}
+

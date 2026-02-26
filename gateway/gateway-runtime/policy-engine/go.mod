@@ -63,3 +63,5 @@ require (
 )
 
 replace github.com/wso2/api-platform/common => ../../../common
+
+replace github.com/wso2/api-platform/sdk => ../../../sdk

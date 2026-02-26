@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"platform-api/src/internal/dto"
@@ -867,6 +868,89 @@ func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID, userId string, 
 	// Return error if all deliveries failed
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastSubscriptionCreatedEvent sends a subscription.created event to the target gateway.
+func (s *GatewayEventsService) BroadcastSubscriptionCreatedEvent(gatewayID string, event *model.SubscriptionCreatedEvent) error {
+	return s.broadcastSubscriptionEvent(gatewayID, "subscription.created", event)
+}
+
+// BroadcastSubscriptionUpdatedEvent sends a subscription.updated event to the target gateway.
+func (s *GatewayEventsService) BroadcastSubscriptionUpdatedEvent(gatewayID string, event *model.SubscriptionUpdatedEvent) error {
+	return s.broadcastSubscriptionEvent(gatewayID, "subscription.updated", event)
+}
+
+// BroadcastSubscriptionDeletedEvent sends a subscription.deleted event to the target gateway.
+func (s *GatewayEventsService) BroadcastSubscriptionDeletedEvent(gatewayID string, event *model.SubscriptionDeletedEvent) error {
+	return s.broadcastSubscriptionEvent(gatewayID, "subscription.deleted", event)
+}
+
+func (s *GatewayEventsService) broadcastSubscriptionEvent(gatewayID, eventType string, payload interface{}) error {
+	correlationID := uuid.New().String()
+
+	// Guard against nil or typed-nil payloads to avoid broadcasting malformed events.
+	if payload == nil {
+		return fmt.Errorf("%s payload is nil", eventType)
+	}
+	// Detect typed nils (e.g., (*SubscriptionCreatedEvent)(nil)).
+	val := reflect.ValueOf(payload)
+	switch val.Kind() {
+	case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Interface:
+		if val.IsNil() {
+			return fmt.Errorf("%s payload is nil", eventType)
+		}
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to serialize %s event: %w", eventType, err)
+	}
+	if len(payloadJSON) > MaxEventPayloadSize {
+		return fmt.Errorf("%s payload exceeds maximum size: %d (limit: %d)", eventType, len(payloadJSON), MaxEventPayloadSize)
+	}
+
+	eventDTO := dto.GatewayEventDTO{
+		Type:          eventType,
+		Payload:       payload,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		return fmt.Errorf("failed to marshal %s event: %w", eventType, err)
+	}
+
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	successCount := 0
+	var lastError error
+	for _, conn := range connections {
+		if err := conn.Send(eventJSON); err != nil {
+			lastError = err
+			s.slogger.Error("Failed to send subscription event",
+				"gatewayID", gatewayID,
+				"connectionID", conn.ConnectionID,
+				"correlationId", correlationID,
+				"type", eventType,
+				"error", err,
+			)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver %s event to any connection: %w", eventType, lastError)
 	}
 
 	return nil

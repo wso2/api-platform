@@ -16,6 +16,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -243,6 +244,9 @@ func main() {
 
 	// Initialize policy snapshot manager
 	policySnapshotManager := policyxds.NewSnapshotManager(policyStore, log)
+
+	// Initialize subscription snapshot manager (driven by DB storage)
+	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)
 	// Initialize policy manager (used to derive policies from API configurations)
 	policyManager := policyxds.NewPolicyManager(policyStore, policySnapshotManager, log)
 
@@ -279,6 +283,14 @@ func main() {
 	}
 	cancel()
 
+	// Generate initial subscription snapshot
+	log.Info("Generating initial subscription xDS snapshot")
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	if err := subscriptionSnapshotManager.UpdateSnapshot(ctx); err != nil {
+		log.Warn("Failed to generate initial subscription xDS snapshot", slog.Any("error", err))
+	}
+	cancel()
+
 	// Start policy xDS server in a separate goroutine
 	serverOpts := []policyxds.ServerOption{
 		policyxds.WithOnFirstConnect(policyEngineConnected),
@@ -289,7 +301,7 @@ func main() {
 			cfg.Controller.PolicyServer.TLS.KeyFile,
 		))
 	}
-	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, cfg.Controller.PolicyServer.Port, log, serverOpts...)
+	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
 		if err := policyXDSServer.Start(); err != nil {
 			log.Error("Policy xDS server failed", slog.Any("error", err))
@@ -523,6 +535,13 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
 		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+
+		// Root-level subscription endpoints
+		"POST /subscriptions":                   {"admin", "developer"},
+		"GET /subscriptions":                    {"admin", "developer"},
+		"GET /subscriptions/:subscriptionId":    {"admin", "developer"},
+		"PUT /subscriptions/:subscriptionId":    {"admin", "developer"},
+		"DELETE /subscriptions/:subscriptionId": {"admin", "developer"},
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}
