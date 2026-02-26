@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: test test-postgres test-vhosts-single test-vhosts-multi test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
+.PHONY: all test test-postgres test-vhosts-single test-vhosts-multi test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform

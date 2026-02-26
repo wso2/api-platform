@@ -890,6 +890,9 @@ func (s *APIService) ImportAPIProject(req *api.ImportAPIProjectRequest, orgUUID 
 	if req.Api.Transport != nil && len(*req.Api.Transport) > 0 {
 		createReq.Transport = req.Api.Transport
 	}
+	if req.Api.Vhosts != nil {
+		createReq.Vhosts = req.Api.Vhosts
+	}
 
 	// Fallback: if YAML doesn't provide upstream/operations and user input does, use user input.
 	if s.isEmptyUpstream(createReq.Upstream) && !s.isEmptyUpstream(req.Api.Upstream) {
@@ -1420,6 +1423,9 @@ func (s *APIService) restAPIToCreateRequest(rest *api.RESTAPI) *api.CreateRESTAP
 	}
 	if rest.Policies != nil && len(*rest.Policies) > 0 {
 		req.Policies = rest.Policies
+	}
+	if rest.Vhosts != nil {
+		req.Vhosts = rest.Vhosts
 	}
 
 	return req

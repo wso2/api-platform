@@ -184,6 +184,9 @@ func (h *HealthSteps) iWaitForEndpointToBeReadyWithHost(url, host string) error 
 	maxAttempts := 30
 	attemptInterval := 300 * time.Millisecond
 	trimmedHost := strings.TrimSpace(host)
+	if trimmedHost == "" {
+		return fmt.Errorf("host override must not be empty")
+	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		req, err := http.NewRequest(http.MethodGet, url, nil)
