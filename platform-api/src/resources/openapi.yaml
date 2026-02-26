@@ -3334,6 +3334,159 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /mcp-proxies:
+    post:
+      summary: Create a new MCP proxy
+      description: |
+        Deploy a new MCP proxy configuration.
+      operationId: createMCPProxy
+      tags:
+        - MCP Proxies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPProxy'
+      responses:
+        '201':
+          description: MCP proxy created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List all MCP proxies
+      description: Retrieve a list of all MCP proxies. Optionally filter by project using the projectId query parameter.
+      operationId: listMCPProxies
+      tags:
+        - MCP Proxies
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+        - name: limit
+          in: query
+          description: Maximum number of MCP proxies to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of MCP proxies to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of MCP proxies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}:
+    get:
+      summary: Get MCP proxy by unique identifier
+      description: Retrieve the complete configuration for a specific MCP proxy.
+      operationId: getMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MCP proxy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update an existing MCP proxy
+      description: Update the configuration of an existing MCP proxy.
+      operationId: updateMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPProxy'
+      responses:
+        '200':
+          description: MCP proxy updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    delete:
+      summary: Delete an MCP proxy
+      description: Remove an MCP proxy.
+      operationId: deleteMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      responses:
+        '204':
+          description: MCP proxy deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -6329,6 +6482,144 @@ components:
           type: string
           description: The generated API key value (shown only once, 64 hexadecimal characters)
           example: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+
+    MCPProxy:
+      type: object
+      required:
+        - id
+        - name
+        - version
+        - projectId
+        - upstream
+      properties:
+        id:
+          type: string
+          description: Unique handle for the proxy
+          example: weather-mcp-proxy
+        name:
+          type: string
+          description: Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Weather Server
+        description:
+          type: string
+          description: Description of the MCP proxy
+          maxLength: 1023
+          example: An MCP server which provides weather information
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        version:
+          type: string
+          description: Semantic version of the MCP proxy
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for all REST API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "mcp.gw.com"
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+        mcpSpecVersion:
+          type: string
+          description: MCP specification version supported by this proxy
+          enum:
+            - "2025-06-18"
+            - "2025-11-25"
+        policies:
+          type: array
+          description: List of policies to be applied
+          items:
+            $ref: '#/components/schemas/Policy'
+        kind:
+          type: string
+          description: Kind of the API based on its communication protocol or architectural style
+          default: Mcp
+          example: Mcp
+
+    MCPProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: weather-mcp-proxy
+        name:
+          type: string
+          example: Weather Server
+        description:
+          type: string
+          example: An MCP server which provides weather information
+        createdBy:
+          type: string
+          example: jane.doe
+        context:
+          type: string
+          description: Context path where the proxy is exposed
+          example: /weather-mcp-proxy
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        mcpSpecVersion:
+          type: string
+          example: 2025-11-25
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    MCPProxyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPProxyListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -6421,7 +6712,7 @@ components:
       in: query
       required: false
       description: |
-        **Project ID** consisting of the **UUID** of the Project to filter REST APIs by.
+        **Project ID** consisting of the **UUID** of the Project to filter APIs by.
       schema:
         type: string
         example: "yr434567-de34-76uj6-w376-234324532"

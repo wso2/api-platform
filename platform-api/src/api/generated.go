@@ -170,6 +170,19 @@ const (
 	LLMProxyListItemStatusPending  LLMProxyListItemStatus = "pending"
 )
 
+// Defines values for MCPProxyMcpSpecVersion.
+const (
+	N20250618 MCPProxyMcpSpecVersion = "2025-06-18"
+	N20251125 MCPProxyMcpSpecVersion = "2025-11-25"
+)
+
+// Defines values for MCPProxyListItemStatus.
+const (
+	MCPProxyListItemStatusDeployed MCPProxyListItemStatus = "deployed"
+	MCPProxyListItemStatusFailed   MCPProxyListItemStatus = "failed"
+	MCPProxyListItemStatusPending  MCPProxyListItemStatus = "pending"
+)
+
 // Defines values for OpenAPIValidationResponseApiLifeCycleStatus.
 const (
 	OpenAPIValidationResponseApiLifeCycleStatusBLOCKED    OpenAPIValidationResponseApiLifeCycleStatus = "BLOCKED"
@@ -240,9 +253,9 @@ const (
 
 // Defines values for RESTAPIPublicationDetailsStatus.
 const (
-	Failed     RESTAPIPublicationDetailsStatus = "failed"
-	Published  RESTAPIPublicationDetailsStatus = "published"
-	Publishing RESTAPIPublicationDetailsStatus = "publishing"
+	RESTAPIPublicationDetailsStatusFailed     RESTAPIPublicationDetailsStatus = "failed"
+	RESTAPIPublicationDetailsStatusPublished  RESTAPIPublicationDetailsStatus = "published"
+	RESTAPIPublicationDetailsStatusPublishing RESTAPIPublicationDetailsStatus = "publishing"
 )
 
 // Defines values for RateLimitResetWindowUnit.
@@ -1383,6 +1396,76 @@ type LLMRateLimitingConfig struct {
 	ProviderLevel *RateLimitingScopeConfig `json:"providerLevel,omitempty" yaml:"providerLevel,omitempty"`
 }
 
+// MCPProxy defines model for MCPProxy.
+type MCPProxy struct {
+	// Context Base path for all REST API routes (must start with /, no trailing slash)
+	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
+
+	// CreatedBy Username of the creator
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// Description Description of the MCP proxy
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Id Unique handle for the proxy
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// McpSpecVersion MCP specification version supported by this proxy
+	McpSpecVersion *MCPProxyMcpSpecVersion `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+
+	// Name Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Policies List of policies to be applied
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// ProjectId UUID of the project this proxy belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+
+	// Version Semantic version of the MCP proxy
+	Version string `binding:"required" json:"version" yaml:"version"`
+
+	// Vhost Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
+}
+
+// MCPProxyMcpSpecVersion MCP specification version supported by this proxy
+type MCPProxyMcpSpecVersion string
+
+// MCPProxyListItem defines model for MCPProxyListItem.
+type MCPProxyListItem struct {
+	// Context Context path where the proxy is exposed
+	Context        *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt      *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy      *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description    *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	Id             *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	McpSpecVersion *string    `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+	Name           *string    `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// ProjectId UUID of the project this proxy belongs to
+	ProjectId *string                 `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	Status    *MCPProxyListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version   *string                 `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// MCPProxyListItemStatus defines model for MCPProxyListItem.Status.
+type MCPProxyListItemStatus string
+
+// MCPProxyListResponse defines model for MCPProxyListResponse.
+type MCPProxyListResponse struct {
+	Count      int                `binding:"required" json:"count" yaml:"count"`
+	List       []MCPProxyListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination         `json:"pagination" yaml:"pagination"`
+}
+
 // OpenAPIValidationResponse defines model for OpenAPIValidationResponse.
 type OpenAPIValidationResponse struct {
 	Api *struct {
@@ -2365,7 +2448,7 @@ type ListLLMProxiesByProviderParams struct {
 
 // ListLLMProxiesParams defines parameters for ListLLMProxies.
 type ListLLMProxiesParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter REST APIs by.
+	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
 	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// Limit Maximum number of LLM proxies to return
@@ -2405,9 +2488,21 @@ type UndeployLLMProxyDeploymentParams struct {
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
+// ListMCPProxiesParams defines parameters for ListMCPProxies.
+type ListMCPProxiesParams struct {
+	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
+
+	// Limit Maximum number of MCP proxies to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Number of MCP proxies to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
-	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter REST APIs by.
+	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
 	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
 }
 
@@ -2518,6 +2613,12 @@ type CreateLLMProxyAPIKeyJSONRequestBody = CreateLLMProxyAPIKeyRequest
 
 // DeployLLMProxyJSONRequestBody defines body for DeployLLMProxy for application/json ContentType.
 type DeployLLMProxyJSONRequestBody = DeployRequest
+
+// CreateMCPProxyJSONRequestBody defines body for CreateMCPProxy for application/json ContentType.
+type CreateMCPProxyJSONRequestBody = MCPProxy
+
+// UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
+type UpdateMCPProxyJSONRequestBody = MCPProxy
 
 // RegisterOrganizationJSONRequestBody defines body for RegisterOrganization for application/json ContentType.
 type RegisterOrganizationJSONRequestBody = Organization
