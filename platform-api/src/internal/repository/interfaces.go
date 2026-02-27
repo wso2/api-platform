@@ -212,3 +212,15 @@ type LLMProxyRepository interface {
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
 }
+
+// MCPProxyRepository defines the interface for MCP proxy persistence
+type MCPProxyRepository interface {
+	Create(p *model.MCPProxy) error
+	GetByHandle(handle, orgUUID string) (*model.MCPProxy, error)
+	GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error)
+	List(orgUUID string, limit, offset int) ([]*model.MCPProxy, error)
+	Count(orgUUID string) (int, error)
+	Update(p *model.MCPProxy) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+}

@@ -291,6 +291,18 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT
 );
 
+-- MCP Proxies table
+CREATE TABLE IF NOT EXISTS mcp_proxies (
+    uuid VARCHAR(40) PRIMARY KEY,
+    project_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    configuration TEXT NOT NULL,
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
