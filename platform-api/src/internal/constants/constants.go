@@ -71,6 +71,7 @@ const (
 	WebSubApi   = "WebSubApi"
 	LLMProvider = "LlmProvider"
 	LLMProxy    = "LlmProxy"
+	MCPProxy    = "Mcp"
 )
 
 // API Type Constants

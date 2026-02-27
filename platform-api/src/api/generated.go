@@ -1426,7 +1426,7 @@ type MCPProxy struct {
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
-	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
 	// Version Semantic version of the MCP proxy
 	Version string `binding:"required" json:"version" yaml:"version"`

@@ -140,6 +140,12 @@ var (
 )
 
 var (
+	ErrMCPProxyExists       = errors.New("mcp proxy already exists")
+	ErrMCPProxyNotFound     = errors.New("mcp proxy not found")
+	ErrMCPProxyLimitReached = errors.New("mcp proxy limit reached for organization")
+)
+
+var (
 	// API Key errors
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyAlreadyExists = errors.New("api key already exists")
