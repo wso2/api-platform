@@ -158,6 +158,29 @@ func createTestClient(t *testing.T) *Client {
 	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil)
 }
 
+func createTestClientWithOnPrem(t *testing.T, onPrem bool) *Client {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	store := storage.NewConfigStore()
+
+	cfg := config.ControlPlaneConfig{
+		Host:             "control-plane.example.com",
+		Token:            "test-token",
+		OnPrem:           onPrem,
+		ReconnectInitial: 1 * time.Second,
+		ReconnectMax:     30 * time.Second,
+	}
+
+	routerConfig := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "api.example.com"},
+			Sandbox: config.VHostEntry{Default: "sandbox.example.com"},
+		},
+	}
+
+	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil)
+}
+
 func TestNewClient(t *testing.T) {
 	client := createTestClient(t)
 	if client == nil {
@@ -223,6 +246,21 @@ func TestClient_getWebSocketURL(t *testing.T) {
 	}
 }
 
+func TestClient_getWebSocketURL_OnPrem(t *testing.T) {
+	client := createTestClientWithOnPrem(t, true)
+
+	url := client.getWebSocketURL()
+	expected := "wss://control-plane.example.com/internal/data/v1/ws"
+	if url != expected {
+		t.Errorf("getWebSocketURL() OnPrem = %q, want %q", url, expected)
+	}
+	connectURL := client.getWebSocketConnectURL()
+	expectedConnect := expected + "/gateways/connect"
+	if connectURL != expectedConnect {
+		t.Errorf("getWebSocketConnectURL() = %q, want %q", connectURL, expectedConnect)
+	}
+}
+
 func TestClient_getRestAPIBaseURL(t *testing.T) {
 	client := createTestClient(t)
 
@@ -230,6 +268,16 @@ func TestClient_getRestAPIBaseURL(t *testing.T) {
 	expected := "https://control-plane.example.com/api/internal/v1"
 	if url != expected {
 		t.Errorf("getRestAPIBaseURL() = %q, want %q", url, expected)
+	}
+}
+
+func TestClient_getRestAPIBaseURL_OnPrem(t *testing.T) {
+	client := createTestClientWithOnPrem(t, true)
+
+	url := client.getRestAPIBaseURL()
+	expected := "https://control-plane.example.com/internal/data/v1"
+	if url != expected {
+		t.Errorf("getRestAPIBaseURL() OnPrem = %q, want %q", url, expected)
 	}
 }
 
