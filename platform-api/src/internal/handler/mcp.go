@@ -18,23 +18,28 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"platform-api/src/api"
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 type MCPProxyHandler struct {
+	service *service.MCPProxyService
 	slogger *slog.Logger
 }
 
-func NewMCPProxyHandler(slogger *slog.Logger) *MCPProxyHandler {
+func NewMCPProxyHandler(service *service.MCPProxyService, slogger *slog.Logger) *MCPProxyHandler {
 	return &MCPProxyHandler{
+		service: service,
 		slogger: slogger,
 	}
 }
@@ -65,11 +70,14 @@ func (h *MCPProxyHandler) CreateMCPProxy(c *gin.Context) {
 	}
 
 	createdBy, _ := middleware.GetUsernameFromContext(c)
-	h.slogger.Info("CreateMCPProxy called", "organizationId", orgID, "createdBy", createdBy, "mcpProxyId", req.Id)
 
-	// TODO: Implement service layer call when available
-	// For now, return not implemented
-	c.JSON(http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "MCP proxy creation is not yet implemented"))
+	resp, err := h.service.Create(orgID, createdBy, &req)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, resp)
 }
 
 // ListMCPProxies handles GET /api/v1/mcp-proxies
@@ -104,15 +112,24 @@ func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 		offset = 0
 	}
 
-	h.slogger.Info("ListMCPProxies called", "organizationId", orgID, "projectId", projectIDPtr, "limit", limit, "offset", offset)
-
-	// TODO: Implement service layer call when available
-	// For now, return empty list
-	resp := api.MCPProxyListResponse{
-		Count:      0,
-		List:       []api.MCPProxyListItem{},
-		Pagination: api.Pagination{Limit: limit, Offset: offset},
+	resp, err := h.service.List(orgID, limit, offset)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
 	}
+
+	// Filter by project ID if provided
+	if projectIDPtr != nil {
+		filtered := make([]api.MCPProxyListItem, 0)
+		for _, item := range resp.List {
+			if item.ProjectId != nil && *item.ProjectId == *projectIDPtr {
+				filtered = append(filtered, item)
+			}
+		}
+		resp.List = filtered
+		resp.Count = len(filtered)
+	}
+
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -125,11 +142,13 @@ func (h *MCPProxyHandler) GetMCPProxy(c *gin.Context) {
 	}
 	id := c.Param("id")
 
-	h.slogger.Info("GetMCPProxy called", "organizationId", orgID, "mcpProxyId", id)
+	resp, err := h.service.Get(orgID, id)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
 
-	// TODO: Implement service layer call when available
-	// For now, return not found
-	c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "MCP proxy not found"))
+	c.JSON(http.StatusOK, resp)
 }
 
 // UpdateMCPProxy handles PUT /api/v1/mcp-proxies/:id
@@ -147,11 +166,13 @@ func (h *MCPProxyHandler) UpdateMCPProxy(c *gin.Context) {
 		return
 	}
 
-	h.slogger.Info("UpdateMCPProxy called", "organizationId", orgID, "mcpProxyId", id)
+	resp, err := h.service.Update(orgID, id, &req)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
 
-	// TODO: Implement service layer call when available
-	// For now, return not implemented
-	c.JSON(http.StatusNotImplemented, utils.NewErrorResponse(501, "Not Implemented", "MCP proxy update is not yet implemented"))
+	c.JSON(http.StatusOK, resp)
 }
 
 // DeleteMCPProxy handles DELETE /api/v1/mcp-proxies/:id
@@ -163,9 +184,27 @@ func (h *MCPProxyHandler) DeleteMCPProxy(c *gin.Context) {
 	}
 	id := c.Param("id")
 
-	h.slogger.Info("DeleteMCPProxy called", "organizationId", orgID, "mcpProxyId", id)
+	if err := h.service.Delete(orgID, id); err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
 
-	// TODO: Implement service layer call when available
-	// For now, return not found (simulating not found for delete)
-	c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "MCP proxy not found"))
+	c.Status(http.StatusNoContent)
+}
+
+// handleServiceError maps service errors to HTTP responses
+func (h *MCPProxyHandler) handleServiceError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, constants.ErrInvalidInput):
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	case errors.Is(err, constants.ErrMCPProxyNotFound):
+		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "MCP proxy not found"))
+	case errors.Is(err, constants.ErrMCPProxyExists):
+		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "MCP proxy with this ID already exists"))
+	case errors.Is(err, constants.ErrProjectNotFound):
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
+	default:
+		h.slogger.Error("MCP proxy service error", "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
+	}
 }

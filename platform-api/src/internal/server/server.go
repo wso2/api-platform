@@ -90,6 +90,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmTemplateRepo := repository.NewLLMProviderTemplateRepo(db)
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
+	mcpProxyRepo := repository.NewMCPProxyRepo(db)
 
 	// Seed default LLM provider templates into the DB (per organization)
 	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
@@ -173,6 +174,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo)
+	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo)
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,
@@ -213,7 +215,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, slogger)
 	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
-	mcpProxyHandler := handler.NewMCPProxyHandler(slogger)
+	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
 	slogger.Info("Initialized all services and handlers successfully")
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {
