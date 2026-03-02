@@ -55,7 +55,7 @@ const (
 
 	// Configuration Validation Constants
 	MaxReasonableTimeoutMs       = uint32(3600000) // 1 hour in milliseconds
-	MaxReasonablePolicyTimeoutMs = uint32(60000)  // 60 seconds in milliseconds
+	MaxReasonablePolicyTimeoutMs = uint32(60000)   // 60 seconds in milliseconds
 
 	// Cipher Suite Validation
 	CipherInvalidChars1 = ";"
@@ -83,6 +83,10 @@ const (
 	// Policy Engine
 	PolicyEngineClusterName         = "api-platform/policy-engine"
 	DefaultPolicyEngineSocketPath   = "/var/run/api-platform/policy-engine.sock"
+	DynamicForwardProxyHTTPCluster  = "api-platform/dynamic-forward-proxy-http"
+	DynamicForwardProxyHTTPSCluster = "api-platform/dynamic-forward-proxy-https"
+	DynamicForwardProxyCacheName    = "api_platform_dynamic_forward_proxy_cache"
+	DynamicUpstreamSchemeHeader     = "x-ap-platform-dynamic-upstream-scheme"
 
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"

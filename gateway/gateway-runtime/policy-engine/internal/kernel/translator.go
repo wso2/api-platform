@@ -515,9 +515,37 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, extra 
 			// Prevent policies from overwriting reserved keys managed by the engine.
 			delete(metaStruct.Fields, "analytics_data")
 			delete(metaStruct.Fields, "path")
+
+			// Keep policy-provided fields under policy_metadata to avoid collisions
+			// with engine-managed top-level keys in ext_proc namespace.
+			policyMetadataFields := map[string]*structpb.Value{}
+			if existing := metaStruct.Fields["policy_metadata"]; existing != nil && existing.GetStructValue() != nil {
+				for key, value := range existing.GetStructValue().Fields {
+					policyMetadataFields[key] = value
+				}
+			}
+			for key, value := range metaStruct.Fields {
+				if key == "policy_metadata" {
+					continue
+				}
+				policyMetadataFields[key] = value
+			}
+			metaStruct.Fields = map[string]*structpb.Value{
+				"policy_metadata": structpb.NewStructValue(&structpb.Struct{Fields: policyMetadataFields}),
+			}
 		}
 		if existing, ok := namespaces[namespace]; ok {
 			for key, value := range metaStruct.Fields {
+				if namespace == constants.ExtProcFilterName && key == "policy_metadata" {
+					currentPolicyMetadata := existing.Fields["policy_metadata"]
+					if currentPolicyMetadata != nil && currentPolicyMetadata.GetStructValue() != nil &&
+						value != nil && value.GetStructValue() != nil {
+						for nestedKey, nestedValue := range value.GetStructValue().Fields {
+							currentPolicyMetadata.GetStructValue().Fields[nestedKey] = nestedValue
+						}
+						continue
+					}
+				}
 				existing.Fields[key] = value
 			}
 			continue

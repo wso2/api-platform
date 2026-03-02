@@ -371,6 +371,44 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 	assert.Equal(t, "/new/path", extProc.Fields["path"].GetStringValue())
 }
 
+func TestBuildDynamicMetadata_ExtProcPolicyMetadataIsNestedAndReservedKeysImmutable(t *testing.T) {
+	analyticsStruct, _ := structpb.NewStruct(map[string]interface{}{
+		"key": "value",
+	})
+	path := "/engine/path"
+
+	extra := map[string]map[string]interface{}{
+		"api_platform.policy_engine.envoy.filters.http.ext_proc": {
+			"analytics_data": "should-not-override",
+			"path":           "/policy/path",
+			"custom_key":     "custom-value",
+			"policy_metadata": map[string]interface{}{
+				"existing_nested": "nested-value",
+			},
+		},
+	}
+
+	result := buildDynamicMetadata(analyticsStruct, &path, extra)
+	require.NotNil(t, result)
+
+	extProc := result.Fields["api_platform.policy_engine.envoy.filters.http.ext_proc"].GetStructValue()
+	require.NotNil(t, extProc)
+
+	// Engine-managed keys remain at top-level and are not overwritten by policy data.
+	require.NotNil(t, extProc.Fields["analytics_data"])
+	assert.Equal(t, "/engine/path", extProc.Fields["path"].GetStringValue())
+
+	// Policy-provided keys are nested under policy_metadata.
+	require.NotNil(t, extProc.Fields["policy_metadata"])
+	policyMetadata := extProc.Fields["policy_metadata"].GetStructValue()
+	require.NotNil(t, policyMetadata)
+	assert.Equal(t, "custom-value", policyMetadata.Fields["custom_key"].GetStringValue())
+	assert.Equal(t, "nested-value", policyMetadata.Fields["existing_nested"].GetStringValue())
+
+	// Ensure custom key does not leak into top-level ext_proc metadata.
+	assert.Nil(t, extProc.Fields["custom_key"])
+}
+
 // =============================================================================
 // translateRequestActionsCore Tests
 // =============================================================================

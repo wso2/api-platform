@@ -27,6 +27,8 @@ import (
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
@@ -355,7 +357,7 @@ func testRouterConfig() *config.RouterConfig {
 			Timeouts: config.UpstreamTimeouts{
 				RouteTimeoutInMs:     60000,
 				RouteIdleTimeoutInMs: 300000,
-				ConnectTimeoutInMs:  5000,
+				ConnectTimeoutInMs:   5000,
 			},
 		},
 		PolicyEngine: config.PolicyEngineConfig{
@@ -1316,6 +1318,132 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	assert.NotNil(t, route)
 	assert.Contains(t, route.Name, "GET")
 	assert.Contains(t, route.Name, "/api/users")
+}
+
+func TestTranslator_CreateRouteVariants(t *testing.T) {
+	logger := createTestLogger()
+
+	t.Run("policy engine disabled", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine.Enabled = false
+		cfg := testConfig()
+		cfg.GatewayController.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		baseRoute := translator.createRoute(
+			"api-123",
+			"test-api",
+			"v1",
+			"/api",
+			"GET",
+			"/users",
+			"test-cluster",
+			"",
+			"localhost",
+			"API",
+			"",
+			"",
+			nil,
+			"proj-001",
+			nil,
+		)
+
+		variants := translator.createRouteVariants(baseRoute)
+		require.Len(t, variants, 1)
+		assert.Equal(t, "test-cluster", variants[0].GetRoute().GetCluster())
+		assert.Contains(t, variants[0].GetRequestHeadersToRemove(), constants.DynamicUpstreamSchemeHeader)
+	})
+
+	t.Run("policy engine enabled", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine.Enabled = true
+		cfg := testConfig()
+		cfg.GatewayController.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		baseRoute := translator.createRoute(
+			"api-123",
+			"test-api",
+			"v1",
+			"/api",
+			"GET",
+			"/users",
+			"test-cluster",
+			"",
+			"localhost",
+			"API",
+			"",
+			"",
+			nil,
+			"proj-001",
+			nil,
+		)
+
+		variants := translator.createRouteVariants(baseRoute)
+		require.Len(t, variants, 3)
+
+		clusterNames := make(map[string]bool)
+		for _, variant := range variants {
+			clusterNames[variant.GetRoute().GetCluster()] = true
+			assert.Contains(t, variant.GetRequestHeadersToRemove(), constants.DynamicUpstreamSchemeHeader)
+		}
+
+		assert.True(t, clusterNames["test-cluster"])
+		assert.True(t, clusterNames[constants.DynamicForwardProxyHTTPCluster])
+		assert.True(t, clusterNames[constants.DynamicForwardProxyHTTPSCluster])
+
+		var hasHTTPMatcher bool
+		var hasHTTPSMatcher bool
+		for _, variant := range variants {
+			for _, header := range variant.GetMatch().GetHeaders() {
+				if header.GetName() != constants.DynamicUpstreamSchemeHeader {
+					continue
+				}
+				if header.GetStringMatch().GetExact() == constants.SchemeHTTP {
+					hasHTTPMatcher = true
+				}
+				if header.GetStringMatch().GetExact() == constants.SchemeHTTPS {
+					hasHTTPSMatcher = true
+				}
+			}
+		}
+
+		assert.True(t, hasHTTPMatcher)
+		assert.True(t, hasHTTPSMatcher)
+	})
+}
+
+func TestTranslator_CreateListener_WithPolicyEngineIncludesDynamicForwardProxyFilter(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.PolicyEngine.Enabled = true
+	routerCfg.PolicyEngine.Mode = "tcp"
+	routerCfg.PolicyEngine.Host = "policy-engine"
+	routerCfg.PolicyEngine.Port = 9001
+	routerCfg.PolicyEngine.TimeoutMs = 1000
+	routerCfg.PolicyEngine.MessageTimeoutMs = 500
+	routerCfg.LuaScriptPath = "../../lua/request_transformation.lua"
+	cfg := testConfig()
+	cfg.GatewayController.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	listener, _, err := translator.createListener([]*route.VirtualHost{}, false)
+	require.NoError(t, err)
+	require.NotNil(t, listener)
+
+	hcmFilter := listener.GetFilterChains()[0].GetFilters()[0]
+	hcmCfg := &hcm.HttpConnectionManager{}
+	require.NoError(t, hcmFilter.GetTypedConfig().UnmarshalTo(hcmCfg))
+
+	filterNames := make([]string, 0, len(hcmCfg.GetHttpFilters()))
+	for _, f := range hcmCfg.GetHttpFilters() {
+		filterNames = append(filterNames, f.GetName())
+	}
+
+	assert.Equal(t, "api_platform.policy_engine.envoy.filters.http.ext_proc", filterNames[0])
+	assert.Equal(t, "envoy.filters.http.lua", filterNames[1])
+	assert.Equal(t, "envoy.filters.http.dynamic_forward_proxy", filterNames[2])
+	assert.Equal(t, "envoy.filters.http.router", filterNames[3])
 }
 
 func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {

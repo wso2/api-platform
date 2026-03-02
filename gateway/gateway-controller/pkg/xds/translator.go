@@ -62,6 +62,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"google.golang.org/protobuf/proto"
 	anypb "google.golang.org/protobuf/types/known/anypb"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -311,6 +312,12 @@ func (t *Translator) TranslateConfigs(
 	if t.routerConfig.PolicyEngine.Enabled {
 		policyEngineCluster := t.createPolicyEngineCluster()
 		clusters = append(clusters, policyEngineCluster)
+
+		// Dynamic forward proxy clusters are required for runtime upstream rewrites
+		// performed by request transformation Lua logic.
+		for _, dynamicCluster := range t.createRequestTransformationDynamicForwardProxyClusters() {
+			clusters = append(clusters, dynamicCluster)
+		}
 	}
 
 	// Add ALS cluster if gRPC access log is enabled
@@ -520,7 +527,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		// Use mainClusterName by default; path rewrite based on main upstream path
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout)
-		mainRoutesList = append(mainRoutesList, r)
+		mainRoutesList = append(mainRoutesList, t.createRouteVariants(r)...)
 	}
 	routesList = append(routesList, mainRoutesList...)
 
@@ -546,7 +553,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 			// Use sbClusterName for sandbox upstream path
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout)
-			sbRoutesList = append(sbRoutesList, r)
+			sbRoutesList = append(sbRoutesList, t.createRouteVariants(r)...)
 		}
 		routesList = append(routesList, sbRoutesList...)
 	}
@@ -640,6 +647,12 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			return nil, nil, fmt.Errorf("failed to create lua filter: %w", err)
 		}
 		httpFilters = append(httpFilters, luaFilter)
+
+		dynamicForwardProxyFilter, err := t.createDynamicForwardProxyHTTPFilter()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create dynamic forward proxy filter: %w", err)
+		}
+		httpFilters = append(httpFilters, dynamicForwardProxyFilter)
 	}
 
 	// Add router filter (must be last)
@@ -1343,6 +1356,82 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 	}
 
 	return ""
+}
+
+// createRouteVariants expands a base route into dynamic-upstream variants plus fallback.
+// The fallback route always remains and continues to use the statically resolved upstream cluster.
+func (t *Translator) createRouteVariants(baseRoute *route.Route) []*route.Route {
+	if baseRoute == nil {
+		return nil
+	}
+
+	// Always scrub the internal routing header before proxying upstream.
+	baseRoute.RequestHeadersToRemove = appendUniqueString(
+		baseRoute.RequestHeadersToRemove,
+		constants.DynamicUpstreamSchemeHeader,
+	)
+
+	if !t.routerConfig.PolicyEngine.Enabled {
+		return []*route.Route{baseRoute}
+	}
+
+	var routes []*route.Route
+	if httpsRoute := t.cloneRouteWithDynamicUpstream(baseRoute, constants.SchemeHTTPS, constants.DynamicForwardProxyHTTPSCluster); httpsRoute != nil {
+		routes = append(routes, httpsRoute)
+	}
+	if httpRoute := t.cloneRouteWithDynamicUpstream(baseRoute, constants.SchemeHTTP, constants.DynamicForwardProxyHTTPCluster); httpRoute != nil {
+		routes = append(routes, httpRoute)
+	}
+
+	routes = append(routes, baseRoute)
+	return routes
+}
+
+func (t *Translator) cloneRouteWithDynamicUpstream(baseRoute *route.Route, scheme, clusterName string) *route.Route {
+	cloned, ok := proto.Clone(baseRoute).(*route.Route)
+	if !ok || cloned == nil {
+		t.logger.Warn("Failed to clone route for dynamic upstream variant")
+		return nil
+	}
+
+	routeAction := cloned.GetRoute()
+	if routeAction == nil {
+		return nil
+	}
+
+	if cloned.Match == nil {
+		cloned.Match = &route.RouteMatch{}
+	}
+
+	cloned.Match.Headers = append(cloned.Match.Headers, &route.HeaderMatcher{
+		Name: constants.DynamicUpstreamSchemeHeader,
+		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+			StringMatch: &matcher.StringMatcher{
+				MatchPattern: &matcher.StringMatcher_Exact{
+					Exact: scheme,
+				},
+			},
+		},
+	})
+
+	routeAction.ClusterSpecifier = &route.RouteAction_Cluster{
+		Cluster: clusterName,
+	}
+	cloned.RequestHeadersToRemove = appendUniqueString(
+		cloned.RequestHeadersToRemove,
+		constants.DynamicUpstreamSchemeHeader,
+	)
+
+	return cloned
+}
+
+func appendUniqueString(values []string, candidate string) []string {
+	for _, existing := range values {
+		if existing == candidate {
+			return values
+		}
+	}
+	return append(values, candidate)
 }
 
 // createRoute creates a route for an operation
@@ -2229,6 +2318,105 @@ func (t *Translator) processEndpoint(
 	return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
 }
 
+func (t *Translator) createRequestTransformationDynamicForwardProxyClusters() []*cluster.Cluster {
+	result := make([]*cluster.Cluster, 0, 2)
+	if httpCluster := t.createRequestTransformationDynamicForwardProxyHTTPCluster(); httpCluster != nil {
+		result = append(result, httpCluster)
+	}
+	if httpsCluster := t.createRequestTransformationDynamicForwardProxyHTTPSCluster(); httpsCluster != nil {
+		result = append(result, httpsCluster)
+	}
+	return result
+}
+
+func (t *Translator) createRequestTransformationDynamicForwardProxyHTTPCluster() *cluster.Cluster {
+	clusterCfg := &dfpcluster.ClusterConfig{
+		ClusterImplementationSpecifier: &dfpcluster.ClusterConfig_DnsCacheConfig{
+			DnsCacheConfig: &common_dfp.DnsCacheConfig{
+				Name:            constants.DynamicForwardProxyCacheName,
+				DnsLookupFamily: cluster.Cluster_V4_ONLY,
+				DnsRefreshRate:  durationpb.New(60 * time.Second),
+				HostTtl:         durationpb.New(300 * time.Second),
+				MaxHosts:        wrapperspb.UInt32(1024),
+			},
+		},
+	}
+	clusterTypeAny, err := anypb.New(clusterCfg)
+	if err != nil {
+		t.logger.Error("Failed to marshal dynamic forward proxy HTTP cluster config", slog.Any("error", err))
+		return nil
+	}
+
+	return &cluster.Cluster{
+		Name:           constants.DynamicForwardProxyHTTPCluster,
+		ConnectTimeout: durationpb.New(5 * time.Second),
+		LbPolicy:       cluster.Cluster_CLUSTER_PROVIDED,
+		ClusterDiscoveryType: &cluster.Cluster_ClusterType{
+			ClusterType: &cluster.Cluster_CustomClusterType{
+				Name:        "envoy.clusters.dynamic_forward_proxy",
+				TypedConfig: clusterTypeAny,
+			},
+		},
+		UpstreamConnectionOptions: &cluster.UpstreamConnectionOptions{
+			TcpKeepalive: &core.TcpKeepalive{
+				KeepaliveTime: wrapperspb.UInt32(300),
+			},
+		},
+	}
+}
+
+func (t *Translator) createRequestTransformationDynamicForwardProxyHTTPSCluster() *cluster.Cluster {
+	clusterCfg := &dfpcluster.ClusterConfig{
+		ClusterImplementationSpecifier: &dfpcluster.ClusterConfig_DnsCacheConfig{
+			DnsCacheConfig: &common_dfp.DnsCacheConfig{
+				Name:            constants.DynamicForwardProxyCacheName,
+				DnsLookupFamily: cluster.Cluster_V4_ONLY,
+				DnsRefreshRate:  durationpb.New(60 * time.Second),
+				HostTtl:         durationpb.New(300 * time.Second),
+				MaxHosts:        wrapperspb.UInt32(1024),
+			},
+		},
+	}
+	clusterTypeAny, err := anypb.New(clusterCfg)
+	if err != nil {
+		t.logger.Error("Failed to marshal dynamic forward proxy HTTPS cluster config", slog.Any("error", err))
+		return nil
+	}
+
+	tlsContextAny, err := anypb.New(&tlsv3.UpstreamTlsContext{})
+	if err != nil {
+		t.logger.Error("Failed to marshal dynamic forward proxy HTTPS TLS config", slog.Any("error", err))
+		return nil
+	}
+
+	return &cluster.Cluster{
+		Name:           constants.DynamicForwardProxyHTTPSCluster,
+		ConnectTimeout: durationpb.New(5 * time.Second),
+		LbPolicy:       cluster.Cluster_CLUSTER_PROVIDED,
+		ClusterDiscoveryType: &cluster.Cluster_ClusterType{
+			ClusterType: &cluster.Cluster_CustomClusterType{
+				Name:        "envoy.clusters.dynamic_forward_proxy",
+				TypedConfig: clusterTypeAny,
+			},
+		},
+		UpstreamHttpProtocolOptions: &core.UpstreamHttpProtocolOptions{
+			AutoSni:           true,
+			AutoSanValidation: true,
+		},
+		TransportSocket: &core.TransportSocket{
+			Name: constants.EnvoyTLSTransportSocket,
+			ConfigType: &core.TransportSocket_TypedConfig{
+				TypedConfig: tlsContextAny,
+			},
+		},
+		UpstreamConnectionOptions: &cluster.UpstreamConnectionOptions{
+			TcpKeepalive: &core.TcpKeepalive{
+				KeepaliveTime: wrapperspb.UInt32(300),
+			},
+		},
+	}
+}
+
 // createDynamicForwardProxyCluster creates a dynamic forward proxy cluster for WebSubHub
 func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
 	// Note: Due to go-control-plane API limitations, we use a placeholder Any for the typed config
@@ -2508,6 +2696,34 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 		Name: "envoy.filters.http.lua",
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: luaAny,
+		},
+	}, nil
+}
+
+func (t *Translator) createDynamicForwardProxyHTTPFilter() (*hcm.HttpFilter, error) {
+	dnsCacheConfig := &common_dfp.DnsCacheConfig{
+		Name:            constants.DynamicForwardProxyCacheName,
+		DnsRefreshRate:  durationpb.New(60 * time.Second),
+		HostTtl:         durationpb.New(300 * time.Second),
+		DnsLookupFamily: cluster.Cluster_V4_ONLY,
+		MaxHosts:        wrapperspb.UInt32(1024),
+	}
+
+	filterConfig := &dfpv3.FilterConfig{
+		ImplementationSpecifier: &dfpv3.FilterConfig_DnsCacheConfig{
+			DnsCacheConfig: dnsCacheConfig,
+		},
+	}
+
+	filterAny, err := anypb.New(filterConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal dynamic forward proxy filter config: %w", err)
+	}
+
+	return &hcm.HttpFilter{
+		Name: "envoy.filters.http.dynamic_forward_proxy",
+		ConfigType: &hcm.HttpFilter_TypedConfig{
+			TypedConfig: filterAny,
 		},
 	}, nil
 }

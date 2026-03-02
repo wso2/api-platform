@@ -387,3 +387,137 @@ Feature: Request Transformation Policy Integration Tests
     When I send a GET request to "http://localhost:8080/req-transform-match/v1.0/api/v1"
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/api/v2"
+
+  Scenario: Operation-level dynamic upstream rewrite routes to configured host
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: request-rewrite-upstream-operation
+      spec:
+        displayName: Request Transformation Upstream Operation
+        version: v1.0
+        context: /req-transform-upstream-op/$version
+        upstream:
+          main:
+            url: http://echo-backend:80/anything
+        operations:
+          - method: GET
+            path: /dynamic/*
+            policies:
+              - name: request-rewrite
+                version: v0
+                params:
+                  upstreamRewrite:
+                    host: echo-backend-multi-arch
+                    port: 8080
+                    scheme: http
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/req-transform-upstream-op/v1.0/dynamic/health" to be ready
+    And I set header "Content-Type" to "application/json"
+    When I send a GET request to "http://localhost:8080/req-transform-upstream-op/v1.0/dynamic/hello"
+    Then the response status code should be 200
+    And the JSON response field "headers.Host" should contain "echo-backend-multi-arch:8080"
+
+  Scenario: API-level dynamic upstream rewrite routes all operations
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: request-rewrite-upstream-api
+      spec:
+        displayName: Request Transformation Upstream API Level
+        version: v1.0
+        context: /req-transform-upstream-api/$version
+        upstream:
+          main:
+            url: http://echo-backend:80/anything
+        policies:
+          - name: request-rewrite
+            version: v0
+            params:
+              upstreamRewrite:
+                host: echo-backend-multi-arch
+                port: 8080
+                scheme: http
+        operations:
+          - method: GET
+            path: /api/*
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/req-transform-upstream-api/v1.0/api/health" to be ready
+    And I set header "Content-Type" to "application/json"
+    When I send a GET request to "http://localhost:8080/req-transform-upstream-api/v1.0/api/value"
+    Then the response status code should be 200
+    And the JSON response field "headers.Host" should contain "echo-backend-multi-arch:8080"
+
+  Scenario: Dynamic upstream rewrite works with path rewrite
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: request-rewrite-upstream-with-path
+      spec:
+        displayName: Request Transformation Upstream With Path Rewrite
+        version: v1.0
+        context: /req-transform-upstream-path/$version
+        upstream:
+          main:
+            url: http://echo-backend:80/anything
+        operations:
+          - method: GET
+            path: /users/*
+            policies:
+              - name: request-rewrite
+                version: v0
+                params:
+                  pathRewrite:
+                    type: ReplacePrefixMatch
+                    replacePrefixMatch: "/users/anything/accounts"
+                  upstreamRewrite:
+                    host: echo-backend-multi-arch
+                    port: 8080
+                    scheme: http
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/req-transform-upstream-path/v1.0/users/health" to be ready
+    And I set header "Content-Type" to "application/json"
+    When I send a GET request to "http://localhost:8080/req-transform-upstream-path/v1.0/users/123"
+    Then the response status code should be 200
+    And the JSON response field "headers.Host" should contain "echo-backend-multi-arch:8080"
+    And the JSON response field "url" should contain "/anything/anything/accounts/123"
+
+  Scenario: Client-supplied dynamic upstream header is ignored without upstream rewrite metadata
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: request-rewrite-client-header-ignored
+      spec:
+        displayName: Request Transformation Client Header Ignored
+        version: v1.0
+        context: /req-transform-client-header/$version
+        upstream:
+          main:
+            url: http://echo-backend:80/anything
+        operations:
+          - method: GET
+            path: /api/*
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/req-transform-client-header/v1.0/api/health" to be ready
+    And I set header "Content-Type" to "application/json"
+    And I set header "x-ap-platform-dynamic-upstream-scheme" to "http"
+    When I send a GET request to "http://localhost:8080/req-transform-client-header/v1.0/api/value"
+    Then the response status code should be 200
+    And the JSON response field "headers.Host" should contain "echo-backend"
+    And the JSON response field "url" should contain "/anything/api/value"
