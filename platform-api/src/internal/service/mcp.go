@@ -28,6 +28,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 )
 
 const (
@@ -88,15 +89,15 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
 		Name:             req.Name,
-		Description:      valueOrEmpty(req.Description),
+		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		Status:           mcpStatusPending,
 		Configuration: model.MCPProxyConfiguration{
 			Name:        req.Name,
 			Version:     req.Version,
-			Context:     valueOrEmpty(req.Context),
-			Vhost:       valueOrEmpty(req.Vhost),
+			Context:     utils.ValueOrEmpty(req.Context),
+			Vhost:       utils.ValueOrEmpty(req.Vhost),
 			SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
 			Upstream:    *mapUpstreamAPIToModel(req.Upstream),
 		},
@@ -197,12 +198,12 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 	// Update fields
 	existing.Name = req.Name
 	existing.Version = req.Version
-	existing.Description = valueOrEmpty(req.Description)
+	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
 		Name:        req.Name,
 		Version:     req.Version,
-		Context:     valueOrEmpty(req.Context),
-		Vhost:       valueOrEmpty(req.Vhost),
+		Context:     utils.ValueOrEmpty(req.Context),
+		Vhost:       utils.ValueOrEmpty(req.Vhost),
 		SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
 		Upstream:    *mapUpstreamAPIToModel(req.Upstream),
 	}
@@ -280,16 +281,16 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 	status := api.MCPProxyListItemStatus(m.Status)
 
 	return &api.MCPProxyListItem{
-		Id:             stringPtrIfNotEmpty(m.Handle),
-		Name:           stringPtrIfNotEmpty(m.Name),
-		Description:    stringPtrIfNotEmpty(m.Description),
-		CreatedBy:      stringPtrIfNotEmpty(m.CreatedBy),
-		Version:        stringPtrIfNotEmpty(m.Version),
-		ProjectId:      stringPtrIfNotEmpty(m.ProjectUUID),
-		Context:        stringPtrIfNotEmpty(m.Configuration.Context),
-		McpSpecVersion: stringPtrIfNotEmpty(m.Configuration.SpecVersion),
+		Id:             utils.StringPtrIfNotEmpty(m.Handle),
+		Name:           utils.StringPtrIfNotEmpty(m.Name),
+		Description:    utils.StringPtrIfNotEmpty(m.Description),
+		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
+		Version:        utils.StringPtrIfNotEmpty(m.Version),
+		ProjectId:      utils.StringPtrIfNotEmpty(m.ProjectUUID),
+		Context:        utils.StringPtrIfNotEmpty(m.Configuration.Context),
+		McpSpecVersion: utils.StringPtrIfNotEmpty(m.Configuration.SpecVersion),
 		Status:         &status,
-		CreatedAt:      timePtr(m.CreatedAt),
-		UpdatedAt:      timePtr(m.UpdatedAt),
+		CreatedAt:      utils.TimePtr(m.CreatedAt),
+		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
 }

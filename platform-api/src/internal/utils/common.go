@@ -21,6 +21,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -166,7 +167,7 @@ func ParseOpenAPIUUIDOrZero(id string) openapi_types.UUID {
 
 // StringPtrIfNotEmpty returns a pointer for non-empty strings.
 func StringPtrIfNotEmpty(value string) *string {
-	if value == "" {
+	if strings.TrimSpace(value) == "" {
 		return nil
 	}
 	return &value
@@ -233,6 +234,30 @@ func StringPtrValue(ptr *string) string {
 		return ""
 	}
 	return *ptr
+}
+
+// ValueOrEmpty returns the string value or empty string if nil
+func ValueOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// DefaultStringPtr returns the string value if not nil/empty, otherwise the default
+func DefaultStringPtr(v *string, def string) string {
+	if v == nil {
+		return def
+	}
+	if strings.TrimSpace(*v) == "" {
+		return def
+	}
+	return *v
+}
+
+// TimePtr returns a pointer to the given time
+func TimePtr(t time.Time) *time.Time {
+	return &t
 }
 
 // GenerateUUID generates a new UUID v7 string

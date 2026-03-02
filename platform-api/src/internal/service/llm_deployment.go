@@ -1359,8 +1359,8 @@ func mapModelAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 	}
 	return &api.UpstreamAuth{
 		Type:   authType,
-		Header: stringPtrIfNotEmpty(auth.Header),
-		Value:  stringPtrIfNotEmpty(auth.Value),
+		Header: utils.StringPtrIfNotEmpty(auth.Header),
+		Value:  utils.StringPtrIfNotEmpty(auth.Value),
 	}
 }
 
