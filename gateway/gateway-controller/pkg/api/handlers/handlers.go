@@ -139,19 +139,50 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		return
 	}
 
+	// Only update configs that are pending an operation
+	// This prevents incorrectly updating already-deployed configs when
+	// the callback is invoked for all configs in the snapshot
+	if cfg.Status != models.StatusPending {
+		log.Debug("Skipping status update for non-pending config",
+			slog.String("id", configID),
+			slog.String("current_status", string(cfg.Status)))
+		return
+	}
+
 	now := time.Now()
 	if success {
-		cfg.Status = models.StatusDeployed
-		cfg.DeployedAt = &now
-		cfg.DeployedVersion = version
-		log.Info("Configuration deployed successfully",
-			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.Int64("version", version))
+		// Check PendingOperation to determine final status
+		switch cfg.PendingOperation {
+		case models.OperationUndeploy:
+			cfg.Status = models.StatusUndeployed
+			// Keep DeployedVersion and DeployedAt - tracks when it was last deployed
+			log.Info("Configuration undeployed successfully",
+				slog.String("id", configID),
+				slog.String("displayName", cfg.GetDisplayName()),
+				slog.Int64("version", version))
+		case models.OperationDeploy:
+			cfg.Status = models.StatusDeployed
+			cfg.DeployedAt = &now
+			cfg.DeployedVersion = version
+			log.Info("Configuration deployed successfully",
+				slog.String("id", configID),
+				slog.String("displayName", cfg.GetDisplayName()),
+				slog.Int64("version", version))
+		default: // OperationNone or any unexpected value - treat as deploy
+			cfg.Status = models.StatusDeployed
+			cfg.DeployedAt = &now
+			cfg.DeployedVersion = version
+			log.Info("Configuration deployed successfully",
+				slog.String("id", configID),
+				slog.String("displayName", cfg.GetDisplayName()),
+				slog.Int64("version", version))
+		}
+		cfg.PendingOperation = models.OperationNone // Clear the operation
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
 		cfg.DeployedVersion = 0
+		cfg.PendingOperation = models.OperationNone // Clear the operation
 		log.Error("Configuration deployment failed",
 			slog.String("id", configID),
 			slog.String("displayName", cfg.GetDisplayName()),

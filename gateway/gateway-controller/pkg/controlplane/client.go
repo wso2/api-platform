@@ -802,7 +802,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		if storage.IsNotFoundError(err) {
 			c.logger.Warn("API configuration not found for undeployment",
 				slog.String("api_id", apiID),
-				slog.String("correlation_id", undeployedEvent.CorrelationID)
+				slog.String("correlation_id", undeployedEvent.CorrelationID),
 			)
 			// Not an error - the API might already be undeployed or deleted
 			return
@@ -816,17 +816,19 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Set status to undeployed (preserve config, keys, and policies)
-	apiConfig.Status = models.StatusUndeployed
+	// Set status to pending and mark operation as undeploy
+	// The callback will set final status based on xDS update success
+	apiConfig.Status = models.StatusPending
+	apiConfig.PendingOperation = models.OperationUndeploy
 	apiConfig.UpdatedAt = time.Now()
-	// Keep DeployedVersion as-is - it tracks when it was last deployed
+	// Keep DeployedVersion as-is - will be preserved by callback
 
 	// Update database (only if persistent mode)
 	if c.db != nil {
 		if err := c.db.UpdateConfig(apiConfig); err != nil {
 			c.logger.Error("Failed to update config status in database",
 				slog.String("api_id", apiID),
-				slog.String("correlation_id", undeployedEvent.CorrelationID
+				slog.String("correlation_id", undeployedEvent.CorrelationID),
 				slog.Any("error", err),
 			)
 			return
@@ -843,10 +845,14 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Note: We keep API keys and policies for potential redeploy
+	// Note: We keep API keys and policies in database/memory for potential redeploy
 	// They will be reused if the API is redeployed
 
+	// Remove derived policy configuration (policy engine only)
+	c.removePolicyConfiguration(apiID, undeployedEvent.CorrelationID, false)
+
 	// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
+	// The status callback will set final status to StatusUndeployed on success
 	c.updateXDSSnapshotAsync(apiID, undeployedEvent.CorrelationID, false, true)
 
 	c.logger.Info("Successfully processed API undeployment event",

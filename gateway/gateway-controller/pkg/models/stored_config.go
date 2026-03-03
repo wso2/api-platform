@@ -35,6 +35,15 @@ const (
 	StatusUndeployed ConfigStatus = "undeployed" // Removed from Router but config preserved
 )
 
+// PendingOperationType represents the type of operation currently in progress
+type PendingOperationType string
+
+const (
+	OperationNone     PendingOperationType = "none"     // No operation in progress
+	OperationDeploy   PendingOperationType = "deploy"   // Deployment operation in progress
+	OperationUndeploy PendingOperationType = "undeploy" // Undeployment operation in progress
+)
+
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
 	ID                  string               `json:"id"`
@@ -46,6 +55,7 @@ type StoredConfig struct {
 	UpdatedAt           time.Time            `json:"updatedAt"`
 	DeployedAt          *time.Time           `json:"deployedAt,omitempty"`
 	DeployedVersion     int64                `json:"deployed_version"`
+	PendingOperation    PendingOperationType `json:"-" db:"-"` // Transient and only exists in memory
 }
 
 // GetCompositeKey returns the composite key "displayName:version" for indexing
