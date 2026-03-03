@@ -294,13 +294,13 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
 -- MCP Proxies table
 CREATE TABLE IF NOT EXISTS mcp_proxies (
     uuid VARCHAR(40) PRIMARY KEY,
-    project_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40),
     description VARCHAR(1023),
     created_by VARCHAR(255),
     status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration TEXT NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE RESTRICT
 );
 
 -- Indexes for better performance

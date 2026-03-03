@@ -25,7 +25,7 @@ type MCPProxy struct {
 	UUID             string                `json:"uuid" db:"-"`
 	Handle           string                `json:"id" db:"-"`
 	OrganizationUUID string                `json:"organizationId" db:"-"`
-	ProjectUUID      string                `json:"projectId" db:"-"`
+	ProjectUUID      *string               `json:"projectId" db:"-"`
 	Name             string                `json:"name" db:"-"`
 	Description      string                `json:"description,omitempty" db:"-"`
 	CreatedBy        string                `json:"createdBy,omitempty" db:"-"`
@@ -39,8 +39,8 @@ type MCPProxy struct {
 type MCPProxyConfiguration struct {
 	Name        string         `json:"name" db:"-"`
 	Version     string         `json:"version" db:"-"`
-	Context     string         `json:"context" db:"-"`
-	Vhost       string         `json:"vhost" db:"-"`
+	Context     *string        `json:"context" db:"-"`
+	Vhost       *string        `json:"vhost" db:"-"`
 	SpecVersion string         `json:"specVersion" db:"-"`
 	Upstream    UpstreamConfig `json:"upstream" db:"-"`
 }

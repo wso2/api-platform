@@ -56,13 +56,13 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" || req.ProjectId == "" {
+	if req.Id == "" || req.Name == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 
-	// Validate project exists
-	if s.projectRepo != nil {
-		project, err := s.projectRepo.GetProjectByUUID(req.ProjectId)
+	// Validate project exists if provided
+	if s.projectRepo != nil && req.ProjectId != nil && *req.ProjectId != "" {
+		project, err := s.projectRepo.GetProjectByUUID(*req.ProjectId)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
@@ -96,8 +96,8 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		Configuration: model.MCPProxyConfiguration{
 			Name:        req.Name,
 			Version:     req.Version,
-			Context:     utils.ValueOrEmpty(req.Context),
-			Vhost:       utils.ValueOrEmpty(req.Vhost),
+			Context:     req.Context,
+			Vhost:       req.Vhost,
 			SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
 			Upstream:    *mapUpstreamAPIToModel(req.Upstream),
 		},
@@ -180,21 +180,6 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 		return nil, constants.ErrMCPProxyNotFound
 	}
 
-	// Validate project if changed
-	if s.projectRepo != nil && req.ProjectId != "" && req.ProjectId != existing.ProjectUUID {
-		project, err := s.projectRepo.GetProjectByUUID(req.ProjectId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate project: %w", err)
-		}
-		if project == nil {
-			return nil, constants.ErrProjectNotFound
-		}
-		if project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
-		}
-		existing.ProjectUUID = req.ProjectId
-	}
-
 	// Update fields
 	existing.Name = req.Name
 	existing.Version = req.Version
@@ -202,8 +187,8 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 	existing.Configuration = model.MCPProxyConfiguration{
 		Name:        req.Name,
 		Version:     req.Version,
-		Context:     utils.ValueOrEmpty(req.Context),
-		Vhost:       utils.ValueOrEmpty(req.Vhost),
+		Context:     req.Context,
+		Vhost:       req.Vhost,
 		SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
 		Upstream:    *mapUpstreamAPIToModel(req.Upstream),
 	}
@@ -248,8 +233,6 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		return nil
 	}
 
-	ctx := m.Configuration.Context
-	vhost := m.Configuration.Vhost
 	desc := m.Description
 	createdBy := m.CreatedBy
 
@@ -266,8 +249,8 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		CreatedBy:      &createdBy,
 		Version:        m.Version,
 		ProjectId:      m.ProjectUUID,
-		Context:        &ctx,
-		Vhost:          &vhost,
+		Context:        m.Configuration.Context,
+		Vhost:          m.Configuration.Vhost,
 		McpSpecVersion: specVersion,
 		Upstream:       mapUpstreamModelToAPI(&m.Configuration.Upstream),
 	}
@@ -286,8 +269,8 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 		Description:    utils.StringPtrIfNotEmpty(m.Description),
 		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:        utils.StringPtrIfNotEmpty(m.Version),
-		ProjectId:      utils.StringPtrIfNotEmpty(m.ProjectUUID),
-		Context:        utils.StringPtrIfNotEmpty(m.Configuration.Context),
+		ProjectId:      m.ProjectUUID,
+		Context:        m.Configuration.Context,
 		McpSpecVersion: utils.StringPtrIfNotEmpty(m.Configuration.SpecVersion),
 		Status:         &status,
 		CreatedAt:      utils.TimePtr(m.CreatedAt),

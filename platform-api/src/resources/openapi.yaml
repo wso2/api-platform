@@ -6489,7 +6489,6 @@ components:
         - id
         - name
         - version
-        - projectId
         - upstream
       properties:
         id:

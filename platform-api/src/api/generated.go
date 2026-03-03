@@ -1423,7 +1423,7 @@ type MCPProxy struct {
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId UUID of the project this proxy belongs to
-	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`

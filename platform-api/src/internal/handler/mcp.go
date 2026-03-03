@@ -71,6 +71,10 @@ func (h *MCPProxyHandler) CreateMCPProxy(c *gin.Context) {
 
 	createdBy, _ := middleware.GetUsernameFromContext(c)
 
+	if req.ProjectId == nil {
+		h.slogger.Debug("No project ID provided for MCP proxy, proceeding without project association", "mcpProxyId", req.Id)
+	}
+
 	resp, err := h.service.Create(orgID, createdBy, &req)
 	if err != nil {
 		h.handleServiceError(c, err)
@@ -119,6 +123,7 @@ func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 	}
 
 	// Filter by project ID if provided
+	// TODO: Implement project ID filtering at the database level in the service/repository layer for better performance
 	if projectIDPtr != nil {
 		filtered := make([]api.MCPProxyListItem, 0)
 		for _, item := range resp.List {
