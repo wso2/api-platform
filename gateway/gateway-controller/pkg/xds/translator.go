@@ -1531,6 +1531,10 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if projectID != "" {
 		metaMap["project_id"] = projectID
 	}
+	// Add default_upstream_cluster for ext_proc to use when no policy sets SetUpstreamName
+	if useClusterHeader && defaultCluster != "" {
+		metaMap["default_upstream_cluster"] = defaultCluster
+	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
 			"wso2.route": metaStruct,
@@ -2596,16 +2600,8 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 	policyEngine := t.routerConfig.PolicyEngine
 
-	// Convert route cache action string to enum
-	routeCacheAction := extproc.ExternalProcessor_DEFAULT
-	switch policyEngine.RouteCacheAction { // TODO: (renuka) This is not a config. Fix it.
-	case constants.ExtProcRouteCacheActionRetain:
-		routeCacheAction = extproc.ExternalProcessor_RETAIN
-	case constants.ExtProcRouteCacheActionClear:
-		routeCacheAction = extproc.ExternalProcessor_CLEAR
-	}
-
 	// Create ext_proc configuration
+	// RouteCacheAction is set to DEFAULT so ext_proc can control ClearRouteCache per-request
 	extProcConfig := &extproc.ExternalProcessor{
 		GrpcService: &core.GrpcService{
 			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
@@ -2616,7 +2612,7 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
 		},
 		FailureModeAllow:  policyEngine.FailureModeAllow,
-		RouteCacheAction:  routeCacheAction,
+		RouteCacheAction:  extproc.ExternalProcessor_DEFAULT,
 		AllowModeOverride: policyEngine.AllowModeOverride,
 		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName, constants.ExtProcRequestAttributeRouteMetadata},
 		ProcessingMode: &extproc.ProcessingMode{

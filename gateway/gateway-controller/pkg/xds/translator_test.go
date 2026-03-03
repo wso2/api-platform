@@ -813,7 +813,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Mode:             "uds",
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -842,7 +841,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Port:             9001,
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -868,36 +866,23 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 func TestTranslator_CreateExtProcFilter(t *testing.T) {
 	logger := createTestLogger()
 
-	tests := []struct {
-		name             string
-		routeCacheAction string
-		headerMode       string
-	}{
-		{name: "Default settings", routeCacheAction: "DEFAULT", headerMode: "DEFAULT"},
-		{name: "Retain cache", routeCacheAction: constants.ExtProcRouteCacheActionRetain, headerMode: "SEND"},
-		{name: "Clear cache", routeCacheAction: constants.ExtProcRouteCacheActionClear, headerMode: "SKIP"},
-	}
+	t.Run("Creates ext_proc filter with DEFAULT route cache action", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Host:             "localhost",
+			Port:             50051,
+			TimeoutMs:        1000,
+			MessageTimeoutMs: 500,
+		}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			routerCfg := testRouterConfig()
-			routerCfg.PolicyEngine = config.PolicyEngineConfig{
-				Host:             "localhost",
-				Port:             50051,
-				TimeoutMs:        1000,
-				MessageTimeoutMs: 500,
-				RouteCacheAction: tt.routeCacheAction,
-			}
-			cfg := testConfig()
-			cfg.Router = *routerCfg
-			translator := NewTranslator(logger, routerCfg, nil, cfg)
-
-			filter, err := translator.createExtProcFilter()
-			assert.NoError(t, err)
-			assert.NotNil(t, filter)
-			assert.Equal(t, constants.ExtProcFilterName, filter.Name)
-		})
-	}
+		filter, err := translator.createExtProcFilter()
+		assert.NoError(t, err)
+		assert.NotNil(t, filter)
+		assert.Equal(t, constants.ExtProcFilterName, filter.Name)
+	})
 }
 
 func TestTranslator_CreateRouteConfiguration(t *testing.T) {
