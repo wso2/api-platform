@@ -816,12 +816,11 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Set status to pending and mark operation as undeploy
-	// The callback will set final status based on xDS update success
-	apiConfig.Status = models.StatusPending
-	apiConfig.PendingOperation = models.OperationUndeploy
+	// Set desired state to undeployed
+	// Status in DB represents desired state, not actual runtime deployment status
+	// Keep DeployedVersion and DeployedAt to track when it was last deployed
+	apiConfig.Status = models.StatusUndeployed
 	apiConfig.UpdatedAt = time.Now()
-	// Keep DeployedVersion as-is - will be preserved by callback
 
 	// Update database (only if persistent mode)
 	if c.db != nil {
@@ -852,7 +851,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	c.removePolicyConfiguration(apiID, undeployedEvent.CorrelationID, false)
 
 	// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
-	// The status callback will set final status to StatusUndeployed on success
+	// xDS update failures will be logged by the callback
 	c.updateXDSSnapshotAsync(apiID, undeployedEvent.CorrelationID, false, true)
 
 	c.logger.Info("Successfully processed API undeployment event",

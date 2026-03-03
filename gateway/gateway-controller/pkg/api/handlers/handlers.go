@@ -126,6 +126,7 @@ func NewAPIServer(
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
+// Note: We only log failures here. Status in DB represents desired state, not actual runtime state.
 func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64, correlationID string) {
 	// Create a logger with correlation ID if provided
 	log := s.logger
@@ -135,72 +136,25 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 
 	cfg, err := s.store.Get(configID)
 	if err != nil {
-		log.Warn("Config not found for status update", slog.String("id", configID))
+		log.Debug("Config not found for status update", slog.String("id", configID))
 		return
 	}
 
-	// Only update configs that are pending an operation
-	// This prevents incorrectly updating already-deployed configs when
-	// the callback is invoked for all configs in the snapshot
-	if cfg.Status != models.StatusPending {
-		log.Debug("Skipping status update for non-pending config",
-			slog.String("id", configID),
-			slog.String("current_status", string(cfg.Status)))
-		return
-	}
-
-	now := time.Now()
+	// Log the xDS update result
 	if success {
-		// Check PendingOperation to determine final status
-		switch cfg.PendingOperation {
-		case models.OperationUndeploy:
-			cfg.Status = models.StatusUndeployed
-			// Keep DeployedVersion and DeployedAt - tracks when it was last deployed
-			log.Info("Configuration undeployed successfully",
-				slog.String("id", configID),
-				slog.String("displayName", cfg.GetDisplayName()),
-				slog.Int64("version", version))
-		case models.OperationDeploy:
-			cfg.Status = models.StatusDeployed
-			cfg.DeployedAt = &now
-			cfg.DeployedVersion = version
-			log.Info("Configuration deployed successfully",
-				slog.String("id", configID),
-				slog.String("displayName", cfg.GetDisplayName()),
-				slog.Int64("version", version))
-		default: // OperationNone or any unexpected value - treat as deploy
-			cfg.Status = models.StatusDeployed
-			cfg.DeployedAt = &now
-			cfg.DeployedVersion = version
-			log.Info("Configuration deployed successfully",
-				slog.String("id", configID),
-				slog.String("displayName", cfg.GetDisplayName()),
-				slog.Int64("version", version))
-		}
-		cfg.PendingOperation = models.OperationNone // Clear the operation
-	} else {
-		cfg.Status = models.StatusFailed
-		cfg.DeployedAt = nil
-		cfg.DeployedVersion = 0
-		cfg.PendingOperation = models.OperationNone // Clear the operation
-		log.Error("Configuration deployment failed",
+		log.Info("xDS snapshot updated successfully",
 			slog.String("id", configID),
 			slog.String("displayName", cfg.GetDisplayName()),
-			slog.String("kind", cfg.Kind))
-	}
-
-	cfg.UpdatedAt = now
-
-	// Update database (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(cfg); err != nil {
-			log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-		}
-	}
-
-	// Update in-memory store
-	if err := s.store.Update(cfg); err != nil {
-		log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
+			slog.String("status", string(cfg.Status)),
+			slog.Int64("xds_version", version))
+	} else {
+		// Only log the failure - don't change status in DB
+		// Status in DB represents desired state, not actual runtime deployment status
+		log.Error("xDS snapshot update failed",
+			slog.String("id", configID),
+			slog.String("displayName", cfg.GetDisplayName()),
+			slog.String("kind", cfg.Kind),
+			slog.String("desired_status", string(cfg.Status)))
 	}
 }
 
@@ -705,7 +659,6 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	now := time.Now()
 	existing.Configuration = apiConfig
-	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 
 	if deploymentState == string(models.StatusUndeployed) {
@@ -713,14 +666,18 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			slog.String("handle", handle),
 			slog.String("api_id", existing.ID))
 
-		// Mark operation as undeploy - callback will set final status
-		// Keep DeployedVersion and DeployedAt as-is - will be preserved by callback
-		existing.PendingOperation = models.OperationUndeploy
+		// Set desired state to undeployed
+		// Keep DeployedVersion and DeployedAt to track when it was last deployed
+		existing.Status = models.StatusUndeployed
 	} else {
-		// Mark operation as deploy - callback will set final status
-		existing.PendingOperation = models.OperationDeploy
-		existing.DeployedAt = nil
-		existing.DeployedVersion = 0
+		log.Info("Deploying API configuration",
+			slog.String("handle", handle),
+			slog.String("api_id", existing.ID))
+
+		// Set desired state to deployed
+		existing.Status = models.StatusDeployed
+		existing.DeployedAt = &now
+		// Note: DeployedVersion not updated - it's xDS replica-specific, not meaningful in HA shared DB
 	}
 
 	// Skip WebSubApi topic operations for undeployed APIs (assume WebSub doesn't support undeployment)
