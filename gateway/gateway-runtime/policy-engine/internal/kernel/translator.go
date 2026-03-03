@@ -55,6 +55,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	analyticsData map[string]any,
 	dynamicMetadata map[string]map[string]interface{},
 	pathMutation *string,
+	clearRouteCache bool,
 	immediateResp *extprocv3.ProcessingResponse,
 	err error) {
 
@@ -76,10 +77,10 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 			// Handle analytics metadata for immediate response
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
 			if err != nil {
-				return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+				return nil, nil, nil, nil, nil, false, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
 			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, immResp.DynamicMetadata)
-			return nil, nil, nil, nil, nil, response, nil
+			return nil, nil, nil, nil, nil, false, response, nil
 		}
 	}
 
@@ -181,12 +182,9 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		}
 	}
 
-	// Handle dynamic cluster routing via dynamic metadata.
-	// The Lua filter will read this metadata and set the x-target-upstream header
-	// before route matching occurs. This avoids needing to clear the route cache.
-	// 1. If a policy set SetUpstreamName, use it (with upstream_ prefix)
-	// 2. Otherwise, if the route has a default upstream cluster, use it (no prefix, already full name)
-	extProcNS := constants.ExtProcFilterName
+	// Handle dynamic cluster routing via header + ClearRouteCache.
+	// When a policy sets SetUpstreamName, we set the x-target-upstream header directly
+	// and enable ClearRouteCache so Envoy re-evaluates the route with the new header.
 	if targetUpstreamName != nil {
 		// Policy explicitly set the upstream - add the prefix, kind, and API ID for scoped cluster name
 		// Format: upstream_<kind>_<apiId>_<sanitizedDefName>
@@ -196,14 +194,17 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
 		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
 
-		// Set dynamic metadata for Lua filter to read and set the header
-		if dynamicMetadata[extProcNS] == nil {
-			dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
-		dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
+		// Set the x-target-upstream header directly for cluster_header routing
+		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
+			opType: "set",
+			value:  clusterName,
+		})
 
-		// Also store in execution context for potential response phase use
+		// Enable ClearRouteCache so Envoy re-evaluates routing with the new header
+		clearRouteCache = true
+
+		// Store in execution context for potential response phase use
+		extProcNS := constants.ExtProcFilterName
 		if execCtx.dynamicMetadata[extProcNS] == nil {
 			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
@@ -211,11 +212,13 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
 	} else if execCtx.defaultUpstreamCluster != "" {
 		// No policy set upstream, but route uses cluster_header routing
-		// Set the default cluster (already includes full cluster name, no prefix needed)
-		if dynamicMetadata[extProcNS] == nil {
-			dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = execCtx.defaultUpstreamCluster
+		// Set the default cluster header so Envoy knows which cluster to use
+		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
+			opType: "set",
+			value:  execCtx.defaultUpstreamCluster,
+		})
+		// ClearRouteCache needed because we're setting the cluster_header
+		clearRouteCache = true
 	}
 
 	// Remove any content-length headers from policy operations if we're managing it ourselves
@@ -231,12 +234,12 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, pathMutation, nil, nil
+	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, pathMutation, clearRouteCache, nil, nil
 }
 
 // TranslateRequestHeadersActions converts request headers execution result to ext_proc response
 func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, dynamicMetadata, path, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, dynamicMetadata, path, clearRouteCache, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -249,8 +252,9 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
+					HeaderMutation:   headerMutation,
+					BodyMutation:     bodyMutation,
+					ClearRouteCache:  clearRouteCache,
 				},
 			},
 		},
@@ -269,7 +273,7 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 
 // TranslateRequestBodyActions converts request body execution result to ext_proc response
 func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, dynamicMetadata, _, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, dynamicMetadata, _, clearRouteCache, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +286,9 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
+					HeaderMutation:   headerMutation,
+					BodyMutation:     bodyMutation,
+					ClearRouteCache:  clearRouteCache,
 				},
 			},
 		},

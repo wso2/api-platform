@@ -1531,10 +1531,6 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if projectID != "" {
 		metaMap["project_id"] = projectID
 	}
-	// Add default_upstream_cluster for dynamic cluster selection (Lua needs this for fallback)
-	if useClusterHeader && defaultCluster != "" {
-		metaMap["default_upstream_cluster"] = defaultCluster
-	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
 			"wso2.route": metaStruct,
