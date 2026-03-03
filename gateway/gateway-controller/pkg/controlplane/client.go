@@ -19,6 +19,7 @@
 package controlplane
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -742,7 +743,8 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	// Fetch API definition and deploy
 	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.CorrelationID)
 	if err != nil {
-		// Error already logged in fetchAndDeployAPI
+		// Error already logged in fetchAndDeployAPI; notify APIM of failure so failedGatewayCount can be updated
+		c.notifyDeploymentStatus(apiID, deployedEvent.Payload.DeploymentID, "FAILURE", "DEPLOY")
 		return
 	}
 
@@ -751,6 +753,9 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 		// Error already logged in updatePolicyForDeployment
 		return
 	}
+
+	// Notify APIM of success so deployedGatewayCount is updated (same pattern as Synapse DeploymentStatusNotifier)
+	c.notifyDeploymentStatus(apiID, deployedEvent.Payload.DeploymentID, "SUCCESS", "DEPLOY")
 
 	c.logger.Info("Successfully processed API deployment event",
 		slog.String("api_id", apiID),
@@ -846,6 +851,9 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 
 	// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
 	c.updateXDSSnapshotAsync(apiID, undeployedEvent.CorrelationID, false, true)
+
+	// Notify APIM of undeploy success so deployment stats stay consistent
+	c.notifyDeploymentStatus(apiID, "", "SUCCESS", "UNDEPLOY")
 
 	c.logger.Info("Successfully processed API undeployment event",
 		slog.String("api_id", apiID),
@@ -1913,6 +1921,81 @@ func (c *Client) NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfi
 
 	// Use the api utils service to send the deployment notification
 	return c.apiUtilsService.NotifyAPIDeployment(apiID, apiConfig, deploymentID)
+}
+
+// deploymentStatusAckPayload matches APIM internal API GatewayDeploymentStatusAcknowledgmentList.
+type deploymentStatusAckPayload struct {
+	Count int                       `json:"count"`
+	List  []deploymentStatusAckItem `json:"list"`
+}
+
+type deploymentStatusAckItem struct {
+	GatewayID        string `json:"gatewayId"`
+	APIID            string `json:"apiId"`
+	TenantDomain     string `json:"tenantDomain"`
+	DeploymentStatus string `json:"deploymentStatus"` // SUCCESS, FAILURE
+	TimeStamp        int64  `json:"timeStamp"`
+	Action           string `json:"action"` // DEPLOY, UNDEPLOY
+	RevisionID       string `json:"revisionId,omitempty"`
+}
+
+// notifyDeploymentStatus sends deployment/undeploy result to APIM internal API so deployedGatewayCount/failedGatewayCount are updated.
+// Uses the same api-key auth as for fetching artifacts; does not send tenantDomain (APIM resolves it from gatewayId).
+// No-op if GatewayID is not yet set (e.g. before connection.ack).
+func (c *Client) notifyDeploymentStatus(apiID, revisionID, status, action string) {
+	c.state.mu.RLock()
+	gatewayID := c.state.GatewayID
+	c.state.mu.RUnlock()
+	if gatewayID == "" {
+		c.logger.Debug("Skipping deployment status ack: gateway ID not set")
+		return
+	}
+	// Leave TenantDomain empty; APIM resolves organization from AM_GW_INSTANCES by gatewayId (same pattern as artifact fetch: api-key only)
+	payload := deploymentStatusAckPayload{
+		Count: 1,
+		List: []deploymentStatusAckItem{{
+			GatewayID:        gatewayID,
+			APIID:            apiID,
+			TenantDomain:     "",
+			DeploymentStatus: status,
+			TimeStamp:        time.Now().UnixMilli(),
+			Action:           action,
+			RevisionID:       revisionID,
+		}},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		c.logger.Error("Failed to marshal deployment status ack", slog.Any("error", err))
+		return
+	}
+	url := c.getRestAPIBaseURL() + "/notify-api-deployment-status"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		c.logger.Error("Failed to create deployment status request", slog.Any("error", err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", c.config.Token)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.config.InsecureSkipVerify},
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.logger.Error("Failed to send deployment status ack", slog.String("url", url), slog.Any("error", err))
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		c.logger.Warn("Deployment status ack returned non-OK",
+			slog.Int("status", resp.StatusCode),
+			slog.String("api_id", apiID),
+			slog.String("action", action))
+		return
+	}
+	c.logger.Debug("Deployment status ack sent", slog.String("api_id", apiID), slog.String("status", status), slog.String("action", action))
 }
 
 // getWebSocketURL constructs the base WebSocket URL from configuration.
