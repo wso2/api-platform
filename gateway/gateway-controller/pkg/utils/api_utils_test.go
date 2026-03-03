@@ -194,7 +194,7 @@ func TestAPIUtilsService_SaveAPIDefinition(t *testing.T) {
 	})
 }
 
-func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
+func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Helper function to create minimal test StoredConfig
@@ -210,7 +210,7 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		}
 	}
 
-	t.Run("Successful notification", func(t *testing.T) {
+	t.Run("Successful push", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "POST", r.Method)
 			assert.Equal(t, "/apis/test-api/gateway-deployments", r.URL.Path)
@@ -220,7 +220,7 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 			// Verify request body contains expected fields
 			body, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
-			var notification APIDeploymentNotification
+			var notification APIDeploymentPush
 			err = json.Unmarshal(body, &notification)
 			require.NoError(t, err)
 			assert.Equal(t, "test-api", notification.ID)
@@ -237,7 +237,7 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		svc := NewAPIUtilsService(cfg, logger)
 
 		// Actually call the method
-		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "")
+		err := svc.PushAPIDeployment("test-api", createTestStoredConfig(), "")
 		assert.NoError(t, err)
 	})
 
@@ -259,7 +259,7 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		svc := NewAPIUtilsService(cfg, logger)
 
 		// Actually call the method with deployment ID
-		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "rev-123")
+		err := svc.PushAPIDeployment("test-api", createTestStoredConfig(), "rev-123")
 		assert.NoError(t, err)
 	})
 
@@ -277,7 +277,7 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		svc := NewAPIUtilsService(cfg, logger)
 
 		// Should return error for non-success status
-		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "")
+		err := svc.PushAPIDeployment("test-api", createTestStoredConfig(), "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
 	})
@@ -374,10 +374,10 @@ func createTestZip(t *testing.T, files map[string][]byte) []byte {
 	return buf.Bytes()
 }
 
-// Test for JSON marshaling of APIDeploymentNotification
-func TestAPIDeploymentNotification_JSON(t *testing.T) {
+// Test for JSON marshaling of APIDeploymentPush
+func TestAPIDeploymentPush_JSON(t *testing.T) {
 	now := time.Now()
-	notification := APIDeploymentNotification{
+	notification := APIDeploymentPush{
 		ID:                "test-id",
 		Status:            "DEPLOYED",
 		CreatedAt:         now,

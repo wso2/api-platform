@@ -348,8 +348,8 @@ func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error 
 	return nil
 }
 
-// APIDeploymentNotification represents the request body for notifying control plane about API deployments in the gateway
-type APIDeploymentNotification struct {
+// APIDeploymentPush represents the request body for pushing API deployment details to the control plane
+type APIDeploymentPush struct {
 	ID                string               `json:"id" yaml:"id"`
 	Configuration     api.APIConfiguration `json:"configuration" yaml:"configuration"`
 	Status            string               `json:"status" yaml:"status"`
@@ -360,8 +360,8 @@ type APIDeploymentNotification struct {
 	ProjectIdentifier string               `json:"projectIdentifier" yaml:"projectIdentifier"`
 }
 
-// NotifyAPIDeployment sends a REST API call to platform-api when an API is deployed successfully
-func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
+// PushAPIDeployment sends API deployment details to the control plane via a REST call
+func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
 	// Construct the deployment URL
 	deployURL := s.config.BaseURL + "/apis/" + apiID + "/gateway-deployments"
 	if deploymentID != "" {
@@ -369,7 +369,7 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 	}
 
 	// Create request body
-	requestBody := APIDeploymentNotification{
+	requestBody := APIDeploymentPush{
 		ID:                apiConfig.ID,
 		Configuration:     apiConfig.Configuration,
 		Status:            string(apiConfig.Status),
@@ -406,7 +406,7 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Add("api-key", s.config.Token)
 
-	s.logger.Info("Sending API deployment notification to platform-api",
+	s.logger.Info("Pushing API deployment to control plane",
 		slog.String("api_id", apiID),
 		slog.String("url", deployURL),
 		slog.String("deployment_id", deploymentID))
@@ -426,14 +426,14 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 
 	// Check response status
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		s.logger.Error("API deployment notification failed",
+		s.logger.Error("API deployment push failed",
 			slog.String("api_id", apiID),
 			slog.Int("status_code", resp.StatusCode),
 			slog.String("response", string(bodyBytes)))
-		return fmt.Errorf("deployment notification for api %s failed with status %d", apiID, resp.StatusCode)
+		return fmt.Errorf("deployment push for api %s failed with status %d", apiID, resp.StatusCode)
 	}
 
-	s.logger.Info("Successfully sent API deployment notification",
+	s.logger.Info("Successfully pushed API deployment to control plane",
 		slog.String("api_id", apiID),
 		slog.Int("status_code", resp.StatusCode),
 		slog.String("response", string(bodyBytes)))
