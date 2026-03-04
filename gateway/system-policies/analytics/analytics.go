@@ -31,6 +31,9 @@ const (
 	AIProviderNameMetadataKey        = "ai:providername"
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
 
+	// AuthContext key for user ID (used for analytics)
+	AuthContextKeyUserID = "x-wso2-user-id"
+
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
 	// Lazy resource type for provider-to-template mapping
@@ -245,16 +248,13 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 	// Store tokenInfo in analytics metadata for publishing
 	analyticsMetadata := make(map[string]any)
 
-	// Extract user ID from AuthContext if available (set by auth policies).
-	// Walk the chain to find the first authenticated context with a Subject.
-	for authCtx := ctx.SharedContext.AuthContext; authCtx != nil; authCtx = authCtx.Previous {
-		if authCtx.Authenticated && authCtx.Subject != "" {
-			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
+	// Extract user ID from AuthContext if available (set by jwt-auth policy)
+	if ctx.SharedContext.AuthContext != nil {
+		if userID, ok := ctx.SharedContext.AuthContext[AuthContextKeyUserID]; ok && userID != "" {
+			analyticsMetadata[AuthContextKeyUserID] = userID
 			slog.Debug("Analytics system policy: User ID extracted from AuthContext",
-				"subject", authCtx.Subject,
-				"policyName", authCtx.PolicyName,
+				"userID", userID,
 			)
-			break
 		}
 	}
 
