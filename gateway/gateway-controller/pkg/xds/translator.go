@@ -2580,7 +2580,8 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 	}
 
 	luaConfig := &luav3.Lua{
-		InlineCode: string(scriptBytes),
+		InlineCode:      string(scriptBytes),
+		ClearRouteCache: wrapperspb.Bool(false),
 	}
 
 	luaAny, err := anypb.New(luaConfig)
