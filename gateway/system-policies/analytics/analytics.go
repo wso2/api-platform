@@ -252,7 +252,7 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
 			slog.Debug("Analytics system policy: User ID extracted from AuthContext",
 				"subject", authCtx.Subject,
-				"policyName", authCtx.PolicyName,
+				"authType", authCtx.AuthType,
 			)
 			break
 		}
