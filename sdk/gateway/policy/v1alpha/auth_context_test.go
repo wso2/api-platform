@@ -7,11 +7,11 @@ func TestAuthContext_ZeroValue(t *testing.T) {
 	if ac.Authenticated {
 		t.Error("zero-value AuthContext should have Authenticated=false")
 	}
+	if ac.Authorized {
+		t.Error("zero-value AuthContext should have Authorized=false")
+	}
 	if ac.AuthType != "" {
 		t.Error("zero-value AuthContext should have empty AuthType")
-	}
-	if ac.PolicyName != "" {
-		t.Error("zero-value AuthContext should have empty PolicyName")
 	}
 	if ac.Subject != "" {
 		t.Error("zero-value AuthContext should have empty Subject")
@@ -90,13 +90,11 @@ func TestAuthContext_PreviousChain(t *testing.T) {
 	first := &AuthContext{
 		Authenticated: true,
 		AuthType:      "basic",
-		PolicyName:    "basic-auth",
 		Subject:       "alice",
 	}
 	second := &AuthContext{
 		Authenticated: true,
 		AuthType:      "jwt",
-		PolicyName:    "jwt-auth",
 		Subject:       "alice@example.com",
 		Previous:      first,
 	}
@@ -118,6 +116,29 @@ func TestAuthContext_PreviousChain(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("expected chain length 2, got %d", count)
+	}
+}
+
+func TestAuthContext_Authorized(t *testing.T) {
+	ac := &AuthContext{
+		Authenticated: true,
+		Authorized:    true,
+		AuthType:      "mcp/oauth+authz",
+	}
+	if !ac.Authorized {
+		t.Error("expected Authorized=true")
+	}
+	if ac.AuthType != "mcp/oauth+authz" {
+		t.Errorf("expected AuthType='mcp/oauth+authz', got %q", ac.AuthType)
+	}
+
+	// Auth-only policy leaves Authorized=false
+	authOnly := &AuthContext{
+		Authenticated: true,
+		AuthType:      "mcp/oauth",
+	}
+	if authOnly.Authorized {
+		t.Error("auth-only AuthContext should have Authorized=false")
 	}
 }
 
