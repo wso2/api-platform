@@ -1,5 +1,5 @@
 name: mcp-authz
-version: v0.1.0
+version: v0.2.2
 description: |
   MCP Authorization policy validates access to MCP resources (tools, resources, prompts) 
   and methods based on JWT claims or OAuth scopes provided by the mcp-auth policy.

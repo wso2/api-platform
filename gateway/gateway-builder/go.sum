@@ -13,8 +13,8 @@ github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0t
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/wso2/api-platform/sdk v0.3.14 h1:C3bNFQiS2I1AGQYRvj6DoZwXEVl3OfyFQXbdlaFqxBE=
-github.com/wso2/api-platform/sdk v0.3.14/go.mod h1:bH7GqWEZ+JzECJKPIva7JieYRH5AyuW6w9VI5LiAPBw=
+github.com/wso2/api-platform/sdk v0.4.1 h1:o/h02kMHp8knm/os8ie/MPAGYLL6dZamtuh36NpSd4w=
+github.com/wso2/api-platform/sdk v0.4.1/go.mod h1:LeM3nQ86f7cyVg7uZYPgJXFsoBw/iz+nJzr94s40tYs=
 golang.org/x/mod v0.32.0 h1:9F4d3PHLljb6x//jOyokMv3eX+YDeepZSEo3mFJy93c=
 golang.org/x/mod v0.32.0/go.mod h1:SgipZ/3h2Ci89DlEtEXWUk/HteuRin+HHhN+WbNhguU=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
