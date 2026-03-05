@@ -5296,6 +5296,11 @@ components:
         - resource
         - limit
       properties:
+        methods:
+          type: array
+          items:
+            type: string
+            enum: [ GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, "*" ]
         resource:
           type: string
           description: Explicit resource path to apply the limit to.
