@@ -81,7 +81,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	}
 
 	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
-		isCritical, functionalityType, properties)
+		isCritical, functionalityType, properties, req.Version)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -237,12 +237,19 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 		return
 	}
 
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, req.Description, req.DisplayName, req.IsCritical, req.Properties)
+	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, req.Description, req.DisplayName, req.IsCritical, req.Properties, req.Version)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			h.slogger.Error("Gateway not found during update", "error", err)
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
+			return
+		}
+		// Similar to how it is handled in CreateGateway, check for validation errors and return 400 Bad Request
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "required") || strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "must")  {
+			h.slogger.Error("Invalid gateway update request", "error", err)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 			return
 		}
 		h.slogger.Error("Failed to update gateway", "error", err)

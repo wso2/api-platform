@@ -30,11 +30,12 @@ type Gateway struct {
 	Description       string                 `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
 	Vhost             string                 `json:"vhost" db:"vhost"`
-	IsCritical        bool      `json:"isCritical" db:"is_critical"`
-	FunctionalityType string    `json:"functionalityType" db:"gateway_functionality_type"`
-	IsActive          bool      `json:"isActive" db:"is_active"`
-	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
+	IsCritical        bool                   `json:"isCritical" db:"is_critical"`
+	FunctionalityType string                 `json:"functionalityType" db:"gateway_functionality_type"`
+	IsActive          bool                   `json:"isActive" db:"is_active"`
+	Version           string                 `json:"version" db:"version"`
+	CreatedAt         time.Time              `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time              `json:"updatedAt" db:"updated_at"`
 }
 
 // TableName returns the table name for the Gateway model
@@ -73,18 +74,19 @@ func (t *GatewayToken) Revoke() {
 // APIGatewayWithDetails represents a gateway with its association and deployment details for an API
 type APIGatewayWithDetails struct {
 	// Gateway information
-	ID                string    `json:"id" db:"id"`
-	OrganizationID    string    `json:"organizationId" db:"organization_id"`
-	Name              string    `json:"name" db:"name"`
-	DisplayName       string    `json:"displayName" db:"display_name"`
-	Description       string    `json:"description" db:"description"`
+	ID                string                 `json:"id" db:"id"`
+	OrganizationID    string                 `json:"organizationId" db:"organization_id"`
+	Name              string                 `json:"name" db:"name"`
+	DisplayName       string                 `json:"displayName" db:"display_name"`
+	Description       string                 `json:"description" db:"description"`
 	Properties        map[string]interface{} `json:"properties,omitempty" db:"properties"`
-	Vhost             string    `json:"vhost" db:"vhost"`
-	IsCritical        bool      `json:"isCritical" db:"is_critical"`
-	FunctionalityType string    `json:"functionalityType" db:"functionality_type"`
-	IsActive          bool      `json:"isActive" db:"is_active"`
-	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
+	Vhost             string                 `json:"vhost" db:"vhost"`
+	IsCritical        bool                   `json:"isCritical" db:"is_critical"`
+	FunctionalityType string                 `json:"functionalityType" db:"functionality_type"`
+	IsActive          bool                   `json:"isActive" db:"is_active"`
+	Version           string                 `json:"version" db:"version"`
+	CreatedAt         time.Time              `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time              `json:"updatedAt" db:"updated_at"`
 
 	// Association information
 	AssociatedAt         time.Time `json:"associatedAt" db:"associated_at"`

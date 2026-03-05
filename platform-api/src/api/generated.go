@@ -507,6 +507,9 @@ type CreateGatewayRequest struct {
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 
+	// Version Gateway runtime version
+	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+
 	// Vhost Virtual host (domain name) for the gateway
 	Vhost string `binding:"required" json:"vhost" yaml:"vhost"`
 }
@@ -871,6 +874,9 @@ type GatewayResponse struct {
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Version Gateway runtime version
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Vhost Virtual host (domain name) for the gateway
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
@@ -1782,6 +1788,9 @@ type RESTAPIGatewayResponse struct {
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
+	// Version Gateway runtime version
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
+
 	// Vhost Virtual host (domain name) for the gateway
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
@@ -2114,6 +2123,9 @@ type UpdateGatewayRequest struct {
 
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+
+	// Version Gateway runtime version
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.

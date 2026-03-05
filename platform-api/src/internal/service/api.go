@@ -1702,6 +1702,7 @@ func apiGatewayDetailsToAPI(gwd *model.APIGatewayWithDetails) (*api.RESTAPIGatew
 		OrganizationId:    orgID,
 		Properties:        utils.MapPtrIfNotEmpty(gwd.Properties),
 		UpdatedAt:         utils.TimePtrIfNotZero(gwd.UpdatedAt),
+		Version:           utils.StringPtrIfNotEmpty(gwd.Version),
 		Vhost:             utils.StringPtrIfNotEmpty(gwd.Vhost),
 	}
 
