@@ -805,29 +805,13 @@ type LLMProviderTemplateData struct {
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
 
 	// DisplayName Human-readable LLM Template name
-	DisplayName     string                `json:"displayName" yaml:"displayName"`
-	PromptTokens    *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	RemainingTokens *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	DisplayName      string                               `json:"displayName" yaml:"displayName"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
-	RequestModel    *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
-	ResponseModel   *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
-	TotalTokens     *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
-}
-
-// LLMProviderTemplateResourceMapping defines model for LLMProviderTemplateResourceMapping.
-type LLMProviderTemplateResourceMapping struct {
-	CompletionTokens *ExtractionIdentifier                      `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
-	PromptTokens     *ExtractionIdentifier                      `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	RemainingTokens  *ExtractionIdentifier                      `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
-	RequestModel     *ExtractionIdentifier                      `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
-	Resource         *string                                    `json:"resource,omitempty" yaml:"resource,omitempty"`
-	ResponseModel    *ExtractionIdentifier                      `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
-	TotalTokens      *ExtractionIdentifier                      `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
-}
-
-// LLMProviderTemplateResourceMappings defines model for LLMProviderTemplateResourceMappings.
-type LLMProviderTemplateResourceMappings struct {
-	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
+	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 }
 
 // LLMProviderTemplateDetailResponse defines model for LLMProviderTemplateDetailResponse.
@@ -849,6 +833,25 @@ type LLMProviderTemplateListItem struct {
 	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
 	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// LLMProviderTemplateResourceMapping defines model for LLMProviderTemplateResourceMapping.
+type LLMProviderTemplateResourceMapping struct {
+	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
+	PromptTokens     *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+
+	// Resource Resource path pattern for this mapping
+	Resource      *string               `json:"resource,omitempty" yaml:"resource,omitempty"`
+	ResponseModel *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens   *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+}
+
+// LLMProviderTemplateResourceMappings defines model for LLMProviderTemplateResourceMappings.
+type LLMProviderTemplateResourceMappings struct {
+	Default   *LLMProviderTemplateResourceMapping   `json:"default,omitempty" yaml:"default,omitempty"`
+	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
 }
 
 // LLMProviderTemplateUpdateResponse defines model for LLMProviderTemplateUpdateResponse.
