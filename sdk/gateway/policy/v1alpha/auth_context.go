@@ -7,13 +7,14 @@ type AuthContext struct {
 	// Authenticated indicates whether the request was successfully authenticated.
 	Authenticated bool
 
-	// AuthType identifies the authentication mechanism used.
-	// Common values: "jwt", "oauth2", "apikey", "basic".
-	AuthType string
+	// Authorized indicates the request passed an authorization check.
+	// Set by authorization policies (e.g., mcp-authz); always false for authentication-only policies.
+	Authorized bool
 
-	// PolicyName is the name of the policy that produced this AuthContext,
-	// e.g. "jwt-auth", "basic-auth", "api-key-auth".
-	PolicyName string
+	// AuthType identifies the authentication mechanism used.
+	// Common values: "jwt", "basic", "apikey".
+	// MCP convention: "mcp/oauth" for MCP OAuth authentication; "mcp/oauth+authz" after MCP authorization passes.
+	AuthType string
 
 	// Subject is the principal identity — JWT "sub" claim, basic-auth username,
 	// or API key owner.
