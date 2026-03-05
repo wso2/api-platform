@@ -33,6 +33,11 @@ xDS gRPC Server (Port 18000)
 
 - Go 1.25.1+
 - Make
+- Docker buildx
+   - brew install docker-buildx
+   - mkdir -p ~/.docker/cli-plugins  
+   - ln -sfn /opt/homebrew/opt/docker-buildx/bin/docker-buildx ~/.docker/cli-plugins/docker-buildx  
+   - docker buildx version # 
 
 ### Build from Source
 
