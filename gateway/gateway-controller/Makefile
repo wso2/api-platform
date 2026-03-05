@@ -57,7 +57,7 @@ build: generate test ## Build Docker image using buildx
 		-t $(IMAGE_NAME):latest \
 		--load \
 		.
-
+	@echo "Docker image ($(IMAGE_NAME):$(VERSION)) built successfully."
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."
