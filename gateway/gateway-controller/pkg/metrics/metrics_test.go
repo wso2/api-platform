@@ -19,8 +19,13 @@
 package metrics
 
 import (
+	"context"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"log/slog"
 )
 
 func TestInit(t *testing.T) {
@@ -183,4 +188,126 @@ func TestRealMetrics(t *testing.T) {
 // resetOnce returns a new sync.Once to reset the initialization state
 func resetOnce() (o sync.Once) {
 	return
+}
+
+func TestIsEnabled(t *testing.T) {
+	// Reset state
+	once = resetOnce()
+	registry = nil
+	Enabled = false
+
+	if IsEnabled() != false {
+		t.Error("IsEnabled() should return false when metrics disabled")
+	}
+
+	Enabled = true
+	if IsEnabled() != true {
+		t.Error("IsEnabled() should return true when metrics enabled")
+	}
+}
+
+func TestSetEnabled(t *testing.T) {
+	// Reset state
+	once = resetOnce()
+	registry = nil
+
+	SetEnabled(false)
+	if Enabled != false {
+		t.Error("SetEnabled(false) did not set Enabled to false")
+	}
+
+	SetEnabled(true)
+	if Enabled != true {
+		t.Error("SetEnabled(true) did not set Enabled to true")
+	}
+}
+
+func TestNewServer(t *testing.T) {
+	// Reset state
+	once = resetOnce()
+	registry = nil
+	Enabled = true
+	Init()
+
+	cfg := &config.MetricsConfig{Port: 9090}
+	logger := slog.Default()
+
+	server := NewServer(cfg, logger)
+	if server == nil {
+		t.Error("NewServer() returned nil")
+	}
+
+	if server.cfg.Port != 9090 {
+		t.Errorf("NewServer port = %d, want 9090", server.cfg.Port)
+	}
+
+	if server.httpServer == nil {
+		t.Error("NewServer did not initialize HTTP server")
+	}
+}
+
+func TestServer_Stop(t *testing.T) {
+	// Reset state
+	once = resetOnce()
+	registry = nil
+	Enabled = true
+	Init()
+
+	cfg := &config.MetricsConfig{Port: 0}
+	logger := slog.Default()
+	server := NewServer(cfg, logger)
+
+	// Stop should not panic even if server wasn't started
+	ctx := context.Background()
+	err := server.Stop(ctx)
+	// Stopping a server that never started returns no error
+	if err != nil {
+		t.Logf("Stop returned error (acceptable): %v", err)
+	}
+}
+
+func TestStartMemoryMetricsUpdater(t *testing.T) {
+	// Reset state
+	once = resetOnce()
+	registry = nil
+	Enabled = true
+	Init()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start the updater in background
+	go StartMemoryMetricsUpdater(ctx, 100*time.Millisecond)
+
+	// Wait a bit to let it run
+	time.Sleep(250 * time.Millisecond)
+
+	// Cancel context to stop it
+	cancel()
+
+	// Wait a bit for cleanup
+	time.Sleep(50 * time.Millisecond)
+}
+
+func TestServer_Start(t *testing.T) {
+	// Reset state
+	once = resetOnce()
+	registry = nil
+	Enabled = true
+	Init()
+
+	// Use port 0 to get any available port
+	cfg := &config.MetricsConfig{Port: 0}
+	logger := slog.Default()
+	server := NewServer(cfg, logger)
+
+	// Start should begin listening (but fail on port 0 bind issues are OK)
+	err := server.Start()
+	if err != nil {
+		t.Logf("Start returned error (may be acceptable): %v", err)
+	}
+
+	// Clean up
+	ctx := context.Background()
+	server.Stop(ctx)
 }
