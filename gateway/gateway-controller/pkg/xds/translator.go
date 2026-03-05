@@ -1509,15 +1509,16 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 
 	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
 	metaMap := map[string]interface{}{
-		"route_name":  routeName,
-		"api_id":      apiId,
-		"api_name":    apiName,
-		"api_version": apiVersion,
-		"api_context": context,
-		"path":        path,
-		"method":      method,
-		"vhost":       vhost,
-		"api_kind":    apiKind,
+		"route_name":         routeName,
+		"api_id":             apiId,
+		"api_name":           apiName,
+		"api_version":        apiVersion,
+		"api_context":        context,
+		"path":               path,
+		"method":             method,
+		"vhost":              vhost,
+		"api_kind":           apiKind,
+		"upstream_base_path": upstreamPath,
 	}
 	// Add template_handle if available (for LLM provider/proxy scenarios)
 	if templateHandle != "" {

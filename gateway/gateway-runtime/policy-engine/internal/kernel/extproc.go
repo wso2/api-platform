@@ -406,6 +406,7 @@ type RouteMetadata struct {
 	ProviderName           string
 	ProjectID              string
 	DefaultUpstreamCluster string // Default cluster for dynamic cluster routing
+	UpstreamBasePath       string // Base path for the upstream (e.g., /anything)
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata.
@@ -488,6 +489,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 						}
 						if defaultClusterValue, ok := routeStruct.Fields["default_upstream_cluster"]; ok {
 							metadata.DefaultUpstreamCluster = defaultClusterValue.GetStringValue()
+						}
+						if upstreamBasePathValue, ok := routeStruct.Fields["upstream_base_path"]; ok {
+							metadata.UpstreamBasePath = upstreamBasePathValue.GetStringValue()
 						}
 					}
 					// Cache the parsed metadata for future requests
