@@ -204,8 +204,49 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		if execCtx.dynamicMetadata[extProcNS] == nil {
 			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
 		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
 		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
+
+		// Pass api_context and upstream_base_path in dynamic metadata for Lua filter
+		// Lua filter's handle:metadata() only works for envoy.filters.http.lua namespace,
+		// so we must pass these via dynamic metadata
+		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+
+		// When SetUpstreamName is used, provide the target upstream's base path for Lua filter
+		// The Lua filter handles path transformation and needs to know which upstream path to use
+		slog.Info("SetUpstreamName: checking upstreamDefinitionPaths",
+			"targetUpstream", *targetUpstreamName,
+			"hasUpstreamDefPaths", execCtx.upstreamDefinitionPaths != nil,
+			"upstreamDefPaths", execCtx.upstreamDefinitionPaths,
+			"apiContext", execCtx.apiContext)
+		if execCtx.upstreamDefinitionPaths != nil {
+			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
+				// Set in both local dynamicMetadata (for response to Envoy) and execCtx (for response phase)
+				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				slog.Info("SetUpstreamName: set target upstream base path",
+					"targetUpstream", *targetUpstreamName,
+					"targetUpstreamPath", targetUpstreamPath)
+
+				// Set target_path to trigger Lua filter path transformation if not already set
+				// If request-rewrite policy set it, use that; otherwise use original request path
+				if _, hasTargetPath := dynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
+					dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestContext.Path
+					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestContext.Path
+					slog.Info("SetUpstreamName: set target_path", "path", execCtx.requestContext.Path)
+				} else {
+					slog.Info("SetUpstreamName: target_path already set by policy")
+				}
+			} else {
+				slog.Warn("SetUpstreamName: target upstream not found in upstreamDefinitionPaths",
+					"targetUpstream", *targetUpstreamName,
+					"availableUpstreams", execCtx.upstreamDefinitionPaths)
+			}
+		}
 	} else if execCtx.defaultUpstreamCluster != "" {
 		// No policy set upstream, but route uses cluster_header routing
 		// Set the default cluster header so Envoy knows which cluster to use
@@ -738,4 +779,47 @@ func sanitizeUpstreamDefinitionName(name string) string {
 	sanitized := strings.ReplaceAll(name, ".", "_")
 	sanitized = strings.ReplaceAll(sanitized, ":", "_")
 	return sanitized
+}
+
+// computeUpstreamPath computes the final upstream path by stripping the API context
+// from the current path and prepending the target upstream's path.
+// Example: currentPath="/weather/v1.0/pets", apiContext="/weather/v1.0", upstreamPath="/alternate-backend"
+// Result: "/alternate-backend/pets"
+func computeUpstreamPath(currentPath, apiContext, upstreamPath string) string {
+	if currentPath == "" {
+		return ""
+	}
+
+	// Default values
+	if apiContext == "" {
+		apiContext = "/"
+	}
+	if upstreamPath == "" {
+		upstreamPath = ""
+	}
+
+	// Strip the API context prefix from the current path
+	relativePath := currentPath
+	if apiContext != "/" {
+		if strings.HasPrefix(currentPath, apiContext) {
+			relativePath = strings.TrimPrefix(currentPath, apiContext)
+			if relativePath == "" {
+				relativePath = "/"
+			}
+		}
+	}
+
+	// Prepend the upstream path
+	if upstreamPath == "" || upstreamPath == "/" {
+		return relativePath
+	}
+
+	// Handle trailing slash in upstreamPath and leading slash in relativePath
+	if strings.HasSuffix(upstreamPath, "/") && strings.HasPrefix(relativePath, "/") {
+		return upstreamPath + relativePath[1:]
+	}
+	if !strings.HasSuffix(upstreamPath, "/") && !strings.HasPrefix(relativePath, "/") {
+		return upstreamPath + "/" + relativePath
+	}
+	return upstreamPath + relativePath
 }

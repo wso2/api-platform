@@ -43,11 +43,11 @@ func TestResolveUpstreamDefinition_Found(t *testing.T) {
 		{
 			Name: "test-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -65,11 +65,11 @@ func TestResolveUpstreamDefinition_NotFound(t *testing.T) {
 		{
 			Name: "existing-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -185,11 +185,11 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 				Connect: &timeoutStr,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-1:9000/v2"},
+					Url: "http://backend-1:9000/v2",
 				},
 			},
 		},
@@ -218,11 +218,11 @@ func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -246,11 +246,11 @@ func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 		{
 			Name: "other-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -277,11 +277,11 @@ func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
 				Connect: &invalidTimeout,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -303,8 +303,8 @@ func TestResolveUpstreamCluster_WithRef_NoURLs(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{},
 		},
 	}
@@ -1286,6 +1286,7 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 		nil,            // timeoutCfg
 		false,          // useClusterHeader
 		"",             // defaultCluster
+		nil,            // upstreamDefPaths
 	)
 
 	assert.NotNil(t, route)

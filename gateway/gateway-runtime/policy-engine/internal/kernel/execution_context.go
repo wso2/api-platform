@@ -63,6 +63,17 @@ type PolicyExecutionContext struct {
 	// Set from route metadata when the route uses cluster_header routing
 	defaultUpstreamCluster string
 
+	// Upstream base path for the main upstream (e.g., /anything)
+	upstreamBasePath string
+
+	// API context path (e.g., /weather/v1.0)
+	// Used for computing path transformations when SetUpstreamName changes the upstream
+	apiContext string
+
+	// Maps upstream definition names to their URL paths
+	// Used when SetUpstreamName is set to compute the correct path transformation
+	upstreamDefinitionPaths map[string]string
+
 	// Reference to server components
 	server *ExternalProcessorServer
 }

@@ -454,7 +454,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, "")
+	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, "", nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
@@ -514,6 +514,21 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 	}
 
+	// Build a map of upstream definition name -> basePath for dynamic routing
+	// This allows the policy engine to apply the correct path transformation when SetUpstreamName is used
+	upstreamDefPaths := make(map[string]string)
+	if apiData.UpstreamDefinitions != nil {
+		for _, def := range *apiData.UpstreamDefinitions {
+			// Use the explicit basePath if provided
+			if def.BasePath != nil && *def.BasePath != "" {
+				upstreamDefPaths[def.Name] = *def.BasePath
+			} else {
+				// Default to "/" if no basePath is specified
+				upstreamDefPaths[def.Name] = "/"
+			}
+		}
+	}
+
 	for _, op := range apiData.Operations {
 		// Determine if dynamic cluster selection should be used
 		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
@@ -525,7 +540,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, defaultCluster)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, defaultCluster, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -552,7 +567,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 			// Use sbClusterName for sandbox upstream path
 			// Sandbox routes don't support dynamic cluster selection
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, false, "")
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, false, "", nil)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -563,7 +578,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	if apiData.UpstreamDefinitions != nil {
 		for _, def := range *apiData.UpstreamDefinitions {
 			// Validate upstreams are configured
-			if len(def.Upstreams) == 0 || len(def.Upstreams[0].Urls) == 0 {
+			if len(def.Upstreams) == 0 || def.Upstreams[0].Url == "" {
 				return nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", def.Name)
 			}
 
@@ -576,7 +591,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 			defClusterName := constants.UpstreamDefinitionClusterPrefix + cfg.Kind + "_" + cfg.ID + "_" + sanitizedDefName
 
 			// Parse the first URL from the definition
-			rawURL := def.Upstreams[0].Urls[0]
+			rawURL := def.Upstreams[0].Url
 			parsedURL, err := url.Parse(rawURL)
 			if err != nil {
 				return nil, nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
@@ -635,10 +650,10 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 
 		// Extract URL from the first upstream target in the definition
 		// TODO: Support multiple upstream targets
-		if len(definition.Upstreams) == 0 || len(definition.Upstreams[0].Urls) == 0 {
+		if len(definition.Upstreams) == 0 || definition.Upstreams[0].Url == "" {
 			return "", nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", refName)
 		}
-		rawURL = definition.Upstreams[0].Urls[0]
+		rawURL = definition.Upstreams[0].Url
 
 		// Extract timeout if specified in the definition (may be nil)
 		if definition.Timeout != nil {
@@ -1401,8 +1416,9 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 // createRoute creates a route for an operation
 // When useClusterHeader is true, the route uses cluster_header for dynamic cluster selection,
 // and defaultCluster specifies the cluster to use when no policy overrides it.
+// upstreamDefPaths maps upstream definition names to their URL paths for dynamic path rewriting.
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, defaultCluster string) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, defaultCluster string, upstreamDefPaths map[string]string) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -1535,6 +1551,16 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Add default_upstream_cluster for ext_proc to use when no policy sets SetUpstreamName
 	if useClusterHeader && defaultCluster != "" {
 		metaMap["default_upstream_cluster"] = defaultCluster
+	}
+	// Add upstream_definition_paths for dynamic path rewriting when SetUpstreamName is used
+	// This maps upstream definition names to their URL paths
+	// Convert map[string]string to map[string]interface{} for structpb.NewStruct compatibility
+	if len(upstreamDefPaths) > 0 {
+		pathsInterface := make(map[string]interface{})
+		for k, v := range upstreamDefPaths {
+			pathsInterface[k] = v
+		}
+		metaMap["upstream_definition_paths"] = pathsInterface
 	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{

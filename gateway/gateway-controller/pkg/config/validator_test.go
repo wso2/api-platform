@@ -581,11 +581,11 @@ func TestValidateUpstreamDefinitions_Valid(t *testing.T) {
 				Connect: &timeout,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls:   []string{"http://backend-1:8080"},
+					Url:    "http://backend-1:8080",
 					Weight: &weight,
 				},
 			},
@@ -603,22 +603,22 @@ func TestValidateUpstreamDefinitions_DuplicateNames(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-1:8080"},
+					Url: "http://backend-1:8080",
 				},
 			},
 		},
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-2:8080"},
+					Url: "http://backend-2:8080",
 				},
 			},
 		},
@@ -637,11 +637,11 @@ func TestValidateUpstreamDefinitions_MissingName(t *testing.T) {
 		{
 			Name: "",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -660,8 +660,8 @@ func TestValidateUpstreamDefinitions_NoUpstreams(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{},
 		},
 	}
@@ -672,18 +672,18 @@ func TestValidateUpstreamDefinitions_NoUpstreams(t *testing.T) {
 	assert.Contains(t, errors[0].Message, "At least one upstream target is required")
 }
 
-func TestValidateUpstreamDefinitions_NoURLs(t *testing.T) {
+func TestValidateUpstreamDefinitions_NoURL(t *testing.T) {
 	validator := NewAPIValidator()
 
 	definitions := &[]api.UpstreamDefinition{
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{},
+					Url: "",
 				},
 			},
 		},
@@ -691,8 +691,8 @@ func TestValidateUpstreamDefinitions_NoURLs(t *testing.T) {
 
 	errors := validator.validateUpstreamDefinitions(definitions)
 	require.Len(t, errors, 1)
-	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls", errors[0].Field)
-	assert.Contains(t, errors[0].Message, "At least one URL is required")
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "URL is required")
 }
 
 func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
@@ -702,11 +702,11 @@ func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"not-a-valid-url"},
+					Url: "not-a-valid-url",
 				},
 			},
 		},
@@ -714,7 +714,7 @@ func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
 
 	errors := validator.validateUpstreamDefinitions(definitions)
 	require.NotEmpty(t, errors)
-	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls[0]", errors[0].Field)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
 	assert.Contains(t, errors[0].Message, "must use http or https scheme")
 }
 
@@ -725,11 +725,11 @@ func TestValidateUpstreamDefinitions_InvalidURL_MissingHost(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://"},
+					Url: "http://",
 				},
 			},
 		},
@@ -737,7 +737,7 @@ func TestValidateUpstreamDefinitions_InvalidURL_MissingHost(t *testing.T) {
 
 	errors := validator.validateUpstreamDefinitions(definitions)
 	require.Len(t, errors, 1)
-	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls[0]", errors[0].Field)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
 	assert.Contains(t, errors[0].Message, "URL must include a host")
 }
 
@@ -749,11 +749,11 @@ func TestValidateUpstreamDefinitions_InvalidWeight(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls:   []string{"http://backend:8080"},
+					Url:    "http://backend:8080",
 					Weight: &invalidWeight,
 				},
 			},
@@ -773,11 +773,11 @@ func TestValidateUpstreamDefinitions_NoTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -795,11 +795,11 @@ func TestValidateUpstreamRef_ValidRef(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -817,11 +817,11 @@ func TestValidateUpstreamRef_RefNotFound(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -855,11 +855,11 @@ func TestValidateUpstream_WithRefAndDefinitions(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},

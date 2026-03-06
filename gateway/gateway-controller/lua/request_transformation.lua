@@ -65,7 +65,7 @@ end
 -- Strip API context from path and prepend upstream base path
 -- E.g., context="/weather/v1.0", upstream="/anything", path="/weather/v1.0/api/v2"
 -- returns "/anything/api/v2"
-local function compute_upstream_path(target_path, api_context, upstream_base_path)
+local function compute_upstream_path(handle, target_path, api_context, upstream_base_path)
   if target_path == nil or target_path == "" then
     return nil
   end
@@ -74,16 +74,27 @@ local function compute_upstream_path(target_path, api_context, upstream_base_pat
   api_context = api_context or ""
   upstream_base_path = upstream_base_path or ""
 
+  handle:logInfo("compute_upstream_path: target_path=" .. tostring(target_path) .. 
+    " api_context=" .. tostring(api_context) .. 
+    " upstream_base_path=" .. tostring(upstream_base_path))
+
   -- Strip the context prefix from target_path
   local relative_path = target_path
   if api_context ~= "" and api_context ~= "/" then
     -- Check if target_path starts with api_context
-    if string.sub(target_path, 1, #api_context) == api_context then
+    local prefix = string.sub(target_path, 1, #api_context)
+    handle:logInfo("compute_upstream_path: checking prefix=" .. tostring(prefix))
+    if prefix == api_context then
       relative_path = string.sub(target_path, #api_context + 1)
       if relative_path == "" then
         relative_path = "/"
       end
+      handle:logInfo("compute_upstream_path: stripped to relative_path=" .. tostring(relative_path))
+    else
+      handle:logInfo("compute_upstream_path: prefix mismatch, not stripping")
     end
+  else
+    handle:logInfo("compute_upstream_path: api_context empty or /, not stripping")
   end
 
   -- Prepend upstream base path
@@ -117,21 +128,41 @@ function envoy_on_request(handle)
   local target_path = resolve_target_path(extproc_metadata)
   if target_path ~= nil and type(target_path) == "string" and target_path ~= "" then
     -- Get route metadata for context stripping and upstream path prepending
-    local route_metadata = handle:metadata()
+    -- Note: handle:metadata() only works for envoy.filters.http.lua namespace
+    -- For custom namespaces like wso2.route, we need to use filterMetadata from route
     local api_context = nil
     local upstream_base_path = nil
 
-    if route_metadata ~= nil then
-      local wso2_route = route_metadata:get("wso2.route")
-      if wso2_route ~= nil then
-        api_context = wso2_route["api_context"]
-        upstream_base_path = wso2_route["upstream_base_path"]
+    -- Access route metadata via streamInfo's filterState or by reading from dynamic metadata
+    -- Since Lua filter's handle:metadata() only returns envoy.filters.http.lua namespace,
+    -- we store api_context in dynamic metadata from ext_proc
+    if extproc_metadata ~= nil then
+      local ctx_val = extproc_metadata["api_context"]
+      if ctx_val ~= nil then
+        api_context = tostring(ctx_val)
+      end
+      local up_val = extproc_metadata["upstream_base_path"]
+      if up_val ~= nil then
+        upstream_base_path = tostring(up_val)
+      end
+      -- If a target upstream was set by dynamic-endpoint policy, use its base path instead
+      local target_base = extproc_metadata["target_upstream_base_path"]
+      if target_base ~= nil then
+        local target_base_str = tostring(target_base)
+        if target_base_str ~= "" and target_base_str ~= "nil" then
+          upstream_base_path = target_base_str
+        end
       end
     end
 
+    handle:logInfo("path_rewrite: target_path=" .. tostring(target_path) .. 
+      " api_context=" .. tostring(api_context) .. 
+      " upstream_base_path=" .. tostring(upstream_base_path))
+
     -- Compute the final upstream path
-    local final_path = compute_upstream_path(target_path, api_context, upstream_base_path)
+    local final_path = compute_upstream_path(handle, target_path, api_context, upstream_base_path)
     if final_path ~= nil then
+      handle:logInfo("path_rewrite: final_path=" .. tostring(final_path))
       handle:headers():replace(":path", final_path)
     end
   end
