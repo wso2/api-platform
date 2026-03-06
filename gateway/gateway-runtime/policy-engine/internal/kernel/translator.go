@@ -173,16 +173,16 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
 				}
 
-				// Handle SetUpstreamName for dynamic cluster routing (last one wins)
-				if mods.SetUpstreamName != nil && *mods.SetUpstreamName != "" {
-					targetUpstreamName = mods.SetUpstreamName
+				// Handle UpstreamName for dynamic cluster routing (last one wins)
+				if mods.UpstreamName != nil && *mods.UpstreamName != "" {
+					targetUpstreamName = mods.UpstreamName
 				}
 			}
 		}
 	}
 
 	// Handle dynamic cluster routing via header.
-	// When a policy sets SetUpstreamName, we set the x-target-upstream header directly.
+	// When a policy sets UpstreamName, we set the x-target-upstream header directly.
 	// ClearRouteCache is always enabled so Envoy can re-evaluate routing.
 	if targetUpstreamName != nil {
 		// Policy explicitly set the upstream - add the prefix, kind, and API ID for scoped cluster name
@@ -216,9 +216,9 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
 		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 
-		// When SetUpstreamName is used, provide the target upstream's base path for Lua filter
+		// When UpstreamName is used, provide the target upstream's base path for Lua filter
 		// The Lua filter handles path transformation and needs to know which upstream path to use
-		slog.Info("SetUpstreamName: checking upstreamDefinitionPaths",
+		slog.Info("UpstreamName: checking upstreamDefinitionPaths",
 			"targetUpstream", *targetUpstreamName,
 			"hasUpstreamDefPaths", execCtx.upstreamDefinitionPaths != nil,
 			"upstreamDefPaths", execCtx.upstreamDefinitionPaths,
@@ -228,7 +228,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				// Set in both local dynamicMetadata (for response to Envoy) and execCtx (for response phase)
 				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
 				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				slog.Info("SetUpstreamName: set target upstream base path",
+				slog.Info("UpstreamName: set target upstream base path",
 					"targetUpstream", *targetUpstreamName,
 					"targetUpstreamPath", targetUpstreamPath)
 
@@ -237,12 +237,12 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				if _, hasTargetPath := dynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
 					dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestContext.Path
 					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestContext.Path
-					slog.Info("SetUpstreamName: set target_path", "path", execCtx.requestContext.Path)
+					slog.Info("UpstreamName: set target_path", "path", execCtx.requestContext.Path)
 				} else {
-					slog.Info("SetUpstreamName: target_path already set by policy")
+					slog.Info("UpstreamName: target_path already set by policy")
 				}
 			} else {
-				slog.Warn("SetUpstreamName: target upstream not found in upstreamDefinitionPaths",
+				slog.Warn("UpstreamName: target upstream not found in upstreamDefinitionPaths",
 					"targetUpstream", *targetUpstreamName,
 					"availableUpstreams", execCtx.upstreamDefinitionPaths)
 			}

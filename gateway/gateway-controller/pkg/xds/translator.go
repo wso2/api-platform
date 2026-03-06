@@ -515,7 +515,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	}
 
 	// Build a map of upstream definition name -> basePath for dynamic routing
-	// This allows the policy engine to apply the correct path transformation when SetUpstreamName is used
+	// This allows the policy engine to apply the correct path transformation when UpstreamName is used
 	upstreamDefPaths := make(map[string]string)
 	if apiData.UpstreamDefinitions != nil {
 		for _, def := range *apiData.UpstreamDefinitions {
@@ -573,7 +573,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		routesList = append(routesList, sbRoutesList...)
 	}
 
-	// -------- UPSTREAM DEFINITIONS (for dynamic cluster selection via SetUpstreamName) --------
+	// -------- UPSTREAM DEFINITIONS (for dynamic cluster selection via UpstreamName) --------
 	// Create clusters for all upstreamDefinitions so policies can route to them dynamically
 	if apiData.UpstreamDefinitions != nil {
 		for _, def := range *apiData.UpstreamDefinitions {
@@ -1548,11 +1548,11 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if projectID != "" {
 		metaMap["project_id"] = projectID
 	}
-	// Add default_upstream_cluster for ext_proc to use when no policy sets SetUpstreamName
+	// Add default_upstream_cluster for ext_proc to use when no policy sets UpstreamName
 	if useClusterHeader && defaultCluster != "" {
 		metaMap["default_upstream_cluster"] = defaultCluster
 	}
-	// Add upstream_definition_paths for dynamic path rewriting when SetUpstreamName is used
+	// Add upstream_definition_paths for dynamic path rewriting when UpstreamName is used
 	// This maps upstream definition names to their URL paths
 	// Convert map[string]string to map[string]interface{} for structpb.NewStruct compatibility
 	if len(upstreamDefPaths) > 0 {

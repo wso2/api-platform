@@ -355,7 +355,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	// Set default upstream cluster for dynamic cluster routing
 	(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
 
-	// Set upstream path information for dynamic path rewriting when SetUpstreamName is used
+	// Set upstream path information for dynamic path rewriting when UpstreamName is used
 	(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 	(*execCtx).apiContext = routeMetadata.Context
 	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths

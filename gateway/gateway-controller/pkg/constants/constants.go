@@ -103,7 +103,7 @@ const (
 	WEBSUBHUB_INTERNAL_CLUSTER_NAME = "WEBSUBHUB_INTERNAL_CLUSTER"
 
 	// Target Upstream Header for dynamic cluster selection
-	// This header is set by the policy engine when SetUpstreamName is used
+	// This header is set by the policy engine when UpstreamName is used
 	// Routes can be configured with cluster_header to read this header and select the target cluster
 	TargetUpstreamHeader = "x-target-upstream"
 

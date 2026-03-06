@@ -31,7 +31,7 @@ const (
 	TargetUpstreamClusterKey = "target_upstream_cluster"
 
 	// Header name for target upstream cluster routing
-	// This header is set by the policy engine when SetUpstreamName is used
+	// This header is set by the policy engine when UpstreamName is used
 	// Envoy routes configured with cluster_header will read this to determine the target cluster
 	TargetUpstreamHeader = "x-target-upstream"
 
