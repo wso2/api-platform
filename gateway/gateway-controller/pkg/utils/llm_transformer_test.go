@@ -239,10 +239,6 @@ func TestBuildTemplateParams(t *testing.T) {
 				Spec: api.LLMProviderTemplateData{
 					RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
 					ResourceMappings: &api.LLMProviderTemplateResourceMappings{
-						Default: &api.LLMProviderTemplateResourceMapping{
-							Resource:     strPtr("/*"),
-							RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
-						},
 						Resources: &[]api.LLMProviderTemplateResourceMapping{
 							{
 								Resource:     strPtr("/responses"),

@@ -197,7 +197,6 @@ func (v *LLMValidator) validateTemplateResourceMappings(fieldPrefix string,
 			errors = append(errors, v.validateTemplateResourceMapping(
 				fmt.Sprintf("%s.resources[%d]", fieldPrefix, i),
 				&(*mappings.Resources)[i],
-				false,
 			)...)
 		}
 	}
@@ -206,7 +205,7 @@ func (v *LLMValidator) validateTemplateResourceMappings(fieldPrefix string,
 }
 
 func (v *LLMValidator) validateTemplateResourceMapping(fieldPrefix string,
-	mapping *api.LLMProviderTemplateResourceMapping, isDefault bool) []ValidationError {
+	mapping *api.LLMProviderTemplateResourceMapping) []ValidationError {
 	var errors []ValidationError
 
 	if mapping == nil {
@@ -217,10 +216,10 @@ func (v *LLMValidator) validateTemplateResourceMapping(fieldPrefix string,
 	if mapping.Resource != nil {
 		resource = strings.TrimSpace(*mapping.Resource)
 	}
-	if !isDefault && resource == "" {
+	if resource == "" {
 		errors = append(errors, ValidationError{
 			Field:   fieldPrefix + ".resource",
-			Message: "resource is required for non-default mappings",
+			Message: "resource is required",
 		})
 	}
 

@@ -850,7 +850,6 @@ type LLMProviderTemplateResourceMapping struct {
 
 // LLMProviderTemplateResourceMappings defines model for LLMProviderTemplateResourceMappings.
 type LLMProviderTemplateResourceMappings struct {
-	Default   *LLMProviderTemplateResourceMapping   `json:"default,omitempty" yaml:"default,omitempty"`
 	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
 }
 
