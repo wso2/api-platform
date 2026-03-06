@@ -52,6 +52,7 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 		store.isCertificateUniqueViolation = isCertificateUniqueConstraintError
 		store.isTemplateUniqueViolation = isTemplateUniqueConstraintError
 		store.isAPIKeyUniqueViolation = isAPIKeyUniqueConstraintError
+		store.isSubscriptionUniqueViolation = isSubscriptionUniqueConstraintError
 		return store, nil
 
 	case "postgres":
@@ -66,6 +67,7 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 		store.isCertificateUniqueViolation = isPostgresCertificateUniqueConstraintError
 		store.isTemplateUniqueViolation = isPostgresTemplateUniqueConstraintError
 		store.isAPIKeyUniqueViolation = isPostgresAPIKeyUniqueConstraintError
+		store.isSubscriptionUniqueViolation = isPostgresSubscriptionUniqueConstraintError
 		return store, nil
 
 	default:

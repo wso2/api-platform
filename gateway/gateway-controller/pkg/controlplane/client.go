@@ -320,6 +320,17 @@ func (c *Client) Connect() error {
 		slog.String("connection_id", c.state.ConnectionID),
 	)
 
+	// Capture a stable gateway ID for background sync work to avoid
+	// reading mutable state from goroutines.
+	gatewayID := c.state.GatewayID
+
+	// Perform a one-time bulk subscription sync for all known APIs.
+	c.wg.Add(1)
+	go func(gwID string) {
+		defer c.wg.Done()
+		c.syncSubscriptionsForExistingAPIs(gwID)
+	}(gatewayID)
+
 	// Start heartbeat monitor
 	c.wg.Add(1)
 	go c.heartbeatMonitor()
@@ -360,6 +371,92 @@ func (c *Client) waitForConnectionAck(conn *websocket.Conn) error {
 	)
 
 	return nil
+}
+
+// syncSubscriptionsForExistingAPIs performs a one-time bulk sync of subscriptions
+// for all currently known REST APIs after the WebSocket connection is established.
+// The gatewayID parameter is a stable snapshot of the gateway identifier at the
+// time the sync was scheduled, ensuring we don't cross-contaminate state across
+// reconnects.
+func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
+	if c.apiUtilsService == nil || c.db == nil || c.store == nil {
+		return
+	}
+
+	configs := c.store.GetAll()
+	for _, cfg := range configs {
+		// Abort promptly if the client is shutting down.
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info("Stopping subscription bulk sync due to client context cancellation")
+			return
+		case <-c.stopChan:
+			c.logger.Info("Stopping subscription bulk sync due to stop signal")
+			return
+		default:
+		}
+
+		if cfg == nil {
+			continue
+		}
+		if cfg.Configuration.Kind != api.RestApi {
+			continue
+		}
+
+		apiID := cfg.ID
+		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
+		if err != nil {
+			c.logger.Warn("Failed to bulk-sync subscriptions for API",
+				slog.String("api_id", apiID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		for i := range subs {
+			// Check for shutdown between subscription updates as well.
+			select {
+			case <-c.ctx.Done():
+				c.logger.Info("Stopping subscription bulk sync during subscription processing due to client context cancellation")
+				return
+			case <-c.stopChan:
+				c.logger.Info("Stopping subscription bulk sync during subscription processing due to stop signal")
+				return
+			default:
+			}
+
+			sub := subs[i] // copy
+			if sub.ID == "" {
+				continue
+			}
+
+			sub.APIID = apiID
+			sub.GatewayID = gatewayID
+
+			if err := c.db.SaveSubscription(&sub); err != nil {
+				if storage.IsConflictError(err) {
+					// On conflict, attempt a status/metadata update
+					existing, err2 := c.db.GetSubscriptionByID(sub.ID, gatewayID)
+					if err2 != nil || existing == nil {
+						continue
+					}
+					existing.Status = sub.Status
+					existing.UpdatedAt = sub.UpdatedAt
+					if err := c.db.UpdateSubscription(existing); err != nil {
+						c.logger.Error("Failed to update subscription during bulk sync conflict handling",
+							slog.String("subscription_id", existing.ID),
+							slog.Any("error", err))
+					}
+				} else {
+					c.logger.Warn("Failed to upsert subscription during bulk sync",
+						slog.String("subscription_id", sub.ID),
+						slog.String("api_id", apiID),
+						slog.Any("error", err),
+					)
+				}
+			}
+		}
+	}
 }
 
 // Close closes the WebSocket connection
@@ -579,6 +676,12 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleAPIKeyUpdatedEvent(event)
 	case "apikey.revoked":
 		c.handleAPIKeyRevokedEvent(event)
+	case "subscription.created":
+		c.handleSubscriptionCreatedEvent(event)
+	case "subscription.updated":
+		c.handleSubscriptionUpdatedEvent(event)
+	case "subscription.deleted":
+		c.handleSubscriptionDeletedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -1850,6 +1953,129 @@ func (c *Client) calculateNextRetryDelay() {
 	}
 	if c.state.NextRetryDelay > c.config.ReconnectMax {
 		c.state.NextRetryDelay = c.config.ReconnectMax
+	}
+}
+
+// handleSubscriptionCreatedEvent processes subscription.created events from platform-api.
+func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	// If no database is configured (in-memory mode), ignore subscription persistence.
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscription.created persistence")
+		return
+	}
+
+	var createdEvent SubscriptionCreatedEvent
+	if err := utils.MapToStruct(event, &createdEvent); err != nil {
+		baseLogger.Error("Failed to parse subscription.created event", slog.Any("error", err))
+		return
+	}
+	payload := createdEvent.Payload
+	if payload.APIID == "" || payload.SubscriptionID == "" || payload.ApplicationID == "" {
+		baseLogger.Error("subscription.created event missing required fields",
+			slog.Any("payload", payload))
+		return
+	}
+
+	status := models.SubscriptionStatus(payload.Status)
+	sub := &models.Subscription{
+		ID:            payload.SubscriptionID,
+		APIID:         payload.APIID,
+		ApplicationID: payload.ApplicationID,
+		GatewayID:     c.state.GatewayID,
+		Status:        status,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	if err := c.db.SaveSubscription(sub); err != nil {
+		if storage.IsConflictError(err) {
+			// Idempotent; already present
+			return
+		}
+		baseLogger.Error("Failed to persist subscription from subscription.created event",
+			slog.Any("error", err))
+	}
+}
+
+// handleSubscriptionUpdatedEvent processes subscription.updated events from platform-api.
+func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscription.updated persistence")
+		return
+	}
+
+	var updatedEvent SubscriptionUpdatedEvent
+	if err := utils.MapToStruct(event, &updatedEvent); err != nil {
+		baseLogger.Error("Failed to parse subscription.updated event", slog.Any("error", err))
+		return
+	}
+	payload := updatedEvent.Payload
+	if payload.SubscriptionID == "" {
+		baseLogger.Error("subscription.updated event missing subscriptionId")
+		return
+	}
+
+	existing, err := c.db.GetSubscriptionByID(payload.SubscriptionID, c.state.GatewayID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			// Subscription no longer exists locally; treat as benign and skip.
+			baseLogger.Debug("Subscription not found for subscription.updated event; skipping",
+				slog.String("id", payload.SubscriptionID))
+			return
+		}
+		baseLogger.Error("Failed to fetch subscription for update", slog.Any("error", err))
+		return
+	}
+	if existing == nil {
+		// Defensive: treat nil as a benign no-op rather than an error.
+		baseLogger.Debug("Subscription nil for subscription.updated event; skipping",
+			slog.String("id", payload.SubscriptionID))
+		return
+	}
+
+	existing.Status = models.SubscriptionStatus(payload.Status)
+	if err := c.db.UpdateSubscription(existing); err != nil {
+		baseLogger.Error("Failed to update subscription from subscription.updated event",
+			slog.Any("error", err))
+	}
+}
+
+// handleSubscriptionDeletedEvent processes subscription.deleted events from platform-api.
+func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscription.deleted persistence")
+		return
+	}
+
+	var deletedEvent SubscriptionDeletedEvent
+	if err := utils.MapToStruct(event, &deletedEvent); err != nil {
+		baseLogger.Error("Failed to parse subscription.deleted event", slog.Any("error", err))
+		return
+	}
+	payload := deletedEvent.Payload
+	if payload.SubscriptionID == "" {
+		baseLogger.Error("subscription.deleted event missing subscriptionId")
+		return
+	}
+
+	if err := c.db.DeleteSubscription(payload.SubscriptionID, c.state.GatewayID); err != nil {
+		baseLogger.Warn("Failed to delete subscription from subscription.deleted event",
+			slog.Any("error", err))
 	}
 }
 

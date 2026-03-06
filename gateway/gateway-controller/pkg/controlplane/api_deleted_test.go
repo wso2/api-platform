@@ -35,7 +35,9 @@ import (
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
 type mockStorageForDeletion struct {
 	configs            map[string]*models.StoredConfig
+	subscriptions      map[string]*models.Subscription
 	deleteErr          error
+	updateErr          error
 	getErr             error
 	removeKeyErr       error
 	deleteCallCount    int
@@ -44,7 +46,8 @@ type mockStorageForDeletion struct {
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
-		configs: make(map[string]*models.StoredConfig),
+		configs:       make(map[string]*models.StoredConfig),
+		subscriptions: make(map[string]*models.Subscription),
 	}
 }
 
@@ -128,6 +131,83 @@ func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
 
 func (m *mockStorageForDeletion) GetAPIKey(apiID, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
+}
+
+// Subscription methods
+
+func (m *mockStorageForDeletion) SaveSubscription(sub *models.Subscription) error {
+	// Deletion tests don't depend on subscription persistence
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if sub, ok := m.subscriptions[id]; ok {
+		if gatewayID != "" && sub.GatewayID != gatewayID {
+			return nil, storage.ErrNotFound
+		}
+		return sub, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if apiID != "" && sub.APIID != apiID {
+			continue
+		}
+		if gatewayID != "" && sub.GatewayID != gatewayID {
+			continue
+		}
+		if applicationID != nil && *applicationID != "" && sub.ApplicationID != *applicationID {
+			continue
+		}
+		if status != nil && *status != "" && string(sub.Status) != *status {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *mockStorageForDeletion) UpdateSubscription(sub *models.Subscription) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscription(id, gatewayID string) error {
+	// Don't touch deleteCallCount used for DeleteConfig assertions.
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if m.subscriptions == nil {
+		return storage.ErrNotFound
+	}
+	sub, ok := m.subscriptions[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	if gatewayID != "" && sub.GatewayID != gatewayID {
+		return storage.ErrNotFound
+	}
+	delete(m.subscriptions, id)
+	return nil
 }
 
 func (m *mockStorageForDeletion) GetAPIKeyByValue(keyValue string) (*models.APIKey, error) {

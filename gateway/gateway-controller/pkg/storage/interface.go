@@ -207,6 +207,25 @@ type Storage interface {
 	// Returns the count of active API keys and an error if the operation fails.
 	CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error)
 
+	// ========================================
+	// Subscription Methods (application-level API subscriptions)
+	// ========================================
+
+	// SaveSubscription persists a new subscription.
+	SaveSubscription(sub *models.Subscription) error
+
+	// GetSubscriptionByID retrieves a subscription by ID and gateway.
+	GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error)
+
+	// ListSubscriptionsByAPI returns subscriptions for an API with optional filters.
+	ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error)
+
+	// UpdateSubscription updates an existing subscription.
+	UpdateSubscription(sub *models.Subscription) error
+
+	// DeleteSubscription removes a subscription by ID and gateway.
+	DeleteSubscription(id, gatewayID string) error
+
 	// SaveCertificate persists a new certificate.
 	//
 	// Returns an error if a certificate with the same name already exists.

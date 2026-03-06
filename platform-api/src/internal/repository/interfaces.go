@@ -138,6 +138,18 @@ type DevPortalRepository interface {
 	SetAsDefault(uuid, orgUUID string) error
 }
 
+// SubscriptionRepository defines the interface for application-level subscription data operations
+type SubscriptionRepository interface {
+	Create(sub *model.Subscription) error
+	GetByID(subscriptionID, orgUUID string) (*model.Subscription, error)
+	// ListByFilters returns subscriptions filtered by API and/or application for an organization.
+	// If apiUUID is nil, all APIs are considered. If applicationID is nil, all applications are considered.
+	ListByFilters(orgUUID string, apiUUID *string, applicationID *string, status *string) ([]*model.Subscription, error)
+	Update(sub *model.Subscription) error
+	Delete(subscriptionID, orgUUID string) error
+	ExistsByAPIAndApplication(apiUUID, applicationID, orgUUID string) (bool, error)
+}
+
 // APIPublicationRepository interface defines operations for API publication tracking
 type APIPublicationRepository interface {
 	// Basic CRUD operations

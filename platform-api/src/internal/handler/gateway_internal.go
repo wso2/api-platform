@@ -384,12 +384,68 @@ func (h *GatewayInternalAPIHandler) GetLLMProxy(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
+// GetSubscriptions handles GET /api/internal/v1/apis/:apiId/subscriptions
+func (h *GatewayInternalAPIHandler) GetSubscriptions(c *gin.Context) {
+	clientIP := c.ClientIP()
+
+	apiKey := c.GetHeader("api-key")
+	if apiKey == "" {
+		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"API key is required. Provide 'api-key' header."))
+		return
+	}
+
+	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	if err != nil {
+		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Invalid or expired API key"))
+		return
+	}
+
+	orgID := gateway.OrganizationID
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		h.slogger.Error("API ID is required for subscriptions request",
+			"clientIP", clientIP,
+			"organizationId", orgID,
+			"apiId", apiID)
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	subs, err := h.gatewayInternalService.ListSubscriptionsForAPI(apiID, orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			h.slogger.Error("API not found when listing subscriptions",
+				"apiId", apiID,
+				"organizationId", orgID,
+				"error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		h.slogger.Error("Failed to list subscriptions for API",
+			"apiId", apiID,
+			"organizationId", orgID,
+			"error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get subscriptions"))
+		return
+	}
+
+	c.JSON(http.StatusOK, subs)
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
 		orgGroup.GET("", h.GetAPIsByOrganization)
 		orgGroup.GET("/:apiId", h.GetAPI)
 		orgGroup.POST("/:apiId/gateway-deployments", h.CreateGatewayDeployment)
+		orgGroup.GET("/:apiId/subscriptions", h.GetSubscriptions)
 	}
 
 	llmGroup := r.Group("/api/internal/v1/llm-providers")

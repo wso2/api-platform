@@ -233,6 +233,55 @@ func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error
 	return bodyBytes, nil
 }
 
+// FetchSubscriptionsForAPI fetches subscriptions for the given API from the control plane.
+func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subscription, error) {
+	subURL := s.config.BaseURL + "/apis/" + apiID + "/subscriptions"
+
+	s.logger.Info("Fetching subscriptions for API",
+		slog.String("api_id", apiID),
+		slog.String("url", subURL),
+	)
+
+	client := &http.Client{
+		Timeout: s.config.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: s.config.InsecureSkipVerify,
+			},
+		},
+	}
+
+	req, err := http.NewRequest("GET", subURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create subscriptions request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch subscriptions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("subscriptions request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var subs []models.Subscription
+	if err := json.NewDecoder(resp.Body).Decode(&subs); err != nil {
+		return nil, fmt.Errorf("failed to decode subscriptions response: %w", err)
+	}
+
+	s.logger.Info("Successfully fetched subscriptions for API",
+		slog.String("api_id", apiID),
+		slog.Int("count", len(subs)),
+	)
+
+	return subs, nil
+}
+
 // ExtractYAMLFromZip extracts the API definition YAML from the zip file
 func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 	// Create a reader from the zip data

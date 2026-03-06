@@ -243,6 +243,31 @@ type MockServerInterface struct {
 	ListPoliciesCalled               bool
 }
 
+// CreateSubscription implements [ServerInterface].
+func (m *MockServerInterface) CreateSubscription(c *gin.Context) {
+	c.JSON(http.StatusCreated, gin.H{"status": "created"})
+}
+
+// ListSubscriptions implements [ServerInterface].
+func (m *MockServerInterface) ListSubscriptions(c *gin.Context, params ListSubscriptionsParams) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// GetSubscription implements [ServerInterface].
+func (m *MockServerInterface) GetSubscription(c *gin.Context, subscriptionId string) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "subscriptionId": subscriptionId})
+}
+
+// UpdateSubscription implements [ServerInterface].
+func (m *MockServerInterface) UpdateSubscription(c *gin.Context, subscriptionId string) {
+	c.JSON(http.StatusOK, gin.H{"status": "updated", "subscriptionId": subscriptionId})
+}
+
+// DeleteSubscription implements [ServerInterface].
+func (m *MockServerInterface) DeleteSubscription(c *gin.Context, subscriptionId string) {
+	c.JSON(http.StatusNoContent, nil)
+}
+
 // CreateAPIKey implements [ServerInterface].
 func (m *MockServerInterface) CreateAPIKey(c *gin.Context, id string) {
 	m.CreateAPIKeyCalled = true

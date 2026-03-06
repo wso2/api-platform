@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"platform-api/src/config"
@@ -33,33 +34,35 @@ import (
 
 // GatewayInternalAPIService handles internal gateway API operations
 type GatewayInternalAPIService struct {
-	apiRepo        repository.APIRepository
-	providerRepo   repository.LLMProviderRepository
-	proxyRepo      repository.LLMProxyRepository
-	deploymentRepo repository.DeploymentRepository
-	gatewayRepo    repository.GatewayRepository
-	orgRepo        repository.OrganizationRepository
-	projectRepo    repository.ProjectRepository
-	apiUtil        *utils.APIUtil
-	cfg            *config.Server
-	slogger        *slog.Logger
+	apiRepo          repository.APIRepository
+	subscriptionRepo repository.SubscriptionRepository
+	providerRepo     repository.LLMProviderRepository
+	proxyRepo        repository.LLMProxyRepository
+	deploymentRepo   repository.DeploymentRepository
+	gatewayRepo      repository.GatewayRepository
+	orgRepo          repository.OrganizationRepository
+	projectRepo      repository.ProjectRepository
+	apiUtil          *utils.APIUtil
+	cfg              *config.Server
+	slogger          *slog.Logger
 }
 
 // NewGatewayInternalAPIService creates a new gateway internal API service
-func NewGatewayInternalAPIService(apiRepo repository.APIRepository, providerRepo repository.LLMProviderRepository,
+func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
-		apiRepo:        apiRepo,
-		providerRepo:   providerRepo,
-		proxyRepo:      proxyRepo,
-		deploymentRepo: deploymentRepo,
-		gatewayRepo:    gatewayRepo,
-		orgRepo:        orgRepo,
-		projectRepo:    projectRepo,
-		apiUtil:        &utils.APIUtil{},
-		cfg:            cfg,
-		slogger:        slogger,
+		apiRepo:          apiRepo,
+		subscriptionRepo: subscriptionRepo,
+		providerRepo:     providerRepo,
+		proxyRepo:        proxyRepo,
+		deploymentRepo:   deploymentRepo,
+		gatewayRepo:      gatewayRepo,
+		orgRepo:          orgRepo,
+		projectRepo:      projectRepo,
+		apiUtil:          &utils.APIUtil{},
+		cfg:              cfg,
+		slogger:          slogger,
 	}
 }
 
@@ -173,6 +176,34 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 		proxyID: proxyYaml,
 	}
 	return proxyYamlMap, nil
+}
+
+// ListSubscriptionsForAPI lists subscriptions for a given API within an organization.
+func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string) ([]*model.Subscription, error) {
+	if apiID == "" || orgID == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	// apiID here is the API UUID (rest_apis.uuid) used as deployment id for REST APIs.
+	// First, ensure the API exists and belongs to the organization so callers can map
+	// unknown APIs to a 404 instead of silently returning an empty list.
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiID, orgID)
+	if err != nil {
+		// Preserve explicit not-found signaling from the repository so callers
+		// can translate it to a 404, while still wrapping unexpected failures.
+		if errors.Is(err, constants.ErrAPINotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get api for listing subscriptions: %w", err)
+	}
+	if apiModel == nil || apiModel.OrganizationID != orgID {
+		return nil, constants.ErrAPINotFound
+	}
+
+	subs, err := s.subscriptionRepo.ListByFilters(orgID, &apiID, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list subscriptions for API %s: %w", apiID, err)
+	}
+	return subs, nil
 }
 
 // CreateGatewayDeployment handles the registration of an API deployment from a gateway

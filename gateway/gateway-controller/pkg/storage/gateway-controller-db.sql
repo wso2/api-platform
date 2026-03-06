@@ -188,5 +188,21 @@ CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 
--- Set schema version to 9 (removed index_key column, switched to hash-based indexing)
-PRAGMA user_version = 9;
+-- Subscriptions table (application-level subscriptions for REST APIs)
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id TEXT PRIMARY KEY,
+    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    api_id TEXT NOT NULL,
+    application_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_id) REFERENCES deployments(id) ON DELETE CASCADE,
+    UNIQUE(api_id, application_id, gateway_id)
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_api_id ON subscriptions(api_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);
+
+-- Set schema version to 10 (added subscriptions table)
+PRAGMA user_version = 10;

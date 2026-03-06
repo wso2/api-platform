@@ -51,23 +51,25 @@ func init() {
 
 // MockStorage implements the storage.Storage interface for testing
 type MockStorage struct {
-	configs     map[string]*models.StoredConfig
-	templates   map[string]*models.StoredLLMProviderTemplate
-	apiKeys     map[string]*models.APIKey
-	certs       []*models.StoredCertificate
-	saveErr     error
-	getErr      error
-	updateErr   error
-	deleteErr   error
-	unavailable bool
+	configs       map[string]*models.StoredConfig
+	templates     map[string]*models.StoredLLMProviderTemplate
+	apiKeys       map[string]*models.APIKey
+	certs         []*models.StoredCertificate
+	subscriptions map[string]*models.Subscription
+	saveErr       error
+	getErr        error
+	updateErr     error
+	deleteErr     error
+	unavailable   bool
 }
 
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
-		configs:   make(map[string]*models.StoredConfig),
-		templates: make(map[string]*models.StoredLLMProviderTemplate),
-		apiKeys:   make(map[string]*models.APIKey),
-		certs:     make([]*models.StoredCertificate, 0),
+		configs:       make(map[string]*models.StoredConfig),
+		templates:     make(map[string]*models.StoredLLMProviderTemplate),
+		apiKeys:       make(map[string]*models.APIKey),
+		certs:         make([]*models.StoredCertificate, 0),
+		subscriptions: make(map[string]*models.Subscription),
 	}
 }
 
@@ -324,6 +326,89 @@ func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int,
 		}
 	}
 	return count, nil
+}
+
+// Subscription methods
+
+func (m *MockStorage) SaveSubscription(sub *models.Subscription) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *MockStorage) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if sub, ok := m.subscriptions[id]; ok {
+		// Enforce gateway scoping when both sides provide a gateway ID.
+		if gatewayID != "" && sub.GatewayID != "" && sub.GatewayID != gatewayID {
+			return nil, storage.ErrNotFound
+		}
+		return sub, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if apiID != "" && sub.APIID != apiID {
+			continue
+		}
+		if gatewayID != "" && sub.GatewayID != "" && sub.GatewayID != gatewayID {
+			continue
+		}
+		if applicationID != nil && *applicationID != "" && sub.ApplicationID != *applicationID {
+			continue
+		}
+		if status != nil && *status != "" && string(sub.Status) != *status {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *MockStorage) UpdateSubscription(sub *models.Subscription) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if m.subscriptions == nil {
+		return storage.ErrNotFound
+	}
+	if _, ok := m.subscriptions[sub.ID]; !ok {
+		return storage.ErrNotFound
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *MockStorage) DeleteSubscription(id, gatewayID string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if m.subscriptions == nil {
+		return storage.ErrNotFound
+	}
+	sub, ok := m.subscriptions[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	// Enforce gateway scoping when both sides provide a gateway ID.
+	if gatewayID != "" && sub.GatewayID != "" && sub.GatewayID != gatewayID {
+		return storage.ErrNotFound
+	}
+	delete(m.subscriptions, id)
+	return nil
 }
 
 func (m *MockStorage) SaveCertificate(cert *models.StoredCertificate) error {

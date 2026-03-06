@@ -98,6 +98,22 @@ CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
 
+-- Subscriptions table (application-level subscriptions for REST APIs)
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id TEXT PRIMARY KEY,
+    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    api_id TEXT NOT NULL,
+    application_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_id) REFERENCES deployments(id) ON DELETE CASCADE,
+    UNIQUE(api_id, application_id, gateway_id)
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_api_id ON subscriptions(api_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);
+
 -- Migration-safe column additions for existing deployments
 ALTER TABLE deployments ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
 ALTER TABLE certificates ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';

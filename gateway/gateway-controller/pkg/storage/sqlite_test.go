@@ -77,7 +77,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9) // Current schema version
+	assert.Equal(t, version, 10) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -86,6 +86,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
+		"subscriptions",
 	}
 
 	for _, table := range tables {
@@ -124,7 +125,7 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9)
+	assert.Equal(t, version, 10)
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {

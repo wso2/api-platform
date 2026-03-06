@@ -55,10 +55,11 @@ type Client struct {
 	conn   *grpc.ClientConn
 	stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient
 	// Track versions separately for each resource type to avoid version confusion
-	policyChainVersion  string
-	apiKeyVersion       string
-	lazyResourceVersion string
-	currentNonce        string
+	policyChainVersion       string
+	apiKeyVersion            string
+	lazyResourceVersion      string
+	subscriptionStateVersion string
+	currentNonce             string
 
 	// Lifecycle management
 	ctx         context.Context
@@ -334,6 +335,7 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 	policyVersion := c.policyChainVersion
 	apiKeyVersion := c.apiKeyVersion
 	lazyResourceVersion := c.lazyResourceVersion
+	subscriptionVersion := c.subscriptionStateVersion
 	c.mu.RUnlock()
 
 	if stream == nil {
@@ -400,6 +402,26 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		return fmt.Errorf("failed to send lazy resource request: %w", err)
 	}
 
+	// Send subscription state subscription with its own version
+	subscriptionReq := &discoveryv3.DiscoveryRequest{
+		TypeUrl:       SubscriptionStateTypeURL,
+		VersionInfo:   subscriptionVersion,
+		ResponseNonce: responseNonce,
+		Node: &corev3.Node{
+			Id:      constants.XDSNodeID,
+			Cluster: constants.XDSCluster,
+		},
+	}
+
+	slog.DebugContext(c.ctx, "Sending subscription state discovery request",
+		"type_url", subscriptionReq.TypeUrl,
+		"version", subscriptionVersion,
+		"nonce", responseNonce)
+
+	if err := stream.Send(subscriptionReq); err != nil {
+		return fmt.Errorf("failed to send subscription state request: %w", err)
+	}
+
 	return nil
 }
 
@@ -433,6 +455,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 				currentVersion = c.apiKeyVersion
 			case LazyResourceTypeURL:
 				currentVersion = c.lazyResourceVersion
+			case SubscriptionStateTypeURL:
+				currentVersion = c.subscriptionStateVersion
 			}
 			c.mu.RUnlock()
 
@@ -454,6 +478,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			c.apiKeyVersion = resp.VersionInfo
 		case LazyResourceTypeURL:
 			c.lazyResourceVersion = resp.VersionInfo
+		case SubscriptionStateTypeURL:
+			c.subscriptionStateVersion = resp.VersionInfo
 		}
 		c.currentNonce = resp.Nonce
 		c.mu.Unlock()
@@ -475,6 +501,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			resourceType = "api_key_state"
 		case LazyResourceTypeURL:
 			resourceType = "lazy_resource"
+		case SubscriptionStateTypeURL:
+			resourceType = "subscription_state"
 		default:
 			resourceType = "unknown"
 		}
@@ -556,6 +584,14 @@ func (c *Client) handleDiscoveryResponse(resp *discoveryv3.DiscoveryResponse) er
 			resourceMap[fmt.Sprintf("resource_%d", i)] = resource
 		}
 		return c.handler.lazyResourceHandler.HandleLazyResourceUpdate(c.ctx, resourceMap)
+
+	case SubscriptionStateTypeURL:
+		// Handle subscription state updates
+		resourceMap := make(map[string]*anypb.Any)
+		for i, resource := range resp.Resources {
+			resourceMap[fmt.Sprintf("resource_%d", i)] = resource
+		}
+		return c.handler.subscriptionHandler.HandleSubscriptionState(c.ctx, resourceMap)
 
 	default:
 		return fmt.Errorf("unexpected type URL: %s", resp.TypeUrl)

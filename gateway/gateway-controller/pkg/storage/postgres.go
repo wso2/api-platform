@@ -327,6 +327,16 @@ func isPostgresAPIKeyUniqueConstraintError(err error) bool {
 	}
 }
 
+// isPostgresSubscriptionUniqueConstraintError checks for subscription (api_id, application_id, gateway_id) uniqueness.
+func isPostgresSubscriptionUniqueConstraintError(err error) bool {
+	pgErr := extractPgError(err)
+	if pgErr == nil || pgErr.Code != pgUniqueViolationCode {
+		return false
+	}
+	return pgErr.TableName == "subscriptions" &&
+		(pgErr.ConstraintName == "subscriptions_api_id_application_id_gateway_id_key" || strings.Contains(pgErr.ConstraintName, "subscriptions"))
+}
+
 func extractPgError(err error) *pgconn.PgError {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {

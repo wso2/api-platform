@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -44,6 +45,7 @@ type Server struct {
 	snapshotManager         *SnapshotManager
 	apiKeySnapshotMgr       *apikeyxds.APIKeySnapshotManager
 	lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager
+	subscriptionSnapshotMgr *subscriptionxds.SnapshotManager
 	port                    int
 	tlsConfig               *TLSConfig
 	onFirstConnect          chan struct{}
@@ -79,11 +81,12 @@ func WithOnFirstConnect(ch chan struct{}) ServerOption {
 }
 
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, subscriptionSnapshotMgr *subscriptionxds.SnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
 	s := &Server{
 		snapshotManager:         snapshotManager,
 		apiKeySnapshotMgr:       apiKeySnapshotMgr,
 		lazyResourceSnapshotMgr: lazyResourceSnapshotMgr,
+		subscriptionSnapshotMgr: subscriptionSnapshotMgr,
 		port:                    port,
 		logger:                  logger,
 		tlsConfig:               &TLSConfig{Enabled: false},
@@ -121,11 +124,12 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	grpcServer := grpc.NewServer(grpcOpts...)
 
-	// Create combined cache that handles policy chains, API key state, and lazy resources
+	// Create combined cache that handles policy chains, API key state, lazy resources, and subscription state
 	policyCache := snapshotManager.GetCache()
 	apiKeyCache := apiKeySnapshotMgr.GetCache()
 	lazyResourceCache := lazyResourceSnapshotMgr.GetCache()
-	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, logger)
+	subscriptionCache := subscriptionSnapshotMgr.GetCache()
+	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
 
 	callbacks := &serverCallbacks{
 		logger:         logger,
