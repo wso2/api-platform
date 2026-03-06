@@ -18,6 +18,8 @@
 package model
 
 import (
+	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -40,14 +42,39 @@ type API struct {
 	Configuration   RestAPIConfig    `json:"configuration" db:"-"`
 }
 
+type VhostsConfig struct {
+	Main    string  `json:"main"`
+	Sandbox *string `json:"sandbox,omitempty"`
+}
+
 type RestAPIConfig struct {
 	Name       string         `json:"name,omitempty"`
 	Version    string         `json:"version,omitempty"`
 	Context    *string        `json:"context,omitempty"`
-	Vhost      *string        `json:"vhost,omitempty"`
+	Vhosts     *VhostsConfig  `json:"vhosts,omitempty"`
 	Upstream   UpstreamConfig `json:"upstream,omitempty"`
 	Policies   []Policy       `json:"policies,omitempty"`
 	Operations []Operation    `json:"operations,omitempty"`
+}
+
+// UnmarshalJSON handles backward-compat: old rows with "vhost" are promoted to Vhosts.Main.
+func (c *RestAPIConfig) UnmarshalJSON(data []byte) error {
+	// Type alias breaks the recursion that would occur if we called json.Unmarshal(data, c).
+	type Alias RestAPIConfig
+	var aux struct {
+		Alias
+		LegacyVhost *string `json:"vhost,omitempty"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*c = RestAPIConfig(aux.Alias)
+	if c.Vhosts == nil && aux.LegacyVhost != nil {
+		if trimmed := strings.TrimSpace(*aux.LegacyVhost); trimmed != "" {
+			c.Vhosts = &VhostsConfig{Main: trimmed}
+		}
+	}
+	return nil
 }
 
 // TableName returns the table name for the API model
