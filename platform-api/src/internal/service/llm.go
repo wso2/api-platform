@@ -1346,7 +1346,7 @@ func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) *
 		return nil
 	}
 	return &model.LLMProviderTemplateResourceMapping{
-		Resource: valueOrEmpty(in.Resource),
+		Resource: strings.TrimSpace(in.Resource),
 		LLMProviderTemplateExtractionFields: model.LLMProviderTemplateExtractionFields{
 			PromptTokens:     mapExtractionIdentifierAPI(in.PromptTokens),
 			CompletionTokens: mapExtractionIdentifierAPI(in.CompletionTokens),
@@ -1384,7 +1384,7 @@ func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceM
 		return nil
 	}
 	return &api.LLMProviderTemplateResourceMapping{
-		Resource:         stringPtrIfNotEmpty(strings.TrimSpace(in.Resource)),
+		Resource:         strings.TrimSpace(in.Resource),
 		PromptTokens:     mapExtractionIdentifierModelToAPI(in.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierModelToAPI(in.CompletionTokens),
 		TotalTokens:      mapExtractionIdentifierModelToAPI(in.TotalTokens),
