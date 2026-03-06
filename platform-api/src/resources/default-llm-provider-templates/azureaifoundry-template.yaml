@@ -45,3 +45,12 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+  resourceMappings:
+    resources:
+      - resource: /responses
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens
