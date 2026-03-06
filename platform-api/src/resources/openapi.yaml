@@ -3740,6 +3740,36 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /mcp-proxies/fetch-server-info:
+    post:
+      summary: Fetch server info from MCP proxy backend services
+      description: |
+        Fetches server information from the backend services of an MCP proxy. 
+        This is used to validate connectivity and retrieve metadata about the backend services.
+      operationId: fetchMCPProxyServerInfo
+      tags:
+        - MCP Proxies
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPServerInfoFetchRequest'
+      responses:
+        '200':
+          description: Server info retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerInfoFetchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -6871,6 +6901,37 @@ components:
             $ref: '#/components/schemas/MCPProxyListItem'
         pagination:
           $ref: '#/components/schemas/Pagination'
+    
+    MCPServerInfoFetchRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Endpoint URL of the MCP server to fetch information from
+          example: https://mcp.server.com/mcp
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+
+    MCPServerInfoFetchResponse:
+      type: object
+      properties:
+        serverInfo:
+          type: object
+        tools:
+          type: array
+          items:
+            type: object
+        resources:
+          type: array
+          items:
+            type: object
+        prompts:
+          type: array
+          items:
+            type: object
 
   responses:
     Unauthorized:

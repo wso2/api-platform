@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -219,6 +220,26 @@ func (s *MCPProxyService) Delete(orgUUID, handle string) error {
 	return nil
 }
 
+// FetchServerInfo fetches server information from an MCP backend
+func (s *MCPProxyService) FetchServerInfo(req *api.MCPServerInfoFetchRequest) (*api.MCPServerInfoFetchResponse, error) {
+	if req == nil || req.Url == "" {
+		return nil, constants.ErrInvalidInput
+	}
+
+	if err := utils.ValidateURL(context.Background(), req.Url); err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
+	}
+
+	// Extract header info from auth if provided
+	var headerName, headerValue string
+	if req.Auth != nil && req.Auth.Header != nil && req.Auth.Value != nil {
+		headerName = *req.Auth.Header
+		headerValue = *req.Auth.Value
+	}
+
+	return utils.FetchMCPServerInfo(req.Url, headerName, headerValue)
+}
+
 // Helper functions
 
 func mcpSpecVersionToString(v *api.MCPProxyMcpSpecVersion) string {
@@ -276,4 +297,27 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 		CreatedAt:      utils.TimePtr(m.CreatedAt),
 		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
+}
+
+// Generate generates MCP configuration from the given URL
+func Generate(url string, outputDir string, headerName string, headerValue string) error {
+	fmt.Printf("Generating MCP configuration for server: %s\n", url)
+
+	// Use FetchMCPServerInfo to get all server information
+	serverInfo, err := utils.FetchMCPServerInfo(url, headerName, headerValue)
+	if err != nil {
+		return err
+	}
+
+	if serverInfo.Tools != nil {
+		fmt.Printf("→ Available Tools: %d\n", len(*serverInfo.Tools))
+	}
+	if serverInfo.Prompts != nil {
+		fmt.Printf("→ Available Prompts: %d\n", len(*serverInfo.Prompts))
+	}
+	if serverInfo.Resources != nil {
+		fmt.Printf("→ Available Resources: %d\n", len(*serverInfo.Resources))
+	}
+	fmt.Println("MCP generated successfully.")
+	return nil
 }

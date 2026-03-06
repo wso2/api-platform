@@ -52,6 +52,7 @@ func (h *MCPProxyHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/mcp-proxies/:id", h.GetMCPProxy)
 		v1.PUT("/mcp-proxies/:id", h.UpdateMCPProxy)
 		v1.DELETE("/mcp-proxies/:id", h.DeleteMCPProxy)
+		v1.POST("/mcp-proxies/fetch-server-info", h.FetchMCPProxyServerInfo)
 	}
 }
 
@@ -195,6 +196,36 @@ func (h *MCPProxyHandler) DeleteMCPProxy(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// FetchMCPProxyServerInfo handles POST /api/v1/mcp-proxies/fetch-server-info
+func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
+	_, ok := middleware.GetOrganizationFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+
+	var req api.MCPServerInfoFetchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		return
+	}
+
+	resp, err := h.service.FetchServerInfo(&req)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrInvalidURL):
+			h.slogger.Error("Invalid URL provided for MCP server info fetch", "error", err, "inputUrl", req.Url)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
+		default:
+			h.handleServiceError(c, err)
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // handleServiceError maps service errors to HTTP responses

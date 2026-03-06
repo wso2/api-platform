@@ -20,7 +20,11 @@ package utils
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -267,4 +271,64 @@ func GenerateUUID() (string, error) {
 		return "", fmt.Errorf("failed to generate UUID v7: %w", err)
 	}
 	return u.String(), nil
+}
+
+// ValidateURL validates a URL with additional checks
+func ValidateURL(ctx context.Context, rawURL string) error {
+	if rawURL == "" {
+		return errors.New("URL is required")
+	}
+
+	parsedURL, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return errors.New("Invalid URL format")
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return errors.New("URL must use http or https")
+	}
+
+	if parsedURL.Host == "" {
+		return errors.New("URL must include a valid host")
+	}
+
+	if parsedURL.User != nil {
+		return errors.New("URL must not include user credentials")
+	}
+
+	if parsedURL.Fragment != "" {
+		return errors.New("URL must not include a fragment")
+	}
+
+	if parsedURL.Port() != "" {
+		port, err := strconv.Atoi(parsedURL.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return errors.New("URL must include a valid port")
+		}
+	}
+
+	if hasTraversalSegments(parsedURL.EscapedPath()) {
+		return errors.New("URL path must not contain traversal segments")
+	}
+
+	return nil
+}
+
+func hasTraversalSegments(escapedPath string) bool {
+	for segment := range strings.SplitSeq(escapedPath, "/") {
+		if segment == "" {
+			continue
+		}
+
+		unescapedSegment, err := url.PathUnescape(segment)
+		if err != nil {
+			return true
+		}
+
+		if unescapedSegment == "." || unescapedSegment == ".." || strings.Contains(unescapedSegment, `\`) {
+			return true
+		}
+	}
+
+	return false
 }

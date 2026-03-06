@@ -1473,6 +1473,23 @@ type MCPProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
+// MCPServerInfoFetchRequest defines model for MCPServerInfoFetchRequest.
+type MCPServerInfoFetchRequest struct {
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Url Endpoint URL of the MCP server to fetch information from
+	Url string `binding:"required" json:"url" yaml:"url"`
+}
+
+// MCPServerInfoFetchResponse defines model for MCPServerInfoFetchResponse.
+type MCPServerInfoFetchResponse struct {
+	Prompts    *[]map[string]interface{} `json:"prompts,omitempty" yaml:"prompts,omitempty"`
+	Resources  *[]map[string]interface{} `json:"resources,omitempty" yaml:"resources,omitempty"`
+	ServerInfo *map[string]interface{}   `json:"serverInfo,omitempty" yaml:"serverInfo,omitempty"`
+	Tools      *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
+}
+
 // OpenAPIValidationResponse defines model for OpenAPIValidationResponse.
 type OpenAPIValidationResponse struct {
 	Api *struct {
@@ -2656,6 +2673,9 @@ type DeployLLMProxyJSONRequestBody = DeployRequest
 
 // CreateMCPProxyJSONRequestBody defines body for CreateMCPProxy for application/json ContentType.
 type CreateMCPProxyJSONRequestBody = MCPProxy
+
+// FetchMCPProxyServerInfoJSONRequestBody defines body for FetchMCPProxyServerInfo for application/json ContentType.
+type FetchMCPProxyServerInfoJSONRequestBody = MCPServerInfoFetchRequest
 
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
 type UpdateMCPProxyJSONRequestBody = MCPProxy

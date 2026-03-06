@@ -20,14 +20,82 @@
 package utils
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// MCP JSON-RPC constants
+const (
+	JsonRpcVersion      = "2.0"
+	ProtocolVersion     = "2025-06-18"
+	MethodInitialize    = "initialize"
+	MethodInitialized   = "notifications/initialized"
+	MethodToolsList     = "tools/list"
+	MethodPromptsList   = "prompts/list"
+	MethodResourcesList = "resources/list"
+	ClientName          = "api-platform-mcp-client"
+	ClientVersion       = "1.0.0"
+	McpSessionHeader    = "mcp-session-id"
+)
+
+// JsonRPCRequest represents a JSON-RPC request
+type JsonRPCRequest struct {
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id,omitempty"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
+}
+
+// JsonRPCError represents a JSON-RPC error
+type JsonRPCError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// ToolsResult represents the result of tools/list request
+type ToolsResult struct {
+	Result struct {
+		Tools []map[string]interface{} `json:"tools"`
+	} `json:"result"`
+	Error *JsonRPCError `json:"error"`
+}
+
+// PromptsResult represents the result of prompts/list request
+type PromptsResult struct {
+	Result struct {
+		Prompts []map[string]interface{} `json:"prompts"`
+	} `json:"result"`
+	Error *JsonRPCError `json:"error"`
+}
+
+// ResourcesResult represents the result of resources/list request
+type ResourcesResult struct {
+	Result struct {
+		Resources []map[string]interface{} `json:"resources"`
+	} `json:"result"`
+	Error *JsonRPCError `json:"error"`
+}
+
+// InitializeResult represents the result of initialize request
+type InitializeResult struct {
+	Result struct {
+		ProtocolVersion string                 `json:"protocolVersion"`
+		ServerInfo      map[string]interface{} `json:"serverInfo"`
+		Capabilities    map[string]interface{} `json:"capabilities"`
+	} `json:"result"`
+	Error *JsonRPCError `json:"error"`
+}
 
 type MCPUtils struct{}
 
@@ -75,37 +143,230 @@ func (u *MCPUtils) GenerateMCPDeploymentYAML(proxy *model.MCPProxy) (string, err
 
 }
 
-func mapUpstreamAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
-	if in == nil {
-		return nil
+// FetchMCPServerInfo fetches server information from an MCP backend including tools, prompts, resources, and server info
+func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api.MCPServerInfoFetchResponse, error) {
+	// Step 1: Initialize MCP server
+	sessionID, serverInfo, err := initializeMCPServer(url, headerName, headerValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize MCP server: %w", err)
 	}
-	var authType *api.UpstreamAuthType
-	if normalized := normalizeUpstreamAuthType(in.Type); normalized != "" {
-		t := api.UpstreamAuthType(normalized)
-		authType = &t
+
+	// Step 2: Send notifications/initialized
+	notifyReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		Method:  MethodInitialized,
 	}
-	return &api.UpstreamAuth{
-		Type:   authType,
-		Header: StringPtrIfNotEmpty(in.Header),
-		Value:  StringPtrIfNotEmpty(in.Value),
+	_, err = postJSONRPCWithSession(url, notifyReq, sessionID, headerName, headerValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send notification: %w", err)
 	}
+
+	// Step 3: Fetch tools
+	toolsReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		ID:      2,
+		Method:  MethodToolsList,
+	}
+	toolsResp, err := postJSONRPCWithSession(url, toolsReq, sessionID, headerName, headerValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tools: %w", err)
+	}
+	var toolsResult ToolsResult
+	if err := json.Unmarshal(toolsResp, &toolsResult); err != nil {
+		return nil, fmt.Errorf("failed to parse tools response: %w", err)
+	}
+	if toolsResult.Error != nil {
+		return nil, fmt.Errorf("tools/list request returned an error: %s", toolsResult.Error.Message)
+	}
+
+	// Step 4: Fetch prompts
+	promptsReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		ID:      3,
+		Method:  MethodPromptsList,
+	}
+	promptsResp, err := postJSONRPCWithSession(url, promptsReq, sessionID, headerName, headerValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get prompts: %w", err)
+	}
+	var promptsResult PromptsResult
+	if err := json.Unmarshal(promptsResp, &promptsResult); err != nil {
+		return nil, fmt.Errorf("failed to parse prompts response: %w", err)
+	}
+	if promptsResult.Error != nil {
+		return nil, fmt.Errorf("prompts/list request returned an error: %s", promptsResult.Error.Message)
+	}
+
+	// Step 5: Fetch resources
+	resourcesReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		ID:      4,
+		Method:  MethodResourcesList,
+	}
+	resourcesResp, err := postJSONRPCWithSession(url, resourcesReq, sessionID, headerName, headerValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resources: %w", err)
+	}
+	var resourcesResult ResourcesResult
+	if err := json.Unmarshal(resourcesResp, &resourcesResult); err != nil {
+		return nil, fmt.Errorf("failed to parse resources response: %w", err)
+	}
+	if resourcesResult.Error != nil {
+		return nil, fmt.Errorf("resources/list request returned an error: %s", resourcesResult.Error.Message)
+	}
+
+	// Build response
+	resp := &api.MCPServerInfoFetchResponse{}
+
+	if len(toolsResult.Result.Tools) > 0 {
+		resp.Tools = &toolsResult.Result.Tools
+	}
+	if len(promptsResult.Result.Prompts) > 0 {
+		resp.Prompts = &promptsResult.Result.Prompts
+	}
+	if len(resourcesResult.Result.Resources) > 0 {
+		resp.Resources = &resourcesResult.Result.Resources
+	}
+	if serverInfo != nil {
+		resp.ServerInfo = &serverInfo
+	}
+
+	return resp, nil
 }
 
-func normalizeUpstreamAuthType(authType string) string {
-	normalized := strings.TrimSpace(authType)
-	if normalized == "" {
-		return ""
+// initializeMCPServer initializes the MCP server and returns the session ID and server info
+func initializeMCPServer(url string, headerName string, headerValue string) (string, map[string]any, error) {
+	initReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		ID:      1,
+		Method:  MethodInitialize,
+		Params: map[string]any{
+			"protocolVersion": ProtocolVersion,
+			"capabilities":    map[string]any{"roots": map[string]bool{"listChanged": true}},
+			"clientInfo":      map[string]string{"name": ClientName, "version": ClientVersion},
+		},
+	}
+	data, err := json.Marshal(initReq)
+	if err != nil {
+		return "", nil, err
+	}
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create init request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	if headerName != "" {
+		lower := strings.ToLower(headerName)
+		if lower != McpSessionHeader && lower != "content-type" && lower != "accept" {
+			httpReq.Header.Set(headerName, headerValue)
+		}
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to reach MCP server for initialize: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	canonical := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(normalized, "-", ""), "_", ""))
-	switch canonical {
-	case "apikey":
-		return string(api.ApiKey)
-	case "basic":
-		return string(api.Basic)
-	case "bearer":
-		return string(api.Bearer)
-	default:
-		return normalized
+	// Check if response is event stream and parse it
+	if isEventStream(resp) {
+		data, err := parseEventStream(body)
+		if err == nil {
+			body = data
+		}
 	}
+
+	// Parse initialize response for server info
+	var initResult InitializeResult
+	var serverInfo map[string]any
+	if err := json.Unmarshal(body, &initResult); err == nil {
+		if initResult.Error != nil {
+			return "", nil, fmt.Errorf("initialize request returned an error: %s", initResult.Error.Message)
+		}
+		if initResult.Result.ServerInfo != nil {
+			serverInfo = initResult.Result.ServerInfo
+		}
+	}
+
+	sessionID := getSessionIDFromResponse(resp)
+	return sessionID, serverInfo, nil
+}
+
+func getSessionIDFromResponse(resp *http.Response) string {
+	return resp.Header.Get(McpSessionHeader)
+}
+
+// postJSONRPCWithSession sends a JSON-RPC request with mcp-session-id header if provided
+func postJSONRPCWithSession(url string, req any, sessionID string, headerName string, headerValue string) ([]byte, error) {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	if headerName != "" {
+		lower := strings.ToLower(headerName)
+		if lower != McpSessionHeader && lower != "content-type" && lower != "accept" {
+			httpReq.Header.Set(headerName, headerValue)
+		}
+	}
+	if sessionID != "" {
+		httpReq.Header.Set(McpSessionHeader, sessionID)
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if response is event stream
+	if isEventStream(resp) {
+		// Extract JSON data from event stream
+		data, err := parseEventStream(body)
+		if err != nil {
+			return body, nil // Return original body if parsing fails
+		}
+		return data, nil
+	}
+
+	return body, nil
+}
+
+// parseEventStream extracts JSON data from event stream response
+func parseEventStream(body []byte) ([]byte, error) {
+	lines := bytes.Split(body, []byte("\n"))
+	for _, line := range lines {
+		if after, ok := bytes.CutPrefix(line, []byte("data: ")); ok {
+			data := after
+			data = bytes.TrimSpace(data)
+			if len(data) > 0 && !bytes.Equal(data, []byte("{}")) {
+				return data, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("no data found in event stream")
+}
+
+// isEventStream checks if the response is an event stream
+func isEventStream(resp *http.Response) bool {
+	contentType := resp.Header.Get("Content-Type")
+	return bytes.Contains([]byte(contentType), []byte("text/event-stream"))
 }
