@@ -403,9 +403,6 @@ type APIKey struct {
 	// Name URL-safe identifier for the API key (auto-generated from displayName, immutable, used as path parameter)
 	Name string `json:"name" yaml:"name"`
 
-	// Operations List of API operations the key will have access to
-	Operations string `json:"operations" yaml:"operations"`
-
 	// Source Source of the API key (local or external)
 	Source APIKeySource `json:"source" yaml:"source"`
 

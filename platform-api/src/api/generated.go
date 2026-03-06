@@ -436,9 +436,6 @@ type CreateAPIKeyRequest struct {
 	// Name Unique identifier for this API key within the API (optional; if omitted,
 	// generated from displayName)
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Operations Specifies which API operations this key can access. Use "*" for all operations.
-	Operations *string `json:"operations,omitempty" yaml:"operations,omitempty"`
 }
 
 // CreateAPIKeyResponse defines model for CreateAPIKeyResponse.
@@ -2054,9 +2051,6 @@ type UpdateAPIKeyRequest struct {
 
 	// Name Unique identifier for this API key within the API (optional; if omitted, generated from displayName)
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Operations Specifies which API operations this key can access. Use "*" for all operations.
-	Operations *string `json:"operations,omitempty" yaml:"operations,omitempty"`
 }
 
 // UpdateAPIKeyResponse defines model for UpdateAPIKeyResponse.

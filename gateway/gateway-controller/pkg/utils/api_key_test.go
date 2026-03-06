@@ -455,36 +455,6 @@ func TestFilterAPIKeysByUser(t *testing.T) {
 	})
 }
 
-func TestGenerateOperationsString(t *testing.T) {
-	service := &APIKeyService{
-		apiKeyConfig: &config.APIKeyConfig{
-			Algorithm: constants.HashingAlgorithmSHA256,
-		},
-	}
-
-	t.Run("Empty operations returns wildcard", func(t *testing.T) {
-		result := service.generateOperationsString([]api.Operation{})
-		assert.Equal(t, "[\"*\"]", result)
-	})
-
-	t.Run("Single operation", func(t *testing.T) {
-		ops := []api.Operation{
-			{Method: "GET", Path: "/users"},
-		}
-		result := service.generateOperationsString(ops)
-		assert.Contains(t, result, "GET /users")
-	})
-
-	t.Run("Multiple operations", func(t *testing.T) {
-		ops := []api.Operation{
-			{Method: "GET", Path: "/users"},
-			{Method: "POST", Path: "/users"},
-		}
-		result := service.generateOperationsString(ops)
-		assert.Contains(t, result, "GET /users")
-		assert.Contains(t, result, "POST /users")
-	})
-}
 
 func TestBuildAPIKeyResponse(t *testing.T) {
 	service := &APIKeyService{
@@ -507,7 +477,7 @@ func TestBuildAPIKeyResponse(t *testing.T) {
 			Name:       "my-test-key",
 			APIKey:     "$sha256$salt$hash",
 			APIId:      "api-id-123",
-			Operations: "[\"*\"]",
+	
 			Status:     models.APIKeyStatusActive,
 			CreatedAt:  time.Now(),
 			CreatedBy:  "test-user",
@@ -526,7 +496,7 @@ func TestBuildAPIKeyResponse(t *testing.T) {
 			Name:       "my-test-key",
 			APIKey:     "$sha256$salt$hash",
 			APIId:      "api-id-123",
-			Operations: "[\"*\"]",
+	
 			Status:     models.APIKeyStatusActive,
 			CreatedAt:  time.Now(),
 			CreatedBy:  "test-user",

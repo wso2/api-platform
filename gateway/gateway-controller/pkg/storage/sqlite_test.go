@@ -77,7 +77,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9) // Current schema version
+	assert.Equal(t, version, 10) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -109,8 +109,8 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	assert.NilError(t, err)
 	storage := store.(*sqlStore)
 
-	// Set schema version to 1 to test upgrade path
-	_, err = storage.db.Exec("PRAGMA user_version = 1")
+	// Set schema version to 9 to test upgrade path (v9→v10: removes operations column)
+	_, err = storage.db.Exec("PRAGMA user_version = 9")
 	assert.NilError(t, err)
 	storage.db.Close()
 
@@ -124,7 +124,7 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9)
+	assert.Equal(t, version, 10)
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -902,7 +902,6 @@ func createTestAPIKey() *models.APIKey {
 		APIKey:       fmt.Sprintf("apk_%d_%d", apiKeyCounter, time.Now().UnixNano()),
 		MaskedAPIKey: "apk_***",
 		APIId:        "test-api-id",
-		Operations:   "*",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",

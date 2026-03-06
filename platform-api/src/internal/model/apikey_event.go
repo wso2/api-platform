@@ -50,9 +50,6 @@ type APIKeyCreatedEvent struct {
 	// ExternalRefId is an optional reference ID for tracing purposes
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 
-	// Operations specifies which API operations this key can access (default: "*")
-	Operations string `json:"operations"`
-
 	// ExpiresAt is the optional expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
 
@@ -84,9 +81,6 @@ type APIKeyUpdatedEvent struct {
 
 	// ExternalRefId is an optional reference ID for tracing purposes
 	ExternalRefId *string `json:"externalRefId,omitempty"`
-
-	// Operations specifies which API operations this key can access (default: "*")
-	Operations string `json:"operations"`
 
 	// ExpiresIn is the optional expiration duration
 	ExpiresIn *ExpiresInDuration `json:"expiresIn,omitempty"`

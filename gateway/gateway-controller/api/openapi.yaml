@@ -2425,10 +2425,6 @@ components:
           type: string
           description: Unique public identifier of the API that the key is associated with
           example: weather-api-v1.0
-        operations:
-          type: string
-          description: List of API operations the key will have access to
-          example: "[GET /{country_code}/{city}, POST /data]"
         status:
           type: string
           description: Status of the API key
@@ -2466,7 +2462,6 @@ components:
       required:
         - name
         - apiId
-        - operations
         - status
         - createdAt
         - createdBy

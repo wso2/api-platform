@@ -91,7 +91,7 @@ func (s *SQLiteStorage) initSchema() error {
 	}
 
 	if version == 0 {
-		s.logger.Info("Initializing database schema (version 8)")
+		s.logger.Info("Initializing database schema (version 10)")
 		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
@@ -713,6 +713,113 @@ func (s *SQLiteStorage) initSchema() error {
 
 			s.logger.Info("Schema migrated to version 9 (removed index_key)")
 			version = 9
+		}
+
+		// Migration to version 10: Drop operations column from api_keys
+		if version == 9 {
+			s.logger.Info("Migrating schema to version 10 (removing operations column from api_keys)")
+
+			if _, err := s.db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
+				return fmt.Errorf("failed to disable foreign keys for migration to version 10: %w", err)
+			}
+
+			tx, err := s.db.BeginTx(context.Background(), nil)
+			if err != nil {
+				s.db.Exec("PRAGMA foreign_keys = ON")
+				return fmt.Errorf("failed to begin transaction for migration to version 10: %w", err)
+			}
+			defer func() {
+				if err != nil {
+					if rbErr := tx.Rollback(); rbErr != nil {
+						s.logger.Error("Failed to rollback migration transaction", slog.Any("error", rbErr))
+					}
+					s.db.Exec("PRAGMA foreign_keys = ON")
+				}
+			}()
+
+			if _, err = tx.Exec(`CREATE TABLE api_keys_new_v10 (
+				id TEXT PRIMARY KEY,
+				gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+				name TEXT NOT NULL,
+				api_key TEXT NOT NULL UNIQUE,
+				masked_api_key TEXT NOT NULL,
+				apiId TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				created_by TEXT NOT NULL DEFAULT 'system',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				expires_at TIMESTAMP NULL,
+				expires_in_unit TEXT NULL,
+				expires_in_duration INTEGER NULL,
+				source TEXT NOT NULL DEFAULT 'local',
+				external_ref_id TEXT NULL,
+				display_name TEXT NOT NULL DEFAULT '',
+				FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
+				UNIQUE (apiId, name, gateway_id)
+			);`); err != nil {
+				return fmt.Errorf("failed to create api_keys_new_v10 table: %w", err)
+			}
+
+			if _, err = tx.Exec(`
+				INSERT INTO api_keys_new_v10 (
+					id, gateway_id, name, api_key, masked_api_key, apiId, status,
+					created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
+					source, external_ref_id, display_name
+				)
+				SELECT id, gateway_id, name, api_key, masked_api_key, apiId, status,
+				       created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
+				       source, external_ref_id, display_name
+				FROM api_keys;
+			`); err != nil {
+				return fmt.Errorf("failed to copy data to api_keys_new_v10: %w", err)
+			}
+
+			if _, err = tx.Exec(`DROP TABLE api_keys;`); err != nil {
+				return fmt.Errorf("failed to drop api_keys table during version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`ALTER TABLE api_keys_new_v10 RENAME TO api_keys;`); err != nil {
+				return fmt.Errorf("failed to rename api_keys_new_v10 table: %w", err)
+			}
+
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_api_key in version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_api_key_api in version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_api_key_status in version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_api_key_expiry in version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_created_by in version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_api_key_source in version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_api_key_external_ref in version 10 migration: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_api_keys_gateway_id in version 10 migration: %w", err)
+			}
+
+			if _, err = tx.Exec("PRAGMA user_version = 10"); err != nil {
+				return fmt.Errorf("failed to set schema version to 10: %w", err)
+			}
+
+			if err = tx.Commit(); err != nil {
+				return fmt.Errorf("failed to commit migration to version 10: %w", err)
+			}
+
+			if _, err := s.db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+				return fmt.Errorf("failed to re-enable foreign keys after migration to version 10: %w", err)
+			}
+
+			s.logger.Info("Schema migrated to version 10 (removed operations column from api_keys)")
+			version = 10
 		}
 	}
 

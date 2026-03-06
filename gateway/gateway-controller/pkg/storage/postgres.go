@@ -39,7 +39,7 @@ import (
 var postgresSchemaSQL string
 
 const (
-	postgresSchemaVersion = 8
+	postgresSchemaVersion = 9
 	postgresSchemaLockID  = int64(749251473)
 	pgUniqueViolationCode = "23505"
 )
@@ -175,6 +175,15 @@ func (s *PostgresStorage) initSchema() (retErr error) {
 
 	if version < postgresSchemaVersion {
 		s.logger.Info("Initializing PostgreSQL schema", slog.Int("target_version", postgresSchemaVersion))
+
+		// Migration from v8 to v9: drop operations column
+		if version == 8 {
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE api_keys DROP COLUMN IF EXISTS operations`); err != nil {
+				return fmt.Errorf("failed to drop operations column during migration to version 9: %w", err)
+			}
+			s.logger.Info("Dropped operations column from api_keys (migration to version 9)")
+		}
+
 		if err := s.execSchemaStatements(ctx, conn, postgresSchemaSQL); err != nil {
 			return fmt.Errorf("failed to execute postgres schema: %w", err)
 		}

@@ -3994,12 +3994,6 @@ components:
           description: Optional reference ID for tracing purposes (from external platforms)
           nullable: true
           example: "ext-ref-12345"
-        operations:
-          type: string
-          description: |
-            Specifies which API operations this key can access. Use "*" for all operations.
-          default: "*"
-          example: "*"
         expiresAt:
           type: string
           format: date-time
@@ -4050,12 +4044,6 @@ components:
           description: Optional reference ID for tracing purposes (from external platforms)
           nullable: true
           example: "ext-ref-12345"
-        operations:
-          type: string
-          description: |
-            Specifies which API operations this key can access. Use "*" for all operations.
-          default: "*"
-          example: "*"
         expiresAt:
           type: string
           format: date-time

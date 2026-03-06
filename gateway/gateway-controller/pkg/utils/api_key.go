@@ -24,7 +24,6 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -640,7 +639,6 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 				DisplayName: &updatedKey.DisplayName,
 				ApiKey:      responseAPIKey,
 				ApiId:       params.Handle,
-				Operations:  updatedKey.Operations,
 				Status:      api.APIKeyStatus(updatedKey.Status),
 				CreatedAt:   updatedKey.CreatedAt,
 				CreatedBy:   updatedKey.CreatedBy,
@@ -907,7 +905,6 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 			DisplayName:   &key.DisplayName,
 			ApiKey:        &key.MaskedAPIKey, // Return masked API key for security
 			ApiId:         params.Handle,     // Use handle instead of internal API ID
-			Operations:    key.Operations,
 			Status:        api.APIKeyStatus(key.Status),
 			CreatedAt:     key.CreatedAt,
 			CreatedBy:     key.CreatedBy,
@@ -1022,12 +1019,6 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		}
 	}
 
-	// Process operations
-	operations := "[\"*\"]" // Default to all operations
-	//if request.Operations != nil && len(*request.Operations) > 0 {
-	//	operations = s.generateOperationsString(*request.Operations)
-	//}
-
 	now := time.Now()
 
 	// Calculate expiration time
@@ -1076,7 +1067,6 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
 		APIId:        config.ID,
-		Operations:   operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    now,
 		CreatedBy:    user,
@@ -1102,31 +1092,6 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	}
 
 	return apiKey, nil
-}
-
-// generateOperationsString creates a string array from operations in format "METHOD path"
-// Example: ["GET /{country_code}/{city}", "POST /data"]
-// Ignores the policies field from operations
-func (s *APIKeyService) generateOperationsString(operations []api.Operation) string {
-	if len(operations) == 0 {
-		return "[\"*\"]" // Default to all operations if none specified
-	}
-
-	var operationStrings []string
-	for _, op := range operations {
-		// Format: "METHOD path" (ignoring policies)
-		operationStr := fmt.Sprintf("%s %s", op.Method, op.Path)
-		operationStrings = append(operationStrings, operationStr)
-	}
-
-	// Create JSON array string with comma-separated operations
-	operationsJSON, err := json.Marshal(operationStrings)
-	if err != nil {
-		// Fallback to default if marshaling fails
-		return "[\"*\"]"
-	}
-
-	return string(operationsJSON)
 }
 
 // buildAPIKeyResponse builds the response following the generated schema
@@ -1178,7 +1143,6 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string, p
 			DisplayName: &key.DisplayName,
 			ApiKey:      responseAPIKey, // Return plain key only for locally generated keys
 			ApiId:       handle,
-			Operations:  key.Operations,
 			Status:      api.APIKeyStatus(key.Status),
 			CreatedAt:   key.CreatedAt,
 			CreatedBy:   key.CreatedBy,
@@ -1217,8 +1181,6 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 	} else {
 		return nil, fmt.Errorf("display name is required for update")
 	}
-
-	operations := "[\"*\"]" // Default to all operations
 
 	// Hash the new API key for storage
 	hashedAPIKeyValue, err := s.hashAPIKey(plainAPIKeyValue)
@@ -1293,7 +1255,6 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
 		APIId:        existingKey.APIId,
-		Operations:   operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
 		CreatedBy:    existingKey.CreatedBy,
@@ -1426,7 +1387,6 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
 		APIId:        existingKey.APIId,
-		Operations:   existingKey.Operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
 		CreatedBy:    existingKey.CreatedBy,

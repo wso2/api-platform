@@ -188,12 +188,11 @@ type APIKeyStateResource struct {
 
 // APIKeyData represents an API key in the state resource
 type APIKeyData struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	APIKey     string     `json:"apiKey"`
-	APIId      string     `json:"apiId"`
-	Operations string     `json:"operations"`
-	Status     string     `json:"status"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	APIKey    string     `json:"apiKey"`
+	APIId     string     `json:"apiId"`
+	Status    string     `json:"status"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	CreatedBy  string     `json:"createdBy"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
@@ -209,12 +208,11 @@ func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[strin
 	apiKeyData := make([]APIKeyData, 0, len(apiKeys))
 	for _, apiKey := range apiKeys {
 		data := APIKeyData{
-			ID:         apiKey.ID,
-			Name:       apiKey.Name,
-			APIKey:     apiKey.APIKey,
-			APIId:      apiKey.APIId,
-			Operations: apiKey.Operations,
-			Status:     string(apiKey.Status),
+			ID:        apiKey.ID,
+			Name:      apiKey.Name,
+			APIKey:    apiKey.APIKey,
+			APIId:     apiKey.APIId,
+			Status:    string(apiKey.Status),
 			CreatedAt:  apiKey.CreatedAt,
 			CreatedBy:  apiKey.CreatedBy,
 			UpdatedAt:  apiKey.UpdatedAt,

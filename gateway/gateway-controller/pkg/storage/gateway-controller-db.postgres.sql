@@ -74,7 +74,6 @@ CREATE TABLE IF NOT EXISTS api_keys (
     api_key TEXT NOT NULL UNIQUE,
     masked_api_key TEXT NOT NULL,
     apiId TEXT NOT NULL,
-    operations TEXT NOT NULL DEFAULT '*',
     status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by TEXT NOT NULL DEFAULT 'system',

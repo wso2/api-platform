@@ -107,14 +107,11 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		return nil, constants.ErrGatewayUnavailable
 	}
 
-	operations := "[\"*\"]"
-
 	event := &model.APIKeyCreatedEvent{
 		ApiId:       proxyID,
 		Name:        name,
 		DisplayName: displayName,
 		ApiKey:      apiKey,
-		Operations:  operations,
 	}
 
 	if req.ExpiresAt != nil {

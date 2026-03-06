@@ -122,14 +122,11 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		return nil, constants.ErrGatewayUnavailable
 	}
 
-	operations := "[\"*\"]"
-
 	event := &model.APIKeyCreatedEvent{
 		ApiId:       providerID,
 		Name:        name,
 		DisplayName: displayName,
 		ApiKey:      apiKey,
-		Operations:  operations,
 		ExpiresAt:   expiresAt,
 	}
 

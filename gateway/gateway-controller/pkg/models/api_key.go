@@ -40,7 +40,6 @@ type APIKey struct {
 	MaskedAPIKey string       `json:"maskedApiKey" db:"masked_api_key"` // Stores masked API key for display
 	PlainAPIKey  string       `json:"-" db:"-"`                         // Temporary field for plain API key (not persisted)
 	APIId        string       `json:"apiId" db:"apiId"`
-	Operations   string       `json:"operations" db:"operations"`
 	Status       APIKeyStatus `json:"status" db:"status"`
 	CreatedAt    time.Time    `json:"createdAt" db:"created_at"`
 	CreatedBy    string       `json:"createdBy" db:"created_by"`

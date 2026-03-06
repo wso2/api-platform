@@ -80,15 +80,12 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		return constants.ErrGatewayUnavailable
 	}
 
-	operations := "[\"*\"]" // Default to all operations
-
 	// Build the API key created event
 	// Note: API key is sent as plain text - hashing happens in the gateway/gateway-runtime/policy-engine
 	event := &model.APIKeyCreatedEvent{
 		ApiId:         apiHandle,
 		ApiKey:        req.ApiKey, // Send plain API key (no hashing in platform-api)
 		ExternalRefId: req.ExternalRefId,
-		Operations:    operations,
 	}
 
 	// Handle optional pointer fields
@@ -197,9 +194,6 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	}
 	if req.ExternalRefId != nil {
 		event.ExternalRefId = req.ExternalRefId
-	}
-	if req.Operations != nil {
-		event.Operations = *req.Operations
 	}
 	if req.ExpiresAt != nil {
 		expiresAtStr := req.ExpiresAt.Format(time.RFC3339)

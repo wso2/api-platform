@@ -138,7 +138,7 @@ func TestAPIKeyTranslator(t *testing.T) {
 				Name:       "test-key-1",
 				APIKey:     "apikey123456789",
 				APIId:      "api1",
-				Operations: "*",
+	
 				Status:     models.APIKeyStatusActive,
 				CreatedAt:  now,
 				CreatedBy:  "user1",
@@ -150,7 +150,7 @@ func TestAPIKeyTranslator(t *testing.T) {
 				Name:       "test-key-2",
 				APIKey:     "apikey987654321",
 				APIId:      "api2",
-				Operations: "GET,POST",
+	
 				Status:     models.APIKeyStatusActive,
 				CreatedAt:  now,
 				CreatedBy:  "user2",
@@ -192,7 +192,7 @@ func TestAPIKeySnapshotManager_UpdateSnapshot(t *testing.T) {
 			Name:       "test-key",
 			APIKey:     "apikey123456789",
 			APIId:      "api1",
-			Operations: "*",
+
 			Status:     models.APIKeyStatusActive,
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
@@ -216,7 +216,7 @@ func TestAPIKeySnapshotManager_StoreAndRevoke(t *testing.T) {
 		Name:       "test-key",
 		APIKey:     "apikey123456789",
 		APIId:      "api1",
-		Operations: "*",
+
 		Status:     models.APIKeyStatusActive,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
@@ -253,7 +253,7 @@ func TestAPIKeySnapshotManager_RemoveAPIKeysByAPI(t *testing.T) {
 			Name:       "test-key-" + string(rune('1'+i)),
 			APIKey:     "apikey" + string(rune('1'+i)),
 			APIId:      "api1",
-			Operations: "*",
+
 			Status:     models.APIKeyStatusActive,
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
@@ -279,7 +279,7 @@ func TestAPIKeyStateManager_StoreAPIKey(t *testing.T) {
 		Name:       "test-key",
 		APIKey:     "apikey123456789",
 		APIId:      "api1",
-		Operations: "*",
+
 		Status:     models.APIKeyStatusActive,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
@@ -307,7 +307,7 @@ func TestAPIKeyStateManager_RevokeAPIKey(t *testing.T) {
 		Name:       "test-key",
 		APIKey:     "apikey123456789",
 		APIId:      "api1",
-		Operations: "*",
+
 		Status:     models.APIKeyStatusActive,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
@@ -332,7 +332,7 @@ func TestAPIKeyStateManager_RemoveAPIKeysByAPI(t *testing.T) {
 		Name:       "test-key",
 		APIKey:     "apikey123456789",
 		APIId:      "api1",
-		Operations: "*",
+
 		Status:     models.APIKeyStatusActive,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),

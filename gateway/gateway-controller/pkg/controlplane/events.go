@@ -139,7 +139,6 @@ type APIKeyCreatedEventPayload struct {
 	ApiKey        string  `json:"apiKey"`         // Plain text API key (will be hashed by gateway)
 	Name          string  `json:"name,omitempty"` //  URL-safe identifier (3-63 chars, lowercase alphanumeric with hyphens)
 	ExternalRefId *string `json:"externalRefId,omitempty"`
-	Operations    string  `json:"operations"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
 	ExpiresIn     *struct {
 		Duration int    `json:"duration,omitempty"`
@@ -162,7 +161,6 @@ type APIKeyUpdatedEventPayload struct {
 	KeyName       string  `json:"keyName"`
 	ApiKey        string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
 	ExternalRefId string  `json:"externalRefId"`
-	Operations    string  `json:"operations"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
 	ExpiresIn     *struct {
 		Duration int    `json:"duration,omitempty"`
