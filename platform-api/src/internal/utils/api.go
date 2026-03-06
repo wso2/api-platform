@@ -1385,6 +1385,13 @@ func (u *APIUtil) MergeRESTAPIDetails(userAPI *api.RESTAPI, extractedAPI *api.RE
 		merged.Upstream = extractedAPI.Upstream
 	}
 
+	// Vhosts: prefer user-provided override when non-nil
+	if userAPI.Vhosts != nil {
+		merged.Vhosts = userAPI.Vhosts
+	} else {
+		merged.Vhosts = extractedAPI.Vhosts
+	}
+
 	// Policies/channels are only from user input
 	merged.Policies = userAPI.Policies
 	merged.Channels = userAPI.Channels
