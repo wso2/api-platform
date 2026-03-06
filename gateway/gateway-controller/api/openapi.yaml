@@ -2949,8 +2949,6 @@ components:
     LLMProviderTemplateResourceMappings:
       type: object
       properties:
-        default:
-          $ref: '#/components/schemas/LLMProviderTemplateResourceMapping'
         resources:
           type: array
           items:
