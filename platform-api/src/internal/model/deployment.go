@@ -55,3 +55,28 @@ const (
 	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
 	DeploymentStatusArchived   DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )
+
+// DeploymentMetadata represents the metadata section of the API deployment YAML
+type DeploymentMetadata struct {
+	Name   string            `yaml:"name" binding:"required"`
+	Labels map[string]string `yaml:"labels,omitempty"`
+}
+
+// MCPProxyDeploymentYAML represents the structure of the YAML used for deploying an MCP proxy
+type MCPProxyDeploymentYAML struct {
+	ApiVersion string                 `yaml:"apiVersion" binding:"required"`
+	Kind       string                 `yaml:"kind" binding:"required"`
+	Metadata   DeploymentMetadata     `yaml:"metadata" binding:"required"`
+	Spec       MCPProxyDeploymentSpec `yaml:"spec" binding:"required"`
+}
+
+// MCPProxyDeploymentSpec represents the spec section of the MCP proxy deployment YAML
+type MCPProxyDeploymentSpec struct {
+	DisplayName string         `yaml:"displayName" binding:"required"`
+	Version     string         `yaml:"version" binding:"required"`
+	Context     string         `yaml:"context" binding:"required"`
+	Vhost       string         `yaml:"vhost" binding:"required"`
+	Upstream    UpstreamConfig `yaml:"upstream" binding:"required"`
+	SpecVersion string         `yaml:"specVersion" binding:"required"`
+	Policies    []Policy       `yaml:"policies,omitempty"`
+}
