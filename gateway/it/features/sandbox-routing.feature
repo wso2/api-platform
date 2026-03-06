@@ -991,3 +991,94 @@ Feature: Sandbox Routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "env-routing-redeploy-sandbox-v1.0"
     Then the response should be successful
+
+  # When vhosts.main is customised but vhosts.sandbox is omitted, the sandbox upstream
+  # is still reachable via the global default sandbox vhost (sandbox-*).
+  Scenario: Sandbox routes use global default vhost when vhosts.sandbox is omitted
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: env-routing-sandbox-vhost-fallback-v1.0
+      spec:
+        displayName: Env-Routing-Sandbox-Vhost-Fallback-API
+        version: v1.0
+        context: /env-sb-vhost-fallback/$version
+        vhosts:
+          main: sb-vhost-fallback-main.local
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/env-sb-vhost-fallback/v1.0/whoami" to be ready with host "sb-vhost-fallback-main.local"
+
+    When I clear all headers
+    And I set request host to "sb-vhost-fallback-main.local"
+    And I send a GET request to "http://localhost:8080/env-sb-vhost-fallback/v1.0/whoami"
+    Then the response should be successful
+    And the JSON response field "path" should be "/whoami"
+
+    # sandbox-sb-vhost-fallback.local matches sandbox-* (global default) — sandbox upstream reachable
+    And I wait for the endpoint "http://localhost:8080/env-sb-vhost-fallback/v1.0/whoami" to be ready with host "sandbox-sb-vhost-fallback.local"
+    When I clear all headers
+    And I set request host to "sandbox-sb-vhost-fallback.local"
+    And I send a GET request to "http://localhost:8080/env-sb-vhost-fallback/v1.0/whoami"
+    Then the response should be successful
+    And the JSON response field "environment" should be "sandbox"
+    And the JSON response field "path" should be "/sandbox/whoami"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "env-routing-sandbox-vhost-fallback-v1.0"
+    Then the response should be successful
+
+  # Stronger isolation check than the existing "no-sandbox" scenario:
+  # uses a host that actually matches the global sandbox-* pattern, confirming
+  # that a main-only API registers no routes under the real sandbox virtual host.
+  Scenario: Requests to global default sandbox vhost are rejected when API has no sandbox upstream
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: env-routing-no-sandbox-global-vhost-v1.0
+      spec:
+        displayName: Env-Routing-No-Sandbox-Global-Vhost-API
+        version: v1.0
+        context: /env-no-sb-global/$version
+        vhosts:
+          main: no-sb-global-main.local
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/env-no-sb-global/v1.0/whoami" to be ready with host "no-sb-global-main.local"
+
+    When I clear all headers
+    And I set request host to "no-sb-global-main.local"
+    And I send a GET request to "http://localhost:8080/env-no-sb-global/v1.0/whoami"
+    Then the response should be successful
+    And the JSON response field "path" should be "/whoami"
+
+    # sandbox-no-sb-global.local matches sandbox-* (global default sandbox vhost).
+    # Because this API has no sandbox upstream, no routes exist there → 404.
+    When I clear all headers
+    And I set request host to "sandbox-no-sb-global.local"
+    And I send a GET request to "http://localhost:8080/env-no-sb-global/v1.0/whoami"
+    Then the response status code should be 404
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "env-routing-no-sandbox-global-vhost-v1.0"
+    Then the response should be successful

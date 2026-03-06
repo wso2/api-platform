@@ -19,6 +19,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -68,8 +69,10 @@ func (c *RestAPIConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*c = RestAPIConfig(aux.Alias)
-	if c.Vhosts == nil && aux.LegacyVhost != nil && *aux.LegacyVhost != "" {
-		c.Vhosts = &VhostsConfig{Main: *aux.LegacyVhost}
+	if c.Vhosts == nil && aux.LegacyVhost != nil {
+		if trimmed := strings.TrimSpace(*aux.LegacyVhost); trimmed != "" {
+			c.Vhosts = &VhostsConfig{Main: trimmed}
+		}
 	}
 	return nil
 }

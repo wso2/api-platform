@@ -688,6 +688,34 @@ func TestModelToRESTAPILegacyVhostFallback(t *testing.T) {
 	}
 }
 
+// TestModelToRESTAPILegacyVhostWhitespaceIgnored verifies that a whitespace-only legacy vhost is not promoted.
+func TestModelToRESTAPILegacyVhostWhitespaceIgnored(t *testing.T) {
+	util := &APIUtil{}
+
+	// Simulate a legacy DB row with a whitespace-only vhost value
+	legacyJSON := `{"context":"/legacy","vhost":"   "}`
+	var config model.RestAPIConfig
+	if err := json.Unmarshal([]byte(legacyJSON), &config); err != nil {
+		t.Fatalf("json.Unmarshal error = %v", err)
+	}
+
+	apiModel := &model.API{
+		Handle:        "legacy-ws-api",
+		Name:          "Legacy Whitespace API",
+		Version:       "1.0",
+		ProjectID:     "00000000-0000-0000-0000-000000000001",
+		Configuration: config,
+	}
+
+	result, err := util.ModelToRESTAPI(apiModel)
+	if err != nil {
+		t.Fatalf("ModelToRESTAPI() error = %v", err)
+	}
+	if result.Vhosts != nil {
+		t.Errorf("expected Vhosts to be nil for whitespace-only legacy vhost, got %+v", result.Vhosts)
+	}
+}
+
 // TestGenerateDeploymentYAMLIncludesVhosts verifies that the generated YAML contains vhosts.main and vhosts.sandbox.
 func TestGenerateDeploymentYAMLIncludesVhosts(t *testing.T) {
 	util := &APIUtil{}
@@ -738,6 +766,68 @@ func TestGenerateDeploymentYAMLIncludesVhosts(t *testing.T) {
 
 // TestGenerateDeploymentYAMLLegacyVhostFallback verifies that a model deserialized from a legacy DB row
 // (with "vhost" but no "vhosts") produces spec.vhosts.main in the deployment YAML.
+// TestMergeRESTAPIDetailsVhosts verifies that MergeRESTAPIDetails correctly preserves Vhosts.
+func TestMergeRESTAPIDetailsVhosts(t *testing.T) {
+	util := &APIUtil{}
+	sandbox := "sandbox.example.com"
+
+	userVhosts := &api.APIVhosts{Main: "user.example.com", Sandbox: &sandbox}
+	extractedVhosts := &api.APIVhosts{Main: "extracted.example.com"}
+
+	backendURL := "https://backend.example.com"
+	baseUser := func() *api.RESTAPI {
+		return &api.RESTAPI{
+			Name:    "Test API",
+			Context: "/test",
+			Version: "1.0",
+			Upstream: api.Upstream{
+				Main: api.UpstreamDefinition{Url: &backendURL},
+			},
+		}
+	}
+	baseExtracted := func() *api.RESTAPI {
+		return &api.RESTAPI{
+			Name:    "Test API",
+			Context: "/test",
+			Version: "1.0",
+			Upstream: api.Upstream{
+				Main: api.UpstreamDefinition{Url: &backendURL},
+			},
+		}
+	}
+
+	t.Run("user vhosts wins when both set", func(t *testing.T) {
+		u := baseUser()
+		u.Vhosts = userVhosts
+		e := baseExtracted()
+		e.Vhosts = extractedVhosts
+		merged := util.MergeRESTAPIDetails(u, e)
+		if merged.Vhosts != userVhosts {
+			t.Errorf("Vhosts = %v, want userVhosts %v", merged.Vhosts, userVhosts)
+		}
+	})
+
+	t.Run("user vhosts wins when extracted nil", func(t *testing.T) {
+		u := baseUser()
+		u.Vhosts = userVhosts
+		e := baseExtracted()
+		merged := util.MergeRESTAPIDetails(u, e)
+		if merged.Vhosts != userVhosts {
+			t.Errorf("Vhosts = %v, want userVhosts %v", merged.Vhosts, userVhosts)
+		}
+	})
+
+	t.Run("extracted vhosts used when user nil", func(t *testing.T) {
+		u := baseUser()
+		e := baseExtracted()
+		e.Vhosts = extractedVhosts
+		merged := util.MergeRESTAPIDetails(u, e)
+		if merged.Vhosts != extractedVhosts {
+			t.Errorf("Vhosts = %v, want extractedVhosts %v", merged.Vhosts, extractedVhosts)
+		}
+	})
+}
+
 func TestGenerateDeploymentYAMLLegacyVhostFallback(t *testing.T) {
 	util := &APIUtil{}
 
