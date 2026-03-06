@@ -1900,25 +1900,26 @@ components:
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_]+$'
           example: my-upstream-1
+        basePath:
+          type: string
+          description: Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended.
+          example: /api/v2
         timeout:
           $ref: "#/components/schemas/UpstreamTimeout"
         upstreams:
           type: array
-          description: List of backend targets with optional weights
+          description: List of backend targets with optional weights for load balancing
           minItems: 1
           items:
             type: object
             required:
-              - urls
+              - url
             properties:
-              urls:
-                type: array
-                description: Backend URLs for this upstream target
-                minItems: 1
-                items:
-                  type: string
-                  format: uri
-                  example: http://prod-backend-1:5000/api/v2
+              url:
+                type: string
+                format: uri
+                description: Backend URL (host and port only, path comes from basePath)
+                example: http://prod-backend-1:5000
               weight:
                 type: integer
                 description: Weight for load balancing (optional, default 100)

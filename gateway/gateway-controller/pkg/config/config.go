@@ -337,7 +337,6 @@ type PolicyEngineConfig struct {
 	Port              uint32          `koanf:"port"` // Policy engine ext_proc port (TCP mode only)
 	TimeoutMs         uint32          `koanf:"timeout_ms"`
 	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
-	RouteCacheAction  string          `koanf:"route_cache_action"`
 	AllowModeOverride bool            `koanf:"allow_mode_override"`
 	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
 	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
@@ -602,7 +601,6 @@ func defaultConfig() *Config {
 				Port:              9001,            // Only used in TCP mode
 				TimeoutMs:         60000,
 				FailureModeAllow:  false,
-				RouteCacheAction:  "RETAIN",
 				AllowModeOverride: true,
 				MessageTimeoutMs:  60000,
 				TLS: PolicyEngineTLS{
@@ -1244,20 +1242,6 @@ func (c *Config) validatePolicyEngineConfig() error {
 			// Warning: No CA provided and not skipping verification
 			// This might fail in production with self-signed certs
 		}
-	}
-
-	// Validate route cache action
-	validRouteCacheActions := []string{"DEFAULT", "RETAIN", "CLEAR"}
-	isValidAction := false
-	for _, action := range validRouteCacheActions {
-		if policyEngine.RouteCacheAction == action {
-			isValidAction = true
-			break
-		}
-	}
-	if !isValidAction {
-		return fmt.Errorf("router.policy_engine.route_cache_action must be one of: DEFAULT, RETAIN, CLEAR, got: %s",
-			policyEngine.RouteCacheAction)
 	}
 
 	return nil

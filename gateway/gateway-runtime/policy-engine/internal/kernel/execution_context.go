@@ -59,6 +59,21 @@ type PolicyExecutionContext struct {
 	// Dynamic metadata to be shared across request and response phases
 	dynamicMetadata map[string]map[string]interface{}
 
+	// Default upstream cluster for dynamic cluster routing
+	// Set from route metadata when the route uses cluster_header routing
+	defaultUpstreamCluster string
+
+	// Upstream base path for the main upstream (e.g., /anything)
+	upstreamBasePath string
+
+	// API context path (e.g., /weather/v1.0)
+	// Used for computing path transformations when UpstreamName changes the upstream
+	apiContext string
+
+	// Maps upstream definition names to their URL paths
+	// Used when UpstreamName is set to compute the correct path transformation
+	upstreamDefinitionPaths map[string]string
+
 	// Reference to server components
 	server *ExternalProcessorServer
 }
