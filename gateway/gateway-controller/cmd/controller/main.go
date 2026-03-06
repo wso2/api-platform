@@ -15,7 +15,11 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -144,6 +148,10 @@ func main() {
 	lazyResourceSnapshotManager := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, log)
 	lazyResourceXDSManager := lazyresourcexds.NewLazyResourceStateManager(lazyResourceStore, lazyResourceSnapshotManager, log)
 
+	// Initialize encryption providers for secret management
+	var encryptionProviderManager *encryption.ProviderManager
+	var secretsService *secrets.SecretService
+
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
 		log.Info("Loading configurations from database")
@@ -164,6 +172,43 @@ func main() {
 			os.Exit(1)
 		}
 		log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
+
+		if len(cfg.Controller.Encryption.Providers) > 0 {
+			log.Info("Initializing encryption providers", slog.Int("provider_count", len(cfg.Controller.Encryption.Providers)))
+
+			// Initialize encryption providers
+			var providers []encryption.EncryptionProvider
+			for _, providerConfig := range cfg.Controller.Encryption.Providers {
+				switch providerConfig.Type {
+				case "aesgcm":
+					// Convert config keys to AES-GCM key configs
+					var keyConfigs []aesgcm.KeyConfig
+					for _, keyConf := range providerConfig.Keys {
+						keyConfigs = append(keyConfigs, aesgcm.KeyConfig{
+							Version:  keyConf.Version,
+							FilePath: keyConf.FilePath,
+						})
+					}
+
+					provider, err := aesgcm.NewAESGCMProvider(keyConfigs, log)
+					if err != nil {
+						log.Error("Failed to initialize AES-GCM provider", slog.Any("error", err))
+					}
+					providers = append(providers, provider)
+
+				default:
+					log.Error("Unsupported encryption provider type", slog.String("type", providerConfig.Type))
+				}
+			}
+
+			// Create provider manager
+			encryptionProviderManager, err = encryption.NewProviderManager(providers, log)
+			if err != nil {
+				log.Error("Failed to initialize provider manager", slog.Any("error", err))
+			}
+			// Create secrets service
+			secretsService = secrets.NewSecretsService(db, encryptionProviderManager, log)
+		}
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -237,6 +282,9 @@ func main() {
 
 	// Initialize policy store and policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
+
+	// Initialize policy resolver
+	policyResolver := resolver.NewPolicyResolver(policyDefinitions, secretsService)
 
 	// Initialize policy store
 	policyStore := storage.NewPolicyStore()
@@ -314,7 +362,9 @@ func main() {
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation and API key management
-	cpClient := controlplane.NewClient(cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router, apiKeyXDSManager, &cfg.APIKey, policyManager, cfg, policyDefinitions, lazyResourceXDSManager, templateDefinitions)
+	cpClient := controlplane.NewClient(cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator,
+		&cfg.Router, apiKeyXDSManager, &cfg.APIKey, policyManager, cfg, policyDefinitions, lazyResourceXDSManager,
+		templateDefinitions, policyResolver)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -347,8 +397,8 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log,
+		cpClient, policyDefinitions, templateDefinitions, validator, secretsService, policyResolver, apiKeyXDSManager, cfg)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
@@ -523,6 +573,12 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
 		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+
+		"POST /secrets":       {"admin"},
+		"GET /secrets":        {"admin"},
+		"GET /secrets/:id":    {"admin"},
+		"PUT /secrets/:id":    {"admin"},
+		"DELETE /secrets/:id": {"admin"},
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}

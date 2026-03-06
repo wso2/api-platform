@@ -39,7 +39,7 @@ import (
 var postgresSchemaSQL string
 
 const (
-	postgresSchemaVersion = 8
+	postgresSchemaVersion = 10
 	postgresSchemaLockID  = int64(749251473)
 	pgUniqueViolationCode = "23505"
 )
@@ -324,6 +324,19 @@ func isPostgresAPIKeyUniqueConstraintError(err error) bool {
 		return true
 	default:
 		return strings.Contains(pgErr.TableName, "api_keys")
+	}
+}
+
+func isPostgresSecretUniqueConstraintError(err error) bool {
+	pgErr := extractPgError(err)
+	if pgErr == nil || pgErr.Code != pgUniqueViolationCode {
+		return false
+	}
+	switch pgErr.ConstraintName {
+	case "secrets_handle_key":
+		return true
+	default:
+		return strings.Contains(pgErr.TableName, "secrets")
 	}
 }
 

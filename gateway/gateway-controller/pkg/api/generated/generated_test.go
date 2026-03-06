@@ -243,6 +243,31 @@ type MockServerInterface struct {
 	ListPoliciesCalled               bool
 }
 
+// CreateSecret implements [ServerInterface].
+func (m *MockServerInterface) CreateSecret(c *gin.Context) {
+	panic("unimplemented")
+}
+
+// DeleteSecret implements [ServerInterface].
+func (m *MockServerInterface) DeleteSecret(c *gin.Context, id string) {
+	panic("unimplemented")
+}
+
+// GetSecret implements [ServerInterface].
+func (m *MockServerInterface) GetSecret(c *gin.Context, id string) {
+	panic("unimplemented")
+}
+
+// ListSecrets implements [ServerInterface].
+func (m *MockServerInterface) ListSecrets(c *gin.Context) {
+	panic("unimplemented")
+}
+
+// UpdateSecret implements [ServerInterface].
+func (m *MockServerInterface) UpdateSecret(c *gin.Context, id string) {
+	panic("unimplemented")
+}
+
 // CreateAPIKey implements [ServerInterface].
 func (m *MockServerInterface) CreateAPIKey(c *gin.Context, id string) {
 	m.CreateAPIKeyCalled = true

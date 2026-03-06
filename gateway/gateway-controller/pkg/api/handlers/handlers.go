@@ -27,6 +27,9 @@ import (
 
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 
 	"io"
 	"net/http"
@@ -48,7 +51,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -71,6 +73,8 @@ type APIServer struct {
 	deploymentService    *utils.APIDeploymentService
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
+	secretService        *secrets.SecretService
+	policyResolver       *resolver.PolicyResolver
 	apiKeyService        *utils.APIKeyService
 	apiKeyXDSManager     *apikeyxds.APIKeyStateManager
 	controlPlaneClient   controlplane.ControlPlaneClient
@@ -91,10 +95,13 @@ func NewAPIServer(
 	policyDefinitions map[string]api.PolicyDefinition,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
+	secretService *secrets.SecretService,
+	policyResolver *resolver.PolicyResolver,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator,
+		&systemConfig.Router, policyResolver)
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	server := &APIServer{
@@ -105,6 +112,8 @@ func NewAPIServer(
 		policyDefinitions:    policyDefinitions,
 		parser:               config.NewParser(),
 		validator:            validator,
+		secretService:        secretService,
+		policyResolver:       policyResolver,
 		logger:               logger,
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
@@ -226,6 +235,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Deploy API configuration using the utility service
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
 	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
@@ -554,6 +564,19 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Check if config exists first to return 404 if not found
+	existing, err := s.store.GetByHandle(handle)
+	if err != nil {
+		log.Warn("API configuration not found",
+			slog.String("handle", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
+		})
+		return
+	}
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -568,248 +591,76 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		return
 	}
 
-	// Parse configuration
-	contentType := c.GetHeader("Content-Type")
-	var apiConfig api.APIConfiguration
-	err = s.parser.Parse(body, contentType, &apiConfig)
+	// Use deployment service to handle the update
+	// Important: The result contains resolved secrets. Do not expose them in responses.
+	result, err := s.deploymentService.UpdateAPIConfiguration(utils.APIDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		APIID:         existing.ID, // Use existing config's ID
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+
 	if err != nil {
-		log.Error("Failed to parse configuration", slog.Any("error", err))
+		log.Error("Failed to update API configuration", slog.Any("error", err))
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse configuration: %v", err),
-		})
-		return
-	}
 
-	// Validate that the handle in the YAML matches the path parameter
-	if apiConfig.Metadata.Name != "" {
-		if apiConfig.Metadata.Name != handle {
-			log.Warn("Handle mismatch between path and YAML metadata",
-				slog.String("path_handle", handle),
-				slog.String("yaml_handle", apiConfig.Metadata.Name))
-			metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-			metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		// Handle specific error types
+		if errors.Is(err, storage.ErrNotFound) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
-				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
+				Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
 			})
 			return
 		}
-	}
 
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		log.Warn("Configuration validation failed",
-			slog.String("handle", handle),
-			slog.Int("num_errors", len(validationErrors)))
-
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErrors)))
-
-		errors := make([]api.ValidationError, len(validationErrors))
-		for i, e := range validationErrors {
-			errors[i] = api.ValidationError{
-				Field:   stringPtr(e.Field),
-				Message: stringPtr(e.Message),
-			}
-		}
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Configuration validation failed",
-			Errors:  &errors,
-		})
-		return
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	existing, err := s.db.GetConfigByHandle(handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	// Update stored configuration
-	now := time.Now()
-	existing.Configuration = apiConfig
-	existing.Status = models.StatusPending
-	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
-
-	if apiConfig.Kind == api.WebSubApi {
-		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
-		var regErrs int32
-		var deregErrs int32
-
-		if len(topicsToRegister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
-				//fmt.Println("Topics Registering Started")
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to register topic with WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-							atomic.AddInt32(&regErrs, 1)
-						} else {
-							log.Info("Successfully registered topic with WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToRegister)
-		}
-
-		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-							atomic.AddInt32(&deregErrs, 1)
-						} else {
-							log.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-		wg2.Wait()
-
-		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", existing.ID),
-			slog.Int("registered", len(topicsToRegister)),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("register_errors", int(regErrs)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if regErrs > 0 || deregErrs > 0 {
-			log.Error("Failed to register & deregister topics",
-				slog.Int("topics_to_register", len(topicsToRegister)),
-				slog.Int("topics_to_unregister", len(topicsToUnregister)),
-				slog.Int("register_errors", int(regErrs)),
-				slog.Int("deregister_errors", int(deregErrs)))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Topic lifecycle operations failed",
-			})
-			return
-		}
-	}
-
-	// Atomic dual-write: database + in-memory
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			log.Error("Failed to update config in database", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to persist configuration update",
-			})
-			return
-		}
-	}
-
-	if err := s.store.Update(existing); err != nil {
-		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
-			log.Info("API configuration handle already exists",
-				slog.String("id", existing.ID),
-				slog.String("handle", handle))
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
-		} else {
-			log.Error("Failed to update config in memory store", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to update configuration in memory store",
-			})
+			return
 		}
+
+		var validationErr *utils.ValidationErrorListError
+		if errors.As(err, &validationErr) {
+			errors := make([]api.ValidationError, len(validationErr.Errors))
+			for i, e := range validationErr.Errors {
+				errors[i] = api.ValidationError{
+					Field:   stringPtr(e.Field),
+					Message: stringPtr(e.Message),
+				}
+			}
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Configuration validation failed",
+				Errors:  &errors,
+			})
+			return
+		}
+
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
 		return
 	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	log.Info("API configuration updated",
-		slog.String("id", existing.ID),
-		slog.String("handle", handle))
 
 	// Record successful operation metrics
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 
-	// Return success response (id is the handle)
+	// Return success response
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
-		Id:        stringPtr(existing.GetHandle()),
-		UpdatedAt: timePtr(existing.UpdatedAt),
+		Id:        stringPtr(result.StoredConfig.GetHandle()),
+		UpdatedAt: timePtr(result.StoredConfig.UpdatedAt),
 	})
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(existing)
+		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
@@ -820,7 +671,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			}
 		} else {
 			// API no longer has policies, remove the existing policy configuration
-			policyID := existing.ID + "-policies"
+			policyID := result.StoredConfig.ID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if API never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -1246,6 +1097,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
 	stored, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
 		Data:        body,
 		ContentType: c.GetHeader("Content-Type"),
@@ -1348,6 +1200,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
 	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
@@ -1495,6 +1348,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
 	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
 		Data:        body,
 		ContentType: c.GetHeader("Content-Type"),
@@ -1597,6 +1451,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
 	updated, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
@@ -2142,6 +1997,311 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			// Continue waiting if status is still pending
 		}
 	}
+}
+
+// CreateSecret handles POST /secrets
+func (s *APIServer) CreateSecret(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.CreateSecret(secrets.SecretParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret created successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusCreated, gin.H{
+		"id":         secret.Handle,
+		"value":      "",
+		"created_at": secret.CreatedAt,
+		"updated_at": secret.UpdatedAt,
+	})
+}
+
+// ListSecrets implements ServerInterface.ListSecrets
+// (GET /secrets)
+func (s *APIServer) ListSecrets(c *gin.Context) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secretsList", slog.String("correlation_id", correlationID))
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	secretsMeta, err := s.secretService.GetSecrets(correlationID)
+	if err != nil {
+		log.Error("Failed to retrieve secretsList",
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve secretsList",
+		})
+		return
+	}
+
+	// Convert []SecretMeta to API response type
+	secretsList := make([]struct {
+		CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+		DisplayName string    `json:"displayName" yaml:"displayName"`
+		Id          string    `json:"id" yaml:"id"`
+		UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+	}, 0, len(secretsMeta))
+	for _, meta := range secretsMeta {
+		secretsList = append(secretsList, struct {
+			CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+			DisplayName string    `json:"displayName" yaml:"displayName"`
+			Id          string    `json:"id" yaml:"id"`
+			UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+		}{
+			CreatedAt:   meta.CreatedAt,
+			DisplayName: meta.DisplayName,
+			Id:          meta.Handle,
+			UpdatedAt:   meta.UpdatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, api.SecretListResponse{
+		Status:     stringPtr("success"),
+		TotalCount: intPtr(len(secretsList)),
+		Secrets:    &secretsList,
+	})
+}
+
+// GetSecret handles GET /secrets/{id}
+func (s *APIServer) GetSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secret",
+		slog.String("secret_handle", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Retrieve secret
+	secret, err := s.secretService.Get(id, correlationID)
+	if err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for decryption failures (security-first)
+		log.Error("Failed to retrieve secret",
+			slog.String("secret_handle", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to decrypt secret",
+		})
+		return
+	}
+
+	log.Debug("Secret retrieved successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return secret
+	c.JSON(http.StatusOK, gin.H{
+		"id":         secret.Handle,
+		"value":      secret.Value,
+		"created_at": secret.CreatedAt,
+		"updated_at": secret.UpdatedAt,
+	})
+}
+
+// UpdateSecret handles PUT /secrets/{id}
+func (s *APIServer) UpdateSecret(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.UpdateSecret(id, secrets.SecretParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if strings.Contains(err.Error(), "secret configuration not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret updated successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusOK, gin.H{
+		"id":         secret.Handle,
+		"value":      "",
+		"created_at": secret.CreatedAt,
+		"updated_at": secret.UpdatedAt,
+	})
+}
+
+// DeleteSecret handles DELETE /secrets/{id}
+func (s *APIServer) DeleteSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Deleting secret",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delete secret
+	if err := s.secretService.Delete(id, correlationID); err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for storage failures
+		log.Error("Failed to delete secret",
+			slog.String("secret_id", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete secret",
+		})
+		return
+	}
+
+	log.Info("Secret deleted successfully",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Return 200 OK on successful deletion
+	c.Status(http.StatusOK)
 }
 
 // GetConfigDump implements the GET /config_dump endpoint

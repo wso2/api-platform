@@ -40,6 +40,7 @@ const (
 	sqliteUniqueTemplatesHandle        = "UNIQUE constraint failed: llm_provider_templates.handle, llm_provider_templates.gateway_id"
 	sqliteUniqueAPIKeysKey             = "UNIQUE constraint failed: api_keys.api_key"
 	sqliteUniqueAPIKeysID              = "UNIQUE constraint failed: api_keys.id"
+	sqliteUniqueSecretsHandle          = "UNIQUE constraint failed: secrets.handle"
 )
 
 // SQLiteStorage implements the Storage interface using SQLite
@@ -91,7 +92,7 @@ func (s *SQLiteStorage) initSchema() error {
 	}
 
 	if version == 0 {
-		s.logger.Info("Initializing database schema (version 8)")
+		s.logger.Info("Initializing database schema (version 11)")
 		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
@@ -746,4 +747,8 @@ func isAPIKeyUniqueConstraintError(err error) bool {
 	return err != nil &&
 		(err.Error() == sqliteUniqueAPIKeysKey ||
 			err.Error() == sqliteUniqueAPIKeysID)
+}
+
+func isSecretUniqueConstraintError(err error) bool {
+	return err != nil && err.Error() == sqliteUniqueSecretsHandle
 }

@@ -129,6 +129,7 @@ func getFeaturePaths() []string {
 		"features/cel-conditions.feature",
 		"features/analytics-basic.feature",
 		"features/token-based-ratelimit.feature",
+		"features/secrets.feature",
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))
@@ -310,8 +311,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterMCPSteps(ctx, testState, httpSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
-		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
-		RegisterAnalyticsSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps

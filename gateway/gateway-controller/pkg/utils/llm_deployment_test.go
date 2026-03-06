@@ -66,7 +66,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 	t.Run("Empty store returns empty list", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		routerConfig := &config.RouterConfig{ListenerPort: 8080}
-		apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 		service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		providers := service.ListLLMProviders(api.ListLLMProvidersParams{})
@@ -76,7 +76,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 	t.Run("Returns only LLM provider kind configs", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		routerConfig := &config.RouterConfig{ListenerPort: 8080}
-		apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 		service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		// Add an LLM provider config
@@ -110,7 +110,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 	t.Run("Filter by display name", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		routerConfig := &config.RouterConfig{ListenerPort: 8080}
-		apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 		service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		// Add first provider
@@ -171,7 +171,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	t.Run("Empty store returns empty list", func(t *testing.T) {
@@ -211,7 +211,7 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 func TestLLMDeploymentService_ListLLMProviderTemplates(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	t.Run("Empty store returns empty list", func(t *testing.T) {
@@ -263,7 +263,7 @@ func TestLLMDeploymentService_ListLLMProviderTemplates(t *testing.T) {
 func TestLLMDeploymentService_GetLLMProviderTemplateByHandle(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	t.Run("Returns error for non-existent template", func(t *testing.T) {
@@ -293,7 +293,7 @@ func TestLLMDeploymentService_GetLLMProviderTemplateByHandle(t *testing.T) {
 func TestLLMDeploymentService_CreateLLMProviderTemplate_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -310,7 +310,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_ParseError(t *testing.T)
 func TestLLMDeploymentService_CreateLLMProviderTemplate_ValidationError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -336,7 +336,7 @@ spec:
 func TestLLMDeploymentService_UpdateLLMProviderTemplate_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -354,7 +354,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_NotFound(t *testing.T) {
 func TestLLMDeploymentService_UpdateLLMProviderTemplate_HandleChange(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -393,7 +393,7 @@ spec:
 func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	_, err := service.DeleteLLMProviderTemplate("non-existent")
@@ -404,7 +404,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
 func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	// Add template
@@ -433,7 +433,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -452,7 +452,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testi
 func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -471,7 +471,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.
 func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -490,7 +490,7 @@ func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
 func TestLLMDeploymentService_UpdateLLMProxy_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -509,7 +509,7 @@ func TestLLMDeploymentService_UpdateLLMProxy_NotFound(t *testing.T) {
 func TestLLMDeploymentService_DeleteLLMProvider_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -521,7 +521,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_NotFound(t *testing.T) {
 func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -632,7 +632,7 @@ func TestMatchesFilters(t *testing.T) {
 func TestLLMDeploymentService_InitializeOOBTemplates_Empty(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	err := service.InitializeOOBTemplates(nil)
@@ -645,7 +645,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_Empty(t *testing.T) {
 func TestLLMDeploymentService_InitializeOOBTemplates_ValidTemplates(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	templates := map[string]*api.LLMProviderTemplate{
@@ -671,7 +671,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_ValidTemplates(t *testing.T
 func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	// Add existing template

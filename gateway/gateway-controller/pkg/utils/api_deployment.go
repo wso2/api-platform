@@ -32,6 +32,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -69,6 +70,7 @@ type APIDeploymentService struct {
 	parser          *config.Parser
 	validator       config.Validator
 	routerConfig    *config.RouterConfig
+	policyResolver  *resolver.PolicyResolver
 	httpClient      *http.Client
 }
 
@@ -79,6 +81,7 @@ func NewAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	policyResolver *resolver.PolicyResolver,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
 		store:           store,
@@ -88,10 +91,12 @@ func NewAPIDeploymentService(
 		validator:       validator,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		routerConfig:    routerConfig,
+		policyResolver:  policyResolver,
 	}
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
+// Important: The APIDeploymentResult contains resolved secrets. Do not expose them in responses.
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
 	var apiConfig api.APIConfiguration
 	// Parse configuration
@@ -286,6 +291,12 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, err := s.resolvePolicyConfiguration(storedCfg)
+	if err != nil {
+		return nil, err
+	}
+
 	// Try to save/update the configuration
 	isUpdate, err = s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
@@ -321,8 +332,223 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}()
 
 	return &APIDeploymentResult{
-		StoredConfig: storedCfg,
+		StoredConfig: resolvedCfg,
 		IsUpdate:     isUpdate,
+	}, nil
+}
+
+// UpdateAPIConfiguration handles the complete API configuration update process
+// This is similar to DeployAPIConfiguration but specifically for updates (API ID is required)
+func (s *APIDeploymentService) UpdateAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
+	var apiConfig api.APIConfiguration
+	// Parse configuration
+	err := s.parser.Parse(params.Data, params.ContentType, &apiConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse configuration: %w", err)
+	}
+
+	var apiName string
+	var apiVersion string
+
+	switch apiConfig.Kind {
+	case api.RestApi:
+		apiData, err := apiConfig.Spec.AsAPIConfigData()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
+		}
+		apiName = apiData.DisplayName
+		apiVersion = apiData.Version
+	case api.WebSubApi:
+		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse WebSub API data: %w", err)
+		}
+		apiName = webhookData.DisplayName
+		apiVersion = webhookData.Version
+	}
+
+	// Validate configuration
+	validationErrors := s.validator.Validate(&apiConfig)
+	if len(validationErrors) > 0 {
+		params.Logger.Warn("Configuration validation failed",
+			slog.String("api_id", params.APIID),
+			slog.String("name", apiName),
+			slog.Int("num_errors", len(validationErrors)))
+
+		for _, e := range validationErrors {
+			params.Logger.Warn("Validation error",
+				slog.String("field", e.Field),
+				slog.String("message", e.Message))
+		}
+		return nil, &ValidationErrorListError{Errors: validationErrors}
+	}
+
+	// API ID is required for updates
+	if params.APIID == "" {
+		return nil, fmt.Errorf("API ID is required for updates")
+	}
+
+	apiID := params.APIID
+	handle := apiConfig.Metadata.Name
+
+	// Check if config exists
+	existingConfig, err := s.store.Get(apiID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: configuration with id '%s' not found", storage.ErrNotFound, apiID)
+	}
+
+	// Check name+version conflict with other configurations
+	if conflicting, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {
+		if conflicting.ID != apiID {
+			return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, apiName, apiVersion)
+		}
+	}
+
+	// Check handle conflict with other configurations
+	if handle != "" {
+		for _, c := range s.store.GetAll() {
+			if c.GetHandle() == handle && c.ID != apiID {
+				return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+			}
+		}
+	}
+
+	// Create stored configuration
+	now := time.Now()
+	storedCfg := &models.StoredConfig{
+		ID:                  apiID,
+		Kind:                string(apiConfig.Kind),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		CreatedAt:           existingConfig.CreatedAt, // Preserve original creation time
+		UpdatedAt:           now,
+		DeployedAt:          nil,
+		DeployedVersion:     0,
+	}
+
+	// Handle WebSub topic management for WebSubApi kind
+	if apiConfig.Kind == api.WebSubApi {
+		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
+
+		var wg2 sync.WaitGroup
+		var regErrs int32
+		var deregErrs int32
+
+		if len(topicsToRegister) > 0 {
+			wg2.Add(1)
+			go func(list []string) {
+				defer wg2.Done()
+				params.Logger.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", apiID))
+				var childWg sync.WaitGroup
+				for _, topic := range list {
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+
+						if err := s.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
+							params.Logger.Error("Failed to register topic with WebSubHub",
+								slog.Any("error", err),
+								slog.String("topic", topic),
+								slog.String("api_id", apiID))
+							atomic.AddInt32(&regErrs, 1)
+							return
+						}
+						params.Logger.Info("Successfully registered topic with WebSubHub",
+							slog.String("topic", topic),
+							slog.String("api_id", apiID))
+					}(topic)
+				}
+				childWg.Wait()
+			}(topicsToRegister)
+		}
+
+		if len(topicsToUnregister) > 0 {
+			wg2.Add(1)
+			go func(list []string) {
+				defer wg2.Done()
+				var childWg sync.WaitGroup
+				params.Logger.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", apiID))
+				for _, topic := range list {
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+
+						if err := s.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
+							params.Logger.Error("Failed to deregister topic from WebSubHub",
+								slog.Any("error", err),
+								slog.String("topic", topic),
+								slog.String("api_id", apiID))
+							atomic.AddInt32(&deregErrs, 1)
+							return
+						}
+						params.Logger.Info("Successfully deregistered topic from WebSubHub",
+							slog.String("topic", topic),
+							slog.String("api_id", apiID))
+					}(topic)
+				}
+				childWg.Wait()
+			}(topicsToUnregister)
+		}
+
+		wg2.Wait()
+		params.Logger.Info("Topic lifecycle operations completed",
+			slog.String("api_id", apiID),
+			slog.Int("registered", len(topicsToRegister)),
+			slog.Int("deregistered", len(topicsToUnregister)),
+			slog.Int("register_errors", int(regErrs)),
+			slog.Int("deregister_errors", int(deregErrs)))
+
+		// Check if topic operations failed and return error
+		if regErrs > 0 || deregErrs > 0 {
+			params.Logger.Error("Topic lifecycle operations failed",
+				slog.Int("register_errors", int(regErrs)),
+				slog.Int("deregister_errors", int(deregErrs)))
+			return nil, fmt.Errorf("failed to complete topic operations: %d registration error(s), %d deregistration error(s)", regErrs, deregErrs)
+		}
+	}
+
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, err := s.resolvePolicyConfiguration(storedCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the configuration using existing update logic
+	_, err = s.updateExistingConfig(storedCfg, existingConfig, params.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the resolved config with the updated stored config state
+	*resolvedCfg = *storedCfg
+
+	params.Logger.Info("API configuration updated",
+		slog.String("api_id", apiID),
+		slog.String("name", apiName),
+		slog.String("version", apiVersion),
+		slog.String("correlation_id", params.CorrelationID))
+
+	// Update xDS snapshot asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+			params.Logger.Error("Failed to update xDS snapshot",
+				slog.Any("error", err),
+				slog.String("api_id", apiID),
+				slog.String("correlation_id", params.CorrelationID))
+		}
+	}()
+
+	return &APIDeploymentResult{
+		StoredConfig: resolvedCfg,
+		IsUpdate:     true,
 	}, nil
 }
 
@@ -366,6 +592,27 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 
 func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig) []string {
 	return s.store.TopicManager.GetAllByConfig(apiConfig.ID)
+}
+
+// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
+// Returns the resolved configuration or an error if policy resolution fails.
+func (s *APIDeploymentService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
+	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.GetHandle()),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+	return resolvedCfg, nil
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration

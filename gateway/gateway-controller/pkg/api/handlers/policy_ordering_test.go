@@ -26,6 +26,8 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 )
 
 // newTestAPIServer creates a minimal APIServer instance for testing.
@@ -35,24 +37,28 @@ func newTestAPIServer() *APIServer {
 		Main:    config.VHostEntry{Default: "localhost"},
 		Sandbox: config.VHostEntry{Default: "sandbox-*"},
 	}
+	// Initialize policy resolver
+	policyResolver := resolver.NewPolicyResolver(make(map[string]api.PolicyDefinition),
+		&secrets.SecretService{})
 	defs := map[string]api.PolicyDefinition{
-		"auth|v1.0.0": {Name: "auth", Version: "v1.0.0"},
-		"auth|v2.0.0": {Name: "auth", Version: "v2.0.0"},
-		"auth|v5.0.0": {Name: "auth", Version: "v5.0.0"},
-		"rateLimit|v1.0.0": {Name: "rateLimit", Version: "v1.0.0"},
-		"rateLimit|v2.0.0": {Name: "rateLimit", Version: "v2.0.0"},
-		"rateLimit|v3.0.0": {Name: "rateLimit", Version: "v3.0.0"},
-		"rateLimit|v5.0.0": {Name: "rateLimit", Version: "v5.0.0"},
-		"logging|v1.0.0": {Name: "logging", Version: "v1.0.0"},
-		"logging|v2.0.0": {Name: "logging", Version: "v2.0.0"},
-		"logging|v5.0.0": {Name: "logging", Version: "v5.0.0"},
-		"cors|v1.0.0": {Name: "cors", Version: "v1.0.0"},
+		"auth|v1.0.0":       {Name: "auth", Version: "v1.0.0"},
+		"auth|v2.0.0":       {Name: "auth", Version: "v2.0.0"},
+		"auth|v5.0.0":       {Name: "auth", Version: "v5.0.0"},
+		"rateLimit|v1.0.0":  {Name: "rateLimit", Version: "v1.0.0"},
+		"rateLimit|v2.0.0":  {Name: "rateLimit", Version: "v2.0.0"},
+		"rateLimit|v3.0.0":  {Name: "rateLimit", Version: "v3.0.0"},
+		"rateLimit|v5.0.0":  {Name: "rateLimit", Version: "v5.0.0"},
+		"logging|v1.0.0":    {Name: "logging", Version: "v1.0.0"},
+		"logging|v2.0.0":    {Name: "logging", Version: "v2.0.0"},
+		"logging|v5.0.0":    {Name: "logging", Version: "v5.0.0"},
+		"cors|v1.0.0":       {Name: "cors", Version: "v1.0.0"},
 		"validation|v1.0.0": {Name: "validation", Version: "v1.0.0"},
-		"caching|v1.0.0": {Name: "caching", Version: "v1.0.0"},
+		"caching|v1.0.0":    {Name: "caching", Version: "v1.0.0"},
 	}
 	return &APIServer{
 		routerConfig:      &config.RouterConfig{GatewayHost: "localhost", VHosts: *vhosts},
 		policyDefinitions: defs,
+		policyResolver:    policyResolver,
 	}
 }
 
