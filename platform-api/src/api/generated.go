@@ -356,11 +356,18 @@ const (
 	GetLLMProxyDeploymentsParamsStatusUNDEPLOYED GetLLMProxyDeploymentsParamsStatus = "UNDEPLOYED"
 )
 
+// Defines values for GetMCPProxyDeploymentsParamsStatus.
+const (
+	GetMCPProxyDeploymentsParamsStatusARCHIVED   GetMCPProxyDeploymentsParamsStatus = "ARCHIVED"
+	GetMCPProxyDeploymentsParamsStatusDEPLOYED   GetMCPProxyDeploymentsParamsStatus = "DEPLOYED"
+	GetMCPProxyDeploymentsParamsStatusUNDEPLOYED GetMCPProxyDeploymentsParamsStatus = "UNDEPLOYED"
+)
+
 // Defines values for GetDeploymentsParamsStatus.
 const (
-	ARCHIVED   GetDeploymentsParamsStatus = "ARCHIVED"
-	DEPLOYED   GetDeploymentsParamsStatus = "DEPLOYED"
-	UNDEPLOYED GetDeploymentsParamsStatus = "UNDEPLOYED"
+	GetDeploymentsParamsStatusARCHIVED   GetDeploymentsParamsStatus = "ARCHIVED"
+	GetDeploymentsParamsStatusDEPLOYED   GetDeploymentsParamsStatus = "DEPLOYED"
+	GetDeploymentsParamsStatusUNDEPLOYED GetDeploymentsParamsStatus = "UNDEPLOYED"
 )
 
 // APIKeySecurity Configuration for API key based authentication
@@ -2325,6 +2332,9 @@ type ApiId = string
 // DeploymentId defines model for deploymentId.
 type DeploymentId = openapi_types.UUID
 
+// DeploymentIdQ defines model for deploymentId-Q.
+type DeploymentIdQ = string
+
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
 
@@ -2500,6 +2510,36 @@ type ListMCPProxiesParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
+// GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
+type GetMCPProxyDeploymentsParams struct {
+	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+	Status *GetMCPProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// GetMCPProxyDeploymentsParamsStatus defines parameters for GetMCPProxyDeployments.
+type GetMCPProxyDeploymentsParamsStatus string
+
+// RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
+type RestoreMCPProxyDeploymentParams struct {
+	// DeploymentId **Deployment ID** consisting of the **UUID** of the Deployment to filter status by.
+	DeploymentId *DeploymentIdQ `form:"deploymentId,omitempty" json:"deploymentId,omitempty" yaml:"deploymentId,omitempty"`
+
+	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+}
+
+// UndeployMCPProxyDeploymentParams defines parameters for UndeployMCPProxyDeployment.
+type UndeployMCPProxyDeploymentParams struct {
+	// DeploymentId **Deployment ID** consisting of the **UUID** of the Deployment to filter status by.
+	DeploymentId *DeploymentIdQ `form:"deploymentId,omitempty" json:"deploymentId,omitempty" yaml:"deploymentId,omitempty"`
+
+	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+}
+
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
 	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
@@ -2619,6 +2659,9 @@ type CreateMCPProxyJSONRequestBody = MCPProxy
 
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
 type UpdateMCPProxyJSONRequestBody = MCPProxy
+
+// DeployMCPProxyJSONRequestBody defines body for DeployMCPProxy for application/json ContentType.
+type DeployMCPProxyJSONRequestBody = DeployRequest
 
 // RegisterOrganizationJSONRequestBody defines body for RegisterOrganization for application/json ContentType.
 type RegisterOrganizationJSONRequestBody = Organization
