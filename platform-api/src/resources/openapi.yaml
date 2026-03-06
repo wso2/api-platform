@@ -5030,6 +5030,8 @@ components:
 
     LLMProviderTemplateResourceMapping:
       type: object
+      required:
+        - resource
       properties:
         resource:
           type: string

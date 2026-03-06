@@ -1235,13 +1235,13 @@ type LLMProviderTemplate struct {
 	Metadata *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Human-readable LLM Template name
-	Name            string                `binding:"required" json:"name" yaml:"name"`
-	PromptTokens    *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	RemainingTokens *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	Name             string                               `binding:"required" json:"name" yaml:"name"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
-	RequestModel    *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
-	ResponseModel   *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
-	TotalTokens     *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -1278,13 +1278,13 @@ type LLMProviderTemplateListResponse struct {
 
 // LLMProviderTemplateResourceMapping defines model for LLMProviderTemplateResourceMapping.
 type LLMProviderTemplateResourceMapping struct {
-	CompletionTokens *ExtractionIdentifier       `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
-	PromptTokens     *ExtractionIdentifier       `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	RemainingTokens  *ExtractionIdentifier       `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
-	RequestModel     *ExtractionIdentifier       `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
+	PromptTokens     *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
 
 	// Resource Resource path pattern this mapping applies to (for example /responses or /chat/*)
-	Resource *string `json:"resource,omitempty" yaml:"resource,omitempty"`
+	Resource      string                `binding:"required" json:"resource" yaml:"resource"`
 	ResponseModel *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
 	TotalTokens   *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 }
@@ -1307,6 +1307,7 @@ type LLMProviderTemplateMetadata struct {
 	// OpenapiSpecUrl URL to the OpenAPI specification for the provider
 	OpenapiSpecUrl *string `json:"openapiSpecUrl,omitempty" yaml:"openapiSpecUrl,omitempty"`
 }
+
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
 	// Context Base path for all REST API routes (must start with /, no trailing slash)
