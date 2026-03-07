@@ -87,7 +87,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		ID:                  apiID,
+		UUID:                  apiID,
 		Kind:                string(api.Mcp),
 		Status:              models.StatusPending,
 		CreatedAt:           now,
@@ -146,7 +146,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			// Check if it's a conflict (Configuration already exists)
 			if storage.IsConflictError(err) {
 				logger.Info("MCP configuration already exists in database, updating instead",
-					slog.String("id", storedCfg.ID),
+					slog.String("id", storedCfg.UUID),
 					slog.String("displayName", storedCfg.GetDisplayName()),
 					slog.String("version", storedCfg.GetVersion()))
 
@@ -163,7 +163,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		// Check if it's a conflict (API already exists)
 		if storage.IsConflictError(err) {
 			logger.Info("MCP configuration already exists in memory, updating instead",
-				slog.String("id", storedCfg.ID),
+				slog.String("id", storedCfg.UUID),
 				slog.String("displayName", storedCfg.GetDisplayName()),
 				slog.String("version", storedCfg.GetVersion()))
 
@@ -172,7 +172,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		} else {
 			// Rollback database write (only if persistent mode)
 			if s.db != nil {
-				_ = s.db.DeleteConfig(storedCfg.ID)
+				_ = s.db.DeleteConfig(storedCfg.UUID)
 			}
 			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
@@ -216,7 +216,7 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
 				logger.Error("Failed to rollback DB after memory update failure",
 					slog.Any("error", rbErr),
-					slog.String("id", original.ID),
+					slog.String("id", original.UUID),
 					slog.String("displayName", original.GetDisplayName()),
 					slog.String("version", original.GetVersion()))
 			}
@@ -339,7 +339,7 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update
-	params.ID = existing.ID
+	params.ID = existing.UUID
 	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
 	if err != nil {
 		return nil, err
@@ -377,14 +377,14 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			logger.Error("Failed to delete config from database", slog.Any("error", err))
 			return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
 	}
 
 	// Delete from in-memory store
-	if err := s.store.Delete(cfg.ID); err != nil {
+	if err := s.store.Delete(cfg.UUID); err != nil {
 		logger.Error("Failed to delete config from memory store", slog.Any("error", err))
 		return nil, fmt.Errorf("failed to delete configuration from memory store: %w", err)
 	}

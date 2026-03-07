@@ -2,19 +2,18 @@
 -- Version: 1.0
 -- Description: Persistent storage for API configurations with lifecycle metadata
 
--- Main table for deployments
-CREATE TABLE IF NOT EXISTS deployments (
+-- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
+CREATE TABLE IF NOT EXISTS artifacts (
     -- Primary identifier (UUID)
-    id TEXT PRIMARY KEY,
+    uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    gateway_id TEXT NOT NULL DEFAULT 'default',
 
     -- Extracted fields for fast querying
     display_name TEXT NOT NULL,
     version TEXT NOT NULL,
-    context TEXT NOT NULL,              -- Base path (e.g., "/weather")
-    kind TEXT NOT NULL,                 -- Deployment type: "RestApi", "graphql", "grpc", "asyncapi"
+    kind TEXT NOT NULL,                 -- Artifact type: "RestApi", "WebSubApi", "LlmProvider", "LlmProxy", "Mcp"
     handle TEXT NOT NULL,               -- API handle (e.g., petstore-v1.0)
 
     -- Deployment status
@@ -25,27 +24,55 @@ CREATE TABLE IF NOT EXISTS deployments (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deployed_at TIMESTAMP,               -- NULL until first deployment
 
-    -- Version tracking for xDS snapshots
-    deployed_version INTEGER NOT NULL DEFAULT 0,
-
-    -- Composite unique constraints scoped by gateway
-    UNIQUE(display_name, version, gateway_id),
-    UNIQUE(handle, gateway_id)
+    -- Composite unique constraints scoped by gateway and kind
+    UNIQUE(gateway_id, kind, display_name, version),
+    UNIQUE(gateway_id, kind, handle)
 );
 
 -- Indexes for fast lookups
 
 -- Filter by deployment status (translator queries pending configs)
-CREATE INDEX IF NOT EXISTS idx_status ON deployments(status);
-
--- Filter by context path (conflict detection)
-CREATE INDEX IF NOT EXISTS idx_context ON deployments(context);
+CREATE INDEX IF NOT EXISTS idx_status ON artifacts(status);
 
 -- Filter by API type (reporting/analytics)
-CREATE INDEX IF NOT EXISTS idx_kind ON deployments(kind);
+CREATE INDEX IF NOT EXISTS idx_kind ON artifacts(kind);
 
 -- Filter by gateway
-CREATE INDEX IF NOT EXISTS idx_deployments_gateway_id ON deployments(gateway_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
+
+-- Per-resource-type tables (each stores source configuration as JSON)
+
+CREATE TABLE IF NOT EXISTS rest_apis (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS websub_apis (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS llm_providers (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS llm_proxies (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    provider_uuid TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY(provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS mcp_proxies (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
 
 -- Note: Policy definitions are no longer stored in the database.
 -- They are loaded from files at controller startup (see policies/ directory).
@@ -54,24 +81,24 @@ CREATE INDEX IF NOT EXISTS idx_deployments_gateway_id ON deployments(gateway_id)
 -- Table for custom TLS certificates
 CREATE TABLE IF NOT EXISTS certificates (
     -- Primary identifier (UUID)
-    id TEXT PRIMARY KEY,
+    uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
-    
+    gateway_id TEXT NOT NULL DEFAULT 'default',
+
     -- Human-readable name for the certificate
     name TEXT NOT NULL,
-    
+
     -- PEM-encoded certificate(s) as BLOB
     certificate BLOB NOT NULL,
-    
+
     -- Certificate metadata (extracted from first cert in bundle)
     subject TEXT NOT NULL,
     issuer TEXT NOT NULL,
     not_before TIMESTAMP NOT NULL,
     not_after TIMESTAMP NOT NULL,
     cert_count INTEGER NOT NULL DEFAULT 1,
-    
+
     -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -89,22 +116,13 @@ CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
 -- Filter by gateway
 CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);
 
-
--- Table for deployment-specific configurations
-CREATE TABLE IF NOT EXISTS deployment_configs (
-    id TEXT PRIMARY KEY,
-    configuration TEXT NOT NULL,        -- JSON-serialized APIConfiguration
-    source_configuration TEXT,          -- JSON-serialized SourceConfiguration
-    FOREIGN KEY(id) REFERENCES deployments(id) ON DELETE CASCADE
-);
-
 -- LLM Provider Templates table (added in schema version 4)
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Primary identifier (UUID)
-    id TEXT PRIMARY KEY,
+    uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    gateway_id TEXT NOT NULL DEFAULT 'default',
 
     -- Template handle (must be unique within a gateway)
     handle TEXT NOT NULL,
@@ -129,10 +147,10 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
     -- Primary identifier (UUID)
-    id TEXT PRIMARY KEY,
+    uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    gateway_id TEXT NOT NULL DEFAULT 'default',
 
     -- Human-readable name for the API key
     name TEXT NOT NULL,
@@ -143,8 +161,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Masked version of the API key for display purposes
     masked_api_key TEXT NOT NULL,
 
-    -- API reference
-    apiId TEXT NOT NULL,
+    -- Artifact reference
+    artifact_uuid TEXT NOT NULL,
 
     -- Comma-separated list of operations the key will have access to
     operations TEXT NOT NULL DEFAULT '*',
@@ -172,21 +190,21 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Human-readable display name for the API key
     display_name TEXT NOT NULL DEFAULT '',
 
-    -- Foreign key relationship to deployments
-    FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
+    -- Foreign key relationship to artifacts
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
 
-    -- Composite unique constraint (handle + api key name must be unique)
-    UNIQUE (apiId, name, gateway_id)
+    -- Composite unique constraint (artifact + api key name must be unique)
+    UNIQUE (artifact_uuid, name, gateway_id)
 );
 
 -- Indexes for API key lookups
 CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
-CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);
+CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 
--- Set schema version to 9 (removed index_key column, switched to hash-based indexing)
-PRAGMA user_version = 9;
+-- Set schema version to 10 (per-resource-type tables, id→uuid, deployments→artifacts)
+PRAGMA user_version = 10;

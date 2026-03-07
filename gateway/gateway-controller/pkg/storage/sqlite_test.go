@@ -77,12 +77,16 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9) // Current schema version
+	assert.Equal(t, version, 10) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
-		"deployments",
-		"deployment_configs",
+		"artifacts",
+		"rest_apis",
+		"websub_apis",
+		"llm_providers",
+		"llm_proxies",
+		"mcp_proxies",
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
@@ -109,8 +113,8 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	assert.NilError(t, err)
 	storage := store.(*sqlStore)
 
-	// Set schema version to 1 to test upgrade path
-	_, err = storage.db.Exec("PRAGMA user_version = 1")
+	// Set schema version to 9 to test v9→v10 upgrade path
+	_, err = storage.db.Exec("PRAGMA user_version = 9")
 	assert.NilError(t, err)
 	storage.db.Close()
 
@@ -120,11 +124,11 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	storage = store.(*sqlStore)
 	defer storage.db.Close()
 
-	// Verify all migrations ran
+	// Verify migration ran
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9)
+	assert.Equal(t, version, 10)
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -145,11 +149,11 @@ func TestSQLiteStorage_DeleteConfig_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Delete it
-	err = storage.DeleteConfig(config.ID)
+	err = storage.DeleteConfig(config.UUID)
 	assert.NilError(t, err)
 
 	// Verify it's gone
-	_, err = storage.GetConfig(config.ID)
+	_, err = storage.GetConfig(config.UUID)
 	assert.Assert(t, errors.Is(err, ErrNotFound))
 }
 
@@ -171,10 +175,10 @@ func TestSQLiteStorage_GetConfig_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Retrieve it
-	retrievedConfig, err := storage.GetConfig(originalConfig.ID)
+	retrievedConfig, err := storage.GetConfig(originalConfig.UUID)
 	assert.NilError(t, err)
 	assert.Assert(t, retrievedConfig != nil)
-	assert.Equal(t, retrievedConfig.ID, originalConfig.ID)
+	assert.Equal(t, retrievedConfig.UUID, originalConfig.UUID)
 	assert.Equal(t, retrievedConfig.Kind, originalConfig.Kind)
 	assert.Equal(t, retrievedConfig.Status, originalConfig.Status)
 }
@@ -184,20 +188,20 @@ func TestSQLiteStorage_GetConfig_JSONUnmarshalError(t *testing.T) {
 	defer storage.db.Close()
 
 	// Insert invalid JSON manually
-	// Provide all NOT NULL fields for deployments table
+	// Provide all NOT NULL fields for artifacts table
 	_, err := storage.db.Exec(`
-		INSERT INTO deployments (id, gateway_id, display_name, version, context, kind, handle, status, created_at, updated_at) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"test-id", "platform-gateway-id", "test-api-name", "v1.0.0", "/test-context", "api", "test-handle", "pending", time.Now(), time.Now())
+		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"0000-test-id-0000-000000000000", "platform-gateway-id", "test-api-name", "v1.0.0", "RestApi", "0000-test-handle-0000-000000000000", "pending", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
-		INSERT INTO deployment_configs (id, configuration, source_configuration) 
-		VALUES (?, ?, ?)`,
-		"test-id", "invalid-json", "")
+		INSERT INTO rest_apis (uuid, configuration)
+		VALUES (?, ?)`,
+		"0000-test-id-0000-000000000000", "invalid-json")
 	assert.NilError(t, err)
 
-	_, err = storage.GetConfig("test-id")
+	_, err = storage.GetConfig("0000-test-id-0000-000000000000")
 	assert.Assert(t, err != nil)
 	assert.Assert(t, err.Error() != "")
 }
@@ -206,7 +210,7 @@ func TestSQLiteStorage_GetConfigByNameVersion_NotFound(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()
 
-	_, err := storage.GetConfigByNameVersion("non-existent", "v1.0.0")
+	_, err := storage.GetConfigByNameVersion("0000-non-existent-0000-000000000000", "v1.0.0")
 	assert.Assert(t, errors.Is(err, ErrNotFound))
 }
 
@@ -223,7 +227,7 @@ func TestSQLiteStorage_GetConfigByNameVersion_Success(t *testing.T) {
 	retrievedConfig, err := storage.GetConfigByNameVersion(config.GetDisplayName(), config.GetVersion())
 	assert.NilError(t, err)
 	assert.Assert(t, retrievedConfig != nil)
-	assert.Equal(t, retrievedConfig.ID, config.ID)
+	assert.Equal(t, retrievedConfig.UUID, config.UUID)
 }
 
 func TestSQLiteStorage_GetConfigByNameVersion_JSONError(t *testing.T) {
@@ -231,20 +235,20 @@ func TestSQLiteStorage_GetConfigByNameVersion_JSONError(t *testing.T) {
 	defer storage.db.Close()
 
 	// Insert config with invalid JSON
-	// Provide all NOT NULL fields for deployments table
+	// Provide all NOT NULL fields for artifacts table
 	_, err := storage.db.Exec(`
-		INSERT INTO deployments (id, gateway_id, display_name, version, context, kind, handle, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"test-id", "platform-gateway-id", "test-api", "v1.0.0", "/test", "api", "test-api", "pending", time.Now(), time.Now())
+		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"0000-test-id-0000-000000000000", "platform-gateway-id", "0000-test-api-0000-000000000000", "v1.0.0", "RestApi", "0000-test-api-0000-000000000000", "pending", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
-		INSERT INTO deployment_configs (id, configuration) 
+		INSERT INTO rest_apis (uuid, configuration)
 		VALUES (?, ?)`,
-		"test-id", "invalid-json")
+		"0000-test-id-0000-000000000000", "invalid-json")
 	assert.NilError(t, err)
 
-	_, err = storage.GetConfigByNameVersion("test-api", "v1.0.0")
+	_, err = storage.GetConfigByNameVersion("0000-test-api-0000-000000000000", "v1.0.0")
 	assert.Assert(t, err != nil)
 }
 
@@ -254,8 +258,8 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 
 	// Create and save multiple configs
 	config1 := createTestStoredConfig()
-	config1.ID = "config1"
-	config1.Configuration.Metadata.Name = "test-api-1"
+	config1.UUID = "config1"
+	config1.Configuration.Metadata.Name = "0000-test-api-1-0000-000000000000"
 	config1.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
 		DisplayName: "Test API 1",
 		Version:     "v1.0.0",
@@ -263,7 +267,7 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	})
 
 	config2 := createTestStoredConfig()
-	config2.ID = "config2"
+	config2.UUID = "config2"
 	config2.Configuration.Metadata.Name = "test-api-2"
 	config2.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
 		DisplayName: "Test API 2",
@@ -284,7 +288,7 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	// Verify configs are returned
 	ids := make(map[string]bool)
 	for _, cfg := range configs {
-		ids[cfg.ID] = true
+		ids[cfg.UUID] = true
 	}
 	assert.Assert(t, ids["config1"])
 	assert.Assert(t, ids["config2"])
@@ -295,15 +299,15 @@ func TestSQLiteStorage_GetAllConfigs_JSONUnmarshalError(t *testing.T) {
 	defer storage.db.Close()
 
 	// Insert invalid JSON manually
-	// Provide all NOT NULL fields for deployments table
+	// Provide all NOT NULL fields for artifacts table
 	_, err := storage.db.Exec(`
-		INSERT INTO deployments (id, gateway_id, display_name, version, context, kind, handle, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"invalid-json-config", "platform-gateway-id", "invalid-api-name", "v1.0.0", "/invalid-context", "api", "invalid-handle", "pending", time.Now(), time.Now())
+		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"invalid-json-config", "platform-gateway-id", "invalid-api-name", "v1.0.0", "RestApi", "invalid-handle", "pending", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
-		INSERT INTO deployment_configs (id, configuration) 
+		INSERT INTO rest_apis (uuid, configuration)
 		VALUES (?, ?)`,
 		"invalid-json-config", "invalid-json")
 	assert.NilError(t, err)
@@ -317,19 +321,20 @@ func TestSQLiteStorage_SaveConfig_RollsBackDeploymentOnConfigInsertFailure(t *te
 	defer storage.db.Close()
 
 	cfg := createTestStoredConfig()
-	// Channels are not JSON serializable; this forces addDeploymentConfigsTx to fail.
+	// Use a source-only kind with an un-marshalable source to force addResourceConfigTx to fail.
+	cfg.Kind = "LlmProvider"
 	cfg.SourceConfiguration = make(chan int)
 
 	err := storage.SaveConfig(cfg)
 	assert.Assert(t, err != nil)
 
-	var deploymentCount int
-	err = storage.db.QueryRow(`SELECT COUNT(*) FROM deployments WHERE id = ?`, cfg.ID).Scan(&deploymentCount)
+	var artifactCount int
+	err = storage.db.QueryRow(`SELECT COUNT(*) FROM artifacts WHERE uuid = ?`, cfg.UUID).Scan(&artifactCount)
 	assert.NilError(t, err)
-	assert.Equal(t, deploymentCount, 0)
+	assert.Equal(t, artifactCount, 0)
 
 	var configCount int
-	err = storage.db.QueryRow(`SELECT COUNT(*) FROM deployment_configs WHERE id = ?`, cfg.ID).Scan(&configCount)
+	err = storage.db.QueryRow(`SELECT COUNT(*) FROM llm_providers WHERE uuid = ?`, cfg.UUID).Scan(&configCount)
 	assert.NilError(t, err)
 	assert.Equal(t, configCount, 0)
 }
@@ -340,8 +345,8 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 
 	// Create configs of different kinds
 	apiConfig := createTestStoredConfig()
-	apiConfig.ID = "api-config"
-	apiConfig.Kind = "api"
+	apiConfig.UUID = "api-config"
+	apiConfig.Kind = "RestApi"
 	apiConfig.Configuration.Metadata.Name = "test-api-kind"
 	apiConfig.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
 		DisplayName: "Test API Kind",
@@ -350,14 +355,15 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	})
 
 	llmConfig := createTestStoredConfig()
-	llmConfig.ID = "llm-config"
-	llmConfig.Kind = "llm-proxy"
+	llmConfig.UUID = "llm-config"
+	llmConfig.Kind = "LlmProvider"
 	llmConfig.Configuration.Metadata.Name = "test-llm-kind"
 	llmConfig.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
 		DisplayName: "Test LLM Kind",
 		Version:     "v1.0.0",
 		Context:     "/test-llm-kind",
 	})
+	llmConfig.SourceConfiguration = map[string]any{"name": "test-llm"}
 
 	err := storage.SaveConfig(apiConfig)
 	assert.NilError(t, err)
@@ -365,12 +371,12 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Get API configs only
-	configs, err := storage.GetAllConfigsByKind("api")
+	configs, err := storage.GetAllConfigsByKind("RestApi")
 	assert.NilError(t, err)
 
-	// Verify only API configs returned
+	// Verify only RestApi configs returned
 	for _, cfg := range configs {
-		assert.Equal(t, cfg.Kind, "api")
+		assert.Equal(t, cfg.Kind, "RestApi")
 	}
 }
 
@@ -379,20 +385,20 @@ func TestSQLiteStorage_GetAllConfigsByKind_JSONError(t *testing.T) {
 	defer storage.db.Close()
 
 	// Insert config with invalid JSON
-	// Provide all NOT NULL fields for deployments table
+	// Provide all NOT NULL fields for artifacts table
 	_, err := storage.db.Exec(`
-		INSERT INTO deployments (id, gateway_id, display_name, version, context, kind, handle, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"invalid-config", "platform-gateway-id", "invalid-api-name-kind", "v1.0.0", "/invalid-context-kind", "api", "invalid-handle-kind", "pending", time.Now(), time.Now())
+		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"invalid-config", "platform-gateway-id", "invalid-api-name-kind", "v1.0.0", "RestApi", "invalid-handle-kind", "pending", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
-		INSERT INTO deployment_configs (id, configuration) 
+		INSERT INTO rest_apis (uuid, configuration)
 		VALUES (?, ?)`,
 		"invalid-config", "invalid-json")
 	assert.NilError(t, err)
 
-	_, err = storage.GetAllConfigsByKind("api")
+	_, err = storage.GetAllConfigsByKind("RestApi")
 	assert.Assert(t, err != nil)
 }
 
@@ -411,7 +417,7 @@ func TestLoadLLMProviderTemplatesFromDatabase_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify template is loaded
-	loadedTemplate, err := cache.GetTemplate(template.ID)
+	loadedTemplate, err := cache.GetTemplate(template.UUID)
 	assert.NilError(t, err)
 	assert.Equal(t, loadedTemplate.GetHandle(), template.GetHandle())
 }
@@ -439,7 +445,7 @@ func TestSQLiteStorage_SaveLLMProviderTemplate_JSONMarshalError(t *testing.T) {
 	// Create template with invalid configuration that can't be marshaled
 	// In Go, we need to create a special case - using a channel which can't be marshaled
 	template := &models.StoredLLMProviderTemplate{
-		ID:        "test-id",
+		UUID:      "0000-test-id-0000-000000000000",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -467,9 +473,9 @@ func TestSQLiteStorage_GetLLMProviderTemplate_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Retrieve it
-	retrieved, err := storage.GetLLMProviderTemplate(template.ID)
+	retrieved, err := storage.GetLLMProviderTemplate(template.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, retrieved.ID, template.ID)
+	assert.Equal(t, retrieved.UUID, template.UUID)
 	assert.Equal(t, retrieved.GetHandle(), template.GetHandle())
 }
 
@@ -479,9 +485,9 @@ func TestSQLiteStorage_GetLLMProviderTemplate_JSONUnmarshalError(t *testing.T) {
 
 	// Insert template with invalid JSON
 	_, err := storage.db.Exec(`
-		INSERT INTO llm_provider_templates (id, gateway_id, handle, configuration, created_at, updated_at) 
+		INSERT INTO llm_provider_templates (uuid, gateway_id, handle, configuration, created_at, updated_at) 
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		"invalid-template", "platform-gateway-id", "test-handle", "invalid-json", time.Now(), time.Now())
+		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-json", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.GetLLMProviderTemplate("invalid-template")
@@ -494,11 +500,11 @@ func TestSQLiteStorage_GetAllLLMProviderTemplates_Success(t *testing.T) {
 
 	// Save multiple templates
 	template1 := createTestLLMProviderTemplate()
-	template1.ID = "template1"
+	template1.UUID = "0000-template1-0000-000000000000"
 	template1.Configuration.Metadata.Name = "test-template-1"
 
 	template2 := createTestLLMProviderTemplate()
-	template2.ID = "template2"
+	template2.UUID = "0000-template2-0000-000000000000"
 	template2.Configuration.Metadata.Name = "test-template-2"
 
 	err := storage.SaveLLMProviderTemplate(template1)
@@ -514,10 +520,10 @@ func TestSQLiteStorage_GetAllLLMProviderTemplates_Success(t *testing.T) {
 	// Verify templates are returned
 	ids := make(map[string]bool)
 	for _, tmpl := range templates {
-		ids[tmpl.ID] = true
+		ids[tmpl.UUID] = true
 	}
-	assert.Assert(t, ids["template1"])
-	assert.Assert(t, ids["template2"])
+	assert.Assert(t, ids["0000-template1-0000-000000000000"])
+	assert.Assert(t, ids["0000-template2-0000-000000000000"])
 }
 
 func TestSQLiteStorage_GetAllLLMProviderTemplates_JSONError(t *testing.T) {
@@ -526,9 +532,9 @@ func TestSQLiteStorage_GetAllLLMProviderTemplates_JSONError(t *testing.T) {
 
 	// Insert template with invalid JSON
 	_, err := storage.db.Exec(`
-		INSERT INTO llm_provider_templates (id, gateway_id, handle, configuration, created_at, updated_at) 
+		INSERT INTO llm_provider_templates (uuid, gateway_id, handle, configuration, created_at, updated_at) 
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		"invalid-template", "platform-gateway-id", "test-handle", "invalid-json", time.Now(), time.Now())
+		"invalid-template", "platform-gateway-id", "0000-test-handle-0000-000000000000", "invalid-json", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.GetAllLLMProviderTemplates()
@@ -546,7 +552,7 @@ func TestSQLiteStorage_SaveCertificate_UniqueConstraintError(t *testing.T) {
 
 	// Try to save another certificate with same name
 	cert2 := createTestStoredCertificate()
-	cert2.ID = "different-id"
+	cert2.UUID = "0000-different-id-0000-000000000000"
 	err = storage.SaveCertificate(cert2)
 	assert.Assert(t, errors.Is(err, ErrConflict))
 }
@@ -569,9 +575,9 @@ func TestSQLiteStorage_GetCertificate_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Retrieve it
-	retrieved, err := storage.GetCertificate(cert.ID)
+	retrieved, err := storage.GetCertificate(cert.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, retrieved.ID, cert.ID)
+	assert.Equal(t, retrieved.UUID, cert.UUID)
 	assert.Equal(t, retrieved.Name, cert.Name)
 	assert.Equal(t, retrieved.Subject, cert.Subject)
 }
@@ -595,14 +601,14 @@ func TestSQLiteStorage_GetAPIKeyByID_Success(t *testing.T) {
 
 	// Save API key first
 	apiKey := createTestAPIKey()
-	apiKey.APIId = config.ID
+	apiKey.ArtifactUUID = config.UUID
 	err = storage.SaveAPIKey(apiKey)
 	assert.NilError(t, err)
 
 	// Retrieve it
-	retrieved, err := storage.GetAPIKeyByID(apiKey.ID)
+	retrieved, err := storage.GetAPIKeyByID(apiKey.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, retrieved.ID, apiKey.ID)
+	assert.Equal(t, retrieved.UUID, apiKey.UUID)
 	assert.Equal(t, retrieved.Name, apiKey.Name)
 	assert.Equal(t, retrieved.APIKey, apiKey.APIKey)
 }
@@ -626,14 +632,14 @@ func TestSQLiteStorage_GetAPIKeyByKey_Success(t *testing.T) {
 
 	// Save API key first
 	apiKey := createTestAPIKey()
-	apiKey.APIId = config.ID
+	apiKey.ArtifactUUID = config.UUID
 	err = storage.SaveAPIKey(apiKey)
 	assert.NilError(t, err)
 
 	// Retrieve by key
 	retrieved, err := storage.GetAPIKeyByKey(apiKey.APIKey)
 	assert.NilError(t, err)
-	assert.Equal(t, retrieved.ID, apiKey.ID)
+	assert.Equal(t, retrieved.UUID, apiKey.UUID)
 	assert.Equal(t, retrieved.APIKey, apiKey.APIKey)
 }
 
@@ -643,29 +649,29 @@ func TestSQLiteStorage_GetAPIKeysByAPI_Success(t *testing.T) {
 
 	// Save a config first to satisfy foreign key constraint
 	config1 := createTestStoredConfig()
-	config1.ID = "api1"
+	config1.UUID = "api1"
 	err := storage.SaveConfig(config1)
 	assert.NilError(t, err)
 
 	config2 := createTestStoredConfig()
-	config2.ID = "api2"
+	config2.UUID = "api2"
 	err = storage.SaveConfig(config2)
 	assert.NilError(t, err)
 
 	// Create API keys for different APIs
 	apiKey1 := createTestAPIKey()
-	apiKey1.ID = "key1"
-	apiKey1.APIId = "api1"
-	apiKey1.Name = "key1"
+	apiKey1.UUID = "0000-key1-0000-000000000000"
+	apiKey1.ArtifactUUID = "api1"
+	apiKey1.Name = "0000-key1-0000-000000000000"
 
 	apiKey2 := createTestAPIKey()
-	apiKey2.ID = "key2"
-	apiKey2.APIId = "api1"
-	apiKey2.Name = "key2"
+	apiKey2.UUID = "0000-key2-0000-000000000000"
+	apiKey2.ArtifactUUID = "api1"
+	apiKey2.Name = "0000-key2-0000-000000000000"
 
 	apiKey3 := createTestAPIKey()
-	apiKey3.ID = "key3"
-	apiKey3.APIId = "api2"
+	apiKey3.UUID = "key3"
+	apiKey3.ArtifactUUID = "api2"
 	apiKey3.Name = "key3"
 
 	err = storage.SaveAPIKey(apiKey1)
@@ -683,11 +689,11 @@ func TestSQLiteStorage_GetAPIKeysByAPI_Success(t *testing.T) {
 	// Verify correct keys returned
 	keyIDs := make(map[string]bool)
 	for _, key := range keys {
-		keyIDs[key.ID] = true
-		assert.Equal(t, key.APIId, "api1")
+		keyIDs[key.UUID] = true
+		assert.Equal(t, key.ArtifactUUID, "api1")
 	}
-	assert.Assert(t, keyIDs["key1"])
-	assert.Assert(t, keyIDs["key2"])
+	assert.Assert(t, keyIDs["0000-key1-0000-000000000000"])
+	assert.Assert(t, keyIDs["0000-key2-0000-000000000000"])
 }
 
 func TestLoadAPIKeysFromDatabase_Success(t *testing.T) {
@@ -701,7 +707,7 @@ func TestLoadAPIKeysFromDatabase_Success(t *testing.T) {
 
 	// Create test API key
 	apiKey := createTestAPIKey()
-	apiKey.APIId = config.ID
+	apiKey.ArtifactUUID = config.UUID
 	err = storage.SaveAPIKey(apiKey)
 	assert.NilError(t, err)
 
@@ -713,13 +719,13 @@ func TestLoadAPIKeysFromDatabase_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify API key is loaded in both stores
-	_, err = configStore.GetAPIKeyByID(apiKey.APIId, apiKey.ID)
+	_, err = configStore.GetAPIKeyByID(apiKey.ArtifactUUID, apiKey.UUID)
 	assert.NilError(t, err)
 
 	allKeys := apiKeyStore.GetAll()
 	found := false
 	for _, key := range allKeys {
-		if key.ID == apiKey.ID {
+		if key.UUID == apiKey.UUID {
 			found = true
 			break
 		}
@@ -763,7 +769,7 @@ func TestLoadAPIKeysFromDatabase_APIKeyStoreErrorRollsBackConfigStore(t *testing
 
 	// Create test API key
 	apiKey := createTestAPIKey()
-	apiKey.APIId = config.ID
+	apiKey.ArtifactUUID = config.UUID
 	err = storage.SaveAPIKey(apiKey)
 	assert.NilError(t, err)
 
@@ -774,7 +780,7 @@ func TestLoadAPIKeysFromDatabase_APIKeyStoreErrorRollsBackConfigStore(t *testing
 	assert.Assert(t, err != nil)
 	assert.Assert(t, strings.Contains(err.Error(), "rolled back ConfigStore entry"))
 
-	_, getErr := configStore.GetAPIKeyByID(apiKey.APIId, apiKey.ID)
+	_, getErr := configStore.GetAPIKeyByID(apiKey.ArtifactUUID, apiKey.UUID)
 	assert.Assert(t, errors.Is(getErr, ErrNotFound))
 }
 
@@ -789,20 +795,20 @@ func TestSQLiteStorage_CountActiveAPIKeysByUserAndAPI_Success(t *testing.T) {
 
 	// Create API keys with different users and APIs
 	apiKey1 := createTestAPIKey()
-	apiKey1.ID = "key1"
-	apiKey1.APIId = config.ID
+	apiKey1.UUID = "0000-key1-0000-000000000000"
+	apiKey1.ArtifactUUID = config.UUID
 	apiKey1.CreatedBy = "user1"
 	apiKey1.Status = models.APIKeyStatusActive
 
 	apiKey2 := createTestAPIKey()
-	apiKey2.ID = "key2"
-	apiKey2.APIId = config.ID
+	apiKey2.UUID = "0000-key2-0000-000000000000"
+	apiKey2.ArtifactUUID = config.UUID
 	apiKey2.CreatedBy = "user1"
 	apiKey2.Status = models.APIKeyStatusActive
 
 	apiKey3 := createTestAPIKey()
-	apiKey3.ID = "key3"
-	apiKey3.APIId = config.ID
+	apiKey3.UUID = "key3"
+	apiKey3.ArtifactUUID = config.UUID
 	apiKey3.CreatedBy = "user2"
 	apiKey3.Status = models.APIKeyStatusActive
 
@@ -814,12 +820,12 @@ func TestSQLiteStorage_CountActiveAPIKeysByUserAndAPI_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Count keys for user1 and api1
-	count, err := storage.CountActiveAPIKeysByUserAndAPI(config.ID, "user1")
+	count, err := storage.CountActiveAPIKeysByUserAndAPI(config.UUID, "user1")
 	assert.NilError(t, err)
 	assert.Equal(t, count, 2)
 
 	// Count keys for user2 and api1
-	count, err = storage.CountActiveAPIKeysByUserAndAPI(config.ID, "user2")
+	count, err = storage.CountActiveAPIKeysByUserAndAPI(config.UUID, "user2")
 	assert.NilError(t, err)
 	assert.Equal(t, count, 1)
 }
@@ -849,8 +855,8 @@ func createTestStoredConfig() *models.StoredConfig {
 	spec.FromAPIConfigData(apiData)
 
 	return &models.StoredConfig{
-		ID:   fmt.Sprintf("test-config-%d", configCounter),
-		Kind: "api",
+		UUID: fmt.Sprintf("test-config-%d", configCounter),
+		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind:     api.RestApi,
 			Metadata: api.Metadata{Name: fmt.Sprintf("test-api-%d", configCounter)},
@@ -865,7 +871,7 @@ func createTestStoredConfig() *models.StoredConfig {
 func createTestLLMProviderTemplate() *models.StoredLLMProviderTemplate {
 	llmTemplateCounter++
 	return &models.StoredLLMProviderTemplate{
-		ID: fmt.Sprintf("test-template-%d", llmTemplateCounter),
+		UUID: fmt.Sprintf("test-template-%d", llmTemplateCounter),
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProviderTemplate,
@@ -881,7 +887,7 @@ func createTestLLMProviderTemplate() *models.StoredLLMProviderTemplate {
 
 func createTestStoredCertificate() *models.StoredCertificate {
 	return &models.StoredCertificate{
-		ID:          fmt.Sprintf("test-cert-%d", time.Now().UnixNano()),
+		UUID:        fmt.Sprintf("test-cert-%d", time.Now().UnixNano()),
 		Name:        "test-certificate",
 		Certificate: []byte("-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"),
 		Subject:     "CN=test.example.com",
@@ -897,11 +903,11 @@ func createTestStoredCertificate() *models.StoredCertificate {
 func createTestAPIKey() *models.APIKey {
 	apiKeyCounter++
 	return &models.APIKey{
-		ID:           fmt.Sprintf("test-apikey-%d", apiKeyCounter),
+		UUID:         fmt.Sprintf("test-apikey-%d", apiKeyCounter),
 		Name:         fmt.Sprintf("Test API Key %d", apiKeyCounter),
 		APIKey:       fmt.Sprintf("apk_%d_%d", apiKeyCounter, time.Now().UnixNano()),
 		MaskedAPIKey: "apk_***",
-		APIId:        "test-api-id",
+		ArtifactUUID: "0000-test-api-id-0000-000000000000",
 		Operations:   "*",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),

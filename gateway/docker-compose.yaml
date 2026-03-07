@@ -77,7 +77,7 @@ services:
   sample-backend:
     image: ghcr.io/wso2/api-platform/sample-service:latest
     ports:
-      - "5000:5000"
+      - "15000:5000"
     command: ["-addr", ":5000", "-pretty"]
     # command: ["-addr", ":5000", "-pretty", "-https", "-cert", "/app/certs/server.pem", "-key", "/app/certs/server.key"]
     networks:
@@ -190,6 +190,10 @@ services:
 volumes:
   controller-data:
     driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/gateway-controller/data
+      o: bind
   opensearch-data:
     driver: local
   prometheus-data:

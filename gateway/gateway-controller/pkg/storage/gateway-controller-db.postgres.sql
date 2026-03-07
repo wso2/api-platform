@@ -1,33 +1,64 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 8
+-- Version: 9
 
--- Main table for deployments
-CREATE TABLE IF NOT EXISTS deployments (
-    id TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+-- Base table for all artifact types
+CREATE TABLE IF NOT EXISTS artifacts (
+    uuid TEXT PRIMARY KEY,
+    gateway_id TEXT NOT NULL DEFAULT 'default',
     display_name TEXT NOT NULL,
     version TEXT NOT NULL,
-    context TEXT NOT NULL,
     kind TEXT NOT NULL,
     handle TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deployed_at TIMESTAMPTZ,
-    deployed_version BIGINT NOT NULL DEFAULT 0,
-    UNIQUE(display_name, version, gateway_id),
-    UNIQUE(handle, gateway_id)
+    UNIQUE(gateway_id, kind, display_name, version),
+    UNIQUE(gateway_id, kind, handle)
 );
 
-CREATE INDEX IF NOT EXISTS idx_status ON deployments(status);
-CREATE INDEX IF NOT EXISTS idx_context ON deployments(context);
-CREATE INDEX IF NOT EXISTS idx_kind ON deployments(kind);
-CREATE INDEX IF NOT EXISTS idx_deployments_gateway_id ON deployments(gateway_id);
+CREATE INDEX IF NOT EXISTS idx_status ON artifacts(status);
+CREATE INDEX IF NOT EXISTS idx_kind ON artifacts(kind);
+CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
+
+-- Per-resource-type tables
+
+CREATE TABLE IF NOT EXISTS rest_apis (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS websub_apis (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS llm_providers (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS llm_proxies (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    provider_uuid TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY(provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS mcp_proxies (
+    uuid TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,
+    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
 
 -- Table for custom TLS certificates
 CREATE TABLE IF NOT EXISTS certificates (
-    id TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    uuid TEXT PRIMARY KEY,
+    gateway_id TEXT NOT NULL DEFAULT 'default',
     name TEXT NOT NULL,
     certificate BYTEA NOT NULL,
     subject TEXT NOT NULL,
@@ -44,18 +75,10 @@ CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);
 CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
 CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);
 
--- Table for deployment-specific configurations
-CREATE TABLE IF NOT EXISTS deployment_configs (
-    id TEXT PRIMARY KEY,
-    configuration TEXT NOT NULL,
-    source_configuration TEXT,
-    FOREIGN KEY(id) REFERENCES deployments(id) ON DELETE CASCADE
-);
-
 -- LLM Provider Templates table
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
-    id TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    uuid TEXT PRIMARY KEY,
+    gateway_id TEXT NOT NULL DEFAULT 'default',
     handle TEXT NOT NULL,
     configuration TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -68,12 +91,12 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
-    id TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
+    uuid TEXT PRIMARY KEY,
+    gateway_id TEXT NOT NULL DEFAULT 'default',
     name TEXT NOT NULL,
     api_key TEXT NOT NULL UNIQUE,
     masked_api_key TEXT NOT NULL,
-    apiId TEXT NOT NULL,
+    artifact_uuid TEXT NOT NULL,
     operations TEXT NOT NULL DEFAULT '*',
     status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -85,12 +108,12 @@ CREATE TABLE IF NOT EXISTS api_keys (
     source TEXT NOT NULL DEFAULT 'local',
     external_ref_id TEXT NULL,
     display_name TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
-    UNIQUE (apiId, name, gateway_id)
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    UNIQUE (artifact_uuid, name, gateway_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
-CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);
+CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
@@ -98,77 +121,90 @@ CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
 
--- Migration-safe column additions for existing deployments
-ALTER TABLE deployments ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
-ALTER TABLE certificates ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
-ALTER TABLE llm_provider_templates ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
-ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
-
-ALTER TABLE deployments DROP CONSTRAINT IF EXISTS deployments_display_name_version_key;
-ALTER TABLE deployments DROP CONSTRAINT IF EXISTS deployments_handle_key;
-ALTER TABLE certificates DROP CONSTRAINT IF EXISTS certificates_name_key;
-ALTER TABLE llm_provider_templates DROP CONSTRAINT IF EXISTS llm_provider_templates_handle_key;
-ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_apiid_name_key;
-
+-- Migration-safe: handle upgrades from older schemas
+-- Rename deployments to artifacts if needed
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'deployments_display_name_version_gateway_id_key'
-    ) THEN
-        ALTER TABLE deployments
-            ADD CONSTRAINT deployments_display_name_version_gateway_id_key
-            UNIQUE (display_name, version, gateway_id);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'deployments' AND table_schema = 'public')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'artifacts' AND table_schema = 'public') THEN
+        ALTER TABLE deployments RENAME TO artifacts;
+        ALTER TABLE artifacts RENAME COLUMN id TO uuid;
+        ALTER TABLE artifacts DROP COLUMN IF EXISTS context;
+        ALTER TABLE artifacts DROP COLUMN IF EXISTS deployed_version;
     END IF;
 END $$;
 
+-- Create type tables from deployment_configs if migrating
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'deployments_handle_gateway_id_key'
-    ) THEN
-        ALTER TABLE deployments
-            ADD CONSTRAINT deployments_handle_gateway_id_key
-            UNIQUE (handle, gateway_id);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'deployment_configs' AND table_schema = 'public') THEN
+        -- Migrate RestApi configs
+        INSERT INTO rest_apis (uuid, configuration)
+        SELECT dc.id, dc.configuration
+        FROM deployment_configs dc JOIN artifacts a ON dc.id = a.uuid
+        WHERE a.kind = 'RestApi'
+        ON CONFLICT (uuid) DO NOTHING;
+
+        -- Migrate WebSubApi configs
+        INSERT INTO websub_apis (uuid, configuration)
+        SELECT dc.id, dc.configuration
+        FROM deployment_configs dc JOIN artifacts a ON dc.id = a.uuid
+        WHERE a.kind = 'WebSubApi'
+        ON CONFLICT (uuid) DO NOTHING;
+
+        -- Migrate LlmProvider configs
+        INSERT INTO llm_providers (uuid, configuration)
+        SELECT dc.id, dc.source_configuration
+        FROM deployment_configs dc JOIN artifacts a ON dc.id = a.uuid
+        WHERE a.kind = 'LlmProvider'
+        ON CONFLICT (uuid) DO NOTHING;
+
+        -- Migrate LlmProxy configs
+        INSERT INTO llm_proxies (uuid, configuration, provider_uuid)
+        SELECT dc.id, dc.source_configuration, ''
+        FROM deployment_configs dc JOIN artifacts a ON dc.id = a.uuid
+        WHERE a.kind = 'LlmProxy'
+        ON CONFLICT (uuid) DO NOTHING;
+
+        -- Migrate Mcp configs
+        INSERT INTO mcp_proxies (uuid, configuration)
+        SELECT dc.id, dc.source_configuration
+        FROM deployment_configs dc JOIN artifacts a ON dc.id = a.uuid
+        WHERE a.kind = 'Mcp'
+        ON CONFLICT (uuid) DO NOTHING;
+
+        DROP TABLE deployment_configs;
     END IF;
 END $$;
 
+-- Rename api_keys columns if migrating
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'certificates_name_gateway_id_key'
-    ) THEN
-        ALTER TABLE certificates
-            ADD CONSTRAINT certificates_name_gateway_id_key
-            UNIQUE (name, gateway_id);
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'apiid') THEN
+        ALTER TABLE api_keys RENAME COLUMN apiid TO artifact_uuid;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'id'
+               AND table_name = 'api_keys') THEN
+        ALTER TABLE api_keys RENAME COLUMN id TO uuid;
     END IF;
 END $$;
 
+-- Rename id→uuid in certificates and llm_provider_templates if migrating
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'llm_provider_templates_handle_gateway_id_key'
-    ) THEN
-        ALTER TABLE llm_provider_templates
-            ADD CONSTRAINT llm_provider_templates_handle_gateway_id_key
-            UNIQUE (handle, gateway_id);
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'certificates' AND column_name = 'id') THEN
+        ALTER TABLE certificates RENAME COLUMN id TO uuid;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'llm_provider_templates' AND column_name = 'id') THEN
+        ALTER TABLE llm_provider_templates RENAME COLUMN id TO uuid;
     END IF;
 END $$;
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'api_keys_apiid_name_gateway_id_key'
-    ) THEN
-        ALTER TABLE api_keys
-            ADD CONSTRAINT api_keys_apiid_name_gateway_id_key
-            UNIQUE (apiId, name, gateway_id);
-    END IF;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_deployments_gateway_id ON deployments(gateway_id);
-CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);
-CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider_templates(gateway_id);
-CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
+-- Update gateway_id defaults
+ALTER TABLE artifacts ALTER COLUMN gateway_id SET DEFAULT 'default';
+ALTER TABLE certificates ALTER COLUMN gateway_id SET DEFAULT 'default';
+ALTER TABLE llm_provider_templates ALTER COLUMN gateway_id SET DEFAULT 'default';
+ALTER TABLE api_keys ALTER COLUMN gateway_id SET DEFAULT 'default';
 
 -- Schema migration metadata
 CREATE TABLE IF NOT EXISTS schema_migrations (

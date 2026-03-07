@@ -118,7 +118,7 @@ func TestConcurrentReads(t *testing.T) {
 			defer wg.Done()
 
 			// Read by ID
-			_, err := db.GetConfig(cfg.ID)
+			_, err := db.GetConfig(cfg.UUID)
 			if err != nil {
 				errors <- fmt.Errorf("goroutine %d failed to get config by ID: %w", id, err)
 				return
@@ -268,7 +268,7 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 			defer wg.Done()
 
 			// Get the configuration
-			cfg, err := db.GetConfig(cfg.ID)
+			cfg, err := db.GetConfig(cfg.UUID)
 			if err != nil {
 				errors <- fmt.Errorf("goroutine %d failed to get config: %w", id, err)
 				return
@@ -295,7 +295,7 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 	assert.Empty(t, errorList, "No errors should occur during concurrent updates")
 
 	// Verify the configuration still exists and is valid
-	finalCfg, err := db.GetConfig(cfg.ID)
+	finalCfg, err := db.GetConfig(cfg.UUID)
 	assert.NoError(t, err)
 	assert.NotNil(t, finalCfg)
 	assert.Equal(t, "SharedAPI", finalCfg.GetDisplayName())

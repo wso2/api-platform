@@ -22,7 +22,7 @@ import "time"
 
 // StoredCertificate represents a certificate stored in the database
 type StoredCertificate struct {
-	ID          string    `json:"id"`          // Unique ID (UUID)
+	UUID        string    `json:"uuid"`        // Unique UUID
 	Name        string    `json:"name"`        // Human-readable name
 	Certificate []byte    `json:"certificate"` // PEM-encoded certificate(s)
 	Subject     string    `json:"subject"`     // Certificate subject DN

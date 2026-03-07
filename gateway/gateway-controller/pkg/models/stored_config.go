@@ -37,7 +37,7 @@ const (
 
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
-	ID                  string               `json:"id"`
+	UUID                string               `json:"uuid"`
 	Kind                string               `json:"kind"`
 	Configuration       api.APIConfiguration `json:"configuration"`
 	SourceConfiguration any                  `json:"source_configuration,omitempty"`
@@ -45,7 +45,7 @@ type StoredConfig struct {
 	CreatedAt           time.Time            `json:"createdAt"`
 	UpdatedAt           time.Time            `json:"updatedAt"`
 	DeployedAt          *time.Time           `json:"deployedAt,omitempty"`
-	DeployedVersion     int64                `json:"deployed_version"`
+	DeployedVersion     int64                `json:"deployed_version"` // Runtime-only: xDS snapshot version, not persisted to DB
 }
 
 // GetCompositeKey returns the composite key "displayName:version" for indexing

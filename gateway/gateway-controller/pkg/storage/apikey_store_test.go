@@ -48,10 +48,10 @@ func TestAPIKeyStore_Store(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		ID:     "key-1",
+		UUID:     "0000-key-1-0000-000000000000",
 		Name:   "test-key",
 		APIKey: "hashed-value",
-		APIId:  "api-1",
+		ArtifactUUID:  "0000-api-1-0000-000000000000",
 		Status: models.APIKeyStatusActive,
 	}
 
@@ -67,10 +67,10 @@ func TestAPIKeyStore_Store_Update(t *testing.T) {
 
 	// Store initial key
 	apiKey := &models.APIKey{
-		ID:     "key-1",
+		UUID:     "0000-key-1-0000-000000000000",
 		Name:   "test-key",
 		APIKey: "hashed-value-1",
-		APIId:  "api-1",
+		ArtifactUUID:  "0000-api-1-0000-000000000000",
 		Status: models.APIKeyStatusActive,
 	}
 	err := store.Store(apiKey)
@@ -78,10 +78,10 @@ func TestAPIKeyStore_Store_Update(t *testing.T) {
 
 	// Store updated key with same name and same ID (rotation scenario)
 	updatedKey := &models.APIKey{
-		ID:     "key-1",
+		UUID:     "0000-key-1-0000-000000000000",
 		Name:   "test-key",
 		APIKey: "hashed-value-2",
-		APIId:  "api-1",
+		ArtifactUUID:  "0000-api-1-0000-000000000000",
 		Status: models.APIKeyStatusActive,
 	}
 	err = store.Store(updatedKey)
@@ -93,7 +93,7 @@ func TestAPIKeyStore_Store_Update(t *testing.T) {
 	// Verify the stored key has the updated API key value
 	allKeys := store.GetAll()
 	require.Len(t, allKeys, 1)
-	assert.Equal(t, "key-1", allKeys[0].ID)
+	assert.Equal(t, "0000-key-1-0000-000000000000", allKeys[0].UUID)
 	assert.Equal(t, "test-key", allKeys[0].Name)
 	assert.Equal(t, "hashed-value-2", allKeys[0].APIKey)
 }
@@ -105,10 +105,10 @@ func TestAPIKeyStore_GetAll(t *testing.T) {
 	// Add multiple keys
 	for i := 1; i <= 3; i++ {
 		apiKey := &models.APIKey{
-			ID:     "key-" + string(rune('0'+i)),
+			UUID:     "0000-key--0000-000000000000" + string(rune('0'+i)),
 			Name:   "test-key-" + string(rune('0'+i)),
 			APIKey: "value-" + string(rune('0'+i)),
-			APIId:  "api-1",
+			ArtifactUUID:  "0000-api-1-0000-000000000000",
 			Status: models.APIKeyStatusActive,
 		}
 		err := store.Store(apiKey)
@@ -124,17 +124,17 @@ func TestAPIKeyStore_Revoke(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		ID:     "key-1",
+		UUID:     "0000-key-1-0000-000000000000",
 		Name:   "test-key",
 		APIKey: "hashed-value",
-		APIId:  "api-1",
+		ArtifactUUID:  "0000-api-1-0000-000000000000",
 		Status: models.APIKeyStatusActive,
 	}
 	err := store.Store(apiKey)
 	require.NoError(t, err)
 
 	// Revoke the key
-	success := store.Revoke("api-1", "test-key")
+	success := store.Revoke("0000-api-1-0000-000000000000", "test-key")
 	assert.True(t, success)
 
 	// Count should now be 0 (revoked keys are removed)
@@ -146,7 +146,7 @@ func TestAPIKeyStore_Revoke_NonExistent(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	// Try to revoke non-existent key
-	success := store.Revoke("api-1", "non-existent")
+	success := store.Revoke("0000-api-1-0000-000000000000", "non-existent")
 	assert.False(t, success)
 }
 
@@ -157,10 +157,10 @@ func TestAPIKeyStore_RemoveByAPI(t *testing.T) {
 	// Add keys for multiple APIs
 	for i := 1; i <= 3; i++ {
 		apiKey := &models.APIKey{
-			ID:     "key-" + string(rune('0'+i)),
+			UUID:     "0000-key--0000-000000000000" + string(rune('0'+i)),
 			Name:   "test-key-" + string(rune('0'+i)),
 			APIKey: "value-" + string(rune('0'+i)),
-			APIId:  "api-1",
+			ArtifactUUID:  "0000-api-1-0000-000000000000",
 			Status: models.APIKeyStatusActive,
 		}
 		err := store.Store(apiKey)
@@ -168,10 +168,10 @@ func TestAPIKeyStore_RemoveByAPI(t *testing.T) {
 	}
 
 	apiKey := &models.APIKey{
-		ID:     "key-other",
+		UUID:     "0000-key-other-0000-000000000000",
 		Name:   "other-key",
 		APIKey: "other-value",
-		APIId:  "api-2",
+		ArtifactUUID:  "0000-api-2-0000-000000000000",
 		Status: models.APIKeyStatusActive,
 	}
 	err := store.Store(apiKey)
@@ -180,7 +180,7 @@ func TestAPIKeyStore_RemoveByAPI(t *testing.T) {
 	assert.Equal(t, 4, store.Count())
 
 	// Remove keys for api-1
-	removed := store.RemoveByAPI("api-1")
+	removed := store.RemoveByAPI("0000-api-1-0000-000000000000")
 	assert.Equal(t, 3, removed)
 	assert.Equal(t, 1, store.Count())
 
@@ -219,10 +219,10 @@ func TestAPIKeyStore_ConcurrentAccess(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			apiKey := &models.APIKey{
-				ID:     "key-" + string(rune('a'+idx)),
+				UUID:     "0000-key--0000-000000000000" + string(rune('a'+idx)),
 				Name:   "test-key-" + string(rune('a'+idx)),
 				APIKey: "value-" + string(rune('a'+idx)),
-				APIId:  "api-1",
+				ArtifactUUID:  "0000-api-1-0000-000000000000",
 				Status: models.APIKeyStatusActive,
 			}
 			_ = store.Store(apiKey)
@@ -248,9 +248,9 @@ func TestGetCompositeKey(t *testing.T) {
 		keyName  string
 		expected string
 	}{
-		{"api-1", "key-1", "api-1:key-1"},
-		{"", "key-1", ":key-1"},
-		{"api-1", "", "api-1:"},
+		{"0000-api-1-0000-000000000000", "0000-key-1-0000-000000000000", "0000-api-1-0000-000000000000:0000-key-1-0000-000000000000"},
+		{"", "0000-key-1-0000-000000000000", ":0000-key-1-0000-000000000000"},
+		{"0000-api-1-0000-000000000000", "", "0000-api-1-0000-000000000000:"},
 		{"", "", ":"},
 		{"api/v1", "test:key", "api/v1:test:key"},
 	}
@@ -266,9 +266,9 @@ func TestAPIKeyStore_addToAPIMapping(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		ID:    "key-1",
+		UUID:    "0000-key-1-0000-000000000000",
 		Name:  "test-key",
-		APIId: "api-1",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
 	}
 
 	store.mu.Lock()
@@ -278,8 +278,8 @@ func TestAPIKeyStore_addToAPIMapping(t *testing.T) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	assert.Contains(t, store.apiKeysByAPI, "api-1")
-	assert.Contains(t, store.apiKeysByAPI["api-1"], "key-1")
+	assert.Contains(t, store.apiKeysByAPI, "0000-api-1-0000-000000000000")
+	assert.Contains(t, store.apiKeysByAPI["0000-api-1-0000-000000000000"], "0000-key-1-0000-000000000000")
 }
 
 func TestAPIKeyStore_removeFromAPIMapping(t *testing.T) {
@@ -287,9 +287,9 @@ func TestAPIKeyStore_removeFromAPIMapping(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		ID:    "key-1",
+		UUID:    "0000-key-1-0000-000000000000",
 		Name:  "test-key",
-		APIId: "api-1",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
 	}
 
 	// First add the key
@@ -306,5 +306,5 @@ func TestAPIKeyStore_removeFromAPIMapping(t *testing.T) {
 	defer store.mu.RUnlock()
 
 	// API mapping should be cleaned up completely
-	assert.NotContains(t, store.apiKeysByAPI, "api-1")
+	assert.NotContains(t, store.apiKeysByAPI, "0000-api-1-0000-000000000000")
 }

@@ -184,7 +184,7 @@ func (t *Translator) TranslateConfigs(
 		// Skip undeployed APIs - they should not appear in xDS routes
 		if cfg.Status == models.StatusUndeployed {
 			log.Debug("Skipping undeployed API in xDS translation",
-				slog.String("id", cfg.ID),
+				slog.String("id", cfg.UUID),
 				slog.String("displayName", cfg.GetDisplayName()))
 			continue
 		}
@@ -201,7 +201,7 @@ func (t *Translator) TranslateConfigs(
 			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg, configs)
 			if err != nil {
 				log.Error("Failed to translate config",
-					slog.String("id", cfg.ID),
+					slog.String("id", cfg.UUID),
 					slog.String("displayName", cfg.GetDisplayName()),
 					slog.Any("error", err))
 				continue
@@ -210,7 +210,7 @@ func (t *Translator) TranslateConfigs(
 			routesList, clusterList, err = t.translateAPIConfig(cfg, configs)
 			if err != nil {
 				log.Error("Failed to translate config",
-					slog.String("id", cfg.ID),
+					slog.String("id", cfg.UUID),
 					slog.String("displayName", cfg.GetDisplayName()),
 					slog.Any("error", err))
 				continue
@@ -447,14 +447,14 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 			chName = "/" + chName
 		}
 		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoutePerTopic(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
+		r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
 			mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil)
+	r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
@@ -516,7 +516,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout)
 		mainRoutesList = append(mainRoutesList, r)
 	}
@@ -542,7 +542,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sbRoutesList := make([]*route.Route, 0)
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
-			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout)
 			sbRoutesList = append(sbRoutesList, r)
 		}

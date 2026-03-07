@@ -216,7 +216,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		result := policybuilder.DerivePolicyFromAPIConfig(cfg, &fullConfig.Router, fullConfig, testPolicyDefinitions())
 
 		require.NotNil(t, result)
-		assert.Contains(t, result.ID, "test-api-id")
+		assert.Contains(t, result.ID, "0000-test-api-0000-000000000000")
 		assert.Equal(t, "Test API", result.Configuration.Metadata.APIName)
 		assert.Equal(t, "v1.0.0", result.Configuration.Metadata.Version)
 		assert.Equal(t, "/test", result.Configuration.Metadata.Context)
@@ -308,7 +308,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := &models.StoredConfig{
-			ID:   "test-mixed-majors-id",
+			UUID:   "0000-test-mixed-majors-0000-000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -356,7 +356,7 @@ func TestDerivePolicyFromAPIConfig_InvalidConfig(t *testing.T) {
 	t.Run("Invalid API spec returns nil", func(t *testing.T) {
 		// Create a config that will fail AsAPIConfigData
 		cfg := &models.StoredConfig{
-			ID:   "invalid-api",
+			UUID:   "0000-invalid-api-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -420,7 +420,7 @@ func createTestStoredConfig(name, version, context string, apiPolicies []api.Pol
 	_ = spec.FromAPIConfigData(apiData)
 
 	return &models.StoredConfig{
-		ID:   name + "-id",
+		UUID:   "0000-" + name + "-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi,
@@ -471,7 +471,7 @@ func createTestStoredConfigWithSandbox(name, version, context string, apiPolicie
 	_ = spec.FromAPIConfigData(apiData)
 
 	return &models.StoredConfig{
-		ID:   name + "-id",
+		UUID:   "0000-" + name + "-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi,
@@ -525,7 +525,7 @@ func createTestStoredConfigWithVhosts(name, version, context string, apiPolicies
 	_ = spec.FromAPIConfigData(apiData)
 
 	return &models.StoredConfig{
-		ID:   name + "-id",
+		UUID:   "0000-" + name + "-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi,
@@ -821,7 +821,7 @@ func createTestStoredConfigMultipleOps(name, version, context string, apiPolicie
 	_ = spec.FromAPIConfigData(apiData)
 
 	return &models.StoredConfig{
-		ID:   name + "-id",
+		UUID:   "0000-" + name + "-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi,

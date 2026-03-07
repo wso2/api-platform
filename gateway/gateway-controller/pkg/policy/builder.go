@@ -181,7 +181,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 
 	now := time.Now().Unix()
 	return &models.StoredPolicyConfig{
-		ID: cfg.ID + "-policies",
+		ID: cfg.UUID + "-policies",
 		Configuration: policyenginev1.Configuration{
 			Routes: routes,
 			Metadata: policyenginev1.Metadata{

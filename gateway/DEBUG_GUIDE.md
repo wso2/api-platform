@@ -165,7 +165,7 @@ In `gateway/docker-compose.yaml`, make two changes to the `gateway-runtime` serv
 services:
   gateway-runtime:
     environment:
-      GATEWAY_CONTROLLER_HOST: host.docker.internal
+      GATEWAY_CONTROLLER_HOST=host.docker.internal
 ```
 
 2. Comment out the **Policy Engine** port block:
@@ -206,8 +206,8 @@ Run the router in Docker Compose:
 
 ```bash
 cd gateway
-docker compose up gateway-runtime -d
-docker compose logs -ft gateway-runtime
+docker compose up gateway-runtime sample-backend -d
+docker compose logs -ft gateway-runtime sample-backend
 ```
 
 ### Step 7: Deploy an API and Test

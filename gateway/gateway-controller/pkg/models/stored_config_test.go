@@ -36,12 +36,12 @@ func TestStoredConfig_GetHandle(t *testing.T) {
 	config := &StoredConfig{
 		Configuration: api.APIConfiguration{
 			Metadata: api.Metadata{
-				Name: "test-handle",
+				Name: "0000-test-handle-0000-000000000000",
 			},
 		},
 	}
 
-	assert.Equal(t, "test-handle", config.GetHandle())
+	assert.Equal(t, "0000-test-handle-0000-000000000000", config.GetHandle())
 }
 
 func TestStoredConfig_GetHandle_Empty(t *testing.T) {
@@ -61,7 +61,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 	deployedAt := now.Add(time.Hour)
 
 	config := &StoredConfig{
-		ID:              "test-id-123",
+		UUID:              "0000-test-id-123-0000-000000000000",
 		Kind:            "API",
 		Status:          StatusDeployed,
 		CreatedAt:       now,
@@ -70,7 +70,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 		DeployedVersion: 5,
 	}
 
-	assert.Equal(t, "test-id-123", config.ID)
+	assert.Equal(t, "0000-test-id-123-0000-000000000000", config.UUID)
 	assert.Equal(t, "API", config.Kind)
 	assert.Equal(t, StatusDeployed, config.Status)
 	assert.Equal(t, now, config.CreatedAt)
@@ -82,7 +82,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 
 func TestStoredConfig_NilDeployedAt(t *testing.T) {
 	config := &StoredConfig{
-		ID:         "test-id",
+		UUID:         "0000-test-id-0000-000000000000",
 		Status:     StatusPending,
 		DeployedAt: nil,
 	}
@@ -99,7 +99,7 @@ func TestStoredConfig_SourceConfiguration(t *testing.T) {
 	}
 
 	config := &StoredConfig{
-		ID:                  "test-id",
+		UUID:                  "0000-test-id-0000-000000000000",
 		SourceConfiguration: sourceConfig,
 	}
 

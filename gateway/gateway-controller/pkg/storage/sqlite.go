@@ -32,14 +32,14 @@ import (
 var schemaSQL string
 
 const (
-	sqliteUniqueDeploymentsNameVersion = "UNIQUE constraint failed: deployments.display_name, deployments.version, deployments.gateway_id"
-	sqliteUniqueDeploymentsID          = "UNIQUE constraint failed: deployments.id"
-	sqliteUniqueDeploymentsHandle      = "UNIQUE constraint failed: deployments.handle, deployments.gateway_id"
-	sqliteUniqueCertificatesName       = "UNIQUE constraint failed: certificates.name, certificates.gateway_id"
-	sqliteUniqueCertificatesID         = "UNIQUE constraint failed: certificates.id"
-	sqliteUniqueTemplatesHandle        = "UNIQUE constraint failed: llm_provider_templates.handle, llm_provider_templates.gateway_id"
-	sqliteUniqueAPIKeysKey             = "UNIQUE constraint failed: api_keys.api_key"
-	sqliteUniqueAPIKeysID              = "UNIQUE constraint failed: api_keys.id"
+	sqliteUniqueArtifactsNameVersion = "UNIQUE constraint failed: artifacts.gateway_id, artifacts.kind, artifacts.display_name, artifacts.version"
+	sqliteUniqueArtifactsUUID        = "UNIQUE constraint failed: artifacts.uuid"
+	sqliteUniqueArtifactsHandle      = "UNIQUE constraint failed: artifacts.gateway_id, artifacts.kind, artifacts.handle"
+	sqliteUniqueCertificatesName     = "UNIQUE constraint failed: certificates.name, certificates.gateway_id"
+	sqliteUniqueCertificatesUUID     = "UNIQUE constraint failed: certificates.uuid"
+	sqliteUniqueTemplatesHandle      = "UNIQUE constraint failed: llm_provider_templates.handle, llm_provider_templates.gateway_id"
+	sqliteUniqueAPIKeysKey           = "UNIQUE constraint failed: api_keys.api_key"
+	sqliteUniqueAPIKeysUUID          = "UNIQUE constraint failed: api_keys.uuid"
 )
 
 // SQLiteStorage implements the Storage interface using SQLite
@@ -91,7 +91,7 @@ func (s *SQLiteStorage) initSchema() error {
 	}
 
 	if version == 0 {
-		s.logger.Info("Initializing database schema (version 8)")
+		s.logger.Info("Initializing database schema (version 10)")
 		s.logger.Debug("Creating schema with SQL", slog.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
@@ -714,6 +714,338 @@ func (s *SQLiteStorage) initSchema() error {
 			s.logger.Info("Schema migrated to version 9 (removed index_key)")
 			version = 9
 		}
+
+		// Migration to version 10: deployments→artifacts, per-resource-type tables, id→uuid
+		if version == 9 {
+			s.logger.Info("Migrating schema to version 10 (artifacts + per-resource-type tables)")
+
+			// Check if this is a real migration (old deployments table exists) or just a version bump
+			var deploymentsExists bool
+			if err := s.db.QueryRow("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&deploymentsExists); err != nil {
+				return fmt.Errorf("v10: failed to check deployments table: %w", err)
+			}
+
+			if !deploymentsExists {
+				// Fresh DB already has the new schema, just bump version
+				if _, err := s.db.Exec("PRAGMA user_version = 10"); err != nil {
+					return fmt.Errorf("v10: failed to set schema version: %w", err)
+				}
+				s.logger.Info("Schema version bumped to 10 (already has new schema)")
+				version = 10
+			} else {
+
+			if _, err := s.db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
+				return fmt.Errorf("failed to disable foreign keys for migration to version 10: %w", err)
+			}
+
+			tx, err := s.db.BeginTx(context.Background(), nil)
+			if err != nil {
+				s.db.Exec("PRAGMA foreign_keys = ON")
+				return fmt.Errorf("failed to begin transaction for migration to version 10: %w", err)
+			}
+			defer func() {
+				if err != nil {
+					if rbErr := tx.Rollback(); rbErr != nil {
+						s.logger.Error("Failed to rollback migration transaction", slog.Any("error", rbErr))
+					}
+					s.db.Exec("PRAGMA foreign_keys = ON")
+				}
+			}()
+
+			// 1. Rename deployments → artifacts (with column changes)
+			if _, err = tx.Exec(`CREATE TABLE artifacts (
+				uuid TEXT PRIMARY KEY,
+				gateway_id TEXT NOT NULL DEFAULT 'default',
+				display_name TEXT NOT NULL,
+				version TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				handle TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed')),
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				deployed_at TIMESTAMP,
+				UNIQUE(gateway_id, kind, display_name, version),
+				UNIQUE(gateway_id, kind, handle)
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create artifacts table: %w", err)
+			}
+
+			if _, err = tx.Exec(`
+				INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at, deployed_at)
+				SELECT id, gateway_id, display_name, version, kind, handle, status, created_at, updated_at, deployed_at
+				FROM deployments;
+			`); err != nil {
+				return fmt.Errorf("v10: failed to copy deployments to artifacts: %w", err)
+			}
+
+			// 2. Create per-resource-type tables
+			if _, err = tx.Exec(`CREATE TABLE rest_apis (
+				uuid TEXT PRIMARY KEY,
+				configuration TEXT NOT NULL,
+				FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create rest_apis table: %w", err)
+			}
+
+			if _, err = tx.Exec(`CREATE TABLE websub_apis (
+				uuid TEXT PRIMARY KEY,
+				configuration TEXT NOT NULL,
+				FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create websub_apis table: %w", err)
+			}
+
+			if _, err = tx.Exec(`CREATE TABLE llm_providers (
+				uuid TEXT PRIMARY KEY,
+				configuration TEXT NOT NULL,
+				FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create llm_providers table: %w", err)
+			}
+
+			if _, err = tx.Exec(`CREATE TABLE llm_proxies (
+				uuid TEXT PRIMARY KEY,
+				configuration TEXT NOT NULL,
+				provider_uuid TEXT NOT NULL,
+				FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+				FOREIGN KEY(provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create llm_proxies table: %w", err)
+			}
+
+			if _, err = tx.Exec(`CREATE TABLE mcp_proxies (
+				uuid TEXT PRIMARY KEY,
+				configuration TEXT NOT NULL,
+				FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create mcp_proxies table: %w", err)
+			}
+
+			// 3. Migrate data from deployment_configs to per-type tables
+			// RestApi/WebSubApi: use configuration column (source IS the derived config)
+			if _, err = tx.Exec(`
+				INSERT INTO rest_apis (uuid, configuration)
+				SELECT dc.id, dc.configuration
+				FROM deployment_configs dc
+				JOIN artifacts a ON dc.id = a.uuid
+				WHERE a.kind = 'RestApi';
+			`); err != nil {
+				return fmt.Errorf("v10: failed to migrate rest_apis data: %w", err)
+			}
+
+			if _, err = tx.Exec(`
+				INSERT INTO websub_apis (uuid, configuration)
+				SELECT dc.id, dc.configuration
+				FROM deployment_configs dc
+				JOIN artifacts a ON dc.id = a.uuid
+				WHERE a.kind = 'WebSubApi';
+			`); err != nil {
+				return fmt.Errorf("v10: failed to migrate websub_apis data: %w", err)
+			}
+
+			// LlmProvider/LlmProxy/Mcp: use source_configuration column (original typed config)
+			if _, err = tx.Exec(`
+				INSERT INTO llm_providers (uuid, configuration)
+				SELECT dc.id, dc.source_configuration
+				FROM deployment_configs dc
+				JOIN artifacts a ON dc.id = a.uuid
+				WHERE a.kind = 'LlmProvider';
+			`); err != nil {
+				return fmt.Errorf("v10: failed to migrate llm_providers data: %w", err)
+			}
+
+			if _, err = tx.Exec(`
+				INSERT INTO llm_proxies (uuid, configuration, provider_uuid)
+				SELECT dc.id, dc.source_configuration, ''
+				FROM deployment_configs dc
+				JOIN artifacts a ON dc.id = a.uuid
+				WHERE a.kind = 'LlmProxy';
+			`); err != nil {
+				return fmt.Errorf("v10: failed to migrate llm_proxies data: %w", err)
+			}
+
+			if _, err = tx.Exec(`
+				INSERT INTO mcp_proxies (uuid, configuration)
+				SELECT dc.id, dc.source_configuration
+				FROM deployment_configs dc
+				JOIN artifacts a ON dc.id = a.uuid
+				WHERE a.kind = 'Mcp';
+			`); err != nil {
+				return fmt.Errorf("v10: failed to migrate mcp_proxies data: %w", err)
+			}
+
+			// 4. Drop old tables
+			if _, err = tx.Exec(`DROP TABLE deployment_configs;`); err != nil {
+				return fmt.Errorf("v10: failed to drop deployment_configs: %w", err)
+			}
+			if _, err = tx.Exec(`DROP TABLE deployments;`); err != nil {
+				return fmt.Errorf("v10: failed to drop deployments: %w", err)
+			}
+
+			// 5. Rebuild certificates with uuid column
+			if _, err = tx.Exec(`CREATE TABLE certificates_v10 (
+				uuid TEXT PRIMARY KEY,
+				gateway_id TEXT NOT NULL DEFAULT 'default',
+				name TEXT NOT NULL,
+				certificate BLOB NOT NULL,
+				subject TEXT NOT NULL,
+				issuer TEXT NOT NULL,
+				not_before TIMESTAMP NOT NULL,
+				not_after TIMESTAMP NOT NULL,
+				cert_count INTEGER NOT NULL DEFAULT 1,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(name, gateway_id)
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create certificates_v10: %w", err)
+			}
+			if _, err = tx.Exec(`
+				INSERT INTO certificates_v10 (uuid, gateway_id, name, certificate, subject, issuer, not_before, not_after, cert_count, created_at, updated_at)
+				SELECT id, gateway_id, name, certificate, subject, issuer, not_before, not_after, cert_count, created_at, updated_at
+				FROM certificates;
+			`); err != nil {
+				return fmt.Errorf("v10: failed to copy certificates: %w", err)
+			}
+			if _, err = tx.Exec(`DROP TABLE certificates;`); err != nil {
+				return fmt.Errorf("v10: failed to drop old certificates: %w", err)
+			}
+			if _, err = tx.Exec(`ALTER TABLE certificates_v10 RENAME TO certificates;`); err != nil {
+				return fmt.Errorf("v10: failed to rename certificates_v10: %w", err)
+			}
+
+			// 6. Rebuild llm_provider_templates with uuid column
+			if _, err = tx.Exec(`CREATE TABLE llm_provider_templates_v10 (
+				uuid TEXT PRIMARY KEY,
+				gateway_id TEXT NOT NULL DEFAULT 'default',
+				handle TEXT NOT NULL,
+				configuration TEXT NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(handle, gateway_id)
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create llm_provider_templates_v10: %w", err)
+			}
+			if _, err = tx.Exec(`
+				INSERT INTO llm_provider_templates_v10 (uuid, gateway_id, handle, configuration, created_at, updated_at)
+				SELECT id, gateway_id, handle, configuration, created_at, updated_at
+				FROM llm_provider_templates;
+			`); err != nil {
+				return fmt.Errorf("v10: failed to copy llm_provider_templates: %w", err)
+			}
+			if _, err = tx.Exec(`DROP TABLE llm_provider_templates;`); err != nil {
+				return fmt.Errorf("v10: failed to drop old llm_provider_templates: %w", err)
+			}
+			if _, err = tx.Exec(`ALTER TABLE llm_provider_templates_v10 RENAME TO llm_provider_templates;`); err != nil {
+				return fmt.Errorf("v10: failed to rename llm_provider_templates_v10: %w", err)
+			}
+
+			// 7. Rebuild api_keys with uuid and artifact_uuid columns
+			if _, err = tx.Exec(`CREATE TABLE api_keys_v10 (
+				uuid TEXT PRIMARY KEY,
+				gateway_id TEXT NOT NULL DEFAULT 'default',
+				name TEXT NOT NULL,
+				api_key TEXT NOT NULL UNIQUE,
+				masked_api_key TEXT NOT NULL,
+				artifact_uuid TEXT NOT NULL,
+				operations TEXT NOT NULL DEFAULT '*',
+				status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				created_by TEXT NOT NULL DEFAULT 'system',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				expires_at TIMESTAMP NULL,
+				expires_in_unit TEXT NULL,
+				expires_in_duration INTEGER NULL,
+				source TEXT NOT NULL DEFAULT 'local',
+				external_ref_id TEXT NULL,
+				display_name TEXT NOT NULL DEFAULT '',
+				FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+				UNIQUE (artifact_uuid, name, gateway_id)
+			);`); err != nil {
+				return fmt.Errorf("v10: failed to create api_keys_v10: %w", err)
+			}
+			if _, err = tx.Exec(`
+				INSERT INTO api_keys_v10 (uuid, gateway_id, name, api_key, masked_api_key, artifact_uuid, operations, status,
+					created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
+					source, external_ref_id, display_name)
+				SELECT id, gateway_id, name, api_key, masked_api_key, apiId, operations, status,
+					created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
+					source, external_ref_id, display_name
+				FROM api_keys;
+			`); err != nil {
+				return fmt.Errorf("v10: failed to copy api_keys: %w", err)
+			}
+			if _, err = tx.Exec(`DROP TABLE api_keys;`); err != nil {
+				return fmt.Errorf("v10: failed to drop old api_keys: %w", err)
+			}
+			if _, err = tx.Exec(`ALTER TABLE api_keys_v10 RENAME TO api_keys;`); err != nil {
+				return fmt.Errorf("v10: failed to rename api_keys_v10: %w", err)
+			}
+
+			// 8. Recreate indexes
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_status ON artifacts(status);`); err != nil {
+				return fmt.Errorf("v10: failed to create idx_status: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_kind ON artifacts(kind);`); err != nil {
+				return fmt.Errorf("v10: failed to create idx_kind: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);`); err != nil {
+				return fmt.Errorf("v10: failed to create idx_artifacts_gateway_id: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_cert_name: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_cert_expiry: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_certificates_gateway_id: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_template_handle: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider_templates(gateway_id);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_llm_provider_templates_gateway_id: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_api_key: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(artifact_uuid);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_api_key_api: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_api_key_status: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_api_key_expiry: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_created_by: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_api_key_source: %w", err)
+			}
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);`); err != nil {
+				return fmt.Errorf("v10: failed to recreate idx_api_key_external_ref: %w", err)
+			}
+
+			// 9. Set version
+			if _, err = tx.Exec("PRAGMA user_version = 10"); err != nil {
+				return fmt.Errorf("v10: failed to set schema version: %w", err)
+			}
+
+			if err = tx.Commit(); err != nil {
+				return fmt.Errorf("v10: failed to commit migration: %w", err)
+			}
+
+			if _, err := s.db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+				return fmt.Errorf("v10: failed to re-enable foreign keys: %w", err)
+			}
+
+			s.logger.Info("Schema migrated to version 10 (artifacts + per-resource-type tables)")
+			version = 10
+
+			} // end deploymentsExists else block
+		}
 	}
 
 	s.logger.Info("Database schema up to date", slog.Int("version", version))
@@ -722,28 +1054,22 @@ func (s *SQLiteStorage) initSchema() error {
 }
 
 func isUniqueConstraintError(err error) bool {
-	// SQLite error code 19 is CONSTRAINT error
-	// Error message contains "UNIQUE constraint failed"
-	return err != nil && (err.Error() == sqliteUniqueDeploymentsNameVersion ||
-		err.Error() == sqliteUniqueDeploymentsID ||
-		err.Error() == sqliteUniqueDeploymentsHandle)
+	return err != nil && (err.Error() == sqliteUniqueArtifactsNameVersion ||
+		err.Error() == sqliteUniqueArtifactsUUID ||
+		err.Error() == sqliteUniqueArtifactsHandle)
 }
 
-// isCertificateUniqueConstraintError checks if the error is a UNIQUE constraint violation for certificates
 func isCertificateUniqueConstraintError(err error) bool {
-	// SQLite error code 19 is CONSTRAINT error
-	// Error message contains "UNIQUE constraint failed"
 	return err != nil && (err.Error() == sqliteUniqueCertificatesName ||
-		err.Error() == sqliteUniqueCertificatesID)
+		err.Error() == sqliteUniqueCertificatesUUID)
 }
 
 func isTemplateUniqueConstraintError(err error) bool {
 	return err != nil && err.Error() == sqliteUniqueTemplatesHandle
 }
 
-// Helper function to check for API key unique constraint errors
 func isAPIKeyUniqueConstraintError(err error) bool {
 	return err != nil &&
 		(err.Error() == sqliteUniqueAPIKeysKey ||
-			err.Error() == sqliteUniqueAPIKeysID)
+			err.Error() == sqliteUniqueAPIKeysUUID)
 }

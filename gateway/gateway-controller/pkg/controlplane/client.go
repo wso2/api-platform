@@ -670,7 +670,7 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 			slog.String("correlation_id", correlationID))
 	} else if result.IsUpdate {
 		// No policies but this is an update, so remove any existing policies
-		policyID := result.StoredConfig.ID + "-policies"
+		policyID := result.StoredConfig.UUID + "-policies"
 		if err := c.policyManager.RemovePolicy(policyID); err != nil {
 			// Only treat "policy not found" as non-error (API may never have had policies)
 			// Other errors (storage failures, snapshot update failures) should be logged as errors

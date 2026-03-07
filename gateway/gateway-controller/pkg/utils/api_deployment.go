@@ -164,7 +164,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		if conflicting, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {
 			// For updates: only error if the conflict is with a different API
 			// For creates: any conflict is an error
-			if !isUpdate || conflicting.ID != apiID {
+			if !isUpdate || conflicting.UUID != apiID {
 				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, apiName, apiVersion)
 			}
 		}
@@ -175,7 +175,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 				if c.GetHandle() == handle {
 					// For updates: only error if the conflict is with a different API
 					// For creates: any conflict is an error
-					if !isUpdate || c.ID != apiID {
+					if !isUpdate || c.UUID != apiID {
 						return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
 					}
 				}
@@ -186,7 +186,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		ID:                  apiID,
+		UUID:                  apiID,
 		Kind:                string(apiConfig.Kind),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
@@ -327,7 +327,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 }
 
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {
-	topics := s.store.TopicManager.GetAllByConfig(apiConfig.ID)
+	topics := s.store.TopicManager.GetAllByConfig(apiConfig.UUID)
 	topicsToRegister := []string{}
 	topicsToUnregister := []string{}
 	apiTopicsPerRevision := make(map[string]bool)
@@ -355,7 +355,7 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 	}
 
 	for topic := range apiTopicsPerRevision {
-		if s.store.TopicManager.IsTopicExist(apiConfig.ID, topic) {
+		if s.store.TopicManager.IsTopicExist(apiConfig.UUID, topic) {
 			continue
 		}
 		topicsToRegister = append(topicsToRegister, topic)
@@ -365,17 +365,17 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 }
 
 func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig) []string {
-	return s.store.TopicManager.GetAllByConfig(apiConfig.ID)
+	return s.store.TopicManager.GetAllByConfig(apiConfig.UUID)
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	existing, _ := s.store.Get(storedCfg.ID)
+	existing, _ := s.store.Get(storedCfg.UUID)
 
 	// If config already exists, update it
 	if existing != nil {
 		logger.Info("API configuration already exists, updating",
-			slog.String("api_id", storedCfg.ID),
+			slog.String("api_id", storedCfg.UUID),
 			slog.String("displayName", storedCfg.GetDisplayName()),
 			slog.String("version", storedCfg.GetVersion()))
 		return s.updateExistingConfig(storedCfg, existing, logger)
@@ -385,7 +385,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
 			logger.Info("Error saving new API configuration to database",
-				slog.String("api_id", storedCfg.ID),
+				slog.String("api_id", storedCfg.UUID),
 				slog.String("displayName", storedCfg.GetDisplayName()),
 				slog.String("version", storedCfg.GetVersion()))
 			return false, fmt.Errorf("failed to save config to database: %w", err)
@@ -397,10 +397,10 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		// Rollback database write (only if persistent mode)
 		if s.db != nil {
 			logger.Info("Error adding new API configuration to memory store, rolling back database",
-				slog.String("api_id", storedCfg.ID),
+				slog.String("api_id", storedCfg.UUID),
 				slog.String("displayName", storedCfg.GetDisplayName()),
 				slog.String("version", storedCfg.GetVersion()))
-			_ = s.db.DeleteConfig(storedCfg.ID)
+			_ = s.db.DeleteConfig(storedCfg.UUID)
 		}
 		return false, fmt.Errorf("failed to add config to memory store: %w", err)
 	}
@@ -438,7 +438,7 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
 				logger.Error("Failed to rollback DB after memory update failure",
 					slog.Any("error", rbErr),
-					slog.String("id", original.ID),
+					slog.String("id", original.UUID),
 					slog.String("displayName", original.GetDisplayName()),
 					slog.String("version", original.GetVersion()))
 			}
