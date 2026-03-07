@@ -103,7 +103,7 @@ func TestSchemaInitialization(t *testing.T) {
 		var version int
 		err := rawDB.QueryRow("PRAGMA user_version").Scan(&version)
 		assert.NoError(t, err)
-		assert.Equal(t, 10, version, "Schema version should be 10 (artifacts + per-resource-type tables)")
+		assert.Equal(t, 1, version, "Schema version should be 1")
 	})
 
 	// Verify artifacts table exists

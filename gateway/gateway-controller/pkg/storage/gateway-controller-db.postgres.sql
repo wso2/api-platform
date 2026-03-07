@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 9
+-- Version: 1
 
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (

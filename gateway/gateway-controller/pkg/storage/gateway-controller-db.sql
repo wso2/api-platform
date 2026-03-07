@@ -1,6 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 1.0
--- Description: Persistent storage for API configurations with lifecycle metadata
+-- Version: 1
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -188,5 +187,4 @@ CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 
--- Set schema version to 10 (per-resource-type tables, id→uuid, deployments→artifacts)
-PRAGMA user_version = 10;
+PRAGMA user_version = 1;

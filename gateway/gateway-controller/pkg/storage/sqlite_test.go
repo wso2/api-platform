@@ -77,7 +77,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 10) // Current schema version
+	assert.Equal(t, version, 1) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -103,7 +103,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	}
 }
 
-func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
+func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_upgrade.db")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -113,22 +113,15 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	assert.NilError(t, err)
 	storage := store.(*sqlStore)
 
-	// Set schema version to 9 to test v9→v10 upgrade path
-	_, err = storage.db.Exec("PRAGMA user_version = 9")
+	// Set schema version to an unsupported value
+	_, err = storage.db.Exec("PRAGMA user_version = 5")
 	assert.NilError(t, err)
 	storage.db.Close()
 
-	// Reopen to trigger migration
-	store, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
-	assert.NilError(t, err)
-	storage = store.(*sqlStore)
-	defer storage.db.Close()
-
-	// Verify migration ran
-	var version int
-	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
-	assert.NilError(t, err)
-	assert.Equal(t, version, 10)
+	// Reopen — should fail with unsupported version error
+	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
+	assert.Assert(t, err != nil)
+	assert.ErrorContains(t, err, "unsupported schema version 5")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
