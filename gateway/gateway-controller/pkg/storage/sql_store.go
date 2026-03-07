@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"time"
 
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -136,14 +137,39 @@ func kindToResourceTable(kind string) (string, error) {
 	}
 }
 
-// isSourceOnlyKind returns true for kinds where the source config differs from the derived api.APIConfiguration.
-func isSourceOnlyKind(kind string) bool {
-	switch kind {
-	case "LlmProvider", "LlmProxy", "Mcp":
-		return true
+// unmarshalSourceConfig unmarshals JSON into the correct typed struct for the given kind,
+// and populates both SourceConfiguration and (for RestApi/WebSubApi) Configuration.
+func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
+	switch cfg.Kind {
+	case "RestApi", "WebSubApi":
+		var config api.APIConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case "LlmProvider":
+		var config api.LLMProviderConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+	case "LlmProxy":
+		var config api.LLMProxyConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+	case "Mcp":
+		var config api.MCPProxyConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
 	default:
-		return false
+		return fmt.Errorf("unknown kind: %s", cfg.Kind)
 	}
+	return nil
 }
 
 func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
@@ -594,17 +620,8 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		}
 
 		if configJSON.Valid && configJSON.String != "" {
-			if isSourceOnlyKind(cfg.Kind) {
-				// For LlmProvider/LlmProxy/Mcp: stored config is source, not derived APIConfiguration
-				if err := json.Unmarshal([]byte(configJSON.String), &cfg.SourceConfiguration); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
-				}
-			} else {
-				// For RestApi/WebSubApi: stored config IS the APIConfiguration
-				if err := json.Unmarshal([]byte(configJSON.String), &cfg.Configuration); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
-				}
-				cfg.SourceConfiguration = cfg.Configuration
+			if err := unmarshalSourceConfig(&cfg, configJSON.String); err != nil {
+				return nil, err
 			}
 		}
 
@@ -638,15 +655,8 @@ func (s *sqlStore) loadResourceConfig(cfg *models.StoredConfig) error {
 	}
 
 	if configJSON.Valid && configJSON.String != "" {
-		if isSourceOnlyKind(cfg.Kind) {
-			if err := json.Unmarshal([]byte(configJSON.String), &cfg.SourceConfiguration); err != nil {
-				return fmt.Errorf("failed to unmarshal source configuration: %w", err)
-			}
-		} else {
-			if err := json.Unmarshal([]byte(configJSON.String), &cfg.Configuration); err != nil {
-				return fmt.Errorf("failed to unmarshal configuration: %w", err)
-			}
-			cfg.SourceConfiguration = cfg.Configuration
+		if err := unmarshalSourceConfig(cfg, configJSON.String); err != nil {
+			return err
 		}
 	}
 
@@ -660,12 +670,7 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 		return false, err
 	}
 
-	var configJSON []byte
-	if isSourceOnlyKind(cfg.Kind) {
-		configJSON, err = json.Marshal(cfg.SourceConfiguration)
-	} else {
-		configJSON, err = json.Marshal(cfg.Configuration)
-	}
+	configJSON, err := json.Marshal(cfg.SourceConfiguration)
 	if err != nil {
 		return false, fmt.Errorf("failed to marshal configuration: %w", err)
 	}
@@ -703,12 +708,7 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		return false, err
 	}
 
-	var configJSON []byte
-	if isSourceOnlyKind(cfg.Kind) {
-		configJSON, err = json.Marshal(cfg.SourceConfiguration)
-	} else {
-		configJSON, err = json.Marshal(cfg.Configuration)
-	}
+	configJSON, err := json.Marshal(cfg.SourceConfiguration)
 	if err != nil {
 		return false, fmt.Errorf("failed to marshal configuration: %w", err)
 	}
@@ -750,22 +750,8 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 // extractProviderUUID extracts the provider UUID from an LlmProxy's source configuration.
 // Returns empty string if not extractable (caller should handle).
 func (s *sqlStore) extractProviderUUID(cfg *models.StoredConfig) string {
-	if cfg.SourceConfiguration == nil {
-		return ""
-	}
-	// Try to extract provider reference from source config
-	data, err := json.Marshal(cfg.SourceConfiguration)
-	if err != nil {
-		return ""
-	}
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return ""
-	}
-	if spec, ok := raw["spec"].(map[string]interface{}); ok {
-		if provider, ok := spec["provider"].(string); ok {
-			return provider
-		}
+	if proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration); ok {
+		return proxyConfig.Spec.Provider.Id
 	}
 	return ""
 }

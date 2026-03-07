@@ -363,7 +363,11 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 		Version:     "v1.0.0",
 		Context:     "/test-llm-kind",
 	})
-	llmConfig.SourceConfiguration = map[string]any{"name": "test-llm"}
+	llmConfig.SourceConfiguration = api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata:   api.Metadata{Name: "test-llm-kind"},
+	}
 
 	err := storage.SaveConfig(apiConfig)
 	assert.NilError(t, err)
@@ -854,17 +858,19 @@ func createTestStoredConfig() *models.StoredConfig {
 	var spec api.APIConfiguration_Spec
 	spec.FromAPIConfigData(apiData)
 
+	apiConfig := api.APIConfiguration{
+		Kind:     api.RestApi,
+		Metadata: api.Metadata{Name: fmt.Sprintf("test-api-%d", configCounter)},
+		Spec:     spec,
+	}
 	return &models.StoredConfig{
-		UUID: fmt.Sprintf("test-config-%d", configCounter),
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			Kind:     api.RestApi,
-			Metadata: api.Metadata{Name: fmt.Sprintf("test-api-%d", configCounter)},
-			Spec:     spec,
-		},
-		Status:    models.StatusPending,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		UUID:                fmt.Sprintf("test-config-%d", configCounter),
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 }
 

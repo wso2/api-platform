@@ -111,7 +111,7 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 
 	// Create certificate model
 	cert := &models.StoredCertificate{
-		UUID:          certID,
+		UUID:        certID,
 		Name:        req.Name,
 		Certificate: certData,
 		Subject:     subject,

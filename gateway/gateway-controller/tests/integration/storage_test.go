@@ -83,17 +83,19 @@ func createTestConfig(name, version string) *models.StoredConfig {
 			},
 		},
 	})
+	apiConfig := api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: name + "-" + version},
+		Spec:       specUnion,
+	}
 	return &models.StoredConfig{
-		UUID: uuid.New().String(),
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.RestApi,
-			Metadata:   api.Metadata{Name: name + "-" + version},
-			Spec:       specUnion,
-		},
-		Status:          models.StatusPending,
-		DeployedVersion: 0,
+		UUID:                uuid.New().String(),
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		DeployedVersion:     0,
 	}
 }
 
@@ -335,20 +337,22 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 		labelsPtr = &labels
 	}
 
-	return &models.StoredConfig{
-		UUID: uuid.New().String(),
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.RestApi,
-			Metadata: api.Metadata{
-				Name:   name + "-" + version,
-				Labels: labelsPtr,
-			},
-			Spec: specUnion,
+	apiConfig := api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata: api.Metadata{
+			Name:   name + "-" + version,
+			Labels: labelsPtr,
 		},
-		Status:          models.StatusPending,
-		DeployedVersion: 0,
+		Spec: specUnion,
+	}
+	return &models.StoredConfig{
+		UUID:                uuid.New().String(),
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		DeployedVersion:     0,
 	}
 }
 
@@ -680,6 +684,7 @@ func TestSQLiteStorage_LabelsPersistence(t *testing.T) {
 			"key2": "value2",
 		}
 		cfg.Configuration.Metadata.Labels = &updatedLabels
+		cfg.SourceConfiguration = cfg.Configuration
 
 		err = db.UpdateConfig(cfg)
 		require.NoError(t, err)

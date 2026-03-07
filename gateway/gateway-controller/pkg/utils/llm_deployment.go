@@ -150,7 +150,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		UUID:                  apiID,
+		UUID:                apiID,
 		Kind:                string(api.LlmProvider),
 		Configuration:       apiConfig,
 		SourceConfiguration: providerConfig,
@@ -271,7 +271,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		UUID:                  apiID,
+		UUID:                apiID,
 		Kind:                string(api.LlmProxy),
 		Configuration:       apiConfig,
 		SourceConfiguration: proxyConfig,
@@ -362,7 +362,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	}
 
 	stored := &models.StoredLLMProviderTemplate{
-		UUID:            id,
+		UUID:          id,
 		Configuration: *tmpl,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -457,7 +457,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			// ---------------------------
 
 			updated := &models.StoredLLMProviderTemplate{
-				UUID:            existing.UUID,
+				UUID:          existing.UUID,
 				Configuration: *tmpl,
 				CreatedAt:     existing.CreatedAt,
 				UpdatedAt:     time.Now(),
@@ -501,7 +501,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 		}
 
 		stored := &models.StoredLLMProviderTemplate{
-			UUID:            id,
+			UUID:          id,
 			Configuration: *tmpl,
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -581,7 +581,7 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 	}
 
 	updated := &models.StoredLLMProviderTemplate{
-		UUID:            existing.UUID,
+		UUID:          existing.UUID,
 		Configuration: *tmpl,
 		CreatedAt:     existing.CreatedAt,
 		UpdatedAt:     time.Now(),

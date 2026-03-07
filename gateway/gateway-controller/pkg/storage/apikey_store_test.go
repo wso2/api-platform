@@ -48,11 +48,11 @@ func TestAPIKeyStore_Store(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		UUID:     "0000-key-1-0000-000000000000",
-		Name:   "test-key",
-		APIKey: "hashed-value",
-		ArtifactUUID:  "0000-api-1-0000-000000000000",
-		Status: models.APIKeyStatusActive,
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test-key",
+		APIKey:       "hashed-value",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
 	}
 
 	err := store.Store(apiKey)
@@ -67,22 +67,22 @@ func TestAPIKeyStore_Store_Update(t *testing.T) {
 
 	// Store initial key
 	apiKey := &models.APIKey{
-		UUID:     "0000-key-1-0000-000000000000",
-		Name:   "test-key",
-		APIKey: "hashed-value-1",
-		ArtifactUUID:  "0000-api-1-0000-000000000000",
-		Status: models.APIKeyStatusActive,
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test-key",
+		APIKey:       "hashed-value-1",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
 	}
 	err := store.Store(apiKey)
 	require.NoError(t, err)
 
 	// Store updated key with same name and same ID (rotation scenario)
 	updatedKey := &models.APIKey{
-		UUID:     "0000-key-1-0000-000000000000",
-		Name:   "test-key",
-		APIKey: "hashed-value-2",
-		ArtifactUUID:  "0000-api-1-0000-000000000000",
-		Status: models.APIKeyStatusActive,
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test-key",
+		APIKey:       "hashed-value-2",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
 	}
 	err = store.Store(updatedKey)
 	require.NoError(t, err)
@@ -105,11 +105,11 @@ func TestAPIKeyStore_GetAll(t *testing.T) {
 	// Add multiple keys
 	for i := 1; i <= 3; i++ {
 		apiKey := &models.APIKey{
-			UUID:     "0000-key--0000-000000000000" + string(rune('0'+i)),
-			Name:   "test-key-" + string(rune('0'+i)),
-			APIKey: "value-" + string(rune('0'+i)),
-			ArtifactUUID:  "0000-api-1-0000-000000000000",
-			Status: models.APIKeyStatusActive,
+			UUID:         "0000-key--0000-000000000000" + string(rune('0'+i)),
+			Name:         "test-key-" + string(rune('0'+i)),
+			APIKey:       "value-" + string(rune('0'+i)),
+			ArtifactUUID: "0000-api-1-0000-000000000000",
+			Status:       models.APIKeyStatusActive,
 		}
 		err := store.Store(apiKey)
 		require.NoError(t, err)
@@ -124,11 +124,11 @@ func TestAPIKeyStore_Revoke(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		UUID:     "0000-key-1-0000-000000000000",
-		Name:   "test-key",
-		APIKey: "hashed-value",
-		ArtifactUUID:  "0000-api-1-0000-000000000000",
-		Status: models.APIKeyStatusActive,
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test-key",
+		APIKey:       "hashed-value",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
 	}
 	err := store.Store(apiKey)
 	require.NoError(t, err)
@@ -157,22 +157,22 @@ func TestAPIKeyStore_RemoveByAPI(t *testing.T) {
 	// Add keys for multiple APIs
 	for i := 1; i <= 3; i++ {
 		apiKey := &models.APIKey{
-			UUID:     "0000-key--0000-000000000000" + string(rune('0'+i)),
-			Name:   "test-key-" + string(rune('0'+i)),
-			APIKey: "value-" + string(rune('0'+i)),
-			ArtifactUUID:  "0000-api-1-0000-000000000000",
-			Status: models.APIKeyStatusActive,
+			UUID:         "0000-key--0000-000000000000" + string(rune('0'+i)),
+			Name:         "test-key-" + string(rune('0'+i)),
+			APIKey:       "value-" + string(rune('0'+i)),
+			ArtifactUUID: "0000-api-1-0000-000000000000",
+			Status:       models.APIKeyStatusActive,
 		}
 		err := store.Store(apiKey)
 		require.NoError(t, err)
 	}
 
 	apiKey := &models.APIKey{
-		UUID:     "0000-key-other-0000-000000000000",
-		Name:   "other-key",
-		APIKey: "other-value",
-		ArtifactUUID:  "0000-api-2-0000-000000000000",
-		Status: models.APIKeyStatusActive,
+		UUID:         "0000-key-other-0000-000000000000",
+		Name:         "other-key",
+		APIKey:       "other-value",
+		ArtifactUUID: "0000-api-2-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
 	}
 	err := store.Store(apiKey)
 	require.NoError(t, err)
@@ -219,11 +219,11 @@ func TestAPIKeyStore_ConcurrentAccess(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			apiKey := &models.APIKey{
-				UUID:     "0000-key--0000-000000000000" + string(rune('a'+idx)),
-				Name:   "test-key-" + string(rune('a'+idx)),
-				APIKey: "value-" + string(rune('a'+idx)),
-				ArtifactUUID:  "0000-api-1-0000-000000000000",
-				Status: models.APIKeyStatusActive,
+				UUID:         "0000-key--0000-000000000000" + string(rune('a'+idx)),
+				Name:         "test-key-" + string(rune('a'+idx)),
+				APIKey:       "value-" + string(rune('a'+idx)),
+				ArtifactUUID: "0000-api-1-0000-000000000000",
+				Status:       models.APIKeyStatusActive,
 			}
 			_ = store.Store(apiKey)
 		}(i)
@@ -266,8 +266,8 @@ func TestAPIKeyStore_addToAPIMapping(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		UUID:    "0000-key-1-0000-000000000000",
-		Name:  "test-key",
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test-key",
 		ArtifactUUID: "0000-api-1-0000-000000000000",
 	}
 
@@ -287,8 +287,8 @@ func TestAPIKeyStore_removeFromAPIMapping(t *testing.T) {
 	store := NewAPIKeyStore(logger)
 
 	apiKey := &models.APIKey{
-		UUID:    "0000-key-1-0000-000000000000",
-		Name:  "test-key",
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test-key",
 		ArtifactUUID: "0000-api-1-0000-000000000000",
 	}
 

@@ -61,7 +61,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 	deployedAt := now.Add(time.Hour)
 
 	config := &StoredConfig{
-		UUID:              "0000-test-id-123-0000-000000000000",
+		UUID:            "0000-test-id-123-0000-000000000000",
 		Kind:            "API",
 		Status:          StatusDeployed,
 		CreatedAt:       now,
@@ -82,7 +82,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 
 func TestStoredConfig_NilDeployedAt(t *testing.T) {
 	config := &StoredConfig{
-		UUID:         "0000-test-id-0000-000000000000",
+		UUID:       "0000-test-id-0000-000000000000",
 		Status:     StatusPending,
 		DeployedAt: nil,
 	}
@@ -99,7 +99,7 @@ func TestStoredConfig_SourceConfiguration(t *testing.T) {
 	}
 
 	config := &StoredConfig{
-		UUID:                  "0000-test-id-0000-000000000000",
+		UUID:                "0000-test-id-0000-000000000000",
 		SourceConfiguration: sourceConfig,
 	}
 

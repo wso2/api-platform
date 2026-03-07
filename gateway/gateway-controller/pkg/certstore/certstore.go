@@ -434,7 +434,7 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 		}
 
 		cert := &models.StoredCertificate{
-			UUID:          certID,
+			UUID:        certID,
 			Name:        filename,
 			Certificate: certData,
 			Subject:     x509Cert.Subject.String(),

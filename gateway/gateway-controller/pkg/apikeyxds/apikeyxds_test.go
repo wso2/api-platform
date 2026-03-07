@@ -135,27 +135,27 @@ func TestAPIKeyTranslator(t *testing.T) {
 		apiKeys := []*models.APIKey{
 			{
 				UUID:         "0000-key1-0000-000000000000",
-				Name:       "test-key-1",
-				APIKey:     "apikey123456789",
-				ArtifactUUID:      "0000-api1-0000-000000000000",
-				Operations: "*",
-				Status:     models.APIKeyStatusActive,
-				CreatedAt:  now,
-				CreatedBy:  "user1",
-				UpdatedAt:  now,
-				ExpiresAt:  &expires,
+				Name:         "test-key-1",
+				APIKey:       "apikey123456789",
+				ArtifactUUID: "0000-api1-0000-000000000000",
+				Operations:   "*",
+				Status:       models.APIKeyStatusActive,
+				CreatedAt:    now,
+				CreatedBy:    "user1",
+				UpdatedAt:    now,
+				ExpiresAt:    &expires,
 			},
 			{
 				UUID:         "0000-key2-0000-000000000000",
-				Name:       "test-key-2",
-				APIKey:     "apikey987654321",
-				ArtifactUUID:      "0000-api2-0000-000000000000",
-				Operations: "GET,POST",
-				Status:     models.APIKeyStatusActive,
-				CreatedAt:  now,
-				CreatedBy:  "user2",
-				UpdatedAt:  now,
-				ExpiresAt:  nil,
+				Name:         "test-key-2",
+				APIKey:       "apikey987654321",
+				ArtifactUUID: "0000-api2-0000-000000000000",
+				Operations:   "GET,POST",
+				Status:       models.APIKeyStatusActive,
+				CreatedAt:    now,
+				CreatedBy:    "user2",
+				UpdatedAt:    now,
+				ExpiresAt:    nil,
 			},
 		}
 
@@ -189,13 +189,13 @@ func TestAPIKeySnapshotManager_UpdateSnapshot(t *testing.T) {
 	t.Run("with api key", func(t *testing.T) {
 		apiKey := &models.APIKey{
 			UUID:         "0000-key1-0000-000000000000",
-			Name:       "test-key",
-			APIKey:     "apikey123456789",
-			ArtifactUUID:      "0000-api1-0000-000000000000",
-			Operations: "*",
-			Status:     models.APIKeyStatusActive,
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			Name:         "test-key",
+			APIKey:       "apikey123456789",
+			ArtifactUUID: "0000-api1-0000-000000000000",
+			Operations:   "*",
+			Status:       models.APIKeyStatusActive,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 		store.Store(apiKey)
 
@@ -213,13 +213,13 @@ func TestAPIKeySnapshotManager_StoreAndRevoke(t *testing.T) {
 
 	apiKey := &models.APIKey{
 		UUID:         "0000-key1-0000-000000000000",
-		Name:       "test-key",
-		APIKey:     "apikey123456789",
-		ArtifactUUID:      "0000-api1-0000-000000000000",
-		Operations: "*",
-		Status:     models.APIKeyStatusActive,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Name:         "test-key",
+		APIKey:       "apikey123456789",
+		ArtifactUUID: "0000-api1-0000-000000000000",
+		Operations:   "*",
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	// Store API key
@@ -250,13 +250,13 @@ func TestAPIKeySnapshotManager_RemoveAPIKeysByAPI(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		apiKey := &models.APIKey{
 			UUID:         "0000-key-0000-000000000000" + string(rune('1'+i)),
-			Name:       "test-key-" + string(rune('1'+i)),
-			APIKey:     "apikey" + string(rune('1'+i)),
-			ArtifactUUID:      "0000-api1-0000-000000000000",
-			Operations: "*",
-			Status:     models.APIKeyStatusActive,
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			Name:         "test-key-" + string(rune('1'+i)),
+			APIKey:       "apikey" + string(rune('1'+i)),
+			ArtifactUUID: "0000-api1-0000-000000000000",
+			Operations:   "*",
+			Status:       models.APIKeyStatusActive,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 		store.Store(apiKey)
 	}
@@ -276,13 +276,13 @@ func TestAPIKeyStateManager_StoreAPIKey(t *testing.T) {
 
 	apiKey := &models.APIKey{
 		UUID:         "0000-key1-0000-000000000000",
-		Name:       "test-key",
-		APIKey:     "apikey123456789",
-		ArtifactUUID:      "0000-api1-0000-000000000000",
-		Operations: "*",
-		Status:     models.APIKeyStatusActive,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Name:         "test-key",
+		APIKey:       "apikey123456789",
+		ArtifactUUID: "0000-api1-0000-000000000000",
+		Operations:   "*",
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	err := manager.StoreAPIKey("0000-api1-0000-000000000000", "TestAPI", "v1", apiKey, "correlation-123")
@@ -304,13 +304,13 @@ func TestAPIKeyStateManager_RevokeAPIKey(t *testing.T) {
 	// Store first
 	apiKey := &models.APIKey{
 		UUID:         "0000-key1-0000-000000000000",
-		Name:       "test-key",
-		APIKey:     "apikey123456789",
-		ArtifactUUID:      "0000-api1-0000-000000000000",
-		Operations: "*",
-		Status:     models.APIKeyStatusActive,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Name:         "test-key",
+		APIKey:       "apikey123456789",
+		ArtifactUUID: "0000-api1-0000-000000000000",
+		Operations:   "*",
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 	store.Store(apiKey)
 
@@ -329,13 +329,13 @@ func TestAPIKeyStateManager_RemoveAPIKeysByAPI(t *testing.T) {
 	// Store first
 	apiKey := &models.APIKey{
 		UUID:         "0000-key1-0000-000000000000",
-		Name:       "test-key",
-		APIKey:     "apikey123456789",
-		ArtifactUUID:      "0000-api1-0000-000000000000",
-		Operations: "*",
-		Status:     models.APIKeyStatusActive,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Name:         "test-key",
+		APIKey:       "apikey123456789",
+		ArtifactUUID: "0000-api1-0000-000000000000",
+		Operations:   "*",
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 	store.Store(apiKey)
 

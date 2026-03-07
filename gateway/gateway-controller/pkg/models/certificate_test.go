@@ -31,7 +31,7 @@ func TestStoredCertificate_Fields(t *testing.T) {
 	notAfter := now.Add(365 * 24 * time.Hour)
 
 	cert := &StoredCertificate{
-		UUID:          "0000-cert-123-0000-000000000000",
+		UUID:        "0000-cert-123-0000-000000000000",
 		Name:        "test-cert",
 		Certificate: []byte("-----BEGIN CERTIFICATE-----\nMIIB..."),
 		Subject:     "CN=test.example.com",
@@ -57,7 +57,7 @@ func TestStoredCertificate_Fields(t *testing.T) {
 
 func TestStoredCertificate_EmptyCertificate(t *testing.T) {
 	cert := &StoredCertificate{
-		UUID:          "0000-empty-cert-0000-000000000000",
+		UUID:        "0000-empty-cert-0000-000000000000",
 		Name:        "empty",
 		Certificate: []byte{},
 		CertCount:   0,
@@ -69,7 +69,7 @@ func TestStoredCertificate_EmptyCertificate(t *testing.T) {
 
 func TestStoredCertificate_MultipleCerts(t *testing.T) {
 	cert := &StoredCertificate{
-		UUID:          "0000-bundle-cert-0000-000000000000",
+		UUID:        "0000-bundle-cert-0000-000000000000",
 		Name:        "cert-bundle",
 		Certificate: []byte("-----BEGIN CERTIFICATE-----\ncert1\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\ncert2\n-----END CERTIFICATE-----"),
 		CertCount:   2,
