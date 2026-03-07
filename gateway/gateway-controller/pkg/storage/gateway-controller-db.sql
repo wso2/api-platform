@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
 
     -- Extracted fields for fast querying
     display_name TEXT NOT NULL,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS certificates (
     uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
 
     -- Human-readable name for the certificate
     name TEXT NOT NULL,
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
 
     -- Template handle (must be unique within a gateway)
     handle TEXT NOT NULL,
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     uuid TEXT PRIMARY KEY,
 
     -- Gateway identifier
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
 
     -- Human-readable name for the API key
     name TEXT NOT NULL,

@@ -755,7 +755,7 @@ func (s *SQLiteStorage) initSchema() error {
 			// 1. Rename deployments → artifacts (with column changes)
 			if _, err = tx.Exec(`CREATE TABLE artifacts (
 				uuid TEXT PRIMARY KEY,
-				gateway_id TEXT NOT NULL DEFAULT 'default',
+				gateway_id TEXT NOT NULL,
 				display_name TEXT NOT NULL,
 				version TEXT NOT NULL,
 				kind TEXT NOT NULL,
@@ -885,7 +885,7 @@ func (s *SQLiteStorage) initSchema() error {
 			// 5. Rebuild certificates with uuid column
 			if _, err = tx.Exec(`CREATE TABLE certificates_v10 (
 				uuid TEXT PRIMARY KEY,
-				gateway_id TEXT NOT NULL DEFAULT 'default',
+				gateway_id TEXT NOT NULL,
 				name TEXT NOT NULL,
 				certificate BLOB NOT NULL,
 				subject TEXT NOT NULL,
@@ -916,7 +916,7 @@ func (s *SQLiteStorage) initSchema() error {
 			// 6. Rebuild llm_provider_templates with uuid column
 			if _, err = tx.Exec(`CREATE TABLE llm_provider_templates_v10 (
 				uuid TEXT PRIMARY KEY,
-				gateway_id TEXT NOT NULL DEFAULT 'default',
+				gateway_id TEXT NOT NULL,
 				handle TEXT NOT NULL,
 				configuration TEXT NOT NULL,
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -942,7 +942,7 @@ func (s *SQLiteStorage) initSchema() error {
 			// 7. Rebuild api_keys with uuid and artifact_uuid columns
 			if _, err = tx.Exec(`CREATE TABLE api_keys_v10 (
 				uuid TEXT PRIMARY KEY,
-				gateway_id TEXT NOT NULL DEFAULT 'default',
+				gateway_id TEXT NOT NULL,
 				name TEXT NOT NULL,
 				api_key TEXT NOT NULL UNIQUE,
 				masked_api_key TEXT NOT NULL,

@@ -4,7 +4,7 @@
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (
     uuid TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
     display_name TEXT NOT NULL,
     version TEXT NOT NULL,
     kind TEXT NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
 -- Table for custom TLS certificates
 CREATE TABLE IF NOT EXISTS certificates (
     uuid TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
     name TEXT NOT NULL,
     certificate BYTEA NOT NULL,
     subject TEXT NOT NULL,
@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_i
 -- LLM Provider Templates table
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
     handle TEXT NOT NULL,
     configuration TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid TEXT PRIMARY KEY,
-    gateway_id TEXT NOT NULL DEFAULT 'default',
+    gateway_id TEXT NOT NULL,
     name TEXT NOT NULL,
     api_key TEXT NOT NULL UNIQUE,
     masked_api_key TEXT NOT NULL,
@@ -199,12 +199,6 @@ BEGIN
         ALTER TABLE llm_provider_templates RENAME COLUMN id TO uuid;
     END IF;
 END $$;
-
--- Update gateway_id defaults
-ALTER TABLE artifacts ALTER COLUMN gateway_id SET DEFAULT 'default';
-ALTER TABLE certificates ALTER COLUMN gateway_id SET DEFAULT 'default';
-ALTER TABLE llm_provider_templates ALTER COLUMN gateway_id SET DEFAULT 'default';
-ALTER TABLE api_keys ALTER COLUMN gateway_id SET DEFAULT 'default';
 
 -- Schema migration metadata
 CREATE TABLE IF NOT EXISTS schema_migrations (
