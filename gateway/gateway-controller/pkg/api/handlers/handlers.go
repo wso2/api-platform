@@ -648,6 +648,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Update stored configuration
 	now := time.Now()
 	existing.Configuration = apiConfig
+	existing.SourceConfiguration = apiConfig
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
