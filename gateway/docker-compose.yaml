@@ -190,10 +190,6 @@ services:
 volumes:
   controller-data:
     driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/gateway-controller/data
-      o: bind
   opensearch-data:
     driver: local
   prometheus-data:
