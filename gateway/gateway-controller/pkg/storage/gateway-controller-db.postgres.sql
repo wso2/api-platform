@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
     UNIQUE(gateway_id, kind, handle)
 );
 
-CREATE INDEX IF NOT EXISTS idx_status ON artifacts(status);
-CREATE INDEX IF NOT EXISTS idx_kind ON artifacts(kind);
+CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
+CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind);
 CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
 
 -- Per-resource-type tables

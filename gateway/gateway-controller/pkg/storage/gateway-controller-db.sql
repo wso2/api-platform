@@ -4,40 +4,22 @@
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
 CREATE TABLE IF NOT EXISTS artifacts (
-    -- Primary identifier (UUID)
     uuid TEXT PRIMARY KEY,
-
-    -- Gateway identifier
     gateway_id TEXT NOT NULL,
-
-    -- Extracted fields for fast querying
     display_name TEXT NOT NULL,
     version TEXT NOT NULL,
-    kind TEXT NOT NULL,                 -- Artifact type: "RestApi", "WebSubApi", "LlmProvider", "LlmProxy", "Mcp"
-    handle TEXT NOT NULL,               -- API handle (e.g., petstore-v1.0)
-
-    -- Deployment status
+    kind TEXT NOT NULL,
+    handle TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed')),
-
-    -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deployed_at TIMESTAMP,               -- NULL until first deployment
-
-    -- Composite unique constraints scoped by gateway and kind
+    deployed_at TIMESTAMP, -- NULL until first deployment
     UNIQUE(gateway_id, kind, display_name, version),
     UNIQUE(gateway_id, kind, handle)
 );
 
--- Indexes for fast lookups
-
--- Filter by deployment status (translator queries pending configs)
-CREATE INDEX IF NOT EXISTS idx_status ON artifacts(status);
-
--- Filter by API type (reporting/analytics)
-CREATE INDEX IF NOT EXISTS idx_kind ON artifacts(kind);
-
--- Filter by gateway
+CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
+CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind);
 CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
 
 -- Per-resource-type tables (each stores source configuration as JSON)

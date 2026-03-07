@@ -208,8 +208,8 @@ func TestSchemaInitialization(t *testing.T) {
 		}
 
 		expectedIndexes := []string{
-			"idx_status",
-			"idx_kind",
+			"idx_artifacts_status",
+			"idx_artifacts_kind",
 		}
 
 		for _, idxName := range expectedIndexes {

@@ -982,11 +982,11 @@ func (s *SQLiteStorage) initSchema() error {
 			}
 
 			// 8. Recreate indexes
-			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_status ON artifacts(status);`); err != nil {
-				return fmt.Errorf("v10: failed to create idx_status: %w", err)
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);`); err != nil {
+				return fmt.Errorf("v10: failed to create idx_artifacts_status: %w", err)
 			}
-			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_kind ON artifacts(kind);`); err != nil {
-				return fmt.Errorf("v10: failed to create idx_kind: %w", err)
+			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind);`); err != nil {
+				return fmt.Errorf("v10: failed to create idx_artifacts_kind: %w", err)
 			}
 			if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);`); err != nil {
 				return fmt.Errorf("v10: failed to create idx_artifacts_gateway_id: %w", err)
