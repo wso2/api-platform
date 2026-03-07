@@ -151,7 +151,7 @@ func (cs *CertStore) loadDatabaseCertificates() ([]byte, int, error) {
 		if err != nil {
 			cs.logger.Warn("Invalid certificate in database",
 				slog.String("name", cert.Name),
-				slog.String("id", cert.ID),
+				slog.String("id", cert.UUID),
 				slog.Any("error", err))
 			continue
 		}
@@ -165,7 +165,7 @@ func (cs *CertStore) loadDatabaseCertificates() ([]byte, int, error) {
 			certCount += count
 			cs.logger.Debug("Loaded certificate from database",
 				slog.String("name", cert.Name),
-				slog.String("id", cert.ID),
+				slog.String("id", cert.UUID),
 				slog.Int("certs_in_chain", count))
 		}
 	}
@@ -434,7 +434,7 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 		}
 
 		cert := &models.StoredCertificate{
-			ID:          certID,
+			UUID:        certID,
 			Name:        filename,
 			Certificate: certData,
 			Subject:     x509Cert.Subject.String(),
@@ -455,7 +455,7 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 
 		cs.logger.Info("Bootstrapped certificate from filesystem to database",
 			slog.String("filename", filename),
-			slog.String("id", cert.ID),
+			slog.String("id", cert.UUID),
 			slog.Int("cert_count", count))
 		bootstrapCount++
 

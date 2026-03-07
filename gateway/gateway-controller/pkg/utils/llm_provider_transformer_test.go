@@ -94,7 +94,7 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 
 	// Add test templates
 	openAITemplate := &models.StoredLLMProviderTemplate{
-		ID: "openai-template-id",
+		UUID: "0000-openai-template-id-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
 			Kind:       "LlmProviderTemplate",

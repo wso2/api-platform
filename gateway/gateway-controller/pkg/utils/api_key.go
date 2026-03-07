@@ -182,9 +182,9 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	}
 
 	// Check API key limit enforcement
-	if err := s.enforceAPIKeyLimit(config.ID, user.UserID, logger); err != nil {
+	if err := s.enforceAPIKeyLimit(config.UUID, user.UserID, logger); err != nil {
 		logger.Warn("API key generation limit exceeded",
-			slog.String("api_id", config.ID),
+			slog.String("api_id", config.UUID),
 			slog.String("operation", operationType+"_key"),
 			slog.Any("error", err))
 		return nil, err
@@ -259,7 +259,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 
 		// Rollback database save to maintain consistency
 		if s.db != nil {
-			if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.APIId, apiKey.Name); delErr != nil {
+			if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.ArtifactUUID, apiKey.Name); delErr != nil {
 				logger.Error("Failed to rollback API key from database",
 					slog.Any("error", delErr),
 					slog.String("correlation_id", params.CorrelationID))
@@ -275,7 +275,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
 	}
 
-	apiId := config.ID
+	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
 	logger.Info("Storing API key in policy engine",
@@ -338,11 +338,11 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	var apiKey *models.APIKey
 	var matchedKey *models.APIKey
 
-	existingAPIKey, err := s.store.GetAPIKeyByName(config.ID, apiKeyName)
+	existingAPIKey, err := s.store.GetAPIKeyByName(config.UUID, apiKeyName)
 	if err != nil {
 		// If memory store fails, try database
 		if s.db != nil {
-			existingAPIKey, err = s.db.GetAPIKeysByAPIAndName(config.ID, apiKeyName)
+			existingAPIKey, err = s.db.GetAPIKeysByAPIAndName(config.UUID, apiKeyName)
 			if err != nil {
 				logger.Debug("Failed to get API keys for revocation",
 					slog.Any("error", err))
@@ -364,7 +364,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	// This prevents information leakage about API key details
 	if apiKey != nil {
 		// Check if the API key belongs to the specified API
-		if apiKey.APIId != config.ID {
+		if apiKey.ArtifactUUID != config.UUID {
 			logger.Debug("API key does not belong to the specified API",
 				slog.String("correlation_id", params.CorrelationID))
 			return result, nil
@@ -399,7 +399,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		}
 
 		// Remove the API key from memory store by name (since we have the matched key)
-		if err := s.store.RemoveAPIKeyByID(config.ID, apiKey.ID); err != nil {
+		if err := s.store.RemoveAPIKeyByID(config.UUID, apiKey.UUID); err != nil {
 			logger.Error("Failed to remove API key from memory store",
 				slog.Any("error", err))
 
@@ -418,7 +418,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	// Remove the API key from database (complete removal)
 	// Note: This is cleanup only - the revocation is already complete
 	if s.db != nil && matchedKey != nil {
-		if err := s.db.RemoveAPIKeyAPIAndName(config.ID, matchedKey.Name); err != nil {
+		if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, matchedKey.Name); err != nil {
 			logger.Warn("Failed to remove API key from database, but revocation was successful",
 				slog.Any("error", err))
 			// Don't return error - revocation was already successful
@@ -434,7 +434,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		return nil, fmt.Errorf("failed to revoke API key: %w", err)
 	}
 
-	apiId := config.ID
+	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
 	logger.Info("Removing API key from policy engine",
@@ -494,7 +494,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	// Get the existing API key by name
-	existingKey, err := s.store.GetAPIKeyByName(config.ID, params.APIKeyName)
+	existingKey, err := s.store.GetAPIKeyByName(config.UUID, params.APIKeyName)
 	if err != nil {
 		// Only create a new API key if it's a "not found" error
 		// For other errors (DB connection, etc.), return the error
@@ -608,7 +608,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
 	}
 
-	apiId := config.ID
+	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
 	logger.Info("Updating API key in policy engine",
@@ -651,7 +651,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	logger.Info("API key update completed successfully",
-		slog.String("key_id", updatedKey.ID))
+		slog.String("key_id", updatedKey.UUID))
 
 	return result, nil
 }
@@ -680,7 +680,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	}
 
 	// Get the existing API key by name
-	existingKey, err := s.store.GetAPIKeyByName(config.ID, params.APIKeyName)
+	existingKey, err := s.store.GetAPIKeyByName(config.UUID, params.APIKeyName)
 	if err != nil {
 		logger.Warn("API key not found for regeneration",
 			slog.String("handle", params.Handle),
@@ -784,7 +784,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 
 		// Rollback database save to maintain consistency
 		if s.db != nil {
-			if delErr := s.db.RemoveAPIKeyAPIAndName(regeneratedKey.APIId, regeneratedKey.Name); delErr != nil {
+			if delErr := s.db.RemoveAPIKeyAPIAndName(regeneratedKey.ArtifactUUID, regeneratedKey.Name); delErr != nil {
 				logger.Error("Failed to rollback API key from database",
 					slog.Any("error", delErr),
 					slog.String("correlation_id", params.CorrelationID))
@@ -802,7 +802,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
 	}
 
-	apiId := config.ID
+	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
 	logger.Info("Storing API key in policy engine",
@@ -829,7 +829,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	logger.Info("API key regeneration completed successfully",
 		slog.String("handle", params.Handle),
 		slog.String("api_key_name", params.APIKeyName),
-		slog.String("new_key_id", regeneratedKey.ID),
+		slog.String("new_key_id", regeneratedKey.UUID),
 		slog.String("correlation_id", params.CorrelationID))
 
 	return result, nil
@@ -853,7 +853,7 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	var apiKeys []*models.APIKey
 
 	// Try to get from memory store
-	memoryKeys, err := s.store.GetAPIKeysByAPI(config.ID)
+	memoryKeys, err := s.store.GetAPIKeysByAPI(config.UUID)
 	if err != nil {
 		logger.Debug("Failed to get API keys from memory store, trying database",
 			slog.Any("error", err),
@@ -862,7 +862,7 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 
 		// If memory store fails, try database
 		if s.db != nil {
-			dbKeys, dbErr := s.db.GetAPIKeysByAPI(config.ID)
+			dbKeys, dbErr := s.db.GetAPIKeysByAPI(config.UUID)
 			if dbErr != nil {
 				logger.Error("Failed to get API keys from database",
 					slog.Any("error", dbErr),
@@ -1015,8 +1015,8 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	} else {
 		// Generate unique URL-safe name from displayName with collision handling
 		// name is immutable after creation and used in path parameters
-		// Use config.ID (API internal ID) not handle so uniqueness is checked per API
-		name, err = s.generateUniqueAPIKeyName(config.ID, displayName, 5)
+		// Use config.UUID (API internal ID) not handle so uniqueness is checked per API
+		name, err = s.generateUniqueAPIKeyName(config.UUID, displayName, 5)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate unique API key name: %w", err)
 		}
@@ -1070,12 +1070,12 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	}
 
 	apiKey := &models.APIKey{
-		ID:           id,
+		UUID:           id,
 		Name:         name,
 		DisplayName:  displayName,
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		APIId:        config.ID,
+		ArtifactUUID:        config.UUID,
 		Operations:   operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    now,
@@ -1148,7 +1148,7 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string, p
 
 	// Calculate remaining API key quota
 	var remainingQuota *int
-	currentCount, err := s.getCurrentAPIKeyCount(key.APIId, key.CreatedBy)
+	currentCount, err := s.getCurrentAPIKeyCount(key.ArtifactUUID, key.CreatedBy)
 	if err == nil {
 		maxAllowed := s.apiKeyConfig.APIKeysPerUserPerAPI
 		remaining := maxAllowed - currentCount
@@ -1287,12 +1287,12 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 
 	// Create the regenerated API key
 	updatedKey := &models.APIKey{
-		ID:           existingKey.ID,
+		UUID:           existingKey.UUID,
 		Name:         existingKey.Name,
 		DisplayName:  displayName,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		APIId:        existingKey.APIId,
+		ArtifactUUID:        existingKey.ArtifactUUID,
 		Operations:   operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
@@ -1421,11 +1421,11 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 
 	// Create the regenerated API key
 	regeneratedKey := &models.APIKey{
-		ID:           existingKey.ID,
+		UUID:           existingKey.UUID,
 		Name:         existingKey.Name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		APIId:        existingKey.APIId,
+		ArtifactUUID:        existingKey.ArtifactUUID,
 		Operations:   existingKey.Operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,

@@ -75,7 +75,7 @@ func (m *MockStorage) SaveConfig(cfg *models.StoredConfig) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
-	m.configs[cfg.ID] = cfg
+	m.configs[cfg.UUID] = cfg
 	return nil
 }
 
@@ -83,7 +83,7 @@ func (m *MockStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	if m.updateErr != nil {
 		return m.updateErr
 	}
-	m.configs[cfg.ID] = cfg
+	m.configs[cfg.UUID] = cfg
 	return nil
 }
 
@@ -160,7 +160,7 @@ func (m *MockStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvider
 	if m.saveErr != nil {
 		return m.saveErr
 	}
-	m.templates[template.ID] = template
+	m.templates[template.UUID] = template
 	return nil
 }
 
@@ -168,7 +168,7 @@ func (m *MockStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProvid
 	if m.updateErr != nil {
 		return m.updateErr
 	}
-	m.templates[template.ID] = template
+	m.templates[template.UUID] = template
 	return nil
 }
 
@@ -205,7 +205,7 @@ func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
-	m.apiKeys[apiKey.ID] = apiKey
+	m.apiKeys[apiKey.UUID] = apiKey
 	return nil
 }
 
@@ -237,7 +237,7 @@ func (m *MockStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	}
 	result := make([]*models.APIKey, 0)
 	for _, key := range m.apiKeys {
-		if key.APIId == apiId {
+		if key.ArtifactUUID == apiId {
 			result = append(result, key)
 		}
 	}
@@ -260,7 +260,7 @@ func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey
 		return nil, m.getErr
 	}
 	for _, key := range m.apiKeys {
-		if key.APIId == apiId && key.Name == name {
+		if key.ArtifactUUID == apiId && key.Name == name {
 			return key, nil
 		}
 	}
@@ -271,7 +271,7 @@ func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 	if m.updateErr != nil {
 		return m.updateErr
 	}
-	m.apiKeys[apiKey.ID] = apiKey
+	m.apiKeys[apiKey.UUID] = apiKey
 	return nil
 }
 
@@ -293,7 +293,7 @@ func (m *MockStorage) RemoveAPIKeysAPI(apiId string) error {
 		return m.deleteErr
 	}
 	for id, key := range m.apiKeys {
-		if key.APIId == apiId {
+		if key.ArtifactUUID == apiId {
 			delete(m.apiKeys, id)
 		}
 	}
@@ -305,7 +305,7 @@ func (m *MockStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
 		return m.deleteErr
 	}
 	for id, key := range m.apiKeys {
-		if key.APIId == apiId && key.Name == name {
+		if key.ArtifactUUID == apiId && key.Name == name {
 			delete(m.apiKeys, id)
 			return nil
 		}
@@ -319,7 +319,7 @@ func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int,
 	}
 	count := 0
 	for _, key := range m.apiKeys {
-		if key.APIId == apiId && key.CreatedBy == userID && key.Status == models.APIKeyStatusActive {
+		if key.ArtifactUUID == apiId && key.CreatedBy == userID && key.Status == models.APIKeyStatusActive {
 			count++
 		}
 	}
@@ -339,7 +339,7 @@ func (m *MockStorage) GetCertificate(id string) (*models.StoredCertificate, erro
 		return nil, m.getErr
 	}
 	for _, cert := range m.certs {
-		if cert.ID == id {
+		if cert.UUID == id {
 			return cert, nil
 		}
 	}
@@ -370,7 +370,7 @@ func (m *MockStorage) DeleteCertificate(id string) error {
 		return m.deleteErr
 	}
 	for i, cert := range m.certs {
-		if cert.ID == id {
+		if cert.UUID == id {
 			m.certs = append(m.certs[:i], m.certs[i+1:]...)
 			return nil
 		}
@@ -498,7 +498,7 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 	})
 
 	return &models.StoredConfig{
-		ID:   id,
+		UUID: id,
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
@@ -535,7 +535,7 @@ func TestListAPIs(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test configs to store
-	cfg1 := createTestStoredConfig("test-id-1", "test-api-1", "v1.0.0", "/test1")
+	cfg1 := createTestStoredConfig("test-id-1", "0000-test-api-1-0000-000000000000", "v1.0.0", "/test1")
 	cfg2 := createTestStoredConfig("test-id-2", "test-api-2", "v2.0.0", "/test2")
 	_ = server.store.Add(cfg1)
 	_ = server.store.Add(cfg2)
@@ -557,7 +557,7 @@ func TestListAPIsWithFilters(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test configs to store
-	cfg1 := createTestStoredConfig("test-id-1", "test-api-1", "v1.0.0", "/test1")
+	cfg1 := createTestStoredConfig("test-id-1", "0000-test-api-1-0000-000000000000", "v1.0.0", "/test1")
 	cfg2 := createTestStoredConfig("test-id-2", "test-api-2", "v2.0.0", "/test2")
 	_ = server.store.Add(cfg1)
 	_ = server.store.Add(cfg2)
@@ -565,7 +565,7 @@ func TestListAPIsWithFilters(t *testing.T) {
 	// Test with displayName filter
 	c, w := createTestContext("GET", "/apis?displayName=test-api-1", nil)
 	c.Request.URL.RawQuery = "displayName=test-api-1"
-	displayName := "test-api-1"
+	displayName := "0000-test-api-1-0000-000000000000"
 	server.ListAPIs(c, api.ListAPIsParams{DisplayName: &displayName})
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -596,15 +596,15 @@ func TestListAPIsEmpty(t *testing.T) {
 func TestGetAPIByNameVersion(t *testing.T) {
 	server := createTestAPIServer()
 
-	cfg := createTestStoredConfig("test-id-1", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("test-id-1", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
 	c, w := createTestContext("GET", "/apis/test-api/v1.0.0", nil)
 	c.Params = gin.Params{
-		{Key: "name", Value: "test-api"},
+		{Key: "name", Value: "0000-test-api-0000-000000000000"},
 		{Key: "version", Value: "v1.0.0"},
 	}
-	server.GetAPIByNameVersion(c, "test-api", "v1.0.0")
+	server.GetAPIByNameVersion(c, "0000-test-api-0000-000000000000", "v1.0.0")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -634,12 +634,12 @@ func TestGetAPIById(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
-	cfg := createTestStoredConfig("test-handle", "test-api", "v1.0.0", "/test")
-	cfg.Configuration.Metadata.Name = "test-handle"
-	mockDB.configs["test-id"] = cfg
+	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
+	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
+	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	c, w := createTestContext("GET", "/apis/test-handle", nil)
-	server.GetAPIById(c, "test-handle")
+	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -670,7 +670,7 @@ func TestGetAPIByIdNoDB(t *testing.T) {
 	server.db = nil // Simulate no DB
 
 	c, w := createTestContext("GET", "/apis/test-id", nil)
-	server.GetAPIById(c, "test-id")
+	server.GetAPIById(c, "0000-test-id-0000-000000000000")
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
@@ -680,13 +680,13 @@ func TestGetAPIByIdWrongKind(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
-	cfg := createTestStoredConfig("test-handle", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	cfg.Kind = string(api.Mcp) // Wrong kind
-	cfg.Configuration.Metadata.Name = "test-handle"
-	mockDB.configs["test-id"] = cfg
+	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
+	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	c, w := createTestContext("GET", "/apis/test-handle", nil)
-	server.GetAPIById(c, "test-handle")
+	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -776,7 +776,7 @@ func TestGetConfigDump(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test config
-	cfg := createTestStoredConfig("test-handle", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
 	// Add test policy
@@ -844,7 +844,7 @@ func TestGetConfigDumpWithCertificates(t *testing.T) {
 	// Add certificates to mock storage
 	mockDB.certs = []*models.StoredCertificate{
 		{
-			ID:          "cert-1",
+			UUID:        "0000-cert-1-0000-000000000000",
 			Name:        "test-cert",
 			Subject:     "CN=test",
 			Issuer:      "CN=issuer",
@@ -888,14 +888,14 @@ func TestHandleStatusUpdate(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test config
-	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
 	// Test successful deployment
-	server.handleStatusUpdate("test-id", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
 
 	// Verify status updated
-	updatedCfg, _ := server.store.Get("test-id")
+	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 	assert.NotNil(t, updatedCfg.DeployedAt)
 	assert.Equal(t, int64(1), updatedCfg.DeployedVersion)
@@ -906,14 +906,14 @@ func TestHandleStatusUpdateFailure(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test config
-	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
 	// Test failed deployment
-	server.handleStatusUpdate("test-id", false, 0, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", false, 0, "")
 
 	// Verify status updated
-	updatedCfg, _ := server.store.Get("test-id")
+	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusFailed, updatedCfg.Status)
 	assert.Nil(t, updatedCfg.DeployedAt)
 }
@@ -1144,7 +1144,7 @@ func TestGenerateAPIKeyNoAuth(t *testing.T) {
 	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.CreateAPIKey(c, "test-handle")
+	server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -1158,7 +1158,7 @@ func TestGenerateAPIKeyInvalidAuthContext(t *testing.T) {
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, "invalid-context") // Wrong type
-	server.CreateAPIKey(c, "test-handle")
+	server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
@@ -1174,7 +1174,7 @@ func TestGenerateAPIKeyInvalidBody(t *testing.T) {
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.CreateAPIKey(c, "test-handle")
+	server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -1184,7 +1184,7 @@ func TestRevokeAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	c, w := createTestContext("DELETE", "/apis/test-handle/api-keys/test-key", nil)
-	server.RevokeAPIKey(c, "test-handle", "test-key")
+	server.RevokeAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -1197,7 +1197,7 @@ func TestRegenerateAPIKeyNoAuth(t *testing.T) {
 	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys/test-key/regenerate", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.RegenerateAPIKey(c, "test-handle", "test-key")
+	server.RegenerateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -1213,7 +1213,7 @@ func TestRegenerateAPIKeyInvalidBody(t *testing.T) {
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.RegenerateAPIKey(c, "test-handle", "test-key")
+	server.RegenerateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -1223,7 +1223,7 @@ func TestListAPIKeysNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	c, w := createTestContext("GET", "/apis/test-handle/api-keys", nil)
-	server.ListAPIKeys(c, "test-handle")
+	server.ListAPIKeys(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -1249,8 +1249,8 @@ func TestExtractAuthenticatedUserSuccess(t *testing.T) {
 // TestConvertAPIPolicy tests the convertAPIPolicy function
 func TestConvertAPIPolicy(t *testing.T) {
 	params := map[string]interface{}{
-		"key1": "value1",
-		"key2": 42,
+		"0000-key1-0000-000000000000": "value1",
+		"0000-key2-0000-000000000000": 42,
 	}
 	policy := api.Policy{
 		Name:    "test-policy",
@@ -1263,8 +1263,8 @@ func TestConvertAPIPolicy(t *testing.T) {
 	assert.Equal(t, "test-policy", result.Name)
 	assert.Equal(t, "v1.0.0", result.Version)
 	assert.True(t, result.Enabled)
-	assert.Equal(t, "value1", result.Parameters["key1"])
-	assert.Equal(t, 42, result.Parameters["key2"])
+	assert.Equal(t, "value1", result.Parameters["0000-key1-0000-000000000000"])
+	assert.Equal(t, 42, result.Parameters["0000-key2-0000-000000000000"])
 	assert.Equal(t, "api", result.Parameters["attachedTo"])
 }
 
@@ -1288,7 +1288,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-api",
+		DisplayName: "0000-test-api-0000-000000000000",
 		Version:     "v1.0",
 		Context:     "/test",
 		Upstream: struct {
@@ -1308,7 +1308,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 	})
 
 	cfg := &models.StoredConfig{
-		ID:   "test-id",
+		UUID: "0000-test-id-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi,
@@ -1374,7 +1374,7 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 	server.controlPlaneClient = &MockControlPlaneClient{connected: true}
 
 	// Add config that starts pending and will be updated to deployed
-	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	cfg.Status = models.StatusPending
 	_ = server.store.Add(cfg)
 
@@ -1390,7 +1390,7 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 		}()
 
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		server.waitForDeploymentAndPush("test-id", "test-correlation", logger)
+		server.waitForDeploymentAndPush("0000-test-id-0000-000000000000", "test-correlation", logger)
 	}()
 
 	select {
@@ -1399,10 +1399,10 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 
 	case <-time.After(2 * time.Second):
 		// Trigger graceful exit by updating status to deployed
-		server.handleStatusUpdate("test-id", true, 1, "")
+		server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
 		require.NoError(t, <-done)
 
-		retrievedCfg, err := server.store.Get("test-id")
+		retrievedCfg, err := server.store.Get("0000-test-id-0000-000000000000")
 		require.NoError(t, err)
 		assert.Equal(t, models.StatusDeployed, retrievedCfg.Status)
 	}
@@ -1513,14 +1513,14 @@ func TestGetAPIByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
-	cfg := createTestStoredConfig("test-handle", "test-api", "v1.0.0", "/test")
-	cfg.Configuration.Metadata.Name = "test-handle"
+	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
+	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
 	deployedAt := time.Now()
 	cfg.DeployedAt = &deployedAt
-	mockDB.configs["test-id"] = cfg
+	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	c, w := createTestContext("GET", "/apis/test-handle", nil)
-	server.GetAPIById(c, "test-handle")
+	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1537,13 +1537,13 @@ func TestGetAPIByIdWithDeployedAt(t *testing.T) {
 func TestGetAPIByNameVersionWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 
-	cfg := createTestStoredConfig("test-id-1", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("test-id-1", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	deployedAt := time.Now()
 	cfg.DeployedAt = &deployedAt
 	_ = server.store.Add(cfg)
 
 	c, w := createTestContext("GET", "/apis/test-api/v1.0.0", nil)
-	server.GetAPIByNameVersion(c, "test-api", "v1.0.0")
+	server.GetAPIByNameVersion(c, "0000-test-api-0000-000000000000", "v1.0.0")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1591,15 +1591,15 @@ func TestHandleStatusUpdateWithDB(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	// Add test config to both store and DB
-	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
-	mockDB.configs["test-id"] = cfg
+	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	// Test successful deployment
-	server.handleStatusUpdate("test-id", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
 
 	// Verify both store and DB are updated
-	updatedCfg, _ := server.store.Get("test-id")
+	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 }
 
@@ -1610,12 +1610,12 @@ func TestHandleStatusUpdateDBError(t *testing.T) {
 	mockDB.updateErr = errors.New("db error")
 
 	// Add test config
-	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
-	mockDB.configs["test-id"] = cfg
+	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	// Should not panic even with DB error
-	server.handleStatusUpdate("test-id", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
 }
 
 // TestBuildStoredPolicyFromAPIInvalidKind tests buildStoredPolicyFromAPI with invalid kind
@@ -1623,7 +1623,7 @@ func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 	server := createTestAPIServer()
 
 	cfg := &models.StoredConfig{
-		ID:   "test-id",
+		UUID: "0000-test-id-0000-000000000000",
 		Kind: "InvalidKind",
 		Configuration: api.APIConfiguration{
 			Kind: api.APIConfigurationKind("InvalidKind"),
@@ -1652,7 +1652,7 @@ func TestConfigDumpAPIStatusConversion(t *testing.T) {
 			// Clear store
 			server.store = storage.NewConfigStore()
 
-			cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
+			cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 			cfg.Status = tc.status
 			_ = server.store.Add(cfg)
 
@@ -1717,7 +1717,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 	})
 
 	cfg := &models.StoredConfig{
-		ID:   "llm-id",
+		UUID: "0000-llm-id-0000-000000000000",
 		Kind: string(api.LlmProvider),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi, // Use RestApi kind for the Configuration type
@@ -1762,7 +1762,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 	})
 
 	cfg := &models.StoredConfig{
-		ID:   "llm-proxy-id",
+		UUID: "0000-llm-proxy-id-0000-000000000000",
 		Kind: string(api.LlmProxy),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi, // Use RestApi kind for the Configuration type
@@ -1807,7 +1807,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 
 	deployedAt := time.Now()
 	cfg := &models.StoredConfig{
-		ID:   "llm-id",
+		UUID: "0000-llm-id-0000-000000000000",
 		Kind: string(api.LlmProvider),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi, // Use RestApi kind for the Configuration type
@@ -1860,7 +1860,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 
 	deployedAt := time.Now()
 	cfg := &models.StoredConfig{
-		ID:   "llm-proxy-id",
+		UUID: "0000-llm-proxy-id-0000-000000000000",
 		Kind: string(api.LlmProxy),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi, // Use RestApi kind for the Configuration type
@@ -1888,17 +1888,17 @@ func TestHandleStatusUpdateStoreError(t *testing.T) {
 
 	// Config exists in DB but not in store
 	mockDB := server.db.(*MockStorage)
-	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
-	mockDB.configs["test-id"] = cfg
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
+	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	// Config in store for reading
 	_ = server.store.Add(cfg)
 
 	// Corrupt the store to cause an error on update
 	// Since we can't easily corrupt the store, just verify it doesn't panic
-	server.handleStatusUpdate("test-id", true, 1, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
 
-	updatedCfg, _ := server.store.Get("test-id")
+	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 }
 
@@ -1966,7 +1966,7 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 	// Note: WebSubApi requires different data structure than RestApi
 	// The function will return nil if parsing fails
 	cfg := &models.StoredConfig{
-		ID:   "test-id",
+		UUID: "0000-test-id-0000-000000000000",
 		Kind: string(api.WebSubApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.WebSubApi,
@@ -2028,7 +2028,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 	})
 
 	cfg := &models.StoredConfig{
-		ID:   "test-id",
+		UUID: "0000-test-id-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind:     api.RestApi,
@@ -2052,7 +2052,7 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 
 	// Add an MCP config with invalid source configuration
 	cfg := &models.StoredConfig{
-		ID:                  "mcp-id",
+		UUID:                "0000-mcp-id-0000-000000000000",
 		Kind:                string(api.Mcp),
 		SourceConfiguration: make(chan int), // Invalid - can't be marshaled to JSON
 		Configuration: api.APIConfiguration{
@@ -2088,7 +2088,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 	sandboxVhost := "sandbox.localhost"
 	specUnion := api.APIConfiguration_Spec{}
 	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-api",
+		DisplayName: "0000-test-api-0000-000000000000",
 		Version:     "v1.0",
 		Context:     "/test",
 		Upstream: struct {
@@ -2119,7 +2119,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 	})
 
 	cfg := &models.StoredConfig{
-		ID:   "test-id",
+		UUID: "0000-test-id-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi,
@@ -2149,7 +2149,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-api",
+		DisplayName: "0000-test-api-0000-000000000000",
 		Version:     "v1.0",
 		Context:     "/test",
 		Upstream: struct {
@@ -2171,7 +2171,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 	})
 
 	cfg := &models.StoredConfig{
-		ID:   "test-id",
+		UUID: "0000-test-id-0000-000000000000",
 		Kind: string(api.RestApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.RestApi,
@@ -2190,13 +2190,13 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 func TestHandleStatusUpdateEmptyCorrelationID(t *testing.T) {
 	server := createTestAPIServer()
 
-	cfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
 	// Test with empty correlation ID
-	server.handleStatusUpdate("test-id", true, 1, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
 
-	updatedCfg, _ := server.store.Get("test-id")
+	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 }
 
@@ -2225,7 +2225,7 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 				panicked = true
 			}
 		}()
-		server.CreateAPIKey(c, "test-handle")
+		server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
 	}()
 	if !panicked {
 		assert.True(t, w.Code >= http.StatusBadRequest)
@@ -2239,7 +2239,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 	// WebSubApi requires specific data structure that's complex to mock
 	// Testing that the function handles WebSubApi kind without panicking
 	cfg := &models.StoredConfig{
-		ID:   "test-id",
+		UUID: "0000-test-id-0000-000000000000",
 		Kind: string(api.WebSubApi),
 		Configuration: api.APIConfiguration{
 			Kind: api.WebSubApi,
@@ -2257,7 +2257,7 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 
 	// Add MCP config with invalid source that can't be unmarshaled
 	cfg := &models.StoredConfig{
-		ID:                  "mcp-id",
+		UUID:                "0000-mcp-id-0000-000000000000",
 		Kind:                string(api.Mcp),
 		SourceConfiguration: make(chan int), // Invalid - can't be marshaled to JSON
 		Configuration: api.APIConfiguration{
@@ -2386,7 +2386,7 @@ func TestUpdateAPIKeyNoAuth(t *testing.T) {
 	c, w := createTestContextWithHeader("PUT", "/apis/test-handle/api-keys/test-key", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.UpdateAPIKey(c, "test-handle", "test-key")
+	server.UpdateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -2402,7 +2402,7 @@ func TestUpdateAPIKeyInvalidBody(t *testing.T) {
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.UpdateAPIKey(c, "test-handle", "test-key")
+	server.UpdateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -2425,7 +2425,7 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.UpdateAPIKey(c, "test-handle", "test-key")
+	server.UpdateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
@@ -2445,7 +2445,7 @@ func TestRevokeAPIKeyNotFound(t *testing.T) {
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
-	server.RevokeAPIKey(c, "test-handle", "nonexistent")
+	server.RevokeAPIKey(c, "0000-test-handle-0000-000000000000", "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
@@ -2496,7 +2496,7 @@ func TestPolicyRemovalErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &MockPolicyManager{removePolicyErr: tt.err}
-			err := mock.RemovePolicy("test-id")
+			err := mock.RemovePolicy("0000-test-id-0000-000000000000")
 			assert.Equal(t, tt.want, storage.IsPolicyNotFoundError(err))
 		})
 	}

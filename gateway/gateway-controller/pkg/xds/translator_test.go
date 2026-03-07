@@ -75,11 +75,11 @@ func TestResolveUpstreamDefinition_NotFound(t *testing.T) {
 		},
 	}
 
-	def, err := resolveUpstreamDefinition("non-existent", definitions)
+	def, err := resolveUpstreamDefinition("0000-non-existent-0000-000000000000", definitions)
 
 	assert.Error(t, err)
 	assert.Nil(t, def)
-	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+	assert.Contains(t, err.Error(), "upstream definition '0000-non-existent-0000-000000000000' not found")
 }
 
 func TestResolveUpstreamDefinition_NoDefinitions(t *testing.T) {
@@ -238,7 +238,7 @@ func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
 
 func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 	translator := &Translator{}
-	ref := "non-existent"
+	ref := "0000-non-existent-0000-000000000000"
 	upstream := &api.Upstream{
 		Ref: &ref,
 	}
@@ -260,7 +260,7 @@ func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to resolve main upstream ref")
-	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+	assert.Contains(t, err.Error(), "upstream definition '0000-non-existent-0000-000000000000' not found")
 }
 
 func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
@@ -560,9 +560,9 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Simple key",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
-			key:         "key1",
+			key:         "0000-key1-0000-000000000000",
 			expected:    "value1",
 			expectError: false,
 		},
@@ -600,7 +600,7 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Key not found",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
 			key:         "nonexistent",
 			expected:    nil,
@@ -609,7 +609,7 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Invalid nested path",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
 			key:         "key1.nested",
 			expected:    nil,
@@ -1285,7 +1285,7 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 
 	route := translator.createRoute(
 		"api-123",      // apiId
-		"test-api",     // apiName
+		"0000-test-api-0000-000000000000",     // apiName
 		"v1",           // apiVersion
 		"/api",         // context
 		"GET",          // method
@@ -1352,7 +1352,7 @@ func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
 
 	// Create invalid WebSub API config that will cause translation error
 	invalidConfig := &models.StoredConfig{
-		ID:   "test-websub-invalid",
+		UUID:   "0000-test-websub-invalid-0000-000000000000",
 		Kind: "WebSubApi",
 		Configuration: api.APIConfiguration{
 			Metadata: api.Metadata{
@@ -1559,7 +1559,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "http://websub.example.com:8080"
 
 		webhookConfig := &models.StoredConfig{
-			ID:   "websub-api-1",
+			UUID:   "0000-websub-api-1-0000-000000000000",
 			Kind: "WebSubApi",
 			Configuration: api.APIConfiguration{
 				Metadata: api.Metadata{
@@ -1603,7 +1603,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "://invalid"
 
 		webhookConfig := &models.StoredConfig{
-			ID:   "websub-api-2",
+			UUID:   "0000-websub-api-2-0000-000000000000",
 			Kind: "WebSubApi",
 			Configuration: api.APIConfiguration{
 				Metadata: api.Metadata{Name: "websub-invalid"},

@@ -49,7 +49,7 @@ func newMockStorageForDeletion() *mockStorageForDeletion {
 }
 
 func (m *mockStorageForDeletion) SaveConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
 }
 
@@ -65,7 +65,7 @@ func (m *mockStorageForDeletion) GetConfig(id string) (*models.StoredConfig, err
 }
 
 func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
 }
 
@@ -281,7 +281,7 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	})
 
 	return &models.StoredConfig{
-		ID:     apiID,
+		UUID:     apiID,
 		Status: models.StatusDeployed,
 		Kind:   "API",
 		Configuration: api.APIConfiguration{
@@ -570,8 +570,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in database, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 
@@ -594,8 +594,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in memory store, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 
@@ -634,8 +634,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in memory when DB is nil, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 }

@@ -52,14 +52,14 @@ func TestAPIDeploymentParams(t *testing.T) {
 	params := APIDeploymentParams{
 		Data:          []byte("test data"),
 		ContentType:   "application/yaml",
-		APIID:         "test-api-id",
+		APIID:         "0000-test-api-id-0000-000000000000",
 		CorrelationID: "corr-123",
 		Logger:        logger,
 	}
 
 	assert.Equal(t, "test data", string(params.Data))
 	assert.Equal(t, "application/yaml", params.ContentType)
-	assert.Equal(t, "test-api-id", params.APIID)
+	assert.Equal(t, "0000-test-api-id-0000-000000000000", params.APIID)
 	assert.Equal(t, "corr-123", params.CorrelationID)
 	assert.NotNil(t, params.Logger)
 }
@@ -67,7 +67,7 @@ func TestAPIDeploymentParams(t *testing.T) {
 func TestAPIDeploymentResult(t *testing.T) {
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		ID:        "test-id",
+		UUID:        "0000-test-id-0000-000000000000",
 		Kind:      "RestApi",
 		Status:    models.StatusPending,
 		CreatedAt: now,
@@ -79,7 +79,7 @@ func TestAPIDeploymentResult(t *testing.T) {
 		IsUpdate:     true,
 	}
 
-	assert.Equal(t, "test-id", result.StoredConfig.ID)
+	assert.Equal(t, "0000-test-id-0000-000000000000", result.StoredConfig.UUID)
 	assert.True(t, result.IsUpdate)
 }
 
@@ -90,7 +90,7 @@ func TestGetTopicsForUpdate(t *testing.T) {
 	t.Run("Empty config returns empty lists", func(t *testing.T) {
 		// Create a config with invalid spec (will fail parsing)
 		storedCfg := models.StoredConfig{
-			ID:   "test-api-1",
+			UUID:   "0000-test-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 		// Set up an empty spec that will fail to parse
@@ -122,7 +122,7 @@ func TestGetTopicsForUpdate(t *testing.T) {
 		require.NoError(t, err)
 
 		storedCfg := models.StoredConfig{
-			ID:   "websub-api-1",
+			UUID:   "0000-websub-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.WebSubApi,
@@ -143,13 +143,13 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns topics from topic manager", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			ID:   "test-api-1",
+			UUID:   "0000-test-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 
 		// Add some topics to the topic manager
-		store.TopicManager.Add(storedCfg.ID, "topic1")
-		store.TopicManager.Add(storedCfg.ID, "topic2")
+		store.TopicManager.Add(storedCfg.UUID, "topic1")
+		store.TopicManager.Add(storedCfg.UUID, "topic2")
 
 		topics := service.GetTopicsForDelete(storedCfg)
 		assert.Len(t, topics, 2)
@@ -159,7 +159,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns empty for non-existent config", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			ID:   "non-existent-api",
+			UUID:   "0000-non-existent-api-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 
@@ -201,7 +201,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		storedCfg := &models.StoredConfig{
-			ID:   "new-api-id",
+			UUID:   "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -217,9 +217,9 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		assert.False(t, isUpdate)
 
 		// Verify config was added
-		retrieved, err := store.Get(storedCfg.ID)
+		retrieved, err := store.Get(storedCfg.UUID)
 		assert.NoError(t, err)
-		assert.Equal(t, storedCfg.ID, retrieved.ID)
+		assert.Equal(t, storedCfg.UUID, retrieved.UUID)
 	})
 
 	t.Run("Update existing config without DB", func(t *testing.T) {
@@ -236,7 +236,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 
 		// First, add a config
 		existingCfg := &models.StoredConfig{
-			ID:   "existing-api-id",
+			UUID:   "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -258,7 +258,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		newSpec.FromAPIConfigData(newApiData)
 
 		updateCfg := &models.StoredConfig{
-			ID:   "existing-api-id",
+			UUID:   "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -292,7 +292,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			ID:   "config-to-update",
+			UUID:   "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -314,7 +314,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
-			ID:   "config-to-update",
+			UUID:   "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -505,7 +505,7 @@ spec:
 		require.NoError(t, spec.FromWebhookAPIData(webhookData))
 
 		existingCfg := &models.StoredConfig{
-			ID:   "existing-websub",
+			UUID:   "0000-existing-websub-0000-000000000000",
 			Kind: string(api.WebSubApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.WebSubApi,
@@ -516,7 +516,7 @@ spec:
 			UpdatedAt: time.Now(),
 		}
 		store.Add(existingCfg)
-		store.TopicManager.Add(existingCfg.ID, "/existing/1.0.0/old-topic")
+		store.TopicManager.Add(existingCfg.UUID, "/existing/1.0.0/old-topic")
 
 		// Update with new topics (will try to deregister old one)
 		yamlData := `
@@ -533,7 +533,7 @@ spec:
 `
 		params := APIDeploymentParams{
 			Data:          []byte(yamlData),
-			APIID:         "existing-websub",
+			APIID:         "0000-existing-websub-0000-000000000000",
 			ContentType:   "application/yaml",
 			CorrelationID: "test-corr",
 			Logger:        logger,
@@ -562,7 +562,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		newCfg := &models.StoredConfig{
-			ID:   "new-api-id",
+			UUID:   "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -578,9 +578,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		assert.False(t, isUpdate)
 
 		// Verify it was added
-		retrieved, err := store.Get(newCfg.ID)
+		retrieved, err := store.Get(newCfg.UUID)
 		assert.NoError(t, err)
-		assert.Equal(t, newCfg.ID, retrieved.ID)
+		assert.Equal(t, newCfg.UUID, retrieved.UUID)
 	})
 
 	t.Run("Update path when config exists", func(t *testing.T) {
@@ -597,7 +597,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		existingCfg := &models.StoredConfig{
-			ID:   "existing-id",
+			UUID:   "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -613,7 +613,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 
 		// Try to save with same ID (should update instead)
 		updateCfg := &models.StoredConfig{
-			ID:   "existing-id",
+			UUID:   "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -647,7 +647,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			ID:   "test-api",
+			UUID:   "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
@@ -671,7 +671,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
-			ID:   "test-api",
+			UUID:   "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,

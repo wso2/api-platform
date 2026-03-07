@@ -83,16 +83,19 @@ func createTestConfig(name, version string) *models.StoredConfig {
 			},
 		},
 	})
+	apiConfig := api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: name + "-" + version},
+		Spec:       specUnion,
+	}
 	return &models.StoredConfig{
-		ID: uuid.New().String(),
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.RestApi,
-			Metadata:   api.Metadata{Name: name + "-" + version},
-			Spec:       specUnion,
-		},
-		Status:          models.StatusPending,
-		DeployedVersion: 0,
+		UUID:                uuid.New().String(),
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		DeployedVersion:     0,
 	}
 }
 
@@ -113,9 +116,9 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		err := db.SaveConfig(cfg)
 		require.NoError(t, err)
 
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		assert.NoError(t, err, "GetConfig should succeed")
-		assert.Equal(t, cfg.ID, retrieved.ID)
+		assert.Equal(t, cfg.UUID, retrieved.UUID)
 		assert.Equal(t, cfg.GetDisplayName(), retrieved.GetDisplayName())
 		assert.Equal(t, cfg.GetVersion(), retrieved.GetVersion())
 	})
@@ -128,7 +131,7 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 
 		retrieved, err := db.GetConfigByNameVersion("TestAPI3", "v1.0")
 		assert.NoError(t, err, "GetConfigByNameVersion should succeed")
-		assert.Equal(t, cfg.ID, retrieved.ID)
+		assert.Equal(t, cfg.UUID, retrieved.UUID)
 		assert.Equal(t, "TestAPI3", retrieved.GetDisplayName())
 		assert.Equal(t, "v1.0", retrieved.GetVersion())
 	})
@@ -146,10 +149,10 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		assert.NoError(t, err, "UpdateConfig should succeed")
 
 		// Verify update
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
 		assert.Equal(t, models.StatusDeployed, retrieved.Status)
-		assert.Equal(t, int64(1), retrieved.DeployedVersion)
+		// DeployedVersion is runtime-only (not persisted to DB)
 	})
 
 	// Test DeleteConfig
@@ -159,11 +162,11 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// Delete the configuration
-		err = db.DeleteConfig(cfg.ID)
+		err = db.DeleteConfig(cfg.UUID)
 		assert.NoError(t, err, "DeleteConfig should succeed")
 
 		// Verify deletion
-		_, err = db.GetConfig(cfg.ID)
+		_, err = db.GetConfig(cfg.UUID)
 		assert.Error(t, err, "GetConfig should fail after deletion")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -334,19 +337,22 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 		labelsPtr = &labels
 	}
 
-	return &models.StoredConfig{
-		ID: uuid.New().String(),
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.RestApi,
-			Metadata: api.Metadata{
-				Name:   name + "-" + version,
-				Labels: labelsPtr,
-			},
-			Spec: specUnion,
+	apiConfig := api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata: api.Metadata{
+			Name:   name + "-" + version,
+			Labels: labelsPtr,
 		},
-		Status:          models.StatusPending,
-		DeployedVersion: 0,
+		Spec: specUnion,
+	}
+	return &models.StoredConfig{
+		UUID:                uuid.New().String(),
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		DeployedVersion:     0,
 	}
 }
 
@@ -534,7 +540,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 
 		// Create a new config object with updated handle (don't modify the original)
 		updatedCfg := &models.StoredConfig{
-			ID: cfg.ID, // Same ID
+			UUID: cfg.UUID, // Same ID
 			Configuration: api.APIConfiguration{
 				ApiVersion: cfg.Configuration.ApiVersion,
 				Kind:       cfg.Configuration.Kind,
@@ -575,7 +581,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		assert.NoError(t, err, "Labels should exist before deletion")
 
 		// Delete the config
-		err = configStore.Delete(cfg.ID)
+		err = configStore.Delete(cfg.UUID)
 		require.NoError(t, err, "Delete should succeed")
 
 		// Verify labels were removed
@@ -621,7 +627,7 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 		})
 
 		cfg := &models.StoredConfig{
-			ID: uuid.New().String(),
+			UUID: uuid.New().String(),
 			Configuration: api.APIConfiguration{
 				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       api.WebSubApi,
@@ -660,7 +666,7 @@ func TestSQLiteStorage_LabelsPersistence(t *testing.T) {
 		require.NoError(t, err)
 
 		// Retrieve and verify labels are persisted
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
 		assert.Equal(t, labels, *retrieved.Configuration.Metadata.Labels, "Labels should be persisted")
 	})
@@ -678,12 +684,13 @@ func TestSQLiteStorage_LabelsPersistence(t *testing.T) {
 			"key2": "value2",
 		}
 		cfg.Configuration.Metadata.Labels = &updatedLabels
+		cfg.SourceConfiguration = cfg.Configuration
 
 		err = db.UpdateConfig(cfg)
 		require.NoError(t, err)
 
 		// Verify labels were updated
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
 		assert.Equal(t, updatedLabels, *retrieved.Configuration.Metadata.Labels, "Labels should be updated")
 	})
