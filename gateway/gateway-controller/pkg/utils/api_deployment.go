@@ -418,8 +418,12 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	// Backup original state for potential rollback
 	original := *existing
 
-	// Update the existing configuration
+	// Update the existing configuration (including denormalized fields used by secondary indexes)
 	now := time.Now()
+	existing.Kind = newConfig.Kind
+	existing.Handle = newConfig.Handle
+	existing.DisplayName = newConfig.DisplayName
+	existing.Version = newConfig.Version
 	existing.Configuration = newConfig.Configuration
 	existing.SourceConfiguration = newConfig.SourceConfiguration
 	existing.Status = models.StatusPending
