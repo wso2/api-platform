@@ -110,7 +110,7 @@ func (m *MockStorage) GetConfigByNameVersion(name, version string) (*models.Stor
 		return nil, m.getErr
 	}
 	for _, cfg := range m.configs {
-		if cfg.GetDisplayName() == name && cfg.GetVersion() == version {
+		if cfg.DisplayName == name && cfg.Version == version {
 			return cfg, nil
 		}
 	}
@@ -125,7 +125,7 @@ func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, er
 		return nil, m.getErr
 	}
 	for _, cfg := range m.configs {
-		if cfg.GetHandle() == handle {
+		if cfg.Handle == handle {
 			return cfg, nil
 		}
 	}
@@ -497,20 +497,25 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 		},
 	})
 
-	return &models.StoredConfig{
-		UUID: id,
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-			Kind:       api.RestApi,
-			Metadata: api.Metadata{
-				Name: id,
-			},
-			Spec: specUnion,
+	apiConfig := api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.RestApi,
+		Metadata: api.Metadata{
+			Name: id,
 		},
-		Status:    models.StatusPending,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Spec: specUnion,
+	}
+	return &models.StoredConfig{
+		UUID:                id,
+		Kind:                string(api.RestApi),
+		Handle:              id,
+		DisplayName:         name,
+		Version:             version,
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 }
 
@@ -1307,13 +1312,15 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 		},
 	})
 
+	apiConfig := api.APIConfiguration{
+		Kind: api.RestApi,
+		Spec: specUnion,
+	}
 	cfg := &models.StoredConfig{
-		UUID: "0000-test-id-0000-000000000000",
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi,
-			Spec: specUnion,
-		},
+		UUID:                "0000-test-id-0000-000000000000",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -1622,12 +1629,14 @@ func TestHandleStatusUpdateDBError(t *testing.T) {
 func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 	server := createTestAPIServer()
 
+	apiConfig := api.APIConfiguration{
+		Kind: api.APIConfigurationKind("InvalidKind"),
+	}
 	cfg := &models.StoredConfig{
-		UUID: "0000-test-id-0000-000000000000",
-		Kind: "InvalidKind",
-		Configuration: api.APIConfiguration{
-			Kind: api.APIConfigurationKind("InvalidKind"),
-		},
+		UUID:                "0000-test-id-0000-000000000000",
+		Kind:                "InvalidKind",
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -1716,19 +1725,24 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 		},
 	})
 
-	cfg := &models.StoredConfig{
-		UUID: "0000-llm-id-0000-000000000000",
-		Kind: string(api.LlmProvider),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi, // Use RestApi kind for the Configuration type
-			Metadata: api.Metadata{
-				Name: "test-llm-provider",
-			},
-			Spec: specUnion,
+	apiConfig := api.APIConfiguration{
+		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+		Metadata: api.Metadata{
+			Name: "test-llm-provider",
 		},
-		Status:    models.StatusDeployed,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Spec: specUnion,
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "0000-llm-id-0000-000000000000",
+		Kind:                string(api.LlmProvider),
+		Handle:              "test-llm-provider",
+		DisplayName:         "test-llm",
+		Version:             "v1.0",
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusDeployed,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 	_ = server.store.Add(cfg)
 
@@ -1761,19 +1775,24 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 		},
 	})
 
-	cfg := &models.StoredConfig{
-		UUID: "0000-llm-proxy-id-0000-000000000000",
-		Kind: string(api.LlmProxy),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi, // Use RestApi kind for the Configuration type
-			Metadata: api.Metadata{
-				Name: "test-llm-proxy-handle",
-			},
-			Spec: specUnion,
+	apiConfig2 := api.APIConfiguration{
+		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+		Metadata: api.Metadata{
+			Name: "test-llm-proxy-handle",
 		},
-		Status:    models.StatusDeployed,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Spec: specUnion,
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "0000-llm-proxy-id-0000-000000000000",
+		Kind:                string(api.LlmProxy),
+		Handle:              "test-llm-proxy-handle",
+		DisplayName:         "test-llm-proxy",
+		Version:             "v1.0",
+		Configuration:       apiConfig2,
+		SourceConfiguration: apiConfig2,
+		Status:              models.StatusDeployed,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 	_ = server.store.Add(cfg)
 
@@ -1806,20 +1825,25 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	})
 
 	deployedAt := time.Now()
-	cfg := &models.StoredConfig{
-		UUID: "0000-llm-id-0000-000000000000",
-		Kind: string(api.LlmProvider),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi, // Use RestApi kind for the Configuration type
-			Metadata: api.Metadata{
-				Name: "test-llm-provider",
-			},
-			Spec: specUnion,
+	apiConfig := api.APIConfiguration{
+		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+		Metadata: api.Metadata{
+			Name: "test-llm-provider",
 		},
-		Status:     models.StatusDeployed,
-		DeployedAt: &deployedAt,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Spec: specUnion,
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "0000-llm-id-0000-000000000000",
+		Kind:                string(api.LlmProvider),
+		Handle:              "test-llm-provider",
+		DisplayName:         "test-llm",
+		Version:             "v1.0",
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusDeployed,
+		DeployedAt:          &deployedAt,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 	_ = server.store.Add(cfg)
 
@@ -1859,20 +1883,25 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	})
 
 	deployedAt := time.Now()
-	cfg := &models.StoredConfig{
-		UUID: "0000-llm-proxy-id-0000-000000000000",
-		Kind: string(api.LlmProxy),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi, // Use RestApi kind for the Configuration type
-			Metadata: api.Metadata{
-				Name: "test-llm-proxy-handle",
-			},
-			Spec: specUnion,
+	apiConfig2 := api.APIConfiguration{
+		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+		Metadata: api.Metadata{
+			Name: "test-llm-proxy-handle",
 		},
-		Status:     models.StatusDeployed,
-		DeployedAt: &deployedAt,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Spec: specUnion,
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "0000-llm-proxy-id-0000-000000000000",
+		Kind:                string(api.LlmProxy),
+		Handle:              "test-llm-proxy-handle",
+		DisplayName:         "test-llm-proxy",
+		Version:             "v1.0",
+		Configuration:       apiConfig2,
+		SourceConfiguration: apiConfig2,
+		Status:              models.StatusDeployed,
+		DeployedAt:          &deployedAt,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 	_ = server.store.Add(cfg)
 
@@ -1965,12 +1994,14 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 
 	// Note: WebSubApi requires different data structure than RestApi
 	// The function will return nil if parsing fails
+	apiConfig := api.APIConfiguration{
+		Kind: api.WebSubApi,
+	}
 	cfg := &models.StoredConfig{
-		UUID: "0000-test-id-0000-000000000000",
-		Kind: string(api.WebSubApi),
-		Configuration: api.APIConfiguration{
-			Kind: api.WebSubApi,
-		},
+		UUID:                "0000-test-id-0000-000000000000",
+		Kind:                string(api.WebSubApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2027,15 +2058,17 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 		Operations: []api.Operation{{Method: "GET", Path: "/"}},
 	})
 
+	apiConfig := api.APIConfiguration{
+		Kind:     api.RestApi,
+		Metadata: api.Metadata{Name: ""}, // Empty handle
+		Spec:     specUnion,
+	}
 	cfg := &models.StoredConfig{
-		UUID: "0000-test-id-0000-000000000000",
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			Kind:     api.RestApi,
-			Metadata: api.Metadata{Name: ""}, // Empty handle
-			Spec:     specUnion,
-		},
-		CreatedAt: time.Now(),
+		UUID:                "0000-test-id-0000-000000000000",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		CreatedAt:           time.Now(),
 		UpdatedAt: time.Now(),
 	}
 	_ = server.store.Add(cfg)
@@ -2118,13 +2151,15 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 		Policies: &policies,
 	})
 
+	apiConfig := api.APIConfiguration{
+		Kind: api.RestApi,
+		Spec: specUnion,
+	}
 	cfg := &models.StoredConfig{
-		UUID: "0000-test-id-0000-000000000000",
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi,
-			Spec: specUnion,
-		},
+		UUID:                "0000-test-id-0000-000000000000",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2170,13 +2205,15 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 		Policies: &apiPolicies,
 	})
 
+	apiConfig := api.APIConfiguration{
+		Kind: api.RestApi,
+		Spec: specUnion,
+	}
 	cfg := &models.StoredConfig{
-		UUID: "0000-test-id-0000-000000000000",
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi,
-			Spec: specUnion,
-		},
+		UUID:                "0000-test-id-0000-000000000000",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2238,12 +2275,14 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 
 	// WebSubApi requires specific data structure that's complex to mock
 	// Testing that the function handles WebSubApi kind without panicking
+	apiConfig := api.APIConfiguration{
+		Kind: api.WebSubApi,
+	}
 	cfg := &models.StoredConfig{
-		UUID: "0000-test-id-0000-000000000000",
-		Kind: string(api.WebSubApi),
-		Configuration: api.APIConfiguration{
-			Kind: api.WebSubApi,
-		},
+		UUID:                "0000-test-id-0000-000000000000",
+		Kind:                string(api.WebSubApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2255,21 +2294,28 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 func TestListMCPProxiesUnmarshalError(t *testing.T) {
 	server := createTestAPIServer()
 
-	// Add MCP config with invalid source that can't be unmarshaled
+	// Add MCP config, then replace SourceConfiguration with something that can't be marshaled to JSON
 	cfg := &models.StoredConfig{
-		UUID:                "0000-mcp-id-0000-000000000000",
-		Kind:                string(api.Mcp),
-		SourceConfiguration: make(chan int), // Invalid - can't be marshaled to JSON
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi, // Use RestApi for the APIConfiguration type
-			Metadata: api.Metadata{
-				Name: "test-mcp",
+		UUID: "0000-mcp-id-0000-000000000000",
+		Kind: string(api.Mcp),
+		SourceConfiguration: api.MCPProxyConfiguration{
+			Kind:     api.Mcp,
+			Metadata: api.Metadata{Name: "test-mcp"},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "Test MCP",
+				Version:     "v1.0",
 			},
+		},
+		Configuration: api.APIConfiguration{
+			Kind:     api.RestApi,
+			Metadata: api.Metadata{Name: "test-mcp"},
 		},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 	_ = server.store.Add(cfg)
+	// Mutate SourceConfiguration to something that can't be JSON marshaled
+	cfg.SourceConfiguration = make(chan int)
 
 	c, w := createTestContext("GET", "/mcp-proxies", nil)
 	server.ListMCPProxies(c, api.ListMCPProxiesParams{})

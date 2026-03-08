@@ -78,11 +78,15 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		mcpConfig := &models.StoredConfig{
-			UUID: "0000-mcp-1-0000-000000000000",
-			Kind: string(api.Mcp),
+			UUID:        "0000-mcp-1-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "mcp-proxy",
+			DisplayName: "MCP Proxy",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "mcp-proxy"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -92,11 +96,15 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 
 		// Add a REST API config (should not be returned)
 		restConfig := &models.StoredConfig{
-			UUID: "0000-rest-1-0000-000000000000",
-			Kind: string(api.RestApi),
+			UUID:        "0000-rest-1-0000-000000000000",
+			Kind:        string(api.RestApi),
+			Handle:      "rest-api",
+			DisplayName: "MCP Proxy",
+			Version:     "2.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "rest-api"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -177,8 +185,11 @@ func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 	spec.FromAPIConfigData(apiData)
 
 	existingConfig := &models.StoredConfig{
-		UUID: "0000-existing-mcp-0000-000000000000",
-		Kind: string(api.Mcp),
+		UUID:        "0000-existing-mcp-0000-000000000000",
+		Kind:        string(api.Mcp),
+		Handle:      "test-mcp",
+		DisplayName: "Test MCP",
+		Version:     "1.0.0",
 		Configuration: api.APIConfiguration{
 			Kind:     api.RestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
@@ -259,11 +270,15 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		storedCfg := &models.StoredConfig{
-			UUID: "0000-new-mcp-id-0000-000000000000",
-			Kind: string(api.Mcp),
+			UUID:        "0000-new-mcp-id-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "test-mcp",
+			DisplayName: "Test MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "test-mcp"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -298,11 +313,15 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			UUID: "0000-config-to-update-0000-000000000000",
-			Kind: string(api.Mcp),
+			UUID:        "0000-config-to-update-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "original-mcp",
+			DisplayName: "Original MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "original-mcp"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -320,11 +339,15 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
-			UUID: "0000-config-to-update-0000-000000000000",
-			Kind: string(api.Mcp),
+			UUID:        "0000-config-to-update-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "original-mcp",
+			DisplayName: "Original MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: newSpec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "original-mcp"},
+				Spec:     newSpec,
 			},
 			Status: models.StatusPending,
 		}
@@ -347,11 +370,15 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		newConfig := &models.StoredConfig{
-			UUID: "0000-non-existent-config-0000-000000000000",
-			Kind: string(api.Mcp),
+			UUID:        "0000-non-existent-config-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "non-existent-mcp",
+			DisplayName: "Non-existent MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "non-existent-mcp"},
+				Spec:     spec,
 			},
 			Status: models.StatusPending,
 		}

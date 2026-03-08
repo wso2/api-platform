@@ -298,7 +298,7 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 	finalCfg, err := db.GetConfig(cfg.UUID)
 	assert.NoError(t, err)
 	assert.NotNil(t, finalCfg)
-	assert.Equal(t, "SharedAPI", finalCfg.GetDisplayName())
+	assert.Equal(t, "SharedAPI", finalCfg.DisplayName)
 
 	// The final DeployedVersion will be whichever goroutine completed last
 	t.Logf("Final deployed version: %d", finalCfg.DeployedVersion)

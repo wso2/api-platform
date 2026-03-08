@@ -87,15 +87,18 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		UUID:                  apiID,
+		UUID:                apiID,
 		Kind:                string(api.Mcp),
+		Handle:              mcpConfig.Metadata.Name,
+		DisplayName:         mcpConfig.Spec.DisplayName,
+		Version:             mcpConfig.Spec.Version,
+		Configuration:       *apiConfig,
+		SourceConfiguration: *mcpConfig,
 		Status:              models.StatusPending,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
 		DeployedVersion:     0,
-		Configuration:       *apiConfig,
-		SourceConfiguration: *mcpConfig,
 	}
 
 	// Try to save/update the configuration
@@ -147,8 +150,8 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			if storage.IsConflictError(err) {
 				logger.Info("MCP configuration already exists in database, updating instead",
 					slog.String("id", storedCfg.UUID),
-					slog.String("displayName", storedCfg.GetDisplayName()),
-					slog.String("version", storedCfg.GetVersion()))
+					slog.String("displayName", storedCfg.DisplayName),
+					slog.String("version", storedCfg.Version))
 
 				// Try to update instead
 				return s.updateExistingConfig(storedCfg, logger)
@@ -164,8 +167,8 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if storage.IsConflictError(err) {
 			logger.Info("MCP configuration already exists in memory, updating instead",
 				slog.String("id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.GetDisplayName()),
-				slog.String("version", storedCfg.GetVersion()))
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
 
 			// Try to update instead
 			return s.updateExistingConfig(storedCfg, logger)
@@ -185,7 +188,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
 	logger *slog.Logger) (bool, error) {
 	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetDisplayName(), newConfig.GetVersion())
+	existing, err := s.store.GetByNameVersion(newConfig.DisplayName, newConfig.Version)
 	if err != nil {
 		return false, fmt.Errorf("failed to get existing config: %w", err)
 	}
@@ -217,8 +220,8 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 				logger.Error("Failed to rollback DB after memory update failure",
 					slog.Any("error", rbErr),
 					slog.String("id", original.UUID),
-					slog.String("displayName", original.GetDisplayName()),
-					slog.String("version", original.GetVersion()))
+					slog.String("displayName", original.DisplayName),
+					slog.String("version", original.Version))
 			}
 		}
 		return false, fmt.Errorf("failed to update config in memory store: %w", err)
@@ -309,7 +312,7 @@ func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*mode
 		}
 		if handle != "" {
 			for _, c := range s.store.GetAll() {
-				if c.GetHandle() == handle {
+				if c.Handle == handle {
 					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
 				}
 			}

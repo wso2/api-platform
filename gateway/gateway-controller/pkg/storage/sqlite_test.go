@@ -217,7 +217,7 @@ func TestSQLiteStorage_GetConfigByNameVersion_Success(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Retrieve by name and version
-	retrievedConfig, err := storage.GetConfigByNameVersion(config.GetDisplayName(), config.GetVersion())
+	retrievedConfig, err := storage.GetConfigByNameVersion(config.DisplayName, config.Version)
 	assert.NilError(t, err)
 	assert.Assert(t, retrievedConfig != nil)
 	assert.Equal(t, retrievedConfig.UUID, config.UUID)
@@ -859,6 +859,9 @@ func createTestStoredConfig() *models.StoredConfig {
 	return &models.StoredConfig{
 		UUID:                fmt.Sprintf("test-config-%d", configCounter),
 		Kind:                string(api.RestApi),
+		Handle:              fmt.Sprintf("test-api-%d", configCounter),
+		DisplayName:         fmt.Sprintf("Test API %d", configCounter),
+		Version:             "v1.0.0",
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Status:              models.StatusPending,

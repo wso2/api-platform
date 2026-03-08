@@ -102,7 +102,7 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 
 func (m *mockStorageForDeletion) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
-		if config.GetDisplayName() == name && config.GetVersion() == version {
+		if config.DisplayName == name && config.Version == version {
 			return config, nil
 		}
 	}
@@ -111,7 +111,7 @@ func (m *mockStorageForDeletion) GetConfigByNameVersion(name, version string) (*
 
 func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
-		if config.GetHandle() == handle {
+		if config.Handle == handle {
 			return config, nil
 		}
 	}
@@ -281,9 +281,12 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	})
 
 	return &models.StoredConfig{
-		UUID:     apiID,
-		Status: models.StatusDeployed,
-		Kind:   "API",
+		UUID:        apiID,
+		Handle:      apiID,
+		DisplayName: "Test API",
+		Version:     "v1",
+		Status:      models.StatusDeployed,
+		Kind:        "API",
 		Configuration: api.APIConfiguration{
 			ApiVersion: "gateway.wso2.com/v1",
 			Kind:       api.RestApi,

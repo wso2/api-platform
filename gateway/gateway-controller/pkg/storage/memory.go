@@ -68,18 +68,17 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	defer cs.mu.Unlock()
 
 	key := cfg.GetCompositeKey()
-	handle := cfg.GetHandle()
-	if existingID, exists := cs.handle[handle]; exists {
+	if existingID, exists := cs.handle[cfg.Handle]; exists {
 		return fmt.Errorf("%w: configuration with handle '%s' already exists (ID: %s)",
-			ErrConflict, handle, existingID)
+			ErrConflict, cfg.Handle, existingID)
 	}
 	if existingID, exists := cs.nameVersion[key]; exists {
 		return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (ID: %s)",
-			ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingID)
+			ErrConflict, cfg.DisplayName, cfg.Version, existingID)
 	}
 
 	cs.configs[cfg.UUID] = cfg
-	cs.handle[handle] = cfg.UUID
+	cs.handle[cfg.Handle] = cfg.UUID
 	cs.nameVersion[key] = cfg.UUID
 
 	// Store labels if present
@@ -88,7 +87,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 		for k, v := range *cfg.Configuration.Metadata.Labels {
 			labelsCopy[k] = v
 		}
-		cs.labelsByAPI[handle] = labelsCopy
+		cs.labelsByAPI[cfg.Handle] = labelsCopy
 	}
 
 	if cfg.Configuration.Kind == api.WebSubApi {
@@ -111,8 +110,8 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	}
 
 	// If handle changed, update the handle index
-	oldHandle := existing.GetHandle()
-	newHandle := cfg.GetHandle()
+	oldHandle := existing.Handle
+	newHandle := cfg.Handle
 
 	if oldHandle != newHandle {
 		// Check if new handle already exists
@@ -132,7 +131,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		// Check if new name:version combination already exists
 		if existingUUID, exists := cs.nameVersion[newKey]; exists && existingUUID != cfg.UUID {
 			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (UUID: %s)",
-				ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingUUID)
+				ErrConflict, cfg.DisplayName, cfg.Version, existingUUID)
 		}
 		delete(cs.nameVersion, oldKey)
 		cs.nameVersion[newKey] = cfg.UUID
@@ -217,17 +216,14 @@ func (cs *ConfigStore) Delete(id string) error {
 		return fmt.Errorf("configuration with ID '%s' not found", id)
 	}
 
-	key := cfg.GetCompositeKey()
-	handle := cfg.GetHandle()
-
 	if cfg.Configuration.Kind == api.WebSubApi {
 		cs.TopicManager.RemoveAllForConfig(cfg.UUID)
 	}
-	delete(cs.handle, handle)
-	delete(cs.nameVersion, key)
+	delete(cs.handle, cfg.Handle)
+	delete(cs.nameVersion, cfg.GetCompositeKey())
 	delete(cs.configs, id)
 	// Remove from labels map
-	delete(cs.labelsByAPI, handle)
+	delete(cs.labelsByAPI, cfg.Handle)
 	return nil
 }
 
@@ -277,7 +273,7 @@ func (cs *ConfigStore) GetByHandle(handle string) (*models.StoredConfig, error) 
 		return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
 	}
 
-	if cfg.GetHandle() != handle {
+	if cfg.Handle != handle {
 		return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
 	}
 	return cfg, nil
@@ -310,7 +306,7 @@ func (cs *ConfigStore) GetAllByKind(kind string) []*models.StoredConfig {
 }
 
 // GetByKindNameAndVersion returns a configuration of a specific kind, name and version
-func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version string) *models.StoredConfig {
+func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version string) (*models.StoredConfig, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -318,16 +314,15 @@ func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version
 		if cfg.Kind != kind {
 			continue
 		}
-		sc := cfg
-		if sc.GetDisplayName() == name && sc.GetVersion() == version {
-			return sc
+		if cfg.DisplayName == name && cfg.Version == version {
+			return cfg, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // GetByKindAndHandle returns a configuration of a specific kind, and handle
-func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) *models.StoredConfig {
+func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -335,12 +330,11 @@ func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) *models.St
 		if cfg.Kind != kind {
 			continue
 		}
-		sc := cfg
-		if sc.GetHandle() == handle {
-			return sc
+		if cfg.Handle == handle {
+			return cfg, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // IncrementSnapshotVersion atomically increments and returns the next snapshot version

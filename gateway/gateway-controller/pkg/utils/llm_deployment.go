@@ -152,6 +152,9 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.LlmProvider),
+		Handle:              providerConfig.Metadata.Name,
+		DisplayName:         providerConfig.Spec.DisplayName,
+		Version:             providerConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: providerConfig,
 		Status:              models.StatusPending,
@@ -171,16 +174,16 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if isUpdate {
 		params.Logger.Info("LLM provider configuration updated",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM provider configuration created",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
@@ -273,6 +276,9 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.LlmProxy),
+		Handle:              proxyConfig.Metadata.Name,
+		DisplayName:         proxyConfig.Spec.DisplayName,
+		Version:             proxyConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: proxyConfig,
 		Status:              models.StatusPending,
@@ -291,16 +297,16 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	if isUpdate {
 		params.Logger.Info("LLM proxy configuration updated",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM proxy configuration created",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
@@ -868,7 +874,10 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 
 // UpdateLLMProvider updates an existing provider identified by name+version using DeployLLMProviderConfiguration
 func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	existing, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
+	}
 	if existing == nil {
 		return nil, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
@@ -884,7 +893,10 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	logger *slog.Logger) (*models.StoredConfig, error) {
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
+	}
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
@@ -950,7 +962,10 @@ func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*mode
 
 // UpdateLLMProxy updates an existing provider identified by name+version using DeployLLMProxyConfiguration
 func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	existing, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
+	}
 	if existing == nil {
 		return nil, fmt.Errorf("LLM proxy configuration with handle '%s' not found", id)
 	}
@@ -965,7 +980,10 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
+	}
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
 	}

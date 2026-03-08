@@ -185,12 +185,14 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Build a minimal StoredAPIConfig
-			cfg := &models.StoredConfig{
-				Configuration: api.APIConfiguration{
+			apiCfg := api.APIConfiguration{
 					ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
 					Kind:       api.APIConfigurationKind(api.RestApi),
 					Spec:       specUnion,
-				},
+				}
+			cfg := &models.StoredConfig{
+				Configuration:       apiCfg,
+				SourceConfiguration: apiCfg,
 			}
 
 			apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
@@ -205,6 +207,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				apiData.Operations[0].Policies = &tt.operationPolicies
 				cfg.Configuration.Spec.FromAPIConfigData(apiData)
 			}
+			cfg.SourceConfiguration = cfg.Configuration
 
 			// Call the function
 			server := newTestAPIServer()
@@ -317,12 +320,14 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		Policies: &apiPolicies,
 	})
 
+	apiCfg := api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.APIConfigurationKind(api.RestApi),
+		Spec:       specUnion,
+	}
 	cfg := &models.StoredConfig{
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-			Kind:       api.APIConfigurationKind(api.RestApi),
-			Spec:       specUnion,
-		},
+		Configuration:       apiCfg,
+		SourceConfiguration: apiCfg,
 	}
 
 	server := newTestAPIServer()
@@ -443,12 +448,14 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 		Policies: &apiPolicies,
 	})
 
+	apiCfg := api.APIConfiguration{
+		ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.APIConfigurationKind(api.RestApi),
+		Spec:       specUnion,
+	}
 	cfg := &models.StoredConfig{
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-			Kind:       api.APIConfigurationKind(api.RestApi),
-			Spec:       specUnion,
-		},
+		Configuration:       apiCfg,
+		SourceConfiguration: apiCfg,
 	}
 
 	// Run 100 times to catch any non-deterministic behavior

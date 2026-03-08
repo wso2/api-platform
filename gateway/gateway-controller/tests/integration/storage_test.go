@@ -92,6 +92,9 @@ func createTestConfig(name, version string) *models.StoredConfig {
 	return &models.StoredConfig{
 		UUID:                uuid.New().String(),
 		Kind:                string(api.RestApi),
+		Handle:              name + "-" + version,
+		DisplayName:         name,
+		Version:             version,
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Status:              models.StatusPending,
@@ -119,8 +122,8 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		retrieved, err := db.GetConfig(cfg.UUID)
 		assert.NoError(t, err, "GetConfig should succeed")
 		assert.Equal(t, cfg.UUID, retrieved.UUID)
-		assert.Equal(t, cfg.GetDisplayName(), retrieved.GetDisplayName())
-		assert.Equal(t, cfg.GetVersion(), retrieved.GetVersion())
+		assert.Equal(t, cfg.DisplayName, retrieved.DisplayName)
+		assert.Equal(t, cfg.Version, retrieved.Version)
 	})
 
 	// Test GetConfigByNameVersion
@@ -132,8 +135,8 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		retrieved, err := db.GetConfigByNameVersion("TestAPI3", "v1.0")
 		assert.NoError(t, err, "GetConfigByNameVersion should succeed")
 		assert.Equal(t, cfg.UUID, retrieved.UUID)
-		assert.Equal(t, "TestAPI3", retrieved.GetDisplayName())
-		assert.Equal(t, "v1.0", retrieved.GetVersion())
+		assert.Equal(t, "TestAPI3", retrieved.DisplayName)
+		assert.Equal(t, "v1.0", retrieved.Version)
 	})
 
 	// Test UpdateConfig
@@ -349,6 +352,9 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 	return &models.StoredConfig{
 		UUID:                uuid.New().String(),
 		Kind:                string(api.RestApi),
+		Handle:              name + "-" + version,
+		DisplayName:         name,
+		Version:             version,
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Status:              models.StatusPending,
@@ -372,8 +378,7 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		assert.NoError(t, err, "Add should succeed")
 
 		// Verify labels were stored
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, labels, retrieved, "Retrieved labels should match stored labels")
 	})
@@ -389,14 +394,14 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		cfg := createTestConfigWithLabels("test-api-v2.0", "v1.0", labels)
 		require.NoError(t, configStore.Add(cfg))
 
-		retrieved, err := configStore.GetLabelsMap(cfg.GetHandle())
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		require.NoError(t, err)
 
 		// Modify the retrieved map
 		retrieved["new-key"] = "new-value"
 
 		// Verify original wasn't modified
-		retrieved2, err := configStore.GetLabelsMap(cfg.GetHandle())
+		retrieved2, err := configStore.GetLabelsMap(cfg.Handle)
 		require.NoError(t, err)
 		assert.NotEqual(t, retrieved, retrieved2, "Original labels should not be modified")
 		assert.Equal(t, labels, retrieved2, "Original labels should remain unchanged")
@@ -413,7 +418,7 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		assert.NoError(t, err, "Update (remove labels) should succeed")
 
 		// Verify labels were deleted
-		_, err = configStore.GetLabelsMap(cfg.GetHandle())
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after deletion")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -436,7 +441,7 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		assert.NoError(t, err, "Update (nil labels) should succeed")
 
 		// Verify labels were removed
-		_, err = configStore.GetLabelsMap(cfg.GetHandle())
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after storing nil labels")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -446,7 +451,7 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		cfg := createTestConfigWithLabels("test-api-v5.0", "v1.0", emptyLabels)
 		require.NoError(t, configStore.Add(cfg))
 
-		retrieved, err := configStore.GetLabelsMap(cfg.GetHandle())
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, emptyLabels, retrieved, "Retrieved labels should be empty map")
 	})
@@ -466,8 +471,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err, "Add should succeed")
 
 		// Verify labels were stored
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, labels, retrieved, "Labels should be stored automatically on Add")
 	})
@@ -479,8 +483,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err, "Add should succeed with nil labels")
 
 		// Verify no labels were stored
-		handle := cfg.GetHandle()
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail when labels are nil")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -503,8 +506,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err, "Update should succeed")
 
 		// Verify labels were updated
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, updatedLabels, retrieved, "Labels should be updated")
 	})
@@ -523,8 +525,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err, "Update should succeed")
 
 		// Verify labels were removed
-		handle := cfg.GetHandle()
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after setting labels to nil")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -536,24 +537,30 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		oldHandle := cfg.GetHandle()
+		oldHandle := cfg.Handle
 
 		// Create a new config object with updated handle (don't modify the original)
-		updatedCfg := &models.StoredConfig{
-			UUID: cfg.UUID, // Same ID
-			Configuration: api.APIConfiguration{
-				ApiVersion: cfg.Configuration.ApiVersion,
-				Kind:       cfg.Configuration.Kind,
-				Metadata: api.Metadata{
-					Name:   "new-handle-v1.0", // New name
-					Labels: cfg.Configuration.Metadata.Labels,
-				},
-				Spec: cfg.Configuration.Spec,
+		newApiConfig := api.APIConfiguration{
+			ApiVersion: cfg.Configuration.ApiVersion,
+			Kind:       cfg.Configuration.Kind,
+			Metadata: api.Metadata{
+				Name:   "new-handle-v1.0", // New name
+				Labels: cfg.Configuration.Metadata.Labels,
 			},
-			Status:          cfg.Status,
-			DeployedVersion: cfg.DeployedVersion,
+			Spec: cfg.Configuration.Spec,
 		}
-		newHandle := updatedCfg.GetHandle()
+		updatedCfg := &models.StoredConfig{
+			UUID:                cfg.UUID, // Same ID
+			Kind:                cfg.Kind,
+			Handle:              "new-handle-v1.0",
+			DisplayName:         cfg.DisplayName,
+			Version:             cfg.Version,
+			Configuration:       newApiConfig,
+			SourceConfiguration: newApiConfig,
+			Status:              cfg.Status,
+			DeployedVersion:     cfg.DeployedVersion,
+		}
+		newHandle := updatedCfg.Handle
 
 		err = configStore.Update(updatedCfg)
 		require.NoError(t, err, "Update should succeed")
@@ -574,10 +581,8 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		handle := cfg.GetHandle()
-
 		// Verify labels exist
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "Labels should exist before deletion")
 
 		// Delete the config
@@ -585,7 +590,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err, "Delete should succeed")
 
 		// Verify labels were removed
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after Delete")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -606,8 +611,7 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err)
 		assert.Equal(t, labels, retrieved)
 	})
@@ -626,26 +630,31 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 			},
 		})
 
-		cfg := &models.StoredConfig{
-			UUID: uuid.New().String(),
-			Configuration: api.APIConfiguration{
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-				Kind:       api.WebSubApi,
-				Metadata: api.Metadata{
-					Name:   "async-api-v1.0",
-					Labels: &labels,
-				},
-				Spec: specUnion,
+		asyncApiConfig := api.APIConfiguration{
+			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.WebSubApi,
+			Metadata: api.Metadata{
+				Name:   "async-api-v1.0",
+				Labels: &labels,
 			},
-			Status:          models.StatusPending,
-			DeployedVersion: 0,
+			Spec: specUnion,
+		}
+		cfg := &models.StoredConfig{
+			UUID:                uuid.New().String(),
+			Kind:                string(api.WebSubApi),
+			Handle:              "async-api-v1.0",
+			DisplayName:         "AsyncAPILabel",
+			Version:             "v1.0",
+			Configuration:       asyncApiConfig,
+			SourceConfiguration: asyncApiConfig,
+			Status:              models.StatusPending,
+			DeployedVersion:     0,
 		}
 
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err)
 		assert.Equal(t, labels, retrieved)
 	})
@@ -711,8 +720,7 @@ func TestSQLiteStorage_LabelsPersistence(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify labels are loaded into memory
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "Labels should be loaded into memory")
 		assert.Equal(t, labels, retrieved, "Loaded labels should match persisted labels")
 	})

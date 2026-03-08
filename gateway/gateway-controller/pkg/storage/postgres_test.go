@@ -63,7 +63,7 @@ func TestPostgresStorage_ConfigCRUD(t *testing.T) {
 	stored, err := pg.GetConfig(cfg.UUID)
 	assert.NilError(t, err)
 	assert.Equal(t, stored.UUID, cfg.UUID)
-	assert.Equal(t, stored.GetHandle(), cfg.GetHandle())
+	assert.Equal(t, stored.Handle, cfg.Handle)
 
 	assert.NilError(t, pg.DeleteConfig(cfg.UUID))
 	_, err = pg.GetConfig(cfg.UUID)

@@ -754,6 +754,9 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 	storedProvider := &models.StoredConfig{
 		UUID:                "0000-prov-cfg-1-0000-000000000000",
 		Kind:                string(api.LlmProvider),
+		Handle:              "openai-provider",
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
 		Configuration:       *providerAPI,
 		SourceConfiguration: *provider,
 		Status:              models.StatusDeployed,

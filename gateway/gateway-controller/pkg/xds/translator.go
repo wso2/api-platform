@@ -185,7 +185,7 @@ func (t *Translator) TranslateConfigs(
 		if cfg.Status == models.StatusUndeployed {
 			log.Debug("Skipping undeployed API in xDS translation",
 				slog.String("id", cfg.UUID),
-				slog.String("displayName", cfg.GetDisplayName()))
+				slog.String("displayName", cfg.DisplayName))
 			continue
 		}
 
@@ -202,7 +202,7 @@ func (t *Translator) TranslateConfigs(
 			if err != nil {
 				log.Error("Failed to translate config",
 					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.GetDisplayName()),
+					slog.String("displayName", cfg.DisplayName),
 					slog.Any("error", err))
 				continue
 			}
@@ -211,7 +211,7 @@ func (t *Translator) TranslateConfigs(
 			if err != nil {
 				log.Error("Failed to translate config",
 					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.GetDisplayName()),
+					slog.String("displayName", cfg.DisplayName),
 					slog.Any("error", err))
 				continue
 			}
@@ -464,7 +464,6 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
-	cfg.GetContext()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
 	}

@@ -179,6 +179,14 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 		return nil
 	}
 
+	displayName := cfg.DisplayName
+	apiVersion := cfg.Version
+	apiContext, err := cfg.GetContext()
+	if err != nil {
+		slog.Error("Failed to get context", "error", err)
+		return nil
+	}
+
 	now := time.Now().Unix()
 	return &models.StoredPolicyConfig{
 		ID: cfg.UUID + "-policies",
@@ -188,9 +196,9 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 				CreatedAt:       now,
 				UpdatedAt:       now,
 				ResourceVersion: 0,
-				APIName:         cfg.GetDisplayName(),
-				Version:         cfg.GetVersion(),
-				Context:         cfg.GetContext(),
+				APIName:         displayName,
+				Version:         apiVersion,
+				Context:         apiContext,
 			},
 		},
 		Version: 0,

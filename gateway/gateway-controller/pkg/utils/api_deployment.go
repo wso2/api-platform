@@ -172,7 +172,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		// Check handle conflict
 		if handle != "" {
 			for _, c := range s.store.GetAll() {
-				if c.GetHandle() == handle {
+				if c.Handle == handle {
 					// For updates: only error if the conflict is with a different API
 					// For creates: any conflict is an error
 					if !isUpdate || c.UUID != apiID {
@@ -186,8 +186,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		UUID:                  apiID,
+		UUID:                apiID,
 		Kind:                string(apiConfig.Kind),
+		Handle:              handle,
+		DisplayName:         apiName,
+		Version:             apiVersion,
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Status:              models.StatusPending,
@@ -376,8 +379,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if existing != nil {
 		logger.Info("API configuration already exists, updating",
 			slog.String("api_id", storedCfg.UUID),
-			slog.String("displayName", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()))
+			slog.String("displayName", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version))
 		return s.updateExistingConfig(storedCfg, existing, logger)
 	}
 
@@ -386,8 +389,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if err := s.db.SaveConfig(storedCfg); err != nil {
 			logger.Info("Error saving new API configuration to database",
 				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.GetDisplayName()),
-				slog.String("version", storedCfg.GetVersion()))
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
 			return false, fmt.Errorf("failed to save config to database: %w", err)
 		}
 	}
@@ -398,8 +401,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if s.db != nil {
 			logger.Info("Error adding new API configuration to memory store, rolling back database",
 				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.GetDisplayName()),
-				slog.String("version", storedCfg.GetVersion()))
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
 			_ = s.db.DeleteConfig(storedCfg.UUID)
 		}
 		return false, fmt.Errorf("failed to add config to memory store: %w", err)
@@ -439,8 +442,8 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 				logger.Error("Failed to rollback DB after memory update failure",
 					slog.Any("error", rbErr),
 					slog.String("id", original.UUID),
-					slog.String("displayName", original.GetDisplayName()),
-					slog.String("version", original.GetVersion()))
+					slog.String("displayName", original.DisplayName),
+					slog.String("version", original.Version))
 			}
 		}
 		return false, fmt.Errorf("failed to update config in memory store: %w", err)

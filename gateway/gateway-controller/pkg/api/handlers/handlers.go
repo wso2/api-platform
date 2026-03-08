@@ -146,16 +146,16 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.Int64("version", version))
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle))
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
 		cfg.DeployedVersion = 0
 		log.Error("Configuration deployment failed",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.String("kind", cfg.Kind))
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle))
 	}
 
 	cfg.UpdatedAt = now
@@ -278,7 +278,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration created successfully"),
-		Id:        stringPtr(result.StoredConfig.GetHandle()),
+		Id:        stringPtr(result.StoredConfig.Handle),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 
@@ -325,12 +325,17 @@ func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
 
 	items := make([]api.APIListItem, 0, len(configs))
 	for _, cfg := range configs {
+		cfgContext, err := cfg.GetContext()
+		if err != nil {
+			s.logger.Error("Failed to get context for API config", slog.Any("error", err), slog.String("uuid", cfg.UUID))
+			continue
+		}
 		status := string(cfg.Status)
 		items = append(items, api.APIListItem{
-			Id:          stringPtr(cfg.GetHandle()),
-			DisplayName: stringPtr(cfg.GetDisplayName()),
-			Version:     stringPtr(cfg.GetVersion()),
-			Context:     stringPtr(cfg.GetContext()),
+			Id:          stringPtr(cfg.Handle),
+			DisplayName: stringPtr(cfg.DisplayName),
+			Version:     stringPtr(cfg.Version),
+			Context:     stringPtr(cfgContext),
 			Status:      (*api.APIListItemStatus)(&status),
 			CreatedAt:   timePtr(cfg.CreatedAt),
 			UpdatedAt:   timePtr(cfg.UpdatedAt),
@@ -368,13 +373,21 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		// Return MCP proxy format
 		mcpItems := make([]api.MCPProxyListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for MCP config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
 			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
@@ -385,16 +398,16 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
 			var mcp api.MCPProxyConfiguration
 			j, _ := json.Marshal(cfg.SourceConfiguration)
-			err := json.Unmarshal(j, &mcp)
+			err = json.Unmarshal(j, &mcp)
 			if err != nil {
 				s.logger.Error("Failed to unmarshal stored MCP configuration",
 					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 				continue
 			}
 
 			li := api.MCPProxyListItem{
-				Id:          stringPtr(cfg.GetHandle()),
+				Id:          stringPtr(cfg.Handle),
 				DisplayName: stringPtr(mcp.Spec.DisplayName),
 				Version:     stringPtr(mcp.Spec.Version),
 				Status:      &status,
@@ -416,13 +429,21 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		// Return API format
 		apiItems := make([]api.APIListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
 			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
@@ -431,10 +452,10 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 
 			status := string(cfg.Status)
 			apiItems = append(apiItems, api.APIListItem{
-				Id:          stringPtr(cfg.GetHandle()),
-				DisplayName: stringPtr(cfg.GetDisplayName()),
-				Version:     stringPtr(cfg.GetVersion()),
-				Context:     stringPtr(cfg.GetContext()),
+				Id:          stringPtr(cfg.Handle),
+				DisplayName: stringPtr(cfg.DisplayName),
+				Version:     stringPtr(cfg.Version),
+				Context:     stringPtr(cfgContext),
 				Status:      (*api.APIListItemStatus)(&status),
 				CreatedAt:   timePtr(cfg.CreatedAt),
 				UpdatedAt:   timePtr(cfg.UpdatedAt),
@@ -468,7 +489,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -526,7 +547,7 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -804,7 +825,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
-		Id:        stringPtr(existing.GetHandle()),
+		Id:        stringPtr(existing.Handle),
 		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
@@ -1271,12 +1292,12 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	log.Info("LLM provider created successfully",
 		slog.String("uuid", stored.UUID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM provider created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -1298,7 +1319,15 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	if err != nil {
+		log.Error("Failed to look up LLM provider", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to look up LLM provider",
+		})
+		return
+	}
 	if cfg == nil {
 		log.Warn("LLM provider configuration not found",
 			slog.String("handle", id))
@@ -1369,7 +1398,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM provider updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1427,7 +1456,7 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
 	// Remove derived policy configuration
@@ -1520,12 +1549,12 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	log.Info("LLM proxy created successfully",
 		slog.String("uuid", stored.UUID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProxyCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM proxy created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -1547,7 +1576,15 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	if err != nil {
+		log.Error("Failed to look up LLM proxy", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to look up LLM proxy",
+		})
+		return
+	}
 	if cfg == nil {
 		log.Warn("LLM proxy configuration not found",
 			slog.String("handle", id))
@@ -1618,7 +1655,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM proxy updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1676,7 +1713,7 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM proxy deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
 	// Remove derived policy configuration
@@ -1810,7 +1847,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration created successfully"),
-		Id:        stringPtr(cfg.GetHandle()),
+		Id:        stringPtr(cfg.Handle),
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
 
@@ -1852,7 +1889,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		if err != nil {
 			s.logger.Error("Failed to unmarshal stored MCP configuration",
 				slog.String("id", cfg.UUID),
-				slog.String("displayName", cfg.GetDisplayName()))
+				slog.String("displayName", cfg.DisplayName))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
@@ -1860,7 +1897,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 			return
 		}
 		li := api.MCPProxyListItem{
-			Id:          stringPtr(cfg.GetHandle()),
+			Id:          stringPtr(cfg.Handle),
 			DisplayName: stringPtr(mcp.Spec.DisplayName),
 			Version:     stringPtr(mcp.Spec.Version),
 			Status:      &status,
@@ -1932,7 +1969,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	}
 
 	mcpDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -2023,7 +2060,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration updated successfully"),
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 }
@@ -2119,7 +2156,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			if cfg.Status == models.StatusDeployed {
 				log.Info("API deployed successfully, pushing to control plane",
 					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 
 				apiID := configID
 				deploymentID := ""
@@ -2137,7 +2174,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			} else if cfg.Status == models.StatusFailed {
 				log.Warn("API deployment failed, skipping control plane push",
 					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 				return
 			}
 			// Continue waiting if status is still pending
@@ -2179,7 +2216,7 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 
 	for _, cfg := range allConfigs {
 		// Use handle (metadata.name) as the id in the dump
-		configHandle := cfg.GetHandle()
+		configHandle := cfg.Handle
 		if configHandle == "" {
 			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.UUID))
 			continue

@@ -89,8 +89,11 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 		require.NoError(t, spec.FromAPIConfigData(apiData))
 
 		llmConfig := &models.StoredConfig{
-			UUID:   "0000-llm-provider-1-0000-000000000000",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-llm-provider-1-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-llm-provider-1-0000-000000000000",
+			DisplayName: "LLM Provider",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "0000-llm-provider-1-0000-000000000000"},
@@ -123,8 +126,11 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 		require.NoError(t, spec1.FromAPIConfigData(apiData1))
 
 		config1 := &models.StoredConfig{
-			UUID:   "0000-llm-provider-1-0000-000000000000",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-llm-provider-1-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "first-provider",
+			DisplayName: "First Provider",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "first-provider"},
@@ -146,8 +152,11 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 		require.NoError(t, spec2.FromAPIConfigData(apiData2))
 
 		config2 := &models.StoredConfig{
-			UUID:   "0000-llm-provider-2-0000-000000000000",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-llm-provider-2-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "filtered-provider",
+			DisplayName: "Filtered Provider",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "filtered-provider"},
@@ -190,8 +199,11 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		llmProxyConfig := &models.StoredConfig{
-			UUID:   "0000-llm-proxy-1-0000-000000000000",
-			Kind: string(api.LlmProxy),
+			UUID:        "0000-llm-proxy-1-0000-000000000000",
+			Kind:        string(api.LlmProxy),
+			Handle:      "0000-llm-proxy-1-0000-000000000000",
+			DisplayName: "LLM Proxy",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: spec,
@@ -533,8 +545,11 @@ func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 func TestMatchesFilters(t *testing.T) {
 	t.Run("Invalid config returns false", func(t *testing.T) {
 		config := &models.StoredConfig{
-			UUID:   "0000-test-config-0000-000000000000",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test Config",
+			Version:     "1.0.0",
 			// No valid spec
 		}
 		result := matchesFilters(config, api.ListLLMProvidersParams{})
@@ -551,8 +566,11 @@ func TestMatchesFilters(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
-			UUID:   "0000-test-config-0000-000000000000",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: spec,
@@ -579,8 +597,11 @@ func TestMatchesFilters(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
-			UUID:   "0000-test-config-0000-000000000000",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test Provider",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: spec,
@@ -613,8 +634,11 @@ func TestMatchesFilters(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
-			UUID:   "0000-test-config-0000-000000000000",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test Provider",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: spec,

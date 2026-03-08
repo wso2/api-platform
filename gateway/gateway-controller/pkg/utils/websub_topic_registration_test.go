@@ -47,6 +47,10 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:            "0000-test-config-1-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapi",
+		DisplayName:     "testapi",
+		Version:         "v1",
 		Configuration:   apiCfg,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -96,6 +100,10 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:            "0000-test-config-1-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapi",
+		DisplayName:     "testapi",
+		Version:         "v1",
 		Configuration:   apiCfg,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -200,6 +208,10 @@ spec:
 
 	cfgA := &models.StoredConfig{
 		UUID:            "0000-cfg-a-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapiA",
+		DisplayName:     "testapiA",
+		Version:         "v1",
 		Configuration:   apiCfgA,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -210,6 +222,10 @@ spec:
 
 	cfgB := &models.StoredConfig{
 		UUID:            "0000-cfg-b-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapiB",
+		DisplayName:     "testapiB",
+		Version:         "v1",
 		Configuration:   apiCfgB,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -286,6 +302,10 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:            "0000-test-config-1-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapi",
+		DisplayName:     "testapi",
+		Version:         "v1",
 		Configuration:   apiCfg,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),

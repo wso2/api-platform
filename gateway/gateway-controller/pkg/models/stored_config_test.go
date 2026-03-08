@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
 
 func TestConfigStatus_Constants(t *testing.T) {
@@ -32,28 +31,20 @@ func TestConfigStatus_Constants(t *testing.T) {
 	assert.Equal(t, ConfigStatus("failed"), StatusFailed)
 }
 
-func TestStoredConfig_GetHandle(t *testing.T) {
+func TestStoredConfig_Handle(t *testing.T) {
 	config := &StoredConfig{
-		Configuration: api.APIConfiguration{
-			Metadata: api.Metadata{
-				Name: "0000-test-handle-0000-000000000000",
-			},
-		},
+		Handle: "0000-test-handle-0000-000000000000",
 	}
 
-	assert.Equal(t, "0000-test-handle-0000-000000000000", config.GetHandle())
+	assert.Equal(t, "0000-test-handle-0000-000000000000", config.Handle)
 }
 
-func TestStoredConfig_GetHandle_Empty(t *testing.T) {
+func TestStoredConfig_Handle_Empty(t *testing.T) {
 	config := &StoredConfig{
-		Configuration: api.APIConfiguration{
-			Metadata: api.Metadata{
-				Name: "",
-			},
-		},
+		Handle: "",
 	}
 
-	assert.Equal(t, "", config.GetHandle())
+	assert.Equal(t, "", config.Handle)
 }
 
 func TestStoredConfig_Fields(t *testing.T) {

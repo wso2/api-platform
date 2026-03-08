@@ -173,12 +173,7 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 }
 
 func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
-	// Extract fields for indexed columns
-	displayName := cfg.GetDisplayName()
-	version := cfg.GetVersion()
-	handle := cfg.GetHandle()
-
-	if handle == "" {
+	if cfg.Handle == "" {
 		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
 
@@ -210,10 +205,10 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	_, err = stmt.Exec(
 		cfg.UUID,
 		s.gatewayId,
-		displayName,
-		version,
+		cfg.DisplayName,
+		cfg.Version,
 		cfg.Kind,
-		handle,
+		cfg.Handle,
 		cfg.Status,
 		now,
 		now,
@@ -222,7 +217,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if err != nil {
 		// Check for unique constraint violation
 		if s.isConfigUniqueViolation(err) {
-			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists", ErrConflict, displayName, version)
+			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists", ErrConflict, cfg.DisplayName, cfg.Version)
 		}
 		return fmt.Errorf("failed to insert configuration: %w", err)
 	}
@@ -239,8 +234,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 
 	s.logger.Info("Configuration saved",
 		slog.String("uuid", cfg.UUID),
-		slog.String("displayName", displayName),
-		slog.String("version", version))
+		slog.String("kind", cfg.Kind),
+		slog.String("handle", cfg.Handle))
 
 	return nil
 }
@@ -263,12 +258,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		return err
 	}
 
-	// Extract fields for indexed columns
-	displayName := cfg.GetDisplayName()
-	version := cfg.GetVersion()
-	handle := cfg.GetHandle()
-
-	if handle == "" {
+	if cfg.Handle == "" {
 		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
 		metrics.StorageErrorsTotal.WithLabelValues("update", "validation_error").Inc()
 		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
@@ -303,10 +293,10 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	defer stmt.Close()
 
 	result, err := stmt.Exec(
-		displayName,
-		version,
+		cfg.DisplayName,
+		cfg.Version,
 		cfg.Kind,
-		handle,
+		cfg.Handle,
 		cfg.Status,
 		time.Now(),
 		cfg.UUID,
@@ -352,8 +342,8 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 
 	s.logger.Info("Configuration updated",
 		slog.String("uuid", cfg.UUID),
-		slog.String("displayName", displayName),
-		slog.String("version", version))
+		slog.String("displayName", cfg.DisplayName),
+		slog.String("version", cfg.Version))
 
 	return nil
 }
@@ -398,9 +388,9 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	startTime := time.Now()
 	table := "artifacts"
 
-	// Step 1: Get artifact base record (including kind)
+	// Step 1: Get artifact base record
 	artifactQuery := `
-		SELECT uuid, kind, status, created_at, updated_at, deployed_at
+		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
 		FROM artifacts
 		WHERE uuid = ? AND gateway_id = ?
 	`
@@ -411,6 +401,9 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	err := s.queryRow(artifactQuery, id, s.gatewayId).Scan(
 		&cfg.UUID,
 		&cfg.Kind,
+		&cfg.Handle,
+		&cfg.DisplayName,
+		&cfg.Version,
 		&cfg.Status,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
@@ -449,7 +442,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 // GetConfigByNameVersion retrieves an artifact configuration by displayName and version
 func (s *sqlStore) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, status, created_at, updated_at, deployed_at
+		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
 		FROM artifacts
 		WHERE display_name = ? AND version = ? AND gateway_id = ?
 	`
@@ -460,6 +453,9 @@ func (s *sqlStore) GetConfigByNameVersion(name, version string) (*models.StoredC
 	err := s.queryRow(artifactQuery, name, version, s.gatewayId).Scan(
 		&cfg.UUID,
 		&cfg.Kind,
+		&cfg.Handle,
+		&cfg.DisplayName,
+		&cfg.Version,
 		&cfg.Status,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
@@ -487,7 +483,7 @@ func (s *sqlStore) GetConfigByNameVersion(name, version string) (*models.StoredC
 // GetConfigByHandle retrieves a deployment configuration by handle (metadata.name)
 func (s *sqlStore) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, status, created_at, updated_at, deployed_at
+		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
 		FROM artifacts
 		WHERE handle = ? AND gateway_id = ?
 	`
@@ -498,6 +494,9 @@ func (s *sqlStore) GetConfigByHandle(handle string) (*models.StoredConfig, error
 	err := s.queryRow(artifactQuery, handle, s.gatewayId).Scan(
 		&cfg.UUID,
 		&cfg.Kind,
+		&cfg.Handle,
+		&cfg.DisplayName,
+		&cfg.Version,
 		&cfg.Status,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
@@ -523,34 +522,35 @@ func (s *sqlStore) GetConfigByHandle(handle string) (*models.StoredConfig, error
 }
 
 // GetAllConfigs retrieves all artifact configurations
+// TODO: (renuka) Remove this method once the in memory cache is removed.
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	// Use UNION ALL across all type tables joined with artifacts
 	query := `
-		SELECT a.uuid, a.kind, r.configuration, a.status,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.status,
 			a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN rest_apis r ON a.uuid = r.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, w.configuration, a.status,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.status,
 			a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN websub_apis w ON a.uuid = w.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, lp.configuration, a.status,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.status,
 			a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_providers lp ON a.uuid = lp.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, lx.configuration, a.status,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.status,
 			a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_proxies lx ON a.uuid = lx.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, m.configuration, a.status,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.status,
 			a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN mcp_proxies m ON a.uuid = m.uuid
@@ -575,7 +575,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	}
 
 	query := fmt.Sprintf(`
-		SELECT a.uuid, a.kind, r.configuration, a.status,
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.status,
 			a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN %s r ON a.uuid = r.uuid
@@ -592,7 +592,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	return s.scanConfigRows(rows)
 }
 
-// scanConfigRows scans rows from a query that returns (uuid, kind, configuration, status, created_at, updated_at, deployed_at)
+// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, status, created_at, updated_at, deployed_at)
 func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 
@@ -604,6 +604,9 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		err := rows.Scan(
 			&cfg.UUID,
 			&cfg.Kind,
+			&cfg.Handle,
+			&cfg.DisplayName,
+			&cfg.Version,
 			&configJSON,
 			&cfg.Status,
 			&cfg.CreatedAt,
@@ -679,8 +682,15 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 	var args []interface{}
 
 	if cfg.Kind == "LlmProxy" {
+		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
+		if !ok {
+			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
+		}
+		providerUUID, err := s.resolveProviderUUID(tx, proxyConfig.Spec.Provider.Id)
+		if err != nil {
+			return false, fmt.Errorf("failed to resolve provider: %w", err)
+		}
 		query = fmt.Sprintf(`INSERT INTO %s (uuid, configuration, provider_uuid) VALUES (?, ?, ?)`, resourceTable)
-		providerUUID := s.extractProviderUUID(cfg)
 		args = []interface{}{cfg.UUID, string(configJSON), providerUUID}
 	} else {
 		query = fmt.Sprintf(`INSERT INTO %s (uuid, configuration) VALUES (?, ?)`, resourceTable)
@@ -717,8 +727,15 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	var args []interface{}
 
 	if cfg.Kind == "LlmProxy" {
+		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
+		if !ok {
+			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
+		}
+		providerUUID, err := s.resolveProviderUUID(tx, proxyConfig.Spec.Provider.Id)
+		if err != nil {
+			return false, fmt.Errorf("failed to resolve provider: %w", err)
+		}
 		query = fmt.Sprintf(`UPDATE %s SET configuration = ?, provider_uuid = ? WHERE uuid = ?`, resourceTable)
-		providerUUID := s.extractProviderUUID(cfg)
 		args = []interface{}{string(configJSON), providerUUID, cfg.UUID}
 	} else {
 		query = fmt.Sprintf(`UPDATE %s SET configuration = ? WHERE uuid = ?`, resourceTable)
@@ -747,13 +764,19 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	return true, nil
 }
 
-// extractProviderUUID extracts the provider UUID from an LlmProxy's source configuration.
-// Returns empty string if not extractable (caller should handle).
-func (s *sqlStore) extractProviderUUID(cfg *models.StoredConfig) string {
-	if proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration); ok {
-		return proxyConfig.Spec.Provider.Id
+// resolveProviderUUID looks up the provider UUID from the database by provider handle and gateway ID.
+// Must use the transaction to avoid deadlock (SQLite has MaxOpenConns=1).
+func (s *sqlStore) resolveProviderUUID(tx *sqlStoreTx, providerHandle string) (string, error) {
+	var uuid string
+	query := s.bind(`SELECT a.uuid FROM artifacts a WHERE a.handle = ? AND a.gateway_id = ? AND a.kind = 'LlmProvider'`)
+	err := tx.tx.QueryRow(query, providerHandle, s.gatewayId).Scan(&uuid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("provider '%s' not found for gateway '%s'", providerHandle, s.gatewayId)
+		}
+		return "", fmt.Errorf("failed to look up provider UUID: %w", err)
 	}
-	return ""
+	return uuid, nil
 }
 
 // SaveLLMProviderTemplate persists a new LLM provider template
