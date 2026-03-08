@@ -630,7 +630,7 @@ func TestGetAPIById(t *testing.T) {
 
 	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
-	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
+	mockDB.SaveConfig(cfg)
 
 	c, w := createTestContext("GET", "/apis/test-handle", nil)
 	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
@@ -677,7 +677,7 @@ func TestGetAPIByIdWrongKind(t *testing.T) {
 	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	cfg.Kind = string(api.Mcp) // Wrong kind
 	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
-	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
+	mockDB.SaveConfig(cfg)
 
 	c, w := createTestContext("GET", "/apis/test-handle", nil)
 	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
@@ -1513,7 +1513,7 @@ func TestGetAPIByIdWithDeployedAt(t *testing.T) {
 	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
 	deployedAt := time.Now()
 	cfg.DeployedAt = &deployedAt
-	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
+	mockDB.SaveConfig(cfg)
 
 	c, w := createTestContext("GET", "/apis/test-handle", nil)
 	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
