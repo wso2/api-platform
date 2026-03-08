@@ -126,19 +126,6 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		assert.Equal(t, cfg.Version, retrieved.Version)
 	})
 
-	// Test GetConfigByNameVersion
-	t.Run("GetConfigByNameVersion", func(t *testing.T) {
-		cfg := createTestConfig("TestAPI3", "v1.0")
-		err := db.SaveConfig(cfg)
-		require.NoError(t, err)
-
-		retrieved, err := db.GetConfigByNameVersion("TestAPI3", "v1.0")
-		assert.NoError(t, err, "GetConfigByNameVersion should succeed")
-		assert.Equal(t, cfg.UUID, retrieved.UUID)
-		assert.Equal(t, "TestAPI3", retrieved.DisplayName)
-		assert.Equal(t, "v1.0", retrieved.Version)
-	})
-
 	// Test UpdateConfig
 	t.Run("UpdateConfig", func(t *testing.T) {
 		cfg := createTestConfig("TestAPI4", "v1.0")
@@ -234,10 +221,10 @@ func TestSQLiteStorage_ErrorHandling(t *testing.T) {
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	// Test get by name/version non-existent
-	t.Run("GetByNameVersionNonExistent", func(t *testing.T) {
-		_, err := db.GetConfigByNameVersion("NonExistent", "v1.0")
-		assert.Error(t, err, "GetConfigByNameVersion should fail for non-existent config")
+	// Test get by handle non-existent
+	t.Run("GetByHandleNonExistent", func(t *testing.T) {
+		_, err := db.GetConfigByHandle("NonExistent-v1.0")
+		assert.Error(t, err, "GetConfigByHandle should fail for non-existent config")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }

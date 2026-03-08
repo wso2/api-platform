@@ -124,10 +124,10 @@ func TestConcurrentReads(t *testing.T) {
 				return
 			}
 
-			// Read by name/version
-			_, err = db.GetConfigByNameVersion("ReadTestAPI", "v1.0")
+			// Read by handle
+			_, err = db.GetConfigByHandle("ReadTestAPI-v1.0")
 			if err != nil {
-				errors <- fmt.Errorf("goroutine %d failed to get config by name/version: %w", id, err)
+				errors <- fmt.Errorf("goroutine %d failed to get config by handle: %w", id, err)
 			}
 		}(i)
 	}
@@ -191,7 +191,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			_, err := db.GetConfigByNameVersion(fmt.Sprintf("MixedAPI%d", id), "v1.0")
+			_, err := db.GetConfigByHandle(fmt.Sprintf("MixedAPI%d-v1.0", id))
 			if err != nil {
 				errors <- fmt.Errorf("reader %d failed: %w", id, err)
 			}
@@ -204,7 +204,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			cfg, err := db.GetConfigByNameVersion(fmt.Sprintf("MixedAPI%d", id), "v1.0")
+			cfg, err := db.GetConfigByHandle(fmt.Sprintf("MixedAPI%d-v1.0", id))
 			if err != nil {
 				errors <- fmt.Errorf("updater %d failed to get config: %w", id, err)
 				return

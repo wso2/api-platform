@@ -105,17 +105,6 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	return nil, errors.New("config not found")
 }
 
-func (m *MockStorage) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
-	if m.getErr != nil {
-		return nil, m.getErr
-	}
-	for _, cfg := range m.configs {
-		if cfg.DisplayName == name && cfg.Version == version {
-			return cfg, nil
-		}
-	}
-	return nil, errors.New("config not found")
-}
 
 func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
 	if m.unavailable {

@@ -81,15 +81,15 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		assert.Len(t, configs, 3, "All 3 configurations should persist")
 
 		// Verify each configuration by name/version
-		cfg1, err := db.GetConfigByNameVersion("PersistAPI1", "v1.0")
+		cfg1, err := db.GetConfigByHandle("PersistAPI1-v1.0")
 		assert.NoError(t, err, "Should find PersistAPI1/v1.0")
 		assert.NotNil(t, cfg1)
 
-		cfg2, err := db.GetConfigByNameVersion("PersistAPI2", "v1.0")
+		cfg2, err := db.GetConfigByHandle("PersistAPI2-v1.0")
 		assert.NoError(t, err, "Should find PersistAPI2/v1.0")
 		assert.NotNil(t, cfg2)
 
-		cfg3, err := db.GetConfigByNameVersion("PersistAPI3", "v2.0")
+		cfg3, err := db.GetConfigByHandle("PersistAPI3-v2.0")
 		assert.NoError(t, err, "Should find PersistAPI3/v2.0")
 		assert.NotNil(t, cfg3)
 	}
@@ -101,7 +101,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 
 		// Get and update a configuration
-		cfg, err := db.GetConfigByNameVersion("PersistAPI1", "v1.0")
+		cfg, err := db.GetConfigByHandle("PersistAPI1-v1.0")
 		require.NoError(t, err)
 		cfg.Status = "deployed"
 		cfg.DeployedVersion = 5
@@ -118,7 +118,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 		defer db.Close()
 
-		cfg, err := db.GetConfigByNameVersion("PersistAPI1", "v1.0")
+		cfg, err := db.GetConfigByHandle("PersistAPI1-v1.0")
 		assert.NoError(t, err)
 		assert.Equal(t, models.StatusDeployed, cfg.Status)
 		// DeployedVersion is runtime-only (not persisted to DB), so it resets to 0 after reload
@@ -131,7 +131,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 
 		// Get the ID of PersistAPI2
-		cfg, err := db.GetConfigByNameVersion("PersistAPI2", "v1.0")
+		cfg, err := db.GetConfigByHandle("PersistAPI2-v1.0")
 		require.NoError(t, err)
 
 		// Delete it
@@ -153,7 +153,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		assert.Len(t, configs, 2, "Should have 2 configurations after deletion")
 
 		// Verify PersistAPI2 is gone
-		_, err = db.GetConfigByNameVersion("PersistAPI2", "v1.0")
+		_, err = db.GetConfigByHandle("PersistAPI2-v1.0")
 		assert.Error(t, err, "PersistAPI2 should not exist")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	}

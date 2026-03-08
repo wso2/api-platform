@@ -199,52 +199,6 @@ func TestSQLiteStorage_GetConfig_JSONUnmarshalError(t *testing.T) {
 	assert.Assert(t, err.Error() != "")
 }
 
-func TestSQLiteStorage_GetConfigByNameVersion_NotFound(t *testing.T) {
-	storage := setupTestStorage(t)
-	defer storage.db.Close()
-
-	_, err := storage.GetConfigByNameVersion("0000-non-existent-0000-000000000000", "v1.0.0")
-	assert.Assert(t, errors.Is(err, ErrNotFound))
-}
-
-func TestSQLiteStorage_GetConfigByNameVersion_Success(t *testing.T) {
-	storage := setupTestStorage(t)
-	defer storage.db.Close()
-
-	// Create and save a test config
-	config := createTestStoredConfig()
-	err := storage.SaveConfig(config)
-	assert.NilError(t, err)
-
-	// Retrieve by name and version
-	retrievedConfig, err := storage.GetConfigByNameVersion(config.DisplayName, config.Version)
-	assert.NilError(t, err)
-	assert.Assert(t, retrievedConfig != nil)
-	assert.Equal(t, retrievedConfig.UUID, config.UUID)
-}
-
-func TestSQLiteStorage_GetConfigByNameVersion_JSONError(t *testing.T) {
-	storage := setupTestStorage(t)
-	defer storage.db.Close()
-
-	// Insert config with invalid JSON
-	// Provide all NOT NULL fields for artifacts table
-	_, err := storage.db.Exec(`
-		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"0000-test-id-0000-000000000000", "platform-gateway-id", "0000-test-api-0000-000000000000", "v1.0.0", "RestApi", "0000-test-api-0000-000000000000", "pending", time.Now(), time.Now())
-	assert.NilError(t, err)
-
-	_, err = storage.db.Exec(`
-		INSERT INTO rest_apis (uuid, configuration)
-		VALUES (?, ?)`,
-		"0000-test-id-0000-000000000000", "invalid-json")
-	assert.NilError(t, err)
-
-	_, err = storage.GetConfigByNameVersion("0000-test-api-0000-000000000000", "v1.0.0")
-	assert.Assert(t, err != nil)
-}
-
 func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()

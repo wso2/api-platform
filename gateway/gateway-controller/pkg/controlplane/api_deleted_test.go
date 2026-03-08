@@ -100,15 +100,6 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
-func (m *mockStorageForDeletion) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
-	for _, config := range m.configs {
-		if config.DisplayName == name && config.Version == version {
-			return config, nil
-		}
-	}
-	return nil, fmt.Errorf("config not found")
-}
-
 func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
 		if config.Handle == handle {

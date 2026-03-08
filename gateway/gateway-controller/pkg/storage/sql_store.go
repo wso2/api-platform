@@ -439,47 +439,6 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	return &cfg, nil
 }
 
-// GetConfigByNameVersion retrieves an artifact configuration by displayName and version
-func (s *sqlStore) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
-	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
-		FROM artifacts
-		WHERE display_name = ? AND version = ? AND gateway_id = ?
-	`
-
-	var cfg models.StoredConfig
-	var deployedAt sql.NullTime
-
-	err := s.queryRow(artifactQuery, name, version, s.gatewayId).Scan(
-		&cfg.UUID,
-		&cfg.Kind,
-		&cfg.Handle,
-		&cfg.DisplayName,
-		&cfg.Version,
-		&cfg.Status,
-		&cfg.CreatedAt,
-		&cfg.UpdatedAt,
-		&deployedAt,
-	)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: name=%s, version=%s", ErrNotFound, name, version)
-		}
-		return nil, fmt.Errorf("failed to query configuration: %w", err)
-	}
-
-	if deployedAt.Valid {
-		cfg.DeployedAt = &deployedAt.Time
-	}
-
-	if err := s.loadResourceConfig(&cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
-}
-
 // GetConfigByHandle retrieves a deployment configuration by handle (metadata.name)
 func (s *sqlStore) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
