@@ -1363,12 +1363,12 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
-		// For wildcard paths, use prefix matching by removing the /*
-		// This will match /v1/foo, /v1/foo/bar, etc.
+		// For wildcard paths, match the base path with or without trailing slash and any suffix.
+		// This matches /v1, /v1/, /v1/foo, /v1/foo/bar.
 		prefixPath := strings.TrimSuffix(fullPath, "/*")
 		pathSpecifier = &route.RouteMatch_SafeRegex{
 			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(prefixPath) + "/.*$",
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(/.*)?$",
 			},
 		}
 	} else if hasParams {
