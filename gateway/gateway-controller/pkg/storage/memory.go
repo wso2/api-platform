@@ -519,9 +519,12 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 	}
 
 	if existingKeyID != "" {
+		// Prevent replacing an existing key's identity — the incoming key must have the same UUID
+		if apiKey.UUID != existingKeyID {
+			return fmt.Errorf("API key with name %q already exists for artifact %s with a different ID", apiKey.Name, apiKey.ArtifactUUID)
+		}
 		// Update the existing entry in apiKeysByAPI
-		delete(cs.apiKeysByAPI[apiKey.ArtifactUUID], existingKeyID)
-		cs.apiKeysByAPI[apiKey.ArtifactUUID][apiKey.UUID] = apiKey // in API key rotation scenario apiKey.UUID = existingKeyID
+		cs.apiKeysByAPI[apiKey.ArtifactUUID][existingKeyID] = apiKey
 	} else {
 		// Insert new API key
 		// Check if API key ID already exists
