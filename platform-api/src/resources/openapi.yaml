@@ -4000,6 +4000,9 @@ components:
           description: Optional expiration time in ISO 8601 format
           nullable: true
           example: "2026-12-31T23:59:59Z"
+        expiresIn:
+          $ref: '#/components/schemas/ExpirationDuration'
+          description: Optional expiration duration
 
     CreateAPIKeyResponse:
       type: object

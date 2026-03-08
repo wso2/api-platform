@@ -41,20 +41,14 @@ type APIKeyCreatedEvent struct {
 	// Name is the unique name of the API key
 	Name string `json:"name,omitempty"`
 
-	// DisplayName is the display name of the API key
-	DisplayName string `json:"displayName,omitempty"`
-
-	// ApiKey is the plain API key value (hashing happens in the gateway)
-	ApiKey string `json:"apiKey"`
+	// ApiKeyHashes is a JSON string representation of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
+	ApiKeyHashes string `json:"apiKeyHashes"`
 
 	// ExternalRefId is an optional reference ID for tracing purposes
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 
 	// ExpiresAt is the optional expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
-
-	// ExpiresIn is the optional expiration duration
-	ExpiresIn *ExpiresInDuration `json:"expiresIn,omitempty"`
 }
 
 // APIKeyRevokedEvent represents the payload for "apikey.revoked" event type.
@@ -76,17 +70,11 @@ type APIKeyUpdatedEvent struct {
 	// KeyName is the unique name of the API key being updated
 	KeyName string `json:"keyName"`
 
-	// DisplayName is the display name of the API key
-	DisplayName string `json:"displayName,omitempty"`
-
 	// ExternalRefId is an optional reference ID for tracing purposes
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 
-	// ExpiresIn is the optional expiration duration
-	ExpiresIn *ExpiresInDuration `json:"expiresIn,omitempty"`
-
-	// ApiKey is the new plain API key value (hashing happens in the gateway)
-	ApiKey string `json:"apiKey"`
+	// ApiKeyHashes is a JSON string representation of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
+	ApiKeyHashes string `json:"apiKeyHashes"`
 
 	// ExpiresAt is the optional new expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`

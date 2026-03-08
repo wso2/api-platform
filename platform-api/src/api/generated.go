@@ -430,6 +430,9 @@ type CreateAPIKeyRequest struct {
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
 
+	// ExpiresIn Optional expiration duration
+	ExpiresIn *ExpirationDuration `json:"expiresIn,omitempty" yaml:"expiresIn,omitempty"`
+
 	// ExternalRefId Optional reference ID for tracing purposes (from external platforms)
 	ExternalRefId *string `json:"externalRefId" yaml:"externalRefId"`
 
