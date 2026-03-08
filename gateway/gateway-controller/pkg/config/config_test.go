@@ -1232,6 +1232,86 @@ func TestConfig_ValidateHTTPListenerConfig(t *testing.T) {
 	}
 }
 
+func TestConfig_ResolvedEventHubConnectionPool_InheritsPrimaryStorage(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.Storage.Type = "postgres"
+	cfg.Controller.Storage.Postgres.Host = "primary-db"
+	cfg.Controller.Storage.Postgres.Database = "gateway"
+	cfg.Controller.Storage.Postgres.User = "gateway_user"
+	cfg.Controller.Storage.Postgres.MaxOpenConns = 14
+	cfg.Controller.Storage.Postgres.MaxIdleConns = 6
+	cfg.Controller.Storage.Postgres.ConnMaxLifetime = 45 * time.Minute
+	cfg.Controller.Storage.Postgres.ConnMaxIdleTime = 7 * time.Minute
+
+	err := cfg.Validate()
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	poolCfg := cfg.ResolvedEventHubConnectionPool()
+	assert.Equal(t, 14, poolCfg.MaxOpenConns)
+	assert.Equal(t, 6, poolCfg.MaxIdleConns)
+	assert.Equal(t, 45*time.Minute, poolCfg.ConnMaxLifetime)
+	assert.Equal(t, 7*time.Minute, poolCfg.ConnMaxIdleTime)
+}
+
+func TestConfig_ResolvedEventHubConnectionPool_AllowsOverrides(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.Storage.Type = "postgres"
+	cfg.Controller.Storage.Postgres.Host = "primary-db"
+	cfg.Controller.Storage.Postgres.Database = "gateway"
+	cfg.Controller.Storage.Postgres.User = "gateway_user"
+	cfg.Controller.Storage.Postgres.MaxOpenConns = 14
+	cfg.Controller.Storage.Postgres.MaxIdleConns = 6
+	cfg.Controller.Storage.Postgres.ConnMaxLifetime = 45 * time.Minute
+	cfg.Controller.Storage.Postgres.ConnMaxIdleTime = 7 * time.Minute
+	cfg.Controller.EventHub.ConnectionPool.MaxOpenConns = 3
+	cfg.Controller.EventHub.ConnectionPool.MaxIdleConns = 2
+	cfg.Controller.EventHub.ConnectionPool.ConnMaxIdleTime = 2 * time.Minute
+
+	err := cfg.Validate()
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	poolCfg := cfg.ResolvedEventHubConnectionPool()
+	assert.Equal(t, 3, poolCfg.MaxOpenConns)
+	assert.Equal(t, 2, poolCfg.MaxIdleConns)
+	assert.Equal(t, 45*time.Minute, poolCfg.ConnMaxLifetime)
+	assert.Equal(t, 2*time.Minute, poolCfg.ConnMaxIdleTime)
+}
+
+func TestConfig_ResolvedEventHubConnectionPool_UsesSQLiteDefaults(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.Storage.Type = "sqlite"
+	cfg.Controller.Storage.SQLite.Path = "/tmp/controller.db"
+
+	err := cfg.Validate()
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	poolCfg := cfg.ResolvedEventHubConnectionPool()
+	assert.Equal(t, 1, poolCfg.MaxOpenConns)
+	assert.Equal(t, 1, poolCfg.MaxIdleConns)
+	assert.Equal(t, time.Duration(0), poolCfg.ConnMaxLifetime)
+	assert.Equal(t, time.Duration(0), poolCfg.ConnMaxIdleTime)
+}
+
+func TestConfig_Validate_EventHubConnectionPoolRejectsInvalidValues(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.Storage.Type = "sqlite"
+	cfg.Controller.Storage.SQLite.Path = "/tmp/controller.db"
+	cfg.Controller.EventHub.ConnectionPool.MaxOpenConns = -1
+
+	err := cfg.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "eventhub.connection_pool.max_open_conns must be >= 1")
+}
+
 func TestConfig_HelperMethods(t *testing.T) {
 	t.Run("IsPersistentMode", func(t *testing.T) {
 		cfg := validConfig()

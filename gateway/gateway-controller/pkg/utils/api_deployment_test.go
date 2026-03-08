@@ -25,7 +25,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,9 +35,57 @@ import (
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
+
+func setupSQLiteDBForAPIDeploymentTests(t *testing.T) storage.Storage {
+	t.Helper()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	metrics.Init()
+	dbPath := filepath.Join(t.TempDir(), "api-deployment-test.db")
+	db, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+		GatewayID:  "platform-gateway-id",
+	}, logger)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	return db
+}
+
+type mockEventHub struct {
+	mu     sync.Mutex
+	events []eventhub.Event
+}
+
+func (m *mockEventHub) Initialize() error { return nil }
+
+func (m *mockEventHub) RegisterOrganization(orgID string) error { return nil }
+
+func (m *mockEventHub) PublishEvent(orgID string, event eventhub.Event) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, event)
+	return nil
+}
+
+func (m *mockEventHub) Subscribe(orgID string) (<-chan eventhub.Event, error) {
+	ch := make(chan eventhub.Event)
+	close(ch)
+	return ch, nil
+}
+
+func (m *mockEventHub) CleanUpEvents() error { return nil }
+
+func (m *mockEventHub) Close() error { return nil }
 
 func TestNewAPIDeploymentService(t *testing.T) {
 	store := storage.NewConfigStore()
@@ -188,9 +238,10 @@ func TestGenerateUUID(t *testing.T) {
 func TestSaveOrUpdateConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	t.Run("Save new config without DB", func(t *testing.T) {
+	t.Run("Save new config to DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		db := setupSQLiteDBForAPIDeploymentTests(t)
+		service := NewAPIDeploymentService(store, db, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test API",
@@ -206,6 +257,9 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: spec,
+				Metadata: api.Metadata{
+					Name: "new-api-id",
+				},
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -213,18 +267,19 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		}
 
 		isUpdate, err := service.saveOrUpdateConfig(storedCfg, logger)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, isUpdate)
 
-		// Verify config was added
-		retrieved, err := store.Get(storedCfg.ID)
-		assert.NoError(t, err)
+		// Verify config was persisted to DB
+		retrieved, err := db.GetConfig(storedCfg.ID)
+		require.NoError(t, err)
 		assert.Equal(t, storedCfg.ID, retrieved.ID)
 	})
 
-	t.Run("Update existing config without DB", func(t *testing.T) {
+	t.Run("Update existing config in DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		db := setupSQLiteDBForAPIDeploymentTests(t)
+		service := NewAPIDeploymentService(store, db, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test API",
@@ -241,12 +296,15 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: spec,
+				Metadata: api.Metadata{
+					Name: "existing-api",
+				},
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		store.Add(existingCfg)
+		require.NoError(t, db.SaveConfig(existingCfg))
 
 		// Now update it
 		newApiData := api.APIConfigData{
@@ -263,6 +321,9 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: newSpec,
+				Metadata: api.Metadata{
+					Name: "existing-api",
+				},
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -272,6 +333,10 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		isUpdate, err := service.saveOrUpdateConfig(updateCfg, logger)
 		assert.NoError(t, err)
 		assert.True(t, isUpdate)
+
+		retrieved, err := db.GetConfig(updateCfg.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Updated Test API", retrieved.GetDisplayName())
 	})
 }
 
@@ -280,7 +345,8 @@ func TestUpdateExistingConfig(t *testing.T) {
 
 	t.Run("Updates existing config successfully", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		db := setupSQLiteDBForAPIDeploymentTests(t)
+		service := NewAPIDeploymentService(store, db, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original API",
@@ -297,12 +363,17 @@ func TestUpdateExistingConfig(t *testing.T) {
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: spec,
+				Metadata: api.Metadata{
+					Name: "config-to-update",
+				},
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		store.Add(original)
+		require.NoError(t, db.SaveConfig(original))
+		existingFromDB, err := db.GetConfig(original.ID)
+		require.NoError(t, err)
 
 		// Create updated config
 		newApiData := api.APIConfigData{
@@ -319,20 +390,27 @@ func TestUpdateExistingConfig(t *testing.T) {
 			Configuration: api.APIConfiguration{
 				Kind: api.RestApi,
 				Spec: newSpec,
+				Metadata: api.Metadata{
+					Name: "config-to-update",
+				},
 			},
 			Status: models.StatusPending,
 		}
 
-		isUpdate, err := service.updateExistingConfig(newConfig, original, logger)
+		isUpdate, err := service.updateExistingConfig(newConfig, existingFromDB, logger)
 		assert.NoError(t, err)
 		assert.True(t, isUpdate)
+
+		retrieved, err := db.GetConfig(newConfig.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Updated API", retrieved.GetDisplayName())
 	})
 }
 
 func TestDeployAPIConfiguration_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	params := APIDeploymentParams{
@@ -351,7 +429,7 @@ func TestDeployAPIConfiguration_ParseError(t *testing.T) {
 func TestDeployAPIConfiguration_ValidationError(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Invalid YAML that will pass parsing but fail validation
@@ -377,22 +455,361 @@ spec:
 	assert.Nil(t, result)
 }
 
+func TestDeployAPIConfiguration_UsesDBForConflictValidation(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForAPIDeploymentTests(t)
+	validator := config.NewAPIValidator()
+	service := NewAPIDeploymentService(store, db, validator, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	var existingSpec api.APIConfiguration_Spec
+	existingSpec.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Existing API",
+		Version:     "1.0.0",
+		Context:     "/existing",
+	})
+	existingCfg := &models.StoredConfig{
+		ID:   "db-existing-id",
+		Kind: string(api.RestApi),
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "db-existing-handle",
+			},
+			Spec: existingSpec,
+		},
+		Status:    models.StatusPending,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, db.SaveConfig(existingCfg))
+
+	t.Run("name/version conflict from DB", func(t *testing.T) {
+		yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: another-handle
+spec:
+  displayName: Existing API
+  version: 1.0.0
+  context: /another
+  upstream:
+    main:
+      url: https://example.com
+  operations:
+    - method: GET
+      path: /pets
+`
+		params := APIDeploymentParams{
+			Data:          []byte(yamlData),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+		}
+
+		result, err := service.DeployAPIConfiguration(params)
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.True(t, storage.IsConflictError(err))
+	})
+
+	t.Run("handle conflict from DB", func(t *testing.T) {
+		yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: db-existing-handle
+spec:
+  displayName: Brand New API
+  version: 2.0.0
+  context: /brand-new
+  upstream:
+    main:
+      url: https://example.com
+  operations:
+    - method: GET
+      path: /orders
+`
+		params := APIDeploymentParams{
+			Data:          []byte(yamlData),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+		}
+
+		result, err := service.DeployAPIConfiguration(params)
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.True(t, storage.IsConflictError(err))
+	})
+}
+
 func TestAPIDeploymentService_Fields(t *testing.T) {
 	store := storage.NewConfigStore()
 	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
 
 	assert.Equal(t, store, service.store)
 	assert.Nil(t, service.db)
-	assert.Nil(t, service.snapshotManager)
 	assert.NotNil(t, service.parser)
 	assert.NotNil(t, service.httpClient)
+}
+
+func TestDeleteAPIConfiguration_NoDatabase(t *testing.T) {
+	store := storage.NewConfigStore()
+	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	result, err := service.DeleteAPIConfiguration(APIDeletionParams{
+		Handle:        "test-handle",
+		CorrelationID: "corr-1",
+		Logger:        logger,
+	})
+
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.True(t, storage.IsDatabaseUnavailableError(err))
+}
+
+func TestDeleteAPIConfiguration_PublishesEventWithoutMutatingMemoryStore(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForAPIDeploymentTests(t)
+	hub := &mockEventHub{}
+	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	var spec api.APIConfiguration_Spec
+	spec.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Delete Test API",
+		Version:     "v1",
+		Context:     "/delete-test",
+	})
+
+	cfg := &models.StoredConfig{
+		ID: "delete-test-id",
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "delete-test-handle",
+			},
+			Spec: spec,
+		},
+		SourceConfiguration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "delete-test-handle",
+			},
+			Spec: spec,
+		},
+		Status:          models.StatusPending,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		DeployedAt:      nil,
+		DeployedVersion: 0,
+	}
+
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, store.Add(cfg))
+
+	result, err := service.DeleteAPIConfiguration(APIDeletionParams{
+		Handle:        "delete-test-handle",
+		CorrelationID: "corr-delete",
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, cfg.ID, result.StoredConfig.ID)
+
+	// DB must be deleted in the write path.
+	_, err = db.GetConfig(cfg.ID)
+	require.Error(t, err)
+	assert.True(t, storage.IsNotFoundError(err))
+
+	// In-memory ConfigStore must remain unchanged until event listener sync.
+	_, err = store.Get(cfg.ID)
+	require.NoError(t, err)
+
+	require.Len(t, hub.events, 1)
+	assert.Equal(t, eventhub.EventTypeAPI, hub.events[0].EventType)
+	assert.Equal(t, "DELETE", hub.events[0].Action)
+	assert.Equal(t, cfg.ID, hub.events[0].EntityID)
+	assert.Equal(t, "corr-delete", hub.events[0].CorrelationID)
+	assert.Equal(t, eventhub.EmptyEventData, hub.events[0].EventData)
+}
+
+func TestDeleteAPIConfiguration_ByAPIIDPublishesEventWithoutMutatingMemoryStore(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForAPIDeploymentTests(t)
+	hub := &mockEventHub{}
+	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	var spec api.APIConfiguration_Spec
+	spec.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Delete By ID Test API",
+		Version:     "v1",
+		Context:     "/delete-by-id-test",
+	})
+
+	cfg := &models.StoredConfig{
+		ID: "delete-by-id-test-id",
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "delete-by-id-test-handle",
+			},
+			Spec: spec,
+		},
+		SourceConfiguration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "delete-by-id-test-handle",
+			},
+			Spec: spec,
+		},
+		Status:          models.StatusPending,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		DeployedAt:      nil,
+		DeployedVersion: 0,
+	}
+
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, store.Add(cfg))
+
+	result, err := service.DeleteAPIConfiguration(APIDeletionParams{
+		APIID:         cfg.ID,
+		CorrelationID: "corr-delete-by-id",
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, cfg.ID, result.StoredConfig.ID)
+
+	_, err = db.GetConfig(cfg.ID)
+	require.Error(t, err)
+	assert.True(t, storage.IsNotFoundError(err))
+
+	_, err = store.Get(cfg.ID)
+	require.NoError(t, err)
+
+	require.Len(t, hub.events, 1)
+	assert.Equal(t, eventhub.EventTypeAPI, hub.events[0].EventType)
+	assert.Equal(t, "DELETE", hub.events[0].Action)
+	assert.Equal(t, cfg.ID, hub.events[0].EntityID)
+	assert.Equal(t, "corr-delete-by-id", hub.events[0].CorrelationID)
+	assert.Equal(t, eventhub.EmptyEventData, hub.events[0].EventData)
+}
+
+func TestUndeployAPIConfiguration_NoDatabase(t *testing.T) {
+	store := storage.NewConfigStore()
+	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	result, err := service.UndeployAPIConfiguration(APIUndeploymentParams{
+		APIID:         "test-id",
+		CorrelationID: "corr-undeploy",
+		Logger:        logger,
+	})
+
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.True(t, storage.IsDatabaseUnavailableError(err))
+}
+
+func TestUndeployAPIConfiguration_NotFound(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForAPIDeploymentTests(t)
+	hub := &mockEventHub{}
+	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	result, err := service.UndeployAPIConfiguration(APIUndeploymentParams{
+		APIID:         "missing-id",
+		CorrelationID: "corr-undeploy-missing",
+		Logger:        logger,
+	})
+
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.True(t, storage.IsNotFoundError(err))
+	assert.Empty(t, hub.events)
+}
+
+func TestUndeployAPIConfiguration_PublishesEventWithoutMutatingMemoryStore(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForAPIDeploymentTests(t)
+	hub := &mockEventHub{}
+	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	var spec api.APIConfiguration_Spec
+	spec.FromAPIConfigData(api.APIConfigData{
+		DisplayName: "Undeploy Test API",
+		Version:     "v1",
+		Context:     "/undeploy-test",
+	})
+
+	cfg := &models.StoredConfig{
+		ID: "undeploy-test-id",
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "undeploy-test-handle",
+			},
+			Spec: spec,
+		},
+		SourceConfiguration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "undeploy-test-handle",
+			},
+			Spec: spec,
+		},
+		Status:          models.StatusDeployed,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		DeployedAt:      nil,
+		DeployedVersion: 7,
+	}
+
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, store.Add(cfg))
+
+	result, err := service.UndeployAPIConfiguration(APIUndeploymentParams{
+		APIID:         cfg.ID,
+		CorrelationID: "corr-undeploy",
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, cfg.ID, result.StoredConfig.ID)
+	assert.Equal(t, models.StatusUndeployed, result.StoredConfig.Status)
+	assert.EqualValues(t, 7, result.StoredConfig.DeployedVersion)
+
+	dbConfig, err := db.GetConfig(cfg.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StatusUndeployed, dbConfig.Status)
+	assert.EqualValues(t, 7, dbConfig.DeployedVersion)
+
+	// In-memory ConfigStore must remain unchanged until event listener sync.
+	inMemoryConfig, err := store.Get(cfg.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StatusDeployed, inMemoryConfig.Status)
+
+	require.Len(t, hub.events, 1)
+	assert.Equal(t, eventhub.EventTypeAPI, hub.events[0].EventType)
+	assert.Equal(t, "UPDATE", hub.events[0].Action)
+	assert.Equal(t, cfg.ID, hub.events[0].EntityID)
+	assert.Equal(t, "corr-undeploy", hub.events[0].CorrelationID)
+	assert.Equal(t, eventhub.EmptyEventData, hub.events[0].EventData)
 }
 
 // Tests for lines 100-111: WebSub API parsing error path
 func TestDeployAPIConfiguration_WebSubParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create a WebSub API with invalid spec structure
@@ -445,7 +862,7 @@ func TestDeployAPIConfiguration_WebSubTopicOperations(t *testing.T) {
 				TimeoutSeconds:        1,
 			},
 		}
-		service := NewAPIDeploymentService(store, nil, nil, validator, routerConfig)
+		service := NewAPIDeploymentService(store, nil, validator, routerConfig, nil)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 		// Create a valid WebSub API
@@ -489,7 +906,7 @@ spec:
 				TimeoutSeconds:        1,
 			},
 		}
-		service := NewAPIDeploymentService(store, nil, nil, validator, routerConfig)
+		service := NewAPIDeploymentService(store, nil, validator, routerConfig, nil)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 		// Add existing WebSub API with topics
@@ -546,144 +963,111 @@ spec:
 	})
 }
 
-// Tests for lines 352-371: Database rollback on memory store failure
-func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
-	t.Run("Successfully saves new config without DB", func(t *testing.T) {
-		store := storage.NewConfigStore()
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+func TestSaveOrUpdateConfig_DoesNotMutateMemoryStoreInWritePath(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForAPIDeploymentTests(t)
+	service := NewAPIDeploymentService(store, db, nil, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-		apiData := api.APIConfigData{
-			DisplayName: "New API",
-			Version:     "1.0.0",
-			Context:     "/new",
-		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
+	apiData := api.APIConfigData{
+		DisplayName: "Original API",
+		Version:     "1.0.0",
+		Context:     "/original",
+	}
+	var spec api.APIConfiguration_Spec
+	spec.FromAPIConfigData(apiData)
 
-		newCfg := &models.StoredConfig{
-			ID:   "new-api-id",
-			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+	original := &models.StoredConfig{
+		ID:   "memory-db-sync-test",
+		Kind: string(api.RestApi),
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "memory-db-sync-test",
 			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
+			Spec: spec,
+		},
+		Status:    models.StatusPending,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
 
-		isUpdate, err := service.saveOrUpdateConfig(newCfg, logger)
-		assert.NoError(t, err)
-		assert.False(t, isUpdate)
+	require.NoError(t, db.SaveConfig(original))
+	require.NoError(t, store.Add(original))
 
-		// Verify it was added
-		retrieved, err := store.Get(newCfg.ID)
-		assert.NoError(t, err)
-		assert.Equal(t, newCfg.ID, retrieved.ID)
-	})
+	updatedData := api.APIConfigData{
+		DisplayName: "Updated API",
+		Version:     "1.0.0",
+		Context:     "/updated",
+	}
+	var updatedSpec api.APIConfiguration_Spec
+	updatedSpec.FromAPIConfigData(updatedData)
 
-	t.Run("Update path when config exists", func(t *testing.T) {
-		store := storage.NewConfigStore()
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-		// Add existing config
-		apiData := api.APIConfigData{
-			DisplayName: "Existing API",
-			Version:     "1.0.0",
-			Context:     "/existing",
-		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
-
-		existingCfg := &models.StoredConfig{
-			ID:   "existing-id",
-			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+	updateCfg := &models.StoredConfig{
+		ID:   "memory-db-sync-test",
+		Kind: string(api.RestApi),
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "memory-db-sync-test",
 			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-		store.Add(existingCfg)
+			Spec: updatedSpec,
+		},
+		Status: models.StatusPending,
+	}
 
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	isUpdate, err := service.saveOrUpdateConfig(updateCfg, logger)
+	require.NoError(t, err)
+	assert.True(t, isUpdate)
 
-		// Try to save with same ID (should update instead)
-		updateCfg := &models.StoredConfig{
-			ID:   "existing-id",
-			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
-			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
+	dbConfig, err := db.GetConfig(updateCfg.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated API", dbConfig.GetDisplayName())
 
-		isUpdate, err := service.saveOrUpdateConfig(updateCfg, logger)
-		assert.NoError(t, err)
-		assert.True(t, isUpdate) // Should be update, not add
-	})
+	inMemoryConfig, err := store.Get(updateCfg.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Original API", inMemoryConfig.GetDisplayName())
 }
 
-// Tests for lines 395-497: Update rollback and WebSub HTTP operations
-func TestUpdateExistingConfig_Rollback(t *testing.T) {
-	t.Run("Memory store update failure without DB", func(t *testing.T) {
-		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+func TestUpdateExistingConfig_RequiresDatabase(t *testing.T) {
+	store := storage.NewConfigStore()
+	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-		apiData := api.APIConfigData{
-			DisplayName: "Original API",
-			Version:     "1.0.0",
-			Context:     "/original",
-		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
+	apiData := api.APIConfigData{
+		DisplayName: "Original API",
+		Version:     "1.0.0",
+		Context:     "/original",
+	}
+	var spec api.APIConfiguration_Spec
+	spec.FromAPIConfigData(apiData)
 
-		// Add original config
-		original := &models.StoredConfig{
-			ID:   "test-api",
-			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+	original := &models.StoredConfig{
+		ID:   "test-api",
+		Kind: string(api.RestApi),
+		Configuration: api.APIConfiguration{
+			Kind: api.RestApi,
+			Metadata: api.Metadata{
+				Name: "test-api",
 			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-		store.Add(original)
+			Spec: spec,
+		},
+		Status:    models.StatusPending,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
 
-		// Create an update that will fail (invalid ID in newConfig to simulate store.Update failure)
-		// We can't easily simulate store.Update failure without modifying the store
-		// So we test the successful path here and rely on integration tests for failure paths
-		newApiData := api.APIConfigData{
-			DisplayName: "Updated API",
-			Version:     "2.0.0",
-			Context:     "/updated",
-		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
+	newConfig := &models.StoredConfig{
+		ID:            "test-api",
+		Kind:          string(api.RestApi),
+		Configuration: original.Configuration,
+		Status:        models.StatusPending,
+	}
 
-		newConfig := &models.StoredConfig{
-			ID:   "test-api",
-			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: newSpec,
-			},
-			Status: models.StatusPending,
-		}
-
-		isUpdate, err := service.updateExistingConfig(newConfig, original, logger)
-		assert.NoError(t, err)
-		assert.True(t, isUpdate)
-	})
+	isUpdate, err := service.updateExistingConfig(newConfig, original, logger)
+	assert.Error(t, err)
+	assert.False(t, isUpdate)
+	assert.True(t, storage.IsDatabaseUnavailableError(err))
 }
 
 func TestSendTopicRequestToHub_RetryLogic(t *testing.T) {
@@ -695,7 +1079,7 @@ func TestSendTopicRequestToHub_RetryLogic(t *testing.T) {
 			TimeoutSeconds:        1,
 		},
 	}
-	service := NewAPIDeploymentService(store, nil, nil, nil, routerConfig)
+	service := NewAPIDeploymentService(store, nil, nil, routerConfig, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Context timeout", func(t *testing.T) {
@@ -734,7 +1118,7 @@ func TestRegisterAndUnregisterTopicWithHub(t *testing.T) {
 			TimeoutSeconds:        1,
 		},
 	}
-	service := NewAPIDeploymentService(store, nil, nil, nil, routerConfig)
+	service := NewAPIDeploymentService(store, nil, nil, routerConfig, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("RegisterTopicWithHub calls sendTopicRequestToHub", func(t *testing.T) {

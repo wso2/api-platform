@@ -19,16 +19,18 @@
 package controlplane
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"testing"
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -116,6 +118,10 @@ func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.Store
 		}
 	}
 	return nil, fmt.Errorf("config not found")
+}
+
+func (m *mockStorageForDeletion) GetDB() *sql.DB {
+	return nil
 }
 
 func (m *mockStorageForDeletion) Close() error {
@@ -225,6 +231,40 @@ func (m *mockStorageForDeletion) GetAllLLMProviderTemplates() ([]*models.StoredL
 }
 
 func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {
+	return nil
+}
+
+type mockEventHubForDelete struct {
+	publishedEvents []eventhub.Event
+	publishErr      error
+}
+
+func (m *mockEventHubForDelete) Initialize() error {
+	return nil
+}
+
+func (m *mockEventHubForDelete) RegisterOrganization(orgID string) error {
+	return nil
+}
+
+func (m *mockEventHubForDelete) PublishEvent(orgID string, event eventhub.Event) error {
+	if m.publishErr != nil {
+		return m.publishErr
+	}
+	m.publishedEvents = append(m.publishedEvents, event)
+	return nil
+}
+
+func (m *mockEventHubForDelete) Subscribe(orgID string) (<-chan eventhub.Event, error) {
+	ch := make(chan eventhub.Event)
+	return ch, nil
+}
+
+func (m *mockEventHubForDelete) CleanUpEvents() error {
+	return nil
+}
+
+func (m *mockEventHubForDelete) Close() error {
 	return nil
 }
 
@@ -361,281 +401,192 @@ func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
 	}
 }
 
-// TestClient_handleAPIDeletedEvent_OrphanedCleanup tests orphaned resource cleanup
-func TestClient_handleAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+func TestClient_handleAPIDeletedEvent_UpdatesDBAndPublishesEvent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := storage.NewConfigStore()
 	db := newMockStorageForDeletion()
+	hub := &mockEventHubForDelete{}
+
+	apiID := "test-api-delete-1"
+
+	dbConfig := createTestAPIConfigForDeletion(apiID)
+	dbConfig.Configuration.Metadata.Name = "delete-handle"
+	db.configs[apiID] = dbConfig
+
+	memConfig := createTestAPIConfigForDeletion(apiID)
+	memConfig.Configuration.Metadata.Name = "delete-handle"
+	if err := store.Add(memConfig); err != nil {
+		t.Fatalf("failed to seed in-memory config: %v", err)
+	}
 
 	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
-	}
-
-	apiID := "non-existent-api"
-	event := map[string]interface{}{
-		"type": "api.deleted",
-		"payload": map[string]interface{}{
-			"apiId":       apiID,
-			"environment": "production",
-			"vhost":       "api.example.com",
-		},
-		"timestamp":     time.Now().Format(time.RFC3339),
-		"correlationId": "corr-orphan",
-	}
-
-	client.handleAPIDeletedEvent(event)
-
-	// Verify orphaned cleanup was attempted
-	if db.removeKeyCallCount != 1 {
-		t.Errorf("Expected RemoveAPIKeysAPI to be called for orphan cleanup, got %d", db.removeKeyCallCount)
-	}
-
-	// Config should still not exist
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("API config should not exist in store after orphan cleanup")
-	}
-}
-
-// TestClient_handleAPIDeletedEvent_FullDeletion tests complete deletion workflow
-func TestClient_handleAPIDeletedEvent_FullDeletion(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-	db := newMockStorageForDeletion()
-	xdsMgr := newMockXDSManager()
-
-	// Create a real PolicyManager with mock dependencies
-	policyStore := storage.NewPolicyStore()
-	policySnapshotMgr := policyxds.NewSnapshotManager(policyStore, logger)
-	policyMgr := policyxds.NewPolicyManager(policyStore, policySnapshotMgr, logger)
-
-	apiID := "test-api-full-delete"
-	apiConfig := createTestAPIConfigForDeletion(apiID)
-	db.SaveConfig(apiConfig)
-	store.Add(apiConfig)
-
-	client := &Client{
-		logger:           logger,
-		store:            store,
-		db:               db,
-		policyManager:    policyMgr,
-		apiKeyXDSManager: xdsMgr,
+		logger:   logger,
+		store:    store,
+		db:       db,
+		eventHub: hub,
 	}
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
 		"payload": map[string]interface{}{
-			"apiId":       apiID,
-			"environment": "production",
-			"vhost":       "api.example.com",
+			"apiId": apiID,
+			"vhost": "api.example.com",
 		},
-		"timestamp":     time.Now().Format(time.RFC3339),
-		"correlationId": "corr-full",
+		"timestamp":     "2026-01-01T00:00:00Z",
+		"correlationId": "corr-delete-1",
 	}
 
 	client.handleAPIDeletedEvent(event)
 
-	// Verify deletion was performed
 	if db.deleteCallCount != 1 {
-		t.Errorf("Expected DeleteConfig to be called once, got %d", db.deleteCallCount)
+		t.Fatalf("delete call count = %d, want 1", db.deleteCallCount)
 	}
-
 	if db.removeKeyCallCount != 1 {
-		t.Errorf("Expected RemoveAPIKeysAPI to be called once, got %d", db.removeKeyCallCount)
+		t.Fatalf("remove key call count = %d, want 1", db.removeKeyCallCount)
 	}
 
-	// Verify API keys removed from XDS manager
-	if len(xdsMgr.removedAPIs) != 1 {
-		t.Errorf("Expected XDS manager to remove API keys for 1 API, got %d", len(xdsMgr.removedAPIs))
-	} else if xdsMgr.removedAPIs[0] != apiID {
-		t.Errorf("Expected XDS manager to remove keys for API %s, got %s", apiID, xdsMgr.removedAPIs[0])
+	_, err := db.GetConfig(apiID)
+	if !storage.IsNotFoundError(err) {
+		t.Fatalf("database lookup error = %v, want not found", err)
 	}
 
-	// Verify config removed from memory
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("Expected API config to be removed from memory store")
+	inMemoryConfig, err := store.Get(apiID)
+	if err != nil {
+		t.Fatalf("expected API config to remain in memory until async event processing: %v", err)
+	}
+	if inMemoryConfig.ID != apiID {
+		t.Fatalf("in-memory config id = %s, want %s", inMemoryConfig.ID, apiID)
 	}
 
-	// Verify policy cleanup was called (policy ID would be apiID + "-policies")
-	policyID := apiID + "-policies"
-	_, policyExists := policyStore.Get(policyID)
-	if policyExists {
-		// If policy existed, it should have been removed
-		t.Error("Expected policy to be removed from policy store")
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("published event count = %d, want 1", len(hub.publishedEvents))
 	}
-	// Note: If policy never existed, Get returns false which is expected
+
+	published := hub.publishedEvents[0]
+	if published.EventType != eventhub.EventTypeAPI {
+		t.Fatalf("published event type = %s, want %s", published.EventType, eventhub.EventTypeAPI)
+	}
+	if published.Action != "DELETE" {
+		t.Fatalf("published action = %s, want DELETE", published.Action)
+	}
+	if published.EntityID != apiID {
+		t.Fatalf("published entity id = %s, want %s", published.EntityID, apiID)
+	}
+	if published.CorrelationID != "corr-delete-1" {
+		t.Fatalf("published correlation id = %s, want corr-delete-1", published.CorrelationID)
+	}
 }
 
-// TestClient_handleAPIDeletedEvent_MemoryOnly tests deletion when no database exists
-func TestClient_handleAPIDeletedEvent_MemoryOnly(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+func TestClient_handleAPIDeletedEvent_NotFoundDoesNotPublish(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := storage.NewConfigStore()
+	db := newMockStorageForDeletion()
+	hub := &mockEventHubForDelete{}
+
+	client := &Client{
+		logger:   logger,
+		store:    store,
+		db:       db,
+		eventHub: hub,
+	}
+
+	event := map[string]interface{}{
+		"type": "api.deleted",
+		"payload": map[string]interface{}{
+			"apiId": "missing-api",
+		},
+		"timestamp":     "2026-01-01T00:00:00Z",
+		"correlationId": "corr-delete-missing",
+	}
+
+	client.handleAPIDeletedEvent(event)
+
+	if db.deleteCallCount != 0 {
+		t.Fatalf("delete call count = %d, want 0", db.deleteCallCount)
+	}
+	if db.removeKeyCallCount != 0 {
+		t.Fatalf("remove key call count = %d, want 0", db.removeKeyCallCount)
+	}
+	if len(hub.publishedEvents) != 0 {
+		t.Fatalf("published event count = %d, want 0", len(hub.publishedEvents))
+	}
+}
+
+func TestClient_handleAPIDeletedEvent_NoDatabaseDoesNotMutateMemory(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	hub := &mockEventHubForDelete{}
 
 	apiID := "test-api-memory-only"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
-	store.Add(apiConfig)
+	if err := store.Add(apiConfig); err != nil {
+		t.Fatalf("failed to seed in-memory config: %v", err)
+	}
 
 	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     nil, // No database
+		logger:   logger,
+		store:    store,
+		db:       nil,
+		eventHub: hub,
 	}
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
 		"payload": map[string]interface{}{
-			"apiId":       apiID,
-			"environment": "production",
-			"vhost":       "api.example.com",
+			"apiId": apiID,
+			"vhost": "api.example.com",
 		},
-		"timestamp":     time.Now().Format(time.RFC3339),
-		"correlationId": "corr-mem",
+		"timestamp":     "2026-01-01T00:00:00Z",
+		"correlationId": "corr-delete-memory",
 	}
 
 	client.handleAPIDeletedEvent(event)
 
-	// Verify config removed from memory
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("Expected API config to be removed from memory store")
+	if _, err := store.Get(apiID); err != nil {
+		t.Fatalf("expected API config to remain in memory when database is unavailable: %v", err)
+	}
+	if len(hub.publishedEvents) != 0 {
+		t.Fatalf("published event count = %d, want 0", len(hub.publishedEvents))
 	}
 }
 
-// TestClient_handleAPIDeletedEvent_StorageErrors tests error handling
-func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+func TestClient_handleAPIDeletedEvent_DeleteErrorDoesNotPublish(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := storage.NewConfigStore()
 	db := newMockStorageForDeletion()
+	hub := &mockEventHubForDelete{}
 
-	apiID := "test-api-error"
+	apiID := "test-api-delete-error"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
-	db.SaveConfig(apiConfig)
-	store.Add(apiConfig)
-
-	// Simulate storage errors
+	db.configs[apiID] = apiConfig
 	db.deleteErr = errors.New("database connection failed")
-	db.removeKeyErr = errors.New("failed to remove keys")
 
 	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
+		logger:   logger,
+		store:    store,
+		db:       db,
+		eventHub: hub,
 	}
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
 		"payload": map[string]interface{}{
-			"apiId":       apiID,
-			"environment": "production",
-			"vhost":       "api.example.com",
+			"apiId": apiID,
+			"vhost": "api.example.com",
 		},
-		"timestamp":     time.Now().Format(time.RFC3339),
-		"correlationId": "corr-error",
+		"timestamp":     "2026-01-01T00:00:00Z",
+		"correlationId": "corr-delete-error",
 	}
 
-	// Should handle errors gracefully without panic
 	client.handleAPIDeletedEvent(event)
 
-	// Operations should have been attempted despite errors
 	if db.deleteCallCount != 1 {
-		t.Errorf("Expected DeleteConfig to be attempted, got %d", db.deleteCallCount)
+		t.Fatalf("delete call count = %d, want 1", db.deleteCallCount)
 	}
-
-	if db.removeKeyCallCount != 1 {
-		t.Errorf("Expected RemoveAPIKeysAPI to be attempted, got %d", db.removeKeyCallCount)
+	if db.removeKeyCallCount != 0 {
+		t.Fatalf("remove key call count = %d, want 0", db.removeKeyCallCount)
 	}
-}
-
-// TestClient_findAPIConfig tests API config lookup
-func TestClient_findAPIConfig(t *testing.T) {
-	t.Run("Returns config from database when available", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-		store := storage.NewConfigStore()
-		db := newMockStorageForDeletion()
-
-		apiID := "test-api-db"
-		apiConfig := createTestAPIConfigForDeletion(apiID)
-		db.SaveConfig(apiConfig)
-
-		client := &Client{
-			logger: logger,
-			store:  store,
-			db:     db,
-		}
-
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in database, got error: %v", err)
-		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
-		}
-	})
-
-	t.Run("Returns config from memory when not in database", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-		store := storage.NewConfigStore()
-		db := newMockStorageForDeletion()
-
-		apiID := "test-api-memory"
-		apiConfig := createTestAPIConfigForDeletion(apiID)
-		store.Add(apiConfig)
-
-		client := &Client{
-			logger: logger,
-			store:  store,
-			db:     db,
-		}
-
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory store, got error: %v", err)
-		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
-		}
-	})
-
-	t.Run("Returns ErrNotFound when config does not exist", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-		store := storage.NewConfigStore()
-		db := newMockStorageForDeletion()
-
-		client := &Client{
-			logger: logger,
-			store:  store,
-			db:     db,
-		}
-
-		_, err := client.findAPIConfig("non-existent")
-		if !storage.IsNotFoundError(err) {
-			t.Errorf("Expected ErrNotFound for non-existent API, got: %v", err)
-		}
-	})
-
-	t.Run("Works when database is nil", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-		store := storage.NewConfigStore()
-
-		apiID := "test-api-no-db"
-		apiConfig := createTestAPIConfigForDeletion(apiID)
-		store.Add(apiConfig)
-
-		client := &Client{
-			logger: logger,
-			store:  store,
-			db:     nil,
-		}
-
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory when DB is nil, got error: %v", err)
-		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
-		}
-	})
+	if len(hub.publishedEvents) != 0 {
+		t.Fatalf("published event count = %d, want 0", len(hub.publishedEvents))
+	}
 }

@@ -63,6 +63,26 @@ func TestNewSQLiteStorage_InvalidPath(t *testing.T) {
 	assert.Assert(t, err != nil)
 }
 
+func TestNewSQLiteStorage_CustomPoolConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test-pool.db")
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	store, err := NewStorage(BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+		Pool: ConnectionPoolConfig{
+			MaxOpenConns: 2,
+			MaxIdleConns: 2,
+		},
+	}, logger)
+	assert.NilError(t, err)
+	storage := store.(*sqlStore)
+	defer storage.db.Close()
+
+	assert.Equal(t, storage.db.Stats().MaxOpenConnections, 2)
+}
+
 func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_schema.db")
@@ -77,7 +97,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9) // Current schema version
+	assert.Equal(t, version, 10) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -86,6 +106,8 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
+		"organization_states",
+		"events",
 	}
 
 	for _, table := range tables {
@@ -124,7 +146,7 @@ func TestSQLiteStorage_SchemaVersionUpgrade(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 9)
+	assert.Equal(t, version, 10)
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -246,6 +268,49 @@ func TestSQLiteStorage_GetConfigByNameVersion_JSONError(t *testing.T) {
 
 	_, err = storage.GetConfigByNameVersion("test-api", "v1.0.0")
 	assert.Assert(t, err != nil)
+}
+
+func TestSQLiteStorage_UpdateConfig_UniqueConstraintError(t *testing.T) {
+	t.Run("handle conflict", func(t *testing.T) {
+		storage := setupTestStorage(t)
+		defer storage.db.Close()
+
+		config1 := createTestStoredConfig()
+		config2 := createTestStoredConfig()
+
+		err := storage.SaveConfig(config1)
+		assert.NilError(t, err)
+		err = storage.SaveConfig(config2)
+		assert.NilError(t, err)
+
+		config2.Configuration.Metadata.Name = config1.Configuration.Metadata.Name
+		err = storage.UpdateConfig(config2)
+		assert.Assert(t, errors.Is(err, ErrConflict))
+	})
+
+	t.Run("display_name/version conflict", func(t *testing.T) {
+		storage := setupTestStorage(t)
+		defer storage.db.Close()
+
+		config1 := createTestStoredConfig()
+		config2 := createTestStoredConfig()
+
+		err := storage.SaveConfig(config1)
+		assert.NilError(t, err)
+		err = storage.SaveConfig(config2)
+		assert.NilError(t, err)
+
+		var conflictSpec api.APIConfiguration_Spec
+		conflictSpec.FromAPIConfigData(api.APIConfigData{
+			DisplayName: config1.GetDisplayName(),
+			Version:     config1.GetVersion(),
+			Context:     config2.GetContext(),
+		})
+		config2.Configuration.Spec = conflictSpec
+
+		err = storage.UpdateConfig(config2)
+		assert.Assert(t, errors.Is(err, ErrConflict))
+	})
 }
 
 func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
