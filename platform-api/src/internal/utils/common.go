@@ -128,6 +128,38 @@ func CreateLLMProxyYamlZip(proxyYamlMap map[string]string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// CreateMCPProxyYamlZip creates a ZIP file containing MCP proxy YAML files
+func CreateMCPProxyYamlZip(proxyYamlMap map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+
+	for proxyID, yamlContent := range proxyYamlMap {
+		fileName := fmt.Sprintf("mcp-proxy-%s.yaml", proxyID)
+		fileWriter, err := zipWriter.Create(fileName)
+		if err != nil {
+			if closeErr := zipWriter.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to create file in zip: %w (close error: %v)", err, closeErr)
+			}
+			return nil, fmt.Errorf("failed to create file in zip: %w", err)
+		}
+
+		_, err = fileWriter.Write([]byte(yamlContent))
+		if err != nil {
+			if closeErr := zipWriter.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to write file content: %w (close error: %v)", err, closeErr)
+			}
+			return nil, fmt.Errorf("failed to write file content: %w", err)
+		}
+	}
+
+	err := zipWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
 // OpenAPIUUIDToString converts an OpenAPI UUID to string.
 func OpenAPIUUIDToString(id openapi_types.UUID) string {
 	return uuid.UUID(id).String()

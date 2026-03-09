@@ -504,6 +504,73 @@ func (h *GatewayInternalAPIHandler) GetSubscriptionPlans(c *gin.Context) {
 	c.JSON(http.StatusOK, plans)
 }
 
+// GetMCPProxy handles GET /api/internal/v1/mcp-proxies/:proxyId
+func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
+	// Extract client IP for rate limiting
+	clientIP := c.ClientIP()
+
+	// Extract and validate API key from header
+	apiKey := c.GetHeader("api-key")
+	if apiKey == "" {
+		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"API key is required. Provide 'api-key' header."))
+		return
+	}
+
+	// Authenticate gateway using API key
+	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	if err != nil {
+		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Invalid or expired API key"))
+		return
+	}
+
+	orgID := gateway.OrganizationID
+	gatewayID := gateway.ID
+	proxyID := c.Param("proxyId")
+	if proxyID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Proxy ID is required"))
+		return
+	}
+
+	proxy, err := h.gatewayInternalService.GetActiveMCPProxyDeploymentByGateway(proxyID, orgID, gatewayID)
+	if err != nil {
+		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this MCP proxy on this gateway"))
+			return
+		}
+		if errors.Is(err, constants.ErrMCPProxyNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"MCP proxy not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get MCP proxy"))
+		return
+	}
+
+	// Create ZIP file from MCP proxy YAML file
+	zipData, err := utils.CreateMCPProxyYamlZip(proxy)
+	if err != nil {
+		h.slogger.Error("Failed to create ZIP file", "proxyID", proxyID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create MCP proxy package"))
+		return
+	}
+
+	// Set headers for ZIP file download
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"mcp-proxy-%s.zip\"", proxyID))
+	c.Header("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	// Return ZIP file
+	c.Data(http.StatusOK, "application/zip", zipData)
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
@@ -526,5 +593,10 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	llmProxyGroup := r.Group("/api/internal/v1/llm-proxies")
 	{
 		llmProxyGroup.GET("/:proxyId", h.GetLLMProxy)
+	}
+
+	mcpProxyGroup := r.Group("/api/internal/v1/mcp-proxies")
+	{
+		mcpProxyGroup.GET("/:proxyId", h.GetMCPProxy)
 	}
 }

@@ -39,6 +39,7 @@ type GatewayInternalAPIService struct {
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	providerRepo         repository.LLMProviderRepository
 	proxyRepo            repository.LLMProxyRepository
+	mcpProxyRepo         repository.MCPProxyRepository
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
@@ -51,7 +52,7 @@ type GatewayInternalAPIService struct {
 // NewGatewayInternalAPIService creates a new gateway internal API service
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
-	proxyRepo repository.LLMProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
+	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
 		apiRepo:              apiRepo,
@@ -59,6 +60,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		subscriptionPlanRepo: subscriptionPlanRepo,
 		providerRepo:         providerRepo,
 		proxyRepo:            proxyRepo,
+		mcpProxyRepo:         mcpProxyRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -262,6 +264,31 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 		}
 	}
 	return plans, nil
+}
+
+// GetActiveMCPProxyDeploymentByGateway retrieves the currently deployed MCP proxy artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID, orgID, gatewayID string) (map[string]string, error) {
+	proxy, err := s.mcpProxyRepo.GetByUUID(proxyID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MCP proxy: %w", err)
+	}
+	if proxy == nil {
+		return nil, constants.ErrMCPProxyNotFound
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxy.UUID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, constants.ErrDeploymentNotActive
+	}
+
+	proxyYaml := string(deployment.Content)
+	proxyYamlMap := map[string]string{
+		proxyID: proxyYaml,
+	}
+	return proxyYamlMap, nil
 }
 
 // CreateGatewayDeployment handles the registration of an API deployment from a gateway
