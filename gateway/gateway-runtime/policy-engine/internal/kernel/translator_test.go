@@ -231,9 +231,9 @@ func TestSetContentLengthHeader_ExistingHeaders(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_NoAction(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -249,9 +249,9 @@ func TestFinalizeAnalyticsHeaders_NoAction(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_AllowMode(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -270,9 +270,9 @@ func TestFinalizeAnalyticsHeaders_AllowMode(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_DenyMode(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -383,7 +383,7 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -409,7 +409,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -442,7 +442,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -483,7 +483,7 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -516,7 +516,7 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -548,7 +548,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -580,7 +580,7 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 

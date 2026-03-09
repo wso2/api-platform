@@ -419,10 +419,13 @@ func main() {
 
 	log.Info("Gateway Controller started successfully")
 
-	// Print banner when both router and policy engine have connected
+	// Print banner when both router and policy engine have sent their first ACK,
+	// confirming they are fully initialized. One second delay lets Docker's log
+	// buffers drain so the banner is not interleaved with Envoy's startup output.
 	go func() {
 		<-routerConnected
 		<-policyEngineConnected
+		time.Sleep(1 * time.Second)
 		fmt.Print("\n\n" +
 			"========================================================================\n" +
 			"\n" +
