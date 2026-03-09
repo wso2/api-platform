@@ -15,6 +15,8 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 
 	"github.com/gin-gonic/gin"
@@ -41,11 +43,24 @@ var (
 	BuildDate = "unknown"
 )
 
-func toBackendConfig(cfg *config.Config) storage.BackendConfig {
-	pg := cfg.Controller.Storage.Postgres
+func toBackendConfig(storageCfg config.StorageConfig, gatewayID string, poolCfg config.ConnectionPoolConfig) storage.BackendConfig {
+	pg := storageCfg.Postgres
+	if poolCfg.MaxOpenConns != 0 {
+		pg.MaxOpenConns = poolCfg.MaxOpenConns
+	}
+	if poolCfg.MaxIdleConns != 0 {
+		pg.MaxIdleConns = poolCfg.MaxIdleConns
+	}
+	if poolCfg.ConnMaxLifetime != 0 {
+		pg.ConnMaxLifetime = poolCfg.ConnMaxLifetime
+	}
+	if poolCfg.ConnMaxIdleTime != 0 {
+		pg.ConnMaxIdleTime = poolCfg.ConnMaxIdleTime
+	}
+
 	return storage.BackendConfig{
-		Type:       cfg.Controller.Storage.Type,
-		SQLitePath: cfg.Controller.Storage.SQLite.Path,
+		Type:       storageCfg.Type,
+		SQLitePath: storageCfg.SQLite.Path,
 		Postgres: storage.PostgresConnectionConfig{
 			DSN:             pg.DSN,
 			Host:            pg.Host,
@@ -61,7 +76,13 @@ func toBackendConfig(cfg *config.Config) storage.BackendConfig {
 			ConnMaxIdleTime: pg.ConnMaxIdleTime,
 			ApplicationName: pg.ApplicationName,
 		},
-		GatewayID: cfg.Controller.Server.GatewayID,
+		Pool: storage.ConnectionPoolConfig{
+			MaxOpenConns:    poolCfg.MaxOpenConns,
+			MaxIdleConns:    poolCfg.MaxIdleConns,
+			ConnMaxLifetime: poolCfg.ConnMaxLifetime,
+			ConnMaxIdleTime: poolCfg.ConnMaxIdleTime,
+		},
+		GatewayID: gatewayID,
 	}
 }
 
@@ -113,7 +134,7 @@ func main() {
 	// Initialize storage based on type
 	var db storage.Storage
 	if cfg.IsPersistentMode() {
-		db, err = storage.NewStorage(toBackendConfig(cfg), log)
+		db, err = storage.NewStorage(toBackendConfig(cfg.Controller.Storage, cfg.Controller.Server.GatewayID, config.ConnectionPoolConfig{}), log)
 		if err != nil {
 			if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
 				log.Error("Database is locked by another process",
@@ -308,13 +329,80 @@ func main() {
 	}
 	log.Info("Default llm provider templates loaded", slog.Int("count", len(templateDefinitions)))
 
+	// Initialize EventHub and EventListener for multi-replica sync (when persistent storage is available)
+	var eventHubInstance eventhub.EventHub
+	var eventHubStorage storage.Storage
+	var evtListener *eventlistener.EventListener
+	if cfg.IsPersistentMode() {
+		eventHubPoolCfg := cfg.ResolvedEventHubConnectionPool()
+		log.Info("Initializing EventHub for multi-replica synchronization",
+			slog.String("storage_type", cfg.Controller.Storage.Type),
+			slog.Int("max_open_conns", eventHubPoolCfg.MaxOpenConns),
+			slog.Int("max_idle_conns", eventHubPoolCfg.MaxIdleConns),
+			slog.Duration("conn_max_lifetime", eventHubPoolCfg.ConnMaxLifetime),
+			slog.Duration("conn_max_idle_time", eventHubPoolCfg.ConnMaxIdleTime))
+
+		eventHubStorage, err = storage.NewStorage(toBackendConfig(cfg.Controller.Storage, cfg.Controller.Server.GatewayID, eventHubPoolCfg), log)
+		if err != nil {
+			if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
+				log.Error("EventHub database is locked by another process",
+					slog.String("database_path", cfg.Controller.Storage.SQLite.Path),
+					slog.String("troubleshooting", "Check if another process is using the configured EventHub database or remove stale WAL files"))
+				os.Exit(1)
+			}
+			log.Error("Failed to initialize EventHub storage",
+				slog.String("type", cfg.Controller.Storage.Type),
+				slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		eventHubDB := eventHubStorage.GetDB()
+		if eventHubDB == nil {
+			log.Error("EventHub requires a SQL-backed storage with GetDB() support")
+			os.Exit(1)
+		}
+
+		eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
+		if err := eventHubInstance.Initialize(); err != nil {
+			log.Error("Failed to initialize EventHub", slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		// Register default organization
+		if err := eventHubInstance.RegisterOrganization("default"); err != nil {
+			log.Warn("Failed to register default organization (may already exist)", slog.Any("error", err))
+		}
+
+		// Create EventListener
+		evtListener = eventlistener.NewEventListener(
+			eventHubInstance,
+			configStore,
+			db,
+			snapshotManager,
+			apiKeyXDSManager,
+			policyManager,
+			&cfg.Router,
+			log,
+			cfg,
+			policyDefinitions,
+		)
+
+		// Start event listener
+		if err := evtListener.Start(); err != nil {
+			log.Error("Failed to start event listener", slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		log.Info("Multi-replica synchronization enabled")
+	}
+
 	// Create validator with policy validation support
 	validator := config.NewAPIValidator()
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation and API key management
-	cpClient := controlplane.NewClient(cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router, apiKeyXDSManager, &cfg.APIKey, policyManager, cfg, policyDefinitions, lazyResourceXDSManager, templateDefinitions)
+	cpClient := controlplane.NewClient(cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router, apiKeyXDSManager, &cfg.APIKey, policyManager, cfg, policyDefinitions, lazyResourceXDSManager, templateDefinitions, eventHubInstance)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -348,7 +436,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg)
+		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
@@ -448,7 +536,12 @@ func main() {
 	ctx, cancel = context.WithTimeout(context.Background(), cfg.Controller.Server.ShutdownTimeout)
 	defer cancel()
 
-	// Stop control plane client first
+	// Stop event listener first (if enabled)
+	if evtListener != nil {
+		evtListener.Stop()
+	}
+
+	// Stop control plane client
 	cpClient.Stop()
 
 	if err := srv.Shutdown(ctx); err != nil {
@@ -456,6 +549,19 @@ func main() {
 	}
 
 	xdsServer.Stop()
+
+	// Stop EventHub (if enabled)
+	if eventHubInstance != nil {
+		if err := eventHubInstance.Close(); err != nil {
+			log.Error("Failed to close EventHub", slog.Any("error", err))
+		}
+	}
+
+	if eventHubStorage != nil {
+		if err := eventHubStorage.Close(); err != nil {
+			log.Error("Failed to close EventHub storage", slog.Any("error", err))
+		}
+	}
 
 	// Stop policy xDS server if it was started
 	if policyXDSServer != nil {

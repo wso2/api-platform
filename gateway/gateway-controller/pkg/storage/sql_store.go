@@ -170,7 +170,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if err != nil {
 		// Check for unique constraint violation
 		if s.isConfigUniqueViolation(err) {
-			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists", ErrConflict, displayName, version)
+			return fmt.Errorf("%w: configuration with id '%s', displayName '%s' and version '%s', or handle '%s' already exists", ErrConflict, cfg.ID, displayName, version, handle)
 		}
 		return fmt.Errorf("failed to insert configuration: %w", err)
 	}
@@ -267,6 +267,10 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		if s.isConfigUniqueViolation(err) {
+			metrics.StorageErrorsTotal.WithLabelValues("update", "conflict_error").Inc()
+			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s', or handle '%s' already exists", ErrConflict, displayName, version, handle)
+		}
 		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
 		return fmt.Errorf("failed to update configuration: %w", err)
 	}
@@ -1449,6 +1453,11 @@ func (s *sqlStore) RemoveAPIKeyAPIAndName(apiId, name string) error {
 		slog.String("name", name))
 
 	return nil
+}
+
+// GetDB returns the underlying *sql.DB instance.
+func (s *sqlStore) GetDB() *sql.DB {
+	return s.db
 }
 
 // Close closes the database connection
