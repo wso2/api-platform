@@ -147,11 +147,7 @@ curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
       "projectId": "<project-uuid>",
       "lifeCycleStatus": "CREATED",
       "transport": ["http","https"],
-      "vhosts": {
-         "main": "example.wso2.com",
-         "sandbox": "sand-example.wso2.com"
-       },
-       "upstream": {
+      "upstream": {
          "main": { "url": "http://sample-backend:5000" },
          "sandbox": { "url": "http://sample-backend:5000/sandbox" }
        }
@@ -168,7 +164,11 @@ curl -k -X POST 'https://localhost:9243/api/v1/rest-apis/weather-api/deployments
   -d '{
     "name": "weather-v1-prod",
     "base": "current",
-    "gatewayId": "<gateway-uuid>"
+    "gatewayId": "<gateway-uuid>",
+    "vhost": {
+      "main": "example.wso2.com",
+      "sandbox": "sand-example.wso2.com"
+    }
 }'
 ```
 

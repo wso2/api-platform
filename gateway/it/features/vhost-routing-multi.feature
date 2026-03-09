@@ -134,6 +134,21 @@ Feature: Gateway vhost routing with multi-domain defaults
     And I send a GET request to "http://localhost:8080/vhost-multi-override/v1.0/whoami"
     Then the response status code should be 404
 
+    When I clear all headers
+    And I set request host to "api.foo.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-override/v1.0/whoami"
+    Then the response status code should be 404
+
+    When I clear all headers
+    And I set request host to "api-sandbox.wso2.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-override/v1.0/whoami"
+    Then the response status code should be 404
+
+    When I clear all headers
+    And I set request host to "api-sandbox.foo.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-override/v1.0/whoami"
+    Then the response status code should be 404
+
     Given I authenticate using basic auth as "admin"
     When I delete the API "vhost-multi-override-v1.0"
     Then the response should be successful
