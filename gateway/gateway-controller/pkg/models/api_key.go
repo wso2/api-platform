@@ -35,7 +35,6 @@ const (
 type APIKey struct {
 	ID           string       `json:"id" db:"id"`
 	Name         string       `json:"name" db:"name"`                   // URL-safe identifier (auto-generated, immutable)
-	DisplayName  string       `json:"displayName" db:"display_name"`    // Human-readable name (user-provided, mutable)
 	APIKey       string       `json:"apiKey" db:"api_key"`              // Stores hashed API key
 	MaskedAPIKey string       `json:"maskedApiKey" db:"masked_api_key"` // Stores masked API key for display
 	PlainAPIKey  string       `json:"-" db:"-"`                         // Temporary field for plain API key (not persisted)
@@ -45,8 +44,6 @@ type APIKey struct {
 	CreatedBy    string       `json:"createdBy" db:"created_by"`
 	UpdatedAt    time.Time    `json:"updatedAt" db:"updated_at"`
 	ExpiresAt    *time.Time   `json:"expiresAt" db:"expires_at"`
-	Unit         *string      `json:"-" db:"expires_in_unit"`
-	Duration     *int         `json:"-" db:"expires_in_duration"`
 
 	// Source tracking for external key support
 	Source        string  `json:"source" db:"source"`                 // "local" | "external"

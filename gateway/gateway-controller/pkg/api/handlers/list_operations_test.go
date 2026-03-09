@@ -68,7 +68,6 @@ func TestListAPIKeysSuccess(t *testing.T) {
 	key1 := &models.APIKey{
 		ID:           "key1",
 		Name:         "key1",
-		DisplayName:  "Test Key 1",
 		APIKey:       "hashed-key-1",
 		MaskedAPIKey: "***key-1",
 		APIId:        "test-handle",
@@ -80,7 +79,6 @@ func TestListAPIKeysSuccess(t *testing.T) {
 	key2 := &models.APIKey{
 		ID:           "key2",
 		Name:         "key2",
-		DisplayName:  "Test Key 2",
 		APIKey:       "hashed-key-2",
 		MaskedAPIKey: "***key-2",
 		APIId:        "test-handle",

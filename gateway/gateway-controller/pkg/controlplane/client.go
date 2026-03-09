@@ -1506,8 +1506,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		)
 		return
 	}
-	if keyCreatedEvent.Payload.ApiKey == "" {
-		baseLogger.Error("API key created event missing required api_key",
+	if keyCreatedEvent.Payload.ApiKeyHashes == "" {
+		baseLogger.Error("API key created event missing required api_key_hashes",
 			slog.Any("correlation_id", event["correlationId"]),
 		)
 		return
@@ -1550,7 +1550,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	now := time.Now()
 
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKey:        &payload.ApiKey,
+		ApiKeyHashes:  &payload.ApiKeyHashes,
+		MaskedApiKey:  &payload.MaskedApiKey,
 		DisplayName:   payload.DisplayName,
 		Name:          &payload.Name,
 		ExternalRefId: payload.ExternalRefId,
@@ -1726,8 +1727,8 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		)
 		return
 	}
-	if payload.ApiKey == "" {
-		baseLogger.Error("API key updated event missing required api_key",
+	if payload.ApiKeyHashes == "" {
+		baseLogger.Error("API key updated event missing required api_key_hashes",
 			slog.Any("correlation_id", event["correlationId"]),
 			slog.String("api_id", payload.ApiId),
 			slog.String("key_name", payload.KeyName),
@@ -1766,7 +1767,8 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	now := time.Now()
 
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKey:        &payload.ApiKey,
+		ApiKeyHashes:  &payload.ApiKeyHashes,
+		MaskedApiKey:  &payload.MaskedApiKey,
 		DisplayName:   &payload.DisplayName,
 		ExternalRefId: &payload.ExternalRefId,
 		Name:          &payload.KeyName,

@@ -2325,12 +2325,6 @@ components:
     APIKeyCreationRequest:
       type: object
       properties:
-        displayName:
-          type: string
-          description: Human-readable name for the API key (1-100 characters)
-          minLength: 1
-          maxLength: 100
-          example: My Production Key
         name:
           type: string
           description: Identifier of the API key. If not provided, a default identifier will be generated
@@ -2338,16 +2332,19 @@ components:
           minLength: 3
           maxLength: 63
           example: my-production-key
-        apiKey:
+        apiKeyHashes:
           type: string
-          minLength: 36
           description: |
-            Optional plain-text API key value for external key injection.
-            If provided, this key will be used instead of generating a new one.
-            The key will be hashed before storage. The key can be in any format
-            (minimum 36 characters). Use this for injecting externally generated
-            API keys.
-          example: "cloud-apim-key-abc123xyz789"
+            Pre-computed hash(es) of the API key provided by the platform API.
+            When provided, this hash is stored directly without re-hashing.
+            Use this for injecting externally hashed API keys from the platform.
+          example: "sha256:abc123..."
+        maskedApiKey:
+          type: string
+          description: |
+            Masked version of the API key for display purposes.
+            Provided by the platform API when injecting pre-hashed keys.
+          example: "apip_****xyz789"
         expiresIn:
           type: object
           description: Expiration duration for the API key
@@ -2501,7 +2498,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/APIKeyCreationRequest"
       required:
-        - apiKey
+        - apiKeyHashes
     APIKeyRevocationResponse:
       type: object
       properties:

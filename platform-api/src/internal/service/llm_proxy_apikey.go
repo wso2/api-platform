@@ -91,11 +91,6 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		}
 	}
 
-	displayName := name
-	if req.DisplayName != nil && *req.DisplayName != "" {
-		displayName = *req.DisplayName
-	}
-
 	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
 	if err != nil {
 		s.slogger.Error("Failed to get gateways for API key broadcast", "proxyId", proxyID, "error", err)
@@ -107,11 +102,18 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		return nil, constants.ErrGatewayUnavailable
 	}
 
+	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})
+	if err != nil {
+		s.slogger.Error("Failed to hash API key for LLM proxy", "proxyId", proxyID, "error", err)
+		return nil, fmt.Errorf("failed to hash API key: %w", err)
+	}
+	maskedAPIKey := maskAPIKey(apiKey)
+
 	event := &model.APIKeyCreatedEvent{
-		ApiId:       proxyID,
-		Name:        name,
-		DisplayName: displayName,
-		ApiKey:      apiKey,
+		ApiId:        proxyID,
+		Name:         name,
+		ApiKeyHashes: apiKeyHashesJSON,
+		MaskedApiKey: maskedAPIKey,
 	}
 
 	if req.ExpiresAt != nil {

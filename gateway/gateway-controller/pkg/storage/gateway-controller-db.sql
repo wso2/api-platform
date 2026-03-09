@@ -158,16 +158,9 @@ CREATE TABLE IF NOT EXISTS api_keys (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL,  -- NULL means no expiration
 
-    -- Expiration policy fields
-    expires_in_unit TEXT NULL,
-    expires_in_duration INTEGER NULL,
-
     -- External API key support (added in schema version 6)
     source TEXT NOT NULL DEFAULT 'local',  -- 'local' or 'external'
     external_ref_id TEXT NULL,  -- external reference
-
-    -- Human-readable display name for the API key
-    display_name TEXT NOT NULL DEFAULT '',
 
     -- Foreign key relationship to deployments
     FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,

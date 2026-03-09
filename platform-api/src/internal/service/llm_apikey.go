@@ -122,12 +122,19 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		return nil, constants.ErrGatewayUnavailable
 	}
 
+	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})
+	if err != nil {
+		s.slogger.Error("Failed to hash API key for LLM provider", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to hash API key: %w", err)
+	}
+	maskedAPIKey := maskAPIKey(apiKey)
+
 	event := &model.APIKeyCreatedEvent{
-		ApiId:       providerID,
-		Name:        name,
-		DisplayName: displayName,
-		ApiKey:      apiKey,
-		ExpiresAt:   expiresAt,
+		ApiId:        providerID,
+		Name:         name,
+		ApiKeyHashes: apiKeyHashesJSON,
+		MaskedApiKey: maskedAPIKey,
+		ExpiresAt:    expiresAt,
 	}
 
 	successCount := 0

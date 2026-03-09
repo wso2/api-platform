@@ -615,15 +615,13 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 		},
 	}
 
-	t.Run("uses existing key duration when no request expiration", func(t *testing.T) {
-		unit := "days"
-		dur := 30
+	t.Run("uses existing key expiry when no request expiration", func(t *testing.T) {
+		exp := time.Now().Add(30 * 24 * time.Hour)
 		existing := &models.APIKey{
 			ID:        "k1",
 			Name:      "n1",
 			CreatedBy: "u1",
-			Unit:      &unit,
-			Duration:  &dur,
+			ExpiresAt: &exp,
 		}
 		req := api.APIKeyRegenerationRequest{}
 		key, err := service.regenerateAPIKey(existing, req, "u1", logger)

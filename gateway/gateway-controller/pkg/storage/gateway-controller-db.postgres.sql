@@ -79,11 +79,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     created_by TEXT NOT NULL DEFAULT 'system',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMPTZ NULL,
-    expires_in_unit TEXT NULL,
-    expires_in_duration INTEGER NULL,
     source TEXT NOT NULL DEFAULT 'local',
     external_ref_id TEXT NULL,
-    display_name TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
     UNIQUE (apiId, name, gateway_id)
 );

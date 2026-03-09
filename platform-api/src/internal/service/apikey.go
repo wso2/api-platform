@@ -296,6 +296,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	}
 
 	// Persist the API key to the database before broadcasting
+	maskedAPIKey := maskAPIKey(req.ApiKey)
 	expiresAt, err := resolveExpiresAt(req.ExpiresAt, req.ExpiresIn)
 	if err != nil {
 		s.slogger.Error("Invalid expiration for API key creation", "apiHandle", apiHandle, "keyName", keyName, "error", err)
@@ -305,7 +306,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		ID:           uuid.New().String(),
 		ArtifactUUID: apiId,
 		Name:         keyName,
-		MaskedAPIKey: maskAPIKey(req.ApiKey),
+		MaskedAPIKey: maskedAPIKey,
 		APIKeyHashes: apiKeyHashesJSON,
 		Status:       "active",
 		CreatedBy:    userId,
@@ -316,11 +317,12 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		return fmt.Errorf("failed to persist API key: %w", err)
 	}
 
-	// Build the API key created event — send the hash JSON, not the plain key
+	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyCreatedEvent{
 		ApiId:         apiHandle,
 		Name:          keyName,
 		ApiKeyHashes:  apiKeyHashesJSON,
+		MaskedApiKey:  maskedAPIKey,
 		ExternalRefId: req.ExternalRefId,
 	}
 	if expiresAt != nil {
@@ -410,6 +412,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	}
 
 	// Persist the updated API key to the database before broadcasting
+	maskedAPIKey := maskAPIKey(req.ApiKey)
 	expiresAt, err := resolveExpiresAt(req.ExpiresAt, req.ExpiresIn)
 	if err != nil {
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
@@ -418,7 +421,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	dbKey := &model.APIKey{
 		ArtifactUUID: apiId,
 		Name:         keyName,
-		MaskedAPIKey: maskAPIKey(req.ApiKey),
+		MaskedAPIKey: maskedAPIKey,
 		APIKeyHashes: apiKeyHashesJSON,
 		Status:       "active",
 		ExpiresAt:    expiresAt,
@@ -428,11 +431,12 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		return fmt.Errorf("failed to update API key in database: %w", err)
 	}
 
-	// Build the API key updated event — send the hash JSON, not the plain key
+	// Build the API key updated event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyUpdatedEvent{
 		ApiId:        apiHandle,
 		KeyName:      keyName,
 		ApiKeyHashes: apiKeyHashesJSON,
+		MaskedApiKey: maskedAPIKey,
 	}
 	if req.ExternalRefId != nil {
 		event.ExternalRefId = req.ExternalRefId

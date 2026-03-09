@@ -749,11 +749,8 @@ func (s *SQLiteStorage) initSchema() error {
 				created_by TEXT NOT NULL DEFAULT 'system',
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				expires_at TIMESTAMP NULL,
-				expires_in_unit TEXT NULL,
-				expires_in_duration INTEGER NULL,
 				source TEXT NOT NULL DEFAULT 'local',
 				external_ref_id TEXT NULL,
-				display_name TEXT NOT NULL DEFAULT '',
 				FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
 				UNIQUE (apiId, name, gateway_id)
 			);`); err != nil {
@@ -763,12 +760,12 @@ func (s *SQLiteStorage) initSchema() error {
 			if _, err = tx.Exec(`
 				INSERT INTO api_keys_new_v10 (
 					id, gateway_id, name, api_key, masked_api_key, apiId, status,
-					created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
-					source, external_ref_id, display_name
+					created_at, created_by, updated_at, expires_at,
+					source, external_ref_id
 				)
 				SELECT id, gateway_id, name, api_key, masked_api_key, apiId, status,
-				       created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
-				       source, external_ref_id, display_name
+				       created_at, created_by, updated_at, expires_at,
+				       source, external_ref_id
 				FROM api_keys;
 			`); err != nil {
 				return fmt.Errorf("failed to copy data to api_keys_new_v10: %w", err)

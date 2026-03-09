@@ -1058,17 +1058,16 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 		// No existing record, insert new API key
 		insertQuery := `
 			INSERT INTO api_keys (
-				id, gateway_id, name, display_name, api_key, masked_api_key, apiId, status,
-				created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
+				id, gateway_id, name, api_key, masked_api_key, apiId, status,
+				created_at, created_by, updated_at, expires_at,
 				source, external_ref_id
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 
 		_, err := tx.ExecQ(insertQuery,
 			apiKey.ID,
 			s.gatewayId,
 			apiKey.Name,
-			apiKey.DisplayName,
 			apiKey.APIKey,
 			apiKey.MaskedAPIKey,
 			apiKey.APIId,
@@ -1077,8 +1076,6 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 			apiKey.CreatedBy,
 			apiKey.UpdatedAt,
 			apiKey.ExpiresAt,
-			apiKey.Unit,
-			apiKey.Duration,
 			apiKey.Source,
 			apiKey.ExternalRefId,
 		)
@@ -1119,7 +1116,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 // GetAPIKeyByID retrieves an API key by its ID
 func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, display_name, api_key, masked_api_key, apiId, status,
+		SELECT id, name, api_key, masked_api_key, apiId, status,
 		       created_at, created_by, updated_at, expires_at, source, external_ref_id
 		FROM api_keys
 		WHERE id = ? AND gateway_id = ?
@@ -1132,7 +1129,6 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	err := s.queryRow(query, id, s.gatewayId).Scan(
 		&apiKey.ID,
 		&apiKey.Name,
-		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
@@ -1166,7 +1162,7 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 // GetAPIKeyByKey retrieves an API key by its key value
 func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, display_name, api_key, masked_api_key, apiId, status,
+		SELECT id, name, api_key, masked_api_key, apiId, status,
 		       created_at, created_by, updated_at, expires_at, source, external_ref_id
 		FROM api_keys
 		WHERE api_key = ? AND gateway_id = ?
@@ -1179,7 +1175,6 @@ func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	err := s.queryRow(query, key, s.gatewayId).Scan(
 		&apiKey.ID,
 		&apiKey.Name,
-		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
@@ -1213,7 +1208,7 @@ func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 // GetAPIKeysByAPI retrieves all API keys for a specific API
 func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, display_name, api_key, masked_api_key, apiId, status,
+		SELECT id, name, api_key, masked_api_key, apiId, status,
 		       created_at, created_by, updated_at, expires_at, source, external_ref_id
 		FROM api_keys
 		WHERE apiId = ? AND gateway_id = ?
@@ -1236,7 +1231,6 @@ func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 		err := rows.Scan(
 			&apiKey.ID,
 			&apiKey.Name,
-			&apiKey.DisplayName,
 			&apiKey.APIKey,
 			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,
@@ -1274,7 +1268,7 @@ func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 // GetAPIKeysByAPIAndName retrieves an API key by its apiId and name
 func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	query := `
-		SELECT id, name, display_name, api_key, masked_api_key, apiId, status,
+		SELECT id, name, api_key, masked_api_key, apiId, status,
 		       created_at, created_by, updated_at, expires_at, source, external_ref_id
 		FROM api_keys
 		WHERE apiId = ? AND name = ? AND gateway_id = ?
@@ -1288,7 +1282,6 @@ func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, e
 	err := s.queryRow(query, apiId, name, s.gatewayId).Scan(
 		&apiKey.ID,
 		&apiKey.Name,
-		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.APIId,
@@ -1338,7 +1331,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 
 	updateQuery := `
 			UPDATE api_keys
-			SET api_key = ?, masked_api_key = ?, display_name = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?,
+			SET api_key = ?, masked_api_key = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?,
 			    source = ?, external_ref_id = ?
 			WHERE apiId = ? AND name = ? AND gateway_id = ?
 		`
@@ -1346,13 +1339,10 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	_, err = tx.ExecQ(updateQuery,
 		apiKey.APIKey,
 		apiKey.MaskedAPIKey,
-		apiKey.DisplayName,
 		apiKey.Status,
 		apiKey.CreatedBy,
 		apiKey.UpdatedAt,
 		apiKey.ExpiresAt,
-		apiKey.Unit,
-		apiKey.Duration,
 		apiKey.Source,
 		apiKey.ExternalRefId,
 		apiKey.APIId,
@@ -1529,7 +1519,7 @@ func (s *sqlStore) updateDeploymentConfigsTx(tx *sqlStoreTx, cfg *models.StoredC
 // GetAllAPIKeys retrieves all active API keys from the database.
 func (s *sqlStore) GetAllAPIKeys() ([]*models.APIKey, error) {
 	query := `
-		SELECT id, name, display_name, api_key, masked_api_key, apiId, status,
+		SELECT id, name, api_key, masked_api_key, apiId, status,
 		       created_at, created_by, updated_at, expires_at, source, external_ref_id
 		FROM api_keys
 		WHERE status = 'active' AND gateway_id = ?
@@ -1552,7 +1542,6 @@ func (s *sqlStore) GetAllAPIKeys() ([]*models.APIKey, error) {
 		err := rows.Scan(
 			&apiKey.ID,
 			&apiKey.Name,
-			&apiKey.DisplayName,
 			&apiKey.APIKey,
 			&apiKey.MaskedAPIKey,
 			&apiKey.APIId,

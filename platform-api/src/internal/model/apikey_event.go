@@ -44,6 +44,9 @@ type APIKeyCreatedEvent struct {
 	// ApiKeyHashes is a JSON string representation of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
 	ApiKeyHashes string `json:"apiKeyHashes"`
 
+	// MaskedApiKey is the masked representation of the API key for display purposes
+	MaskedApiKey string `json:"maskedApiKey"`
+
 	// ExternalRefId is an optional reference ID for tracing purposes
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 
@@ -75,6 +78,9 @@ type APIKeyUpdatedEvent struct {
 
 	// ApiKeyHashes is a JSON string representation of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
 	ApiKeyHashes string `json:"apiKeyHashes"`
+
+	// MaskedApiKey is the masked representation of the API key for display purposes
+	MaskedApiKey string `json:"maskedApiKey"`
 
 	// ExpiresAt is the optional new expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
