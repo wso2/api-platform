@@ -217,18 +217,45 @@ func (b *PythonBridge) buildSharedContext(shared *policy.SharedContext) *proto.S
 		ApiKind:       shared.APIKind,
 		ApiContext:    shared.APIContext,
 		OperationPath: shared.OperationPath,
-		AuthContext:   shared.AuthContext,
+		AuthContext:   authContextToMap(shared.AuthContext),
 	}
+}
+
+// authContextToMap flattens the structured AuthContext into a map[string]string
+// for the proto wire format consumed by Python policies.
+func authContextToMap(ac *policy.AuthContext) map[string]string {
+	if ac == nil {
+		return nil
+	}
+	m := map[string]string{
+		"subject":   ac.Subject,
+		"issuer":    ac.Issuer,
+		"auth_type": ac.AuthType,
+	}
+	if ac.Authenticated {
+		m["authenticated"] = "true"
+	}
+	if ac.Authorized {
+		m["authorized"] = "true"
+	}
+	if ac.CredentialID != "" {
+		m["credential_id"] = ac.CredentialID
+	}
+	// Flatten properties
+	for k, v := range ac.Properties {
+		m[k] = v
+	}
+	return m
 }
 
 // buildPolicyMetadata converts the Go PolicyMetadata to proto.
 func (b *PythonBridge) buildPolicyMetadata() *proto.PolicyMetadata {
 	return &proto.PolicyMetadata{
-		RouteName:   b.metadata.RouteName,
-		ApiId:       b.metadata.APIId,
-		ApiName:     b.metadata.APIName,
-		ApiVersion:  b.metadata.APIVersion,
-		AttachedTo:  string(b.metadata.AttachedTo),
+		RouteName:  b.metadata.RouteName,
+		ApiId:      b.metadata.APIId,
+		ApiName:    b.metadata.APIName,
+		ApiVersion: b.metadata.APIVersion,
+		AttachedTo: string(b.metadata.AttachedTo),
 	}
 }
 

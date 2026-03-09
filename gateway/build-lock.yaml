@@ -13,7 +13,7 @@ policies:
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v0
     - name: api-key-auth
-      version: v0.8.0
+      version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
     - name: aws-bedrock-guardrail
       version: v0.2.0
@@ -22,7 +22,7 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v0
     - name: basic-auth
-      version: v0.8.0
+      version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v0
     - name: basic-ratelimit
       version: v0.8.2
@@ -40,7 +40,7 @@ policies:
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-to-xml@v0
     - name: jwt-auth
-      version: v0.8.0
+      version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0
     - name: log-message
       version: v0.2.0
@@ -49,10 +49,10 @@ policies:
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v0
     - name: mcp-auth
-      version: v0.2.0
+      version: v0.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0
     - name: mcp-authz
-      version: v0.2.0
+      version: v0.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0
     - name: mcp-rewrite
       version: v0.2.0

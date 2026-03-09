@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 // BridgeFactory creates PythonBridge instances. It is registered as the PolicyFactory
@@ -85,6 +85,6 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		streamManager: f.StreamManager,
 		translator:    NewTranslator(),
 		slogger:       slogger,
-			instanceID:    resp.InstanceId,
+		instanceID:    resp.InstanceId,
 	}, nil
 }

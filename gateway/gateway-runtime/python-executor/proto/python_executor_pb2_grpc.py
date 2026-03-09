@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import python_executor_pb2 as python__executor__pb2
+from proto import python_executor_pb2 as python__executor__pb2
 
 GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
