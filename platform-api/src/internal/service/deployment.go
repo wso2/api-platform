@@ -182,6 +182,12 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	// Determine vhost values: default to sentinel so gateway resolves and persists its current defaults.
 	vhostMain := vhostGatewayDefault
 	var vhostSandbox *string
+	// If the API has a sandbox upstream and no explicit sandbox vhost is provided,
+	// default sandbox to the sentinel too so it gets resolved and stored at deploy time.
+	if apiModel.Configuration.Upstream.Sandbox != nil {
+		sandboxSentinel := vhostGatewayDefault
+		vhostSandbox = &sandboxSentinel
+	}
 	if req.Vhost != nil {
 		if req.Vhost.Main != nil && *req.Vhost.Main != "" {
 			if !isValidVHostOrSentinel(*req.Vhost.Main) {
