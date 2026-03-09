@@ -33,6 +33,14 @@ service PythonExecutorService {
 
   // Health check for readiness.
   rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
+
+  // InitPolicy creates a new policy instance on the Python side.
+  // Called once per route during chain building.
+  rpc InitPolicy (InitPolicyRequest) returns (InitPolicyResponse);
+
+  // DestroyPolicy destroys a policy instance on the Python side.
+  // Called when a route is removed or replaced.
+  rpc DestroyPolicy (DestroyPolicyRequest) returns (DestroyPolicyResponse);
 }
 
 // ---------------------- Request / Response ----------------------
@@ -64,6 +72,10 @@ message ExecutionRequest {
 
   // Policy metadata (route info, API info) for factory creation
   PolicyMetadata policy_metadata = 9;
+
+  // Instance ID assigned by Python during InitPolicy. Used to dispatch requests
+  // to the correct policy instance.
+  string instance_id = 10;
 }
 
 message ExecutionResponse {
@@ -79,6 +91,30 @@ message ExecutionResponse {
   // Updated shared metadata (Python may have mutated it).
   // Go side merges this back into the SharedContext.
   google.protobuf.Struct updated_metadata = 5;
+}
+
+// ---------------------- Policy Lifecycle ----------------------
+
+message InitPolicyRequest {
+  string policy_name = 1;
+  string policy_version = 2;
+  PolicyMetadata policy_metadata = 3;
+  google.protobuf.Struct params = 4;   // Merged system + user params
+}
+
+message InitPolicyResponse {
+  bool success = 1;
+  string instance_id = 2;              // Opaque ID for this instance (UUID)
+  string error_message = 3;            // Set if success=false
+}
+
+message DestroyPolicyRequest {
+  string instance_id = 1;              // Instance to destroy
+}
+
+message DestroyPolicyResponse {
+  bool success = 1;
+  string error_message = 2;
 }
 
 // ---------------------- Context Messages ----------------------
@@ -179,7 +215,7 @@ message ExecutionError {
   string message = 1;
   string policy_name = 2;
   string policy_version = 3;
-  string error_type = 4;    // "init_error", "execution_error", "timeout"
+  string error_type = 4;    // "execution_error", "timeout"
 }
 
 // ---------------------- Health Check ----------------------

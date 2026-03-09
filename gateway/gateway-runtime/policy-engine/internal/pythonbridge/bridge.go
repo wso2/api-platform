@@ -45,6 +45,8 @@ type PythonBridge struct {
 	streamManager *StreamManager         // Shared singleton
 	translator    *Translator
 	slogger       *slog.Logger
+	instanceID    string // NEW — Python-side instance identifier
+	closed        bool   // NEW — prevents double-close
 }
 
 // Mode returns the policy's processing mode (declared statically for Python policies).
@@ -128,14 +130,15 @@ func (b *PythonBridge) buildRequest(ctx *policy.RequestContext, params map[strin
 	policyMeta := b.buildPolicyMetadata()
 
 	return &proto.ExecutionRequest{
-		RequestId:     reqID,
-		PolicyName:    b.policyName,
-		PolicyVersion: b.policyVersion,
-		Phase:         phase,
-		Params:        toProtoStruct(params),
-		Context:       &proto.ExecutionRequest_RequestContext{RequestContext: reqCtx},
-		SharedContext: sharedCtx,
+		RequestId:      reqID,
+		PolicyName:     b.policyName,
+		PolicyVersion:  b.policyVersion,
+		Phase:          phase,
+		Params:         toProtoStruct(params),
+		Context:        &proto.ExecutionRequest_RequestContext{RequestContext: reqCtx},
+		SharedContext:  sharedCtx,
 		PolicyMetadata: policyMeta,
+		InstanceId:     b.instanceID,
 	}
 }
 
@@ -186,14 +189,15 @@ func (b *PythonBridge) buildResponseRequest(ctx *policy.ResponseContext, params 
 	policyMeta := b.buildPolicyMetadata()
 
 	return &proto.ExecutionRequest{
-		RequestId:       reqID,
-		PolicyName:      b.policyName,
-		PolicyVersion:   b.policyVersion,
-		Phase:           "on_response",
-		Params:          toProtoStruct(params),
-		Context:         &proto.ExecutionRequest_ResponseContext{ResponseContext: respCtx},
-		SharedContext:   sharedCtx,
-		PolicyMetadata:  policyMeta,
+		RequestId:      reqID,
+		PolicyName:     b.policyName,
+		PolicyVersion:  b.policyVersion,
+		Phase:          "on_response",
+		Params:         toProtoStruct(params),
+		Context:        &proto.ExecutionRequest_ResponseContext{ResponseContext: respCtx},
+		SharedContext:  sharedCtx,
+		PolicyMetadata: policyMeta,
+		InstanceId:     b.instanceID, // NEW
 	}
 }
 
@@ -259,4 +263,37 @@ func (b *PythonBridge) errorResponseAction(err error) policy.ResponseAction {
 		StatusCode: &statusCode,
 		Body:       []byte(fmt.Sprintf("Policy execution error: %v", err)),
 	}
+}
+
+// Close destroys the Python policy instance via DestroyPolicy RPC.
+// This method will be called by the Kernel when a route is removed or replaced
+// (once discussion #734 lands). It is safe to call multiple times.
+func (b *PythonBridge) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+
+	if b.instanceID == "" {
+		return nil // Init was never called or failed
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), getTimeout())
+	defer cancel()
+
+	req := &proto.DestroyPolicyRequest{
+		InstanceId: b.instanceID,
+	}
+
+	resp, err := b.streamManager.DestroyPolicy(ctx, req)
+	if err != nil {
+		b.slogger.Warn("DestroyPolicy RPC failed", "error", err, "instance_id", b.instanceID)
+		return fmt.Errorf("DestroyPolicy failed: %w", err)
+	}
+	if !resp.Success {
+		b.slogger.Warn("DestroyPolicy returned error", "error", resp.ErrorMessage, "instance_id", b.instanceID)
+	}
+
+	b.slogger.Info("Python policy instance destroyed", "instance_id", b.instanceID)
+	return nil
 }

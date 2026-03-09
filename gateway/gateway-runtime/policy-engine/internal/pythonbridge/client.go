@@ -49,6 +49,7 @@ import (
 type StreamManager struct {
 	socketPath  string
 	conn        *grpc.ClientConn
+	client      proto.PythonExecutorServiceClient // NEW — for unary RPCs
 	stream      proto.PythonExecutorService_ExecuteStreamClient
 	sendMu      sync.Mutex                               // Protects stream.Send()
 	pendingMu   sync.RWMutex                             // Protects pendingRequests
@@ -103,6 +104,7 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 	}
 
 	sm.conn = conn
+	sm.client = client
 	sm.stream = stream
 	sm.connected = true
 
@@ -257,6 +259,37 @@ func (sm *StreamManager) Close() error {
 	}
 
 	return nil
+}
+
+// InitPolicy calls the InitPolicy unary RPC to create a policy instance on the Python side.
+// Returns the instance_id assigned by Python.
+func (sm *StreamManager) InitPolicy(ctx context.Context, req *proto.InitPolicyRequest) (*proto.InitPolicyResponse, error) {
+	if !sm.IsConnected() {
+		if err := sm.Connect(ctx); err != nil {
+			return nil, fmt.Errorf("failed to connect to Python Executor: %w", err)
+		}
+	}
+
+	resp, err := sm.client.InitPolicy(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("InitPolicy RPC failed: %w", err)
+	}
+	return resp, nil
+}
+
+// DestroyPolicy calls the DestroyPolicy unary RPC to destroy a policy instance on the Python side.
+func (sm *StreamManager) DestroyPolicy(ctx context.Context, req *proto.DestroyPolicyRequest) (*proto.DestroyPolicyResponse, error) {
+	if !sm.IsConnected() {
+		if err := sm.Connect(ctx); err != nil {
+			return nil, fmt.Errorf("failed to connect to Python Executor: %w", err)
+		}
+	}
+
+	resp, err := sm.client.DestroyPolicy(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("DestroyPolicy RPC failed: %w", err)
+	}
+	return resp, nil
 }
 
 // getTimeout returns the configured timeout from environment or default.

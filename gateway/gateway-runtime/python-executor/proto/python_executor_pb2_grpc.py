@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from proto import python_executor_pb2 as python__executor__pb2
+import python_executor_pb2 as python__executor__pb2
 
-GRPC_GENERATED_VERSION = '1.78.1'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -46,6 +46,16 @@ class PythonExecutorServiceStub(object):
                 request_serializer=python__executor__pb2.HealthCheckRequest.SerializeToString,
                 response_deserializer=python__executor__pb2.HealthCheckResponse.FromString,
                 _registered_method=True)
+        self.InitPolicy = channel.unary_unary(
+                '/wso2.gateway.python.v1.PythonExecutorService/InitPolicy',
+                request_serializer=python__executor__pb2.InitPolicyRequest.SerializeToString,
+                response_deserializer=python__executor__pb2.InitPolicyResponse.FromString,
+                _registered_method=True)
+        self.DestroyPolicy = channel.unary_unary(
+                '/wso2.gateway.python.v1.PythonExecutorService/DestroyPolicy',
+                request_serializer=python__executor__pb2.DestroyPolicyRequest.SerializeToString,
+                response_deserializer=python__executor__pb2.DestroyPolicyResponse.FromString,
+                _registered_method=True)
 
 
 class PythonExecutorServiceServicer(object):
@@ -69,6 +79,22 @@ class PythonExecutorServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def InitPolicy(self, request, context):
+        """InitPolicy creates a new policy instance on the Python side.
+        Called once per route during chain building.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DestroyPolicy(self, request, context):
+        """DestroyPolicy destroys a policy instance on the Python side.
+        Called when a route is removed or replaced.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PythonExecutorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -81,6 +107,16 @@ def add_PythonExecutorServiceServicer_to_server(servicer, server):
                     servicer.HealthCheck,
                     request_deserializer=python__executor__pb2.HealthCheckRequest.FromString,
                     response_serializer=python__executor__pb2.HealthCheckResponse.SerializeToString,
+            ),
+            'InitPolicy': grpc.unary_unary_rpc_method_handler(
+                    servicer.InitPolicy,
+                    request_deserializer=python__executor__pb2.InitPolicyRequest.FromString,
+                    response_serializer=python__executor__pb2.InitPolicyResponse.SerializeToString,
+            ),
+            'DestroyPolicy': grpc.unary_unary_rpc_method_handler(
+                    servicer.DestroyPolicy,
+                    request_deserializer=python__executor__pb2.DestroyPolicyRequest.FromString,
+                    response_serializer=python__executor__pb2.DestroyPolicyResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -139,6 +175,60 @@ class PythonExecutorService(object):
             '/wso2.gateway.python.v1.PythonExecutorService/HealthCheck',
             python__executor__pb2.HealthCheckRequest.SerializeToString,
             python__executor__pb2.HealthCheckResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InitPolicy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso2.gateway.python.v1.PythonExecutorService/InitPolicy',
+            python__executor__pb2.InitPolicyRequest.SerializeToString,
+            python__executor__pb2.InitPolicyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DestroyPolicy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso2.gateway.python.v1.PythonExecutorService/DestroyPolicy',
+            python__executor__pb2.DestroyPolicyRequest.SerializeToString,
+            python__executor__pb2.DestroyPolicyResponse.FromString,
             options,
             channel_credentials,
             insecure,

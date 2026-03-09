@@ -19,13 +19,24 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Request Flow
+### Policy Lifecycle
 
-1. **Envoy** receives an HTTP request, sends it to the **Policy Engine** via ext_proc
-2. Policy Engine runs the policy chain for that route — a mix of Go and Python policies
-3. For **Go policies**: executed directly in-process
-4. For **Python policies**: the `PythonBridge` sends a gRPC request over UDS to the **Python Executor**, which runs the policy's `on_request()`/`on_response()` functions, and returns the action (add headers, modify body, reject, etc.)
-5. Result is merged back into the policy chain seamlessly — Go policies don't know Python was involved
+1. **Chain Building** (when an API is deployed/updated):
+   - Go Policy Engine calls `GetPolicy()` on the `BridgeFactory` for each Python policy in the chain
+   - `BridgeFactory.GetPolicy()` sends `InitPolicy` RPC to Python Executor
+   - Python Executor: `PolicyLoader` finds the factory → calls `get_policy(metadata, params)` → stores instance in `PolicyInstanceStore` → returns `instance_id`
+   - `PythonBridge` stores the `instance_id` and is ready for request processing
+
+2. **Request Processing** (per HTTP request):
+   - Envoy receives request, sends to Policy Engine via ext_proc
+   - Policy Engine runs policy chain — for Python policies, `PythonBridge.OnRequest/OnResponse()` is called
+   - `PythonBridge` sends `ExecuteStream` RPC with `instance_id` → Python Executor dispatches to the correct instance
+   - Instance's `on_request()`/`on_response()` method is called → action returned
+
+3. **Cleanup** (when route is removed/replaced, per discussion #734):
+   - Go Kernel calls `Close()` on the `PythonBridge`
+   - `PythonBridge.Close()` sends `DestroyPolicy` RPC with `instance_id`
+   - Python Executor: calls `instance.close()` → removes from `PolicyInstanceStore`
 
 ### Build Flow
 
@@ -50,14 +61,14 @@ The only overhead for a Go-only build is `python3` being installed in the runtim
 ### Proto Definition
 | File | Purpose |
 |------|---------|
-| `gateway-runtime/proto/python_executor.proto` | gRPC contract: `ExecuteStream` (bidi), `HealthCheck` |
+| `gateway-runtime/proto/python_executor.proto` | gRPC contract: `ExecuteStream` (bidi), `HealthCheck`, `InitPolicy`, `DestroyPolicy` |
 
 ### Go — Python Bridge (`policy-engine/internal/pythonbridge/`)
 | File | Purpose |
 |------|---------|
-| `bridge.go` | `PythonBridge` struct implementing `policy.Policy` — delegates to Python via gRPC |
-| `client.go` | `StreamManager` — singleton gRPC client, persistent bidi stream, request-ID correlation |
-| `factory.go` | `BridgeFactory` — creates `PythonBridge` instances, registered as `PolicyFactory` |
+| `bridge.go` | `PythonBridge` struct implementing `policy.Policy` — stores `instance_id`, delegates to Python via gRPC, has `Close()` method |
+| `client.go` | `StreamManager` — singleton gRPC client, persistent bidi stream, request-ID correlation, `InitPolicy()`/`DestroyPolicy()` methods |
+| `factory.go` | `BridgeFactory` — creates `PythonBridge` instances, calls `InitPolicy` RPC, registered as `PolicyFactory` |
 | `translator.go` | Converts proto responses → Go SDK action types |
 | `proto/python_executor.pb.go` | Generated Go protobuf types |
 | `proto/python_executor_grpc.pb.go` | Generated Go gRPC client stubs |
@@ -66,11 +77,11 @@ The only overhead for a Go-only build is `python3` being installed in the runtim
 | File | Purpose |
 |------|---------|
 | `main.py` | Entry point — asyncio event loop, signal handling, logging setup |
-| `executor/server.py` | gRPC servicer — handles `ExecuteStream`, dispatches to policy functions via `ThreadPoolExecutor` |
-| `executor/policy_loader.py` | Loads `on_request`/`on_response` functions from generated `python_policy_registry.py` using `importlib` |
-| ~~`executor/policy_cache.py`~~ | ~~Lazy content-addressed cache — key is `(name, version, hash(params))`~~ **(Removed — now stateless)** |
+| `executor/server.py` | gRPC servicer — handles `ExecuteStream`, `InitPolicy`, `DestroyPolicy`; dispatches to policy instances by `instance_id` |
+| `executor/policy_loader.py` | Loads `get_policy` factory functions from generated `python_policy_registry.py` using `importlib` |
+| `executor/instance_store.py` | **NEW** — `PolicyInstanceStore` maps `instance_id → Policy` instance, thread-safe |
 | `executor/translator.py` | Converts proto messages ↔ Python SDK types |
-| `sdk/policy.py` | Python Policy SDK — `Policy` ABC (deprecated), context/action dataclasses, function type aliases |
+| `sdk/policy.py` | Python Policy SDK — `Policy` ABC with `on_request`, `on_response`, `close` methods |
 | `requirements.txt` | Base deps: `grpcio`, `protobuf` |
 | `proto/python_executor_pb2.py` | Generated Python protobuf types |
 | `proto/python_executor_pb2_grpc.py` | Generated Python gRPC stubs |
@@ -79,7 +90,7 @@ The only overhead for a Go-only build is `python3` being installed in the runtim
 | File | Purpose |
 |------|---------|
 | `policy-definition.yaml` | Policy metadata: name, version, `runtime: python`, `processingMode`, params schema |
-| `policy.py` | Implementation: exports `on_request()`/`on_response()` functions |
+| `policy.py` | Implementation: class extending `Policy` with `get_policy()` factory |
 | `requirements.txt` | Policy-specific deps (empty for this simple policy) |
 
 ### Controller Policy Definition
@@ -119,47 +130,136 @@ The only overhead for a Go-only build is `python3` being installed in the runtim
 
 ## Writing a Python Policy
 
-Python policies are **stateless functions**, not classes. Each policy module exports two functions:
+Python policies are **class-based** with a factory function. Each policy module exports a `get_policy()` factory that returns a `Policy` instance:
 
 ```python
 from typing import Any, Dict
-from sdk.policy import RequestContext, ResponseContext, RequestAction, ResponseAction
+from sdk.policy import (
+    Policy, PolicyMetadata,
+    RequestContext, ResponseContext,
+    RequestAction, ResponseAction,
+    UpstreamRequestModifications,
+)
 
-def on_request(ctx: RequestContext, params: Dict[str, Any]) -> RequestAction:
-    """Process request phase.
+class MyPolicy(Policy):
+    """Example Python policy with lifecycle."""
+    
+    def __init__(self, header_name: str, header_value: str):
+        # Initialize with config extracted from params
+        self._header_name = header_name
+        self._header_value = header_value
+    
+    def on_request(self, ctx: RequestContext, params: Dict[str, Any]) -> RequestAction:
+        """Process request phase.
+        
+        Args:
+            ctx: Request context with headers, body, path, method, shared metadata.
+            params: Policy configuration parameters from policy-definition.yaml.
+        
+        Returns:
+            None for pass-through, UpstreamRequestModifications for changes,
+            or ImmediateResponse to short-circuit.
+        """
+        return UpstreamRequestModifications(
+            set_headers={self._header_name: self._header_value}
+        )
+    
+    def on_response(self, ctx: ResponseContext, params: Dict[str, Any]) -> ResponseAction:
+        """Process response phase.
+        
+        Args:
+            ctx: Response context with request data, response headers/body/status, shared metadata.
+            params: Policy configuration parameters.
+        
+        Returns:
+            None for pass-through or UpstreamResponseModifications for changes.
+        """
+        return None  # Pass-through
+    
+    def close(self) -> None:
+        """Release resources when the policy instance is destroyed.
+        
+        Called when the route is removed or replaced. Override to close
+        connections, stop background threads, flush caches, etc.
+        Must be idempotent — may be called multiple times.
+        """
+        pass  # Default: no-op
+
+
+def get_policy(metadata: PolicyMetadata, params: Dict[str, Any]) -> Policy:
+    """Factory function — mirrors Go's GetPolicy.
     
     Args:
-        ctx: Request context with headers, body, path, method, shared metadata.
-        params: Policy configuration parameters from policy-definition.yaml.
+        metadata: Route/API metadata for this policy instance.
+        params: Merged system + user parameters (already resolved by Go side).
     
     Returns:
-        None for pass-through, UpstreamRequestModifications for changes,
-        or ImmediateResponse to short-circuit.
+        A Policy instance. The factory controls instancing — can return a
+        fresh instance, a cached singleton, or a shared instance keyed by
+        config hash, exactly like Go's GetPolicy pattern.
     """
-    # Example: add a header
-    from sdk.policy import UpstreamRequestModifications
-    return UpstreamRequestModifications(set_headers={"X-Custom": "value"})
-
-def on_response(ctx: ResponseContext, params: Dict[str, Any]) -> ResponseAction:
-    """Process response phase.
-    
-    Args:
-        ctx: Response context with request data, response headers/body/status, shared metadata.
-        params: Policy configuration parameters.
-    
-    Returns:
-        None for pass-through or UpstreamResponseModifications for changes.
-    """
-    return None  # Pass-through
+    header_name = params.get("headerName", "X-Custom-Header")
+    header_value = params.get("headerValue", "default-value")
+    return MyPolicy(header_name, header_value)
 ```
 
-### Key differences from class-based (deprecated) approach:
-- **No class, no `__init__`, no `self`** — policies are pure functions
-- **No `get_policy` factory** — functions are called directly by the executor
-- **Parameters passed per-request** — read from `params` dict in each function call
-- **Thread-safe by design** — no shared mutable state between requests
+### Key features of the class-based approach:
+- **`get_policy(metadata, params)` factory** — controls instancing (singleton, per-route, cached, etc.)
+- **`Policy` class with `on_request`, `on_response`** — implements policy logic
+- **`close()` method** — cleanup hook called when route is removed
+- **Thread-safe** — each route gets its own instance; instances are not shared between routes unless the factory returns a shared one
 
 See `sample-policies/add-python-header/policy.py` for a complete example.
+
+## Instancing Patterns
+
+The factory controls instancing strategy:
+
+### Fresh instance per route (default)
+```python
+def get_policy(metadata, params):
+    return MyPolicy(params)  # New instance every time
+```
+
+### Singleton (shared across all routes)
+```python
+_instance = None
+
+def get_policy(metadata, params):
+    global _instance
+    if _instance is None:
+        _instance = MyPolicy(params)
+    return _instance
+```
+
+### Cached by config hash
+```python
+import hashlib
+_cache = {}
+
+def get_policy(metadata, params):
+    config_hash = hashlib.sha256(str(params).encode()).hexdigest()
+    if config_hash not in _cache:
+        _cache[config_hash] = MyPolicy(params)
+    return _cache[config_hash]
+```
+
+## Connection to Discussion #734
+
+When discussion #734 is implemented, the Go `Policy` interface will gain a `Close() error` method. The `PythonBridge` already implements this method — it calls `DestroyPolicy` RPC which triggers `instance.close()` on the Python side.
+
+Flow when route is removed:
+```
+Kernel.ApplyWholeRoutes(newRoutes)
+  → identifies removed routes
+  → go func() {  // async cleanup
+        for _, policy := range removedChain.Policies {
+            policy.Close()  // PythonBridge.Close()
+              → DestroyPolicy RPC
+                → Python: instance.close()
+        }
+    }()
+```
 
 ## Bug Fixes Applied During Bring-up
 
@@ -173,18 +273,22 @@ See `sample-policies/add-python-header/policy.py` for a complete example.
 | `filePath:` Python policies routed to Go discovery | Added runtime detection: reads `policy-definition.yaml` to check `runtime` before dispatching |
 | Docker build failing without Python policies | Added `generatePythonExecutorBase()` that always creates the output directory |
 
-## Stateless Python Executor (2025-02)
+## Policy Lifecycle Changes (2025-03)
 
-The Python Executor was refactored to be **stateless**:
+The Python Executor was refactored to support **policy lifecycle** with `InitPolicy` / `DestroyPolicy` RPCs:
 
 | Before | After |
 |--------|-------|
-| `Policy` class with `__init__` and `get_policy` factory | `on_request()`/`on_response()` functions exported directly |
-| `PolicyCache` creating instances per `(name, version, params_hash)` | No cache — functions called directly with params |
-| Risk of shared mutable state, threading issues | Thread-safe by design — no shared state |
-| Class boilerplate required | Simple functions, minimal code |
+| Stateless `on_request()`/`on_response()` functions | Class-based `Policy` with `on_request`, `on_response`, `close` |
+| No factory, functions called directly | `get_policy(metadata, params)` factory controls instancing |
+| No instance identity | Opaque `instance_id` generated by Python, echoed by Go |
+| No cleanup | `DestroyPolicy` RPC calls `instance.close()` |
+| `Policy` ABC deprecated | `Policy` ABC is the primary pattern |
 
-The Go side requires **zero changes** — the gRPC contract is identical. Only the Python side dispatch mechanism changed.
+The gRPC contract expanded with:
+- `InitPolicy` / `InitPolicyResponse` — create instance
+- `DestroyPolicy` / `DestroyPolicyResponse` — destroy instance  
+- `ExecutionRequest.instance_id` — dispatch to correct instance
 
 ## Verified Working
 
@@ -192,3 +296,5 @@ Tested with a **Go → Python → Go** policy chain:
 - `log-message` (Go) → `add-python-header` (Python) → `add-headers` (Go)
 - Both `X-Python-Policy` and `X-Go-Policy` headers appeared in the upstream request
 - All three processes (Python Executor, Policy Engine, Envoy) running stable in the container
+- `InitPolicy` called during chain building, `instance_id` stored in `PythonBridge`
+- `ExecuteStream` requests include `instance_id`, correctly dispatched to instance

@@ -14,13 +14,11 @@
 
 """Python Policy SDK for WSO2 API Platform Gateway."""
 
-from .policy import (
+from sdk.policy import (
     Body,
     BodyProcessingMode,
     HeaderProcessingMode,
     ImmediateResponse,
-    OnRequestFn,
-    OnResponseFn,
     Policy,
     PolicyMetadata,
     ProcessingMode,
@@ -38,8 +36,6 @@ __all__ = [
     "BodyProcessingMode",
     "HeaderProcessingMode",
     "ImmediateResponse",
-    "OnRequestFn",
-    "OnResponseFn",
     "Policy",
     "PolicyMetadata",
     "ProcessingMode",

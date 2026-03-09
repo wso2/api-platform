@@ -18,9 +18,12 @@
 package pythonbridge
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto"
 )
 
 // BridgeFactory creates PythonBridge instances. It is registered as the PolicyFactory
@@ -44,7 +47,34 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		"version", f.PolicyVersion,
 		"route", metadata.RouteName,
 	)
-	slogger.Info("Creating PythonBridge instance")
+
+	// Build InitPolicy request
+	req := &proto.InitPolicyRequest{
+		PolicyName:    f.PolicyName,
+		PolicyVersion: f.PolicyVersion,
+		PolicyMetadata: &proto.PolicyMetadata{
+			RouteName:  metadata.RouteName,
+			ApiId:      metadata.APIId,
+			ApiName:    metadata.APIName,
+			ApiVersion: metadata.APIVersion,
+			AttachedTo: string(metadata.AttachedTo),
+		},
+		Params: toProtoStruct(params),
+	}
+
+	// Call InitPolicy RPC
+	ctx, cancel := context.WithTimeout(context.Background(), getTimeout())
+	defer cancel()
+
+	resp, err := f.StreamManager.InitPolicy(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("InitPolicy RPC failed for %s:%s: %w", f.PolicyName, f.PolicyVersion, err)
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("InitPolicy failed for %s:%s: %s", f.PolicyName, f.PolicyVersion, resp.ErrorMessage)
+	}
+
+	slogger.Info("Python policy instance created", "instance_id", resp.InstanceId)
 
 	return &PythonBridge{
 		policyName:    f.PolicyName,
@@ -55,5 +85,6 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		streamManager: f.StreamManager,
 		translator:    NewTranslator(),
 		slogger:       slogger,
+			instanceID:    resp.InstanceId,
 	}, nil
 }

@@ -14,14 +14,16 @@
 
 """Sample Python policy that adds a custom header to requests.
 
-This policy demonstrates the stateless function-based pattern.
-Instead of a class with __init__ and get_policy factory, we export
-on_request() and on_response() functions directly.
+Demonstrates the class-based Policy pattern with a get_policy() factory.
+This is a simple stateless policy — the factory returns a new instance
+each time (no caching needed for this use case).
 """
 
 from typing import Any, Dict
 
 from sdk.policy import (
+    Policy,
+    PolicyMetadata,
     RequestContext,
     ResponseContext,
     UpstreamRequestModifications,
@@ -30,31 +32,24 @@ from sdk.policy import (
 )
 
 
-def on_request(ctx: RequestContext, params: Dict[str, Any]) -> RequestAction:
-    """Add the configured header to the request.
+class AddPythonHeaderPolicy(Policy):
+    """Adds a configurable header to upstream requests."""
 
-    Args:
-        ctx: Request context with headers, body, path, method, shared metadata.
-        params: Policy configuration parameters (headerName, headerValue).
+    def __init__(self, header_name: str, header_value: str):
+        self._header_name = header_name
+        self._header_value = header_value
 
-    Returns:
-        UpstreamRequestModifications with the header to add.
-    """
+    def on_request(self, ctx: RequestContext, params: Dict[str, Any]) -> RequestAction:
+        return UpstreamRequestModifications(
+            set_headers={self._header_name: self._header_value}
+        )
+
+    def on_response(self, ctx: ResponseContext, params: Dict[str, Any]) -> ResponseAction:
+        return None
+
+
+def get_policy(metadata: PolicyMetadata, params: Dict[str, Any]) -> Policy:
+    """Factory function — mirrors Go's GetPolicy."""
     header_name = params.get("headerName", "X-Python-Policy")
     header_value = params.get("headerValue", "hello-from-python")
-    return UpstreamRequestModifications(
-        set_headers={header_name: header_value}
-    )
-
-
-def on_response(ctx: ResponseContext, params: Dict[str, Any]) -> ResponseAction:
-    """Pass-through — no modifications to response.
-
-    Args:
-        ctx: Response context with request data, response headers/body/status, shared metadata.
-        params: Policy configuration parameters.
-
-    Returns:
-        None for pass-through (no modifications).
-    """
-    return None
+    return AddPythonHeaderPolicy(header_name, header_value)

@@ -37,6 +37,8 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	PythonExecutorService_ExecuteStream_FullMethodName = "/wso2.gateway.python.v1.PythonExecutorService/ExecuteStream"
 	PythonExecutorService_HealthCheck_FullMethodName   = "/wso2.gateway.python.v1.PythonExecutorService/HealthCheck"
+	PythonExecutorService_InitPolicy_FullMethodName    = "/wso2.gateway.python.v1.PythonExecutorService/InitPolicy"
+	PythonExecutorService_DestroyPolicy_FullMethodName = "/wso2.gateway.python.v1.PythonExecutorService/DestroyPolicy"
 )
 
 // PythonExecutorServiceClient is the client API for PythonExecutorService service.
@@ -52,6 +54,12 @@ type PythonExecutorServiceClient interface {
 	ExecuteStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecutionRequest, ExecutionResponse], error)
 	// Health check for readiness.
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+	// InitPolicy creates a new policy instance on the Python side.
+	// Called once per route during chain building.
+	InitPolicy(ctx context.Context, in *InitPolicyRequest, opts ...grpc.CallOption) (*InitPolicyResponse, error)
+	// DestroyPolicy destroys a policy instance on the Python side.
+	// Called when a route is removed or replaced.
+	DestroyPolicy(ctx context.Context, in *DestroyPolicyRequest, opts ...grpc.CallOption) (*DestroyPolicyResponse, error)
 }
 
 type pythonExecutorServiceClient struct {
@@ -85,6 +93,26 @@ func (c *pythonExecutorServiceClient) HealthCheck(ctx context.Context, in *Healt
 	return out, nil
 }
 
+func (c *pythonExecutorServiceClient) InitPolicy(ctx context.Context, in *InitPolicyRequest, opts ...grpc.CallOption) (*InitPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InitPolicyResponse)
+	err := c.cc.Invoke(ctx, PythonExecutorService_InitPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pythonExecutorServiceClient) DestroyPolicy(ctx context.Context, in *DestroyPolicyRequest, opts ...grpc.CallOption) (*DestroyPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DestroyPolicyResponse)
+	err := c.cc.Invoke(ctx, PythonExecutorService_DestroyPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PythonExecutorServiceServer is the server API for PythonExecutorService service.
 // All implementations must embed UnimplementedPythonExecutorServiceServer
 // for forward compatibility.
@@ -98,6 +126,12 @@ type PythonExecutorServiceServer interface {
 	ExecuteStream(grpc.BidiStreamingServer[ExecutionRequest, ExecutionResponse]) error
 	// Health check for readiness.
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	// InitPolicy creates a new policy instance on the Python side.
+	// Called once per route during chain building.
+	InitPolicy(context.Context, *InitPolicyRequest) (*InitPolicyResponse, error)
+	// DestroyPolicy destroys a policy instance on the Python side.
+	// Called when a route is removed or replaced.
+	DestroyPolicy(context.Context, *DestroyPolicyRequest) (*DestroyPolicyResponse, error)
 	mustEmbedUnimplementedPythonExecutorServiceServer()
 }
 
@@ -113,6 +147,12 @@ func (UnimplementedPythonExecutorServiceServer) ExecuteStream(grpc.BidiStreaming
 }
 func (UnimplementedPythonExecutorServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedPythonExecutorServiceServer) InitPolicy(context.Context, *InitPolicyRequest) (*InitPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InitPolicy not implemented")
+}
+func (UnimplementedPythonExecutorServiceServer) DestroyPolicy(context.Context, *DestroyPolicyRequest) (*DestroyPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DestroyPolicy not implemented")
 }
 func (UnimplementedPythonExecutorServiceServer) mustEmbedUnimplementedPythonExecutorServiceServer() {}
 func (UnimplementedPythonExecutorServiceServer) testEmbeddedByValue()                               {}
@@ -160,6 +200,42 @@ func _PythonExecutorService_HealthCheck_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PythonExecutorService_InitPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PythonExecutorServiceServer).InitPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PythonExecutorService_InitPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PythonExecutorServiceServer).InitPolicy(ctx, req.(*InitPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PythonExecutorService_DestroyPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DestroyPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PythonExecutorServiceServer).DestroyPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PythonExecutorService_DestroyPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PythonExecutorServiceServer).DestroyPolicy(ctx, req.(*DestroyPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PythonExecutorService_ServiceDesc is the grpc.ServiceDesc for PythonExecutorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -170,6 +246,14 @@ var PythonExecutorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthCheck",
 			Handler:    _PythonExecutorService_HealthCheck_Handler,
+		},
+		{
+			MethodName: "InitPolicy",
+			Handler:    _PythonExecutorService_InitPolicy_Handler,
+		},
+		{
+			MethodName: "DestroyPolicy",
+			Handler:    _PythonExecutorService_DestroyPolicy_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

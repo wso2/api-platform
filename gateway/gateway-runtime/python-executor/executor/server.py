@@ -18,6 +18,7 @@ import asyncio
 import logging
 import os
 import signal
+import uuid
 from concurrent import futures
 from typing import AsyncIterator, Optional
 
@@ -25,6 +26,7 @@ import grpc
 from grpc import aio
 
 from executor.policy_loader import PolicyLoader
+from executor.instance_store import PolicyInstanceStore
 from executor.translator import Translator
 import proto.python_executor_pb2 as proto
 import proto.python_executor_pb2_grpc as proto_grpc
@@ -35,52 +37,166 @@ logger = logging.getLogger(__name__)
 class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
     """gRPC servicer for Python Executor."""
 
-    def __init__(self, policy_loader: PolicyLoader, worker_count: int = 4, max_concurrent: int = 100):
+    def __init__(
+        self,
+        policy_loader: PolicyLoader,
+        instance_store: PolicyInstanceStore,
+        worker_count: int = 4,
+        max_concurrent: int = 100,
+    ):
         self._loader = policy_loader
+        self._store = instance_store
         self._translator = Translator()
         self._executor = futures.ThreadPoolExecutor(max_workers=worker_count)
         self._max_concurrent = max_concurrent
-        logger.info(f"PythonExecutorServicer initialized with {worker_count} workers, max_concurrent={max_concurrent}")
+        logger.info(
+            f"PythonExecutorServicer initialized with {worker_count} workers, "
+            f"max_concurrent={max_concurrent}"
+        )
+
+    # ------------------------------------------------------------------ #
+    #  InitPolicy — called once per route during chain building           #
+    # ------------------------------------------------------------------ #
+
+    async def InitPolicy(
+        self,
+        request: proto.InitPolicyRequest,
+        context: grpc.ServicerContext,
+    ) -> proto.InitPolicyResponse:
+        """Create a policy instance via the factory and store it."""
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                self._executor,
+                self._init_policy_sync,
+                request,
+            )
+            return response
+        except Exception as e:
+            logger.exception(
+                f"InitPolicy failed for {request.policy_name}:{request.policy_version}"
+            )
+            return proto.InitPolicyResponse(
+                success=False,
+                error_message=str(e),
+            )
+
+    def _init_policy_sync(
+        self, request: proto.InitPolicyRequest
+    ) -> proto.InitPolicyResponse:
+        """Synchronous init — runs in thread pool."""
+        factory = self._loader.get_factory(
+            request.policy_name, request.policy_version
+        )
+        metadata = self._translator.to_python_policy_metadata(request.policy_metadata)
+        params = self._translator.struct_to_dict(request.params)
+
+        instance = factory(metadata, params)
+
+        instance_id = str(uuid.uuid4())
+        self._store.put(instance_id, instance)
+
+        logger.info(
+            f"InitPolicy OK: {request.policy_name}:{request.policy_version} "
+            f"route={metadata.route_name} instance_id={instance_id}"
+        )
+        return proto.InitPolicyResponse(success=True, instance_id=instance_id)
+
+    # ------------------------------------------------------------------ #
+    #  DestroyPolicy — called when a route is removed or replaced         #
+    # ------------------------------------------------------------------ #
+
+    async def DestroyPolicy(
+        self,
+        request: proto.DestroyPolicyRequest,
+        context: grpc.ServicerContext,
+    ) -> proto.DestroyPolicyResponse:
+        """Destroy a policy instance: call close() and remove from store."""
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                self._executor,
+                self._destroy_policy_sync,
+                request,
+            )
+            return response
+        except Exception as e:
+            logger.exception(
+                f"DestroyPolicy failed for instance_id={request.instance_id}"
+            )
+            return proto.DestroyPolicyResponse(
+                success=False,
+                error_message=str(e),
+            )
+
+    def _destroy_policy_sync(
+        self, request: proto.DestroyPolicyRequest
+    ) -> proto.DestroyPolicyResponse:
+        """Synchronous destroy — runs in thread pool."""
+        instance = self._store.remove(request.instance_id)
+        if instance is None:
+            logger.warning(
+                f"DestroyPolicy: instance_id={request.instance_id} not found (already destroyed?)"
+            )
+            return proto.DestroyPolicyResponse(success=True)
+
+        try:
+            instance.close()
+        except Exception as e:
+            logger.warning(
+                f"DestroyPolicy: close() raised for instance_id={request.instance_id}: {e}"
+            )
+            # Still consider success — the instance is removed from the store
+            return proto.DestroyPolicyResponse(success=True, error_message=str(e))
+
+        logger.info(f"DestroyPolicy OK: instance_id={request.instance_id}")
+        return proto.DestroyPolicyResponse(success=True)
+
+    # ------------------------------------------------------------------ #
+    #  ExecuteStream — hot-path request/response execution                #
+    # ------------------------------------------------------------------ #
 
     async def ExecuteStream(
         self,
         request_iterator: AsyncIterator[proto.ExecutionRequest],
-        context: grpc.ServicerContext
+        context: grpc.ServicerContext,
     ) -> AsyncIterator[proto.ExecutionResponse]:
         """Handle bidirectional streaming execution requests with concurrent fan-out.
 
-        Architecture:
+        Architecture unchanged from current implementation:
         - Reader task: eagerly consumes request_iterator, spawns a processing task per request
         - Processing tasks: execute policy in thread pool, put result in response queue
         - Writer (this generator): yields responses from queue as they complete (out-of-order)
 
         The Go side correlates responses by request_id, so order doesn't matter.
         """
-        response_queue: asyncio.Queue[proto.ExecutionResponse] = asyncio.Queue(maxsize=self._max_concurrent)
+        response_queue: asyncio.Queue[proto.ExecutionResponse] = asyncio.Queue(
+            maxsize=self._max_concurrent
+        )
         in_flight: set[asyncio.Task] = set()
         reader_done = asyncio.Event()
         concurrency_limit = asyncio.Semaphore(self._max_concurrent)
 
         async def process_request(request: proto.ExecutionRequest) -> None:
-            """Process a single request and put the result in the response queue."""
             try:
                 async with concurrency_limit:
                     loop = asyncio.get_event_loop()
                     response = await loop.run_in_executor(
                         self._executor,
                         self._execute_policy,
-                        request
+                        request,
                     )
                     await response_queue.put(response)
             except Exception as e:
-                logger.exception(f"Error executing policy {request.policy_name}:{request.policy_version}")
+                logger.exception(
+                    f"Error executing policy {request.policy_name}:{request.policy_version}"
+                )
                 error_resp = self._error_response(
                     request.request_id, e, request.policy_name, request.policy_version
                 )
                 await response_queue.put(error_resp)
 
         async def reader() -> None:
-            """Eagerly consume requests from the stream and spawn processing tasks."""
             try:
                 async for request in request_iterator:
                     task = asyncio.create_task(process_request(request))
@@ -88,18 +204,15 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                     task.add_done_callback(in_flight.discard)
             except asyncio.CancelledError:
                 logger.info("Reader cancelled")
-            except Exception as e:
+            except Exception:
                 logger.exception("Reader encountered error")
             finally:
                 reader_done.set()
 
-        # Start the reader as a background task
         reader_task = asyncio.create_task(reader())
 
         try:
-            # Writer loop: yield responses as they complete
             while True:
-                # Try to get a response without blocking first (drain any ready items)
                 try:
                     response = response_queue.get_nowait()
                     yield response
@@ -107,12 +220,9 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                 except asyncio.QueueEmpty:
                     pass
 
-                # Check if we're done: reader finished AND no in-flight tasks AND queue empty
                 if reader_done.is_set() and len(in_flight) == 0 and response_queue.empty():
                     break
 
-                # Wait for the next response with a short timeout
-                # (timeout allows re-checking the done condition)
                 try:
                     response = await asyncio.wait_for(response_queue.get(), timeout=0.1)
                     yield response
@@ -121,20 +231,17 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
 
         except asyncio.CancelledError:
             logger.info("ExecuteStream cancelled, cleaning up")
-            # Cancel reader
             reader_task.cancel()
             try:
                 await reader_task
             except asyncio.CancelledError:
                 pass
-            # Cancel all in-flight processing tasks
             for task in list(in_flight):
                 task.cancel()
             if in_flight:
                 await asyncio.wait(in_flight, timeout=5.0)
             raise
         finally:
-            # Ensure reader is cleaned up
             if not reader_task.done():
                 reader_task.cancel()
                 try:
@@ -143,51 +250,44 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                     pass
 
     def _execute_policy(self, request: proto.ExecutionRequest) -> proto.ExecutionResponse:
-        """Execute a single policy request (runs in thread pool)."""
-        # Get policy functions directly from loader (no cache, no instances)
-        params = self._translator.struct_to_dict(request.params)
-        on_request_fn, on_response_fn = self._loader.get_policy_functions(
-            request.policy_name,
-            request.policy_version,
-        )
+        """Execute a single policy request (runs in thread pool).
 
-        # Build shared context
+        Looks up the policy instance by instance_id, then calls
+        on_request or on_response.
+        """
+        instance = self._store.get(request.instance_id)
+        if instance is None:
+            raise ValueError(
+                f"No policy instance for instance_id={request.instance_id} "
+                f"(policy={request.policy_name}:{request.policy_version})"
+            )
+
+        params = self._translator.struct_to_dict(request.params)
         shared_ctx = self._translator.to_python_shared_context(request.shared_context)
 
-        # Execute based on phase
         if request.phase == "on_request":
-            if on_request_fn is None:
-                raise ValueError(f"Policy {request.policy_name}:{request.policy_version} does not implement on_request")
-
-            req_ctx = self._translator.to_python_request_context(request.request_context, shared_ctx)
-            action = on_request_fn(req_ctx, params)
-
-            # Merge any metadata changes back
+            req_ctx = self._translator.to_python_request_context(
+                request.request_context, shared_ctx
+            )
+            action = instance.on_request(req_ctx, params)
             updated_metadata = self._dict_to_struct(shared_ctx.metadata)
-
-            result = proto.ExecutionResponse(
+            return proto.ExecutionResponse(
                 request_id=request.request_id,
                 request_result=self._translator.to_proto_request_action_result(action),
                 updated_metadata=updated_metadata,
             )
-            return result
 
         elif request.phase == "on_response":
-            if on_response_fn is None:
-                raise ValueError(f"Policy {request.policy_name}:{request.policy_version} does not implement on_response")
-
-            resp_ctx = self._translator.to_python_response_context(request.response_context, shared_ctx)
-            action = on_response_fn(resp_ctx, params)
-
-            # Merge any metadata changes back
+            resp_ctx = self._translator.to_python_response_context(
+                request.response_context, shared_ctx
+            )
+            action = instance.on_response(resp_ctx, params)
             updated_metadata = self._dict_to_struct(shared_ctx.metadata)
-
-            result = proto.ExecutionResponse(
+            return proto.ExecutionResponse(
                 request_id=request.request_id,
                 response_result=self._translator.to_proto_response_action_result(action),
                 updated_metadata=updated_metadata,
             )
-            return result
 
         else:
             raise ValueError(f"Unknown phase: {request.phase}")
@@ -197,24 +297,21 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         request_id: str,
         error: Exception,
         policy_name: str,
-        policy_version: str
+        policy_version: str,
     ) -> proto.ExecutionResponse:
         """Create an error response."""
-        # No more init phase — all errors are execution errors in stateless model
-        error_type = "execution_error"
         return proto.ExecutionResponse(
             request_id=request_id,
             error=proto.ExecutionError(
                 message=str(error),
                 policy_name=policy_name,
                 policy_version=policy_version,
-                error_type=error_type,
-            )
+                error_type="execution_error",
+            ),
         )
 
     @staticmethod
     def _dict_to_struct(d: dict):
-        """Convert dict to protobuf Struct."""
         from google.protobuf.struct_pb2 import Struct
         s = Struct()
         if d:
@@ -224,14 +321,11 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
     async def HealthCheck(
         self,
         request: proto.HealthCheckRequest,
-        context: grpc.ServicerContext
+        context: grpc.ServicerContext,
     ) -> proto.HealthCheckResponse:
         """Health check endpoint."""
         loaded = self._loader.get_loaded_policy_count()
-        return proto.HealthCheckResponse(
-            ready=True,
-            loaded_policies=loaded
-        )
+        return proto.HealthCheckResponse(ready=True, loaded_policies=loaded)
 
 
 class PythonExecutorServer:
@@ -243,45 +337,51 @@ class PythonExecutorServer:
         self.max_concurrent = max_concurrent
         self.server: Optional[aio.Server] = None
         self._loader = PolicyLoader()
+        self._store = PolicyInstanceStore()
 
     async def start(self):
         """Start the server."""
         logger.info(f"Starting Python Executor on {self.socket_path}")
 
-        # Load policies
         loaded_count = self._loader.load_policies()
-        logger.info(f"Loaded {loaded_count} policies")
+        logger.info(f"Loaded {loaded_count} policy factories")
 
-        # Create server
         self.server = aio.server(
             migration_thread_pool=futures.ThreadPoolExecutor(max_workers=self.worker_count),
             options=[
-                ('grpc.max_send_message_length', 50 * 1024 * 1024),  # 50MB
-                ('grpc.max_receive_message_length', 50 * 1024 * 1024),  # 50MB
-            ]
+                ('grpc.max_send_message_length', 50 * 1024 * 1024),
+                ('grpc.max_receive_message_length', 50 * 1024 * 1024),
+            ],
         )
 
-        # Add servicer
-        servicer = PythonExecutorServicer(self._loader, self.worker_count, self.max_concurrent)
+        servicer = PythonExecutorServicer(
+            self._loader, self._store, self.worker_count, self.max_concurrent
+        )
         proto_grpc.add_PythonExecutorServiceServicer_to_server(servicer, self.server)
 
-        # Bind to Unix Domain Socket
         if os.path.exists(self.socket_path):
             os.remove(self.socket_path)
 
         self.server.add_insecure_port(f"unix:{self.socket_path}")
         await self.server.start()
-
         logger.info(f"Python Executor ready on {self.socket_path}")
 
     async def wait_for_termination(self):
-        """Wait for the server to terminate."""
         if self.server:
             await self.server.wait_for_termination()
 
     async def shutdown(self):
-        """Shutdown the server gracefully."""
+        """Shutdown: close all live policy instances, then stop server."""
         logger.info("Shutting down Python Executor...")
+
+        # Close all live instances
+        instances = self._store.clear()
+        for instance in instances:
+            try:
+                instance.close()
+            except Exception as e:
+                logger.warning(f"Error closing policy instance during shutdown: {e}")
+
         if self.server:
             await self.server.stop(grace_period=5)
         logger.info("Python Executor shutdown complete")

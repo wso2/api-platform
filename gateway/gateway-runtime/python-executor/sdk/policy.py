@@ -12,22 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Python Policy SDK — mirrors the Go sdk/gateway/policy/v1alpha interface."""
+"""Python Policy SDK — mirrors the Go sdk/gateway/policy/v1alpha interface.
+
+Every Python policy is a class that extends Policy and exports a
+get_policy(metadata, params) factory function.  The factory controls
+instancing — it may return a fresh instance, a cached singleton, or a
+shared instance keyed by config hash, exactly like Go's GetPolicy.
+"""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from enum import Enum
 
 
-# Type aliases for stateless policy functions.
-# Policy modules should export on_request() and on_response() functions matching these signatures.
-OnRequestFn = Callable[["RequestContext", Dict[str, Any]], "RequestAction"]
-OnResponseFn = Callable[["ResponseContext", Dict[str, Any]], "ResponseAction"]
-
-
 # ---------------------- Processing Mode ----------------------
-
 
 class HeaderProcessingMode(Enum):
     SKIP = "SKIP"
@@ -48,7 +47,6 @@ class ProcessingMode:
 
 
 # ---------------------- Context Objects ----------------------
-
 
 @dataclass
 class SharedContext:
@@ -96,16 +94,15 @@ class ResponseContext:
 
 # ---------------------- Action Types ----------------------
 
-
 @dataclass
 class UpstreamRequestModifications:
     """Continue request to upstream with modifications."""
     set_headers: Dict[str, str] = field(default_factory=dict)
     remove_headers: List[str] = field(default_factory=list)
     append_headers: Dict[str, List[str]] = field(default_factory=dict)
-    body: Optional[bytes] = None  # None = no change
-    path: Optional[str] = None  # None = no change
-    method: Optional[str] = None  # None = no change
+    body: Optional[bytes] = None
+    path: Optional[str] = None
+    method: Optional[str] = None
     analytics_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -124,18 +121,16 @@ class UpstreamResponseModifications:
     set_headers: Dict[str, str] = field(default_factory=dict)
     remove_headers: List[str] = field(default_factory=list)
     append_headers: Dict[str, List[str]] = field(default_factory=dict)
-    body: Optional[bytes] = None  # None = no change
-    status_code: Optional[int] = None  # None = no change
+    body: Optional[bytes] = None
+    status_code: Optional[int] = None
     analytics_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-# Union types for return values
 RequestAction = Optional[Union[UpstreamRequestModifications, ImmediateResponse]]
 ResponseAction = Optional[UpstreamResponseModifications]
 
 
 # ---------------------- Policy Metadata ----------------------
-
 
 @dataclass
 class PolicyMetadata:
@@ -146,58 +141,36 @@ class PolicyMetadata:
     attached_to: str = ""  # "api" or "route"
 
 
-# ---------------------- Policy ABC (Deprecated) ----------------------
-
+# ---------------------- Policy ABC ----------------------
 
 class Policy(ABC):
-    """Abstract base class for all Python policies.
+    """Base class for all Python policies.
 
-    .. deprecated::
-        The class-based Policy pattern is deprecated. Use stateless functions instead:
-        export on_request(ctx, params) and on_response(ctx, params) from your policy module.
-        See sample-policies/add-python-header/policy.py for the new pattern.
+    Lifecycle:
+        1. get_policy(metadata, params) factory creates the instance
+        2. on_request / on_response called per HTTP request
+        3. close() called when the route is removed or replaced
 
-    The mode() method is not used by the runtime — ProcessingMode is read from
-    policy-definition.yaml at build time.
+    The factory controls instancing — return a singleton, a cached instance,
+    or a fresh instance per route, exactly like Go's GetPolicy pattern.
     """
-
-    def __init__(self, metadata: PolicyMetadata, params: Dict[str, Any]):
-        """Initialize the policy. Called once per unique (name, version, params_hash) combo.
-
-        Args:
-            metadata: Route/API metadata for this policy instance.
-            params: Merged system + user parameters (already resolved by Go side).
-        """
-        self.metadata = metadata
-        self.params = params
-
-    def mode(self) -> ProcessingMode:
-        """Declare processing requirements. Not used by runtime — defined in policy-definition.yaml."""
-        return ProcessingMode()
 
     @abstractmethod
     def on_request(self, ctx: RequestContext, params: Dict[str, Any]) -> RequestAction:
-        """Execute during request phase.
-
-        Args:
-            ctx: Request context with headers, body, path, method, shared metadata.
-            params: Same as self.params (passed for convenience/compatibility with Go pattern).
-
-        Returns:
-            None for pass-through, UpstreamRequestModifications for changes,
-            ImmediateResponse for short-circuit.
-        """
+        """Execute during request phase."""
         ...
 
     @abstractmethod
     def on_response(self, ctx: ResponseContext, params: Dict[str, Any]) -> ResponseAction:
-        """Execute during response phase.
-
-        Args:
-            ctx: Response context with request data, response headers/body/status, shared metadata.
-            params: Same as self.params.
-
-        Returns:
-            None for pass-through, UpstreamResponseModifications for changes.
-        """
+        """Execute during response phase."""
         ...
+
+    def close(self) -> None:
+        """Release resources held by this policy instance.
+
+        Called when the route is removed or replaced (via DestroyPolicy RPC).
+        Override to close connections, stop background threads, flush caches, etc.
+        Must be idempotent — may be called multiple times.
+        Default implementation does nothing.
+        """
+        pass
