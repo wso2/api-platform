@@ -106,13 +106,14 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		Version:          req.Version,
 		Status:           mcpStatusPending,
 		Configuration: model.MCPProxyConfiguration{
-			Name:        req.Name,
-			Version:     req.Version,
-			Context:     req.Context,
-			Vhost:       req.Vhost,
-			SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
-			Upstream:    *mapUpstreamAPIToModel(req.Upstream),
-			Policies:    mapMCPPoliciesAPIToModel(req.Policies),
+			Name:         req.Name,
+			Version:      req.Version,
+			Context:      req.Context,
+			Vhost:        req.Vhost,
+			SpecVersion:  mcpSpecVersionToString(req.McpSpecVersion),
+			Upstream:     *mapUpstreamAPIToModel(req.Upstream),
+			Policies:     mapMCPPoliciesAPIToModel(req.Policies),
+			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		},
 	}
 
@@ -198,13 +199,14 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
-		Name:        req.Name,
-		Version:     req.Version,
-		Context:     req.Context,
-		Vhost:       req.Vhost,
-		SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
-		Upstream:    *mapUpstreamAPIToModel(req.Upstream),
-		Policies:    mapMCPPoliciesAPIToModel(req.Policies),
+		Name:         req.Name,
+		Version:      req.Version,
+		Context:      req.Context,
+		Vhost:        req.Vhost,
+		SpecVersion:  mcpSpecVersionToString(req.McpSpecVersion),
+		Upstream:     *mapUpstreamAPIToModel(req.Upstream),
+		Policies:     mapMCPPoliciesAPIToModel(req.Policies),
+		Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 	}
 
 	if err := s.repo.Update(existing); err != nil {
@@ -339,6 +341,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		McpSpecVersion: specVersion,
 		Upstream:       mapUpstreamModelToAPI(&m.Configuration.Upstream),
 		Policies:       mapMCPPoliciesModelToAPI(m.Configuration.Policies),
+		Capabilities:   mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
 	}
 }
 
@@ -429,4 +432,28 @@ func mapMCPPoliciesModelToAPI(in []model.Policy) *[]api.Policy {
 		out = append(out, policy)
 	}
 	return &out
+}
+
+// mapMcpCapabilitiesAPIToModel converts API capabilities to model capabilities
+func mapMcpCapabilitiesAPIToModel(in *api.MCPProxyCapabilities) *model.MCPProxyCapabilities {
+	if in == nil {
+		return nil
+	}
+	return &model.MCPProxyCapabilities{
+		Prompts:   in.Prompts,
+		Resources: in.Resources,
+		Tools:     in.Tools,
+	}
+}
+
+// mapMcpCapabilitiesModelToAPI converts model capabilities to API capabilities
+func mapMcpCapabilitiesModelToAPI(in *model.MCPProxyCapabilities) *api.MCPProxyCapabilities {
+	if in == nil {
+		return nil
+	}
+	return &api.MCPProxyCapabilities{
+		Prompts:   in.Prompts,
+		Resources: in.Resources,
+		Tools:     in.Tools,
+	}
 }

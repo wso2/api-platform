@@ -6839,6 +6839,12 @@ components:
           description: Kind of the API based on its communication protocol or architectural style
           default: Mcp
           example: Mcp
+        capabilities:
+          type: object
+          description: >
+            List of capabilities supported by this proxy. This will be stored as-is and can be used in the future if we need
+            this for governance purposes
+          $ref: '#/components/schemas/MCPProxyCapabilities'
 
     MCPProxyListItem:
       type: object
@@ -6930,6 +6936,25 @@ components:
             type: object
         prompts:
           type: array
+          items:
+            type: object
+
+    MCPProxyCapabilities:
+      type: object
+      properties:
+        tools:
+          type: array
+          description: List of tool capabilities supported by this proxy
+          items:
+            type: object
+        resources:
+          type: array
+          description: List of resource capabilities supported by this proxy
+          items:
+            type: object
+        prompts:
+          type: array
+          description: List of prompt capabilities supported by this proxy
           items:
             type: object
 

@@ -1405,6 +1405,8 @@ type LLMRateLimitingConfig struct {
 
 // MCPProxy defines model for MCPProxy.
 type MCPProxy struct {
+	Capabilities *MCPProxyCapabilities `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+
 	// Context Base path for all REST API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
@@ -1444,6 +1446,18 @@ type MCPProxy struct {
 
 // MCPProxyMcpSpecVersion MCP specification version supported by this proxy
 type MCPProxyMcpSpecVersion string
+
+// MCPProxyCapabilities defines model for MCPProxyCapabilities.
+type MCPProxyCapabilities struct {
+	// Prompts List of prompt capabilities supported by this proxy
+	Prompts *[]map[string]interface{} `json:"prompts,omitempty" yaml:"prompts,omitempty"`
+
+	// Resources List of resource capabilities supported by this proxy
+	Resources *[]map[string]interface{} `json:"resources,omitempty" yaml:"resources,omitempty"`
+
+	// Tools List of tool capabilities supported by this proxy
+	Tools *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
+}
 
 // MCPProxyListItem defines model for MCPProxyListItem.
 type MCPProxyListItem struct {
