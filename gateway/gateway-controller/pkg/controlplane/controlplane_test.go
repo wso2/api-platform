@@ -298,13 +298,13 @@ func TestClient_calculateNextRetryDelay(t *testing.T) {
 	}
 }
 
-func TestClient_NotifyAPIDeployment_NotConnected(t *testing.T) {
+func TestClient_PushAPIDeployment_NotConnected(t *testing.T) {
 	client := createTestClient(t)
 
 	// When not connected, should return nil without error
-	err := client.NotifyAPIDeployment("api-123", nil, "deployment-1")
+	err := client.PushAPIDeployment("api-123", nil, "deployment-1")
 	if err != nil {
-		t.Errorf("NotifyAPIDeployment() error = %v, want nil when not connected", err)
+		t.Errorf("PushAPIDeployment() error = %v, want nil when not connected", err)
 	}
 }
 

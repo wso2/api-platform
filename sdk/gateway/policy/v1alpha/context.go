@@ -54,9 +54,9 @@ type SharedContext struct {
 	// with resolved parameters (e.g., "/petstore/v1.0.0/pets/123")
 	OperationPath string
 
-	// AuthContext stores authentication-related information
-	// Policies can read/write this map to share auth data (e.g., user ID)
-	AuthContext map[string]string
+	// AuthContext stores structured authentication information populated by auth policies.
+	// Nil until an auth policy runs. Use Previous for multi-layer auth chains.
+	AuthContext *AuthContext
 }
 
 // RequestContext is mutable context for request phase containing current request state

@@ -396,7 +396,7 @@ func (m *MockControlPlaneClient) IsConnected() bool {
 	return m.connected
 }
 
-func (m *MockControlPlaneClient) NotifyAPIDeployment(apiID string, cfg *models.StoredConfig, deploymentID string) error {
+func (m *MockControlPlaneClient) PushAPIDeployment(apiID string, cfg *models.StoredConfig, deploymentID string) error {
 	return nil
 }
 
@@ -1383,14 +1383,14 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				done <- fmt.Errorf("waitForDeploymentAndNotify panicked: %v", r)
+				done <- fmt.Errorf("waitForDeploymentAndPush panicked: %v", r)
 				return
 			}
 			done <- nil
 		}()
 
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		server.waitForDeploymentAndNotify("test-id", "test-correlation", logger)
+		server.waitForDeploymentAndPush("test-id", "test-correlation", logger)
 	}()
 
 	select {

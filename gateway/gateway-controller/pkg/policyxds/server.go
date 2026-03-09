@@ -131,6 +131,7 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 		logger:         logger,
 		activeStreams:  make(map[int64]bool),
 		onFirstConnect: s.onFirstConnect,
+		pendingNonces:  make(map[int64]string),
 	}
 	xdsServer := server.NewServer(context.Background(), combinedCache, callbacks)
 
@@ -178,6 +179,7 @@ type serverCallbacks struct {
 	activeStreamsMu  sync.Mutex
 	onFirstConnect   chan struct{}
 	firstConnectOnce sync.Once
+	pendingNonces    map[int64]string // stream_id -> last sent nonce
 }
 
 // OnStreamOpen is called when a new stream is opened
@@ -212,8 +214,14 @@ func (cb *serverCallbacks) OnStreamRequest(streamID int64, req *discoverygrpc.Di
 
 	if _, exists := cb.activeStreams[streamID]; !exists {
 		cb.activeStreams[streamID] = true
-		if cb.onFirstConnect != nil {
-			cb.firstConnectOnce.Do(func() { close(cb.onFirstConnect) })
+	}
+
+	// Detect ACKs by comparing the nonce in the request with the last sent nonce for this stream
+	if req.GetResponseNonce() != "" && req.GetErrorDetail() == nil {
+		if pendingNonce, exists := cb.pendingNonces[streamID]; exists && pendingNonce == req.GetResponseNonce() {
+			if cb.onFirstConnect != nil {
+				cb.firstConnectOnce.Do(func() { close(cb.onFirstConnect) })
+			}
 		}
 	}
 
@@ -222,6 +230,14 @@ func (cb *serverCallbacks) OnStreamRequest(streamID int64, req *discoverygrpc.Di
 
 // OnStreamResponse is called when a discovery response is sent
 func (cb *serverCallbacks) OnStreamResponse(ctx context.Context, streamID int64, req *discoverygrpc.DiscoveryRequest, resp *discoverygrpc.DiscoveryResponse) {
+	// Track the nonce of the response so we can detect ACKs in OnStreamRequest
+	cb.activeStreamsMu.Lock()
+	if cb.pendingNonces == nil {
+		cb.pendingNonces = make(map[int64]string)
+	}
+	cb.pendingNonces[streamID] = resp.GetNonce()
+	cb.activeStreamsMu.Unlock()
+
 	cb.logger.Info("Policy xDS stream response",
 		slog.Int64("stream_id", streamID),
 		slog.String("type_url", resp.GetTypeUrl()),
