@@ -20,10 +20,11 @@ package kernel
 
 import (
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
-	"google.golang.org/protobuf/types/known/structpb"
 	"log/slog"
 	"strings"
+
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -89,6 +90,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerMutation = &extprocv3.HeaderMutation{}
 	var finalBodyLength int
 	bodyModified := false
+	var targetUpstreamName *string // Track the target upstream for cluster routing
 
 	path := execCtx.requestContext.Path
 
@@ -170,8 +172,88 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					analyticsData["request_headers"] = finalizedHeaders
 					execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
 				}
+
+				// Handle UpstreamName for dynamic cluster routing (last one wins)
+				if mods.UpstreamName != nil && *mods.UpstreamName != "" {
+					targetUpstreamName = mods.UpstreamName
+				}
 			}
 		}
+	}
+
+	// Handle dynamic cluster routing via header.
+	// When a policy sets UpstreamName, we set the x-target-upstream header directly.
+	// ClearRouteCache is always enabled so Envoy can re-evaluate routing.
+	if targetUpstreamName != nil {
+		// Policy explicitly set the upstream - add the prefix, kind, and API ID for scoped cluster name
+		// Format: upstream_<kind>_<apiId>_<sanitizedDefName>
+		// Sanitize the definition name (replace dots and colons for valid Envoy cluster name)
+		apiKind := execCtx.requestContext.SharedContext.APIKind
+		apiId := execCtx.requestContext.SharedContext.APIId
+		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
+		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+
+		// Set the x-target-upstream header directly for cluster_header routing
+		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
+			opType: "set",
+			value:  clusterName,
+		})
+
+		// Store in execution context for potential response phase use
+		extProcNS := constants.ExtProcFilterName
+		if execCtx.dynamicMetadata[extProcNS] == nil {
+			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
+		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
+
+		// Pass api_context and upstream_base_path in dynamic metadata for Lua filter
+		// Lua filter's handle:metadata() only works for envoy.filters.http.lua namespace,
+		// so we must pass these via dynamic metadata
+		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+
+		// When UpstreamName is used, provide the target upstream's base path for Lua filter
+		// The Lua filter handles path transformation and needs to know which upstream path to use
+		slog.Info("UpstreamName: checking upstreamDefinitionPaths",
+			"targetUpstream", *targetUpstreamName,
+			"hasUpstreamDefPaths", execCtx.upstreamDefinitionPaths != nil,
+			"upstreamDefPaths", execCtx.upstreamDefinitionPaths,
+			"apiContext", execCtx.apiContext)
+		if execCtx.upstreamDefinitionPaths != nil {
+			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
+				// Set in both local dynamicMetadata (for response to Envoy) and execCtx (for response phase)
+				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
+				slog.Info("UpstreamName: set target upstream base path",
+					"targetUpstream", *targetUpstreamName,
+					"targetUpstreamPath", targetUpstreamPath)
+
+				// Set target_path to trigger Lua filter path transformation if not already set
+				// If request-rewrite policy set it, use that; otherwise use original request path
+				if _, hasTargetPath := dynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
+					dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestContext.Path
+					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestContext.Path
+					slog.Info("UpstreamName: set target_path", "path", execCtx.requestContext.Path)
+				} else {
+					slog.Info("UpstreamName: target_path already set by policy")
+				}
+			} else {
+				slog.Warn("UpstreamName: target upstream not found in upstreamDefinitionPaths",
+					"targetUpstream", *targetUpstreamName,
+					"availableUpstreams", execCtx.upstreamDefinitionPaths)
+			}
+		}
+	} else if execCtx.defaultUpstreamCluster != "" {
+		// No policy set upstream, but route uses cluster_header routing
+		// Set the default cluster header so Envoy knows which cluster to use
+		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
+			opType: "set",
+			value:  execCtx.defaultUpstreamCluster,
+		})
 	}
 
 	// Remove any content-length headers from policy operations if we're managing it ourselves
@@ -201,12 +283,14 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	}
 
 	// Build ProcessingResponse for request headers
+	// Always set ClearRouteCache to true so Envoy re-evaluates routing after ext_proc modifications
 	response := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
+					HeaderMutation:  headerMutation,
+					BodyMutation:    bodyMutation,
+					ClearRouteCache: true,
 				},
 			},
 		},
@@ -234,12 +318,14 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 	}
 
 	// Build ProcessingResponse for request body
+	// Always set ClearRouteCache to true so Envoy re-evaluates routing after ext_proc modifications
 	response := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
+					HeaderMutation:  headerMutation,
+					BodyMutation:    bodyMutation,
+					ClearRouteCache: true,
 				},
 			},
 		},
@@ -685,4 +771,55 @@ func setContentLengthHeader(mutation *extprocv3.HeaderMutation, bodyLength int) 
 		},
 		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 	})
+}
+
+// sanitizeUpstreamDefinitionName sanitizes an upstream definition name for use in Envoy cluster names.
+// Envoy cluster names cannot contain dots or colons.
+func sanitizeUpstreamDefinitionName(name string) string {
+	sanitized := strings.ReplaceAll(name, ".", "_")
+	sanitized = strings.ReplaceAll(sanitized, ":", "_")
+	return sanitized
+}
+
+// computeUpstreamPath computes the final upstream path by stripping the API context
+// from the current path and prepending the target upstream's path.
+// Example: currentPath="/weather/v1.0/pets", apiContext="/weather/v1.0", upstreamPath="/alternate-backend"
+// Result: "/alternate-backend/pets"
+func computeUpstreamPath(currentPath, apiContext, upstreamPath string) string {
+	if currentPath == "" {
+		return ""
+	}
+
+	// Default values
+	if apiContext == "" {
+		apiContext = "/"
+	}
+	if upstreamPath == "" {
+		upstreamPath = ""
+	}
+
+	// Strip the API context prefix from the current path
+	relativePath := currentPath
+	if apiContext != "/" {
+		if strings.HasPrefix(currentPath, apiContext) {
+			relativePath = strings.TrimPrefix(currentPath, apiContext)
+			if relativePath == "" {
+				relativePath = "/"
+			}
+		}
+	}
+
+	// Prepend the upstream path
+	if upstreamPath == "" || upstreamPath == "/" {
+		return relativePath
+	}
+
+	// Handle trailing slash in upstreamPath and leading slash in relativePath
+	if strings.HasSuffix(upstreamPath, "/") && strings.HasPrefix(relativePath, "/") {
+		return upstreamPath + relativePath[1:]
+	}
+	if !strings.HasSuffix(upstreamPath, "/") && !strings.HasPrefix(relativePath, "/") {
+		return upstreamPath + "/" + relativePath
+	}
+	return upstreamPath + relativePath
 }

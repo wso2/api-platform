@@ -286,35 +286,32 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 		}
 
 		for j, upstream := range def.Upstreams {
-			// Validate URLs
-			if len(upstream.Urls) == 0 {
+			// Validate URL
+			if upstream.Url == "" {
 				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls", i, j),
-					Message: "At least one URL is required",
+					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+					Message: "URL is required",
 				})
 				continue
 			}
 
-			for k, urlStr := range upstream.Urls {
-				parsedURL, err := url.Parse(urlStr)
-				if err != nil {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
-						Message: fmt.Sprintf("Invalid URL format: %v", err),
-					})
-					continue
-				}
-
+			parsedURL, err := url.Parse(upstream.Url)
+			if err != nil {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+					Message: fmt.Sprintf("Invalid URL format: %v", err),
+				})
+			} else {
 				if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
 						Message: "URL must use http or https scheme",
 					})
 				}
 
 				if parsedURL.Host == "" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
 						Message: "URL must include a host",
 					})
 				}

@@ -43,11 +43,11 @@ func TestResolveUpstreamDefinition_Found(t *testing.T) {
 		{
 			Name: "test-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -65,11 +65,11 @@ func TestResolveUpstreamDefinition_NotFound(t *testing.T) {
 		{
 			Name: "existing-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -185,11 +185,11 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 				Connect: &timeoutStr,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-1:9000/v2"},
+					Url: "http://backend-1:9000/v2",
 				},
 			},
 		},
@@ -218,11 +218,11 @@ func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -246,11 +246,11 @@ func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 		{
 			Name: "other-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -277,11 +277,11 @@ func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
 				Connect: &invalidTimeout,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -303,8 +303,8 @@ func TestResolveUpstreamCluster_WithRef_NoURLs(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{},
 		},
 	}
@@ -813,7 +813,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Mode:             "uds",
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -842,7 +841,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Port:             9001,
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -868,36 +866,23 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 func TestTranslator_CreateExtProcFilter(t *testing.T) {
 	logger := createTestLogger()
 
-	tests := []struct {
-		name             string
-		routeCacheAction string
-		headerMode       string
-	}{
-		{name: "Default settings", routeCacheAction: "DEFAULT", headerMode: "DEFAULT"},
-		{name: "Retain cache", routeCacheAction: constants.ExtProcRouteCacheActionRetain, headerMode: "SEND"},
-		{name: "Clear cache", routeCacheAction: constants.ExtProcRouteCacheActionClear, headerMode: "SKIP"},
-	}
+	t.Run("Creates ext_proc filter with DEFAULT route cache action", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Host:             "localhost",
+			Port:             50051,
+			TimeoutMs:        1000,
+			MessageTimeoutMs: 500,
+		}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			routerCfg := testRouterConfig()
-			routerCfg.PolicyEngine = config.PolicyEngineConfig{
-				Host:             "localhost",
-				Port:             50051,
-				TimeoutMs:        1000,
-				MessageTimeoutMs: 500,
-				RouteCacheAction: tt.routeCacheAction,
-			}
-			cfg := testConfig()
-			cfg.Router = *routerCfg
-			translator := NewTranslator(logger, routerCfg, nil, cfg)
-
-			filter, err := translator.createExtProcFilter()
-			assert.NoError(t, err)
-			assert.NotNil(t, filter)
-			assert.Equal(t, constants.ExtProcFilterName, filter.Name)
-		})
-	}
+		filter, err := translator.createExtProcFilter()
+		assert.NoError(t, err)
+		assert.NotNil(t, filter)
+		assert.Equal(t, constants.ExtProcFilterName, filter.Name)
+	})
 }
 
 func TestTranslator_CreateRouteConfiguration(t *testing.T) {
@@ -1299,6 +1284,9 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 		nil,            // hostRewrite
 		"proj-001",     // projectID
 		nil,            // timeoutCfg
+		false,          // useClusterHeader
+		"",             // defaultCluster
+		nil,            // upstreamDefPaths
 	)
 
 	assert.NotNil(t, route)
