@@ -56,16 +56,24 @@ func (h *eventHub) Initialize() error {
 	return h.backend.Initialize()
 }
 
-func (h *eventHub) RegisterOrganization(orgID string) error {
-	return h.backend.RegisterOrganization(orgID)
+func (h *eventHub) RegisterGateway(gatewayID string) error {
+	return h.backend.RegisterGateway(gatewayID)
 }
 
-func (h *eventHub) PublishEvent(orgID string, event Event) error {
-	return h.backend.Publish(orgID, event)
+func (h *eventHub) PublishEvent(gatewayID string, event Event) error {
+	return h.backend.Publish(gatewayID, event)
 }
 
-func (h *eventHub) Subscribe(orgID string) (<-chan Event, error) {
-	return h.backend.Subscribe(orgID)
+func (h *eventHub) Subscribe(gatewayID string) (<-chan Event, error) {
+	return h.backend.Subscribe(gatewayID)
+}
+
+func (h *eventHub) Unsubscribe(gatewayID string, subscriber <-chan Event) error {
+	return h.backend.Unsubscribe(gatewayID, subscriber)
+}
+
+func (h *eventHub) UnsubscribeAll(gatewayID string) error {
+	return h.backend.UnsubscribeAll(gatewayID)
 }
 
 func (h *eventHub) CleanUpEvents() error {

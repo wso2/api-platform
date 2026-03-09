@@ -29,9 +29,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -95,6 +95,7 @@ type APIDeploymentService struct {
 	routerConfig *config.RouterConfig
 	httpClient   *http.Client
 	eventHub     eventhub.EventHub
+	gatewayID    string
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -104,7 +105,13 @@ func NewAPIDeploymentService(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	hub eventhub.EventHub,
+	gatewayID ...string,
 ) *APIDeploymentService {
+	resolvedGatewayID := ""
+	if len(gatewayID) > 0 {
+		resolvedGatewayID = strings.TrimSpace(gatewayID[0])
+	}
+
 	return &APIDeploymentService{
 		store:        store,
 		db:           db,
@@ -113,6 +120,7 @@ func NewAPIDeploymentService(
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		routerConfig: routerConfig,
 		eventHub:     hub,
+		gatewayID:    resolvedGatewayID,
 	}
 }
 
@@ -122,24 +130,35 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 		return
 	}
 
+	gatewayID := strings.TrimSpace(s.gatewayID)
+	if gatewayID == "" {
+		logger.Warn("Skipping event hub publish because gateway ID is not configured",
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID))
+		return
+	}
+
 	event := eventhub.Event{
-		OrganizationID:      "default",
+		GatewayID:           gatewayID,
 		OriginatedTimestamp: time.Now(),
 		EventType:           eventType,
 		Action:              action,
 		EntityID:            entityID,
-		CorrelationID:       correlationID,
+		EventID:             correlationID,
 		EventData:           eventhub.EmptyEventData,
 	}
 
-	if err := s.eventHub.PublishEvent("default", event); err != nil {
+	if err := s.eventHub.PublishEvent(gatewayID, event); err != nil {
 		logger.Warn("Failed to publish event to event hub",
+			slog.String("gateway_id", gatewayID),
 			slog.String("event_type", string(eventType)),
 			slog.String("action", action),
 			slog.String("entity_id", entityID),
 			slog.Any("error", err))
 	} else {
 		logger.Debug("Published event to event hub",
+			slog.String("gateway_id", gatewayID),
 			slog.String("event_type", string(eventType)),
 			slog.String("action", action),
 			slog.String("entity_id", entityID))
@@ -366,6 +385,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
+	// TODO: (VirajSalaka) Decide how to handle if event hub publish fails. 
 	// Publish event to event hub for multi-replica sync
 	if isUpdate {
 		s.publishEvent(eventhub.EventTypeAPI, "UPDATE", apiID, params.CorrelationID, params.Logger)

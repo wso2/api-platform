@@ -23,7 +23,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -37,7 +37,7 @@ func (m *mockEventHubForUndeploy) Initialize() error {
 	return nil
 }
 
-func (m *mockEventHubForUndeploy) RegisterOrganization(orgID string) error {
+func (m *mockEventHubForUndeploy) RegisterGateway(gatewayID string) error {
 	return nil
 }
 
@@ -52,6 +52,14 @@ func (m *mockEventHubForUndeploy) PublishEvent(orgID string, event eventhub.Even
 func (m *mockEventHubForUndeploy) Subscribe(orgID string) (<-chan eventhub.Event, error) {
 	ch := make(chan eventhub.Event)
 	return ch, nil
+}
+
+func (m *mockEventHubForUndeploy) Unsubscribe(orgID string, subscriber <-chan eventhub.Event) error {
+	return nil
+}
+
+func (m *mockEventHubForUndeploy) UnsubscribeAll(orgID string) error {
+	return nil
 }
 
 func (m *mockEventHubForUndeploy) CleanUpEvents() error {
@@ -81,10 +89,11 @@ func TestClient_handleAPIUndeployedEvent_UpdatesDBAndPublishesEvent(t *testing.T
 	}
 
 	client := &Client{
-		logger:   logger,
-		store:    store,
-		db:       db,
-		eventHub: hub,
+		logger:       logger,
+		store:        store,
+		db:           db,
+		eventHub:     hub,
+		systemConfig: testControlplaneSystemConfig(),
 	}
 
 	event := map[string]interface{}{
@@ -130,8 +139,8 @@ func TestClient_handleAPIUndeployedEvent_UpdatesDBAndPublishesEvent(t *testing.T
 	if published.EntityID != apiID {
 		t.Fatalf("published entity id = %s, want %s", published.EntityID, apiID)
 	}
-	if published.CorrelationID != "corr-undeploy-1" {
-		t.Fatalf("published correlation id = %s, want corr-undeploy-1", published.CorrelationID)
+	if published.EventID != "corr-undeploy-1" {
+		t.Fatalf("published event id = %s, want corr-undeploy-1", published.EventID)
 	}
 }
 
@@ -142,10 +151,11 @@ func TestClient_handleAPIUndeployedEvent_NotFoundDoesNotPublish(t *testing.T) {
 	hub := &mockEventHubForUndeploy{}
 
 	client := &Client{
-		logger:   logger,
-		store:    store,
-		db:       db,
-		eventHub: hub,
+		logger:       logger,
+		store:        store,
+		db:           db,
+		eventHub:     hub,
+		systemConfig: testControlplaneSystemConfig(),
 	}
 
 	event := map[string]interface{}{

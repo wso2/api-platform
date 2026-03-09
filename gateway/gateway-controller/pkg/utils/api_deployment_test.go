@@ -33,9 +33,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -68,7 +69,7 @@ type mockEventHub struct {
 
 func (m *mockEventHub) Initialize() error { return nil }
 
-func (m *mockEventHub) RegisterOrganization(orgID string) error { return nil }
+func (m *mockEventHub) RegisterGateway(gatewayID string) error { return nil }
 
 func (m *mockEventHub) PublishEvent(orgID string, event eventhub.Event) error {
 	m.mu.Lock()
@@ -82,6 +83,10 @@ func (m *mockEventHub) Subscribe(orgID string) (<-chan eventhub.Event, error) {
 	close(ch)
 	return ch, nil
 }
+
+func (m *mockEventHub) Unsubscribe(orgID string, subscriber <-chan eventhub.Event) error { return nil }
+
+func (m *mockEventHub) UnsubscribeAll(orgID string) error { return nil }
 
 func (m *mockEventHub) CleanUpEvents() error { return nil }
 
@@ -575,7 +580,7 @@ func TestDeleteAPIConfiguration_PublishesEventWithoutMutatingMemoryStore(t *test
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForAPIDeploymentTests(t)
 	hub := &mockEventHub{}
-	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	service := NewAPIDeploymentService(store, db, nil, nil, hub, constants.PlatformGatewayId)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var spec api.APIConfiguration_Spec
@@ -633,7 +638,7 @@ func TestDeleteAPIConfiguration_PublishesEventWithoutMutatingMemoryStore(t *test
 	assert.Equal(t, eventhub.EventTypeAPI, hub.events[0].EventType)
 	assert.Equal(t, "DELETE", hub.events[0].Action)
 	assert.Equal(t, cfg.ID, hub.events[0].EntityID)
-	assert.Equal(t, "corr-delete", hub.events[0].CorrelationID)
+	assert.Equal(t, "corr-delete", hub.events[0].EventID)
 	assert.Equal(t, eventhub.EmptyEventData, hub.events[0].EventData)
 }
 
@@ -641,7 +646,7 @@ func TestDeleteAPIConfiguration_ByAPIIDPublishesEventWithoutMutatingMemoryStore(
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForAPIDeploymentTests(t)
 	hub := &mockEventHub{}
-	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	service := NewAPIDeploymentService(store, db, nil, nil, hub, constants.PlatformGatewayId)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var spec api.APIConfiguration_Spec
@@ -697,7 +702,7 @@ func TestDeleteAPIConfiguration_ByAPIIDPublishesEventWithoutMutatingMemoryStore(
 	assert.Equal(t, eventhub.EventTypeAPI, hub.events[0].EventType)
 	assert.Equal(t, "DELETE", hub.events[0].Action)
 	assert.Equal(t, cfg.ID, hub.events[0].EntityID)
-	assert.Equal(t, "corr-delete-by-id", hub.events[0].CorrelationID)
+	assert.Equal(t, "corr-delete-by-id", hub.events[0].EventID)
 	assert.Equal(t, eventhub.EmptyEventData, hub.events[0].EventData)
 }
 
@@ -721,7 +726,7 @@ func TestUndeployAPIConfiguration_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForAPIDeploymentTests(t)
 	hub := &mockEventHub{}
-	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	service := NewAPIDeploymentService(store, db, nil, nil, hub, constants.PlatformGatewayId)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	result, err := service.UndeployAPIConfiguration(APIUndeploymentParams{
@@ -740,7 +745,7 @@ func TestUndeployAPIConfiguration_PublishesEventWithoutMutatingMemoryStore(t *te
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForAPIDeploymentTests(t)
 	hub := &mockEventHub{}
-	service := NewAPIDeploymentService(store, db, nil, nil, hub)
+	service := NewAPIDeploymentService(store, db, nil, nil, hub, constants.PlatformGatewayId)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var spec api.APIConfiguration_Spec
@@ -801,7 +806,7 @@ func TestUndeployAPIConfiguration_PublishesEventWithoutMutatingMemoryStore(t *te
 	assert.Equal(t, eventhub.EventTypeAPI, hub.events[0].EventType)
 	assert.Equal(t, "UPDATE", hub.events[0].Action)
 	assert.Equal(t, cfg.ID, hub.events[0].EntityID)
-	assert.Equal(t, "corr-undeploy", hub.events[0].CorrelationID)
+	assert.Equal(t, "corr-undeploy", hub.events[0].EventID)
 	assert.Equal(t, eventhub.EmptyEventData, hub.events[0].EventData)
 }
 

@@ -28,8 +28,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -47,6 +48,16 @@ type mockStorageForDeletion struct {
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
 		configs: make(map[string]*models.StoredConfig),
+	}
+}
+
+func testControlplaneSystemConfig() *config.Config {
+	return &config.Config{
+		Controller: config.Controller{
+			Server: config.ServerConfig{
+				GatewayID: "test-gateway",
+			},
+		},
 	}
 }
 
@@ -122,6 +133,10 @@ func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.Store
 
 func (m *mockStorageForDeletion) GetDB() *sql.DB {
 	return nil
+}
+
+func (m *mockStorageForDeletion) GetGatewayID() string {
+	return ""
 }
 
 func (m *mockStorageForDeletion) Close() error {
@@ -243,7 +258,7 @@ func (m *mockEventHubForDelete) Initialize() error {
 	return nil
 }
 
-func (m *mockEventHubForDelete) RegisterOrganization(orgID string) error {
+func (m *mockEventHubForDelete) RegisterGateway(gatewayID string) error {
 	return nil
 }
 
@@ -258,6 +273,14 @@ func (m *mockEventHubForDelete) PublishEvent(orgID string, event eventhub.Event)
 func (m *mockEventHubForDelete) Subscribe(orgID string) (<-chan eventhub.Event, error) {
 	ch := make(chan eventhub.Event)
 	return ch, nil
+}
+
+func (m *mockEventHubForDelete) Unsubscribe(orgID string, subscriber <-chan eventhub.Event) error {
+	return nil
+}
+
+func (m *mockEventHubForDelete) UnsubscribeAll(orgID string) error {
+	return nil
 }
 
 func (m *mockEventHubForDelete) CleanUpEvents() error {
@@ -342,9 +365,10 @@ func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
 	db := newMockStorageForDeletion()
 
 	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
+		logger:       logger,
+		store:        store,
+		db:           db,
+		systemConfig: testControlplaneSystemConfig(),
 	}
 
 	tests := []struct {
@@ -420,10 +444,11 @@ func TestClient_handleAPIDeletedEvent_UpdatesDBAndPublishesEvent(t *testing.T) {
 	}
 
 	client := &Client{
-		logger:   logger,
-		store:    store,
-		db:       db,
-		eventHub: hub,
+		logger:       logger,
+		store:        store,
+		db:           db,
+		eventHub:     hub,
+		systemConfig: testControlplaneSystemConfig(),
 	}
 
 	event := map[string]interface{}{
@@ -472,8 +497,8 @@ func TestClient_handleAPIDeletedEvent_UpdatesDBAndPublishesEvent(t *testing.T) {
 	if published.EntityID != apiID {
 		t.Fatalf("published entity id = %s, want %s", published.EntityID, apiID)
 	}
-	if published.CorrelationID != "corr-delete-1" {
-		t.Fatalf("published correlation id = %s, want corr-delete-1", published.CorrelationID)
+	if published.EventID != "corr-delete-1" {
+		t.Fatalf("published event id = %s, want corr-delete-1", published.EventID)
 	}
 }
 
@@ -484,10 +509,11 @@ func TestClient_handleAPIDeletedEvent_NotFoundDoesNotPublish(t *testing.T) {
 	hub := &mockEventHubForDelete{}
 
 	client := &Client{
-		logger:   logger,
-		store:    store,
-		db:       db,
-		eventHub: hub,
+		logger:       logger,
+		store:        store,
+		db:           db,
+		eventHub:     hub,
+		systemConfig: testControlplaneSystemConfig(),
 	}
 
 	event := map[string]interface{}{
@@ -524,10 +550,11 @@ func TestClient_handleAPIDeletedEvent_NoDatabaseDoesNotMutateMemory(t *testing.T
 	}
 
 	client := &Client{
-		logger:   logger,
-		store:    store,
-		db:       nil,
-		eventHub: hub,
+		logger:       logger,
+		store:        store,
+		db:           nil,
+		eventHub:     hub,
+		systemConfig: testControlplaneSystemConfig(),
 	}
 
 	event := map[string]interface{}{
@@ -562,10 +589,11 @@ func TestClient_handleAPIDeletedEvent_DeleteErrorDoesNotPublish(t *testing.T) {
 	db.deleteErr = errors.New("database connection failed")
 
 	client := &Client{
-		logger:   logger,
-		store:    store,
-		db:       db,
-		eventHub: hub,
+		logger:       logger,
+		store:        store,
+		db:           db,
+		eventHub:     hub,
+		systemConfig: testControlplaneSystemConfig(),
 	}
 
 	event := map[string]interface{}{

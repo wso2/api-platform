@@ -736,26 +736,26 @@ func (s *SQLiteStorage) initSchema() error {
 		}
 
 		if version == 9 {
-			s.logger.Info("Migrating schema to version 10 (adding organization_states and events tables)")
+			s.logger.Info("Migrating schema to version 10 (adding gateway_states and events tables)")
 
-			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS organization_states (
-				organization TEXT PRIMARY KEY,
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS gateway_states (
+				gateway_id TEXT PRIMARY KEY,
 				version_id TEXT NOT NULL DEFAULT '',
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			);`); err != nil {
-				return fmt.Errorf("failed to create organization_states table: %w", err)
+				return fmt.Errorf("failed to create gateway_states table: %w", err)
 			}
 
 			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS events (
-				organization_id TEXT NOT NULL,
+				gateway_id TEXT NOT NULL,
 				processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				originated_timestamp TIMESTAMP NOT NULL,
-				event_type TEXT NOT NULL,
+				entity_type TEXT NOT NULL,
 				action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
 				entity_id TEXT NOT NULL,
-				correlation_id TEXT NOT NULL DEFAULT '',
+				event_id TEXT NOT NULL,
 				event_data TEXT NOT NULL,
-				PRIMARY KEY (organization_id, processed_timestamp)
+				PRIMARY KEY (event_id)
 			);`); err != nil {
 				return fmt.Errorf("failed to create events table: %w", err)
 			}
@@ -763,9 +763,10 @@ func (s *SQLiteStorage) initSchema() error {
 			if _, err := s.db.Exec("PRAGMA user_version = 10"); err != nil {
 				return fmt.Errorf("failed to set schema version to 10: %w", err)
 			}
-			s.logger.Info("Schema migrated to version 10 (organization_states and events tables)")
+			s.logger.Info("Schema migrated to version 10 (gateway_states and events tables)")
 			version = 10
 		}
+
 	}
 
 	s.logger.Info("Database schema up to date", slog.Int("version", version))

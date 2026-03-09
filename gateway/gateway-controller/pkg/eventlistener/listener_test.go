@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/common/eventhub"
 )
 
 func TestProcessEvents_RecoversFromPanicAndContinues(t *testing.T) {
@@ -51,18 +51,18 @@ func TestProcessEvents_RecoversFromPanicAndContinues(t *testing.T) {
 
 	// This panics because listener.store is nil when handling DELETE.
 	eventCh <- eventhub.Event{
-		EventType:     eventhub.EventTypeAPI,
-		Action:        "DELETE",
-		EntityID:      "panic-api-id",
-		CorrelationID: "corr-panic",
+		EventType: eventhub.EventTypeAPI,
+		Action:    "DELETE",
+		EntityID:  "panic-api-id",
+		EventID:   "corr-panic",
 	}
 
 	// If recovery works, the loop should continue and process this event too.
 	eventCh <- eventhub.Event{
-		EventType:     eventhub.EventType("UNKNOWN"),
-		Action:        "UPDATE",
-		EntityID:      "safe-event-id",
-		CorrelationID: "corr-safe",
+		EventType: eventhub.EventType("UNKNOWN"),
+		Action:    "UPDATE",
+		EntityID:  "safe-event-id",
+		EventID:   "corr-safe",
 	}
 
 	close(eventCh)
@@ -79,5 +79,18 @@ func TestProcessEvents_RecoversFromPanicAndContinues(t *testing.T) {
 	}
 	if !strings.Contains(logs, "Unknown event type received") {
 		t.Fatalf("expected processing to continue after panic, got: %s", logs)
+	}
+}
+
+func TestStart_RequiresSystemConfig(t *testing.T) {
+	listener := &EventListener{}
+
+	err := listener.Start()
+
+	if err == nil {
+		t.Fatal("expected start to fail without system config")
+	}
+	if !strings.Contains(err.Error(), "system configuration") {
+		t.Fatalf("expected system configuration error, got: %v", err)
 	}
 }

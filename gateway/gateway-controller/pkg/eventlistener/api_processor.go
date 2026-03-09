@@ -23,8 +23,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -68,7 +68,7 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	l.logger.Info("Processing API create/update event from another replica",
 		slog.String("api_id", entityID),
 		slog.String("action", event.Action),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 
 	// Fetch the latest config from the database (it was already persisted by the publishing replica)
 	if l.db == nil {
@@ -106,16 +106,16 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	}
 
 	// Update xDS snapshot
-	l.updateSnapshotAsync(entityID, event.CorrelationID, "Failed to update xDS snapshot after replica sync")
+	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
 
 	// TODO: (VirajSalaka) Introduce an error group and have a proper rollback mechanism.
 
 	// Update policies
-	l.updatePoliciesForAPI(storedConfig, event.CorrelationID)
+	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed API create/update event from replica",
 		slog.String("api_id", entityID),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 }
 
 // handleAPIDelete handles API delete events from other replicas
@@ -124,7 +124,7 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 
 	l.logger.Info("Processing API delete event from another replica",
 		slog.String("api_id", entityID),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 
 	existingConfig, err := l.store.Get(entityID)
 	if err != nil && !storage.IsNotFoundError(err) {
@@ -155,18 +155,18 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 			l.logger.Warn("Failed to parse API configuration for API key xDS cleanup",
 				slog.String("api_id", entityID),
 				slog.Any("error", err))
-		} else if err := l.apiKeyXDSManager.RemoveAPIKeysByAPI(entityID, apiConfig.DisplayName, apiConfig.Version, event.CorrelationID); err != nil {
+		} else if err := l.apiKeyXDSManager.RemoveAPIKeysByAPI(entityID, apiConfig.DisplayName, apiConfig.Version, event.EventID); err != nil {
 			l.logger.Warn("Failed to remove API keys from policy engine after API deletion",
 				slog.String("api_id", entityID),
 				slog.String("api_name", apiConfig.DisplayName),
 				slog.String("api_version", apiConfig.Version),
-				slog.String("correlation_id", event.CorrelationID),
+				slog.String("event_id", event.EventID),
 				slog.Any("error", err))
 		}
 	}
 
 	// Update xDS snapshot
-	l.updateSnapshotAsync(entityID, event.CorrelationID, "Failed to update xDS snapshot after API deletion")
+	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
 
 	// Remove policies
 	if l.policyManager != nil {
@@ -182,7 +182,7 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 
 	l.logger.Info("Successfully processed API delete event from replica",
 		slog.String("api_id", entityID),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 }
 
 // updatePoliciesForAPI derives and updates policy configuration for an API

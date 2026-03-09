@@ -27,11 +27,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -52,7 +52,8 @@ func TestNewAPIKeyService(t *testing.T) {
 func TestPublishAPIKeyEvent_UsesEmptyEventData(t *testing.T) {
 	hub := &mockEventHub{}
 	service := &APIKeyService{
-		eventHub: hub,
+		eventHub:  hub,
+		gatewayID: constants.PlatformGatewayId,
 	}
 
 	service.publishAPIKeyEvent("CREATE", "api-1_key-1", "corr-apikey", nil)
@@ -61,7 +62,7 @@ func TestPublishAPIKeyEvent_UsesEmptyEventData(t *testing.T) {
 	assert.Equal(t, eventhub.EventTypeAPIKey, hub.events[0].EventType)
 	assert.Equal(t, "CREATE", hub.events[0].Action)
 	assert.Equal(t, "api-1_key-1", hub.events[0].EntityID)
-	assert.Equal(t, "corr-apikey", hub.events[0].CorrelationID)
+	assert.Equal(t, "corr-apikey", hub.events[0].EventID)
 	assert.Equal(t, eventhub.EmptyEventData, hub.events[0].EventData)
 }
 

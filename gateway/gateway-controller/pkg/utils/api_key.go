@@ -32,8 +32,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -137,17 +137,24 @@ type APIKeyService struct {
 	xdsManager   XDSManager
 	apiKeyConfig *config.APIKeyConfig // Configuration for API keys
 	eventHub     eventhub.EventHub
+	gatewayID    string
 }
 
 // NewAPIKeyService creates a new API key generation service
 func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager XDSManager,
-	apiKeyConfig *config.APIKeyConfig, hub eventhub.EventHub) *APIKeyService {
+	apiKeyConfig *config.APIKeyConfig, hub eventhub.EventHub, gatewayID ...string) *APIKeyService {
+	resolvedGatewayID := ""
+	if len(gatewayID) > 0 {
+		resolvedGatewayID = strings.TrimSpace(gatewayID[0])
+	}
+
 	return &APIKeyService{
 		store:        store,
 		db:           db,
 		xdsManager:   xdsManager,
 		apiKeyConfig: apiKeyConfig,
 		eventHub:     hub,
+		gatewayID:    resolvedGatewayID,
 	}
 }
 
@@ -196,24 +203,35 @@ func (s *APIKeyService) publishAPIKeyEvent(action, entityID, correlationID strin
 		logger = slog.Default()
 	}
 
+	gatewayID := strings.TrimSpace(s.gatewayID)
+	if gatewayID == "" {
+		logger.Warn("Skipping event hub publish because gateway ID is not configured",
+			slog.String("event_type", string(eventhub.EventTypeAPIKey)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID))
+		return
+	}
+
 	event := eventhub.Event{
-		OrganizationID:      "default",
+		GatewayID:           gatewayID,
 		OriginatedTimestamp: time.Now(),
 		EventType:           eventhub.EventTypeAPIKey,
 		Action:              action,
 		EntityID:            entityID,
-		CorrelationID:       correlationID,
+		EventID:             correlationID,
 		EventData:           eventhub.EmptyEventData,
 	}
 
-	if err := s.eventHub.PublishEvent("default", event); err != nil {
+	if err := s.eventHub.PublishEvent(gatewayID, event); err != nil {
 		logger.Warn("Failed to publish event to event hub",
+			slog.String("gateway_id", gatewayID),
 			slog.String("event_type", string(eventhub.EventTypeAPIKey)),
 			slog.String("action", action),
 			slog.String("entity_id", entityID),
 			slog.Any("error", err))
 	} else {
 		logger.Debug("Published event to event hub",
+			slog.String("gateway_id", gatewayID),
 			slog.String("event_type", string(eventhub.EventTypeAPIKey)),
 			slog.String("action", action),
 			slog.String("entity_id", entityID))

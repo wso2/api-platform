@@ -21,7 +21,7 @@ package eventlistener
 import (
 	"log/slog"
 
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -82,7 +82,7 @@ func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("api_id", apiID),
 		slog.String("api_key_id", keyID),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 
 	if l.db == nil {
 		l.logger.Warn("Database not available, cannot process API key event",
@@ -102,7 +102,7 @@ func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
 				slog.String("action", event.Action),
 				slog.String("api_id", apiID),
 				slog.String("api_key_id", keyID),
-				slog.String("correlation_id", event.CorrelationID))
+				slog.String("event_id", event.EventID))
 			return
 		}
 
@@ -114,18 +114,11 @@ func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
 	}
 
 	if err := l.store.StoreAPIKey(apiKey); err != nil {
-		existing, getErr := l.store.GetAPIKeyByID(apiKey.APIId, apiKey.ID)
-		if getErr == nil && existing != nil {
-			l.logger.Debug("API key already exists in memory store, skipping duplicate create event",
-				slog.String("api_key_id", keyID),
-				slog.String("api_id", apiKey.APIId))
-		} else {
-			l.logger.Error("Failed to store API key in memory store",
-				slog.String("api_key_id", keyID),
-				slog.String("api_id", apiKey.APIId),
-				slog.Any("error", err))
-			return
-		}
+		l.logger.Error("Failed to store API key in memory store",
+			slog.String("api_key_id", keyID),
+			slog.String("api_id", apiKey.APIId),
+			slog.Any("error", err))
+		return
 	}
 
 	cfg, err := l.syncAPIConfigForAPIKeyEvent(apiKey.APIId)
@@ -148,7 +141,7 @@ func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
 	}
 
 	if l.apiKeyXDSManager != nil {
-		if err := l.apiKeyXDSManager.StoreAPIKey(cfg.ID, apiConfig.DisplayName, apiConfig.Version, apiKey, event.CorrelationID); err != nil {
+		if err := l.apiKeyXDSManager.StoreAPIKey(cfg.ID, apiConfig.DisplayName, apiConfig.Version, apiKey, event.EventID); err != nil {
 			l.logger.Error("Failed to update API key in policy engine after replica sync",
 				slog.String("api_id", cfg.ID),
 				slog.String("api_key_id", keyID),
@@ -161,7 +154,7 @@ func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("api_id", cfg.ID),
 		slog.String("api_key_id", keyID),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 }
 
 // handleAPIKeyRevoke handles API key revoke events from write-path async sync.
@@ -177,7 +170,7 @@ func (l *EventListener) handleAPIKeyRevoke(event eventhub.Event) {
 	l.logger.Info("Processing API key revoke event from another replica",
 		slog.String("api_id", apiID),
 		slog.String("api_key_id", keyID),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 
 	if l.store == nil {
 		l.logger.Warn("In-memory store not available, cannot process API key revoke event",
@@ -237,7 +230,7 @@ func (l *EventListener) handleAPIKeyRevoke(event eventhub.Event) {
 	}
 
 	if l.apiKeyXDSManager != nil {
-		if err := l.apiKeyXDSManager.RevokeAPIKey(cfg.ID, apiConfig.DisplayName, apiConfig.Version, apiKeyName, event.CorrelationID); err != nil {
+		if err := l.apiKeyXDSManager.RevokeAPIKey(cfg.ID, apiConfig.DisplayName, apiConfig.Version, apiKeyName, event.EventID); err != nil {
 			l.logger.Error("Failed to revoke API key in policy engine after replica sync",
 				slog.String("api_id", cfg.ID),
 				slog.String("api_key_id", keyID),
@@ -249,5 +242,5 @@ func (l *EventListener) handleAPIKeyRevoke(event eventhub.Event) {
 	l.logger.Info("Successfully processed API key revoke event from replica",
 		slog.String("api_id", cfg.ID),
 		slog.String("api_key_id", keyID),
-		slog.String("correlation_id", event.CorrelationID))
+		slog.String("event_id", event.EventID))
 }

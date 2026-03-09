@@ -40,35 +40,39 @@ const (
 
 // Event represents a change event in the system
 type Event struct {
-	OrganizationID      string    `json:"organization_id"`
+	GatewayID           string    `json:"gateway_id"`
 	ProcessedTimestamp  time.Time `json:"processed_timestamp"`
 	OriginatedTimestamp time.Time `json:"originated_timestamp"`
 	EventType           EventType `json:"event_type"`
 	Action              string    `json:"action"`
 	EntityID            string    `json:"entity_id"`
-	CorrelationID       string    `json:"correlation_id"`
+	EventID             string    `json:"event_id"`
 	// EventData carries optional event-specific details that are not already
 	// represented by top-level fields such as Action and EntityID.
 	EventData string `json:"event_data"`
 }
 
-// OrganizationState tracks the version state of an organization
-type OrganizationState struct {
-	Organization string    `json:"organization"`
-	VersionID    string    `json:"version_id"`
-	UpdatedAt    time.Time `json:"updated_at"`
+// GatewayState tracks the version state of a gateway.
+type GatewayState struct {
+	GatewayID string    `json:"gateway_id"`
+	VersionID string    `json:"version_id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // EventHub defines the interface for event publishing and subscribing
 type EventHub interface {
 	// Initialize sets up the event hub
 	Initialize() error
-	// RegisterOrganization registers a new organization for event tracking
-	RegisterOrganization(orgID string) error
-	// PublishEvent publishes an event for an organization
-	PublishEvent(orgID string, event Event) error
-	// Subscribe subscribes to events for an organization
-	Subscribe(orgID string) (<-chan Event, error)
+	// RegisterGateway registers a new gateway for event tracking.
+	RegisterGateway(gatewayID string) error
+	// PublishEvent publishes an event for a gateway.
+	PublishEvent(gatewayID string, event Event) error
+	// Subscribe subscribes to events for a gateway.
+	Subscribe(gatewayID string) (<-chan Event, error)
+	// Unsubscribe removes a specific subscription for a gateway.
+	Unsubscribe(gatewayID string, subscriber <-chan Event) error
+	// UnsubscribeAll removes all subscriptions for a gateway.
+	UnsubscribeAll(gatewayID string) error
 	// CleanUpEvents removes old events
 	CleanUpEvents() error
 	// Close gracefully shuts down the event hub

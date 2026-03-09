@@ -7,6 +7,7 @@ This module contains shared utilities, models, and helpers used across the API P
 - `logger/` - Common logging utilities
 - `config/` - Configuration helpers
 - `errors/` - Custom error types and error handling
+- `eventhub/` - Shared DB-backed event bus for cross-replica synchronization
 - `models/` - Shared data models
 - `utils/` - General utility functions
 - `constants/` - Shared constants
@@ -17,6 +18,7 @@ Import this module in your Go projects:
 
 ```go
 import "github.com/wso2/api-platform/common/logger"
+import "github.com/wso2/api-platform/common/eventhub"
 import "github.com/wso2/api-platform/common/models"
 ```
 

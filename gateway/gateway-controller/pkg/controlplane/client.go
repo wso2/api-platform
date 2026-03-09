@@ -35,8 +35,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 
 	"github.com/gorilla/websocket"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -120,6 +120,10 @@ type Client struct {
 	policyDefinitions    map[string]api.PolicyDefinition
 }
 
+func (c *Client) gatewayID() string {
+	return c.systemConfig.Controller.Server.GatewayID
+}
+
 // NewClient creates a new control plane client
 func NewClient(
 	cfg config.ControlPlaneConfig,
@@ -139,6 +143,10 @@ func NewClient(
 	eventHub eventhub.EventHub,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
+	gatewayID := ""
+	if systemConfig != nil {
+		gatewayID = systemConfig.Controller.Server.GatewayID
+	}
 
 	client := &Client{
 		config:            cfg,
@@ -148,8 +156,8 @@ func NewClient(
 		snapshotManager:   snapshotManager,
 		parser:            config.NewParser(),
 		validator:         validator,
-		deploymentService: utils.NewAPIDeploymentService(store, db, validator, routerConfig, eventHub),
-		apiKeyService:     utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig, eventHub),
+		deploymentService: utils.NewAPIDeploymentService(store, db, validator, routerConfig, eventHub, gatewayID),
+		apiKeyService:     utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig, eventHub, gatewayID),
 		apiKeyXDSManager:  apiKeyXDSManager,
 		routerConfig:      routerConfig,
 		eventHub:          eventHub,
@@ -794,7 +802,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	)
 
 	if c.deploymentService == nil {
-		c.deploymentService = utils.NewAPIDeploymentService(c.store, c.db, c.validator, c.routerConfig, c.eventHub)
+		c.deploymentService = utils.NewAPIDeploymentService(c.store, c.db, c.validator, c.routerConfig, c.eventHub, c.gatewayID())
 	}
 
 	_, err = c.deploymentService.UndeployAPIConfiguration(utils.APIUndeploymentParams{
@@ -870,7 +878,7 @@ func (c *Client) handleAPIDeletedEvent(event map[string]interface{}) {
 	)
 
 	if c.deploymentService == nil {
-		c.deploymentService = utils.NewAPIDeploymentService(c.store, c.db, c.validator, c.routerConfig, c.eventHub)
+		c.deploymentService = utils.NewAPIDeploymentService(c.store, c.db, c.validator, c.routerConfig, c.eventHub, c.gatewayID())
 	}
 
 	_, err = c.deploymentService.DeleteAPIConfiguration(utils.APIDeletionParams{

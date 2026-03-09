@@ -20,42 +20,44 @@ package eventhub
 
 import "time"
 
-const defaultOrganizationStatePageSize = 200
+const defaultGatewayStatePageSize = 200
 
 // EventhubImpl defines the backend interface for pluggable event hub implementations
 type EventhubImpl interface {
 	// Initialize sets up the backend
 	Initialize() error
-	// RegisterOrganization registers a new organization for event tracking
-	RegisterOrganization(orgID string) error
-	// Publish publishes an event for an organization
-	Publish(orgID string, event Event) error
-	// Subscribe subscribes to events for an organization, returning a channel
-	Subscribe(orgID string) (<-chan Event, error)
-	// Unsubscribe removes a subscription for an organization
-	Unsubscribe(orgID string) error
+	// RegisterGateway registers a new gateway for event tracking.
+	RegisterGateway(gatewayID string) error
+	// Publish publishes an event for a gateway.
+	Publish(gatewayID string, event Event) error
+	// Subscribe subscribes to events for a gateway, returning a channel.
+	Subscribe(gatewayID string) (<-chan Event, error)
+	// Unsubscribe removes a specific subscription for a gateway.
+	Unsubscribe(gatewayID string, subscriber <-chan Event) error
+	// UnsubscribeAll removes all subscriptions for a gateway.
+	UnsubscribeAll(gatewayID string) error
 	// Cleanup removes events older than the retention period
 	Cleanup(retentionPeriod time.Duration) error
-	// CleanupRange removes events in a time range for an organization
-	CleanupRange(orgID string, before time.Time) error
+	// CleanupRange removes events in a time range for a gateway.
+	CleanupRange(gatewayID string, before time.Time) error
 	// Close gracefully shuts down the backend
 	Close() error
 }
 
 // SQLBackendConfig holds configuration for the SQL backend
 type SQLBackendConfig struct {
-	PollInterval              time.Duration
-	CleanupInterval           time.Duration
-	RetentionPeriod           time.Duration
-	OrganizationStatePageSize int
+	PollInterval         time.Duration
+	CleanupInterval      time.Duration
+	RetentionPeriod      time.Duration
+	GatewayStatePageSize int
 }
 
 // DefaultSQLBackendConfig returns a SQLBackendConfig with sensible defaults
 func DefaultSQLBackendConfig() SQLBackendConfig {
 	return SQLBackendConfig{
-		PollInterval:              2 * time.Second,
-		CleanupInterval:           5 * time.Minute,
-		RetentionPeriod:           1 * time.Hour,
-		OrganizationStatePageSize: defaultOrganizationStatePageSize,
+		PollInterval:         2 * time.Second,
+		CleanupInterval:      5 * time.Minute,
+		RetentionPeriod:      1 * time.Hour,
+		GatewayStatePageSize: defaultGatewayStatePageSize,
 	}
 }

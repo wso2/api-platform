@@ -38,11 +38,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -61,7 +61,7 @@ type mockEventHub struct {
 
 func (m *mockEventHub) Initialize() error { return nil }
 
-func (m *mockEventHub) RegisterOrganization(orgID string) error { return nil }
+func (m *mockEventHub) RegisterGateway(gatewayID string) error { return nil }
 
 func (m *mockEventHub) PublishEvent(orgID string, event eventhub.Event) error {
 	m.mu.Lock()
@@ -75,6 +75,10 @@ func (m *mockEventHub) Subscribe(orgID string) (<-chan eventhub.Event, error) {
 	close(ch)
 	return ch, nil
 }
+
+func (m *mockEventHub) Unsubscribe(orgID string, subscriber <-chan eventhub.Event) error { return nil }
+
+func (m *mockEventHub) UnsubscribeAll(orgID string) error { return nil }
 
 func (m *mockEventHub) CleanUpEvents() error { return nil }
 
@@ -413,6 +417,10 @@ func (m *MockStorage) GetDB() *sql.DB {
 	return nil
 }
 
+func (m *MockStorage) GetGatewayID() string {
+	return ""
+}
+
 func (m *MockStorage) Close() error {
 	return nil
 }
@@ -466,7 +474,11 @@ func createTestAPIServer() *APIServer {
 		},
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		systemConfig: &config.Config{
-			Controller: config.Controller{},
+			Controller: config.Controller{
+				Server: config.ServerConfig{
+					GatewayID: "platform-gateway-id",
+				},
+			},
 			Router: config.RouterConfig{
 				GatewayHost: "localhost",
 				VHosts:      *vhosts,
@@ -480,7 +492,7 @@ func createTestAPIServer() *APIServer {
 	}
 
 	// Initialize API key service (needed for API key operations)
-	apiKeyService := utils.NewAPIKeyService(store, mockDB, nil, &server.systemConfig.APIKey, nil)
+	apiKeyService := utils.NewAPIKeyService(store, mockDB, nil, &server.systemConfig.APIKey, nil, server.systemConfig.Controller.Server.GatewayID)
 	server.apiKeyService = apiKeyService
 
 	return server
@@ -1049,7 +1061,7 @@ func TestUpdateAPIPublishesEventWithoutMutatingMemoryStore(t *testing.T) {
 	server.db = setupSQLiteDBForHandlerTests(t)
 
 	hub := &mockEventHub{}
-	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.validator, server.routerConfig, hub)
+	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.validator, server.routerConfig, hub, server.systemConfig.Controller.Server.GatewayID)
 
 	storeCfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")
 	dbCfg := createTestStoredConfig("test-id", "test-api", "v1.0.0", "/test")

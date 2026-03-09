@@ -99,6 +99,51 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, version, 10) // Current schema version
 
+	var hasEntityType bool
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('events')
+		WHERE name = 'entity_type'
+	`).Scan(&hasEntityType)
+	assert.NilError(t, err)
+	assert.Assert(t, hasEntityType, "events table should include entity_type column")
+
+	var hasEventType bool
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('events')
+		WHERE name = 'event_type'
+	`).Scan(&hasEventType)
+	assert.NilError(t, err)
+	assert.Assert(t, !hasEventType, "events table should not include event_type column")
+
+	var hasGatewayID bool
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('events')
+		WHERE name = 'gateway_id'
+	`).Scan(&hasGatewayID)
+	assert.NilError(t, err)
+	assert.Assert(t, hasGatewayID, "events table should include gateway_id column")
+
+	var hasGatewayStateID bool
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('gateway_states')
+		WHERE name = 'gateway_id'
+	`).Scan(&hasGatewayStateID)
+	assert.NilError(t, err)
+	assert.Assert(t, hasGatewayStateID, "gateway_states table should include gateway_id column")
+
+	var eventIDIsPrimaryKey bool
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('events')
+		WHERE name = 'event_id' AND pk = 1
+	`).Scan(&eventIDIsPrimaryKey)
+	assert.NilError(t, err)
+	assert.Assert(t, eventIDIsPrimaryKey, "events.event_id should be the primary key")
+
 	// Verify tables exist
 	tables := []string{
 		"deployments",
@@ -106,7 +151,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
-		"organization_states",
+		"gateway_states",
 		"events",
 	}
 

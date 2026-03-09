@@ -98,25 +98,28 @@ CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
 CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
 
--- Table for organization states (used by eventhub for multi-replica sync)
-CREATE TABLE IF NOT EXISTS organization_states (
-    organization TEXT PRIMARY KEY,
+-- Table for gateway states (used by eventhub for multi-replica sync)
+CREATE TABLE IF NOT EXISTS gateway_states (
+    gateway_id TEXT PRIMARY KEY,
     version_id TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table for events (used by eventhub for multi-replica sync)
 CREATE TABLE IF NOT EXISTS events (
-    organization_id TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     processed_timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     originated_timestamp TIMESTAMPTZ NOT NULL,
-    event_type TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
     action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
     entity_id TEXT NOT NULL,
-    correlation_id TEXT NOT NULL DEFAULT '',
+    event_id TEXT NOT NULL,
     event_data TEXT NOT NULL,
-    PRIMARY KEY (organization_id, processed_timestamp)
+    PRIMARY KEY (event_id),
+    FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
 
 -- Migration-safe column additions for existing deployments
 ALTER TABLE deployments ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
