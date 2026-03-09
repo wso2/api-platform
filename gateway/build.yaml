@@ -77,9 +77,3 @@ policies:
   # Python sample policies
   - name: add-python-header
     filePath: ./sample-policies/add-python-header
-  - name: add-python-response-header
-    filePath: ./sample-policies/add-python-response-header
-  - name: python-json-body-transform
-    filePath: ./sample-policies/python-json-body-transform
-  - name: python-body-validator
-    filePath: ./sample-policies/python-body-validator

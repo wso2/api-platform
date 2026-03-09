@@ -111,12 +111,3 @@ policies:
     - name: add-python-header
       version: v1.0.0
       filePath: ./sample-policies/add-python-header
-    - name: add-python-response-header
-      version: v1.0.0
-      filePath: ./sample-policies/add-python-response-header
-    - name: python-json-body-transform
-      version: v1.0.0
-      filePath: ./sample-policies/python-json-body-transform
-    - name: python-body-validator
-      version: v1.0.0
-      filePath: ./sample-policies/python-body-validator

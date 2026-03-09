@@ -1,2 +1,0 @@
-# JSON Schema validation (Draft 3, 4, 6, 7, 2019-09, 2020-12)
-jsonschema>=4.0.0

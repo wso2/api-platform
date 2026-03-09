@@ -1,1 +1,0 @@
-# No extra dependencies — only Python standard library (json, logging) is used.
