@@ -123,7 +123,7 @@ func (u *MCPUtils) GenerateMCPDeploymentYAML(proxy *model.MCPProxy) (string, err
 			Vhost:       vhostValue,
 			Upstream:    proxy.Configuration.Upstream,
 			SpecVersion: proxy.Configuration.SpecVersion,
-			Policies:    []model.Policy{},
+			Policies:    proxy.Configuration.Policies,
 		},
 	}
 

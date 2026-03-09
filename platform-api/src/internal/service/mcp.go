@@ -101,6 +101,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			Vhost:       req.Vhost,
 			SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
 			Upstream:    *mapUpstreamAPIToModel(req.Upstream),
+			Policies:    mapMCPPoliciesAPIToModel(req.Policies),
 		},
 	}
 
@@ -192,6 +193,7 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 		Vhost:       req.Vhost,
 		SpecVersion: mcpSpecVersionToString(req.McpSpecVersion),
 		Upstream:    *mapUpstreamAPIToModel(req.Upstream),
+		Policies:    mapMCPPoliciesAPIToModel(req.Policies),
 	}
 
 	if err := s.repo.Update(existing); err != nil {
@@ -274,6 +276,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		Vhost:          m.Configuration.Vhost,
 		McpSpecVersion: specVersion,
 		Upstream:       mapUpstreamModelToAPI(&m.Configuration.Upstream),
+		Policies:       mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 	}
 }
 
@@ -320,4 +323,48 @@ func Generate(url string, outputDir string, headerName string, headerValue strin
 	}
 	fmt.Println("MCP generated successfully.")
 	return nil
+}
+
+// mapMCPPoliciesAPIToModel converts API policies to model policies
+func mapMCPPoliciesAPIToModel(in *[]api.Policy) []model.Policy {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.Policy, 0, len(*in))
+	for _, p := range *in {
+		policy := model.Policy{
+			Name:    p.Name,
+			Version: p.Version,
+		}
+		if p.ExecutionCondition != nil {
+			policy.ExecutionCondition = p.ExecutionCondition
+		}
+		if p.Params != nil {
+			policy.Params = p.Params
+		}
+		out = append(out, policy)
+	}
+	return out
+}
+
+// mapMCPPoliciesModelToAPI converts model policies to API policies
+func mapMCPPoliciesModelToAPI(in []model.Policy) *[]api.Policy {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.Policy, 0, len(in))
+	for _, p := range in {
+		policy := api.Policy{
+			Name:    p.Name,
+			Version: p.Version,
+		}
+		if p.ExecutionCondition != nil {
+			policy.ExecutionCondition = p.ExecutionCondition
+		}
+		if p.Params != nil {
+			policy.Params = p.Params
+		}
+		out = append(out, policy)
+	}
+	return &out
 }

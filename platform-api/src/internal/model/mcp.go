@@ -43,4 +43,5 @@ type MCPProxyConfiguration struct {
 	Vhost       *string        `json:"vhost" db:"-"`
 	SpecVersion string         `json:"specVersion" db:"-"`
 	Upstream    UpstreamConfig `json:"upstream" db:"-"`
+	Policies    []Policy       `json:"policies,omitempty" db:"-"`
 }
