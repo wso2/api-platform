@@ -98,7 +98,6 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 			Name:       restAPI.Name,
 			Version:    restAPI.Version,
 			Context:    &restAPI.Context,
-			Vhosts:     u.VhostsAPIToModel(restAPI.Vhosts),
 			Upstream:   *u.UpstreamConfigAPIToModel(&restAPI.Upstream),
 			Policies:   u.PoliciesAPIToModel(restAPI.Policies),
 			Operations: u.OperationsAPIToModel(restAPI.Operations),
@@ -150,7 +149,6 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
 		UpdatedAt:       TimePtrIfNotZero(modelAPI.UpdatedAt),
 		Upstream:        u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
 		Version:         modelAPI.Version,
-		Vhosts:          u.VhostsModelToAPI(modelAPI.Configuration.Vhosts),
 	}, nil
 }
 
@@ -344,26 +342,6 @@ func (u *APIUtil) OperationsModelToAPI(models []model.Operation) *[]api.Operatio
 	return &operations
 }
 
-func (u *APIUtil) VhostsAPIToModel(vhosts *api.APIVhosts) *model.VhostsConfig {
-	if vhosts == nil {
-		return nil
-	}
-	return &model.VhostsConfig{
-		Main:    vhosts.Main,
-		Sandbox: vhosts.Sandbox,
-	}
-}
-
-func (u *APIUtil) VhostsModelToAPI(vhosts *model.VhostsConfig) *api.APIVhosts {
-	if vhosts == nil {
-		return nil
-	}
-	return &api.APIVhosts{
-		Main:    vhosts.Main,
-		Sandbox: vhosts.Sandbox,
-	}
-}
-
 func (u *APIUtil) ChannelsModelToAPI(models []model.Channel) *[]api.Channel {
 	if models == nil {
 		return nil
@@ -546,14 +524,6 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error)
 	apiYAMLData.Version = apiModel.Version
 	apiYAMLData.Context = defaultStringPtr(apiModel.Configuration.Context)
 	apiYAMLData.Policies = u.PoliciesModelToDTO(apiModel.Configuration.Policies)
-
-	// Vhosts
-	if apiModel.Configuration.Vhosts != nil {
-		apiYAMLData.Vhosts = &dto.VhostsYAML{
-			Main:    apiModel.Configuration.Vhosts.Main,
-			Sandbox: apiModel.Configuration.Vhosts.Sandbox,
-		}
-	}
 
 	// Only set upstream and operations for HTTP APIs
 	switch apiModel.Kind {
@@ -835,15 +805,6 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 
 	lifeCycleStatus := api.RESTAPILifeCycleStatus("CREATED")
 
-	// Map vhosts if present
-	var vhosts *api.APIVhosts
-	if yamlData.Vhosts != nil {
-		vhosts = &api.APIVhosts{
-			Main:    yamlData.Vhosts.Main,
-			Sandbox: yamlData.Vhosts.Sandbox,
-		}
-	}
-
 	// Create and populate generated RESTAPI model with available fields
 	restAPI := &api.RESTAPI{
 		Name:            yamlData.DisplayName,
@@ -857,7 +818,6 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 		Kind:            StringPtrIfNotEmpty(kind),
 		Transport:       stringSlicePtr([]string{"http", "https"}),
 		ProjectId:       openapi_types.UUID{},
-		Vhosts:          vhosts,
 
 		// Fields that may be set by caller:
 		// - Id
@@ -1383,13 +1343,6 @@ func (u *APIUtil) MergeRESTAPIDetails(userAPI *api.RESTAPI, extractedAPI *api.RE
 		merged.Upstream = userAPI.Upstream
 	} else {
 		merged.Upstream = extractedAPI.Upstream
-	}
-
-	// Vhosts: prefer user-provided override when non-nil
-	if userAPI.Vhosts != nil {
-		merged.Vhosts = userAPI.Vhosts
-	} else {
-		merged.Vhosts = extractedAPI.Vhosts
 	}
 
 	// Policies/channels are only from user input

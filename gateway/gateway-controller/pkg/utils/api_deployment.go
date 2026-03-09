@@ -289,6 +289,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
+	// Resolve gateway-default sentinels to the current config values before persisting so that
+	// the stored vhosts are immune to future gateway config changes.
+	resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig)
+
 	// Try to save/update the configuration
 	isUpdate, err = s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
@@ -536,4 +540,46 @@ func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpCl
 	}
 
 	return fmt.Errorf("WebSubHub request failed after %d retries; last status: %d", maxRetries, lastStatus)
+}
+
+// vhostGatewayDefault is the sentinel value written by platform-api to indicate that the
+// gateway-controller should resolve and persist its current configured default vhost values.
+const vhostGatewayDefault = "_gateway_default_"
+
+// resolveVhostSentinels replaces the gateway-default sentinel in an APIConfiguration's vhosts
+// with the actual default values from the router config. This ensures that the stored value in
+// bbolt is always a concrete hostname, making deployments immune to future gateway config changes.
+func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterConfig) {
+	if cfg == nil || routerCfg == nil {
+		return
+	}
+	switch cfg.Kind {
+	case api.RestApi:
+		apiData, err := cfg.Spec.AsAPIConfigData()
+		if err != nil || apiData.Vhosts == nil {
+			return
+		}
+		modified := false
+		if apiData.Vhosts.Main == vhostGatewayDefault {
+			apiData.Vhosts.Main = routerCfg.VHosts.Main.Default
+			modified = true
+		}
+		if apiData.Vhosts.Sandbox != nil && *apiData.Vhosts.Sandbox == vhostGatewayDefault {
+			resolved := routerCfg.VHosts.Sandbox.Default
+			apiData.Vhosts.Sandbox = &resolved
+			modified = true
+		}
+		if modified {
+			_ = cfg.Spec.FromAPIConfigData(apiData)
+		}
+	case api.WebSubApi:
+		webhookData, err := cfg.Spec.AsWebhookAPIData()
+		if err != nil || webhookData.Vhosts == nil {
+			return
+		}
+		if webhookData.Vhosts.Main == vhostGatewayDefault {
+			webhookData.Vhosts.Main = routerCfg.VHosts.Main.Default
+			_ = cfg.Spec.FromWebhookAPIData(webhookData)
+		}
+	}
 }

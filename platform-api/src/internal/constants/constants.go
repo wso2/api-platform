@@ -125,3 +125,11 @@ const (
 	// MaxLLMProxiesPerOrganization is the maximum number of LLM proxies allowed per organization.
 	MaxLLMProxiesPerOrganization = 5
 )
+
+// Metadata key constants for deployment metadata
+const (
+	// MetadataKeyVhostMain is the metadata key for the per-deployment main vhost value.
+	MetadataKeyVhostMain = "vhost_main"
+	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
+	MetadataKeyVhostSandbox = "vhost_sandbox"
+)

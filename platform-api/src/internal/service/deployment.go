@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -34,6 +36,14 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// vhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
+// and persist the current gateway default vhosts, ensuring deployments are immune to future
+// gateway config changes.
+const vhostGatewayDefault = "_gateway_default_"
+
+// vhostLabelRe matches a single valid DNS label per RFC 1035.
+var vhostLabelRe = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
 
 // DeploymentService handles business logic for API deployment operations
 type DeploymentService struct {
@@ -169,7 +179,37 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		}
 	}
 
-	// Create new deployment record with limit enforcement
+	// Determine vhost values: default to sentinel so gateway resolves and persists its current defaults.
+	vhostMain := vhostGatewayDefault
+	var vhostSandbox *string
+	if req.Vhost != nil {
+		if req.Vhost.Main != nil && *req.Vhost.Main != "" {
+			if !isValidVHostOrSentinel(*req.Vhost.Main) {
+				return nil, fmt.Errorf("invalid vhost.main value: %s", *req.Vhost.Main)
+			}
+			vhostMain = *req.Vhost.Main
+		}
+		if req.Vhost.Sandbox != nil && *req.Vhost.Sandbox != "" {
+			if !isValidVHostOrSentinel(*req.Vhost.Sandbox) {
+				return nil, fmt.Errorf("invalid vhost.sandbox value: %s", *req.Vhost.Sandbox)
+			}
+			vhostSandbox = req.Vhost.Sandbox
+		}
+	}
+
+	// Inject vhost into the deployment YAML so it is persisted in the gateway.
+	contentBytes, err = overrideVhost(contentBytes, vhostMain, vhostSandbox)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inject vhost into deployment YAML: %w", err)
+	}
+
+	// Store vhost in metadata so it is returned in the deployment response.
+	metadata[constants.MetadataKeyVhostMain] = vhostMain
+	if vhostSandbox != nil {
+		metadata[constants.MetadataKeyVhostSandbox] = *vhostSandbox
+	}
+
+	// Create new deployment record with limit enforcement.
 	// Hard limit = soft limit (configured) + 5 buffer for concurrent deployments
 	deployment := &model.Deployment{
 		DeploymentID:     deploymentID,
@@ -426,6 +466,40 @@ func overrideEndpointURL(contentBytes []byte, newURL string) ([]byte, error) {
 	return modifiedBytes, nil
 }
 
+// isValidVHostOrSentinel returns true if vhost is the gateway-default sentinel or a valid RFC 1035 hostname.
+func isValidVHostOrSentinel(vhost string) bool {
+	if vhost == vhostGatewayDefault {
+		return true
+	}
+	if vhost == "" {
+		return false
+	}
+	labels := strings.Split(vhost, ".")
+	for _, label := range labels {
+		if !vhostLabelRe.MatchString(label) {
+			return false
+		}
+	}
+	return true
+}
+
+// overrideVhost injects the given vhost values into a deployment YAML's spec.vhosts section.
+func overrideVhost(contentBytes []byte, main string, sandbox *string) ([]byte, error) {
+	var apiDeployment dto.APIDeploymentYAML
+	if err := yaml.Unmarshal(contentBytes, &apiDeployment); err != nil {
+		return nil, fmt.Errorf("failed to parse deployment YAML: %w", err)
+	}
+	apiDeployment.Spec.Vhosts = &dto.VhostsYAML{
+		Main:    main,
+		Sandbox: sandbox,
+	}
+	modifiedBytes, err := yaml.Marshal(&apiDeployment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal deployment YAML with vhost: %w", err)
+	}
+	return modifiedBytes, nil
+}
+
 // GetDeployments retrieves all deployments for an API with optional filters
 func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *string, status *string) (*api.DeploymentListResponse, error) {
 	// Verify API exists
@@ -674,6 +748,19 @@ func toAPIDeploymentResponse(
 	gatewayUUID := utils.ParseOpenAPIUUIDOrZero(gatewayID)
 	baseUUID := utils.ParseOptionalOpenAPIUUID(baseDeploymentID)
 
+	// Extract vhost from metadata and populate the response field.
+	var vhost *api.APIVhost
+	if vhostMainRaw, ok := metadata[constants.MetadataKeyVhostMain]; ok {
+		if vhostMainStr, ok := vhostMainRaw.(string); ok {
+			vhost = &api.APIVhost{Main: &vhostMainStr}
+			if vhostSandboxRaw, ok := metadata[constants.MetadataKeyVhostSandbox]; ok {
+				if vhostSandboxStr, ok := vhostSandboxRaw.(string); ok {
+					vhost.Sandbox = &vhostSandboxStr
+				}
+			}
+		}
+	}
+
 	return &api.DeploymentResponse{
 		BaseDeploymentId: baseUUID,
 		CreatedAt:        createdAt,
@@ -683,5 +770,6 @@ func toAPIDeploymentResponse(
 		Name:             name,
 		Status:           api.DeploymentResponseStatus(status),
 		UpdatedAt:        updatedAt,
+		Vhost:            vhost,
 	}, nil
 }

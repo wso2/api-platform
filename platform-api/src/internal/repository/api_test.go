@@ -448,7 +448,6 @@ func TestAPIRepo_CreateAndRead_FullConfiguration(t *testing.T) {
 			Name:    "Full Config API",
 			Version: "2.0.0",
 			Context: strPtr("/full-config"),
-			Vhosts:  &model.VhostsConfig{Main: "api.example.com"},
 			Upstream: model.UpstreamConfig{
 				Main: &model.UpstreamEndpoint{
 					URL: "https://backend.example.com",
@@ -515,51 +514,3 @@ func TestAPIRepo_CreateAndRead_FullConfiguration(t *testing.T) {
 	}
 }
 
-// TestAPIRepo_LegacyVhostDeserialization verifies that existing JSON rows containing the legacy
-// "vhost" field (and no "vhosts" field) are deserialized correctly: the value is promoted to Vhosts.Main.
-func TestAPIRepo_LegacyVhostDeserialization(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	t.Cleanup(cleanup)
-
-	repo := NewAPIRepo(db)
-
-	orgUUID := "org-legacy-vhost"
-	projectUUID := "project-legacy-vhost"
-	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
-
-	// Insert a row with a legacy "vhost" JSON field directly in the configuration column.
-	// The schema stores API data across two tables: artifacts (metadata) and rest_apis (config).
-	legacyConfig := `{"name":"Legacy API","version":"1.0.0","context":"/legacy","vhost":"legacy.example.com"}`
-	apiID := "legacy-vhost-api-id"
-
-	_, err := db.Exec(`
-		INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		apiID, "legacy-vhost-api", "Legacy API", "1.0.0", "RestApi", orgUUID)
-	if err != nil {
-		t.Fatalf("failed to insert artifact row: %v", err)
-	}
-
-	_, err = db.Exec(`
-		INSERT INTO rest_apis (uuid, description, created_by, project_uuid, lifecycle_status, transport, configuration)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		apiID, "", "test-user", projectUUID, "CREATED", `["https"]`, legacyConfig)
-	if err != nil {
-		t.Fatalf("failed to insert rest_api row: %v", err)
-	}
-
-	result, err := repo.GetAPIByUUID(apiID, orgUUID)
-	if err != nil {
-		t.Fatalf("GetAPIByUUID failed: %v", err)
-	}
-	if result == nil {
-		t.Fatal("GetAPIByUUID returned nil")
-	}
-
-	if result.Configuration.Vhosts == nil || result.Configuration.Vhosts.Main != "legacy.example.com" {
-		t.Errorf("Vhosts.Main = %v, want %q", result.Configuration.Vhosts, "legacy.example.com")
-	}
-	if result.Configuration.Vhosts.Sandbox != nil {
-		t.Errorf("Vhosts.Sandbox should be nil, got %v", result.Configuration.Vhosts.Sandbox)
-	}
-}

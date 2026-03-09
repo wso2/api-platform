@@ -365,12 +365,12 @@ type APIKeySecurity struct {
 // APIKeySecurityIn Location of the API key (header or query)
 type APIKeySecurityIn string
 
-// APIVhosts Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
-type APIVhosts struct {
-	// Main Virtual host for production (main) traffic
-	Main string `binding:"required" json:"main" yaml:"main"`
+// APIVhost Per-deployment virtual host override. Omit or use '_gateway_default_' to have the gateway resolve and persist its current defaults. Values are always persisted so gateway restarts do not affect existing deployments.
+type APIVhost struct {
+	// Main Virtual host for production (main) traffic, or '_gateway_default_' to use the gateway's configured default
+	Main *string `json:"main,omitempty" yaml:"main,omitempty"`
 
-	// Sandbox Virtual host for sandbox traffic (optional)
+	// Sandbox Virtual host for sandbox traffic, or '_gateway_default_' to use the gateway's configured default
 	Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 }
 
@@ -633,9 +633,6 @@ type CreateRESTAPIRequest struct {
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 	Version  string   `binding:"required" json:"version" yaml:"version"`
-
-	// Vhosts Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
-	Vhosts *APIVhosts `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 }
 
 // CreateRESTAPIRequestLifeCycleStatus Current lifecycle status of the API
@@ -654,6 +651,9 @@ type DeployRequest struct {
 
 	// Name Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
 	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Vhost Per-deployment virtual host override. Omit or use '_gateway_default_' to have the gateway resolve and persist its current defaults. Values are always persisted so gateway restarts do not affect existing deployments.
+	Vhost *APIVhost `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
 // DeploymentListResponse defines model for DeploymentListResponse.
@@ -693,6 +693,9 @@ type DeploymentResponse struct {
 
 	// UpdatedAt Timestamp when the deployment status last changed (null for ARCHIVED deployments)
 	UpdatedAt *time.Time `json:"updatedAt" yaml:"updatedAt"`
+
+	// Vhost Per-deployment virtual host override. Omit or use '_gateway_default_' to have the gateway resolve and persist its current defaults. Values are always persisted so gateway restarts do not affect existing deployments.
+	Vhost *APIVhost `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
 // DeploymentResponseStatus Current deployment lifecycle state:
@@ -1052,9 +1055,6 @@ type ImportAPIProjectRequest struct {
 		// Upstream Upstream backend configuration with main and sandbox endpoints
 		Upstream Upstream `json:"upstream" yaml:"upstream"`
 		Version  string   `binding:"required" json:"version" yaml:"version"`
-
-		// Vhosts Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
-		Vhosts *APIVhosts `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 	} `binding:"required" json:"api" yaml:"api"`
 
 	// Branch Branch of the repository to import from
@@ -1439,9 +1439,6 @@ type OpenAPIValidationResponse struct {
 		// Upstream Upstream backend configuration with main and sandbox endpoints
 		Upstream Upstream `json:"upstream" yaml:"upstream"`
 		Version  string   `binding:"required" json:"version" yaml:"version"`
-
-		// Vhosts Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
-		Vhosts *APIVhosts `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 	} `json:"api,omitempty" yaml:"api,omitempty"`
 
 	// Errors List of validation errors encountered
@@ -1661,9 +1658,6 @@ type RESTAPI struct {
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 	Version  string   `binding:"required" json:"version" yaml:"version"`
-
-	// Vhosts Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
-	Vhosts *APIVhosts `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 }
 
 // RESTAPILifeCycleStatus Current lifecycle status of the API
@@ -1862,9 +1856,6 @@ type RESTAPIProjectValidationResponse struct {
 		// Upstream Upstream backend configuration with main and sandbox endpoints
 		Upstream Upstream `json:"upstream" yaml:"upstream"`
 		Version  string   `binding:"required" json:"version" yaml:"version"`
-
-		// Vhosts Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
-		Vhosts *APIVhosts `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 	} `json:"api,omitempty" yaml:"api,omitempty"`
 
 	// Errors List of validation errors encountered

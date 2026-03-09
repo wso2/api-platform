@@ -3156,22 +3156,21 @@ components:
           readOnly: true
           example: "2023-10-12T10:30:00Z"
 
-    APIVhosts:
-      title: API Virtual Hosts
-      description: Per-API virtual host overrides. When set, these override the gateway-level vhost defaults.
-      required:
-        - main
+    APIVhost:
+      title: API Virtual Host
+      description: >
+        Per-deployment virtual host override. Omit or use '_gateway_default_' to have the gateway
+        resolve and persist its current defaults. Values are always persisted so gateway restarts
+        do not affect existing deployments.
       type: object
       properties:
         main:
           type: string
-          description: Virtual host for production (main) traffic
-          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+          description: Virtual host for production (main) traffic, or '_gateway_default_' to use the gateway's configured default
           example: api.example.com
         sandbox:
           type: string
-          description: Virtual host for sandbox traffic (optional)
-          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+          description: Virtual host for sandbox traffic, or '_gateway_default_' to use the gateway's configured default
           example: sandbox-api.example.com
 
     RESTAPI:
@@ -3274,8 +3273,6 @@ components:
           description: List of channels exposed by this API
           items:
             $ref: '#/components/schemas/Channel'
-        vhosts:
-          $ref: '#/components/schemas/APIVhosts'
 
     SecurityConfig:
       title: Security Configuration
@@ -4875,6 +4872,8 @@ components:
           type: object
           additionalProperties: true
           description: Optional metadata for the deployment (e.g., endpointUrl overrides)
+        vhost:
+          $ref: '#/components/schemas/APIVhost'
 
     DeploymentResponse:
       type: object
@@ -4926,6 +4925,8 @@ components:
           format: date-time
           nullable: true
           description: Timestamp when the deployment status last changed (null for ARCHIVED deployments)
+        vhost:
+          $ref: '#/components/schemas/APIVhost'
 
     DeploymentListResponse:
       type: object

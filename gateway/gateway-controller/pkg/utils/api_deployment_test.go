@@ -749,3 +749,96 @@ func TestRegisterAndUnregisterTopicWithHub(t *testing.T) {
 		assert.Error(t, err) // Will fail because no server is running
 	})
 }
+
+func TestResolveVhostSentinels_RestApi(t *testing.T) {
+	sandbox := vhostGatewayDefault
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "sandbox-*.wso2.com"},
+		},
+	}
+
+	main := vhostGatewayDefault
+	cfg := &api.APIConfiguration{
+		Kind: api.RestApi,
+	}
+	apiData := api.APIConfigData{
+		Vhosts: &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    main,
+			Sandbox: &sandbox,
+		},
+	}
+	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
+
+	resolveVhostSentinels(cfg, routerCfg)
+
+	resolved, err := cfg.Spec.AsAPIConfigData()
+	require.NoError(t, err)
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "sandbox-*.wso2.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_ExplicitValuesUnchanged(t *testing.T) {
+	sandboxValue := "custom-sandbox.example.com"
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "sandbox-*.wso2.com"},
+		},
+	}
+
+	cfg := &api.APIConfiguration{Kind: api.RestApi}
+	apiData := api.APIConfigData{
+		Vhosts: &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    "custom.example.com",
+			Sandbox: &sandboxValue,
+		},
+	}
+	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
+
+	resolveVhostSentinels(cfg, routerCfg)
+
+	resolved, err := cfg.Spec.AsAPIConfigData()
+	require.NoError(t, err)
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "custom.example.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "custom-sandbox.example.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_NilVhostsNoOp(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main: config.VHostEntry{Default: "*.wso2.com"},
+		},
+	}
+
+	cfg := &api.APIConfiguration{Kind: api.RestApi}
+	apiData := api.APIConfigData{Vhosts: nil}
+	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
+
+	resolveVhostSentinels(cfg, routerCfg) // should not panic
+
+	resolved, err := cfg.Spec.AsAPIConfigData()
+	require.NoError(t, err)
+	assert.Nil(t, resolved.Vhosts)
+}
+
+func TestResolveVhostSentinels_NilCfgNoOp(t *testing.T) {
+	routerCfg := &config.RouterConfig{}
+	resolveVhostSentinels(nil, routerCfg) // should not panic
+}
+
+func TestResolveVhostSentinels_NilRouterCfgNoOp(t *testing.T) {
+	cfg := &api.APIConfiguration{Kind: api.RestApi}
+	resolveVhostSentinels(cfg, nil) // should not panic
+}
