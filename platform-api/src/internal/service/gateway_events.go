@@ -577,6 +577,225 @@ func (s *GatewayEventsService) BroadcastLLMProxyUndeploymentEvent(gatewayID stri
 	return nil
 }
 
+// BroadcastMCPProxyDeploymentEvent sends an MCP proxy deployment event to target gateway
+func (s *GatewayEventsService) BroadcastMCPProxyDeploymentEvent(gatewayID string, deployment *model.MCPProxyDeploymentEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(deployment)
+	if err != nil {
+		s.slogger.Error("Failed to serialize MCP proxy deployment event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize MCP proxy deployment event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	// Create gateway event DTO
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "mcpproxy.deployed",
+		Payload:       deployment,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send MCP proxy deployment event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Info("MCP proxy deployment event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	// Log broadcast summary
+	s.slogger.Info("MCP proxy deployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver MCP proxy deployment event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastMCPProxyUndeploymentEvent sends an MCP proxy undeployment event to target gateway
+func (s *GatewayEventsService) BroadcastMCPProxyUndeploymentEvent(gatewayID string, undeployment *model.MCPProxyUndeploymentEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(undeployment)
+	if err != nil {
+		s.slogger.Error("Failed to serialize MCP proxy undeployment event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize MCP proxy undeployment event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	// Create gateway event DTO with undeployment type
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "mcpproxy.undeployed",
+		Payload:       undeployment,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send MCP proxy undeployment event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Info("MCP proxy undeployment event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	// Log broadcast summary
+	s.slogger.Info("MCP proxy undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver MCP proxy undeployment event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastMCPProxyDeletionEvent sends an MCP proxy deletion event to target gateway
+func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(gatewayID string, deletion *model.MCPProxyDeletionEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(deletion)
+	if err != nil {
+		s.slogger.Error("Failed to serialize MCP proxy deletion event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize MCP proxy deletion event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	// Create gateway event DTO with deletion type
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "mcpproxy.deleted",
+		Payload:       deletion,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send MCP proxy deletion event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Info("MCP proxy deletion event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	// Log broadcast summary
+	s.slogger.Info("MCP proxy deletion broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver MCP proxy deletion event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
 // BroadcastAPIKeyCreatedEvent sends an API key created event to target gateway.
 // This method handles:
 // - Looking up gateway connections by gateway ID

@@ -247,14 +247,14 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 
 	// Send deployment event to gateway
 	if s.gatewayEventsService != nil {
-		deploymentEvent := &model.DeploymentEvent{
-			ApiId:        proxyUUID,
+		deploymentEvent := &model.MCPProxyDeploymentEvent{
+			ProxyId:      proxyUUID,
 			DeploymentID: deploymentID,
 			Vhost:        gateway.Vhost,
 		}
 
-		if err := s.gatewayEventsService.BroadcastDeploymentEvent(gatewayID, deploymentEvent); err != nil {
-			s.slogger.Warn("Failed to broadcast deployment event", "error", err)
+		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
 	}
 
@@ -272,9 +272,9 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 }
 
 // UndeployMCPProxyDeployment undeploys an MCP proxy from a gateway
-func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyId string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
 	// Verify MCP proxy exists
-	mcpProxy, err := s.mcpRepo.GetByUUID(proxyId, orgId)
+	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyId string, deploy
 	var deployment *model.Deployment
 	if deploymentId != nil {
 		// Get specific deployment
-		deployment, err = s.deploymentRepo.GetWithState(*deploymentId, proxyId, orgId)
+		deployment, err = s.deploymentRepo.GetWithState(*deploymentId, proxyUUID, orgId)
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +295,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyId string, deploy
 		}
 	} else if gatewayId != nil {
 		// Find current deployment for this gateway
-		deployment, err = s.deploymentRepo.GetCurrentByGateway(proxyId, *gatewayId, orgId)
+		deployment, err = s.deploymentRepo.GetCurrentByGateway(proxyUUID, *gatewayId, orgId)
 		if err != nil {
 			return nil, err
 		}
@@ -326,20 +326,20 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyId string, deploy
 	}
 
 	// Update status to UNDEPLOYED using SetCurrent
-	newUpdatedAt, err := s.deploymentRepo.SetCurrent(proxyId, orgId, deployment.GatewayID, deployment.DeploymentID, model.DeploymentStatusUndeployed)
+	newUpdatedAt, err := s.deploymentRepo.SetCurrent(proxyUUID, orgId, deployment.GatewayID, deployment.DeploymentID, model.DeploymentStatusUndeployed)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
 	// Send undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		undeploymentEvent := &model.APIUndeploymentEvent{
-			ApiId: proxyId,
-			Vhost: gateway.Vhost,
+		undeploymentEvent := &model.MCPProxyUndeploymentEvent{
+			ProxyId: proxyUUID,
+			Vhost:   gateway.Vhost,
 		}
 
-		if err := s.gatewayEventsService.BroadcastUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
-			s.slogger.Warn("Failed to broadcast undeployment event", "error", err)
+		if err := s.gatewayEventsService.BroadcastMCPProxyUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+			s.slogger.Warn("Failed to broadcast MCP proxy undeployment event", "error", err)
 		}
 	}
 
@@ -397,14 +397,14 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 
 	// Send deployment event to gateway
 	if s.gatewayEventsService != nil {
-		deploymentEvent := &model.DeploymentEvent{
-			ApiId:        proxyUUID,
+		deploymentEvent := &model.MCPProxyDeploymentEvent{
+			ProxyId:      proxyUUID,
 			DeploymentID: *deploymentId,
 			Vhost:        gateway.Vhost,
 		}
 
-		if err := s.gatewayEventsService.BroadcastDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
-			s.slogger.Warn("Failed to broadcast deployment event", "error", err)
+		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
+			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
 	}
 
@@ -421,9 +421,9 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 }
 
 // getMCPProxyDeployment retrieves a specific MCP proxy deployment
-func (s *MCPDeploymentService) getMCPProxyDeployment(proxyId string, deploymentId string, orgId string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymentId string, orgId string) (*api.DeploymentResponse, error) {
 	// Verify API exists
-	mcpProxy, err := s.mcpRepo.GetByUUID(proxyId, orgId)
+	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +432,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyId string, deploymentI
 	}
 
 	// Get deployment with state derived via LEFT JOIN
-	deployment, err := s.deploymentRepo.GetWithState(deploymentId, proxyId, orgId)
+	deployment, err := s.deploymentRepo.GetWithState(deploymentId, proxyUUID, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -453,9 +453,9 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyId string, deploymentI
 }
 
 // getMCPProxyDeployments retrieves all deployments for an MCP proxy
-func (s *MCPDeploymentService) getMCPProxyDeployments(proxyId string, orgId string, gatewayId *string, status *string) (*api.DeploymentListResponse, error) {
+func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId string, gatewayId *string, status *string) (*api.DeploymentListResponse, error) {
 	// Verify MCP proxy exists
-	mcpProxy, err := s.mcpRepo.GetByUUID(proxyId, orgId)
+	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyId string, orgId stri
 	}
 
 	// Get deployments with state derived via LEFT JOIN
-	deployments, err := s.deploymentRepo.GetDeploymentsWithState(proxyId, orgId, gatewayId, status, s.cfg.Deployments.MaxPerAPIGateway)
+	deployments, err := s.deploymentRepo.GetDeploymentsWithState(proxyUUID, orgId, gatewayId, status, s.cfg.Deployments.MaxPerAPIGateway)
 	if err != nil {
 		return nil, err
 	}
@@ -510,9 +510,9 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyId string, orgId stri
 }
 
 // deleteMCPProxyDeployment deletes an MCP proxy deployment
-func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyId string, deploymentId string, orgId string) error {
+func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyUUID string, deploymentId string, orgId string) error {
 	// Verify MCP proxy exists
-	mcpProxy, err := s.mcpRepo.GetByUUID(proxyId, orgId)
+	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
 		return err
 	}
@@ -521,7 +521,7 @@ func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyId string, deployme
 	}
 
 	// Verify deployment exists and belongs to the MCP proxy
-	deployment, err := s.deploymentRepo.GetWithState(deploymentId, proxyId, orgId)
+	deployment, err := s.deploymentRepo.GetWithState(deploymentId, proxyUUID, orgId)
 	if err != nil {
 		return err
 	}
@@ -535,7 +535,7 @@ func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyId string, deployme
 	}
 
 	// Delete the deployment artifact
-	if err := s.deploymentRepo.Delete(deploymentId, proxyId, orgId); err != nil {
+	if err := s.deploymentRepo.Delete(deploymentId, proxyUUID, orgId); err != nil {
 		return fmt.Errorf("failed to delete deployment: %w", err)
 	}
 

@@ -174,7 +174,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo)
-	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo)
+	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, gatewayRepo, deploymentRepo, gatewayEventsService, slogger)
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,

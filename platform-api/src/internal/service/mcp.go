@@ -24,6 +24,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -40,15 +41,25 @@ const (
 
 // MCPProxyService handles business logic for MCP proxy operations
 type MCPProxyService struct {
-	repo        repository.MCPProxyRepository
-	projectRepo repository.ProjectRepository
+	repo                 repository.MCPProxyRepository
+	projectRepo          repository.ProjectRepository
+	gatewayRepo          repository.GatewayRepository
+	deploymentRepo       repository.DeploymentRepository
+	gatewayEventsService *GatewayEventsService
+	slogger              *slog.Logger
 }
 
 // NewMCPProxyService creates a new MCPProxyService instance
-func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo repository.ProjectRepository) *MCPProxyService {
+func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo repository.ProjectRepository,
+	gatewayRepo repository.GatewayRepository, deploymentRepo repository.DeploymentRepository,
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger) *MCPProxyService {
 	return &MCPProxyService{
-		repo:        repo,
-		projectRepo: projectRepo,
+		repo:                 repo,
+		projectRepo:          projectRepo,
+		gatewayRepo:          gatewayRepo,
+		deploymentRepo:       deploymentRepo,
+		gatewayEventsService: gatewayEventsService,
+		slogger:              slogger,
 	}
 }
 
@@ -212,11 +223,62 @@ func (s *MCPProxyService) Delete(orgUUID, handle string) error {
 		return constants.ErrInvalidInput
 	}
 
+	// Get the MCP proxy UUID before deletion (needed for deployment lookup)
+	mcpProxy, err := s.repo.GetByHandle(handle, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get MCP proxy: %w", err)
+	}
+	if mcpProxy == nil {
+		return constants.ErrMCPProxyNotFound
+	}
+
+	// Get all active gateway deployments BEFORE deletion
+	// (deployments will be cascade deleted with the artifact)
+	var gatewayDeployments []*model.Deployment
+	if s.deploymentRepo != nil {
+		// Get all deployments with DEPLOYED status for this MCP proxy
+		statusDeployed := string(model.DeploymentStatusDeployed)
+		deployments, err := s.deploymentRepo.GetDeploymentsWithState(mcpProxy.UUID, orgUUID, nil, &statusDeployed, 100)
+		if err != nil {
+			// Log warning but don't fail - proceed with deletion
+			s.slogger.Warn("Failed to get gateway deployments for MCP proxy deletion", "error", err, "proxyUUID", mcpProxy.UUID)
+		}
+		gatewayDeployments = deployments
+	}
+
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrMCPProxyNotFound
 		}
 		return fmt.Errorf("failed to delete MCP proxy: %w", err)
+	}
+
+	// Send deletion events to all gateways where this proxy was deployed
+	if s.gatewayEventsService != nil && len(gatewayDeployments) > 0 {
+		for _, deployment := range gatewayDeployments {
+			// Get gateway details to retrieve vhost
+			gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
+			if err != nil {
+				s.slogger.Warn("Failed to get gateway for MCP deletion event", "error", err, "gatewayID", deployment.GatewayID)
+				continue
+			}
+			if gateway == nil {
+				s.slogger.Warn("Gateway not found for MCP deletion event", "gatewayID", deployment.GatewayID)
+				continue
+			}
+
+			// Create and send MCP proxy deletion event
+			deletionEvent := &model.MCPProxyDeletionEvent{
+				ProxyId: mcpProxy.UUID,
+				Vhost:   gateway.Vhost,
+			}
+
+			if err := s.gatewayEventsService.BroadcastMCPProxyDeletionEvent(deployment.GatewayID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast MCP proxy deletion event", "error", err, "gatewayID", deployment.GatewayID, "proxyUUID", mcpProxy.UUID)
+			} else {
+				s.slogger.Info("MCP proxy deletion event sent", "gatewayID", deployment.GatewayID, "proxyUUID", mcpProxy.UUID, "vhost", gateway.Vhost)
+			}
+		}
 	}
 
 	return nil
