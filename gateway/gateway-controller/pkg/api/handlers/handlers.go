@@ -173,15 +173,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	}
 }
 
-// HealthCheck implements ServerInterface.HealthCheck
-// (GET /health)
-func (s *APIServer) HealthCheck(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "healthy",
-		"timestamp": time.Now().Format(time.RFC3339),
-	})
-}
-
 // GetXDSSyncStatus implements the GET /xds_sync_status endpoint.
 func (s *APIServer) GetXDSSyncStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, s.GetXDSSyncStatusResponse())

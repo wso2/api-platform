@@ -219,7 +219,6 @@ type MockServerInterface struct {
 	DeleteCertificateCalled          bool
 	GetConfigDumpCalled              bool
 	GetXDSSyncStatusCalled           bool
-	HealthCheckCalled                bool
 	ListLLMProviderTemplatesCalled   bool
 	CreateLLMProviderTemplateCalled  bool
 	DeleteLLMProviderTemplateCalled  bool
@@ -323,11 +322,6 @@ func (m *MockServerInterface) GetConfigDump(c *gin.Context) {
 func (m *MockServerInterface) GetXDSSyncStatus(c *gin.Context) {
 	m.GetXDSSyncStatusCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func (m *MockServerInterface) HealthCheck(c *gin.Context) {
-	m.HealthCheckCalled = true
-	c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 }
 
 func (m *MockServerInterface) ListLLMProviderTemplates(c *gin.Context, params ListLLMProviderTemplatesParams) {
@@ -1498,7 +1492,6 @@ func TestRegisterHandlers(t *testing.T) {
 		assert.True(t, routePaths["GET:/apis/:id"])
 		assert.True(t, routePaths["PUT:/apis/:id"])
 		assert.True(t, routePaths["DELETE:/apis/:id"])
-		assert.True(t, routePaths["GET:/health"])
 		assert.True(t, routePaths["GET:/certificates"])
 		assert.True(t, routePaths["GET:/policies"])
 	})
@@ -1527,7 +1520,6 @@ func TestRegisterHandlersWithOptions(t *testing.T) {
 
 		assert.True(t, routePaths["GET:/api/v1/apis"])
 		assert.True(t, routePaths["POST:/api/v1/apis"])
-		assert.True(t, routePaths["GET:/api/v1/health"])
 	})
 
 	t.Run("RegisterHandlersWithOptions with custom error handler", func(t *testing.T) {
@@ -1544,11 +1536,11 @@ func TestRegisterHandlersWithOptions(t *testing.T) {
 
 		// Make a request to verify handler is set up
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/health", nil)
+		req, _ := http.NewRequest("GET", "/policies", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.True(t, mockServer.HealthCheckCalled)
+		assert.True(t, mockServer.ListPoliciesCalled)
 	})
 
 	t.Run("RegisterHandlersWithOptions with middleware", func(t *testing.T) {
@@ -1567,11 +1559,11 @@ func TestRegisterHandlersWithOptions(t *testing.T) {
 		RegisterHandlersWithOptions(router, mockServer, options)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/health", nil)
+		req, _ := http.NewRequest("GET", "/policies", nil)
 		router.ServeHTTP(w, req)
 
 		assert.True(t, middlewareCalled)
-		assert.True(t, mockServer.HealthCheckCalled)
+		assert.True(t, mockServer.ListPoliciesCalled)
 	})
 
 	t.Run("Middleware can abort request", func(t *testing.T) {
@@ -1589,11 +1581,11 @@ func TestRegisterHandlersWithOptions(t *testing.T) {
 		RegisterHandlersWithOptions(router, mockServer, options)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/health", nil)
+		req, _ := http.NewRequest("GET", "/policies", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusUnauthorized, w.Code)
-		assert.False(t, mockServer.HealthCheckCalled)
+		assert.False(t, mockServer.ListPoliciesCalled)
 	})
 }
 
@@ -2059,19 +2051,6 @@ func TestServerInterfaceWrapper_LLMProviderTemplateRoutes(t *testing.T) {
 func TestServerInterfaceWrapper_MiscRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	t.Run("HealthCheck", func(t *testing.T) {
-		router := gin.New()
-		mockServer := &MockServerInterface{}
-		RegisterHandlers(router, mockServer)
-
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/health", nil)
-		router.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.True(t, mockServer.HealthCheckCalled)
-	})
-
 	t.Run("ListPolicies", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
@@ -2187,7 +2166,7 @@ func TestDefaultErrorHandler(t *testing.T) {
 
 		// Make a request - the default error handler will be used if there's an error
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/health", nil)
+		req, _ := http.NewRequest("GET", "/policies", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)

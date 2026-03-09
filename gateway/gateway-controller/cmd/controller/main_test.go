@@ -582,7 +582,6 @@ func TestGenerateAuthConfig(t *testing.T) {
 		assert.False(t, authConfig.BasicAuth.Enabled)
 		assert.False(t, authConfig.JWTConfig.Enabled)
 		assert.NotNil(t, authConfig.ResourceRoles)
-		assert.Contains(t, authConfig.SkipPaths, "/health")
 	})
 
 	t.Run("Basic auth enabled with users", func(t *testing.T) {

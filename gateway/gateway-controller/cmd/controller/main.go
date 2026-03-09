@@ -551,7 +551,6 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
-		SkipPaths:     []string{"/health"},
 	}
 	return authConfig
 }

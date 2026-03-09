@@ -508,22 +508,6 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 	}
 }
 
-// TestHealthCheck tests the health check endpoint
-func TestHealthCheck(t *testing.T) {
-	server := createTestAPIServer()
-	c, w := createTestContext("GET", "/health", nil)
-
-	server.HealthCheck(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "healthy", response["status"])
-	assert.Contains(t, response, "timestamp")
-}
-
 // TestListAPIs tests listing all APIs
 func TestListAPIs(t *testing.T) {
 	server := createTestAPIServer()
@@ -1942,16 +1926,6 @@ func TestDeleteLLMProxyInternalError(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestMCPProxyKindMismatch(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
-}
-
-// BenchmarkHealthCheck benchmarks the health check endpoint
-func BenchmarkHealthCheck(b *testing.B) {
-	server := createTestAPIServer()
-
-	for i := 0; i < b.N; i++ {
-		c, _ := createTestContext("GET", "/health", nil)
-		server.HealthCheck(c)
-	}
 }
 
 // BenchmarkListAPIs benchmarks the list APIs endpoint
