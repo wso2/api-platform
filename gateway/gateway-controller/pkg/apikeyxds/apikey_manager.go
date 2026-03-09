@@ -56,13 +56,13 @@ func (asm *APIKeyStateManager) StoreAPIKey(apiId, apiName, apiVersion string, ap
 	// Store the API key in the store and update the snapshot
 	if err := asm.snapshotManager.StoreAPIKey(apiKey); err != nil {
 		asm.logger.Error("Failed to store API key and update snapshot",
-			slog.String("api_key_id", apiKey.ID),
+			slog.String("api_key_id", apiKey.UUID),
 			slog.Any("error", err))
 		return fmt.Errorf("failed to store API key: %w", err)
 	}
 
 	asm.logger.Info("Successfully stored API key and updated policy engine state",
-		slog.String("api_key_id", apiKey.ID),
+		slog.String("api_key_id", apiKey.UUID),
 		slog.String("correlation_id", correlationID))
 
 	return nil

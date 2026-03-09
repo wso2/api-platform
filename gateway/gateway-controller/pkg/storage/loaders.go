@@ -37,7 +37,7 @@ func LoadFromDatabase(storage Storage, cache *ConfigStore) error {
 
 	for _, cfg := range configs {
 		if err := cache.Add(cfg); err != nil {
-			return fmt.Errorf("failed to load config %s into cache: %w", cfg.ID, err)
+			return fmt.Errorf("failed to load config %s into cache: %w", cfg.UUID, err)
 		}
 	}
 
@@ -69,15 +69,15 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 
 	for _, apiKey := range apiKeys {
 		if err := configStore.StoreAPIKey(apiKey); err != nil {
-			return fmt.Errorf("failed to load API key %s into ConfigStore: %w", apiKey.ID, err)
+			return fmt.Errorf("failed to load API key %s into ConfigStore: %w", apiKey.UUID, err)
 		}
 
 		if err := storeAPIKeySafely(apiKeyStore, apiKey); err != nil {
-			rollbackErr := configStore.RemoveAPIKeyByID(apiKey.APIId, apiKey.ID)
+			rollbackErr := configStore.RemoveAPIKeyByID(apiKey.ArtifactUUID, apiKey.UUID)
 			if rollbackErr != nil {
-				return fmt.Errorf("failed to load API key %s into APIKeyStore: %w; failed to rollback ConfigStore entry: %v", apiKey.ID, err, rollbackErr)
+				return fmt.Errorf("failed to load API key %s into APIKeyStore: %w; failed to rollback ConfigStore entry: %v", apiKey.UUID, err, rollbackErr)
 			}
-			return fmt.Errorf("failed to load API key %s into APIKeyStore: %w (rolled back ConfigStore entry)", apiKey.ID, err)
+			return fmt.Errorf("failed to load API key %s into APIKeyStore: %w (rolled back ConfigStore entry)", apiKey.UUID, err)
 		}
 	}
 
@@ -87,7 +87,7 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 func storeAPIKeySafely(apiKeyStore apiKeyStoreWriter, apiKey *models.APIKey) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in apiKeyStore.Store for API key %s: %v", apiKey.ID, r)
+			err = fmt.Errorf("panic in apiKeyStore.Store for API key %s: %v", apiKey.UUID, r)
 		}
 	}()
 

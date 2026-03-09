@@ -242,17 +242,17 @@ func TestMergeParams(t *testing.T) {
 	})
 
 	t.Run("Merge with base only", func(t *testing.T) {
-		base := map[string]interface{}{"key1": "value1"}
+		base := map[string]interface{}{"0000-key1-0000-000000000000": "value1"}
 		extra := map[string]interface{}{}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value1", (*result)["key1"])
+		assert.Equal(t, "value1", (*result)["0000-key1-0000-000000000000"])
 	})
 
 	t.Run("Merge with extra only", func(t *testing.T) {
 		base := map[string]interface{}{}
-		extra := map[string]interface{}{"key2": "value2"}
+		extra := map[string]interface{}{"0000-key2-0000-000000000000": "value2"}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value2", (*result)["key2"])
+		assert.Equal(t, "value2", (*result)["0000-key2-0000-000000000000"])
 	})
 
 	t.Run("Merge with overlapping keys", func(t *testing.T) {
@@ -264,11 +264,11 @@ func TestMergeParams(t *testing.T) {
 	})
 
 	t.Run("Merge with different keys", func(t *testing.T) {
-		base := map[string]interface{}{"key1": "value1"}
-		extra := map[string]interface{}{"key2": "value2"}
+		base := map[string]interface{}{"0000-key1-0000-000000000000": "value1"}
+		extra := map[string]interface{}{"0000-key2-0000-000000000000": "value2"}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value1", (*result)["key1"])
-		assert.Equal(t, "value2", (*result)["key2"])
+		assert.Equal(t, "value1", (*result)["0000-key1-0000-000000000000"])
+		assert.Equal(t, "value2", (*result)["0000-key2-0000-000000000000"])
 	})
 }
 
@@ -572,7 +572,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -613,7 +613,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -657,7 +657,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -722,7 +722,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 
 	// Add a template to the store (required for proxy transform to resolve provider template params)
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -752,8 +752,11 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 	require.NotNil(t, providerAPI)
 
 	storedProvider := &models.StoredConfig{
-		ID:                  "prov-cfg-1",
+		UUID:                "0000-prov-cfg-1-0000-000000000000",
 		Kind:                string(api.LlmProvider),
+		Handle:              "openai-provider",
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
 		Configuration:       *providerAPI,
 		SourceConfiguration: *provider,
 		Status:              models.StatusDeployed,
@@ -812,7 +815,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},

@@ -370,7 +370,7 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 
 	// Create request body
 	requestBody := APIDeploymentPush{
-		ID:                apiConfig.ID,
+		ID:                apiConfig.UUID,
 		Configuration:     apiConfig.Configuration,
 		Status:            string(apiConfig.Status),
 		CreatedAt:         apiConfig.CreatedAt,

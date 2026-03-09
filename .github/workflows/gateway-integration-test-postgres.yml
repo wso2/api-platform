@@ -58,14 +58,18 @@ jobs:
 
           docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml up -d postgres gateway-controller
 
-          timeout 90 bash -c 'until curl -fsS http://localhost:9090/health >/dev/null; do sleep 2; done'
+          timeout 90 bash -c 'until curl -fsS http://localhost:9090/health >/dev/null 2>&1; do sleep 2; done' || {
+            echo "=== Health check timed out — gateway-controller logs ==="
+            docker logs it-gateway-controller 2>&1 || true
+            exit 1
+          }
 
           docker logs it-gateway-controller > /tmp/gateway-controller.log 2>&1 || true
-          grep -Eq "Initializing PostgreSQL storage|PostgreSQL schema up to date" /tmp/gateway-controller.log
+          grep -Eq "Initializing PostgreSQL schema|PostgreSQL schema initialized" /tmp/gateway-controller.log
 
-          schema_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
-            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM schema_migrations WHERE id = 1 AND version >= 1;")"
-          [ "$schema_count" = "1" ]
+          table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
+            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'artifacts';")"
+          [ "$table_count" = "1" ]
 
           conn_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
             psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name = 'gateway-controller';")"
@@ -97,6 +101,12 @@ jobs:
         run: |
           echo "=== Docker Containers ==="
           docker ps -a
+
+          for ctr in it-gateway-controller it-gateway-runtime it-postgres; do
+            echo ""
+            echo "=== Docker logs: $ctr ==="
+            docker logs "$ctr" 2>&1 || echo "(container $ctr not found)"
+          done
 
           echo ""
           echo "=== gateway/it/logs Directory Contents ==="

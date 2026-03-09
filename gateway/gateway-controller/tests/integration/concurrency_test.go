@@ -118,16 +118,16 @@ func TestConcurrentReads(t *testing.T) {
 			defer wg.Done()
 
 			// Read by ID
-			_, err := db.GetConfig(cfg.ID)
+			_, err := db.GetConfig(cfg.UUID)
 			if err != nil {
 				errors <- fmt.Errorf("goroutine %d failed to get config by ID: %w", id, err)
 				return
 			}
 
-			// Read by name/version
-			_, err = db.GetConfigByNameVersion("ReadTestAPI", "v1.0")
+			// Read by handle
+			_, err = db.GetConfigByHandle("ReadTestAPI-v1.0")
 			if err != nil {
-				errors <- fmt.Errorf("goroutine %d failed to get config by name/version: %w", id, err)
+				errors <- fmt.Errorf("goroutine %d failed to get config by handle: %w", id, err)
 			}
 		}(i)
 	}
@@ -191,7 +191,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			_, err := db.GetConfigByNameVersion(fmt.Sprintf("MixedAPI%d", id), "v1.0")
+			_, err := db.GetConfigByHandle(fmt.Sprintf("MixedAPI%d-v1.0", id))
 			if err != nil {
 				errors <- fmt.Errorf("reader %d failed: %w", id, err)
 			}
@@ -204,7 +204,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			cfg, err := db.GetConfigByNameVersion(fmt.Sprintf("MixedAPI%d", id), "v1.0")
+			cfg, err := db.GetConfigByHandle(fmt.Sprintf("MixedAPI%d-v1.0", id))
 			if err != nil {
 				errors <- fmt.Errorf("updater %d failed to get config: %w", id, err)
 				return
@@ -268,7 +268,7 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 			defer wg.Done()
 
 			// Get the configuration
-			cfg, err := db.GetConfig(cfg.ID)
+			cfg, err := db.GetConfig(cfg.UUID)
 			if err != nil {
 				errors <- fmt.Errorf("goroutine %d failed to get config: %w", id, err)
 				return
@@ -295,10 +295,10 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 	assert.Empty(t, errorList, "No errors should occur during concurrent updates")
 
 	// Verify the configuration still exists and is valid
-	finalCfg, err := db.GetConfig(cfg.ID)
+	finalCfg, err := db.GetConfig(cfg.UUID)
 	assert.NoError(t, err)
 	assert.NotNil(t, finalCfg)
-	assert.Equal(t, "SharedAPI", finalCfg.GetDisplayName())
+	assert.Equal(t, "SharedAPI", finalCfg.DisplayName)
 
 	// The final DeployedVersion will be whichever goroutine completed last
 	t.Logf("Final deployed version: %d", finalCfg.DeployedVersion)

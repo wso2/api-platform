@@ -258,7 +258,7 @@ func main() {
 				if storedPolicy != nil {
 					if err := policyStore.Set(storedPolicy); err != nil {
 						log.Warn("Failed to load policy from API",
-							slog.String("api_id", apiConfig.ID),
+							slog.String("api_id", apiConfig.UUID),
 							slog.Any("error", err))
 					} else {
 						derivedCount++

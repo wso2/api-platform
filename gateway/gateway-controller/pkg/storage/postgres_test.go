@@ -58,15 +58,19 @@ func TestPostgresStorage_ConfigCRUD(t *testing.T) {
 
 	cfg := createTestStoredConfig()
 	assert.NilError(t, pg.SaveConfig(cfg))
-	defer pg.DeleteConfig(cfg.ID)
+	t.Cleanup(func() {
+		if err := pg.DeleteConfig(cfg.UUID); err != nil && !IsNotFoundError(err) {
+			t.Errorf("cleanup DeleteConfig(%s): %v", cfg.UUID, err)
+		}
+	})
 
-	stored, err := pg.GetConfig(cfg.ID)
+	stored, err := pg.GetConfig(cfg.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, stored.ID, cfg.ID)
-	assert.Equal(t, stored.GetHandle(), cfg.GetHandle())
+	assert.Equal(t, stored.UUID, cfg.UUID)
+	assert.Equal(t, stored.Handle, cfg.Handle)
 
-	assert.NilError(t, pg.DeleteConfig(cfg.ID))
-	_, err = pg.GetConfig(cfg.ID)
+	assert.NilError(t, pg.DeleteConfig(cfg.UUID))
+	_, err = pg.GetConfig(cfg.UUID)
 	assert.Assert(t, err != nil)
 	assert.Assert(t, IsNotFoundError(err))
 }
@@ -77,31 +81,47 @@ func TestPostgresStorage_TemplateAndAPIKeyCRUD(t *testing.T) {
 
 	tmpl := createTestLLMProviderTemplate()
 	assert.NilError(t, pg.SaveLLMProviderTemplate(tmpl))
-	defer pg.DeleteLLMProviderTemplate(tmpl.ID)
+	t.Cleanup(func() {
+		if err := pg.DeleteLLMProviderTemplate(tmpl.UUID); err != nil && !IsNotFoundError(err) {
+			t.Errorf("cleanup DeleteLLMProviderTemplate(%s): %v", tmpl.UUID, err)
+		}
+	})
 
-	loadedTemplate, err := pg.GetLLMProviderTemplate(tmpl.ID)
+	loadedTemplate, err := pg.GetLLMProviderTemplate(tmpl.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, loadedTemplate.ID, tmpl.ID)
+	assert.Equal(t, loadedTemplate.UUID, tmpl.UUID)
 	assert.Equal(t, loadedTemplate.GetHandle(), tmpl.GetHandle())
 
 	cfg := createTestStoredConfig()
 	assert.NilError(t, pg.SaveConfig(cfg))
-	defer pg.DeleteConfig(cfg.ID)
+	t.Cleanup(func() {
+		if err := pg.DeleteConfig(cfg.UUID); err != nil && !IsNotFoundError(err) {
+			t.Errorf("cleanup DeleteConfig(%s): %v", cfg.UUID, err)
+		}
+	})
 
 	apiKey := createTestAPIKey()
-	apiKey.APIId = cfg.ID
+	apiKey.ArtifactUUID = cfg.UUID
 	apiKey.Source = "local"
+
+	preInsertCount, err := pg.CountActiveAPIKeysByUserAndAPI(apiKey.ArtifactUUID, apiKey.CreatedBy)
+	assert.NilError(t, err)
+
 	assert.NilError(t, pg.SaveAPIKey(apiKey))
-	defer pg.RemoveAPIKeyAPIAndName(apiKey.APIId, apiKey.Name)
+	t.Cleanup(func() {
+		if err := pg.RemoveAPIKeyAPIAndName(apiKey.ArtifactUUID, apiKey.Name); err != nil && !IsNotFoundError(err) {
+			t.Errorf("cleanup RemoveAPIKeyAPIAndName(%s, %s): %v", apiKey.ArtifactUUID, apiKey.Name, err)
+		}
+	})
 
-	loadedKey, err := pg.GetAPIKeyByID(apiKey.ID)
+	loadedKey, err := pg.GetAPIKeyByID(apiKey.UUID)
 	assert.NilError(t, err)
-	assert.Equal(t, loadedKey.ID, apiKey.ID)
-	assert.Equal(t, loadedKey.APIId, apiKey.APIId)
+	assert.Equal(t, loadedKey.UUID, apiKey.UUID)
+	assert.Equal(t, loadedKey.ArtifactUUID, apiKey.ArtifactUUID)
 
-	count, err := pg.CountActiveAPIKeysByUserAndAPI(apiKey.APIId, apiKey.CreatedBy)
+	postInsertCount, err := pg.CountActiveAPIKeysByUserAndAPI(apiKey.ArtifactUUID, apiKey.CreatedBy)
 	assert.NilError(t, err)
-	assert.Assert(t, count >= 1)
+	assert.Equal(t, postInsertCount, preInsertCount+1)
 }
 
 func TestPostgresStorage_SaveLLMProviderTemplate_UniqueConstraintError(t *testing.T) {
@@ -110,7 +130,11 @@ func TestPostgresStorage_SaveLLMProviderTemplate_UniqueConstraintError(t *testin
 
 	template := createTestLLMProviderTemplate()
 	assert.NilError(t, pg.SaveLLMProviderTemplate(template))
-	defer pg.DeleteLLMProviderTemplate(template.ID)
+	t.Cleanup(func() {
+		if err := pg.DeleteLLMProviderTemplate(template.UUID); err != nil && !IsNotFoundError(err) {
+			t.Errorf("cleanup DeleteLLMProviderTemplate(%s): %v", template.UUID, err)
+		}
+	})
 
 	conflictingTemplate := createTestLLMProviderTemplate()
 	conflictingTemplate.Configuration.Metadata.Name = template.Configuration.Metadata.Name
