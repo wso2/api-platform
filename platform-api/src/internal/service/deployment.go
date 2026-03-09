@@ -123,6 +123,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 
 	var baseDeploymentID *string
 	var contentBytes []byte
+	var baseDeployment *model.Deployment
 
 	// Determine the source: "current" or existing deployment
 	if req.Base == "current" {
@@ -136,7 +137,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		contentBytes = []byte(apiYaml)
 	} else {
 		// Use existing deployment as base
-		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, apiUUID, orgUUID)
+		var err error
+		baseDeployment, err = s.deploymentRepo.GetWithContent(req.Base, apiUUID, orgUUID)
 		if err != nil {
 			if errors.Is(err, constants.ErrDeploymentNotFound) {
 				return nil, constants.ErrBaseDeploymentNotFound
@@ -179,38 +181,62 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		}
 	}
 
-	// Determine vhost values: default to sentinel so gateway resolves and persists its current defaults.
-	vhostMain := vhostGatewayDefault
+	// Determine vhost values.
+	// For "current" base: default to sentinel so the gateway resolves and persists its defaults.
+	// For an existing deployment base: preserve the base's stored vhosts unless the user explicitly provides new ones.
+	var vhostMain string
 	var vhostSandbox *string
-	// If the API has a sandbox upstream and no explicit sandbox vhost is provided,
-	// default sandbox to the sentinel too so it gets resolved and stored at deploy time.
-	if apiModel.Configuration.Upstream.Sandbox != nil {
-		sandboxSentinel := vhostGatewayDefault
-		vhostSandbox = &sandboxSentinel
-	}
-	if req.Vhost != nil {
-		if req.Vhost.Main != nil && *req.Vhost.Main != "" {
-			if !isValidVHostOrSentinel(*req.Vhost.Main) {
-				return nil, fmt.Errorf("invalid vhost.main value: %s", *req.Vhost.Main)
-			}
-			vhostMain = *req.Vhost.Main
-		}
-		if req.Vhost.Sandbox != nil && *req.Vhost.Sandbox != "" {
-			if !isValidVHostOrSentinel(*req.Vhost.Sandbox) {
-				return nil, fmt.Errorf("invalid vhost.sandbox value: %s", *req.Vhost.Sandbox)
-			}
-			vhostSandbox = req.Vhost.Sandbox
-		}
-	}
 
-	// Inject vhost into the deployment YAML so it is persisted in the gateway.
-	contentBytes, err = overrideVhost(contentBytes, vhostMain, vhostSandbox)
-	if err != nil {
-		return nil, fmt.Errorf("failed to inject vhost into deployment YAML: %w", err)
+	if req.Base == "current" || req.Vhost != nil {
+		// Fresh deployment or user explicitly overriding: start with sentinel defaults
+		vhostMain = vhostGatewayDefault
+		// If the API has a sandbox upstream, default sandbox to sentinel too
+		if apiModel.Configuration.Upstream.Sandbox != nil {
+			sandboxSentinel := vhostGatewayDefault
+			vhostSandbox = &sandboxSentinel
+		}
+		if req.Vhost != nil {
+			if req.Vhost.Main != nil && *req.Vhost.Main != "" {
+				if !isValidVHostOrSentinel(*req.Vhost.Main) {
+					return nil, fmt.Errorf("invalid vhost.main value: %s", *req.Vhost.Main)
+				}
+				vhostMain = *req.Vhost.Main
+			}
+			if req.Vhost.Sandbox != nil && *req.Vhost.Sandbox != "" {
+				if !isValidVHostOrSentinel(*req.Vhost.Sandbox) {
+					return nil, fmt.Errorf("invalid vhost.sandbox value: %s", *req.Vhost.Sandbox)
+				}
+				vhostSandbox = req.Vhost.Sandbox
+			}
+		}
+
+		// Inject vhost into the deployment YAML so it is persisted in the gateway.
+		contentBytes, err = overrideVhost(contentBytes, vhostMain, vhostSandbox)
+		if err != nil {
+			return nil, fmt.Errorf("failed to inject vhost into deployment YAML: %w", err)
+		}
+	} else {
+		// base: <deploymentId> with no explicit vhost — preserve the base's stored vhosts.
+		// Extract from base deployment's metadata for the new deployment's metadata.
+		if baseDeployment != nil && baseDeployment.Metadata != nil {
+			if m, ok := baseDeployment.Metadata[constants.MetadataKeyVhostMain]; ok {
+				if ms, ok := m.(string); ok {
+					vhostMain = ms
+				}
+			}
+			if m, ok := baseDeployment.Metadata[constants.MetadataKeyVhostSandbox]; ok {
+				if ms, ok := m.(string); ok {
+					vhostSandbox = &ms
+				}
+			}
+		}
+		// contentBytes already has the base's vhosts from the stored YAML; no override needed.
 	}
 
 	// Store vhost in metadata so it is returned in the deployment response.
-	metadata[constants.MetadataKeyVhostMain] = vhostMain
+	if vhostMain != "" {
+		metadata[constants.MetadataKeyVhostMain] = vhostMain
+	}
 	if vhostSandbox != nil {
 		metadata[constants.MetadataKeyVhostSandbox] = *vhostSandbox
 	}
@@ -762,8 +788,12 @@ func toAPIDeploymentResponse(
 			if vhostSandboxRaw, ok := metadata[constants.MetadataKeyVhostSandbox]; ok {
 				if vhostSandboxStr, ok := vhostSandboxRaw.(string); ok {
 					vhost.Sandbox = &vhostSandboxStr
+				} else {
+					slog.Warn("unexpected type for vhost_sandbox metadata", "type", fmt.Sprintf("%T", vhostSandboxRaw))
 				}
 			}
+		} else {
+			slog.Warn("unexpected type for vhost_main metadata", "type", fmt.Sprintf("%T", vhostMainRaw))
 		}
 	}
 

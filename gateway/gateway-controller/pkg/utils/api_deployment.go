@@ -577,8 +577,17 @@ func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterCo
 		if err != nil || webhookData.Vhosts == nil {
 			return
 		}
+		modified := false
 		if webhookData.Vhosts.Main == vhostGatewayDefault {
 			webhookData.Vhosts.Main = routerCfg.VHosts.Main.Default
+			modified = true
+		}
+		if webhookData.Vhosts.Sandbox != nil && *webhookData.Vhosts.Sandbox == vhostGatewayDefault {
+			resolved := routerCfg.VHosts.Sandbox.Default
+			webhookData.Vhosts.Sandbox = &resolved
+			modified = true
+		}
+		if modified {
 			_ = cfg.Spec.FromWebhookAPIData(webhookData)
 		}
 	}
