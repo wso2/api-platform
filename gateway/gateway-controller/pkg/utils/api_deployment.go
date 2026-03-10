@@ -292,6 +292,9 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Resolve gateway-default sentinels to the current config values before persisting so that
 	// the stored vhosts are immune to future gateway config changes.
 	resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig)
+	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
+	// (the DB layer marshals SourceConfiguration, not Configuration).
+	storedCfg.SourceConfiguration = storedCfg.Configuration
 
 	// Try to save/update the configuration
 	isUpdate, err = s.saveOrUpdateConfig(storedCfg, params.Logger)
