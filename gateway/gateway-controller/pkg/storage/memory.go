@@ -82,15 +82,15 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	cs.nameVersion[key] = cfg.UUID
 
 	// Store labels if present
-	if cfg.Configuration.Metadata.Labels != nil {
+	if labels := cfg.GetLabels(); labels != nil {
 		labelsCopy := make(map[string]string)
-		for k, v := range *cfg.Configuration.Metadata.Labels {
+		for k, v := range *labels {
 			labelsCopy[k] = v
 		}
 		cs.labelsByAPI[cfg.Handle] = labelsCopy
 	}
 
-	if cfg.Configuration.Kind == api.WebSubApi {
+	if cfg.Kind == "WebSubApi" {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -137,7 +137,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		cs.nameVersion[newKey] = cfg.UUID
 	}
 
-	if cfg.Configuration.Kind == api.WebSubApi {
+	if cfg.Kind == "WebSubApi" {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -147,42 +147,37 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	cs.configs[cfg.UUID] = cfg
 
 	// Store labels with new handle
-	// Check if handles are same(because this is the key of the map)
-	// If same, update the labels or remove the entry if labels are nil
-	// If not same and if the labels are not nil, create a new entry with new handle
-	// else we can ignore it
+	labels := cfg.GetLabels()
 	if oldHandle != newHandle {
-		// Remove old handle entry
 		delete(cs.labelsByAPI, oldHandle)
-		if cfg.Configuration.Metadata.Labels != nil {
+		if labels != nil {
 			labelsCopy := make(map[string]string)
-			for k, v := range *cfg.Configuration.Metadata.Labels {
+			for k, v := range *labels {
 				labelsCopy[k] = v
 			}
 			cs.labelsByAPI[newHandle] = labelsCopy
 		}
 	} else {
-		if cfg.Configuration.Metadata.Labels != nil {
+		if labels != nil {
 			labelsCopy := make(map[string]string)
-			for k, v := range *cfg.Configuration.Metadata.Labels {
+			for k, v := range *labels {
 				labelsCopy[k] = v
 			}
 			cs.labelsByAPI[oldHandle] = labelsCopy
 		} else {
-			// Remove entry if labels are nil
 			delete(cs.labelsByAPI, oldHandle)
 		}
-
 	}
 
 	return nil
 }
 
 func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
-	asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
-	if err != nil {
-		return fmt.Errorf("failed to parse async API data: %w", err)
+	webSubCfg, ok := cfg.Configuration.(api.WebSubAPI)
+	if !ok {
+		return fmt.Errorf("configuration is not a WebSubAPI")
 	}
+	asyncData := webSubCfg.Spec
 	// Maintaining a topic map to process topics
 	// Running these inside Add or Delete configs might add extra latency to the API Deployment process
 	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
@@ -216,7 +211,7 @@ func (cs *ConfigStore) Delete(id string) error {
 		return fmt.Errorf("configuration with ID '%s' not found", id)
 	}
 
-	if cfg.Configuration.Kind == api.WebSubApi {
+	if cfg.Kind == "WebSubApi" {
 		cs.TopicManager.RemoveAllForConfig(cfg.UUID)
 	}
 	delete(cs.handle, cfg.Handle)

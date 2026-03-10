@@ -101,27 +101,25 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			specUnion := api.APIConfiguration_Spec{}
-			specUnion.FromAPIConfigData(api.APIConfigData{
-				DisplayName: tt.apiName,
-				Version:     "v1.0",
-				Context:     "/test",
-				Upstream: struct {
-					Main    api.Upstream  `json:"main" yaml:"main"`
-					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-				}{
-					Main: api.Upstream{
-						Url: func() *string { s := "http://example.com"; return &s }(),
+			config := &api.RestAPI{
+				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.RestApi,
+				Spec: api.APIConfigData{
+					DisplayName: tt.apiName,
+					Version:     "v1.0",
+					Context:     "/test",
+					Upstream: struct {
+						Main    api.Upstream  `json:"main" yaml:"main"`
+						Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+					}{
+						Main: api.Upstream{
+							Url: func() *string { s := "http://example.com"; return &s }(),
+						},
+					},
+					Operations: []api.Operation{
+						{Method: "GET", Path: "/test"},
 					},
 				},
-				Operations: []api.Operation{
-					{Method: "GET", Path: "/test"},
-				},
-			})
-			config := &api.APIConfiguration{
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-				Kind:       api.RestApi,
-				Spec:       specUnion,
 			}
 
 			errors := validator.Validate(config)
@@ -354,31 +352,29 @@ func TestValidator_LabelsValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			specUnion := api.APIConfiguration_Spec{}
-			specUnion.FromAPIConfigData(api.APIConfigData{
-				DisplayName: "TestAPI",
-				Version:     "v1.0",
-				Context:     "/test",
-				Upstream: struct {
-					Main    api.Upstream  `json:"main" yaml:"main"`
-					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-				}{
-					Main: api.Upstream{
-						Url: func() *string { s := "http://example.com"; return &s }(),
-					},
-				},
-				Operations: []api.Operation{
-					{Method: "GET", Path: "/test"},
-				},
-			})
-			config := &api.APIConfiguration{
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			config := &api.RestAPI{
+				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       api.RestApi,
 				Metadata: api.Metadata{
 					Name:   "test-api-v1.0",
 					Labels: &tt.labels,
 				},
-				Spec: specUnion,
+				Spec: api.APIConfigData{
+					DisplayName: "TestAPI",
+					Version:     "v1.0",
+					Context:     "/test",
+					Upstream: struct {
+						Main    api.Upstream  `json:"main" yaml:"main"`
+						Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+					}{
+						Main: api.Upstream{
+							Url: func() *string { s := "http://example.com"; return &s }(),
+						},
+					},
+					Operations: []api.Operation{
+						{Method: "GET", Path: "/test"},
+					},
+				},
 			}
 
 			errors := validator.Validate(config)
@@ -419,31 +415,29 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 
 	// Test RestApi
 	t.Run("RestApi with valid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromAPIConfigData(api.APIConfigData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: func() *string { s := "http://example.com"; return &s }(),
-				},
-			},
-			Operations: []api.Operation{
-				{Method: "GET", Path: "/test"},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &validLabels,
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{Method: "GET", Path: "/test"},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)
@@ -459,26 +453,24 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 
 	// Test WebSubApi
 	t.Run("WebSubApi with valid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Channels: []api.Channel{
-				{
-					Name:   "/events",
-					Method: api.SUB,
-				},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.WebSubAPI{
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &validLabels,
 			},
-			Spec: specUnion,
+			Spec: api.WebhookAPIData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Channels: []api.Channel{
+					{
+						Name:   "/events",
+						Method: api.SUB,
+					},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)
@@ -496,31 +488,29 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 	invalidLabels := map[string]string{"Invalid Key": "value"}
 
 	t.Run("RestApi with invalid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromAPIConfigData(api.APIConfigData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: func() *string { s := "http://example.com"; return &s }(),
-				},
-			},
-			Operations: []api.Operation{
-				{Method: "GET", Path: "/test"},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &invalidLabels,
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{Method: "GET", Path: "/test"},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)
@@ -535,26 +525,24 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 	})
 
 	t.Run("WebSubApi with invalid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Channels: []api.Channel{
-				{
-					Name:   "/events",
-					Method: api.SUB,
-				},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.WebSubAPI{
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &invalidLabels,
 			},
-			Spec: specUnion,
+			Spec: api.WebhookAPIData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Channels: []api.Channel{
+					{
+						Name:   "/events",
+						Method: api.SUB,
+					},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)

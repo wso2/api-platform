@@ -275,44 +275,40 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		// the derived configuration contains two entries with different
 		// resolved versions.
 
-		specUnion := api.APIConfiguration_Spec{}
-		err := specUnion.FromAPIConfigData(api.APIConfigData{
-			DisplayName: "Test API",
-			Version:     "v1.0.0",
-			Context:     "/test-mixed-majors",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://backend:8080"),
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method: api.OperationMethodGET,
-					Path:   "/resource",
-					Policies: &[]api.Policy{
-						{
-							Name:    "MultiVersionPolicy",
-							Version: "v1", // major-only v1
-						},
-						{
-							Name:    "MultiVersionPolicy",
-							Version: "v2", // major-only v2
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-
-		apiConfig := api.APIConfiguration{
+		apiConfig := api.RestAPI{
 			Kind: api.RestApi,
 			Metadata: api.Metadata{
 				Name: "test-api-mixed-majors",
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "Test API",
+				Version:     "v1.0.0",
+				Context:     "/test-mixed-majors",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: stringPtr("http://backend:8080"),
+					},
+				},
+				Operations: []api.Operation{
+					{
+						Method: api.OperationMethodGET,
+						Path:   "/resource",
+						Policies: &[]api.Policy{
+							{
+								Name:    "MultiVersionPolicy",
+								Version: "v1", // major-only v1
+							},
+							{
+								Name:    "MultiVersionPolicy",
+								Version: "v2", // major-only v2
+							},
+						},
+					},
+				},
+			},
 		}
 		cfg := &models.StoredConfig{
 			UUID:                "0000-test-mixed-majors-0000-000000",
@@ -356,10 +352,10 @@ func TestDerivePolicyFromAPIConfig_InvalidConfig(t *testing.T) {
 	}
 
 	t.Run("Invalid API spec returns nil", func(t *testing.T) {
-		// Create a config that will fail AsAPIConfigData
-		apiConfig := api.APIConfiguration{
+		// Create a config with an empty spec
+		apiConfig := api.RestAPI{
 			Kind: api.RestApi,
-			Spec: api.APIConfiguration_Spec{}, // Empty spec will fail
+			Spec: api.APIConfigData{}, // Empty spec
 		}
 		cfg := &models.StoredConfig{
 			UUID:                "0000-invalid-api-0000-000000000000",
@@ -420,15 +416,12 @@ func createTestStoredConfig(name, version, context string, apiPolicies []api.Pol
 		},
 	}
 
-	spec := api.APIConfiguration_Spec{}
-	_ = spec.FromAPIConfigData(apiData)
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
-		Spec: spec,
+		Spec: apiData,
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",
@@ -476,15 +469,12 @@ func createTestStoredConfigWithSandbox(name, version, context string, apiPolicie
 		},
 	}
 
-	spec := api.APIConfiguration_Spec{}
-	_ = spec.FromAPIConfigData(apiData)
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
-		Spec: spec,
+		Spec: apiData,
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",
@@ -535,15 +525,12 @@ func createTestStoredConfigWithVhosts(name, version, context string, apiPolicies
 		},
 	}
 
-	spec := api.APIConfiguration_Spec{}
-	_ = spec.FromAPIConfigData(apiData)
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
-		Spec: spec,
+		Spec: apiData,
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",
@@ -695,15 +682,15 @@ func TestGenerateAuthConfig(t *testing.T) {
 		authConfig := generateAuthConfig(cfg)
 
 		// Check some expected resource roles
-		assert.Contains(t, authConfig.ResourceRoles, "POST /apis")
-		assert.Contains(t, authConfig.ResourceRoles, "GET /apis")
+		assert.Contains(t, authConfig.ResourceRoles, "POST /rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /rest-apis")
 		assert.Contains(t, authConfig.ResourceRoles, "GET /policies")
 		assert.NotContains(t, authConfig.ResourceRoles, "GET /config_dump")
 		assert.NotContains(t, authConfig.ResourceRoles, "GET /xds_sync_status")
 
 		// Check role assignments
-		assert.Contains(t, authConfig.ResourceRoles["POST /apis"], "admin")
-		assert.Contains(t, authConfig.ResourceRoles["POST /apis"], "developer")
+		assert.Contains(t, authConfig.ResourceRoles["POST /rest-apis"], "admin")
+		assert.Contains(t, authConfig.ResourceRoles["POST /rest-apis"], "developer")
 	})
 }
 
@@ -835,15 +822,12 @@ func createTestStoredConfigMultipleOps(name, version, context string, apiPolicie
 		},
 	}
 
-	spec := api.APIConfiguration_Spec{}
-	_ = spec.FromAPIConfigData(apiData)
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
-		Spec: spec,
+		Spec: apiData,
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",

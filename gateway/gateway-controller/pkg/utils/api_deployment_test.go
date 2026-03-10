@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -94,11 +93,9 @@ func TestGetTopicsForUpdate(t *testing.T) {
 			Kind: string(api.WebSubApi),
 		}
 		// Set up an empty spec that will fail to parse
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(api.APIConfigData{})
-		storedCfg.Configuration = api.APIConfiguration{
+		storedCfg.Configuration = api.WebSubAPI{
 			Kind: api.WebSubApi,
-			Spec: spec,
+			Spec: api.WebhookAPIData{},
 		}
 
 		toRegister, toUnregister := service.GetTopicsForUpdate(storedCfg)
@@ -117,16 +114,12 @@ func TestGetTopicsForUpdate(t *testing.T) {
 			},
 		}
 
-		var spec api.APIConfiguration_Spec
-		err := spec.FromWebhookAPIData(webhookData)
-		require.NoError(t, err)
-
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-websub-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
-				Spec: spec,
+				Spec: webhookData,
 			},
 		}
 
@@ -197,15 +190,13 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		storedCfg := &models.StoredConfig{
 			UUID:   "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -231,16 +222,14 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		// First, add a config
 		existingCfg := &models.StoredConfig{
 			UUID:   "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -254,15 +243,13 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test-updated",
 		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
 
 		updateCfg := &models.StoredConfig{
 			UUID:   "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: newSpec,
+				Spec: newApiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -287,16 +274,14 @@ func TestUpdateExistingConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/original",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		// Add original config
 		original := &models.StoredConfig{
 			UUID:   "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -310,15 +295,13 @@ func TestUpdateExistingConfig(t *testing.T) {
 			Version:     "2.0.0",
 			Context:     "/updated",
 		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
 			UUID:   "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: newSpec,
+				Spec: newApiData,
 			},
 			Status: models.StatusPending,
 		}
@@ -465,6 +448,7 @@ spec:
 		params := APIDeploymentParams{
 			Data:          []byte(yamlData),
 			ContentType:   "application/yaml",
+			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
 			Logger:        logger,
 		}
@@ -501,15 +485,13 @@ spec:
 				{Name: "/old-topic"},
 			},
 		}
-		var spec api.APIConfiguration_Spec
-		require.NoError(t, spec.FromWebhookAPIData(webhookData))
 
 		existingCfg := &models.StoredConfig{
 			UUID:   "0000-existing-websub-0000-000000000000",
 			Kind: string(api.WebSubApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
-				Spec: spec,
+				Spec: webhookData,
 			},
 			Status:    models.StatusDeployed,
 			CreatedAt: time.Now(),
@@ -558,15 +540,13 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/new",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		newCfg := &models.StoredConfig{
 			UUID:   "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -593,15 +573,13 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/existing",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		existingCfg := &models.StoredConfig{
 			UUID:   "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -615,9 +593,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		updateCfg := &models.StoredConfig{
 			UUID:   "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -642,16 +620,14 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/original",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		// Add original config
 		original := &models.StoredConfig{
 			UUID:   "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -667,15 +643,13 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 			Version:     "2.0.0",
 			Context:     "/updated",
 		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
 			UUID:   "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: newSpec,
+				Spec: newApiData,
 			},
 			Status: models.StatusPending,
 		}

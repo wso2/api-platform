@@ -16,23 +16,23 @@
  * under the License.
  */
 
-package api
+package restapi
 
 import (
 	"github.com/spf13/cobra"
 )
 
 const (
-	APICmdLiteral = "api"
-	APICmdExample = `# List all APIs
-ap gateway api list`
+	APICmdLiteral = "rest-api"
+	APICmdExample = `# List all REST APIs
+ap gateway rest-api list`
 )
 
 // APICmd represents the api command
 var APICmd = &cobra.Command{
 	Use:     APICmdLiteral,
-	Short:   "Manage APIs on the gateway",
-	Long:    "This command allows you to manage APIs on the WSO2 API Platform Gateway.",
+	Short:   "Manage REST APIs on the gateway",
+	Long:    "This command allows you to manage REST APIs on the WSO2 API Platform Gateway.",
 	Example: APICmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()

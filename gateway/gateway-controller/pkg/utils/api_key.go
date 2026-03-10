@@ -268,12 +268,12 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
 	}
 
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err))
-		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
+		logger.Error("Configuration is not a RestAPI")
+		return nil, fmt.Errorf("configuration is not a RestAPI")
 	}
+	apiConfig := restCfg.Spec
 
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName
@@ -427,12 +427,12 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// remove the api key from the policy engine
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err))
-		return nil, fmt.Errorf("failed to revoke API key: %w", err)
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
+		logger.Error("Configuration is not a RestAPI")
+		return nil, fmt.Errorf("configuration is not a RestAPI")
 	}
+	apiConfig := restCfg.Spec
 
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName
@@ -601,12 +601,12 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("failed to update API key in ConfigStore: %w", err)
 	}
 
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err))
-		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
+		logger.Error("Configuration is not a RestAPI")
+		return nil, fmt.Errorf("configuration is not a RestAPI")
 	}
+	apiConfig := restCfg.Spec
 
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName
@@ -793,14 +793,14 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
 	}
 
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err),
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
+		logger.Error("Configuration is not a RestAPI",
 			slog.String("handle", params.Handle),
 			slog.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
+		return nil, fmt.Errorf("configuration is not a RestAPI")
 	}
+	apiConfig := restCfg.Spec
 
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName

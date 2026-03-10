@@ -88,12 +88,12 @@ func TestAPIValidator_ValidateAPIVersion(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		apiVersion api.APIConfigurationApiVersion
+		apiVersion api.RestAPIApiVersion
 		wantError  bool
 	}{
 		{
 			name:       "Valid API version",
-			apiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			apiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			wantError:  false,
 		},
 		{
@@ -129,42 +129,45 @@ func TestAPIValidator_ValidateAPIVersion(t *testing.T) {
 func TestAPIValidator_ValidateKind(t *testing.T) {
 	v := NewAPIValidator()
 
-	tests := []struct {
-		name      string
-		kind      api.APIConfigurationKind
-		wantError bool
-	}{
-		{name: "Valid RestApi kind", kind: api.RestApi, wantError: false},
-		{name: "Valid WebSubApi kind", kind: api.WebSubApi, wantError: false},
-		{name: "Invalid kind", kind: "InvalidKind", wantError: true},
-	}
+	// Test RestApi kind - valid
+	t.Run("Valid RestApi kind", func(t *testing.T) {
+		config := createValidRestAPIConfig()
+		errors := v.Validate(config)
+		hasKindError := false
+		for _, e := range errors {
+			if e.Field == "kind" {
+				hasKindError = true
+				break
+			}
+		}
+		if hasKindError {
+			t.Error("unexpected kind error")
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := createValidRestAPIConfig()
-			config.Kind = tt.kind
+	// Test WebSubApi kind - valid
+	t.Run("Valid WebSubApi kind", func(t *testing.T) {
+		config := createValidWebSubAPIConfig()
+		errors := v.Validate(config)
+		hasKindError := false
+		for _, e := range errors {
+			if e.Field == "kind" {
+				hasKindError = true
+				break
+			}
+		}
+		if hasKindError {
+			t.Error("unexpected kind error")
+		}
+	})
 
-			// For WebSubApi, we need different spec
-			if tt.kind == api.WebSubApi {
-				config = createValidWebSubAPIConfig()
-			}
-
-			errors := v.Validate(config)
-			hasKindError := false
-			for _, e := range errors {
-				if e.Field == "kind" {
-					hasKindError = true
-					break
-				}
-			}
-			if tt.wantError && !hasKindError {
-				t.Error("expected kind error, got none")
-			}
-			if !tt.wantError && hasKindError {
-				t.Error("unexpected kind error")
-			}
-		})
-	}
+	// Test unsupported type
+	t.Run("Invalid kind", func(t *testing.T) {
+		errors := v.Validate("InvalidKind")
+		if len(errors) == 0 {
+			t.Error("expected error for unsupported type, got none")
+		}
+	})
 }
 
 func TestAPIValidator_ValidateDisplayName(t *testing.T) {
@@ -186,9 +189,7 @@ func TestAPIValidator_ValidateDisplayName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidRestAPIConfig()
-			spec, _ := config.Spec.AsAPIConfigData()
-			spec.DisplayName = tt.displayName
-			config.Spec.FromAPIConfigData(spec)
+			config.Spec.DisplayName = tt.displayName
 
 			errors := v.Validate(config)
 			hasDisplayNameError := false
@@ -229,9 +230,7 @@ func TestAPIValidator_ValidateVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidRestAPIConfig()
-			spec, _ := config.Spec.AsAPIConfigData()
-			spec.Version = tt.version
-			config.Spec.FromAPIConfigData(spec)
+			config.Spec.Version = tt.version
 
 			errors := v.Validate(config)
 			hasVersionError := false
@@ -271,9 +270,7 @@ func TestAPIValidator_ValidateContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidRestAPIConfig()
-			spec, _ := config.Spec.AsAPIConfigData()
-			spec.Context = tt.context
-			config.Spec.FromAPIConfigData(spec)
+			config.Spec.Context = tt.context
 
 			errors := v.Validate(config)
 			hasContextError := false
@@ -314,10 +311,8 @@ func TestAPIValidator_ValidateUpstream(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidRestAPIConfig()
-			spec, _ := config.Spec.AsAPIConfigData()
-			spec.Upstream.Main.Url = tt.mainURL
-			spec.Upstream.Main.Ref = tt.mainRef
-			config.Spec.FromAPIConfigData(spec)
+			config.Spec.Upstream.Main.Url = tt.mainURL
+			config.Spec.Upstream.Main.Ref = tt.mainRef
 
 			errors := v.Validate(config)
 			hasExpectedError := false
@@ -338,11 +333,9 @@ func TestAPIValidator_ValidateSandboxUpstream(t *testing.T) {
 	v := NewAPIValidator()
 
 	config := createValidRestAPIConfig()
-	spec, _ := config.Spec.AsAPIConfigData()
-	spec.Upstream.Sandbox = &api.Upstream{
+	config.Spec.Upstream.Sandbox = &api.Upstream{
 		Url: stringPtr("http://sandbox:8080"),
 	}
-	config.Spec.FromAPIConfigData(spec)
 
 	errors := v.Validate(config)
 	for _, e := range errors {
@@ -427,9 +420,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidRestAPIConfig()
-			spec, _ := config.Spec.AsAPIConfigData()
-			spec.Operations = tt.operations
-			config.Spec.FromAPIConfigData(spec)
+			config.Spec.Operations = tt.operations
 
 			errors := v.Validate(config)
 			hasExpectedError := false
@@ -469,11 +460,9 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 	for _, method := range methods {
 		t.Run(string(method), func(t *testing.T) {
 			config := createValidRestAPIConfig()
-			spec, _ := config.Spec.AsAPIConfigData()
-			spec.Operations = []api.Operation{
+			config.Spec.Operations = []api.Operation{
 				{Method: method, Path: "/test"},
 			}
-			config.Spec.FromAPIConfigData(spec)
 
 			errors := v.Validate(config)
 			for _, e := range errors {
@@ -540,9 +529,7 @@ func TestAPIValidator_ValidateChannels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidWebSubAPIConfig()
-			spec, _ := config.Spec.AsWebhookAPIData()
-			spec.Channels = tt.channels
-			config.Spec.FromWebhookAPIData(spec)
+			config.Spec.Channels = tt.channels
 
 			errors := v.Validate(config)
 			hasExpectedError := false
@@ -576,9 +563,7 @@ func TestAPIValidator_ValidateAsyncDisplayName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidWebSubAPIConfig()
-			spec, _ := config.Spec.AsWebhookAPIData()
-			spec.DisplayName = tt.displayName
-			config.Spec.FromWebhookAPIData(spec)
+			config.Spec.DisplayName = tt.displayName
 
 			errors := v.Validate(config)
 			hasNameError := false
@@ -650,54 +635,46 @@ func TestAPIValidator_ValidatePathParametersForAsyncAPIs(t *testing.T) {
 
 // Helper functions
 
-func createValidRestAPIConfig() *api.APIConfiguration {
-	config := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+func createValidRestAPIConfig() *api.RestAPI {
+	return &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.RestApi,
 		Metadata: api.Metadata{
 			Name: "test-api",
 		},
-	}
-
-	spec := api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://backend:8080"),
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend:8080"),
+				},
+			},
+			Operations: []api.Operation{
+				{Method: api.OperationMethodGET, Path: "/items"},
 			},
 		},
-		Operations: []api.Operation{
-			{Method: api.OperationMethodGET, Path: "/items"},
-		},
 	}
-	config.Spec.FromAPIConfigData(spec)
-
-	return config
 }
 
-func createValidWebSubAPIConfig() *api.APIConfiguration {
-	config := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+func createValidWebSubAPIConfig() *api.WebSubAPI {
+	return &api.WebSubAPI{
+		ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.WebSubApi,
 		Metadata: api.Metadata{
 			Name: "test-websub",
 		},
-	}
-
-	spec := api.WebhookAPIData{
-		DisplayName: "Test WebSub",
-		Version:     "v1.0",
-		Context:     "/websub",
-		Channels: []api.Channel{
-			{Name: "channel1"},
+		Spec: api.WebhookAPIData{
+			DisplayName: "Test WebSub",
+			Version:     "v1.0",
+			Context:     "/websub",
+			Channels: []api.Channel{
+				{Name: "channel1"},
+			},
 		},
 	}
-	config.Spec.FromWebhookAPIData(spec)
-
-	return config
 }

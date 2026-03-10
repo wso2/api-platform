@@ -1069,10 +1069,9 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 
 	// 4. Remove API keys from policy engine via xDS (if we have the config)
 	if apiConfig != nil && c.apiKeyXDSManager != nil {
-		apiConfigData, err := apiConfig.Configuration.Spec.AsAPIConfigData()
-		if err == nil {
-			apiName := apiConfigData.DisplayName
-			apiVersion := apiConfigData.Version
+		if restCfg, ok := apiConfig.Configuration.(api.RestAPI); ok {
+			apiName := restCfg.Spec.DisplayName
+			apiVersion := restCfg.Spec.Version
 
 			// Use apiKeyXDSManager directly to remove API keys from policy engine
 			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(apiID, apiName, apiVersion, correlationID); err != nil {
@@ -1091,11 +1090,6 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 					slog.String("correlation_id", correlationID),
 				)
 			}
-		} else {
-			c.logger.Warn("Failed to extract API config data for API key removal from policy engine",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
 		}
 	}
 

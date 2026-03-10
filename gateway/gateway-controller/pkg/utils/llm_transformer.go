@@ -32,7 +32,7 @@ func NewLLMProviderTransformer(store *storage.ConfigStore, routerConfig *config.
 	}
 }
 
-func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error) {
+func (t *LLMProviderTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
 	switch v := input.(type) {
 	case *api.LLMProviderConfiguration:
 		return t.transformProvider(v, output)
@@ -51,7 +51,7 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 }
 
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
-	output *api.APIConfiguration) (*api.APIConfiguration, error) {
+	output *api.RestAPI) (*api.RestAPI, error) {
 
 	// Step 1: Retrieve and validate provider reference
 	provider, err := t.store.GetByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider.Id)
@@ -80,7 +80,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 	// Step 2: Configure API metadata and basic spec
 	output.Kind = api.RestApi
-	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Metadata = proxy.Metadata
 
 	spec := api.APIConfigData{}
@@ -106,10 +106,11 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		Url: &upstream,
 	}
 	// If provider has vhost configured add a host adding policy
-	apiData, err := provider.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get API config from provider: %w", err)
+	providerRestCfg, ok := provider.Configuration.(api.RestAPI)
+	if !ok {
+		return nil, fmt.Errorf("provider configuration is not a RestAPI")
 	}
+	apiData := providerRestCfg.Spec
 	if apiData.Vhosts != nil && apiData.Vhosts.Main != "" {
 		providerVhost := apiData.Vhosts.Main
 		// Add host header adding policy at API level
@@ -262,17 +263,12 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 	spec.Operations = ops
 
-	// Finalize output
-	var specUnion api.APIConfiguration_Spec
-	if err := specUnion.FromAPIConfigData(spec); err != nil {
-		return nil, err
-	}
-	output.Spec = specUnion
+	output.Spec = spec
 	return output, nil
 }
 
 func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConfiguration,
-	output *api.APIConfiguration) (*api.APIConfiguration, error) {
+	output *api.RestAPI) (*api.RestAPI, error) {
 	// @TODO: Step 1) Configure token based rate-limiting policy based on template configs
 	// Retrieve and validate template
 	tmpl, err := t.store.GetTemplateByHandle(provider.Spec.Template)
@@ -287,7 +283,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	}
 
 	output.Kind = api.RestApi
-	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Metadata = provider.Metadata
 
 	spec := api.APIConfigData{}
@@ -596,12 +592,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	}
 	spec.Operations = ops
 
-	// finalize output
-	var specUnion api.APIConfiguration_Spec
-	if err := specUnion.FromAPIConfigData(spec); err != nil {
-		return nil, err
-	}
-	output.Spec = specUnion
+	output.Spec = spec
 	return output, nil
 }
 

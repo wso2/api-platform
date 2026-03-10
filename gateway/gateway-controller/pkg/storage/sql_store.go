@@ -141,8 +141,15 @@ func kindToResourceTable(kind string) (string, error) {
 // and populates both SourceConfiguration and (for RestApi/WebSubApi) Configuration.
 func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 	switch cfg.Kind {
-	case "RestApi", "WebSubApi":
-		var config api.APIConfiguration
+	case "RestApi":
+		var config api.RestAPI
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case "WebSubApi":
+		var config api.WebSubAPI
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal configuration: %w", err)
 		}

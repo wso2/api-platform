@@ -97,12 +97,12 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 }
 
 // Transform converts an MCP proxy configuration (input) to an API configuration (output)
-func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error) {
+func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
 	mcpConfig, ok := input.(*api.MCPProxyConfiguration)
 	if !ok || mcpConfig == nil {
 		return nil, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
-	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Kind = api.RestApi
 
 	// Build APIConfigData and set it into the APIConfiguration_Spec union
@@ -166,11 +166,7 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		apiData.Vhosts = &v
 	}
 
-	var specUnion api.APIConfiguration_Spec
-	if err := specUnion.FromAPIConfigData(apiData); err != nil {
-		return nil, err
-	}
-	output.Spec = specUnion
+	output.Spec = apiData
 
 	output.Metadata = api.Metadata{
 		Name: mcpConfig.Metadata.Name,

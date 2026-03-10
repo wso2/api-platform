@@ -30,52 +30,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test error handling in APIConfiguration_Spec methods
-
-func TestAPIConfiguration_Spec_MergeAPIConfigData_JSONMarshalError(t *testing.T) {
-	spec := &APIConfiguration_Spec{}
-
-	// Use a value that causes JSON marshal error (function/channel types can't be marshaled)
-	invalidData := APIConfigData{}
-	// Since APIConfigData is a map, we need to create invalid content
-	// In Go, we can't easily create values that fail JSON marshaling for simple types
-	// but we can test with valid data and ensure no error
-	err := spec.MergeAPIConfigData(invalidData)
-	assert.NoError(t, err) // APIConfigData is simple and should marshal fine
-}
-
-func TestAPIConfiguration_Spec_AsWebhookAPIData_JSONUnmarshalError(t *testing.T) {
-	spec := APIConfiguration_Spec{}
-	// Set invalid JSON that can't be unmarshaled
-	spec.union = []byte("invalid json")
-
-	_, err := spec.AsWebhookAPIData()
-	assert.Error(t, err)
-}
-
-func TestAPIConfiguration_Spec_MergeWebhookAPIData_JSONMarshalError(t *testing.T) {
-	spec := &APIConfiguration_Spec{}
-
-	data := WebhookAPIData{}
-	err := spec.MergeWebhookAPIData(data)
-	assert.NoError(t, err) // WebhookAPIData should marshal fine
-}
-
-func TestAPIConfiguration_Spec_MarshalJSON_Error(t *testing.T) {
-	spec := APIConfiguration_Spec{}
-	// json.RawMessage will not fail to marshal unless nil, so this will succeed
-	_, err := spec.MarshalJSON()
-	assert.NoError(t, err) // This is expected to not error
-}
-
-func TestAPIConfiguration_Spec_UnmarshalJSON_Error(t *testing.T) {
-	spec := &APIConfiguration_Spec{}
-
-	// Even invalid JSON will succeed with json.RawMessage since it just stores the bytes
-	err := spec.UnmarshalJSON([]byte("invalid json"))
-	assert.NoError(t, err) // This is expected to not error for RawMessage
-}
-
 func TestStrictServerInterface_Methods(t *testing.T) {
 	// Test that all server interface methods return proper responses
 	// This ensures we cover the error return paths in generated code
@@ -115,7 +69,7 @@ func TestParameterProcessing_ErrorPaths(t *testing.T) {
 		RegisterHandlers(router, mock)
 
 		// Make request with invalid parameters that might trigger error paths
-		req := httptest.NewRequest("GET", "/apis?limit=invalid", nil)
+		req := httptest.NewRequest("GET", "/rest-apis?limit=invalid", nil)
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, req)
 
@@ -149,7 +103,7 @@ func TestJSONProcessing_ErrorPaths(t *testing.T) {
 		RegisterHandlers(router, mock)
 
 		// Send invalid JSON in POST request
-		req := httptest.NewRequest("POST", "/apis", strings.NewReader("invalid json"))
+		req := httptest.NewRequest("POST", "/rest-apis", strings.NewReader("invalid json"))
 		req.Header.Set("Content-Type", "application/json")
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, req)
@@ -179,26 +133,6 @@ func TestSwaggerSpec_ErrorHandling(t *testing.T) {
 		assert.NotEmpty(t, spec.Info)
 		assert.NotEmpty(t, spec.Paths)
 	})
-}
-
-func TestAPIConfiguration_Spec_JSONMerge_Error(t *testing.T) {
-	// Test JSONMerge error paths
-	spec := &APIConfiguration_Spec{}
-	spec.union = []byte("invalid json") // This will cause JSONMerge to fail
-
-	data := APIConfigData{}
-	err := spec.MergeAPIConfigData(data)
-	assert.Error(t, err) // Should return the JSONMerge error
-}
-
-func TestWebhookAPIData_JSONMerge_Error(t *testing.T) {
-	// Test JSONMerge error paths for WebhookAPIData
-	spec := &APIConfiguration_Spec{}
-	spec.union = []byte("invalid json") // This will cause JSONMerge to fail
-
-	data := WebhookAPIData{}
-	err := spec.MergeWebhookAPIData(data)
-	assert.Error(t, err) // Should return the JSONMerge error
 }
 
 // MockServerInterface is a mock implementation of ServerInterface for testing
@@ -240,6 +174,11 @@ type MockServerInterface struct {
 	GetMCPProxyByIdCalled            bool
 	UpdateMCPProxyCalled             bool
 	ListPoliciesCalled               bool
+	ListWebSubAPIsCalled             bool
+	CreateWebSubAPICalled            bool
+	GetWebSubAPIByIdCalled           bool
+	UpdateWebSubAPICalled            bool
+	DeleteWebSubAPICalled            bool
 }
 
 // CreateAPIKey implements [ServerInterface].
@@ -429,88 +368,24 @@ func (m *MockServerInterface) ListPolicies(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// Tests for APIConfiguration_Spec union methods
-
-func TestAPIConfigurationSpec_WebhookAPIData(t *testing.T) {
-	t.Run("FromWebhookAPIData and AsWebhookAPIData roundtrip", func(t *testing.T) {
-		spec := &APIConfiguration_Spec{}
-
-		webhookData := WebhookAPIData{
-			DisplayName: "Test WebSub API",
-			Version:     "v1.0.0",
-			Context:     "/websub",
-			Channels: []Channel{
-				{Name: "/events"},
-			},
-		}
-
-		err := spec.FromWebhookAPIData(webhookData)
-		require.NoError(t, err)
-
-		retrieved, err := spec.AsWebhookAPIData()
-		require.NoError(t, err)
-
-		assert.Equal(t, webhookData.DisplayName, retrieved.DisplayName)
-		assert.Equal(t, webhookData.Version, retrieved.Version)
-		assert.Equal(t, webhookData.Context, retrieved.Context)
-	})
-
-	t.Run("MergeWebhookAPIData merges data", func(t *testing.T) {
-		spec := &APIConfiguration_Spec{}
-
-		// Start with initial data
-		initial := WebhookAPIData{
-			DisplayName: "Initial API",
-			Version:     "v1.0.0",
-			Context:     "/initial",
-		}
-		err := spec.FromWebhookAPIData(initial)
-		require.NoError(t, err)
-
-		// Merge with new data
-		merge := WebhookAPIData{
-			DisplayName: "Merged API",
-		}
-		err = spec.MergeWebhookAPIData(merge)
-		require.NoError(t, err)
-
-		retrieved, err := spec.AsWebhookAPIData()
-		require.NoError(t, err)
-
-		// Merged field should be updated
-		assert.Equal(t, "Merged API", retrieved.DisplayName)
-	})
+func (m *MockServerInterface) CreateWebSubAPI(c *gin.Context) {
+	m.CreateWebSubAPICalled = true
 }
 
-func TestAPIConfigurationSpec_MergeAPIConfigData(t *testing.T) {
-	t.Run("MergeAPIConfigData merges data", func(t *testing.T) {
-		spec := &APIConfiguration_Spec{}
+func (m *MockServerInterface) ListWebSubAPIs(c *gin.Context, params ListWebSubAPIsParams) {
+	m.ListWebSubAPIsCalled = true
+}
 
-		// Start with initial data
-		initial := APIConfigData{
-			DisplayName: "Initial API",
-			Version:     "v1.0.0",
-			Context:     "/initial",
-			Operations: []Operation{
-				{Method: OperationMethodGET, Path: "/resource"},
-			},
-		}
-		err := spec.FromAPIConfigData(initial)
-		require.NoError(t, err)
+func (m *MockServerInterface) GetWebSubAPIById(c *gin.Context, id string) {
+	m.GetWebSubAPIByIdCalled = true
+}
 
-		// Merge with new data
-		merge := APIConfigData{
-			DisplayName: "Merged API",
-		}
-		err = spec.MergeAPIConfigData(merge)
-		require.NoError(t, err)
+func (m *MockServerInterface) UpdateWebSubAPI(c *gin.Context, id string) {
+	m.UpdateWebSubAPICalled = true
+}
 
-		retrieved, err := spec.AsAPIConfigData()
-		require.NoError(t, err)
-
-		// Merged field should be updated
-		assert.Equal(t, "Merged API", retrieved.DisplayName)
-	})
+func (m *MockServerInterface) DeleteWebSubAPI(c *gin.Context, id string) {
+	m.DeleteWebSubAPICalled = true
 }
 
 // Tests for LLMProviderConfigData_Upstream union methods
@@ -1129,82 +1004,6 @@ func TestGetSwagger(t *testing.T) {
 	})
 }
 
-// Tests for APIConfiguration_Spec AsAPIConfigData roundtrip
-
-func TestAPIConfigurationSpec_APIConfigData(t *testing.T) {
-	t.Run("FromAPIConfigData and AsAPIConfigData roundtrip", func(t *testing.T) {
-		spec := &APIConfiguration_Spec{}
-
-		apiData := APIConfigData{
-			DisplayName: "Test REST API",
-			Version:     "v1.0.0",
-			Context:     "/test",
-			Operations: []Operation{
-				{Method: OperationMethodGET, Path: "/resource"},
-				{Method: OperationMethodPOST, Path: "/resource"},
-			},
-		}
-
-		err := spec.FromAPIConfigData(apiData)
-		require.NoError(t, err)
-
-		retrieved, err := spec.AsAPIConfigData()
-		require.NoError(t, err)
-
-		assert.Equal(t, apiData.DisplayName, retrieved.DisplayName)
-		assert.Equal(t, apiData.Version, retrieved.Version)
-		assert.Equal(t, apiData.Context, retrieved.Context)
-		assert.Len(t, retrieved.Operations, 2)
-	})
-}
-
-// Tests for APIConfiguration_Spec MarshalJSON and UnmarshalJSON
-
-func TestAPIConfigurationSpec_MarshalUnmarshalJSON(t *testing.T) {
-	t.Run("MarshalJSON with APIConfigData", func(t *testing.T) {
-		spec := &APIConfiguration_Spec{}
-
-		apiData := APIConfigData{
-			DisplayName: "Test API",
-			Version:     "v1.0.0",
-			Context:     "/test",
-			Operations: []Operation{
-				{Method: OperationMethodGET, Path: "/items"},
-			},
-		}
-
-		err := spec.FromAPIConfigData(apiData)
-		require.NoError(t, err)
-
-		jsonBytes, err := spec.MarshalJSON()
-		require.NoError(t, err)
-		assert.NotEmpty(t, jsonBytes)
-
-		// Unmarshal back and verify
-		var result map[string]interface{}
-		err = json.Unmarshal(jsonBytes, &result)
-		require.NoError(t, err)
-		assert.Equal(t, "Test API", result["displayName"])
-	})
-
-	t.Run("UnmarshalJSON and verify data", func(t *testing.T) {
-		jsonData := `{
-			"displayName": "Unmarshaled API",
-			"version": "v2.0.0",
-			"context": "/unmarshal",
-			"operations": [{"method": "GET", "path": "/test"}]
-		}`
-
-		var spec APIConfiguration_Spec
-		err := spec.UnmarshalJSON([]byte(jsonData))
-		require.NoError(t, err)
-
-		retrieved, err := spec.AsAPIConfigData()
-		require.NoError(t, err)
-		assert.Equal(t, "Unmarshaled API", retrieved.DisplayName)
-	})
-}
-
 // Tests for LLMProviderConfigData_Upstream MarshalJSON
 
 func TestLLMProviderConfigDataUpstream_MarshalJSON(t *testing.T) {
@@ -1487,11 +1286,11 @@ func TestRegisterHandlers(t *testing.T) {
 			routePaths[route.Method+":"+route.Path] = true
 		}
 
-		assert.True(t, routePaths["GET:/apis"])
-		assert.True(t, routePaths["POST:/apis"])
-		assert.True(t, routePaths["GET:/apis/:id"])
-		assert.True(t, routePaths["PUT:/apis/:id"])
-		assert.True(t, routePaths["DELETE:/apis/:id"])
+		assert.True(t, routePaths["GET:/rest-apis"])
+		assert.True(t, routePaths["POST:/rest-apis"])
+		assert.True(t, routePaths["GET:/rest-apis/:id"])
+		assert.True(t, routePaths["PUT:/rest-apis/:id"])
+		assert.True(t, routePaths["DELETE:/rest-apis/:id"])
 		assert.True(t, routePaths["GET:/certificates"])
 		assert.True(t, routePaths["GET:/policies"])
 	})
@@ -1518,8 +1317,8 @@ func TestRegisterHandlersWithOptions(t *testing.T) {
 			routePaths[route.Method+":"+route.Path] = true
 		}
 
-		assert.True(t, routePaths["GET:/api/v1/apis"])
-		assert.True(t, routePaths["POST:/api/v1/apis"])
+		assert.True(t, routePaths["GET:/api/v1/rest-apis"])
+		assert.True(t, routePaths["POST:/api/v1/rest-apis"])
 	})
 
 	t.Run("RegisterHandlersWithOptions with custom error handler", func(t *testing.T) {
@@ -1600,7 +1399,7 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/apis?displayName=test&version=v1&status=deployed", nil)
+		req, _ := http.NewRequest("GET", "/rest-apis?displayName=test&version=v1&status=deployed", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -1613,7 +1412,7 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/apis", nil)
+		req, _ := http.NewRequest("POST", "/rest-apis", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
@@ -1626,7 +1425,7 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/apis/test-id", nil)
+		req, _ := http.NewRequest("GET", "/rest-apis/test-id", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -1639,7 +1438,7 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("PUT", "/apis/test-id", nil)
+		req, _ := http.NewRequest("PUT", "/rest-apis/test-id", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -1652,7 +1451,7 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("DELETE", "/apis/test-id", nil)
+		req, _ := http.NewRequest("DELETE", "/rest-apis/test-id", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -1669,7 +1468,7 @@ func TestServerInterfaceWrapper_APIKeyRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/apis/test-id/api-keys", nil)
+		req, _ := http.NewRequest("GET", "/rest-apis/test-id/api-keys", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -1682,7 +1481,7 @@ func TestServerInterfaceWrapper_APIKeyRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/apis/test-id/api-keys", nil)
+		req, _ := http.NewRequest("POST", "/rest-apis/test-id/api-keys", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
@@ -1695,7 +1494,7 @@ func TestServerInterfaceWrapper_APIKeyRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("DELETE", "/apis/test-id/api-keys/key-name", nil)
+		req, _ := http.NewRequest("DELETE", "/rest-apis/test-id/api-keys/key-name", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -1708,7 +1507,7 @@ func TestServerInterfaceWrapper_APIKeyRoutes(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/apis/test-id/api-keys/key-name/regenerate", nil)
+		req, _ := http.NewRequest("POST", "/rest-apis/test-id/api-keys/key-name/regenerate", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -2092,7 +1891,7 @@ func TestServerInterfaceWrapper_QueryParamsEdgeCases(t *testing.T) {
 		RegisterHandlers(router, mockServer)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/apis?displayName=test&version=v1&context=/test&status=deployed", nil)
+		req, _ := http.NewRequest("GET", "/rest-apis?displayName=test&version=v1&context=/test&status=deployed", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -2176,15 +1975,6 @@ func TestDefaultErrorHandler(t *testing.T) {
 // Tests for empty/nil checks in union types
 
 func TestUnionTypes_EmptyState(t *testing.T) {
-	t.Run("APIConfiguration_Spec with empty union", func(t *testing.T) {
-		spec := APIConfiguration_Spec{}
-
-		// MarshalJSON should handle empty state
-		jsonBytes, err := spec.MarshalJSON()
-		require.NoError(t, err)
-		assert.Equal(t, "null", string(jsonBytes))
-	})
-
 	t.Run("LLMProviderConfigData_Upstream with empty union marshals to empty object", func(t *testing.T) {
 		upstream := LLMProviderConfigData_Upstream{}
 

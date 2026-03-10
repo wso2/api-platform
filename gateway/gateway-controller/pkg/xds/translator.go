@@ -197,7 +197,7 @@ func (t *Translator) TranslateConfigs(
 		var routesList []*route.Route
 		var clusterList []*cluster.Cluster
 		var err error
-		if cfg.Configuration.Kind == api.WebSubApi {
+		if cfg.Kind == "WebSubApi" {
 			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg, configs)
 			if err != nil {
 				log.Error("Failed to translate config",
@@ -406,10 +406,11 @@ func (t *Translator) TranslateConfigs(
 
 // translateAsyncAPIConfig translates a single API configuration
 func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse WebSub config data: %w", err)
+	webSubCfg, ok := cfg.Configuration.(api.WebSubAPI)
+	if !ok {
+		return nil, nil, fmt.Errorf("configuration is not a WebSubAPI")
 	}
+	apiData := webSubCfg.Spec
 
 	clusters := []*cluster.Cluster{}
 
@@ -435,8 +436,8 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	}
 	// Extract project ID from labels
 	apiProjectID := ""
-	if cfg.Configuration.Metadata.Labels != nil {
-		if pid, exists := (*cfg.Configuration.Metadata.Labels)["project-id"]; exists {
+	if labels := cfg.GetLabels(); labels != nil {
+		if pid, exists := (*labels)["project-id"]; exists {
 			apiProjectID = pid
 		}
 	}
@@ -463,10 +464,11 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
+	restCfg, ok := cfg.Configuration.(api.RestAPI)
+	if !ok {
+		return nil, nil, fmt.Errorf("configuration is not a RestAPI")
 	}
+	apiData := restCfg.Spec
 
 	clusters := []*cluster.Cluster{}
 
@@ -507,8 +509,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 
 	// Extract project ID from labels
 	apiProjectID := ""
-	if cfg.Configuration.Metadata.Labels != nil {
-		if pid, exists := (*cfg.Configuration.Metadata.Labels)["project-id"]; exists {
+	if labels := cfg.GetLabels(); labels != nil {
+		if pid, exists := (*labels)["project-id"]; exists {
 			apiProjectID = pid
 		}
 	}
