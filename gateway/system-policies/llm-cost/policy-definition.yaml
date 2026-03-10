@@ -1,0 +1,40 @@
+name: wso2_apip_sys_llm_cost
+version: v0.1.0
+description: |
+  Calculates the monetary cost of LLM API calls at response time and injects the
+  result as an x-llm-cost response header (value: USD float, e.g. "0.0000423100").
+
+  The policy reads the model name from $.model in the response body (or $.modelVersion
+  for Gemini native format), looks it up in an embedded copy of LiteLLM's pricing
+  database, normalises the usage object using a provider-specific calculator, and
+  computes cost using the same formulas as LiteLLM.
+
+  Supported providers: OpenAI, Azure OpenAI, Azure AI Foundry, Anthropic,
+  Gemini (Google AI Studio + Vertex AI), Mistral.
+
+  Notes:
+  - This policy runs in the response phase only.
+  - If the model name is not found in the pricing database, x-llm-cost is set
+    to 0.0000000000 and a warning is logged. The request is not blocked.
+  - Azure PTU (Provisioned Throughput Unit) deployments are billed hourly, not
+    per token. This policy returns 0 for PTU routes.
+  - The pricing database can be extended or overridden via the gateway admin's
+    pricing_file config without rebuilding the policy.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    pricing_file:
+      type: string
+      default: ""
+      description: >
+        Path to a custom pricing JSON file that overrides or extends the embedded
+        LiteLLM pricing database. Only the keys present in the file are affected;
+        all other embedded entries remain unchanged. If empty or the file does not
+        exist, the embedded database is used as-is.
+  required: []
+
+systemParameters:
+  type: object
+  properties: {}

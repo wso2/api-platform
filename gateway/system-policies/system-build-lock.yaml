@@ -3,3 +3,5 @@ version: v1
 policies:
   - name: wso2_apip_sys_analytics
     filePath: ./analytics
+  - name: wso2_apip_sys_llm_cost
+    filePath: ./llm-cost

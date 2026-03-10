@@ -19,6 +19,15 @@ paths:
     $ref: ./paths/openai/chat.yaml
   /openai/v1/embeddings:
     $ref: ./paths/openai/embeddings.yaml
+  # Mock Anthropic
+  /anthropic/v1/messages:
+    $ref: ./paths/anthropic/messages.yaml
+  # Mock Gemini native
+  /gemini/v1/models/{model}:generateContent:
+    $ref: ./paths/gemini/generate_content.yaml
+  # Mock unknown LLM (no pricing data)
+  /unknown-llm/v1/chat:
+    $ref: ./paths/unknown-llm/chat.yaml
 
 components:
   schemas:

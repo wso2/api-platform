@@ -93,6 +93,21 @@ var defaultSystemPolicies = []systemPolicyConfig{
 		},
 		ExecutionCondition: nil,
 	},
+	{
+		// LLM Cost system policy: calculates $ cost of LLM calls and sets x-llm-cost header.
+		Name:    constants.LLM_COST_SYSTEM_POLICY_NAME,
+		Version: constants.LLM_COST_SYSTEM_POLICY_VERSION,
+		Enabled: func(cfg *config.Config) bool {
+			if cfg == nil {
+				return false
+			}
+			return cfg.LLMCost.Enabled
+		},
+		Parameters: map[string]interface{}{
+			"pricing_file": "",
+		},
+		ExecutionCondition: nil,
+	},
 }
 
 // mergeParameters efficiently merges parameters with the following precedence (highest to lowest):
@@ -199,6 +214,10 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 			// For the analytics system policy, propagate the allow_payloads flag from runtime config.
 			if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
 				effectiveDefaults["allow_payloads"] = cfg.Analytics.AllowPayloads
+			}
+			// For the llm-cost system policy, propagate the pricing_file path from runtime config.
+			if sysPol.Name == constants.LLM_COST_SYSTEM_POLICY_NAME {
+				effectiveDefaults["pricing_file"] = cfg.LLMCost.PricingFile
 			}
 
 			// Merge parameters efficiently
