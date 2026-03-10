@@ -21,6 +21,7 @@ package utils
 import (
 	"log/slog"
 
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	config "github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
@@ -45,6 +46,9 @@ type systemPolicyConfig struct {
 	Parameters map[string]interface{}
 	// ExecutionCondition contains the execution condition for the policy
 	ExecutionCondition *string
+	// AllowedKinds restricts injection to specific API kinds (e.g. "LlmProxy").
+	// An empty slice means the policy is injected for all API kinds.
+	AllowedKinds []string
 }
 
 // defaultSystemPolicies lists the built-in system policies that can be injected into
@@ -95,6 +99,7 @@ var defaultSystemPolicies = []systemPolicyConfig{
 	},
 	{
 		// LLM Cost system policy: calculates $ cost of LLM calls and sets x-llm-cost header.
+		// Injected for LlmProvider and LlmProxy APIs — not for generic REST APIs.
 		Name:    constants.LLM_COST_SYSTEM_POLICY_NAME,
 		Version: constants.LLM_COST_SYSTEM_POLICY_VERSION,
 		Enabled: func(cfg *config.Config) bool {
@@ -106,6 +111,7 @@ var defaultSystemPolicies = []systemPolicyConfig{
 		Parameters: map[string]interface{}{
 			"pricing_file": "",
 		},
+		AllowedKinds:       []string{string(api.LlmProvider), string(api.LlmProxy)},
 		ExecutionCondition: nil,
 	},
 }
@@ -174,8 +180,25 @@ func mergeParameters(
 	return result
 }
 
+// kindAllowed returns true if allowedKinds is empty (policy applies to all API kinds)
+// or if apiKind is present in allowedKinds.
+func kindAllowed(allowedKinds []string, apiKind string) bool {
+	if len(allowedKinds) == 0 {
+		return true
+	}
+	for _, k := range allowedKinds {
+		if k == apiKind {
+			return true
+		}
+	}
+	return false
+}
+
 // InjectSystemPolicies injects system policies into a policy chain based on configuration.
 // System policies are prepended to the chain (executed first).
+//
+// apiKind identifies the type of API (e.g. "RestApi", "LlmProxy", "WebSubApi").
+// Policies with AllowedKinds set are only injected when apiKind matches one of the allowed values.
 //
 // Parameter merging strategy (highest to lowest precedence):
 // 1. Policy-specific: additionalProps[policyName] (e.g., additionalProps["wso2_apip_sys_analytics"])
@@ -183,16 +206,16 @@ func mergeParameters(
 // 3. Default: systemPolicyConfig.Parameters (defined in defaultSystemPolicies)
 //
 // Returns the modified chain with system policies injected.
-func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.Config, additionalProps map[string]any) []policyenginev1.PolicyInstance {
+func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.Config, additionalProps map[string]any, apiKind string) []policyenginev1.PolicyInstance {
 	if cfg == nil {
 		slog.Error("Configuration is nil, cannot inject system policies")
 		return policies
 	}
 
-	// Fast path: no enabled policies, return early
+	// Fast path: count enabled + kind-matching policies
 	enabledCount := 0
 	for _, sysPol := range defaultSystemPolicies {
-		if sysPol.Enabled(cfg) {
+		if sysPol.Enabled(cfg) && kindAllowed(sysPol.AllowedKinds, apiKind) {
 			enabledCount++
 		}
 	}
@@ -205,32 +228,34 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 
 	// Collect enabled system policies with merged parameters
 	for _, sysPol := range defaultSystemPolicies {
-		if sysPol.Enabled(cfg) {
-			// Build effective default parameters, allowing runtime config to control allow_payloads.
-			effectiveDefaults := make(map[string]interface{}, len(sysPol.Parameters)+1)
-			for k, v := range sysPol.Parameters {
-				effectiveDefaults[k] = v
-			}
-			// For the analytics system policy, propagate the allow_payloads flag from runtime config.
-			if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
-				effectiveDefaults["allow_payloads"] = cfg.Analytics.AllowPayloads
-			}
-			// For the llm-cost system policy, propagate the pricing_file path from runtime config.
-			if sysPol.Name == constants.LLM_COST_SYSTEM_POLICY_NAME {
-				effectiveDefaults["pricing_file"] = cfg.LLMCost.PricingFile
-			}
-
-			// Merge parameters efficiently
-			mergedParams := mergeParameters(effectiveDefaults, additionalProps, sysPol.Name)
-
-			systemPolicies = append(systemPolicies, policyenginev1.PolicyInstance{
-				Name:               sysPol.Name,
-				Version:            sysPol.Version,
-				Enabled:            true,
-				ExecutionCondition: sysPol.ExecutionCondition,
-				Parameters:         mergedParams,
-			})
+		if !sysPol.Enabled(cfg) || !kindAllowed(sysPol.AllowedKinds, apiKind) {
+			continue
 		}
+
+		// Build effective default parameters, allowing runtime config to control allow_payloads.
+		effectiveDefaults := make(map[string]interface{}, len(sysPol.Parameters)+1)
+		for k, v := range sysPol.Parameters {
+			effectiveDefaults[k] = v
+		}
+		// For the analytics system policy, propagate the allow_payloads flag from runtime config.
+		if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
+			effectiveDefaults["allow_payloads"] = cfg.Analytics.AllowPayloads
+		}
+		// For the llm-cost system policy, propagate the pricing_file path from runtime config.
+		if sysPol.Name == constants.LLM_COST_SYSTEM_POLICY_NAME {
+			effectiveDefaults["pricing_file"] = cfg.LLMCost.PricingFile
+		}
+
+		// Merge parameters efficiently
+		mergedParams := mergeParameters(effectiveDefaults, additionalProps, sysPol.Name)
+
+		systemPolicies = append(systemPolicies, policyenginev1.PolicyInstance{
+			Name:               sysPol.Name,
+			Version:            sysPol.Version,
+			Enabled:            true,
+			ExecutionCondition: sysPol.ExecutionCondition,
+			Parameters:         mergedParams,
+		})
 	}
 
 	// Prepend system policies to the chain (they execute first)

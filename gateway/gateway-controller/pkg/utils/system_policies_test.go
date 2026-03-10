@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
@@ -120,7 +121,7 @@ func TestInjectSystemPolicies_NilConfig(t *testing.T) {
 		{Name: "existing", Version: "v1.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, nil, nil)
+	result := InjectSystemPolicies(policies, nil, nil, "RestApi")
 	assert.Equal(t, policies, result)
 }
 
@@ -134,7 +135,7 @@ func TestInjectSystemPolicies_AnalyticsDisabled(t *testing.T) {
 		{Name: "existing", Version: "v1.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, cfg, nil)
+	result := InjectSystemPolicies(policies, cfg, nil, "RestApi")
 	assert.Len(t, result, 1)
 	assert.Equal(t, "existing", result[0].Name)
 }
@@ -150,7 +151,7 @@ func TestInjectSystemPolicies_AnalyticsEnabled(t *testing.T) {
 		{Name: "existing", Version: "v1.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, cfg, nil)
+	result := InjectSystemPolicies(policies, cfg, nil, "RestApi")
 	assert.Len(t, result, 2)
 	// System policy should be first
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
@@ -168,7 +169,7 @@ func TestInjectSystemPolicies_AllowPayloadsTrue(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, nil)
+	result := InjectSystemPolicies(nil, cfg, nil, "RestApi")
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
 	assert.Equal(t, true, result[0].Parameters["allow_payloads"])
@@ -182,7 +183,7 @@ func TestInjectSystemPolicies_AllowPayloadsFalse(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, nil)
+	result := InjectSystemPolicies(nil, cfg, nil, "RestApi")
 	assert.Len(t, result, 1)
 	assert.Equal(t, false, result[0].Parameters["allow_payloads"])
 }
@@ -199,7 +200,7 @@ func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, additionalProps)
+	result := InjectSystemPolicies(nil, cfg, additionalProps, "RestApi")
 	assert.Len(t, result, 1)
 	assert.Equal(t, "custom_value", result[0].Parameters["custom_param"])
 }
@@ -216,7 +217,7 @@ func TestInjectSystemPolicies_WithSharedParams(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, additionalProps)
+	result := InjectSystemPolicies(nil, cfg, additionalProps, "RestApi")
 	assert.Len(t, result, 1)
 	assert.Equal(t, "shared_value", result[0].Parameters["shared_param"])
 }
@@ -228,7 +229,7 @@ func TestInjectSystemPolicies_EmptyPolicies(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies([]policyenginev1.PolicyInstance{}, cfg, nil)
+	result := InjectSystemPolicies([]policyenginev1.PolicyInstance{}, cfg, nil, "RestApi")
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
 }
@@ -244,11 +245,122 @@ func TestInjectSystemPolicies_PreservesExistingPolicies(t *testing.T) {
 		{Name: "policy2", Version: "v2.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, cfg, nil)
+	result := InjectSystemPolicies(policies, cfg, nil, "RestApi")
 	assert.Len(t, result, 3)
 	// System policies come first
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
 	// Original policies follow
 	assert.Equal(t, "policy1", result[1].Name)
 	assert.Equal(t, "policy2", result[2].Name)
+}
+
+// ---------------------------------------------------------------------------
+// Kind filtering tests
+// ---------------------------------------------------------------------------
+
+func TestInjectSystemPolicies_LLMCostInjectedForLlmProxy(t *testing.T) {
+	cfg := &config.Config{
+		LLMCost: config.LLMCostConfig{
+			Enabled: true,
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil, string(api.LlmProxy))
+	assert.Len(t, result, 1)
+	assert.Equal(t, constants.LLM_COST_SYSTEM_POLICY_NAME, result[0].Name)
+}
+
+func TestInjectSystemPolicies_LLMCostInjectedForLlmProvider(t *testing.T) {
+	cfg := &config.Config{
+		LLMCost: config.LLMCostConfig{
+			Enabled: true,
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil, string(api.LlmProvider))
+	assert.Len(t, result, 1)
+	assert.Equal(t, constants.LLM_COST_SYSTEM_POLICY_NAME, result[0].Name)
+}
+
+func TestInjectSystemPolicies_LLMCostNotInjectedForRestApi(t *testing.T) {
+	cfg := &config.Config{
+		LLMCost: config.LLMCostConfig{
+			Enabled: true,
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil, string(api.RestApi))
+	assert.Len(t, result, 0)
+}
+
+func TestInjectSystemPolicies_LLMCostNotInjectedForWebSubApi(t *testing.T) {
+	cfg := &config.Config{
+		LLMCost: config.LLMCostConfig{
+			Enabled: true,
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil, string(api.WebSubApi))
+	assert.Len(t, result, 0)
+}
+
+func TestInjectSystemPolicies_AnalyticsInjectedForAllKinds(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{
+			Enabled: true,
+		},
+	}
+
+	for _, kind := range []string{string(api.RestApi), string(api.WebSubApi), string(api.LlmProxy), string(api.LlmProvider)} {
+		result := InjectSystemPolicies(nil, cfg, nil, kind)
+		assert.Len(t, result, 1, "analytics should be injected for kind %s", kind)
+		assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
+	}
+}
+
+func TestInjectSystemPolicies_BothPoliciesForLlmProvider(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{
+			Enabled: true,
+		},
+		LLMCost: config.LLMCostConfig{
+			Enabled: true,
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil, string(api.LlmProvider))
+	assert.Len(t, result, 2)
+	// Analytics first, then llm-cost (order of defaultSystemPolicies)
+	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
+	assert.Equal(t, constants.LLM_COST_SYSTEM_POLICY_NAME, result[1].Name)
+}
+
+func TestInjectSystemPolicies_BothPoliciesForLlmProxy(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{
+			Enabled: true,
+		},
+		LLMCost: config.LLMCostConfig{
+			Enabled: true,
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil, string(api.LlmProxy))
+	assert.Len(t, result, 2)
+	// Analytics first, then llm-cost (order of defaultSystemPolicies)
+	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
+	assert.Equal(t, constants.LLM_COST_SYSTEM_POLICY_NAME, result[1].Name)
+}
+
+func TestInjectSystemPolicies_LLMCostPricingFileFromConfig(t *testing.T) {
+	cfg := &config.Config{
+		LLMCost: config.LLMCostConfig{
+			Enabled:     true,
+			PricingFile: "/etc/pricing/custom.json",
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil, string(api.LlmProxy))
+	assert.Len(t, result, 1)
+	assert.Equal(t, "/etc/pricing/custom.json", result[0].Parameters["pricing_file"])
 }

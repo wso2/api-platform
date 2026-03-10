@@ -88,7 +88,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 
 			routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, ch.Name, routerConfig.GatewayHost)
 			props := make(map[string]any)
-			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)
+			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props, cfg.Kind)
 
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
@@ -147,7 +147,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			// populatePropsForSystemPolicies(cfg.SourceConfiguration, props)
 
 			for _, vhost := range vhosts {
-				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)
+				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props, cfg.Kind)
 
 				routes = append(routes, policyenginev1.PolicyChain{
 					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),

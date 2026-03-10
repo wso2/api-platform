@@ -261,7 +261,7 @@ max_header_limit = 8192
 
 [llm_cost]
 enabled = true
-# pricing_file left empty — use embedded LiteLLM pricing database
+pricing_file = "/etc/policy-engine/test-custom-pricing.json"
 
 # =============================================================================
 # TRACING CONFIGURATION

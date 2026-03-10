@@ -28,6 +28,11 @@ paths:
   # Mock unknown LLM (no pricing data)
   /unknown-llm/v1/chat:
     $ref: ./paths/unknown-llm/chat.yaml
+  # Mock custom-priced LLMs (for custom pricing file tests)
+  /custom-llm/v1/chat:
+    $ref: ./paths/custom-llm/chat.yaml
+  /custom-llm/v1/gpt35:
+    $ref: ./paths/custom-llm/gpt35.yaml
 
 components:
   schemas:
