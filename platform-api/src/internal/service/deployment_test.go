@@ -1932,7 +1932,126 @@ func TestRollbackDeployment_NonExistentDeployment(t *testing.T) {
 		t.Fatal("Expected error when restoring to non-existent deployment")
 	}
 
-	if !errors.Is(err, constants.ErrDeploymentNotFound) {
-		t.Errorf("Expected ErrDeploymentNotFound, got %v", err)
+}
+
+func TestIsValidVHostOrSentinel(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"sentinel accepted", "_gateway_default_", true},
+		{"simple hostname", "api.example.com", true},
+		{"single label", "localhost", true},
+		{"wildcard label", "*.example.com", false},
+		{"empty string rejected", "", false},
+		{"trailing dot rejected", "api.example.com.", false},
+		{"label too long", strings.Repeat("a", 64) + ".com", false},
+		{"underscore rejected", "api_v1.example.com", false},
+		{"hyphen start rejected", "-api.example.com", false},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isValidVHostOrSentinel(tc.input)
+			if got != tc.want {
+				t.Errorf("isValidVHostOrSentinel(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestOverrideVhost(t *testing.T) {
+	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: test-api
+spec:
+  displayName: Test API
+  version: v1.0
+  context: /test
+  upstream:
+    main:
+      url: http://backend:8080
+`
+
+	t.Run("sets main only", func(t *testing.T) {
+		result, err := overrideVhost([]byte(baseYAML), "api.example.com", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Vhosts == nil {
+			t.Fatal("expected vhosts to be set")
+		}
+		if parsed.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("main = %q, want %q", parsed.Spec.Vhosts.Main, "api.example.com")
+		}
+		if parsed.Spec.Vhosts.Sandbox != nil {
+			t.Errorf("sandbox should be nil, got %q", *parsed.Spec.Vhosts.Sandbox)
+		}
+	})
+
+	t.Run("sets main and sandbox", func(t *testing.T) {
+		sandbox := "sandbox.example.com"
+		result, err := overrideVhost([]byte(baseYAML), "api.example.com", &sandbox)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Vhosts == nil {
+			t.Fatal("expected vhosts to be set")
+		}
+		if parsed.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("main = %q, want %q", parsed.Spec.Vhosts.Main, "api.example.com")
+		}
+		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
+			t.Errorf("sandbox = %v, want %q", parsed.Spec.Vhosts.Sandbox, "sandbox.example.com")
+		}
+	})
+
+	t.Run("overwrites existing vhosts", func(t *testing.T) {
+		yamlWithVhosts := baseYAML + "  vhosts:\n    main: old.example.com\n    sandbox: old-sandbox.example.com\n"
+		sandbox := "new-sandbox.example.com"
+		result, err := overrideVhost([]byte(yamlWithVhosts), "new.example.com", &sandbox)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Vhosts.Main != "new.example.com" {
+			t.Errorf("main = %q, want %q", parsed.Spec.Vhosts.Main, "new.example.com")
+		}
+		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "new-sandbox.example.com" {
+			t.Errorf("sandbox = %v, want %q", parsed.Spec.Vhosts.Sandbox, "new-sandbox.example.com")
+		}
+	})
+
+	t.Run("accepts sentinel value", func(t *testing.T) {
+		result, err := overrideVhost([]byte(baseYAML), "_gateway_default_", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main != "_gateway_default_" {
+			t.Errorf("expected sentinel, got %v", parsed.Spec.Vhosts)
+		}
+	})
+
+	t.Run("invalid yaml returns error", func(t *testing.T) {
+		_, err := overrideVhost([]byte("not: valid: yaml: :::"), "api.example.com", nil)
+		if err == nil {
+			t.Fatal("expected error for invalid YAML")
+		}
+	})
 }

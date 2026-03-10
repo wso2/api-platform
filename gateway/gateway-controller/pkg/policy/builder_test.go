@@ -59,16 +59,19 @@ func makeStoredConfig(t *testing.T, sandbox *api.Upstream) *models.StoredConfig 
 	var spec api.APIConfiguration_Spec
 	require.NoError(t, spec.FromAPIConfigData(apiData))
 
-	return &models.StoredConfig{
-		ID:   "test-api",
-		Kind: string(api.RestApi),
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi,
-			Metadata: api.Metadata{
-				Name: "test-api",
-			},
-			Spec: spec,
+	apiConfig := api.APIConfiguration{
+		Kind: api.RestApi,
+		Metadata: api.Metadata{
+			Name: "test-api",
 		},
+		Spec: spec,
+	}
+
+	return &models.StoredConfig{
+		UUID:                "test-api",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
 	}
 }
 

@@ -140,7 +140,6 @@ curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
   -d '{
       "id": "weather-api",
       "name": "Weather API",
-      "displayName": "Weather API",
       "description": "Weather API with main and sandbox upstreams",
       "context": "/weather",
       "version": "v1.0",
@@ -174,17 +173,19 @@ curl -k -X POST 'https://localhost:9243/api/v1/rest-apis/weather-api/deployments
 
 Expected response:
 ```json
-[
-  {
-    "revisionId": "90d10e1c-8560-5c36-9d5a-124ecaa17485",
-    "gatewayId": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
-    "status": "CREATED",
-    "vhost": "mg.wso2.com",
-    "displayOnDevportal": false,
-    "deployedTime": "2025-10-21T16:15:18+05:30",
-    "successDeployedTime": "2025-10-21T16:15:18+05:30"
-  }
-]
+{
+  "deploymentId": "90d10e1c-8560-5c36-9d5a-124ecaa17485",
+  "name": "weather-v1-prod",
+  "gatewayId": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
+  "status": "DEPLOYED",
+  "vhost": {
+    "main": "example.wso2.com",
+    "sandbox": "sand-example.wso2.com"
+  },
+  "createdAt": "2025-10-21T16:15:18+05:30",
+  "updatedAt": "2025-10-21T16:15:18+05:30",
+  "baseDeploymentId": null
+}
 ```
 
 The connected gateway will receive a deployment event via WebSocket:

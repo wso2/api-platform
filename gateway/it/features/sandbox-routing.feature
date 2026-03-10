@@ -89,8 +89,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: main-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080
+              - url: http://sample-backend:9080
         upstream:
           main:
             ref: main-upstream
@@ -140,8 +139,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: sandbox-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             url: http://sample-backend:9080
@@ -212,8 +210,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: invalid-upstream
             upstreams:
-              - urls:
-                  - ftp://sample-backend:9080
+              - url: ftp://sample-backend:9080
         upstream:
           main:
             ref: invalid-upstream
@@ -247,8 +244,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: sandbox-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             url: http://sample-backend:9080
@@ -303,12 +299,10 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: main-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080
+              - url: http://sample-backend:9080
           - name: sandbox-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             ref: main-upstream
@@ -355,8 +349,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: sandbox-upstream
             upstreams:
-              - urls:
-                  - http://echo-backend:80/anything
+              - url: http://echo-backend:80/anything
         upstream:
           main:
             url: http://sample-backend:9080
@@ -401,8 +394,7 @@ Feature: Sandbox Routing
             timeout:
               connect: 6000ms
             upstreams:
-              - urls:
-                  - http://192.0.2.1:80
+              - url: http://192.0.2.1:80
         upstream:
           main:
             url: http://sample-backend:9080
@@ -442,8 +434,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: sandbox-http-upstream
             upstreams:
-              - urls:
-                  - http://mock-openapi:4010/openai/v1
+              - url: http://mock-openapi:4010/openai/v1
         upstream:
           main:
             url: http://sample-backend:9080
@@ -497,9 +488,8 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: sandbox-multi-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/first
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/first
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             url: http://sample-backend:9080
@@ -540,8 +530,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: sandbox-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             url: http://sample-backend:9080
@@ -588,8 +577,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: sandbox-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             url: http://sample-backend:9080
@@ -653,12 +641,10 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: duplicate-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080
+              - url: http://sample-backend:9080
           - name: duplicate-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             ref: duplicate-upstream
@@ -691,12 +677,10 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: main-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080
+              - url: http://sample-backend:9080
           - name: sandbox-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080/sandbox
         upstream:
           main:
             ref: main-upstream
@@ -753,8 +737,7 @@ Feature: Sandbox Routing
         upstreamDefinitions:
           - name: main-upstream
             upstreams:
-              - urls:
-                  - http://sample-backend:9080
+              - url: http://sample-backend:9080
         upstream:
           main:
             ref: main-upstream
