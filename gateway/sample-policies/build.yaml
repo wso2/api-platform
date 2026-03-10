@@ -10,3 +10,6 @@ policies:
   # CountLetters Policy
   - name: count-letters
     filePath: ./count-letters
+  # Prompt Compression Policy (Python)
+  - name: prompt-compression
+    filePath: ./prompt-compression

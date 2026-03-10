@@ -1,0 +1,3 @@
+# Prompt Compression Policy Dependencies
+# https://pypi.org/project/compression-prompt/
+compression-prompt>=0.1.2

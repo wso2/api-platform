@@ -1,0 +1,74 @@
+name: prompt-compression
+version: v0.1.0
+description: |
+  Compresses LLM prompts before sending to the upstream provider using statistical
+  compression. Reduces token usage while preserving semantic meaning and intent.
+  The compression-prompt library analyzes word importance and removes lower-importance
+  words based on the target compression ratio.
+runtime: python
+
+processingMode:
+  requestHeaderMode: SKIP
+  requestBodyMode: BUFFER
+  responseHeaderMode: SKIP
+  responseBodyMode: SKIP
+
+parameters:
+  type: object
+  properties:
+    compressionRatio:
+      type: number
+      x-wso2-policy-advanced-param: true
+      description: |
+        Target compression ratio (0.0 to 1.0). For example, 0.5 means compress to
+        approximately 50% of the original size. Lower values mean more aggressive
+        compression. Values below 0.3 may significantly impact quality.
+      default: 0.5
+      minimum: 0.1
+      maximum: 0.9
+    jsonPath:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        JSONPath expression to locate the prompt text to compress.
+        Common paths:
+        - "$.messages[-1].content" - Compress the last user message
+        - "$.messages[*].content" - Compress all messages (processed individually)
+        - "$.prompt" - Compress a simple prompt field
+      default: "$.messages[-1].content"
+    minInputTokens:
+      type: integer
+      x-wso2-policy-advanced-param: true
+      description: |
+        Minimum number of tokens required to trigger compression.
+        Inputs shorter than this will be passed through unchanged.
+        Roughly 4 characters = 1 token.
+      default: 100
+      minimum: 50
+    preserveCodeBlocks:
+      type: boolean
+      x-wso2-policy-advanced-param: true
+      description: |
+        Whether to preserve code blocks (```...```) from compression.
+        Code blocks are automatically detected and kept intact.
+      default: true
+    preserveJson:
+      type: boolean
+      x-wso2-policy-advanced-param: true
+      description: |
+        Whether to preserve JSON blocks from compression.
+        JSON structures are automatically detected and kept intact.
+      default: true
+    domainTerms:
+      type: array
+      x-wso2-policy-advanced-param: true
+      description: |
+        List of domain-specific terms that should always be preserved.
+        These terms will never be removed during compression.
+      items:
+        type: string
+      default: []
+
+systemParameters:
+  type: object
+  properties: {}

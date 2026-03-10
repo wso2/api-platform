@@ -111,3 +111,6 @@ policies:
     - name: add-python-header
       version: v1.0.0
       filePath: ./sample-policies/add-python-header
+    - name: prompt-compression
+      version: v0.1.0
+      filePath: ./sample-policies/prompt-compression
