@@ -45,6 +45,15 @@ var (
 )
 
 var (
+	ErrApplicationExists      = errors.New("application already exists in project")
+	ErrApplicationNotFound    = errors.New("application not found")
+	ErrInvalidApplicationName = errors.New("invalid application name")
+	ErrInvalidApplicationType = errors.New("invalid application type")
+	ErrUnsupportedApplicationType = errors.New("unsupported application type")
+	ErrInvalidApplicationID   = errors.New("invalid application ID")
+)
+
+var (
 	ErrAPINotFound                 = errors.New("api not found")
 	ErrAPIAlreadyExists            = errors.New("api already exists in project")
 	ErrAPINameVersionAlreadyExists = errors.New("api with same name and version already exists")

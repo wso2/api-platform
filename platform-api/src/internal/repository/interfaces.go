@@ -55,6 +55,25 @@ type ArtifactRepository interface {
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 }
 
+// ApplicationRepository defines the interface for application data access
+type ApplicationRepository interface {
+	CreateApplication(app *model.Application) error
+	GetApplicationByUUID(appID string) (*model.Application, error)
+	GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error)
+	GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error)
+	GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error)
+	GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error)
+	CheckApplicationHandleExists(handle, orgID string) (bool, error)
+	UpdateApplication(app *model.Application) error
+	DeleteApplication(appID string) error
+
+	GetAPIKeyByID(keyID, orgID string) (*model.ApplicationAPIKey, error)
+	ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error)
+	ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
+	AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
+	RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error
+}
+
 // APIRepository defines the interface for API data operations
 type APIRepository interface {
 	CreateAPI(api *model.API) error
