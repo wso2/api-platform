@@ -291,7 +291,9 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// Resolve gateway-default sentinels to the current config values before persisting so that
 	// the stored vhosts are immune to future gateway config changes.
-	resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig)
+	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
+	}
 	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
 	// (the DB layer marshals SourceConfiguration, not Configuration).
 	storedCfg.SourceConfiguration = storedCfg.Configuration
@@ -552,15 +554,15 @@ const vhostGatewayDefault = "_gateway_default_"
 // resolveVhostSentinels replaces the gateway-default sentinel in an APIConfiguration's vhosts
 // with the actual default values from the router config. This ensures that the stored value in
 // bbolt is always a concrete hostname, making deployments immune to future gateway config changes.
-func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterConfig) {
+func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterConfig) error {
 	if cfg == nil || routerCfg == nil {
-		return
+		return nil
 	}
 	switch cfg.Kind {
 	case api.RestApi:
 		apiData, err := cfg.Spec.AsAPIConfigData()
 		if err != nil || apiData.Vhosts == nil {
-			return
+			return nil
 		}
 		modified := false
 		if apiData.Vhosts.Main == vhostGatewayDefault {
@@ -569,16 +571,22 @@ func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterCo
 		}
 		if apiData.Vhosts.Sandbox != nil && *apiData.Vhosts.Sandbox == vhostGatewayDefault {
 			resolved := routerCfg.VHosts.Sandbox.Default
-			apiData.Vhosts.Sandbox = &resolved
+			if resolved != "" {
+				apiData.Vhosts.Sandbox = &resolved
+			} else {
+				apiData.Vhosts.Sandbox = nil
+			}
 			modified = true
 		}
 		if modified {
-			_ = cfg.Spec.FromAPIConfigData(apiData)
+			if err := cfg.Spec.FromAPIConfigData(apiData); err != nil {
+				return fmt.Errorf("failed to re-encode RestApi spec after vhost resolution: %w", err)
+			}
 		}
 	case api.WebSubApi:
 		webhookData, err := cfg.Spec.AsWebhookAPIData()
 		if err != nil || webhookData.Vhosts == nil {
-			return
+			return nil
 		}
 		modified := false
 		if webhookData.Vhosts.Main == vhostGatewayDefault {
@@ -587,11 +595,18 @@ func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterCo
 		}
 		if webhookData.Vhosts.Sandbox != nil && *webhookData.Vhosts.Sandbox == vhostGatewayDefault {
 			resolved := routerCfg.VHosts.Sandbox.Default
-			webhookData.Vhosts.Sandbox = &resolved
+			if resolved != "" {
+				webhookData.Vhosts.Sandbox = &resolved
+			} else {
+				webhookData.Vhosts.Sandbox = nil
+			}
 			modified = true
 		}
 		if modified {
-			_ = cfg.Spec.FromWebhookAPIData(webhookData)
+			if err := cfg.Spec.FromWebhookAPIData(webhookData); err != nil {
+				return fmt.Errorf("failed to re-encode WebSubApi spec after vhost resolution: %w", err)
+			}
 		}
 	}
+	return nil
 }

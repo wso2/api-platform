@@ -774,7 +774,7 @@ func TestResolveVhostSentinels_RestApi(t *testing.T) {
 	}
 	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
 
-	resolveVhostSentinels(cfg, routerCfg)
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
 
 	resolved, err := cfg.Spec.AsAPIConfigData()
 	require.NoError(t, err)
@@ -805,7 +805,7 @@ func TestResolveVhostSentinels_ExplicitValuesUnchanged(t *testing.T) {
 	}
 	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
 
-	resolveVhostSentinels(cfg, routerCfg)
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
 
 	resolved, err := cfg.Spec.AsAPIConfigData()
 	require.NoError(t, err)
@@ -826,7 +826,7 @@ func TestResolveVhostSentinels_NilVhostsNoOp(t *testing.T) {
 	apiData := api.APIConfigData{Vhosts: nil}
 	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
 
-	resolveVhostSentinels(cfg, routerCfg) // should not panic
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg)) // should not panic
 
 	resolved, err := cfg.Spec.AsAPIConfigData()
 	require.NoError(t, err)
@@ -854,7 +854,7 @@ func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
 	}
 	require.NoError(t, cfg.Spec.FromWebhookAPIData(webhookData))
 
-	resolveVhostSentinels(cfg, routerCfg)
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
 
 	resolved, err := cfg.Spec.AsWebhookAPIData()
 	require.NoError(t, err)
@@ -885,7 +885,7 @@ func TestResolveVhostSentinels_WebSubApi_ExplicitValues(t *testing.T) {
 	}
 	require.NoError(t, cfg.Spec.FromWebhookAPIData(webhookData))
 
-	resolveVhostSentinels(cfg, routerCfg)
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
 
 	resolved, err := cfg.Spec.AsWebhookAPIData()
 	require.NoError(t, err)
@@ -897,10 +897,10 @@ func TestResolveVhostSentinels_WebSubApi_ExplicitValues(t *testing.T) {
 
 func TestResolveVhostSentinels_NilCfgNoOp(t *testing.T) {
 	routerCfg := &config.RouterConfig{}
-	resolveVhostSentinels(nil, routerCfg) // should not panic
+	require.NoError(t, resolveVhostSentinels(nil, routerCfg)) // should not panic
 }
 
 func TestResolveVhostSentinels_NilRouterCfgNoOp(t *testing.T) {
 	cfg := &api.APIConfiguration{Kind: api.RestApi}
-	resolveVhostSentinels(cfg, nil) // should not panic
+	require.NoError(t, resolveVhostSentinels(cfg, nil)) // should not panic
 }
