@@ -35,15 +35,6 @@ const (
 	StatusUndeployed ConfigStatus = "undeployed" // Removed from Router but config preserved
 )
 
-// PendingOperationType represents the type of operation currently in progress
-type PendingOperationType string
-
-const (
-	OperationNone     PendingOperationType = "none"     // No operation in progress
-	OperationDeploy   PendingOperationType = "deploy"   // Deployment operation in progress
-	OperationUndeploy PendingOperationType = "undeploy" // Undeployment operation in progress
-)
-
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
 	UUID                string               `json:"uuid"`
