@@ -37,6 +37,24 @@ CREATE TABLE IF NOT EXISTS projects (
     UNIQUE(name, organization_uuid)
 );
 
+-- Applications table
+CREATE TABLE IF NOT EXISTS applications (
+    uuid VARCHAR(40) PRIMARY KEY,
+    handle VARCHAR(255) NOT NULL,
+    project_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(255),
+    name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(50) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(project_uuid, organization_uuid, name),
+    UNIQUE(handle, organization_uuid)
+);
+
 -- Artifacts table
 CREATE TABLE IF NOT EXISTS artifacts (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -53,6 +71,33 @@ CREATE TABLE IF NOT EXISTS artifacts (
     -- Ensure (uuid, organization_uuid) pairs are unique so they can be safely
     -- referenced from subscriptions to enforce API–organization consistency.
     UNIQUE(uuid, organization_uuid)
+);
+
+-- API Keys table
+CREATE TABLE IF NOT EXISTS api_keys (
+    id VARCHAR(40) PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(63) NOT NULL,
+    masked_api_key VARCHAR(8) NOT NULL,
+    api_key_hashes TEXT NOT NULL DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME,
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    UNIQUE(artifact_uuid, name)
+);
+
+-- Application API Key mappings table
+CREATE TABLE IF NOT EXISTS application_api_keys (
+    application_uuid VARCHAR(40) NOT NULL,
+    api_key_id VARCHAR(40) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_uuid, api_key_id),
+    FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE
 );
 
 -- REST APIs table
@@ -350,3 +395,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(template_
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_uuid, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_applications_name_project ON applications(name, project_uuid, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_applications_handle_org ON applications(handle, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_keys(application_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);
