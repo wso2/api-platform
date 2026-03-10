@@ -2063,7 +2063,7 @@
   },
   "claude-3-5-haiku-20241022": {
     "cache_creation_input_token_cost": 1e-06,
-    "cache_creation_input_token_cost_above_1hr": 6e-06,
+    "cache_creation_input_token_cost_above_1hr": 1.6e-06,
     "cache_read_input_token_cost": 8e-08,
     "input_cost_per_token": 8e-07,
     "max_input_tokens": 200000,
@@ -2079,7 +2079,7 @@
   },
   "claude-3-5-haiku-latest": {
     "cache_creation_input_token_cost": 1.25e-06,
-    "cache_creation_input_token_cost_above_1hr": 6e-06,
+    "cache_creation_input_token_cost_above_1hr": 2e-06,
     "cache_read_input_token_cost": 1e-07,
     "input_cost_per_token": 1e-06,
     "max_input_tokens": 200000,
@@ -2192,7 +2192,7 @@
   },
   "claude-3-haiku-20240307": {
     "cache_creation_input_token_cost": 3e-07,
-    "cache_creation_input_token_cost_above_1hr": 6e-06,
+    "cache_creation_input_token_cost_above_1hr": 5e-07,
     "cache_read_input_token_cost": 3e-08,
     "input_cost_per_token": 2.5e-07,
     "max_input_tokens": 200000,
@@ -2203,7 +2203,7 @@
   },
   "claude-3-opus-20240229": {
     "cache_creation_input_token_cost": 1.875e-05,
-    "cache_creation_input_token_cost_above_1hr": 6e-06,
+    "cache_creation_input_token_cost_above_1hr": 3e-05,
     "cache_read_input_token_cost": 1.5e-06,
     "input_cost_per_token": 1.5e-05,
     "max_input_tokens": 200000,
@@ -2214,7 +2214,7 @@
   },
   "claude-3-opus-latest": {
     "cache_creation_input_token_cost": 1.875e-05,
-    "cache_creation_input_token_cost_above_1hr": 6e-06,
+    "cache_creation_input_token_cost_above_1hr": 3e-05,
     "cache_read_input_token_cost": 1.5e-06,
     "input_cost_per_token": 1.5e-05,
     "max_input_tokens": 200000,
@@ -2274,7 +2274,8 @@
       "search_context_size_low": 0.01,
       "search_context_size_medium": 0.01
     },
-    "provider": "anthropic"
+    "provider": "anthropic",
+    "cache_creation_input_token_cost_above_1hr": 6e-06
   },
   "claude-sonnet-4-5-20250929": {
     "cache_creation_input_token_cost": 3.75e-06,
@@ -2293,7 +2294,8 @@
       "search_context_size_low": 0.01,
       "search_context_size_medium": 0.01
     },
-    "provider": "anthropic"
+    "provider": "anthropic",
+    "cache_creation_input_token_cost_above_1hr": 6e-06
   },
   "claude-sonnet-4-6": {
     "cache_creation_input_token_cost": 3.75e-06,
@@ -2312,7 +2314,8 @@
       "search_context_size_low": 0.01,
       "search_context_size_medium": 0.01
     },
-    "provider": "anthropic"
+    "provider": "anthropic",
+    "cache_creation_input_token_cost_above_1hr": 6e-06
   },
   "claude-opus-4-1": {
     "cache_creation_input_token_cost": 1.875e-05,
