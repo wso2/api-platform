@@ -197,6 +197,51 @@ type APIKeyRevokedEvent struct {
 	UserId        string                    `json:"userId"`
 }
 
+// MCPProxyDeployedEventPayload represents the payload of an MCP proxy deployment event
+type MCPProxyDeployedEventPayload struct {
+	ProxyID      string `json:"proxyId"`
+	Environment  string `json:"environment"`
+	DeploymentID string `json:"deploymentId"`
+	VHost        string `json:"vhost"`
+}
+
+// MCPProxyDeployedEvent represents the complete MCP proxy deployment event
+type MCPProxyDeployedEvent struct {
+	Type          string                       `json:"type"`
+	Payload       MCPProxyDeployedEventPayload `json:"payload"`
+	Timestamp     string                       `json:"timestamp"`
+	CorrelationID string                       `json:"correlationId"`
+}
+
+// MCPProxyUndeployedEventPayload represents the payload of an MCP proxy undeployment event
+type MCPProxyUndeployedEventPayload struct {
+	ProxyID     string `json:"proxyId"`
+	Environment string `json:"environment"`
+	VHost       string `json:"vhost"`
+}
+
+// MCPProxyUndeployedEvent represents the complete MCP proxy undeployment event
+type MCPProxyUndeployedEvent struct {
+	Type          string                         `json:"type"`
+	Payload       MCPProxyUndeployedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
+}
+
+// MCPProxyDeletedEventPayload represents the payload of an MCP proxy deletion event
+type MCPProxyDeletedEventPayload struct {
+	ProxyID string `json:"proxyId"`
+	VHost   string `json:"vhost"`
+}
+
+// MCPProxyDeletedEvent represents the complete MCP proxy deletion event
+type MCPProxyDeletedEvent struct {
+	Type          string                      `json:"type"`
+	Payload       MCPProxyDeletedEventPayload `json:"payload"`
+	Timestamp     string                      `json:"timestamp"`
+	CorrelationID string                      `json:"correlationId"`
+}
+
 // SubscriptionCreatedEventPayload represents the payload of a subscription created event.
 type SubscriptionCreatedEventPayload struct {
 	APIID              string `json:"apiId"`

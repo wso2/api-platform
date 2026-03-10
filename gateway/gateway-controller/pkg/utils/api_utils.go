@@ -46,6 +46,7 @@ type PlatformAPIConfig struct {
 type APIUtilsService struct {
 	config PlatformAPIConfig
 	logger *slog.Logger
+	client *http.Client
 }
 
 // NewAPIUtilsService creates a new API utilities service
@@ -55,9 +56,26 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 		config.Timeout = 30 * time.Second
 	}
 
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: config.InsecureSkipVerify,
+		},
+		// Connection pool tuning
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 5,
+		MaxConnsPerHost:     10,
+		IdleConnTimeout:     30 * time.Second,
+	}
+
+	client := &http.Client{
+		Timeout:   config.Timeout,
+		Transport: transport,
+	}
+
 	return &APIUtilsService{
 		config: config,
 		logger: logger,
+		client: client,
 	}
 }
 
@@ -71,16 +89,6 @@ func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 		slog.String("url", apiURL),
 	)
 
-	// Create HTTP client with TLS configuration
-	client := &http.Client{
-		Timeout: s.config.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
-
 	// Create request
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -92,7 +100,7 @@ func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 	req.Header.Add("Accept", "application/zip")
 
 	// Make request
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch API definition: %w", err)
 	}
@@ -128,16 +136,6 @@ func (s *APIUtilsService) FetchLLMProviderDefinition(providerID string) ([]byte,
 		slog.String("url", providerURL),
 	)
 
-	// Create HTTP client with TLS configuration
-	client := &http.Client{
-		Timeout: s.config.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
-
 	// Create request
 	req, err := http.NewRequest("GET", providerURL, nil)
 	if err != nil {
@@ -149,7 +147,7 @@ func (s *APIUtilsService) FetchLLMProviderDefinition(providerID string) ([]byte,
 	req.Header.Add("Accept", "application/zip")
 
 	// Make request
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch LLM provider definition: %w", err)
 	}
@@ -185,16 +183,6 @@ func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error
 		slog.String("url", proxyURL),
 	)
 
-	// Create HTTP client with TLS configuration
-	client := &http.Client{
-		Timeout: s.config.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
-
 	// Create request
 	req, err := http.NewRequest("GET", proxyURL, nil)
 	if err != nil {
@@ -206,7 +194,7 @@ func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error
 	req.Header.Add("Accept", "application/zip")
 
 	// Make request
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch LLM proxy definition: %w", err)
 	}
@@ -417,6 +405,72 @@ func (s *APIUtilsService) CreateLLMProxyFromYAML(yamlData []byte, proxyID string
 	return result, nil
 }
 
+// FetchMCPProxyDefinition downloads the MCP proxy definition as a zip file from the control plane
+func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error) {
+	// Construct the MCP proxy URL by appending the resource path
+	proxyURL := s.config.BaseURL + "/mcp-proxies/" + proxyID
+
+	s.logger.Info("Fetching MCP proxy definition",
+		slog.String("proxy_id", proxyID),
+		slog.String("url", proxyURL),
+	)
+
+	// Create request
+	req, err := http.NewRequest("GET", proxyURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add authentication header
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/zip")
+
+	// Make request
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch MCP proxy definition: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("MCP proxy request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	s.logger.Info("Successfully fetched MCP proxy definition",
+		slog.String("proxy_id", proxyID),
+		slog.Int("size_bytes", len(bodyBytes)),
+	)
+
+	return bodyBytes, nil
+}
+
+// CreateMCPProxyFromYAML creates an MCP proxy configuration from YAML data using the MCP deployment service
+func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string, correlationID string,
+	mcpDeploymentService *MCPDeploymentService) (*APIDeploymentResult, error) {
+	// Use the MCP deployment service to handle the proxy configuration deployment
+	result, err := mcpDeploymentService.DeployMCPConfiguration(MCPDeploymentParams{
+		Data:          yamlData,
+		ContentType:   "application/yaml",
+		ID:            proxyID,
+		CorrelationID: correlationID,
+		Logger:        s.logger,
+	}, nil, nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy MCP proxy configuration from YAML: %w", err)
+	}
+
+	return result, nil
+}
+
 // SaveAPIDefinition saves the API definition zip file to disk
 func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error {
 	// Create data directory if it doesn't exist
@@ -477,16 +531,6 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Create HTTP client with TLS configuration
-	client := &http.Client{
-		Timeout: s.config.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
-
 	// Create POST request
 	req, err := http.NewRequest("POST", deployURL, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -503,7 +547,7 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 		slog.String("deployment_id", deploymentID))
 
 	// Make the request
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send deployment notification: %w", err)
 	}

@@ -96,28 +96,29 @@ type ControlPlaneClient interface {
 
 // Client manages the WebSocket connection to the control plane
 type Client struct {
-	config               config.ControlPlaneConfig
-	logger               *slog.Logger
-	state                *ConnectionState
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	stopChan             chan struct{}
-	wg                   sync.WaitGroup
-	store                *storage.ConfigStore
-	db                   storage.Storage
-	snapshotManager      *xds.SnapshotManager
-	parser               *config.Parser
-	validator            config.Validator
-	deploymentService    *utils.APIDeploymentService
-	apiUtilsService      *utils.APIUtilsService
-	apiKeyService        *utils.APIKeyService
-	llmDeploymentService *utils.LLMDeploymentService
-	apiKeyXDSManager              utils.XDSManager
-	routerConfig                  *config.RouterConfig
-	policyManager                 *policyxds.PolicyManager
-	systemConfig                  *config.Config
-	policyDefinitions             map[string]api.PolicyDefinition
-	subscriptionSnapshotManager   *subscriptionxds.SnapshotManager
+	config                      config.ControlPlaneConfig
+	logger                      *slog.Logger
+	state                       *ConnectionState
+	ctx                         context.Context
+	cancel                      context.CancelFunc
+	stopChan                    chan struct{}
+	wg                          sync.WaitGroup
+	store                       *storage.ConfigStore
+	db                          storage.Storage
+	snapshotManager             *xds.SnapshotManager
+	parser                      *config.Parser
+	validator                   config.Validator
+	deploymentService           *utils.APIDeploymentService
+	apiUtilsService             *utils.APIUtilsService
+	apiKeyService               *utils.APIKeyService
+	llmDeploymentService        *utils.LLMDeploymentService
+	mcpDeploymentService        *utils.MCPDeploymentService
+	apiKeyXDSManager            utils.XDSManager
+	routerConfig                *config.RouterConfig
+	policyManager               *policyxds.PolicyManager
+	systemConfig                *config.Config
+	policyDefinitions           map[string]api.PolicyDefinition
+	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
 }
 
 // NewClient creates a new control plane client
@@ -181,6 +182,12 @@ func NewClient(
 		routerConfig,
 		policyVersionResolver,
 		policyValidator,
+	)
+
+	client.mcpDeploymentService = utils.NewMCPDeploymentService(
+		store,
+		db,
+		snapshotManager,
 	)
 
 	// Initialize API utils service with the proper base URL using the method
@@ -785,6 +792,12 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleSubscriptionPlanUpdatedEvent(event)
 	case "subscriptionPlan.deleted":
 		c.handleSubscriptionPlanDeletedEvent(event)
+	case "mcpproxy.deployed":
+		c.handleMCPProxyDeploymentEvent(event)
+	case "mcpproxy.undeployed":
+		c.handleMCPProxyUndeploymentEvent(event)
+	case "mcpproxy.deleted":
+		c.handleMCPProxyDeletedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -1667,6 +1680,233 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("Successfully processed LLM proxy undeployment event",
 		slog.String("proxy_id", proxyID),
 		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
+}
+
+func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
+	c.logger.Info("MCP Proxy Deployment Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	// Parse the event into structured format
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal MCP proxy deployment event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deployedEvent MCPProxyDeployedEvent
+	if err := json.Unmarshal(eventBytes, &deployedEvent); err != nil {
+		c.logger.Error("Failed to parse MCP proxy deployment event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	proxyID := deployedEvent.Payload.ProxyID
+	if proxyID == "" {
+		c.logger.Error("Proxy ID is empty in MCP proxy deployment event")
+		return
+	}
+
+	c.logger.Info("Processing MCP proxy deployment",
+		slog.String("proxy_id", proxyID),
+		slog.String("environment", deployedEvent.Payload.Environment),
+		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		slog.String("vhost", deployedEvent.Payload.VHost),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
+	)
+
+	// Fetch MCP proxy definition from control plane
+	zipData, err := c.apiUtilsService.FetchMCPProxyDefinition(proxyID)
+	if err != nil {
+		c.logger.Error("Failed to fetch MCP proxy definition",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Extract YAML from ZIP
+	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
+	if err != nil {
+		c.logger.Error("Failed to extract YAML from MCP proxy ZIP",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	if c.mcpDeploymentService == nil {
+		c.logger.Error("MCP deployment service not available",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", deployedEvent.CorrelationID),
+		)
+		return
+	}
+
+	// Create MCP proxy configuration from YAML using the deployment service
+	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.CorrelationID, c.mcpDeploymentService)
+	if err != nil {
+		c.logger.Error("Failed to create MCP proxy from YAML",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Update policy engine xDS snapshot (best-effort)
+	if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
+		// Error already logged in updatePolicyForDeployment
+		return
+	}
+
+	c.logger.Info("Successfully processed MCP proxy deployment event",
+		slog.String("proxy_id", proxyID),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
+	)
+}
+
+func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
+	c.logger.Info("MCP Proxy Undeployment Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	// Parse the event into structured format
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal MCP proxy undeployment event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var undeployedEvent MCPProxyUndeployedEvent
+	if err := json.Unmarshal(eventBytes, &undeployedEvent); err != nil {
+		c.logger.Error("Failed to parse MCP proxy undeployment event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	proxyID := undeployedEvent.Payload.ProxyID
+	if proxyID == "" {
+		c.logger.Error("Proxy ID is empty in MCP proxy undeployment event")
+		return
+	}
+
+	// Check if MCP proxy exists on this gateway
+	mcpConfig, err := c.findAPIConfig(proxyID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("MCP proxy configuration not found for undeployment",
+				slog.String("proxy_id", proxyID),
+			)
+			// Not an error - the MCP proxy might already be undeployed or deleted
+			return
+		}
+		// Real storage error - log and abort
+		c.logger.Error("Failed to fetch MCP proxy configuration for undeployment",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", undeployedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Set status to undeployed (preserve config, keys, and policies)
+	mcpConfig.Status = models.StatusUndeployed
+	mcpConfig.UpdatedAt = time.Now()
+	// Keep DeployedVersion as-is - it tracks when it was last deployed
+
+	// Update database (only if persistent mode)
+	if c.db != nil {
+		if err := c.db.UpdateConfig(mcpConfig); err != nil {
+			c.logger.Error("Failed to update config status in database",
+				slog.String("proxy_id", proxyID),
+				slog.Any("error", err),
+			)
+			return
+		}
+	}
+
+	// Update in-memory store
+	if err := c.store.Update(mcpConfig); err != nil {
+		c.logger.Error("Failed to update config status in memory store",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
+	c.updateXDSSnapshotAsync(proxyID, undeployedEvent.CorrelationID, false, true)
+
+	c.logger.Info("Successfully processed MCP proxy undeployment event",
+		slog.String("proxy_id", proxyID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
+}
+
+func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
+	c.logger.Info("MCP Proxy Deleted Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	// Parse the event into structured format
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal MCP proxy deleted event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deletedEvent MCPProxyDeletedEvent
+	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
+		c.logger.Error("Failed to parse MCP proxy deleted event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	proxyID := deletedEvent.Payload.ProxyID
+	if proxyID == "" {
+		c.logger.Error("Proxy ID is empty in MCP proxy deleted event")
+		return
+	}
+
+	if c.mcpDeploymentService == nil {
+		c.logger.Error("MCP deployment service not available",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+		)
+		return
+	}
+
+	_, err = c.mcpDeploymentService.DeleteMCPProxy(proxyID, deletedEvent.CorrelationID, c.logger)
+	if err != nil {
+		c.logger.Error("Failed to delete MCP proxy configuration",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Remove derived policy configuration (after all other operations)
+	c.removePolicyConfiguration(proxyID, deletedEvent.CorrelationID, false)
+
+	c.logger.Info("Successfully processed MCP proxy deleted event",
+		slog.String("proxy_id", proxyID),
+		slog.String("correlation_id", deletedEvent.CorrelationID),
 	)
 }
 
