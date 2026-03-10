@@ -126,6 +126,7 @@ func NewAPIServer(
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
+// Note: We only log failures here. Status in DB represents desired state, not actual runtime state.
 func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64, correlationID string) {
 	// Create a logger with correlation ID if provided
 	log := s.logger
@@ -135,41 +136,23 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 
 	cfg, err := s.store.Get(configID)
 	if err != nil {
-		log.Warn("Config not found for status update", slog.String("id", configID))
+		log.Debug("Config not found for status update", slog.String("id", configID))
 		return
 	}
 
-	now := time.Now()
+	// Log the xDS update result
 	if success {
-		cfg.Status = models.StatusDeployed
-		cfg.DeployedAt = &now
-		cfg.DeployedVersion = version
-		log.Info("Configuration deployed successfully",
+		log.Info("xDS snapshot updated successfully",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
 			slog.String("handle", cfg.Handle))
 	} else {
-		cfg.Status = models.StatusFailed
-		cfg.DeployedAt = nil
-		cfg.DeployedVersion = 0
-		log.Error("Configuration deployment failed",
+		// Only log the failure - don't change status in DB
+		// Status in DB represents desired state, not actual runtime deployment status
+		log.Error("xDS snapshot update failed",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
 			slog.String("handle", cfg.Handle))
-	}
-
-	cfg.UpdatedAt = now
-
-	// Update database (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(cfg); err != nil {
-			log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-		}
-	}
-
-	// Update in-memory store
-	if err := s.store.Update(cfg); err != nil {
-		log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
 	}
 }
 
@@ -666,16 +649,58 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		return
 	}
 
-	// Update stored configuration
+	// Extract deploymentState from spec
+	var deploymentState string
+	switch apiConfig.Kind {
+	case api.RestApi:
+		configData, err := apiConfig.Spec.AsAPIConfigData()
+		if err == nil && configData.DeploymentState != nil {
+			deploymentState = string(*configData.DeploymentState)
+		}
+	case api.WebSubApi:
+		asyncData, err := apiConfig.Spec.AsWebhookAPIData()
+		if err == nil && asyncData.DeploymentState != nil {
+			deploymentState = string(*asyncData.DeploymentState)
+		}
+	}
+
+	// If not specified, default to "deployed"
+	if deploymentState == "" {
+		deploymentState = string(models.StatusDeployed)
+	}
+
+	log.Debug("Processing API update request",
+		slog.String("handle", handle),
+		slog.String("api_kind", string(apiConfig.Kind)),
+		slog.String("deployment_state", deploymentState))
+
 	now := time.Now()
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
 
-	if apiConfig.Kind == api.WebSubApi {
+	if deploymentState == string(models.StatusUndeployed) {
+		log.Info("Undeploying API configuration",
+			slog.String("handle", handle),
+			slog.String("api_id", existing.UUID))
+
+		// Set desired state to undeployed
+		// Keep DeployedVersion and DeployedAt to track when it was last deployed
+		existing.Status = models.StatusUndeployed
+	} else {
+		log.Info("Deploying API configuration",
+			slog.String("handle", handle),
+			slog.String("api_id", existing.UUID))
+
+		// Set desired state to deployed
+		existing.Status = models.StatusDeployed
+		existing.DeployedAt = &now
+		// Note: DeployedVersion not updated - it's xDS replica-specific, not meaningful in HA shared DB
+	}
+
+	// Skip WebSubApi topic operations for undeployed APIs (assume WebSub doesn't support undeployment)
+	if apiConfig.Kind == api.WebSubApi && deploymentState != string(models.StatusUndeployed) {
 		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -815,7 +840,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
-		slog.String("handle", handle))
+		slog.String("handle", handle),
+		slog.String("deployment_state", deploymentState))
 
 	// Record successful operation metrics
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
@@ -831,24 +857,34 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(existing)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// API no longer has policies, remove the existing policy configuration
-			policyID := existing.UUID + "-policies"
+		policyID := existing.UUID + "-policies"
+		if deploymentState == string(models.StatusUndeployed) {
+			// Remove derived policy configuration for undeployed API
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if API never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
 			} else {
-				log.Info("Derived policy configuration removed (API no longer has policies)",
+				log.Info("Derived policy configuration removed (API undeployed)",
 					slog.String("policy_id", policyID))
+			}
+		} else {
+			// For deployed APIs, rebuild policy configuration
+			storedPolicy := s.buildStoredPolicyFromAPI(existing)
+			if storedPolicy != nil {
+				if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+					log.Error("Failed to update derived policy configuration", slog.Any("error", err))
+				} else {
+					log.Info("Derived policy configuration updated",
+						slog.String("policy_id", storedPolicy.ID),
+						slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
+				}
+			} else {
+				// API no longer has policies, remove the existing policy configuration
+				if err := s.policyManager.RemovePolicy(policyID); err != nil {
+					log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
+				} else {
+					log.Info("Derived policy configuration removed (API no longer has policies)",
+						slog.String("policy_id", policyID))
+				}
 			}
 		}
 	}

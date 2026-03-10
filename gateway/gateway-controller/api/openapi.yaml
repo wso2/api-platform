@@ -1885,6 +1885,12 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/Operation"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
 
     UpstreamDefinition:
       type: object
@@ -2124,6 +2130,12 @@ components:
           description: List of API-level policies applied to all operations unless overridden
           items:
             $ref: '#/components/schemas/Policy'
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
 
     # AsyncAPI-inspired server definition used when kind is async/* or http/websub.
     # Simplified mapping of AsyncAPI 2.x Server Object into OpenAPI.
