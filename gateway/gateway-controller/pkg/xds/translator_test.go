@@ -43,11 +43,11 @@ func TestResolveUpstreamDefinition_Found(t *testing.T) {
 		{
 			Name: "test-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -65,21 +65,21 @@ func TestResolveUpstreamDefinition_NotFound(t *testing.T) {
 		{
 			Name: "existing-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
 	}
 
-	def, err := resolveUpstreamDefinition("non-existent", definitions)
+	def, err := resolveUpstreamDefinition("0000-non-existent-0000-000000000000", definitions)
 
 	assert.Error(t, err)
 	assert.Nil(t, def)
-	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+	assert.Contains(t, err.Error(), "upstream definition '0000-non-existent-0000-000000000000' not found")
 }
 
 func TestResolveUpstreamDefinition_NoDefinitions(t *testing.T) {
@@ -185,11 +185,11 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 				Connect: &timeoutStr,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-1:9000/v2"},
+					Url: "http://backend-1:9000/v2",
 				},
 			},
 		},
@@ -218,11 +218,11 @@ func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -238,7 +238,7 @@ func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
 
 func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 	translator := &Translator{}
-	ref := "non-existent"
+	ref := "0000-non-existent-0000-000000000000"
 	upstream := &api.Upstream{
 		Ref: &ref,
 	}
@@ -246,11 +246,11 @@ func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 		{
 			Name: "other-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -260,7 +260,7 @@ func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to resolve main upstream ref")
-	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+	assert.Contains(t, err.Error(), "upstream definition '0000-non-existent-0000-000000000000' not found")
 }
 
 func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
@@ -277,11 +277,11 @@ func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
 				Connect: &invalidTimeout,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -303,8 +303,8 @@ func TestResolveUpstreamCluster_WithRef_NoURLs(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{},
 		},
 	}
@@ -560,9 +560,9 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Simple key",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
-			key:         "key1",
+			key:         "0000-key1-0000-000000000000",
 			expected:    "value1",
 			expectError: false,
 		},
@@ -600,7 +600,7 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Key not found",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
 			key:         "nonexistent",
 			expected:    nil,
@@ -609,7 +609,7 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Invalid nested path",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
 			key:         "key1.nested",
 			expected:    nil,
@@ -813,7 +813,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Mode:             "uds",
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -842,7 +841,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Port:             9001,
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -868,36 +866,23 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 func TestTranslator_CreateExtProcFilter(t *testing.T) {
 	logger := createTestLogger()
 
-	tests := []struct {
-		name             string
-		routeCacheAction string
-		headerMode       string
-	}{
-		{name: "Default settings", routeCacheAction: "DEFAULT", headerMode: "DEFAULT"},
-		{name: "Retain cache", routeCacheAction: constants.ExtProcRouteCacheActionRetain, headerMode: "SEND"},
-		{name: "Clear cache", routeCacheAction: constants.ExtProcRouteCacheActionClear, headerMode: "SKIP"},
-	}
+	t.Run("Creates ext_proc filter with DEFAULT route cache action", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Host:             "localhost",
+			Port:             50051,
+			TimeoutMs:        1000,
+			MessageTimeoutMs: 500,
+		}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			routerCfg := testRouterConfig()
-			routerCfg.PolicyEngine = config.PolicyEngineConfig{
-				Host:             "localhost",
-				Port:             50051,
-				TimeoutMs:        1000,
-				MessageTimeoutMs: 500,
-				RouteCacheAction: tt.routeCacheAction,
-			}
-			cfg := testConfig()
-			cfg.Router = *routerCfg
-			translator := NewTranslator(logger, routerCfg, nil, cfg)
-
-			filter, err := translator.createExtProcFilter()
-			assert.NoError(t, err)
-			assert.NotNil(t, filter)
-			assert.Equal(t, constants.ExtProcFilterName, filter.Name)
-		})
-	}
+		filter, err := translator.createExtProcFilter()
+		assert.NoError(t, err)
+		assert.NotNil(t, filter)
+		assert.Equal(t, constants.ExtProcFilterName, filter.Name)
+	})
 }
 
 func TestTranslator_CreateRouteConfiguration(t *testing.T) {
@@ -1285,7 +1270,7 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 
 	route := translator.createRoute(
 		"api-123",      // apiId
-		"test-api",     // apiName
+		"0000-test-api-0000-000000000000",     // apiName
 		"v1",           // apiVersion
 		"/api",         // context
 		"GET",          // method
@@ -1299,6 +1284,9 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 		nil,            // hostRewrite
 		"proj-001",     // projectID
 		nil,            // timeoutCfg
+		false,          // useClusterHeader
+		"",             // defaultCluster
+		nil,            // upstreamDefPaths
 	)
 
 	assert.NotNil(t, route)
@@ -1352,7 +1340,7 @@ func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
 
 	// Create invalid WebSub API config that will cause translation error
 	invalidConfig := &models.StoredConfig{
-		ID:   "test-websub-invalid",
+		UUID:   "0000-test-websub-invalid-0000-000000000000",
 		Kind: "WebSubApi",
 		Configuration: api.APIConfiguration{
 			Metadata: api.Metadata{
@@ -1559,7 +1547,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "http://websub.example.com:8080"
 
 		webhookConfig := &models.StoredConfig{
-			ID:   "websub-api-1",
+			UUID:   "0000-websub-api-1-0000-000000000000",
 			Kind: "WebSubApi",
 			Configuration: api.APIConfiguration{
 				Metadata: api.Metadata{
@@ -1603,7 +1591,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "://invalid"
 
 		webhookConfig := &models.StoredConfig{
-			ID:   "websub-api-2",
+			UUID:   "0000-websub-api-2-0000-000000000000",
 			Kind: "WebSubApi",
 			Configuration: api.APIConfiguration{
 				Metadata: api.Metadata{Name: "websub-invalid"},

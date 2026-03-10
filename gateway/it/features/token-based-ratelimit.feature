@@ -272,6 +272,111 @@ Feature: Token-Based Rate Limiting
     When I delete the LLM provider template "multi-quota-template"
     Then the response status code should be 200
 
+  Scenario: Token-based rate limiting extracts tokens from gzipped backend responses
+    Given I authenticate using basic auth as "admin"
+
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: gzip-response-template
+      spec:
+        displayName: Gzip Response Template
+        totalTokens:
+          location: payload
+          identifier: $.args.total_tokens[0]
+        requestModel:
+          location: payload
+          identifier: $.args.model[0]
+        responseModel:
+          location: payload
+          identifier: $.args.model[0]
+      """
+    Then the response status code should be 201
+
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: gzip-response-provider
+      spec:
+        displayName: Gzip Response Provider
+        version: v1.0
+        context: /gzip-response
+        template: gzip-response-template
+        upstream:
+          url: http://echo-backend-multi-arch:8080
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: deny_all
+          exceptions:
+            - path: /chat/completions
+              methods: [POST, GET]
+        policies:
+          - name: request-rewrite
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST, GET]
+                params:
+                  pathRewrite:
+                    type: ReplaceFullPath
+                    replaceFullPath: "/gzip"
+          - name: token-based-ratelimit
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  totalTokenLimits:
+                    - count: 2
+                      duration: "1m"
+                  algorithm: fixed-window
+                  backend: memory
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/gzip-response/chat/completions" to be ready
+
+    Given I set header "Content-Type" to "application/json"
+    And I set header "Accept-Encoding" to "gzip"
+
+    # First request: consume 1 token from gzipped response body
+    When I send a POST request to "http://localhost:8080/gzip-response/chat/completions?model=gpt-4&total_tokens=1" with body:
+      """
+      {}
+      """
+    Then the response status code should be 200
+    And the response header "Content-Encoding" should contain "gzip"
+    And the response header "X-Ratelimit-Remaining" should be "1"
+
+    # Second request: consume final token
+    When I send a POST request to "http://localhost:8080/gzip-response/chat/completions?model=gpt-4&total_tokens=1" with body:
+      """
+      {}
+      """
+    Then the response status code should be 200
+    And the response header "X-Ratelimit-Remaining" should be "0"
+
+    # Third request should now be blocked
+    When I send a POST request to "http://localhost:8080/gzip-response/chat/completions?model=gpt-4&total_tokens=1" with body:
+      """
+      {}
+      """
+    Then the response status code should be 429
+
+    And I clear all headers
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "gzip-response-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "gzip-response-template"
+    Then the response status code should be 200
+
   Scenario: Token-based rate limit returns proper headers
     Given I authenticate using basic auth as "admin"
     

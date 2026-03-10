@@ -217,7 +217,8 @@ func TestGenerateCertificateID(t *testing.T) {
 	// Generate multiple IDs and ensure they're unique
 	ids := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		id := generateCertificateID()
+		id, err := generateCertificateID()
+		assert.NoError(t, err)
 		assert.NotEmpty(t, id)
 		assert.False(t, ids[id], "Generated duplicate ID: %s", id)
 		ids[id] = true

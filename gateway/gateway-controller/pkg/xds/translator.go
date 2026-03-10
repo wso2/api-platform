@@ -184,8 +184,8 @@ func (t *Translator) TranslateConfigs(
 		// Skip undeployed APIs - they should not appear in xDS routes
 		if cfg.Status == models.StatusUndeployed {
 			log.Debug("Skipping undeployed API in xDS translation",
-				slog.String("id", cfg.ID),
-				slog.String("displayName", cfg.GetDisplayName()))
+				slog.String("id", cfg.UUID),
+				slog.String("displayName", cfg.DisplayName))
 			continue
 		}
 
@@ -201,8 +201,8 @@ func (t *Translator) TranslateConfigs(
 			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg, configs)
 			if err != nil {
 				log.Error("Failed to translate config",
-					slog.String("id", cfg.ID),
-					slog.String("displayName", cfg.GetDisplayName()),
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
 					slog.Any("error", err))
 				continue
 			}
@@ -210,8 +210,8 @@ func (t *Translator) TranslateConfigs(
 			routesList, clusterList, err = t.translateAPIConfig(cfg, configs)
 			if err != nil {
 				log.Error("Failed to translate config",
-					slog.String("id", cfg.ID),
-					slog.String("displayName", cfg.GetDisplayName()),
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
 					slog.Any("error", err))
 				continue
 			}
@@ -447,14 +447,14 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 			chName = "/" + chName
 		}
 		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoutePerTopic(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
+		r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
 			mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil)
+	r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, "", nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
@@ -464,7 +464,6 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
-	cfg.GetContext()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
 	}
@@ -514,10 +513,33 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 	}
 
+	// Build a map of upstream definition name -> basePath for dynamic routing
+	// This allows the policy engine to apply the correct path transformation when UpstreamName is used
+	upstreamDefPaths := make(map[string]string)
+	if apiData.UpstreamDefinitions != nil {
+		for _, def := range *apiData.UpstreamDefinitions {
+			// Use the explicit basePath if provided
+			if def.BasePath != nil && *def.BasePath != "" {
+				upstreamDefPaths[def.Name] = *def.BasePath
+			} else {
+				// Default to "/" if no basePath is specified
+				upstreamDefPaths[def.Name] = "/"
+			}
+		}
+	}
+
 	for _, op := range apiData.Operations {
-		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout)
+		// Determine if dynamic cluster selection should be used
+		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
+		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+		defaultCluster := ""
+		if useClusterHeader {
+			// Default to the main cluster (with the upstream_ prefix for cluster_header lookup)
+			defaultCluster = mainClusterName
+		}
+
+		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, defaultCluster, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -542,11 +564,64 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sbRoutesList := make([]*route.Route, 0)
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
-			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout)
+			// Sandbox routes don't support dynamic cluster selection
+			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, false, "", nil)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
+	}
+
+	// -------- UPSTREAM DEFINITIONS (for dynamic cluster selection via UpstreamName) --------
+	// Create clusters for all upstreamDefinitions so policies can route to them dynamically
+	if apiData.UpstreamDefinitions != nil {
+		for _, def := range *apiData.UpstreamDefinitions {
+			// Validate upstreams are configured
+			if len(def.Upstreams) == 0 || def.Upstreams[0].Url == "" {
+				return nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", def.Name)
+			}
+
+			// Sanitize definition name for use in Envoy cluster name
+			// Envoy cluster names must not contain dots or colons
+			sanitizedDefName := sanitizeUpstreamDefinitionName(def.Name)
+
+			// Use the definition name as cluster name, scoped by kind and API ID to avoid conflicts
+			// Format: upstream_<kind>_<apiId>_<sanitizedDefName>
+			defClusterName := constants.UpstreamDefinitionClusterPrefix + cfg.Kind + "_" + cfg.UUID + "_" + sanitizedDefName
+
+			// Parse the first URL from the definition
+			rawURL := def.Upstreams[0].Url
+			parsedURL, err := url.Parse(rawURL)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
+			}
+
+			// Validate URL scheme
+			if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+				return nil, nil, fmt.Errorf("invalid upstream definition '%s' URL: must include host and http/https scheme", def.Name)
+			}
+
+			// Extract timeout if specified
+			var defConnectTimeout *time.Duration
+			if def.Timeout != nil {
+				resolved, err := resolveTimeoutFromDefinition(&def)
+				if err != nil {
+					return nil, nil, fmt.Errorf("invalid timeout in upstream definition '%s': %w", def.Name, err)
+				}
+				if resolved != nil {
+					defConnectTimeout = resolved.Connect
+				}
+			}
+
+			// Create the cluster for this upstream definition
+			defCluster := t.createCluster(defClusterName, parsedURL, nil, defConnectTimeout)
+			clusters = append(clusters, defCluster)
+
+			t.logger.Debug("Created cluster for upstream definition",
+				slog.String("definition_name", def.Name),
+				slog.String("cluster_name", defClusterName),
+				slog.String("url", rawURL))
+		}
 	}
 
 	return routesList, clusters, nil
@@ -574,10 +649,10 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 
 		// Extract URL from the first upstream target in the definition
 		// TODO: Support multiple upstream targets
-		if len(definition.Upstreams) == 0 || len(definition.Upstreams[0].Urls) == 0 {
+		if len(definition.Upstreams) == 0 || definition.Upstreams[0].Url == "" {
 			return "", nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", refName)
 		}
-		rawURL = definition.Upstreams[0].Urls[0]
+		rawURL = definition.Upstreams[0].Url
 
 		// Extract timeout if specified in the definition (may be nil)
 		if definition.Timeout != nil {
@@ -1338,8 +1413,11 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 }
 
 // createRoute creates a route for an operation
+// When useClusterHeader is true, the route uses cluster_header for dynamic cluster selection,
+// and defaultCluster specifies the cluster to use when no policy overrides it.
+// upstreamDefPaths maps upstream definition names to their URL paths for dynamic path rewriting.
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, defaultCluster string, upstreamDefPaths map[string]string) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -1390,10 +1468,21 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 			IdleTimeout: durationpb.New(
 				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
 			),
-			ClusterSpecifier: &route.RouteAction_Cluster{
-				Cluster: clusterName,
-			},
 		},
+	}
+
+	// Set cluster specifier based on whether dynamic cluster selection is enabled
+	if useClusterHeader {
+		// Use cluster_header for dynamic cluster selection
+		// The cluster name will be read from the x-target-upstream header
+		routeAction.Route.ClusterSpecifier = &route.RouteAction_ClusterHeader{
+			ClusterHeader: constants.TargetUpstreamHeader,
+		}
+	} else {
+		// Use static cluster
+		routeAction.Route.ClusterSpecifier = &route.RouteAction_Cluster{
+			Cluster: clusterName,
+		}
 	}
 
 	// Set host rewrite based on configuration
@@ -1409,6 +1498,12 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		Name:   routeName,
 		Match:  &route.RouteMatch{},
 		Action: routeAction,
+	}
+
+	// When using cluster_header routing, strip the x-target-upstream header
+	// before forwarding to the upstream to avoid leaking cluster topology
+	if useClusterHeader {
+		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
 	}
 
 	// Only add headers if not a wildcard path
@@ -1429,15 +1524,16 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 
 	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
 	metaMap := map[string]interface{}{
-		"route_name":  routeName,
-		"api_id":      apiId,
-		"api_name":    apiName,
-		"api_version": apiVersion,
-		"api_context": context,
-		"path":        path,
-		"method":      method,
-		"vhost":       vhost,
-		"api_kind":    apiKind,
+		"route_name":         routeName,
+		"api_id":             apiId,
+		"api_name":           apiName,
+		"api_version":        apiVersion,
+		"api_context":        context,
+		"path":               path,
+		"method":             method,
+		"vhost":              vhost,
+		"api_kind":           apiKind,
+		"upstream_base_path": upstreamPath,
 	}
 	// Add template_handle if available (for LLM provider/proxy scenarios)
 	if templateHandle != "" {
@@ -1450,6 +1546,20 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Add projectID if available
 	if projectID != "" {
 		metaMap["project_id"] = projectID
+	}
+	// Add default_upstream_cluster for ext_proc to use when no policy sets UpstreamName
+	if useClusterHeader && defaultCluster != "" {
+		metaMap["default_upstream_cluster"] = defaultCluster
+	}
+	// Add upstream_definition_paths for dynamic path rewriting when UpstreamName is used
+	// This maps upstream definition names to their URL paths
+	// Convert map[string]string to map[string]interface{} for structpb.NewStruct compatibility
+	if len(upstreamDefPaths) > 0 {
+		pathsInterface := make(map[string]interface{})
+		for k, v := range upstreamDefPaths {
+			pathsInterface[k] = v
+		}
+		metaMap["upstream_definition_paths"] = pathsInterface
 	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
@@ -2284,6 +2394,14 @@ func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
 	return "cluster_" + scheme + "_" + name
 }
 
+// sanitizeUpstreamDefinitionName sanitizes an upstream definition name for use in Envoy cluster names.
+// Envoy cluster names cannot contain dots or colons.
+func sanitizeUpstreamDefinitionName(name string) string {
+	sanitized := strings.ReplaceAll(name, ".", "_")
+	sanitized = strings.ReplaceAll(sanitized, ":", "_")
+	return sanitized
+}
+
 // createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var accessLogs []*accesslog.AccessLog
@@ -2488,7 +2606,8 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 	}
 
 	luaConfig := &luav3.Lua{
-		InlineCode: string(scriptBytes),
+		InlineCode:      string(scriptBytes),
+		ClearRouteCache: wrapperspb.Bool(false),
 	}
 
 	luaAny, err := anypb.New(luaConfig)
@@ -2508,16 +2627,8 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 	policyEngine := t.routerConfig.PolicyEngine
 
-	// Convert route cache action string to enum
-	routeCacheAction := extproc.ExternalProcessor_DEFAULT
-	switch policyEngine.RouteCacheAction { // TODO: (renuka) This is not a config. Fix it.
-	case constants.ExtProcRouteCacheActionRetain:
-		routeCacheAction = extproc.ExternalProcessor_RETAIN
-	case constants.ExtProcRouteCacheActionClear:
-		routeCacheAction = extproc.ExternalProcessor_CLEAR
-	}
-
 	// Create ext_proc configuration
+	// RouteCacheAction is set to DEFAULT so ext_proc can control ClearRouteCache per-request
 	extProcConfig := &extproc.ExternalProcessor{
 		GrpcService: &core.GrpcService{
 			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
@@ -2528,7 +2639,7 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
 		},
 		FailureModeAllow:  policyEngine.FailureModeAllow,
-		RouteCacheAction:  routeCacheAction,
+		RouteCacheAction:  extproc.ExternalProcessor_DEFAULT,
 		AllowModeOverride: policyEngine.AllowModeOverride,
 		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName, constants.ExtProcRequestAttributeRouteMetadata},
 		ProcessingMode: &extproc.ProcessingMode{

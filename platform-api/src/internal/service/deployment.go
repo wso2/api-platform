@@ -32,7 +32,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -141,7 +140,10 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	}
 
 	// Generate deployment ID
-	deploymentID := uuid.New().String()
+	deploymentID, err := utils.GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
+	}
 
 	// Handle endpoint URL override from metadata (Phase 5)
 	if req.Metadata != nil {

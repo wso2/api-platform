@@ -140,14 +140,21 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	// Generate API ID if not provided
 	apiID := params.ID
 	if apiID == "" {
-		apiID = generateUUID()
+		var err error
+		apiID, err = GenerateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate API ID: %w", err)
+		}
 	}
 
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		ID:                  apiID,
+		UUID:                apiID,
 		Kind:                string(api.LlmProvider),
+		Handle:              providerConfig.Metadata.Name,
+		DisplayName:         providerConfig.Spec.DisplayName,
+		Version:             providerConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: providerConfig,
 		Status:              models.StatusPending,
@@ -167,16 +174,16 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if isUpdate {
 		params.Logger.Info("LLM provider configuration updated",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM provider configuration created",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
@@ -257,14 +264,21 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	// Generate API ID if not provided
 	apiID := params.ID
 	if apiID == "" {
-		apiID = generateUUID()
+		var err error
+		apiID, err = GenerateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate API ID: %w", err)
+		}
 	}
 
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		ID:                  apiID,
+		UUID:                apiID,
 		Kind:                string(api.LlmProxy),
+		Handle:              proxyConfig.Metadata.Name,
+		DisplayName:         proxyConfig.Spec.DisplayName,
+		Version:             proxyConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: proxyConfig,
 		Status:              models.StatusPending,
@@ -283,16 +297,16 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	if isUpdate {
 		params.Logger.Info("LLM proxy configuration updated",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM proxy configuration created",
 			slog.String("api_uuid", apiID),
-			slog.String("handle", storedCfg.GetHandle()),
-			slog.String("display_name", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()),
+			slog.String("handle", storedCfg.Handle),
+			slog.String("display_name", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version),
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
@@ -348,8 +362,13 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		return nil, err
 	}
 
+	id, err := GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate template ID: %w", err)
+	}
+
 	stored := &models.StoredLLMProviderTemplate{
-		ID:            generateUUID(),
+		UUID:          id,
 		Configuration: *tmpl,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -369,7 +388,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	if err := s.store.AddTemplate(stored); err != nil {
 		// Rollback: Remove from DB if memory store fails
 		if s.db != nil {
-			if delErr := s.db.DeleteLLMProviderTemplate(stored.ID); delErr != nil {
+			if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
 				if params.Logger != nil {
 					params.Logger.Error("Failed to rollback template from database after memory store failure",
 						slog.String("template_handle", tmpl.Metadata.Name),
@@ -384,7 +403,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	// Following API key pattern: xDS operations are critical
 	if err := s.publishTemplateAsLazyResource(tmpl, ""); err != nil {
 		// Rollback: Remove from memory store and DB if xDS publish fails
-		if delErr := s.store.DeleteTemplate(stored.ID); delErr != nil {
+		if delErr := s.store.DeleteTemplate(stored.UUID); delErr != nil {
 			if params.Logger != nil {
 				params.Logger.Error("Failed to rollback template from memory store after xDS failure",
 					slog.String("template_handle", tmpl.Metadata.Name),
@@ -392,7 +411,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 			}
 		}
 		if s.db != nil {
-			if delErr := s.db.DeleteLLMProviderTemplate(stored.ID); delErr != nil {
+			if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
 				if params.Logger != nil {
 					params.Logger.Error("Failed to rollback template from database after xDS failure",
 						slog.String("template_handle", tmpl.Metadata.Name),
@@ -444,7 +463,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			// ---------------------------
 
 			updated := &models.StoredLLMProviderTemplate{
-				ID:            existing.ID,
+				UUID:          existing.UUID,
 				Configuration: *tmpl,
 				CreatedAt:     existing.CreatedAt,
 				UpdatedAt:     time.Now(),
@@ -481,8 +500,14 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 		// CREATE new template
 		// ---------------------------
 
+		id, err := GenerateUUID()
+		if err != nil {
+			allErrors = append(allErrors, fmt.Sprintf("failed to generate ID for template '%s': %v", tmpl.Metadata.Name, err))
+			continue
+		}
+
 		stored := &models.StoredLLMProviderTemplate{
-			ID:            generateUUID(),
+			UUID:          id,
 			Configuration: *tmpl,
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -562,7 +587,7 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 	}
 
 	updated := &models.StoredLLMProviderTemplate{
-		ID:            existing.ID,
+		UUID:          existing.UUID,
 		Configuration: *tmpl,
 		CreatedAt:     existing.CreatedAt,
 		UpdatedAt:     time.Now(),
@@ -632,13 +657,13 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 		if err := s.lazyResourceManager.RemoveResourceByIDAndType(handle, lazyResourceTypeLLMProviderTemplate, ""); err != nil {
 			// Don't fail deletion if xDS publish fails; just log.
 			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
-				slog.String("template_id", tmpl.ID),
+				slog.String("template_id", tmpl.UUID),
 				slog.Any("error", err))
 		}
 	}
 
 	if s.db != nil {
-		if err := s.db.DeleteLLMProviderTemplate(tmpl.ID); err != nil {
+		if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
 			// Rollback: Re-add to lazy resource store if database deletion fails.
 			// publishTemplateAsLazyResource restores the template in lazy resources when
 			// s.db.DeleteLLMProviderTemplate fails (only if lazy resource manager is available).
@@ -652,7 +677,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 			return nil, fmt.Errorf("failed to delete template from database: %w", err)
 		}
 	}
-	if err := s.store.DeleteTemplate(tmpl.ID); err != nil {
+	if err := s.store.DeleteTemplate(tmpl.UUID); err != nil {
 		// Rollback: Re-add to DB and lazy resource if memory deletion fails
 		if s.db != nil {
 			if rollbackErr := s.db.SaveLLMProviderTemplate(tmpl); rollbackErr != nil {
@@ -849,12 +874,15 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 
 // UpdateLLMProvider updates an existing provider identified by name+version using DeployLLMProviderConfiguration
 func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	existing, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
+	}
 	if existing == nil {
 		return nil, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
 	// Ensure Deploy uses existing ID so it performs an update
-	params.ID = existing.ID
+	params.ID = existing.UUID
 	res, err := s.DeployLLMProviderConfiguration(params)
 	if err != nil {
 		return nil, err
@@ -865,16 +893,19 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	logger *slog.Logger) (*models.StoredConfig, error) {
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
+	}
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
 	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
 	}
-	if err := s.store.Delete(cfg.ID); err != nil {
+	if err := s.store.Delete(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
 	}
 
@@ -931,12 +962,15 @@ func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*mode
 
 // UpdateLLMProxy updates an existing provider identified by name+version using DeployLLMProxyConfiguration
 func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	existing, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
+	}
 	if existing == nil {
 		return nil, fmt.Errorf("LLM proxy configuration with handle '%s' not found", id)
 	}
 	// Ensure Deploy uses existing ID so it performs an update
-	params.ID = existing.ID
+	params.ID = existing.UUID
 	res, err := s.DeployLLMProxyConfiguration(params)
 	if err != nil {
 		return nil, err
@@ -946,16 +980,19 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
+	}
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
 	}
 	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
 	}
-	if err := s.store.Delete(cfg.ID); err != nil {
+	if err := s.store.Delete(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
 	}
 

@@ -86,13 +86,6 @@ type Storage interface {
 	// This is the fastest lookup method (O(1) for most databases).
 	GetConfig(id string) (*models.StoredConfig, error)
 
-	// GetConfigByNameVersion retrieves an API configuration by name and version.
-	//
-	// Returns an error if the configuration is not found.
-	// This is the most common lookup method for API operations.
-	// Implementations should index (name, version) for fast lookups.
-	GetConfigByNameVersion(name, version string) (*models.StoredConfig, error)
-
 	// GetConfigByHandle retrieves an API configuration by handle.
 	//
 	// Returns an error if the configuration is not found.

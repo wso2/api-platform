@@ -18,6 +18,7 @@
 package service
 
 import (
+	"fmt"
 	"log/slog"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -25,8 +26,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type ProjectService struct {
@@ -68,9 +67,14 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	}
 
 	// Generate new project ID or use provided one
-	projectID := uuid.New().String()
+	var projectID string
 	if req.Id != nil {
 		projectID = utils.OpenAPIUUIDToString(*req.Id)
+	} else {
+		projectID, err = utils.GenerateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate project ID: %w", err)
+		}
 	}
 
 	for _, existingProject := range existingProjects {

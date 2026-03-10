@@ -114,7 +114,7 @@ func TestAPIUtilsService_FetchAPIDefinition(t *testing.T) {
 		}
 		svc := NewAPIUtilsService(cfg, logger)
 
-		result, err := svc.FetchAPIDefinition("test-api")
+		result, err := svc.FetchAPIDefinition("0000-test-api-0000-000000000000")
 		assert.Error(t, err)
 		assert.Nil(t, result)
 	})
@@ -194,13 +194,13 @@ func TestAPIUtilsService_SaveAPIDefinition(t *testing.T) {
 	})
 }
 
-func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
+func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Helper function to create minimal test StoredConfig
 	createTestStoredConfig := func() *models.StoredConfig {
 		return &models.StoredConfig{
-			ID:        "test-api",
+			UUID:        "0000-test-api-0000-000000000000",
 			Kind:      "RestApi",
 			Status:    models.StatusDeployed,
 			CreatedAt: time.Now(),
@@ -210,20 +210,20 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		}
 	}
 
-	t.Run("Successful notification", func(t *testing.T) {
+	t.Run("Successful push", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "POST", r.Method)
-			assert.Equal(t, "/apis/test-api/gateway-deployments", r.URL.Path)
+			assert.Equal(t, "/apis/0000-test-api-0000-000000000000/gateway-deployments", r.URL.Path)
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
 			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 			// Verify request body contains expected fields
 			body, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
-			var notification APIDeploymentNotification
+			var notification APIDeploymentPush
 			err = json.Unmarshal(body, &notification)
 			require.NoError(t, err)
-			assert.Equal(t, "test-api", notification.ID)
+			assert.Equal(t, "0000-test-api-0000-000000000000", notification.ID)
 
 			w.WriteHeader(http.StatusCreated)
 			w.Write([]byte(`{"status": "deployed"}`))
@@ -237,14 +237,14 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		svc := NewAPIUtilsService(cfg, logger)
 
 		// Actually call the method
-		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "")
+		err := svc.PushAPIDeployment("0000-test-api-0000-000000000000", createTestStoredConfig(), "")
 		assert.NoError(t, err)
 	})
 
 	t.Run("With deployment ID", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "POST", r.Method)
-			assert.Equal(t, "/apis/test-api/gateway-deployments", r.URL.Path)
+			assert.Equal(t, "/apis/0000-test-api-0000-000000000000/gateway-deployments", r.URL.Path)
 			assert.Contains(t, r.URL.RawQuery, "deploymentId=rev-123")
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
 			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -259,7 +259,7 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		svc := NewAPIUtilsService(cfg, logger)
 
 		// Actually call the method with deployment ID
-		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "rev-123")
+		err := svc.PushAPIDeployment("0000-test-api-0000-000000000000", createTestStoredConfig(), "rev-123")
 		assert.NoError(t, err)
 	})
 
@@ -277,7 +277,7 @@ func TestAPIUtilsService_NotifyAPIDeployment(t *testing.T) {
 		svc := NewAPIUtilsService(cfg, logger)
 
 		// Should return error for non-success status
-		err := svc.NotifyAPIDeployment("test-api", createTestStoredConfig(), "")
+		err := svc.PushAPIDeployment("0000-test-api-0000-000000000000", createTestStoredConfig(), "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
 	})
@@ -374,11 +374,11 @@ func createTestZip(t *testing.T, files map[string][]byte) []byte {
 	return buf.Bytes()
 }
 
-// Test for JSON marshaling of APIDeploymentNotification
-func TestAPIDeploymentNotification_JSON(t *testing.T) {
+// Test for JSON marshaling of APIDeploymentPush
+func TestAPIDeploymentPush_JSON(t *testing.T) {
 	now := time.Now()
-	notification := APIDeploymentNotification{
-		ID:                "test-id",
+	notification := APIDeploymentPush{
+		ID:                "0000-test-id-0000-000000000000",
 		Status:            "DEPLOYED",
 		CreatedAt:         now,
 		UpdatedAt:         now,
@@ -389,6 +389,6 @@ func TestAPIDeploymentNotification_JSON(t *testing.T) {
 
 	data, err := json.Marshal(notification)
 	assert.NoError(t, err)
-	assert.Contains(t, string(data), `"id":"test-id"`)
+	assert.Contains(t, string(data), `"id":"0000-test-id-0000-000000000000"`)
 	assert.Contains(t, string(data), `"status":"DEPLOYED"`)
 }

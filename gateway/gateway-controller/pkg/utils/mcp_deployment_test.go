@@ -78,11 +78,15 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		mcpConfig := &models.StoredConfig{
-			ID:   "mcp-1",
-			Kind: string(api.Mcp),
+			UUID:        "0000-mcp-1-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "mcp-proxy",
+			DisplayName: "MCP Proxy",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "mcp-proxy"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -92,11 +96,15 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 
 		// Add a REST API config (should not be returned)
 		restConfig := &models.StoredConfig{
-			ID:   "rest-1",
-			Kind: string(api.RestApi),
+			UUID:        "0000-rest-1-0000-000000000000",
+			Kind:        string(api.RestApi),
+			Handle:      "rest-api",
+			DisplayName: "MCP Proxy",
+			Version:     "2.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "rest-api"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -106,7 +114,7 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 
 		proxies := service.ListMCPProxies()
 		assert.Len(t, proxies, 1)
-		assert.Equal(t, "mcp-1", proxies[0].ID)
+		assert.Equal(t, "0000-mcp-1-0000-000000000000", proxies[0].UUID)
 	})
 }
 
@@ -114,7 +122,7 @@ func TestMCPDeploymentService_GetMCPProxyByHandle_NoDatabase(t *testing.T) {
 	store := storage.NewConfigStore()
 	service := NewMCPDeploymentService(store, nil, nil)
 
-	_, err := service.GetMCPProxyByHandle("test-handle")
+	_, err := service.GetMCPProxyByHandle("0000-test-handle-0000-000000000000")
 	assert.Error(t, err)
 	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
 }
@@ -177,8 +185,11 @@ func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 	spec.FromAPIConfigData(apiData)
 
 	existingConfig := &models.StoredConfig{
-		ID:   "existing-mcp",
-		Kind: string(api.Mcp),
+		UUID:        "0000-existing-mcp-0000-000000000000",
+		Kind:        string(api.Mcp),
+		Handle:      "test-mcp",
+		DisplayName: "Test MCP",
+		Version:     "1.0.0",
 		Configuration: api.APIConfiguration{
 			Kind:     api.RestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
@@ -221,7 +232,7 @@ func TestMCPDeploymentService_DeleteMCPProxy_NoDatabase(t *testing.T) {
 	service := NewMCPDeploymentService(store, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteMCPProxy("test-handle", "corr-id", logger)
+	_, err := service.DeleteMCPProxy("0000-test-handle-0000-000000000000", "corr-id", logger)
 	assert.Error(t, err)
 	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
 }
@@ -238,7 +249,7 @@ func TestMCPDeploymentService_UpdateMCPProxy_NoDatabase(t *testing.T) {
 		Logger:        logger,
 	}
 
-	_, err := service.UpdateMCPProxy("test-handle", params, logger)
+	_, err := service.UpdateMCPProxy("0000-test-handle-0000-000000000000", params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -259,11 +270,15 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		storedCfg := &models.StoredConfig{
-			ID:   "new-mcp-id",
-			Kind: string(api.Mcp),
+			UUID:        "0000-new-mcp-id-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "test-mcp",
+			DisplayName: "Test MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "test-mcp"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -275,9 +290,9 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 		assert.False(t, isUpdate)
 
 		// Verify config was added
-		retrieved, err := store.Get(storedCfg.ID)
+		retrieved, err := store.Get(storedCfg.UUID)
 		assert.NoError(t, err)
-		assert.Equal(t, storedCfg.ID, retrieved.ID)
+		assert.Equal(t, storedCfg.UUID, retrieved.UUID)
 	})
 }
 
@@ -298,11 +313,15 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			ID:   "config-to-update",
-			Kind: string(api.Mcp),
+			UUID:        "0000-config-to-update-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "original-mcp",
+			DisplayName: "Original MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "original-mcp"},
+				Spec:     spec,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -320,11 +339,15 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
-			ID:   "config-to-update",
-			Kind: string(api.Mcp),
+			UUID:        "0000-config-to-update-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "original-mcp",
+			DisplayName: "Original MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: newSpec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "original-mcp"},
+				Spec:     newSpec,
 			},
 			Status: models.StatusPending,
 		}
@@ -347,11 +370,15 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 		spec.FromAPIConfigData(apiData)
 
 		newConfig := &models.StoredConfig{
-			ID:   "non-existent-config",
-			Kind: string(api.Mcp),
+			UUID:        "0000-non-existent-config-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "non-existent-mcp",
+			DisplayName: "Non-existent MCP",
+			Version:     "1.0.0",
 			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "non-existent-mcp"},
+				Spec:     spec,
 			},
 			Status: models.StatusPending,
 		}

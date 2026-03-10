@@ -337,7 +337,6 @@ type PolicyEngineConfig struct {
 	Port              uint32          `koanf:"port"` // Policy engine ext_proc port (TCP mode only)
 	TimeoutMs         uint32          `koanf:"timeout_ms"`
 	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
-	RouteCacheAction  string          `koanf:"route_cache_action"`
 	AllowModeOverride bool            `koanf:"allow_mode_override"`
 	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
 	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
@@ -369,12 +368,13 @@ type LoggingConfig struct {
 
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
-	Host               string        `koanf:"host"`                 // Control plane hostname
-	Token              string        `koanf:"token"`                // Registration token (api-key)
-	ReconnectInitial   time.Duration `koanf:"reconnect_initial"`    // Initial retry delay
-	ReconnectMax       time.Duration `koanf:"reconnect_max"`        // Maximum retry delay
-	PollingInterval    time.Duration `koanf:"polling_interval"`     // Reconciliation polling interval
-	InsecureSkipVerify bool          `koanf:"insecure_skip_verify"` // Skip TLS certificate verification (default: true for dev)
+	Host                 string        `koanf:"host"`                   // Control plane hostname
+	Token                string        `koanf:"token"`                  // Registration token (api-key)
+	ReconnectInitial     time.Duration `koanf:"reconnect_initial"`      // Initial retry delay
+	ReconnectMax         time.Duration `koanf:"reconnect_max"`          // Maximum retry delay
+	PollingInterval      time.Duration `koanf:"polling_interval"`       // Reconciliation polling interval
+	InsecureSkipVerify   bool          `koanf:"insecure_skip_verify"`   // Skip TLS certificate verification (default: true for dev)
+	DeploymentPushEnabled bool         `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -517,12 +517,13 @@ func defaultConfig() *Config {
 				Port:    9091,
 			},
 			ControlPlane: ControlPlaneConfig{
-				Host:               "",
-				Token:              "",
-				ReconnectInitial:   1 * time.Second,
-				ReconnectMax:       5 * time.Minute,
-				PollingInterval:    15 * time.Minute,
-				InsecureSkipVerify: true,
+				Host:                  "",
+				Token:                 "",
+				ReconnectInitial:      1 * time.Second,
+				ReconnectMax:          5 * time.Minute,
+				PollingInterval:       15 * time.Minute,
+				InsecureSkipVerify:    true,
+				DeploymentPushEnabled: false,
 			},
 		},
 		Router: RouterConfig{
@@ -600,7 +601,6 @@ func defaultConfig() *Config {
 				Port:              9001,            // Only used in TCP mode
 				TimeoutMs:         60000,
 				FailureModeAllow:  false,
-				RouteCacheAction:  "RETAIN",
 				AllowModeOverride: true,
 				MessageTimeoutMs:  60000,
 				TLS: PolicyEngineTLS{
@@ -1242,20 +1242,6 @@ func (c *Config) validatePolicyEngineConfig() error {
 			// Warning: No CA provided and not skipping verification
 			// This might fail in production with self-signed certs
 		}
-	}
-
-	// Validate route cache action
-	validRouteCacheActions := []string{"DEFAULT", "RETAIN", "CLEAR"}
-	isValidAction := false
-	for _, action := range validRouteCacheActions {
-		if policyEngine.RouteCacheAction == action {
-			isValidAction = true
-			break
-		}
-	}
-	if !isValidAction {
-		return fmt.Errorf("router.policy_engine.route_cache_action must be one of: DEFAULT, RETAIN, CLEAR, got: %s",
-			policyEngine.RouteCacheAction)
 	}
 
 	return nil

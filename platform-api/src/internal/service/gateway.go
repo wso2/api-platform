@@ -83,7 +83,10 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 	}
 
 	// 4. Generate UUID for gateway
-	gatewayId := uuid.New().String()
+	gatewayId, err := utils.GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate gateway ID: %w", err)
+	}
 
 	// 5. Create Gateway model
 	gateway := &model.Gateway{
@@ -335,7 +338,10 @@ func (s *GatewayService) RotateToken(gatewayId, orgId string) (*api.TokenRotatio
 	tokenHash := hashToken(plainToken)
 
 	// 6. Create new GatewayToken model with status='active'
-	tokenId := uuid.New().String()
+	tokenId, err := utils.GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate gateway token ID: %w", err)
+	}
 	gatewayToken := &model.GatewayToken{
 		ID:        tokenId,
 		GatewayID: gatewayId,

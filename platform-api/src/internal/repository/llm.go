@@ -26,8 +26,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
-
-	"github.com/google/uuid"
+	"platform-api/src/internal/utils"
 )
 
 // ---- LLM Provider Templates ----
@@ -51,11 +50,11 @@ func NewLLMProviderTemplateRepo(db *database.DB) LLMProviderTemplateRepository {
 }
 
 func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
-	u, err := uuid.NewV7()
+	uuidStr, err := utils.GenerateUUID()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate LLM provider template ID: %w", err)
 	}
-	t.UUID = u.String()
+	t.UUID = uuidStr
 	t.CreatedAt = time.Now()
 	t.UpdatedAt = time.Now()
 
@@ -286,11 +285,11 @@ func NewLLMProviderRepo(db *database.DB) LLMProviderRepository {
 }
 
 func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
-	u, err := uuid.NewV7()
+	uuidStr, err := utils.GenerateUUID()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate LLM provider ID: %w", err)
 	}
-	p.UUID = u.String()
+	p.UUID = uuidStr
 	now := time.Now()
 	p.CreatedAt = now
 	p.UpdatedAt = now
@@ -558,11 +557,11 @@ func NewLLMProxyRepo(db *database.DB) LLMProxyRepository {
 }
 
 func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
-	u, err := uuid.NewV7()
+	uuidStr, err := utils.GenerateUUID()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate LLM proxy ID: %w", err)
 	}
-	p.UUID = u.String()
+	p.UUID = uuidStr
 	now := time.Now()
 	p.CreatedAt = now
 	p.UpdatedAt = now

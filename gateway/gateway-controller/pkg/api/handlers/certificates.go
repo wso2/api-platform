@@ -28,9 +28,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 // UploadCertificateRequest represents the request body for certificate upload
@@ -98,12 +98,20 @@ func (s *APIServer) UploadCertificate(c *gin.Context) {
 		return
 	}
 
-	// Generate unique ID
-	certID := uuid.New().String()
+	// Generate unique ID (UUID v7)
+	certID, err := utils.GenerateUUID()
+	if err != nil {
+		log.Error("Failed to generate certificate ID", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Failed to generate certificate ID: " + err.Error(),
+		})
+		return
+	}
 
 	// Create certificate model
 	cert := &models.StoredCertificate{
-		ID:          certID,
+		UUID:        certID,
 		Name:        req.Name,
 		Certificate: certData,
 		Subject:     subject,
@@ -205,7 +213,7 @@ func (s *APIServer) ListCertificates(c *gin.Context) {
 		totalBytes += len(cert.Certificate)
 
 		certificates = append(certificates, CertificateResponse{
-			ID:       cert.ID,
+			ID:       cert.UUID,
 			Name:     cert.Name,
 			Subject:  cert.Subject,
 			Issuer:   cert.Issuer,
@@ -334,8 +342,8 @@ func (s *APIServer) ReloadCertificates(c *gin.Context) {
 
 	combinedCerts := certStore.GetCombinedCertificates()
 	c.JSON(http.StatusOK, gin.H{
-		"status":      "success",
-		"message":     "Certificates reloaded and SDS updated successfully",
+		"status":     "success",
+		"message":    "Certificates reloaded and SDS updated successfully",
 		"totalBytes": len(combinedCerts),
 	})
 }

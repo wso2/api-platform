@@ -49,7 +49,7 @@ func newMockStorageForDeletion() *mockStorageForDeletion {
 }
 
 func (m *mockStorageForDeletion) SaveConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
 }
 
@@ -65,7 +65,7 @@ func (m *mockStorageForDeletion) GetConfig(id string) (*models.StoredConfig, err
 }
 
 func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
 }
 
@@ -100,18 +100,9 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
-func (m *mockStorageForDeletion) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
-	for _, config := range m.configs {
-		if config.GetDisplayName() == name && config.GetVersion() == version {
-			return config, nil
-		}
-	}
-	return nil, fmt.Errorf("config not found")
-}
-
 func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
-		if config.GetHandle() == handle {
+		if config.Handle == handle {
 			return config, nil
 		}
 	}
@@ -281,9 +272,12 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	})
 
 	return &models.StoredConfig{
-		ID:     apiID,
-		Status: models.StatusDeployed,
-		Kind:   "API",
+		UUID:        apiID,
+		Handle:      apiID,
+		DisplayName: "Test API",
+		Version:     "v1",
+		Status:      models.StatusDeployed,
+		Kind:        "API",
 		Configuration: api.APIConfiguration{
 			ApiVersion: "gateway.wso2.com/v1",
 			Kind:       api.RestApi,
@@ -570,8 +564,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in database, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 
@@ -594,8 +588,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in memory store, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 
@@ -634,8 +628,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in memory when DB is nil, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 }

@@ -30,7 +30,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -77,6 +76,12 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		name = handle // Default name to handle if not provided
 	}
 
+	// Generate default project ID upfront before persisting any data
+	projectID, err := utils.GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate default project ID: %w", err)
+	}
+
 	// Create organization in platform-api database first
 	org := &api.Organization{
 		Id:        &openapi_types.UUID{},
@@ -113,7 +118,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create default project for the organization
 	defaultProject := &model.Project{
-		ID:             uuid.New().String(),
+		ID:             projectID,
 		Name:           "default",
 		OrganizationID: id,
 		Description:    "Default project",

@@ -1,5 +1,5 @@
 name: jwt-auth
-version: v0.8.0
+version: v0.8.1
 description: |
   Validates JWT access tokens in API requests using configured JWKS providers.
   Verifies signature and claims such as expiry, issuer, audience, scopes, and

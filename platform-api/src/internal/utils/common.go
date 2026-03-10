@@ -226,3 +226,12 @@ func StringPtrValue(ptr *string) string {
 	}
 	return *ptr
 }
+
+// GenerateUUID generates a new UUID v7 string
+func GenerateUUID() (string, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate UUID v7: %w", err)
+	}
+	return u.String(), nil
+}

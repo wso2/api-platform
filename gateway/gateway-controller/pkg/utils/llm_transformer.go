@@ -54,7 +54,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	output *api.APIConfiguration) (*api.APIConfiguration, error) {
 
 	// Step 1: Retrieve and validate provider reference
-	provider := t.store.GetByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider.Id)
+	provider, err := t.store.GetByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up provider '%s': %w", proxy.Spec.Provider.Id, err)
+	}
 	if provider == nil {
 		return nil, fmt.Errorf("failed to retrieve provider by id '%s'", proxy.Spec.Provider.Id)
 	}
@@ -93,8 +96,12 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// 1. Traffic stays on localhost and never leaves the machine
 	// 2. TLS adds unnecessary overhead for internal routing
 	// 3. Self-signed listener certificates can cause TLS verification failures
+	providerContext, err := provider.GetContext()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider context: %w", err)
+	}
 	upstream := fmt.Sprintf("%s://%s:%d%s",
-		constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, provider.GetContext())
+		constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, providerContext)
 	spec.Upstream.Main = api.Upstream{
 		Url: &upstream,
 	}

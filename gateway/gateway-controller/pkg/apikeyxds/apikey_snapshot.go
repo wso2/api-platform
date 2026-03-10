@@ -122,8 +122,8 @@ func (sm *APIKeySnapshotManager) UpdateSnapshot(ctx context.Context) error {
 // StoreAPIKey stores an API key and updates the snapshot
 func (sm *APIKeySnapshotManager) StoreAPIKey(apiKey *models.APIKey) error {
 	sm.logger.Info("Storing API key",
-		slog.String("id", apiKey.ID),
-		slog.String("api_id", apiKey.APIId),
+		slog.String("id", apiKey.UUID),
+		slog.String("api_id", apiKey.ArtifactUUID),
 		slog.String("name", apiKey.Name))
 
 	// Store in the API key store
@@ -209,10 +209,10 @@ func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[strin
 	apiKeyData := make([]APIKeyData, 0, len(apiKeys))
 	for _, apiKey := range apiKeys {
 		data := APIKeyData{
-			ID:         apiKey.ID,
+			ID:         apiKey.UUID,
 			Name:       apiKey.Name,
 			APIKey:     apiKey.APIKey,
-			APIId:      apiKey.APIId,
+			APIId:      apiKey.ArtifactUUID,
 			Operations: apiKey.Operations,
 			Status:     string(apiKey.Status),
 			CreatedAt:  apiKey.CreatedAt,

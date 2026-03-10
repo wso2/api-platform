@@ -144,17 +144,15 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	if success {
 		log.Info("xDS snapshot updated successfully",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.String("status", string(cfg.Status)),
-			slog.Int64("xds_version", version))
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle))
 	} else {
 		// Only log the failure - don't change status in DB
 		// Status in DB represents desired state, not actual runtime deployment status
 		log.Error("xDS snapshot update failed",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
 			slog.String("kind", cfg.Kind),
-			slog.String("desired_status", string(cfg.Status)))
+			slog.String("handle", cfg.Handle))
 	}
 }
 
@@ -255,17 +253,15 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(result.StoredConfig.UUID, correlationID, log)
 	}
 
 	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration created successfully"),
-		Id:        stringPtr(result.StoredConfig.GetHandle()),
+		Id:        stringPtr(result.StoredConfig.Handle),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 
@@ -282,7 +278,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 			}
 		} else if result.IsUpdate {
 			// API was updated and no longer has policies, remove the existing policy configuration
-			policyID := result.StoredConfig.ID + "-policies"
+			policyID := result.StoredConfig.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Only treat "policy not found" as non-error (API may never have had policies)
 				// Other errors (storage failures, snapshot update failures) should be logged as errors
@@ -312,12 +308,17 @@ func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
 
 	items := make([]api.APIListItem, 0, len(configs))
 	for _, cfg := range configs {
+		cfgContext, err := cfg.GetContext()
+		if err != nil {
+			s.logger.Error("Failed to get context for API config", slog.Any("error", err), slog.String("uuid", cfg.UUID))
+			continue
+		}
 		status := string(cfg.Status)
 		items = append(items, api.APIListItem{
-			Id:          stringPtr(cfg.GetHandle()),
-			DisplayName: stringPtr(cfg.GetDisplayName()),
-			Version:     stringPtr(cfg.GetVersion()),
-			Context:     stringPtr(cfg.GetContext()),
+			Id:          stringPtr(cfg.Handle),
+			DisplayName: stringPtr(cfg.DisplayName),
+			Version:     stringPtr(cfg.Version),
+			Context:     stringPtr(cfgContext),
 			Status:      (*api.APIListItemStatus)(&status),
 			CreatedAt:   timePtr(cfg.CreatedAt),
 			UpdatedAt:   timePtr(cfg.UpdatedAt),
@@ -355,13 +356,21 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		// Return MCP proxy format
 		mcpItems := make([]api.MCPProxyListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for MCP config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
 			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
@@ -372,16 +381,16 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
 			var mcp api.MCPProxyConfiguration
 			j, _ := json.Marshal(cfg.SourceConfiguration)
-			err := json.Unmarshal(j, &mcp)
+			err = json.Unmarshal(j, &mcp)
 			if err != nil {
 				s.logger.Error("Failed to unmarshal stored MCP configuration",
-					slog.String("id", cfg.ID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName))
 				continue
 			}
 
 			li := api.MCPProxyListItem{
-				Id:          stringPtr(cfg.GetHandle()),
+				Id:          stringPtr(cfg.Handle),
 				DisplayName: stringPtr(mcp.Spec.DisplayName),
 				Version:     stringPtr(mcp.Spec.Version),
 				Status:      &status,
@@ -403,13 +412,21 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		// Return API format
 		apiItems := make([]api.APIListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
 			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
@@ -418,10 +435,10 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 
 			status := string(cfg.Status)
 			apiItems = append(apiItems, api.APIListItem{
-				Id:          stringPtr(cfg.GetHandle()),
-				DisplayName: stringPtr(cfg.GetDisplayName()),
-				Version:     stringPtr(cfg.GetVersion()),
-				Context:     stringPtr(cfg.GetContext()),
+				Id:          stringPtr(cfg.Handle),
+				DisplayName: stringPtr(cfg.DisplayName),
+				Version:     stringPtr(cfg.Version),
+				Context:     stringPtr(cfgContext),
 				Status:      (*api.APIListItemStatus)(&status),
 				CreatedAt:   timePtr(cfg.CreatedAt),
 				UpdatedAt:   timePtr(cfg.UpdatedAt),
@@ -455,7 +472,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -513,7 +530,7 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -659,12 +676,14 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	now := time.Now()
 	existing.Configuration = apiConfig
+	existing.SourceConfiguration = apiConfig
+	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 
 	if deploymentState == string(models.StatusUndeployed) {
 		log.Info("Undeploying API configuration",
 			slog.String("handle", handle),
-			slog.String("api_id", existing.ID))
+			slog.String("api_id", existing.UUID))
 
 		// Set desired state to undeployed
 		// Keep DeployedVersion and DeployedAt to track when it was last deployed
@@ -672,7 +691,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	} else {
 		log.Info("Deploying API configuration",
 			slog.String("handle", handle),
-			slog.String("api_id", existing.ID))
+			slog.String("api_id", existing.UUID))
 
 		// Set desired state to deployed
 		existing.Status = models.StatusDeployed
@@ -695,7 +714,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
-				log.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
+				log.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.UUID))
 				//fmt.Println("Topics Registering Started")
 				var childWg sync.WaitGroup
 				for _, topic := range list {
@@ -708,12 +727,12 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 							log.Error("Failed to register topic with WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
+								slog.String("api_id", existing.UUID))
 							atomic.AddInt32(&regErrs, 1)
 						} else {
 							log.Info("Successfully registered topic with WebSubHub",
 								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
+								slog.String("api_id", existing.UUID))
 						}
 					}(topic)
 				}
@@ -725,7 +744,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
+				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.UUID))
 				var childWg sync.WaitGroup
 				for _, topic := range list {
 					childWg.Add(1)
@@ -737,12 +756,12 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 							log.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
+								slog.String("api_id", existing.UUID))
 							atomic.AddInt32(&deregErrs, 1)
 						} else {
 							log.Info("Successfully deregistered topic from WebSubHub",
 								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
+								slog.String("api_id", existing.UUID))
 						}
 					}(topic)
 				}
@@ -752,7 +771,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		wg2.Wait()
 
 		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", existing.ID),
+			slog.String("api_id", existing.UUID),
 			slog.Int("registered", len(topicsToRegister)),
 			slog.Int("deregistered", len(topicsToUnregister)),
 			slog.Int("register_errors", int(regErrs)),
@@ -790,7 +809,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
 			log.Info("API configuration handle already exists",
-				slog.String("id", existing.ID),
+				slog.String("id", existing.UUID),
 				slog.String("handle", handle))
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
@@ -820,7 +839,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	}()
 
 	log.Info("API configuration updated",
-		slog.String("id", existing.ID),
+		slog.String("id", existing.UUID),
 		slog.String("handle", handle),
 		slog.String("deployment_state", deploymentState))
 
@@ -832,13 +851,13 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
-		Id:        stringPtr(existing.GetHandle()),
+		Id:        stringPtr(existing.Handle),
 		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		policyID := existing.ID + "-policies"
+		policyID := existing.UUID + "-policies"
 		if deploymentState == string(models.StatusUndeployed) {
 			// Remove derived policy configuration for undeployed API
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
@@ -906,7 +925,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			log.Error("Failed to delete config from database", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
@@ -916,7 +935,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		}
 
 		// Delete associated API keys from database
-		err := s.db.RemoveAPIKeysAPI(cfg.ID)
+		err := s.db.RemoveAPIKeysAPI(cfg.UUID)
 		if err != nil {
 			log.Warn("Failed to remove API keys from database",
 				slog.String("handle", handle),
@@ -925,7 +944,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}
 
 	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(cfg.ID); err != nil {
+	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil {
 		log.Warn("Failed to remove API keys from ConfigStore",
 			slog.String("handle", handle),
 			slog.Any("error", err))
@@ -936,7 +955,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		// Extract API name and version from the config
 		apiConfig, err := cfg.Configuration.Spec.AsAPIConfigData()
 		if err == nil {
-			apiId := cfg.ID
+			apiId := cfg.UUID
 			apiName := apiConfig.DisplayName
 			apiVersion := apiConfig.Version
 			correlationID := middleware.GetCorrelationID(c)
@@ -974,7 +993,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 			wg.Add(1)
 			go func(list []string) {
 				defer wg.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.ID))
+				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.UUID))
 				var childWg sync.WaitGroup
 				for _, topic := range list {
 					childWg.Add(1)
@@ -986,12 +1005,12 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 							log.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
-								slog.String("api_id", cfg.ID))
+								slog.String("api_id", cfg.UUID))
 							atomic.AddInt32(&deregErrs, 1)
 						} else {
 							log.Info("Successfully deregistered topic from WebSubHub",
 								slog.String("topic", topic),
-								slog.String("api_id", cfg.ID))
+								slog.String("api_id", cfg.UUID))
 						}
 					}(topic)
 				}
@@ -1002,7 +1021,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		wg.Wait()
 
 		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", cfg.ID),
+			slog.String("api_id", cfg.UUID),
 			slog.Int("deregistered", len(topicsToUnregister)),
 			slog.Int("deregister_errors", int(deregErrs)))
 
@@ -1018,7 +1037,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}
 
 	// Delete from in-memory store
-	if err := s.store.Delete(cfg.ID); err != nil {
+	if err := s.store.Delete(cfg.UUID); err != nil {
 		log.Error("Failed to delete config from memory store", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
@@ -1041,7 +1060,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}()
 
 	log.Info("API configuration deleted",
-		slog.String("id", cfg.ID),
+		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
 
 	// Record successful operation metrics
@@ -1057,7 +1076,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 
 	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
+		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
@@ -1098,7 +1117,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	log.Info("LLM provider template created successfully",
-		slog.String("uuid", storedTemplate.ID),
+		slog.String("uuid", storedTemplate.UUID),
 		slog.String("handle", storedTemplate.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
@@ -1193,7 +1212,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template updated successfully",
-		slog.String("uuid", updated.ID),
+		slog.String("uuid", updated.UUID),
 		slog.String("handle", updated.GetHandle()))
 
 	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
@@ -1220,7 +1239,7 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template deleted successfully",
-		slog.String("uuid", deleted.ID),
+		slog.String("uuid", deleted.UUID),
 		slog.String("handle", deleted.GetHandle()))
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1245,7 +1264,7 @@ func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProviders
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &prov); err != nil {
 			log.Error("Failed to unmarshal stored LLM provider configuration",
-				slog.String("uuid", cfg.ID), slog.Any("error", err))
+				slog.String("uuid", cfg.UUID), slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
 				Message: "Failed to get stored LLM provider configuration"})
 			return
@@ -1303,20 +1322,18 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		return
 	}
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(stored.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
 	}
 
 	log.Info("LLM provider created successfully",
-		slog.String("uuid", stored.ID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.UUID),
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM provider created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -1338,7 +1355,15 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	if err != nil {
+		log.Error("Failed to look up LLM provider", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to look up LLM provider",
+		})
+		return
+	}
 	if cfg == nil {
 		log.Warn("LLM provider configuration not found",
 			slog.String("handle", id))
@@ -1409,7 +1434,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM provider updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1428,7 +1453,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 			}
 		} else {
 			// LLM provider no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
+			policyID := updated.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if LLM provider never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -1467,12 +1492,12 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
 	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
+		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
@@ -1495,7 +1520,7 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 		var proxy api.LLMProxyConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &proxy); err != nil {
-			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.ID),
+			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.UUID),
 				slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status: "error", Message: "Failed to get stored LLM proxy configuration"})
@@ -1554,20 +1579,18 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		return
 	}
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(stored.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
 	}
 
 	log.Info("LLM proxy created successfully",
-		slog.String("uuid", stored.ID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.UUID),
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProxyCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM proxy created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -1589,7 +1612,15 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	if err != nil {
+		log.Error("Failed to look up LLM proxy", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to look up LLM proxy",
+		})
+		return
+	}
 	if cfg == nil {
 		log.Warn("LLM proxy configuration not found",
 			slog.String("handle", id))
@@ -1660,7 +1691,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM proxy updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1679,7 +1710,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 			}
 		} else {
 			// LLM proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
+			policyID := updated.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if LLM provider never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -1718,12 +1749,12 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM proxy deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
 	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
+		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
@@ -1852,14 +1883,12 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration created successfully"),
-		Id:        stringPtr(cfg.GetHandle()),
+		Id:        stringPtr(cfg.Handle),
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
 
-	// Set up a callback to notify platform API after successful deployment
-	// This is specific to direct API creation via gateway endpoint
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(cfg.ID, correlationID, log)
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
 	}
 
 	// Build and add policy config derived from API configuration if policies are present
@@ -1895,8 +1924,8 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		err := json.Unmarshal(j, &mcp)
 		if err != nil {
 			s.logger.Error("Failed to unmarshal stored MCP configuration",
-				slog.String("id", cfg.ID),
-				slog.String("displayName", cfg.GetDisplayName()))
+				slog.String("id", cfg.UUID),
+				slog.String("displayName", cfg.DisplayName))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
@@ -1904,7 +1933,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 			return
 		}
 		li := api.MCPProxyListItem{
-			Id:          stringPtr(cfg.GetHandle()),
+			Id:          stringPtr(cfg.Handle),
 			DisplayName: stringPtr(mcp.Spec.DisplayName),
 			Version:     stringPtr(mcp.Spec.Version),
 			Status:      &status,
@@ -1976,7 +2005,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	}
 
 	mcpDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -2036,7 +2065,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	}
 
 	log.Info("MCP proxy configuration updated",
-		slog.String("id", updated.ID),
+		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
 
 	// Rebuild and update derived policy configuration
@@ -2052,7 +2081,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 			}
 		} else {
 			// MCP proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
+			policyID := updated.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if MCP proxy never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -2067,7 +2096,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration updated successfully"),
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 }
@@ -2112,7 +2141,7 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 
 	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
+		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
@@ -2121,7 +2150,7 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	}
 
 	log.Info("MCP proxy configuration deleted",
-		slog.String("id", cfg.ID),
+		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
 
 	c.JSON(http.StatusOK, gin.H{
@@ -2131,9 +2160,9 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	})
 }
 
-// waitForDeploymentAndNotify waits for API deployment to complete and notifies platform API
+// waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
 // This is only called for APIs created directly via gateway endpoint (not from platform API)
-func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID string, log *slog.Logger) {
+func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID string, log *slog.Logger) {
 	// Create a logger with correlation ID if provided
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
@@ -2148,7 +2177,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 	for {
 		select {
 		case <-timeout.C:
-			log.Warn("Timeout waiting for API deployment to complete for platform API notification",
+			log.Warn("Timeout waiting for API deployment to complete before pushing to control plane",
 				slog.String("config_id", configID))
 			return
 
@@ -2161,31 +2190,27 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			}
 
 			if cfg.Status == models.StatusDeployed {
-				// // API successfully deployed, notify platform API
-				log.Info("API deployed successfully, notifying platform API",
+				log.Info("API deployed successfully, pushing to control plane",
 					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 
-				// Extract API ID from stored config (use config ID as API ID)
 				apiID := configID
-
-				// Use empty deployment ID for now (can be made configurable later)
 				deploymentID := ""
 
-				if err := s.controlPlaneClient.NotifyAPIDeployment(apiID, cfg, deploymentID); err != nil {
-					log.Error("Failed to notify platform-api of successful deployment",
+				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
+					log.Error("Failed to push deployment to control plane",
 						slog.String("api_id", apiID),
 						slog.Any("error", err))
 				} else {
-					log.Info("Successfully notified platform API of deployment",
+					log.Info("Successfully pushed deployment to control plane",
 						slog.String("api_id", apiID))
 				}
 				return
 
 			} else if cfg.Status == models.StatusFailed {
-				log.Warn("API deployment failed, skipping platform API notification",
+				log.Warn("API deployment failed, skipping control plane push",
 					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 				return
 			}
 			// Continue waiting if status is still pending
@@ -2227,9 +2252,9 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 
 	for _, cfg := range allConfigs {
 		// Use handle (metadata.name) as the id in the dump
-		configHandle := cfg.GetHandle()
+		configHandle := cfg.Handle
 		if configHandle == "" {
-			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.ID))
+			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.UUID))
 			continue
 		}
 
@@ -2309,7 +2334,7 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 
 			certStatus := "success"
 			certificates = append(certificates, adminapi.CertificateResponse{
-				Id:       &cert.ID,
+				Id:       &cert.UUID,
 				Name:     &cert.Name,
 				Subject:  &cert.Subject,
 				Issuer:   &cert.Issuer,

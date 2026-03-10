@@ -204,7 +204,7 @@ func TestListCertificates_Success(t *testing.T) {
 
 	// Pre-populate with certificates
 	cert1 := &models.StoredCertificate{
-		ID:          "cert-1",
+		UUID:        "0000-cert-1-0000-000000000000",
 		Name:        "test-cert-1",
 		Certificate: []byte(validTestCert),
 		Subject:     "CN=example.com",
@@ -213,7 +213,7 @@ func TestListCertificates_Success(t *testing.T) {
 		CertCount:   1,
 	}
 	cert2 := &models.StoredCertificate{
-		ID:          "cert-2",
+		UUID:        "0000-cert-2-0000-000000000000",
 		Name:        "test-cert-2",
 		Certificate: []byte(validTestCert),
 		Subject:     "CN=test.com",
@@ -303,14 +303,14 @@ func TestListCertificates_CalculatesTotalBytes(t *testing.T) {
 	mockDB := NewMockStorage()
 
 	cert1 := &models.StoredCertificate{
-		ID:          "cert-1",
+		UUID:        "0000-cert-1-0000-000000000000",
 		Name:        "test-cert-1",
 		Certificate: []byte("small cert"),
 		NotAfter:    time.Now(),
 		CertCount:   1,
 	}
 	cert2 := &models.StoredCertificate{
-		ID:          "cert-2",
+		UUID:        "0000-cert-2-0000-000000000000",
 		Name:        "test-cert-2",
 		Certificate: []byte("another small cert"),
 		NotAfter:    time.Now(),
@@ -620,7 +620,7 @@ func TestSaveCertificate_SpecialCharactersInName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a certificate with the special character name
 			cert := &models.StoredCertificate{
-				ID:          uuid.New().String(),
+				UUID:        uuid.New().String(),
 				Name:        tt.certName, // ← ACTUALLY USES tt.certName NOW
 				Certificate: []byte(validTestCert),
 				Subject:     "CN=test.com",
@@ -664,7 +664,7 @@ func TestListCertificates_LargeResultSet(t *testing.T) {
 	// Add 100 certificates
 	for i := 0; i < 100; i++ {
 		cert := &models.StoredCertificate{
-			ID:          fmt.Sprintf("cert-%d", i),
+			UUID:        fmt.Sprintf("0000-cert-%d-0000-000000000000", i),
 			Name:        fmt.Sprintf("test-cert-%d", i),
 			Certificate: []byte(validTestCert),
 			Subject:     "CN=test.com",
@@ -834,7 +834,7 @@ func TestListCertificates_ConcurrentAccess(t *testing.T) {
 	// Add some certificates
 	for i := 0; i < 10; i++ {
 		cert := &models.StoredCertificate{
-			ID:          fmt.Sprintf("cert-%d", i),
+			UUID:        fmt.Sprintf("0000-cert-%d-0000-000000000000", i),
 			Name:        fmt.Sprintf("test-cert-%d", i),
 			Certificate: []byte(validTestCert),
 			NotAfter:    time.Now(),

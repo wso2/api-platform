@@ -61,7 +61,7 @@ Represents a registered API gateway instance within an organization.
 
 | Field | Type | Constraints                         | Description |
 |-------|------|-------------------------------------|-------------|
-| `uuid` | TEXT | PRIMARY KEY, NOT NULL               | Unique identifier (UUID v4) |
+| `uuid` | TEXT | PRIMARY KEY, NOT NULL               | Unique identifier (UUID v7) |
 | `organization_id` | TEXT | FOREIGN KEY, NOT NULL               | Organization this gateway belongs to |
 | `name` | TEXT | NOT NULL                            | URL-friendly gateway identifier (unique per org) |
 | `display_name` | TEXT | NOT NULL                            | Human-readable gateway name |
@@ -140,7 +140,7 @@ Represents an authentication token for a gateway. Multiple active tokens per gat
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
-| `uuid` | TEXT | PRIMARY KEY, NOT NULL | Unique token identifier (UUID v4) |
+| `uuid` | TEXT | PRIMARY KEY, NOT NULL | Unique token identifier (UUID v7) |
 | `gateway_uuid` | TEXT | FOREIGN KEY, NOT NULL | Reference to parent gateway |
 | `token_hash` | TEXT | NOT NULL | SHA-256 hash of token (hex-encoded, 64 chars) |
 | `salt` | TEXT | NOT NULL | Cryptographic salt (hex-encoded, 64 chars) |

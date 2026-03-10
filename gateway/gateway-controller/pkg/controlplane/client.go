@@ -90,7 +90,7 @@ type ConnectionState struct {
 // ControlPlaneClient interface defines the methods needed from the control plane client
 type ControlPlaneClient interface {
 	IsConnected() bool
-	NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
+	PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
 }
 
 // Client manages the WebSocket connection to the control plane
@@ -670,7 +670,7 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 			slog.String("correlation_id", correlationID))
 	} else if result.IsUpdate {
 		// No policies but this is an update, so remove any existing policies
-		policyID := result.StoredConfig.ID + "-policies"
+		policyID := result.StoredConfig.UUID + "-policies"
 		if err := c.policyManager.RemovePolicy(policyID); err != nil {
 			// Only treat "policy not found" as non-error (API may never have had policies)
 			// Other errors (storage failures, snapshot update failures) should be logged as errors
@@ -1909,17 +1909,16 @@ func (c *Client) IsConnected() bool {
 	return c.state.Current == Connected && c.state.Conn != nil
 }
 
-// NotifyAPIDeployment sends a REST API call to platform-api when an API is deployed successfully
-func (c *Client) NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
+// PushAPIDeployment pushes API deployment details to the control plane
+func (c *Client) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
 	// Check if connected to control plane
 	if !c.IsConnected() {
-		c.logger.Debug("Not connected to control plane, skipping API deployment notification",
+		c.logger.Debug("Not connected to control plane, skipping API deployment push",
 			slog.String("api_id", apiID))
 		return nil
 	}
 
-	// Use the api utils service to send the deployment notification
-	return c.apiUtilsService.NotifyAPIDeployment(apiID, apiConfig, deploymentID)
+	return c.apiUtilsService.PushAPIDeployment(apiID, apiConfig, deploymentID)
 }
 
 // getWebSocketURL constructs the base WebSocket URL from configuration

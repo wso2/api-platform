@@ -27,8 +27,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
-
-	"github.com/google/uuid"
+	"platform-api/src/internal/utils"
 )
 
 // DeploymentRepo implements DeploymentRepository
@@ -56,7 +55,11 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 
 	// Generate UUID for deployment if not already set
 	if deployment.DeploymentID == "" {
-		deployment.DeploymentID = uuid.New().String()
+		deploymentID, err := utils.GenerateUUID()
+		if err != nil {
+			return fmt.Errorf("failed to generate deployment ID: %w", err)
+		}
+		deployment.DeploymentID = deploymentID
 	}
 	deployment.CreatedAt = time.Now()
 
