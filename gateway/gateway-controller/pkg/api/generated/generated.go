@@ -443,6 +443,10 @@ type APIKeyCreationRequest struct {
 	// The gateway generates its own internal ID for tracking.
 	ExternalRefId *string `json:"externalRefId,omitempty" yaml:"externalRefId,omitempty"`
 
+	// ApiKeyUuid UUID v7 of the API key from the platform API, used for cross-system correlation.
+	// If not provided, the gateway generates one locally.
+	ApiKeyUuid *string `json:"apiKeyUuid,omitempty" yaml:"apiKeyUuid,omitempty"`
+
 	// MaskedApiKey Masked version of the API key for display purposes.
 	// Provided by the platform API when injecting pre-hashed keys.
 	MaskedApiKey *string `json:"maskedApiKey,omitempty" yaml:"maskedApiKey,omitempty"`

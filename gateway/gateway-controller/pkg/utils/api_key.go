@@ -941,11 +941,21 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIKeyCreationRequest, user string,
 	config *models.StoredConfig) (*models.APIKey, error) {
 
-	// Generate short unique ID (22 characters, URL-safe)
-	// This is an internal ID for tracking and is always generated regardless of source
+	// Generate short unique ID (22 characters, URL-safe) for the internal DB primary key
 	id, err := s.generateShortUniqueID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate unique ID: %w", err)
+	}
+
+	// Resolve api_key_uuid: use the one from the request if provided, otherwise generate locally
+	var apiKeyUUID string
+	if request.ApiKeyUuid != nil && strings.TrimSpace(*request.ApiKeyUuid) != "" {
+		apiKeyUUID = strings.TrimSpace(*request.ApiKeyUuid)
+	} else {
+		apiKeyUUID, err = GenerateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate api key UUID: %w", err)
+		}
 	}
 
 	// Determine if this is an external key injection or local key generation
@@ -981,7 +991,7 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 			return nil, fmt.Errorf("failed to hash API key: %w", err)
 		}
 		// Generate masked API key for display purposes
-		maskedAPIKeyValue = s.MaskAPIKey(plainAPIKeyValue)
+		maskedAPIKeyValue = s.maskAPIKey(plainAPIKeyValue)
 		source = "local"
 		isExternalKey = false
 	}
@@ -1042,6 +1052,7 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 
 	apiKey := &models.APIKey{
 		ID:           id,
+		APIKeyUUID:   &apiKeyUUID,
 		Name:         name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
@@ -1227,7 +1238,7 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 	}
 
 	// Generate masked API key for display purposes
-	maskedAPIKeyValue := s.MaskAPIKey(plainAPIKeyValue)
+	maskedAPIKeyValue := s.maskAPIKey(plainAPIKeyValue)
 
 	now := time.Now()
 
@@ -1416,12 +1427,13 @@ func (s *APIKeyService) generateAPIKeyValue() (string, error) {
 	return constants.APIKeyPrefix + hex.EncodeToString(randomBytes), nil
 }
 
-// MaskAPIKey masks an API key for secure logging, showing first 10 characters
-func (s *APIKeyService) MaskAPIKey(apiKey string) string {
-	if len(apiKey) <= 10 {
-		return "**********"
+// maskAPIKey returns an 8-character masked representation of the API key:
+// "***" + last 5 characters. If the key is 5 characters or shorter, returns "********".
+func (s *APIKeyService) maskAPIKey(apiKey string) string {
+	if len(apiKey) <= 5 {
+		return "********"
 	}
-	return apiKey[:10] + "*********"
+	return "***" + apiKey[len(apiKey)-5:]
 }
 
 // isAdmin checks if the user has admin role

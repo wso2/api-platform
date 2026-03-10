@@ -35,6 +35,9 @@ type ExpiresInDuration struct {
 // APIKeyCreatedEvent represents the payload for "apikey.created" event type.
 // This event is sent when an external API key is registered to hybrid gateways.
 type APIKeyCreatedEvent struct {
+	// UUID is the UUID v7 of the API key record in the platform API database
+	UUID string `json:"uuid"`
+
 	// ApiId identifies the API this key belongs to
 	ApiId string `json:"apiId"`
 

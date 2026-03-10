@@ -172,7 +172,7 @@ func TestMaskAPIKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := service.MaskAPIKey(tt.input)
+			result := service.maskAPIKey(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

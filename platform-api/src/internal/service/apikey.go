@@ -32,8 +32,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
-
-	"github.com/google/uuid"
+	"platform-api/src/internal/utils"
 )
 
 const (
@@ -214,7 +213,8 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 		displayName = strings.TrimSpace(*req.DisplayName)
 	} else {
 		// Auto-generate: "<api-handle>-key-<short-id>"
-		displayName = fmt.Sprintf("%s-key-%s", apiHandle, uuid.New().String()[:8])
+		shortID, _ := utils.GenerateUUID()
+		displayName = fmt.Sprintf("%s-key-%s", apiHandle, shortID[:8])
 	}
 
 	baseName, err := generateAPIKeyName(displayName)
@@ -302,8 +302,13 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		s.slogger.Error("Invalid expiration for API key creation", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
 	}
+	apiKeyUUID, err := utils.GenerateUUID()
+	if err != nil {
+		s.slogger.Error("Failed to generate UUID for API key", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to generate API key UUID: %w", err)
+	}
 	dbKey := &model.APIKey{
-		ID:           uuid.New().String(),
+		UUID:         apiKeyUUID,
 		ArtifactUUID: apiId,
 		Name:         keyName,
 		MaskedAPIKey: maskedAPIKey,
@@ -319,6 +324,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyCreatedEvent{
+		UUID:          apiKeyUUID,
 		ApiId:         apiHandle,
 		Name:          keyName,
 		ApiKeyHashes:  apiKeyHashesJSON,

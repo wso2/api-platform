@@ -21,7 +21,7 @@ import "time"
 
 // APIKey represents a persisted API key record in the database.
 type APIKey struct {
-	ID           string
+	UUID         string
 	ArtifactUUID string
 	Name         string
 	MaskedAPIKey string

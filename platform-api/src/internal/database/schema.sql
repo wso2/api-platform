@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
 
 -- API Keys table (stores API keys for artifacts with hashes as JSON string)
 CREATE TABLE IF NOT EXISTS api_keys (
-    id VARCHAR(40) PRIMARY KEY,
+    uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(63) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,

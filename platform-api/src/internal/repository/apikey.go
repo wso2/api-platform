@@ -42,11 +42,11 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 	key.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO api_keys (id, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at)
+		INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
-		key.ID, key.ArtifactUUID, key.Name, key.MaskedAPIKey, key.APIKeyHashes,
+		key.UUID, key.ArtifactUUID, key.Name, key.MaskedAPIKey, key.APIKeyHashes,
 		key.Status, key.CreatedAt, key.CreatedBy, key.UpdatedAt, key.ExpiresAt,
 	)
 	return err
@@ -103,12 +103,12 @@ func (r *APIKeyRepo) Revoke(artifactUUID, name string) error {
 func (r *APIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error) {
 	key := &model.APIKey{}
 	query := `
-		SELECT id, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at
+		SELECT uuid, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE artifact_uuid = ? AND name = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, name).Scan(
-		&key.ID, &key.ArtifactUUID, &key.Name, &key.MaskedAPIKey, &key.APIKeyHashes,
+		&key.UUID, &key.ArtifactUUID, &key.Name, &key.MaskedAPIKey, &key.APIKeyHashes,
 		&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

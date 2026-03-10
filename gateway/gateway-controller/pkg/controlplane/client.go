@@ -1549,12 +1549,17 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
+	var apiKeyUUID *string
+	if payload.UUID != "" {
+		apiKeyUUID = &payload.UUID
+	}
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		ApiKeyHashes:  &payload.ApiKeyHashes,
 		MaskedApiKey:  &payload.MaskedApiKey,
 		DisplayName:   payload.DisplayName,
 		Name:          &payload.Name,
 		ExternalRefId: payload.ExternalRefId,
+		ApiKeyUuid:    apiKeyUUID,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time

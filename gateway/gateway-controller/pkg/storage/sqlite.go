@@ -739,6 +739,7 @@ func (s *SQLiteStorage) initSchema() error {
 
 			if _, err = tx.Exec(`CREATE TABLE api_keys_new_v10 (
 				id TEXT PRIMARY KEY,
+				api_key_uuid TEXT NULL,
 				gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
 				name TEXT NOT NULL,
 				api_key TEXT NOT NULL UNIQUE,

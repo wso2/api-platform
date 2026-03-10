@@ -135,6 +135,7 @@ type APIDeletedEvent struct {
 
 // APIKeyCreatedEventPayload represents the payload of an API key created event.
 type APIKeyCreatedEventPayload struct {
+	UUID          string  `json:"uuid"`           // UUID v7 from platform API for cross-system correlation
 	ApiId         string  `json:"apiId"`
 	ApiKeyHashes  string  `json:"apiKeyHashes"`   // JSON string of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
 	MaskedApiKey  string  `json:"maskedApiKey"`   // Masked representation of the API key for display

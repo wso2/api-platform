@@ -2379,6 +2379,12 @@ components:
             This field is optional and used for tracing purposes only.
             The gateway generates its own internal ID for tracking.
           example: "cloud-apim-key-98765"
+        apiKeyUuid:
+          type: string
+          description: |
+            UUID v7 of the API key from the platform API, used for cross-system correlation.
+            If not provided, the gateway generates one locally.
+          example: "01942f3e-7a1b-7c3d-8e4f-9a0b1c2d3e4f"
     APIKeyCreationResponse:
       type: object
       properties:

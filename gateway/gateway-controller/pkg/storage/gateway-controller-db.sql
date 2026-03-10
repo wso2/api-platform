@@ -131,6 +131,9 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Primary identifier (UUID)
     id TEXT PRIMARY KEY,
 
+    -- UUID from platform API for cross-system correlation (schema version 10)
+    api_key_uuid TEXT NULL,
+
     -- Gateway identifier
     gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
 

@@ -69,6 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
     id TEXT PRIMARY KEY,
+    api_key_uuid TEXT NULL,
     gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id',
     name TEXT NOT NULL,
     api_key TEXT NOT NULL UNIQUE,
@@ -99,6 +100,7 @@ ALTER TABLE deployments ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAUL
 ALTER TABLE certificates ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
 ALTER TABLE llm_provider_templates ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_key_uuid TEXT NULL;
 
 ALTER TABLE deployments DROP CONSTRAINT IF EXISTS deployments_display_name_version_key;
 ALTER TABLE deployments DROP CONSTRAINT IF EXISTS deployments_handle_key;
