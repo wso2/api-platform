@@ -43,6 +43,12 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 			CacheCreationInputTokens int64  `json:"cache_creation_input_tokens"`
 			CacheReadInputTokens     int64  `json:"cache_read_input_tokens"`
 			InferenceGeo             string `json:"inference_geo"`
+			// Anthropic echoes the per-TTL breakdown of cache writes when the caller
+			// used mixed TTLs. When present, these two fields sum to CacheCreationInputTokens.
+			CacheCreation *struct {
+				Ephemeral5mInputTokens int64 `json:"ephemeral_5m_input_tokens"`
+				Ephemeral1hInputTokens int64 `json:"ephemeral_1h_input_tokens"`
+			} `json:"cache_creation"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(responseBody, &resp); err != nil {
@@ -67,13 +73,25 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 	// input_tokens + cache_creation_input_tokens + cache_read_input_tokens.
 	// Output tokens do not affect the tier selection.
 	inputForTiering := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+
+	// Split cache writes into 5-minute and 1-hour TTL buckets.
+	// When the granular breakdown is absent, treat all writes as 5-minute (the default TTL).
+	var cacheWrite5m, cacheWrite1hr int64
+	if u.CacheCreation != nil {
+		cacheWrite5m = u.CacheCreation.Ephemeral5mInputTokens
+		cacheWrite1hr = u.CacheCreation.Ephemeral1hInputTokens
+	} else {
+		cacheWrite5m = u.CacheCreationInputTokens
+	}
+
 	return Usage{
 		PromptTokens:          u.InputTokens,
 		CompletionTokens:      u.OutputTokens,
 		TotalTokens:           total,
 		InputTokensForTiering: inputForTiering,
 		CachedReadTokens:      u.CacheReadInputTokens,
-		CacheWriteTokens:      u.CacheCreationInputTokens,
+		CacheWriteTokens:      cacheWrite5m,
+		CacheWrite1hrTokens:   cacheWrite1hr,
 		InferenceGeo:          u.InferenceGeo,
 		Speed:                 speed,
 	}, nil
@@ -114,9 +132,29 @@ func (c *AnthropicCalculator) Adjust(baseCost float64, usage Usage, pricing Mode
 		return baseCost
 	}
 
+	// Resolve the actual cache rates used by genericCalculateCost for this request.
+	// These depend on whether the >200k tier was triggered (based on InputTokensForTiering).
+	// Using the wrong (base) rate here would understate the carve-out and over-multiply cost.
+	cacheReadRate := pricing.CacheReadInputTokenCost
+	cacheWrite5mRate := pricing.CacheCreationInputTokenCost
+	cacheWrite1hrRate := pricing.CacheCreationInputTokenCostAbove1hr
+	if cacheWrite1hrRate == 0 {
+		cacheWrite1hrRate = cacheWrite5mRate
+	}
+	if usage.InputTokensForTiering > 200_000 && pricing.InputCostPerTokenAbove200k > 0 {
+		if pricing.CacheReadInputTokenCostAbove200k > 0 {
+			cacheReadRate = pricing.CacheReadInputTokenCostAbove200k
+		}
+		if pricing.CacheCreationInputTokenCostAbove200k > 0 {
+			cacheWrite5mRate = pricing.CacheCreationInputTokenCostAbove200k
+			cacheWrite1hrRate = pricing.CacheCreationInputTokenCostAbove200k
+		}
+	}
+
 	// Carve out cache costs before applying multiplier.
-	cacheCost := float64(usage.CachedReadTokens)*pricing.CacheReadInputTokenCost +
-		float64(usage.CacheWriteTokens)*pricing.CacheCreationInputTokenCost
+	cacheCost := float64(usage.CachedReadTokens)*cacheReadRate +
+		float64(usage.CacheWriteTokens)*cacheWrite5mRate +
+		float64(usage.CacheWrite1hrTokens)*cacheWrite1hrRate
 
 	nonCacheCost := baseCost - cacheCost
 	if nonCacheCost < 0 {

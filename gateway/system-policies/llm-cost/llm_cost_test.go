@@ -415,9 +415,87 @@ func TestAnthropicCalculator_Adjust_NoProviderSpecificEntry(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Gemini calculator
-// ---------------------------------------------------------------------------
+func TestAnthropicCalculator_Normalize_CacheWrite5mAnd1hr(t *testing.T) {
+	// When the response includes usage.cache_creation with per-TTL breakdown,
+	// Normalize must split them into CacheWriteTokens (5m) and CacheWrite1hrTokens (1hr).
+	body := []byte(`{
+		"usage": {
+			"input_tokens": 100,
+			"output_tokens": 50,
+			"cache_creation_input_tokens": 1200,
+			"cache_read_input_tokens": 0,
+			"cache_creation": {
+				"ephemeral_5m_input_tokens": 200,
+				"ephemeral_1h_input_tokens": 1000
+			}
+		}
+	}`)
+	c := &AnthropicCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	if u.CacheWriteTokens != 200 {
+		t.Errorf("CacheWriteTokens (5m): got %d, want 200", u.CacheWriteTokens)
+	}
+	if u.CacheWrite1hrTokens != 1000 {
+		t.Errorf("CacheWrite1hrTokens (1hr): got %d, want 1000", u.CacheWrite1hrTokens)
+	}
+}
+
+func TestAnthropicCalculator_Normalize_CacheWriteFallback_No1hrBreakdown(t *testing.T) {
+	// When cache_creation sub-object is absent, all writes go into CacheWriteTokens (5m).
+	body := []byte(`{
+		"usage": {
+			"input_tokens": 100,
+			"output_tokens": 50,
+			"cache_creation_input_tokens": 300,
+			"cache_read_input_tokens": 0
+		}
+	}`)
+	c := &AnthropicCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	if u.CacheWriteTokens != 300 {
+		t.Errorf("CacheWriteTokens: got %d, want 300", u.CacheWriteTokens)
+	}
+	if u.CacheWrite1hrTokens != 0 {
+		t.Errorf("CacheWrite1hrTokens: got %d, want 0", u.CacheWrite1hrTokens)
+	}
+}
+
+func TestAnthropicCalculator_Cost_Mixed5mAnd1hrCacheWrites(t *testing.T) {
+	// Verify that 5m and 1hr cache write tokens are billed at their respective rates.
+	// claude-opus-4-6: cache_creation_input_token_cost=6.25e-6, above_1hr=1e-5
+	pricing, ok := lookupPricing("claude-opus-4-6")
+	if !ok {
+		t.Skip("claude-opus-4-6 not in pricing map")
+	}
+
+	usage := Usage{
+		PromptTokens:        100,
+		CompletionTokens:    50,
+		TotalTokens:         150,
+		CacheWriteTokens:    200,  // 5-minute TTL
+		CacheWrite1hrTokens: 1000, // 1-hour TTL
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// 100 regular input tokens (prompt - cache writes = 100 - 200 - 1000 < 0, clamped to 0)
+	// 50 output tokens
+	// 200 × 6.25e-6 (5m write) + 1000 × 1e-5 (1hr write)
+	expected5m := 200 * pricing.CacheCreationInputTokenCost
+	expected1hr := 1000 * pricing.CacheCreationInputTokenCostAbove1hr
+	expectedOutput := 50 * pricing.OutputCostPerToken
+	// regularPrompt clamped to 0 (100 - 200 - 1000 < 0)
+	expectedTotal := expected5m + expected1hr + expectedOutput
+	if !almostEqual(cost, expectedTotal) {
+		t.Errorf("expected %.10f, got %.10f (5m=%.10f, 1hr=%.10f, output=%.10f)",
+			expectedTotal, cost, expected5m, expected1hr, expectedOutput)
+	}
+}
 
 func TestGeminiCalculator_Normalize(t *testing.T) {
 	body := []byte(`{

@@ -119,6 +119,109 @@ Feature: LLM Cost System Policy
     When I delete the LLM provider template "llm-cost-anthropic-template"
     Then the response status code should be 200
 
+  Scenario: Anthropic geo and speed multipliers — x-llm-cost reflects combined 6.6x multiplier
+    # Model: claude-opus-4-6 — input=5e-6/token, output=2.5e-5/token
+    # PSE: {us: 1.1, fast: 6.0} — request sends speed=fast, response echoes inference_geo=us
+    # Usage: 20 input + 10 output, no cache
+    # baseCost = 20*5e-6 + 10*2.5e-5 = 1e-4 + 2.5e-4 = 3.5e-4
+    # multiplier = 1.1 (us) × 6.0 (fast) = 6.6
+    # finalCost = 3.5e-4 × 6.6 = 0.0023100000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-anthropic-geo-speed-template
+      spec:
+        displayName: LLM Cost Anthropic Geo Speed Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-anthropic-geo-speed-provider
+      spec:
+        displayName: LLM Cost Anthropic Geo Speed Provider
+        version: v1.0
+        context: /llm-cost-anthropic-geo-speed
+        template: llm-cost-anthropic-geo-speed-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-geo-speed/anthropic/v1/messages-geo-speed" to be ready with method "POST" and body '{"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100, "speed": "fast"}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-anthropic-geo-speed/anthropic/v1/messages-geo-speed" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100, "speed": "fast"}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0023100000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-anthropic-geo-speed-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-anthropic-geo-speed-template"
+    Then the response status code should be 200
+
+  Scenario: Anthropic 1-hour TTL cache writes — billed at higher rate than 5-minute TTL
+    # Model: claude-opus-4-6 — 5m_write=6.25e-6, 1hr_write=1e-5, output=2.5e-5
+    # Usage: 10 input + 5 output + 100 5m-write + 500 1hr-write (via cache_creation breakdown)
+    # regularPrompt = 10 - 100 - 500 → clamped to 0
+    # cost = 0*5e-6 + 5*2.5e-5 + 100*6.25e-6 + 500*1e-5
+    #      = 0 + 0.000125 + 0.000625 + 0.005 = 0.0057500000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-anthropic-cache1hr-template
+      spec:
+        displayName: LLM Cost Anthropic Cache 1hr Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-anthropic-cache1hr-provider
+      spec:
+        displayName: LLM Cost Anthropic Cache 1hr Provider
+        version: v1.0
+        context: /llm-cost-anthropic-cache1hr
+        template: llm-cost-anthropic-cache1hr-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-cache1hr/anthropic/v1/messages-cache-1hr" to be ready with method "POST" and body '{"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-anthropic-cache1hr/anthropic/v1/messages-cache-1hr" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0057500000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-anthropic-cache1hr-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-anthropic-cache1hr-template"
+    Then the response status code should be 200
+
   Scenario: Gemini native response — cost is calculated from usageMetadata fields
     # Model: gemini-1.5-flash-002 — input=7.5e-8/token, output=3e-7/token
     # Usage: 100 prompt + 100 completion = (100*7.5e-8) + (100*3e-7) = 7.5e-6 + 3e-5 = 0.0000375000

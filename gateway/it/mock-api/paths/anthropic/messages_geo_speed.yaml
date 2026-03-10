@@ -1,0 +1,51 @@
+post:
+  summary: Create Anthropic message with geo and speed routing
+  operationId: createAnthropicMessageGeoSpeed
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+            - max_tokens
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+            max_tokens:
+              type: integer
+            speed:
+              type: string
+
+  responses:
+    "200":
+      description: Successful response with inference_geo echoed in usage (simulates US data residency)
+      content:
+        application/json:
+          # claude-opus-4-6: input=5e-6, output=2.5e-5
+          # PSE: {us: 1.1, fast: 6.0} => combined multiplier = 6.6 (request sends speed=fast)
+          # 20 input + 10 output, no cache
+          # baseCost = 20*5e-6 + 10*2.5e-5 = 1e-4 + 2.5e-4 = 3.5e-4
+          # finalCost = 3.5e-4 * 6.6 = 0.0023100000
+          example:
+            id: msg_geo_speed_01
+            type: message
+            role: assistant
+            model: claude-opus-4-6
+            content:
+              - type: text
+                text: "Hello with geo and speed!"
+            stop_reason: end_turn
+            stop_sequence: null
+            usage:
+              input_tokens: 20
+              output_tokens: 10
+              cache_creation_input_tokens: 0
+              cache_read_input_tokens: 0
+              inference_geo: us

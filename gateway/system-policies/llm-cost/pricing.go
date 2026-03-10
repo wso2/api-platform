@@ -147,10 +147,17 @@ type Usage struct {
 	// If zero, genericCalculateCost falls back to TotalTokens.
 	InputTokensForTiering int64
 
-	// Cached / reasoning tokens
-	CachedReadTokens int64
-	CacheWriteTokens int64
-	ReasoningTokens  int64
+	// Cached / reasoning tokens.
+	// CacheWriteTokens holds 5-minute TTL cache creation tokens (the default).
+	// CacheWrite1hrTokens holds 1-hour TTL cache creation tokens, which are billed
+	// at the higher cache_creation_input_token_cost_above_1hr rate. Anthropic splits
+	// these in the response under usage.cache_creation.ephemeral_5m_input_tokens and
+	// usage.cache_creation.ephemeral_1h_input_tokens. When CacheWrite1hrTokens is
+	// zero we assume all cache writes used the 5-minute TTL.
+	CachedReadTokens    int64
+	CacheWriteTokens    int64 // 5-minute TTL cache write tokens
+	CacheWrite1hrTokens int64 // 1-hour TTL cache write tokens
+	ReasoningTokens     int64
 
 	// Anthropic-specific: geo routing and speed mode
 	InferenceGeo string // echoed in response usage.inference_geo
@@ -252,7 +259,12 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	inputRate := pricing.InputCostPerToken
 	outputRate := pricing.OutputCostPerToken
 	cacheReadRate := pricing.CacheReadInputTokenCost
-	cacheWriteRate := pricing.CacheCreationInputTokenCost
+	cacheWrite5mRate := pricing.CacheCreationInputTokenCost
+	cacheWrite1hrRate := pricing.CacheCreationInputTokenCostAbove1hr
+	if cacheWrite1hrRate == 0 {
+		// Fallback: if no distinct 1hr rate is defined, use the standard write rate.
+		cacheWrite1hrRate = cacheWrite5mRate
+	}
 
 	switch {
 	case tierTokens > 200_000 && pricing.InputCostPerTokenAbove200k > 0:
@@ -262,7 +274,10 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 			cacheReadRate = pricing.CacheReadInputTokenCostAbove200k
 		}
 		if pricing.CacheCreationInputTokenCostAbove200k > 0 {
-			cacheWriteRate = pricing.CacheCreationInputTokenCostAbove200k
+			cacheWrite5mRate = pricing.CacheCreationInputTokenCostAbove200k
+			// TODO: if Anthropic ever defines cache_creation_input_token_cost_above_1hr_above_200k_tokens,
+			// select it here. For now, the >200k write rate applies to both TTLs.
+			cacheWrite1hrRate = pricing.CacheCreationInputTokenCostAbove200k
 		}
 	case tierTokens > 128_000 && pricing.InputCostPerTokenAbove128k > 0:
 		inputRate = pricing.InputCostPerTokenAbove128k
@@ -270,7 +285,7 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	}
 
 	// Regular (non-cached, non-reasoning) prompt tokens
-	regularPromptTokens := usage.PromptTokens - usage.CachedReadTokens - usage.CacheWriteTokens
+	regularPromptTokens := usage.PromptTokens - usage.CachedReadTokens - usage.CacheWriteTokens - usage.CacheWrite1hrTokens
 	if regularPromptTokens < 0 {
 		regularPromptTokens = 0
 	}
@@ -284,7 +299,7 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	promptCost := float64(regularPromptTokens) * inputRate
 	completionCost := float64(regularCompletionTokens) * outputRate
 	cacheReadCost := float64(usage.CachedReadTokens) * cacheReadRate
-	cacheWriteCost := float64(usage.CacheWriteTokens) * cacheWriteRate
+	cacheWriteCost := float64(usage.CacheWriteTokens)*cacheWrite5mRate + float64(usage.CacheWrite1hrTokens)*cacheWrite1hrRate
 
 	// Reasoning tokens billed at their own rate if defined, otherwise at output rate
 	reasoningRate := pricing.OutputCostPerReasoningToken
