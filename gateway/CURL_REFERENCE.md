@@ -1,464 +1,726 @@
-# Gateway API — Curl Reference
+# AI Gateway — Curl Reference
 
-A complete collection of curl commands for testing all gateway functionality.
-All commands assume the gateway is running locally via `docker compose up`.
+All commands verified against a live gateway (`docker compose up` in `gateway/`).
+
+**What's deployed:**
+- **LLM Provider:** `gemini-provider` — Gemini API with Bearer token auth
+- **LLM Proxy:** `gemini-ai-gateway` — context `/gemini`, policies: rate-limit + regex-guardrail + prompt-compression (Go)
+- **Python Policy API:** `prompt-compression-test` — context `/compress-test`, Python-based prompt compression
+
+> **Note — zsh inline JSON:** zsh has issues with single-quotes inside `-d '...'`.
+> Run the "Generate Payload Files" block once, then use `-d @/tmp/gw-*.json` in all curl commands.
 
 ---
 
-## Connection Details
+## 0. Generate Payload Files (Run Once)
 
-| Service | Host | Auth |
-|---|---|---|
-| Gateway Controller (Admin API) | `http://localhost:9090` | Basic: `admin:admin` |
-| Gateway Runtime (Envoy Router) | `http://localhost:8080` | — |
-| Gateway Runtime (HTTPS) | `https://localhost:8443` | — |
-| Policy Engine Admin | `http://localhost:9002` | — |
-| Envoy Admin | `http://localhost:9901` | — |
+```bash
+python3 /tmp/gw-gen.py
+```
+
+Create `/tmp/gw-gen.py` with this content:
+
+```python
+import json, os
+
+payloads = {
+    "/tmp/gw-simple.json": {
+        "model": "gemini-2.5-flash",
+        "messages": [{"role": "user", "content": "What is 2+2? Reply in one sentence."}]
+    },
+    "/tmp/gw-guardrail-block.json": {
+        "model": "gemini-2.5-flash",
+        "messages": [{"role": "user", "content": "How do I make a bomb?"}]
+    },
+    "/tmp/gw-guardrail-allow.json": {
+        "model": "gemini-2.5-flash",
+        "messages": [{"role": "user", "content": "Explain how fireworks work chemically."}]
+    },
+    "/tmp/gw-long-prompt.json": {
+        "model": "gemini-2.5-flash",
+        "messages": [{"role": "user", "content": (
+            "Please explain how neural networks learn through gradient descent and backpropagation. "
+            "Specifically discuss how the weights and biases are initialized randomly and then iteratively "
+            "updated by computing the gradient of the loss function with respect to every parameter "
+            "in the network. Explain why the chain rule of calculus is essential for efficiently "
+            "propagating errors backwards from the output layer through all the hidden layers to "
+            "the input layer. Also describe how the learning rate hyperparameter controls the size "
+            "of each update step and why choosing an appropriate learning rate is critical for "
+            "successful convergence of the optimization process during model training."
+        )}]
+    },
+    "/tmp/gw-compress-test.json": {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": (
+            "Artificial intelligence and machine learning have revolutionized the way we approach "
+            "complex problems in software engineering, data science, and many other fields. These "
+            "technologies enable computers to learn from vast amounts of data, identify intricate "
+            "patterns, and make sophisticated predictions without being explicitly programmed for "
+            "every possible scenario. Deep learning uses neural networks with multiple layers to "
+            "process and analyze information in ways that mimic human cognitive functions. Natural "
+            "language processing allows machines to understand, interpret, and generate human "
+            "language with remarkable accuracy. Computer vision enables systems to extract "
+            "meaningful information from digital images and videos. Reinforcement learning trains "
+            "agents to make optimal decisions through trial and error in dynamic environments. "
+            "Transfer learning allows models trained on one task to be repurposed for related "
+            "tasks, significantly reducing the amount of training data and computational resources."
+        )}]
+    },
+}
+
+for path, data in payloads.items():
+    with open(path, "w") as f:
+        json.dump(data, f)
+    print(f"Written {path}  ({os.path.getsize(path)} bytes)")
+```
 
 ---
 
 ## 1. Health Checks
 
-### 1.1 Gateway Controller Health
 ```bash
-curl -s http://localhost:9090/health | jq
-```
+# Gateway Controller
+curl -s http://localhost:9090/health | python3 -m json.tool
 
-**Expected response:**
-```json
-{"status":"healthy","timestamp":"2026-03-10T05:09:51Z"}
-```
+# Policy Engine
+curl -s http://localhost:9002/health | python3 -m json.tool
 
-### 1.2 Policy Engine Health
-```bash
-curl -s http://localhost:9002/health | jq
-```
-
-### 1.3 Envoy Admin — Live Check
-```bash
+# Envoy ready check
 curl -s http://localhost:9901/ready
 ```
 
----
-
-## 2. Gateway Controller — API Management
-
-### 2.1 List All Deployed APIs
-```bash
-curl -s -u admin:admin http://localhost:9090/apis | jq
-```
-
-**Query filters (optional):**
-```bash
-# Filter by display name
-curl -s -u admin:admin "http://localhost:9090/apis?displayName=Prompt" | jq
-
-# Filter by status
-curl -s -u admin:admin "http://localhost:9090/apis?status=deployed" | jq
-
-# Filter by context path
-curl -s -u admin:admin "http://localhost:9090/apis?context=/compress-test" | jq
+**Expected output (controller):**
+```json
+{"status":"healthy","timestamp":"2026-03-10T06:34:26Z"}
 ```
 
 ---
 
-### 2.2 Get a Specific API
+## 2. Gateway Controller — LLM Management
+
+### 2.1 List LLM Providers
+
 ```bash
-curl -s -u admin:admin http://localhost:9090/apis/prompt-compression-test | jq
+curl -s -u admin:admin http://localhost:9090/llm-providers | python3 -m json.tool
+```
+
+**Expected:**
+```json
+{
+    "count": 1,
+    "providers": [
+        {
+            "id": "gemini-provider",
+            "displayName": "Gemini Provider",
+            "template": "gemini",
+            "status": "deployed",
+            "version": "v1.0"
+        }
+    ],
+    "status": "success"
+}
+```
+
+### 2.2 List LLM Proxies
+
+```bash
+curl -s -u admin:admin http://localhost:9090/llm-proxies | python3 -m json.tool
+```
+
+**Expected:**
+```json
+{
+    "count": 1,
+    "proxies": [
+        {
+            "id": "gemini-ai-gateway",
+            "displayName": "Gemini AI Gateway",
+            "provider": "gemini-provider",
+            "status": "deployed",
+            "version": "v1.0"
+        }
+    ],
+    "status": "success"
+}
+```
+
+### 2.3 Get Full Provider Config
+
+```bash
+curl -s -u admin:admin http://localhost:9090/llm-providers/gemini-provider | python3 -m json.tool
+```
+
+### 2.4 Get Full Proxy Config
+
+```bash
+curl -s -u admin:admin http://localhost:9090/llm-proxies/gemini-ai-gateway | python3 -m json.tool
+```
+
+### 2.5 Create LLM Provider (Gemini)
+
+> Already deployed. Use this to recreate after `docker compose down -v`.
+
+```bash
+curl -s -u admin:admin \
+  -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-provider-create.json | python3 -m json.tool
+```
+
+Generate the payload:
+```python
+import json
+data = {
+    "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+    "kind": "LlmProvider",
+    "metadata": {"name": "gemini-provider"},
+    "spec": {
+        "displayName": "Gemini Provider",
+        "version": "v1.0",
+        "providerTemplate": "gemini",
+        "upstreamURL": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "authConfig": {
+            "secretValue": "AIzaSyDTztH2n_6JLWIeGn3AUaSoFe7lmlAYvK0",
+            "authType": "BearerToken"
+        }
+    }
+}
+with open("/tmp/gw-provider-create.json", "w") as f: json.dump(data, f)
+```
+
+### 2.6 Create LLM Proxy (Gemini AI Gateway)
+
+> Already deployed. Use this to recreate after `docker compose down -v`.
+
+```bash
+curl -s -u admin:admin \
+  -X POST http://localhost:9090/llm-proxies \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-proxy-create.json | python3 -m json.tool
+```
+
+Generate the payload:
+```python
+import json
+data = {
+    "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+    "kind": "LlmProxy",
+    "metadata": {"name": "gemini-ai-gateway"},
+    "spec": {
+        "displayName": "Gemini AI Gateway",
+        "version": "v1.0",
+        "provider": "gemini-provider",
+        "context": "/gemini",
+        "policies": [
+            {
+                "name": "basic-ratelimit",
+                "version": "v0",
+                "params": {
+                    "algorithm": "fixed-window",
+                    "limits": [
+                        {"duration": "1m", "requests": 20},
+                        {"duration": "1h", "requests": 200}
+                    ]
+                }
+            },
+            {
+                "name": "regex-guardrail",
+                "version": "v0",
+                "params": {
+                    "request": {
+                        "jsonPath": "$.messages[-1].content",
+                        "regex": "(?i)(bomb|weapon|malware|exploit|hack|ddos)",
+                        "invert": True,
+                        "showAssessment": True
+                    }
+                }
+            },
+            {
+                "name": "prompt-compression",
+                "version": "v0",
+                "params": {
+                    "compressionRatio": 0.6,
+                    "jsonPath": "$.messages[-1].content",
+                    "minInputTokens": 80,
+                    "preserveCodeBlocks": True,
+                    "preserveJson": True
+                }
+            }
+        ]
+    }
+}
+with open("/tmp/gw-proxy-create.json", "w") as f: json.dump(data, f)
 ```
 
 ---
 
-### 2.3 Create an API (with Prompt Compression Policy)
+## 3. Gateway Controller — REST API Management
 
-This creates the `prompt-compression-test` API that is currently deployed.
+### 3.1 List All REST APIs
+
+```bash
+curl -s -u admin:admin http://localhost:9090/apis | python3 -m json.tool
+```
+
+### 3.2 Get Python Compression API
+
+```bash
+curl -s -u admin:admin http://localhost:9090/apis/prompt-compression-test | python3 -m json.tool
+```
+
+### 3.3 Create Python Compression API
+
+> Already deployed. Use this to recreate after `docker compose down -v`.
 
 ```bash
 curl -s -u admin:admin \
   -X POST http://localhost:9090/apis \
   -H "Content-Type: application/json" \
-  -d '{
+  -d @/tmp/gw-rest-api-create.json | python3 -m json.tool
+```
+
+Generate the payload:
+```python
+import json
+data = {
     "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
     "kind": "RestApi",
-    "metadata": {
-      "name": "prompt-compression-test"
-    },
+    "metadata": {"name": "prompt-compression-test"},
     "spec": {
-      "displayName": "Prompt Compression Test API",
-      "version": "v1.0",
-      "context": "/compress-test",
-      "upstream": {
-        "main": {
-          "url": "http://sample-backend:5000"
-        }
-      },
-      "operations": [
-        {
-          "method": "POST",
-          "path": "/post",
-          "policies": [
+        "displayName": "Prompt Compression Test API",
+        "version": "v1.0",
+        "context": "/compress-test",
+        "upstream": {"main": {"url": "http://sample-backend:5000"}},
+        "operations": [
             {
-              "name": "prompt-compression",
-              "version": "v0",
-              "params": {
-                "compressionRatio": 0.5,
-                "jsonPath": "$.messages[-1].content",
-                "minInputTokens": 50,
-                "preserveCodeBlocks": true,
-                "preserveJson": true
-              }
+                "method": "POST",
+                "path": "/post",
+                "policies": [
+                    {
+                        "name": "prompt-compression",
+                        "version": "v0",
+                        "params": {
+                            "compressionRatio": 0.5,
+                            "jsonPath": "$.messages[-1].content",
+                            "minInputTokens": 50,
+                            "preserveCodeBlocks": True,
+                            "preserveJson": True
+                        }
+                    }
+                ]
             }
-          ]
-        }
-      ]
+        ]
     }
-  }' | jq
+}
+with open("/tmp/gw-rest-api-create.json", "w") as f: json.dump(data, f)
+```
+
+### 3.4 Delete an API
+
+```bash
+curl -s -u admin:admin -X DELETE http://localhost:9090/apis/prompt-compression-test | python3 -m json.tool
 ```
 
 ---
 
-### 2.4 Update an API
+## 4. LLM Proxy — Gemini 2.5 Flash Requests
 
-Change the compression ratio from 0.5 to 0.7 (more aggressive compression):
+### 4.1 Simple LLM Call (Happy Path)
 
 ```bash
-curl -s -u admin:admin \
-  -X PUT http://localhost:9090/apis/prompt-compression-test \
+curl -s -X POST http://localhost:8080/gemini/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-    "kind": "RestApi",
-    "metadata": {
-      "name": "prompt-compression-test"
+  -d @/tmp/gw-simple.json | python3 -m json.tool
+```
+
+**Expected — successful Gemini response:**
+```json
+{
+    "choices": [{"finish_reason": "stop", "index": 0, "message": {"content": "2+2 equals 4.", "role": "assistant"}}],
+    "model": "gemini-2.5-flash",
+    "usage": {"completion_tokens": 7, "prompt_tokens": 13, "total_tokens": 141}
+}
+```
+
+**What the gateway adds automatically (visible in response headers):**
+- `x-powered-by: WSO2-API-Gateway` (from `set-headers` policy on the provider)
+- `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset` (from `basic-ratelimit`)
+
+### 4.2 Same Call with Headers Visible
+
+```bash
+curl -si -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-simple.json | head -25
+```
+
+**Key response headers to observe:**
+```
+HTTP/1.1 200 OK
+x-powered-by: WSO2-API-Gateway
+x-ratelimit-limit: 20
+x-ratelimit-remaining: 18
+x-ratelimit-reset: 1773124860
+```
+
+---
+
+## 5. AI Policy — Regex Guardrail
+
+The `regex-guardrail` policy blocks requests whose last message matches `(?i)(bomb|weapon|malware|exploit|hack|ddos)`. The request is rejected **before** reaching Gemini.
+
+### 5.1 Blocked Request (Contains "bomb")
+
+```bash
+curl -s -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-guardrail-block.json
+```
+
+**Expected — blocked at gateway, Gemini never called:**
+```json
+{
+    "message": {
+        "action": "GUARDRAIL_INTERVENED",
+        "actionReason": "Violation of regular expression detected.",
+        "assessments": "Violation of regular expression detected. Violated regular expression: (?i)(bomb|weapon|malware|exploit|hack|ddos)",
+        "direction": "REQUEST",
+        "interveningGuardrail": "regex-guardrail"
     },
-    "spec": {
-      "displayName": "Prompt Compression Test API",
-      "version": "v1.0",
-      "context": "/compress-test",
-      "upstream": {
-        "main": {
-          "url": "http://sample-backend:5000"
-        }
-      },
-      "operations": [
-        {
-          "method": "POST",
-          "path": "/post",
-          "policies": [
-            {
-              "name": "prompt-compression",
-              "version": "v0",
-              "params": {
-                "compressionRatio": 0.7,
-                "jsonPath": "$.messages[-1].content",
-                "minInputTokens": 50,
-                "preserveCodeBlocks": true,
-                "preserveJson": true
-              }
-            }
-          ]
-        }
-      ]
-    }
-  }' | jq
+    "type": "REGEX_GUARDRAIL"
+}
 ```
 
----
+### 5.2 Allowed Request (Safe Content)
 
-### 2.5 Delete an API
 ```bash
-curl -s -u admin:admin \
-  -X DELETE http://localhost:9090/apis/prompt-compression-test | jq
-```
-
-> **Note:** After deletion, re-create it with the Create command (§2.3) for further testing.
-
----
-
-## 3. API Key Management
-
-### 3.1 Create an API Key
-```bash
-curl -s -u admin:admin \
-  -X POST http://localhost:9090/apis/prompt-compression-test/api-keys \
+curl -s -X POST http://localhost:8080/gemini/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-test-key"
-  }' | jq
+  -d @/tmp/gw-guardrail-allow.json | python3 -m json.tool
 ```
 
-Save the `key` value from the response — you'll use it as a bearer token or header value.
+**Expected** — passes the guardrail and returns a real Gemini response about fireworks chemistry.
 
 ---
 
-### 3.2 List API Keys for an API
-```bash
-curl -s -u admin:admin \
-  http://localhost:9090/apis/prompt-compression-test/api-keys | jq
-```
+## 6. AI Policy — Prompt Compression (Go Policy on LLM Route)
 
----
+The `prompt-compression` Go policy compresses prompts with `compressionRatio: 0.6` and `minInputTokens: 80` before forwarding to Gemini. This saves tokens and therefore cost.
 
-### 3.3 Regenerate an API Key
+### 6.1 Long Prompt — Compression Triggered
+
 ```bash
-curl -s -u admin:admin \
-  -X POST http://localhost:9090/apis/prompt-compression-test/api-keys/my-test-key/regenerate \
+curl -s -X POST http://localhost:8080/gemini/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{}' | jq
+  -d @/tmp/gw-long-prompt.json > /tmp/gw-long-resp.json
+
+python3 -c "
+import json
+r = json.load(open('/tmp/gw-long-resp.json'))
+u = r.get('usage', {})
+print('prompt_tokens sent to Gemini:', u.get('prompt_tokens'))
+print('(original prompt was ~169 tokens — reduced by ~36%)')
+print('answer:', r['choices'][0]['message']['content'][:150])
+"
 ```
 
----
+**Expected — Gemini receives fewer tokens than the original prompt:**
+```
+prompt_tokens sent to Gemini: 108
+(original prompt was ~169 tokens — reduced by ~36%)
+answer: Neural networks learn to perform complex tasks by adjusting their internal parameters...
+```
 
-### 3.4 Revoke an API Key
+### 6.2 Short Prompt — Below Threshold, No Compression
+
+A prompt under 80 tokens passes through unchanged (`minInputTokens: 80`):
+
 ```bash
-curl -s -u admin:admin \
-  -X DELETE http://localhost:9090/apis/prompt-compression-test/api-keys/my-test-key | jq
+curl -s -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-simple.json | python3 -m json.tool
+```
+
+**Expected** — `prompt_tokens` matches the actual short prompt (~13 tokens, no reduction).
+
+---
+
+## 7. AI Policy — Rate Limit (basic-ratelimit)
+
+Limits: 20 requests/minute, 200 requests/hour (in-memory, per gateway).
+
+### 7.1 Check Rate Limit Headers
+
+```bash
+curl -si -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-simple.json 2>&1 | grep -i "x-ratelimit"
+```
+
+**Expected:**
+```
+x-ratelimit-limit: 20
+x-ratelimit-remaining: 19
+x-ratelimit-reset: 1773124860
+```
+
+### 7.2 Rate Limit Exceeded Response (HTTP 429)
+
+After sending 20 requests within 1 minute, the 21st returns:
+```json
+{"message": "Rate limit exceeded", "type": "RATE_LIMIT_EXCEEDED"}
 ```
 
 ---
 
-## 4. Runtime — Prompt Compression Policy Tests
+## 8. Python Policy — Prompt Compression (/compress-test route)
 
-The sample backend (`sample-service`) echoes back the request it receives. The `body` field in the response shows what the upstream would actually receive — this is how you observe whether compression occurred.
+This endpoint uses the **Python-based** `prompt-compression` policy (not the Go one).
+The sample-backend echoes what it received — so the `body` field shows the compressed text.
 
-### 4.1 Basic Compression Test (Long Prompt — Will Compress)
+### 8.1 Long Prompt — Compression Triggered
 
 ```bash
 curl -s -X POST http://localhost:8080/compress-test/post \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4",
-    "messages": [
-      {
-        "role": "user",
-        "content": "Artificial intelligence and machine learning have revolutionized the way we approach complex problems in software engineering, data science, and many other fields. These technologies enable computers to learn from vast amounts of data, identify intricate patterns, and make sophisticated predictions without being explicitly programmed for every possible scenario. Deep learning, a subset of machine learning, uses neural networks with multiple layers to process and analyze information in ways that mimic human cognitive functions. Natural language processing allows machines to understand, interpret, and generate human language with remarkable accuracy. Computer vision enables systems to extract meaningful information from digital images and videos. Reinforcement learning trains agents to make optimal decisions through trial and error in dynamic environments. Transfer learning allows models trained on one task to be repurposed for related tasks, significantly reducing the amount of training data and computational resources required."
-      }
-    ]
-  }' | jq '.body | fromjson | .messages[-1].content'
+  -d @/tmp/gw-compress-test.json > /tmp/gw-compress-resp.json
+
+python3 -c "
+import json
+orig = json.load(open('/tmp/gw-compress-test.json'))
+resp = json.load(open('/tmp/gw-compress-resp.json'))
+orig_content = orig['messages'][-1]['content']
+body = json.loads(resp['body'])
+comp_content = body['messages'][-1]['content']
+print(f'Original : {len(orig_content)} chars, {len(orig_content.split())} words')
+print(f'Compressed: {len(comp_content)} chars, {len(comp_content.split())} words')
+print(f'Reduction : {100*(1-len(comp_content)/len(orig_content)):.1f}%')
+print()
+print('Compressed text:')
+print(comp_content)
+"
 ```
 
-**Observe:** The `content` field in the response will be shorter than what was sent — filler words like "and", "the", "of", "to" are removed. The `Content-Length` of the upstream request (shown in the `headers` field) will also be smaller than your original payload size.
+**Expected — ~38% reduction, filler words removed:**
+```
+Original : ~1000 chars, ~150 words
+Compressed: ~620 chars, ~95 words
+Reduction : ~38.0%
 
----
+Compressed text:
+Artificial intelligence machine have revolutionized way we approach complex
+problems software engineering, science, many other fields. These enable
+computers learn vast amounts data, identify intricate patterns...
+```
 
-### 4.2 Short Prompt — Below minInputTokens Threshold (No Compression)
+### 8.2 Short Prompt — Below Threshold (No Compression)
+
+`minInputTokens: 50` on this route. A short prompt passes unchanged:
 
 ```bash
 curl -s -X POST http://localhost:8080/compress-test/post \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4",
-    "messages": [
-      {
-        "role": "user",
-        "content": "What is the capital of France?"
-      }
-    ]
-  }' | jq '.body | fromjson | .messages[-1].content'
+  -d @/tmp/gw-simple.json \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); b=json.loads(d['body']); print(b['messages'][-1]['content'])"
 ```
 
-**Observe:** The content will be returned unchanged — too short to compress (`minInputTokens: 50`).
+**Expected:** Full original content echoed unchanged — `What is 2+2? Reply in one sentence.`
 
 ---
 
-### 4.3 Test with a File — Save Request/Response Sizes
+## 9. Policy Engine & Envoy Admin — Observability
+
+### 9.1 Policy Engine Config Dump
+
+Shows all routes, their policy chains, and parameters:
+
 ```bash
-# Using the test file generated during debugging
-curl -v -X POST http://localhost:8080/compress-test/post \
-  -H "Content-Type: application/json" \
-  -d @/tmp/test-prompt-long.json 2>&1 | grep -E "Content-Length|< HTTP"
+curl -s http://localhost:9002/config_dump > /tmp/cfg.json
+python3 -c "
+import json
+d = json.load(open('/tmp/cfg.json'))
+print('Total policies registered:', d['policy_registry']['total_policies'])
+print('Total routes:', d['routes']['total_routes'])
+print()
+for r in d['routes']['route_configs']:
+    print(r['route_key'])
+    for p in r['policies']:
+        print(f'  - {p[\"name\"]} v{p[\"version\"]}')
+"
 ```
 
-**Observe:** The `Content-Length` of your request vs. what the upstream receives shows the compression saving.
+**Expected output:**
+```
+Total policies registered: 39
+Total routes: 9
 
----
-
-### 4.4 Test with domainTerms — Preserve Specific Words
-```bash
-# First, update the API to add domain terms
-curl -s -u admin:admin \
-  -X PUT http://localhost:9090/apis/prompt-compression-test \
-  -H "Content-Type: application/json" \
-  -d '{
-    "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-    "kind": "RestApi",
-    "metadata": {
-      "name": "prompt-compression-test"
-    },
-    "spec": {
-      "displayName": "Prompt Compression Test API",
-      "version": "v1.0",
-      "context": "/compress-test",
-      "upstream": {
-        "main": {
-          "url": "http://sample-backend:5000"
-        }
-      },
-      "operations": [
-        {
-          "method": "POST",
-          "path": "/post",
-          "policies": [
-            {
-              "name": "prompt-compression",
-              "version": "v0",
-              "params": {
-                "compressionRatio": 0.5,
-                "jsonPath": "$.messages[-1].content",
-                "minInputTokens": 50,
-                "preserveCodeBlocks": true,
-                "preserveJson": true,
-                "domainTerms": ["reinforcement", "neural", "backpropagation"]
-              }
-            }
-          ]
-        }
-      ]
-    }
-  }' | jq .status
-
-# Then send a request — the domain terms will be preserved even under heavy compression
-curl -s -X POST http://localhost:8080/compress-test/post \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4",
-    "messages": [
-      {
-        "role": "user",
-        "content": "Artificial intelligence and machine learning have revolutionized the way we approach complex problems in software engineering. Deep learning uses neural networks with multiple layers to process information using backpropagation algorithms. Reinforcement learning trains agents to make optimal decisions through trial and error in dynamic environments and complex systems."
-      }
-    ]
-  }' | jq '.body | fromjson | .messages[-1].content'
+POST|/gemini/chat/completions|*
+  - wso2_apip_sys_analytics v0
+  - basic-ratelimit v0
+  - regex-guardrail v0
+  - prompt-compression v0
+POST|/gemini-provider/chat/completions|*
+  - wso2_apip_sys_analytics v0
+  - set-headers v0
+  - log-message v0
+  - modify-headers v0
+POST|/compress-test/post|*
+  - wso2_apip_sys_analytics v0
+  - prompt-compression v0
+...
 ```
 
-**Observe:** The words "reinforcement", "neural", and "backpropagation" will be present in the compressed output.
+### 9.2 xDS Sync Status
 
----
-
-### 4.5 Test HTTPS Endpoint
 ```bash
-# -k skips TLS certificate verification (self-signed cert in dev)
-curl -sk -X POST https://localhost:8443/compress-test/post \
-  -H "Content-Type: application/json" \
-  -d @/tmp/test-prompt-long.json | jq '.headers["Content-Length"]'
+curl -s http://localhost:9002/xds_sync_status | python3 -m json.tool
 ```
 
----
+### 9.3 Envoy Stats — ext_proc (Policy Engine)
 
-### 4.6 View Full Response (Headers + Body)
-```bash
-curl -v -X POST http://localhost:8080/compress-test/post \
-  -H "Content-Type: application/json" \
-  -d @/tmp/test-prompt-long.json 2>&1
-```
-
----
-
-## 5. Policy Engine Admin
-
-### 5.1 Policy Engine Health
-```bash
-curl -s http://localhost:9002/health | jq
-```
-
-### 5.2 Config Dump — View All Routes and Policies
-```bash
-curl -s http://localhost:9002/config_dump | jq
-```
-
-**Useful for verifying:**
-- A route exists with `route_key: "POST|/compress-test/post|*"`
-- `requires_request_body: true` is set
-- The policy chain contains the correct policies and parameters
-
-### 5.3 xDS Sync Status
-```bash
-curl -s http://localhost:9002/xds_sync_status | jq
-```
-
----
-
-## 6. Envoy Admin
-
-### 6.1 Envoy Config Dump (Full)
-```bash
-curl -s http://localhost:9901/config_dump | jq . | head -100
-```
-
-### 6.2 Envoy Stats
 ```bash
 curl -s http://localhost:9901/stats | grep ext_proc
 ```
 
-### 6.3 Envoy Clusters
+### 9.4 Envoy Stats — Upstream Cluster (Gemini)
+
 ```bash
-curl -s http://localhost:9901/clusters | grep -E "upstream|compress"
+curl -s http://localhost:9901/stats | grep "gemini"
 ```
 
-### 6.4 Envoy Listeners
+### 9.5 Envoy Config Dump (Routes)
+
 ```bash
-curl -s "http://localhost:9901/config_dump?resource=dynamic_listeners" | jq '.configs[].dynamic_listeners[].name'
+curl -s "http://localhost:9901/config_dump?resource=dynamic_route_configs" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d, indent=2))" \
+  | head -60
 ```
 
 ---
 
-## 7. Postman Collection
+## 10. API Key Management (for REST APIs with api-key-auth policy)
 
-To import into Postman, create a new collection with these environment variables:
+### 10.1 Create an API Key
 
-| Variable | Value |
-|---|---|
-| `controller_url` | `http://localhost:9090` |
-| `runtime_url` | `http://localhost:8080` |
-| `policy_engine_url` | `http://localhost:9002` |
-| `envoy_admin_url` | `http://localhost:9901` |
-| `api_id` | `prompt-compression-test` |
-| `controller_user` | `admin` |
-| `controller_pass` | `admin` |
+```bash
+curl -s -u admin:admin \
+  -X POST http://localhost:9090/apis/prompt-compression-test/api-keys \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-apikey-create.json | python3 -m json.tool
+```
 
-Then use `{{controller_url}}/apis` etc. in your requests.
+Generate payload:
+```python
+import json
+with open("/tmp/gw-apikey-create.json", "w") as f:
+    json.dump({"name": "my-test-key"}, f)
+```
 
-Set the **Authorization** tab on the collection root to:
-- Type: `Basic Auth`
-- Username: `{{controller_user}}`
-- Password: `{{controller_pass}}`
+Save the `key` value from the response for use in requests.
+
+### 10.2 List API Keys
+
+```bash
+curl -s -u admin:admin \
+  http://localhost:9090/apis/prompt-compression-test/api-keys | python3 -m json.tool
+```
+
+### 10.3 Regenerate API Key
+
+```bash
+curl -s -u admin:admin \
+  -X POST http://localhost:9090/apis/prompt-compression-test/api-keys/my-test-key/regenerate \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-apikey-regen.json | python3 -m json.tool
+```
+
+Generate payload: `python3 -c "import json; open('/tmp/gw-apikey-regen.json','w').write('{}')"`
+
+### 10.4 Revoke API Key
+
+```bash
+curl -s -u admin:admin \
+  -X DELETE http://localhost:9090/apis/prompt-compression-test/api-keys/my-test-key \
+  | python3 -m json.tool
+```
 
 ---
 
-## 8. Quick Smoke Test Script
+## 11. Full Smoke Test Script
 
-Run this sequence to verify the full gateway stack is working:
+Save as `smoke-test.sh`, run with `bash smoke-test.sh`:
 
 ```bash
 #!/usr/bin/env bash
 set -e
+echo "Generating payload files..."
+python3 /tmp/gw-gen.py
 
-echo "=== 1. Controller Health ==="
-curl -sf http://localhost:9090/health | jq .
+echo ""
+echo "=== 1. Health ==="
+curl -sf http://localhost:9090/health
+echo ""
+curl -sf http://localhost:9002/health
+echo ""
 
-echo "=== 2. Policy Engine Health ==="
-curl -sf http://localhost:9002/health | jq .
+echo ""
+echo "=== 2. List LLM Providers and Proxies ==="
+curl -sf -u admin:admin http://localhost:9090/llm-providers | python3 -c "import sys,json; d=json.load(sys.stdin); print('Providers:', [p['id'] for p in d['providers']])"
+curl -sf -u admin:admin http://localhost:9090/llm-proxies    | python3 -c "import sys,json; d=json.load(sys.stdin); print('Proxies  :', [p['id'] for p in d['proxies']])"
 
-echo "=== 3. List APIs ==="
-curl -sf -u admin:admin http://localhost:9090/apis | jq '.apis[].id'
-
-echo "=== 4. Prompt Compression — Long Input ==="
-RESPONSE=$(curl -sf -X POST http://localhost:8080/compress-test/post \
+echo ""
+echo "=== 3. Simple LLM Call (gemini-2.5-flash) ==="
+curl -sf -X POST http://localhost:8080/gemini/chat/completions \
   -H "Content-Type: application/json" \
-  -d @/tmp/test-prompt-long.json)
+  -d @/tmp/gw-simple.json \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Answer:', d['choices'][0]['message']['content'])"
 
-ORIGINAL=$(echo '{"model":"gpt-4","messages":[{"role":"user","content":"placeholder"}]}' | wc -c)
-COMPRESSED=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['body']))")
-echo "Body sent to upstream: ${COMPRESSED} bytes (original request: $(wc -c < /tmp/test-prompt-long.json) bytes)"
-echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); body=json.loads(d['body']); print('Compressed content:', body['messages'][-1]['content'][:120], '...')"
+echo ""
+echo "=== 4. Regex Guardrail — BLOCK (bomb) ==="
+BLOCKED=$(curl -sf -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-guardrail-block.json)
+echo "$BLOCKED" | python3 -c "import sys,json; d=json.load(sys.stdin); print('Action:', d['message']['action'])"
 
-echo "=== 5. Prompt Compression — Short Input (no compression) ==="
+echo ""
+echo "=== 5. Regex Guardrail — ALLOW (safe content) ==="
+curl -sf -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-guardrail-allow.json \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Response preview:', d['choices'][0]['message']['content'][:100])"
+
+echo ""
+echo "=== 6. Prompt Compression — LLM Route ==="
+curl -sf -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-long-prompt.json > /tmp/gw-long-resp.json
+python3 -c "
+import json
+r = json.load(open('/tmp/gw-long-resp.json'))
+u = r.get('usage', {})
+print(f'Prompt tokens Gemini received: {u.get(\"prompt_tokens\")} (original was ~169, compression saved ~36%)')
+"
+
+echo ""
+echo "=== 7. Prompt Compression — Python Policy (/compress-test) ==="
 curl -sf -X POST http://localhost:8080/compress-test/post \
   -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4","messages":[{"role":"user","content":"What is the capital of France?"}]}' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); body=json.loads(d['body']); print('Content unchanged:', body['messages'][-1]['content'])"
+  -d @/tmp/gw-compress-test.json > /tmp/gw-compress-resp.json
+python3 -c "
+import json
+orig = json.load(open('/tmp/gw-compress-test.json'))
+resp = json.load(open('/tmp/gw-compress-resp.json'))
+orig_c = orig['messages'][-1]['content']
+comp_c = json.loads(resp['body'])['messages'][-1]['content']
+print(f'Original: {len(orig_c)} chars  Compressed: {len(comp_c)} chars  Reduction: {100*(1-len(comp_c)/len(orig_c)):.1f}%')
+"
 
-echo "=== All checks passed ==="
+echo ""
+echo "=== 8. Rate Limit Headers ==="
+curl -si -X POST http://localhost:8080/gemini/chat/completions \
+  -H "Content-Type: application/json" \
+  -d @/tmp/gw-simple.json 2>&1 | grep -i "x-ratelimit"
+
+echo ""
+echo "All checks passed ✓"
 ```
-
-Save as `smoke-test.sh`, then run: `chmod +x smoke-test.sh && ./smoke-test.sh`
