@@ -21,9 +21,9 @@ post:
       content:
         application/json:
           # gpt-3.5-turbo embedded price: input=5e-7, output=1.5e-6
-          # Custom override price: input=1e-5, output=3e-5
+          # Custom override: input=2e-7, output=5e-7 (~60% negotiated discount)
           # Usage: 100 prompt + 50 completion
-          # WITH override: (100*1e-5) + (50*3e-5) = 1e-3 + 1.5e-3 = 0.0025000000
+          # WITH override: (100*2e-7) + (50*5e-7) = 2e-5 + 2.5e-5 = 0.0000450000
           # WITHOUT override (embedded): (100*5e-7) + (50*1.5e-6) = 5e-5 + 7.5e-5 = 0.0001250000
           example:
             id: resp-gpt35-001

@@ -264,11 +264,11 @@ Feature: LLM Cost System Policy
     Then the response status code should be 200
 
   Scenario: Custom pricing — existing model price overridden via pricing file
-    # Model: gpt-3.5-turbo — overridden in custom pricing file
+    # Model: gpt-3.5-turbo — overridden with a negotiated lower rate
     # Embedded price: input=5e-7/token, output=1.5e-6/token
-    # Custom override: input=1e-5/token, output=3e-5/token
+    # Custom override: input=2e-7/token, output=5e-7/token (~60% discount)
     # Usage: 100 prompt + 50 completion
-    # WITH override: (100*1e-5) + (50*3e-5) = 1e-3 + 1.5e-3 = 0.0025000000
+    # WITH override: (100*2e-7) + (50*5e-7) = 2e-5 + 2.5e-5 = 0.0000450000
     # WITHOUT override: (100*5e-7) + (50*1.5e-6) = 5e-5 + 7.5e-5 = 0.0001250000
     When I create this LLM provider template:
       """
@@ -308,7 +308,7 @@ Feature: LLM Cost System Policy
       {"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 200
-    And the response header "x-llm-cost" should be "0.0025000000"
+    And the response header "x-llm-cost" should be "0.0000450000"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-custom-override-provider"
     Then the response status code should be 200
