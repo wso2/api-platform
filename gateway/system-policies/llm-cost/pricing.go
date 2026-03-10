@@ -138,6 +138,15 @@ type Usage struct {
 	CompletionTokens int64
 	TotalTokens      int64
 
+	// InputTokensForTiering is the token count used to decide which pricing
+	// tier applies (>128k or >200k). Providers set this explicitly because the
+	// threshold definition varies:
+	//   - Anthropic: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+	//     (output tokens are excluded; all input categories count toward the threshold)
+	//   - Others: total prompt tokens (PromptTokens)
+	// If zero, genericCalculateCost falls back to TotalTokens.
+	InputTokensForTiering int64
+
 	// Cached / reasoning tokens
 	CachedReadTokens int64
 	CacheWriteTokens int64
@@ -231,6 +240,14 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		totalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
 
+	// Use provider-specific input token count for tier decisions when available.
+	// Anthropic defines the 200k threshold as input_tokens + cache tokens (no outputs).
+	// Other providers fall back to totalTokens.
+	tierTokens := usage.InputTokensForTiering
+	if tierTokens == 0 {
+		tierTokens = totalTokens
+	}
+
 	// Select tiered rates based on total token count.
 	inputRate := pricing.InputCostPerToken
 	outputRate := pricing.OutputCostPerToken
@@ -238,7 +255,7 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	cacheWriteRate := pricing.CacheCreationInputTokenCost
 
 	switch {
-	case totalTokens > 200_000 && pricing.InputCostPerTokenAbove200k > 0:
+	case tierTokens > 200_000 && pricing.InputCostPerTokenAbove200k > 0:
 		inputRate = pricing.InputCostPerTokenAbove200k
 		outputRate = pricing.OutputCostPerTokenAbove200k
 		{
@@ -247,7 +264,7 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		if pricing.CacheCreationInputTokenCostAbove200k > 0 {
 			cacheWriteRate = pricing.CacheCreationInputTokenCostAbove200k
 		}
-	case totalTokens > 128_000 && pricing.InputCostPerTokenAbove128k > 0:
+	case tierTokens > 128_000 && pricing.InputCostPerTokenAbove128k > 0:
 		inputRate = pricing.InputCostPerTokenAbove128k
 		outputRate = pricing.OutputCostPerTokenAbove128k
 	}

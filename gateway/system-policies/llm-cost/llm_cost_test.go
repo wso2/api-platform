@@ -276,6 +276,67 @@ func TestAnthropicCalculator_Cost_WithCacheTokens(t *testing.T) {
 	}
 }
 
+func TestAnthropicCalculator_Cost_LongContextTiering(t *testing.T) {
+	// claude-sonnet-4-6: ≤200k in=3e-6, out=1.5e-5; >200k in=6e-6, out=2.25e-5
+	pricing, ok := lookupPricing("claude-sonnet-4-6")
+	if !ok {
+		t.Skip("claude-sonnet-4-6 not in pricing map")
+	}
+
+	// 150k input_tokens + 100k cache_read = 250k total input → should hit >200k tier.
+	// Output tokens (5k) must NOT affect tier selection per Anthropic's definition.
+	usage := Usage{
+		PromptTokens:          150_000,
+		CompletionTokens:      5_000,
+		TotalTokens:           155_000,
+		CachedReadTokens:      100_000,
+		InputTokensForTiering: 250_000, // 150k input + 100k cache_read
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// At >200k rates: in=6e-6, out=2.25e-5, cache_read_above200k=6e-7
+	regularPrompt := int64(150_000 - 100_000) // 50k regular prompt tokens
+	expected := float64(regularPrompt)*6e-6 + float64(100_000)*6e-7 + float64(5_000)*2.25e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+
+	// Sanity check: same usage WITHOUT InputTokensForTiering set should use standard rates.
+	usageStd := Usage{
+		PromptTokens:     150_000,
+		CompletionTokens: 5_000,
+		TotalTokens:      155_000,
+		CachedReadTokens: 100_000,
+	}
+	costStd := genericCalculateCost(usageStd, pricing)
+	expectedStd := float64(50_000)*3e-6 + float64(100_000)*3e-7 + float64(5_000)*1.5e-5
+	if !almostEqual(costStd, expectedStd) {
+		t.Errorf("standard tier: expected %.10f, got %.10f", expectedStd, costStd)
+	}
+}
+
+func TestAnthropicCalculator_Normalize_SetsInputTokensForTiering(t *testing.T) {
+	// Verify that Normalize correctly sets InputTokensForTiering to
+	// input_tokens + cache_creation_input_tokens + cache_read_input_tokens.
+	body := []byte(`{
+		"usage": {
+			"input_tokens": 150000,
+			"output_tokens": 5000,
+			"cache_creation_input_tokens": 20000,
+			"cache_read_input_tokens": 80000
+		}
+	}`)
+	c := &AnthropicCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	// 150000 + 20000 + 80000 = 250000
+	if u.InputTokensForTiering != 250_000 {
+		t.Errorf("InputTokensForTiering: got %d, want 250000", u.InputTokensForTiering)
+	}
+}
+
 func TestAnthropicCalculator_Adjust_GeoAndSpeed(t *testing.T) {
 	// claude-opus-4-6 has provider_specific_entry: {us: 1.1, fast: 6.0}
 	pricing, ok := lookupPricing("claude-opus-4-6")

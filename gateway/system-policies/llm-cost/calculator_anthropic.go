@@ -63,14 +63,19 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 
 	u := resp.Usage
 	total := u.InputTokens + u.OutputTokens
+	// Anthropic's 200k tier threshold is based on all input token categories:
+	// input_tokens + cache_creation_input_tokens + cache_read_input_tokens.
+	// Output tokens do not affect the tier selection.
+	inputForTiering := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
 	return Usage{
-		PromptTokens:     u.InputTokens,
-		CompletionTokens: u.OutputTokens,
-		TotalTokens:      total,
-		CachedReadTokens: u.CacheReadInputTokens,
-		CacheWriteTokens: u.CacheCreationInputTokens,
-		InferenceGeo:     u.InferenceGeo,
-		Speed:            speed,
+		PromptTokens:          u.InputTokens,
+		CompletionTokens:      u.OutputTokens,
+		TotalTokens:           total,
+		InputTokensForTiering: inputForTiering,
+		CachedReadTokens:      u.CacheReadInputTokens,
+		CacheWriteTokens:      u.CacheCreationInputTokens,
+		InferenceGeo:          u.InferenceGeo,
+		Speed:                 speed,
 	}, nil
 }
 
