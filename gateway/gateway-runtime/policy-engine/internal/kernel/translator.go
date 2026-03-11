@@ -261,6 +261,22 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		})
 	}
 
+	// Always pass api_context and upstream_base_path in dynamic metadata when path rewrite is requested
+	// This allows the Lua filter to properly compute the final upstream path
+	if pathMutation != nil {
+		extProcNS := constants.ExtProcFilterName
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		// Only set if not already set by UpstreamName handling above
+		if _, ok := dynamicMetadata[extProcNS]["api_context"]; !ok {
+			dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		}
+		if _, ok := dynamicMetadata[extProcNS]["upstream_base_path"]; !ok {
+			dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+		}
+	}
+
 	// Remove any content-length headers from policy operations if we're managing it ourselves
 	if bodyModified {
 		delete(headerOps, "content-length")
