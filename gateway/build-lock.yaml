@@ -111,3 +111,6 @@ policies:
     - name: xml-to-json
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0
+    - name: subscription-validation
+      version: v0.1.0
+      gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0
