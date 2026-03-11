@@ -190,6 +190,14 @@ func stringSlicePtr(values []string) *[]string {
 	return &values
 }
 
+// stringSliceValue returns the slice value or nil slice if the pointer is nil.
+func stringSliceValue(ptr *[]string) []string {
+	if ptr == nil {
+		return nil
+	}
+	return *ptr
+}
+
 // TimePtrIfNotZero returns a pointer for non-zero timestamps.
 func TimePtrIfNotZero(value time.Time) *time.Time {
 	if value.IsZero() {
