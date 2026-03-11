@@ -28,9 +28,18 @@ paths:
     $ref: ./paths/anthropic/messages_cache_1hr.yaml
   /anthropic/v1/messages-web-search:
     $ref: ./paths/anthropic/messages_web_search.yaml
+  /anthropic/v1/messages-cache-read:
+    $ref: ./paths/anthropic/messages_cache_read.yaml
   # Mock Gemini native
   /gemini/v1/models/{model}:generateContent:
     $ref: ./paths/gemini/generate_content.yaml
+  /gemini/v1/cached/{model}:generateContent:
+    $ref: ./paths/gemini/generate_content_cached.yaml
+  /gemini/v1/thinking/{model}:generateContent:
+    $ref: ./paths/gemini/generate_content_thinking.yaml
+  # Mock OpenAI with prompt caching
+  /openai/v1/chat-cached:
+    $ref: ./paths/openai/chat_cached.yaml
   # Mock unknown LLM (no pricing data)
   /unknown-llm/v1/chat:
     $ref: ./paths/unknown-llm/chat.yaml

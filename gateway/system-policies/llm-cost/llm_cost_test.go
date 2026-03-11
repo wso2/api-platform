@@ -750,28 +750,53 @@ func TestGeminiCalculator_Cost_BelowTier(t *testing.T) {
 }
 
 func TestGeminiCalculator_Cost_Above128k(t *testing.T) {
-	// gemini-1.5-flash above 128k: input=1.5e-7, output=6e-7
+	// gemini-1.5-flash: tiering is triggered by PROMPT tokens > 128k (not total).
+	// prompt=150k > 128k → above-128k rates apply.
 	pricing, ok := lookupPricing("gemini/gemini-1.5-flash")
 	if !ok {
 		t.Skip("gemini/gemini-1.5-flash not in pricing map")
 	}
-	usage := Usage{PromptTokens: 100_000, CompletionTokens: 50_000, TotalTokens: 150_000}
+	usage := Usage{PromptTokens: 150_000, CompletionTokens: 50_000, TotalTokens: 200_000}
 	cost := genericCalculateCost(usage, pricing)
-	expected := 100_000*1.5e-7 + 50_000*6e-7
+	expected := 150_000*1.5e-7 + 50_000*6e-7
 	if !almostEqual(cost, expected) {
 		t.Errorf("expected %.10f (above-128k rate), got %.10f", expected, cost)
 	}
 }
 
+// TestGeminiCalculator_Cost_TotalAbove128k_PromptBelow verifies the key distinction:
+// tiering uses PROMPT tokens only. When prompt < 128k the base rate applies even
+// if total tokens > 128k. This was a bug before (total was used as the threshold).
+func TestGeminiCalculator_Cost_TotalAbove128k_PromptBelow(t *testing.T) {
+	// prompt=80k < 128k, completion=60k → total=140k > 128k — base rates must apply.
+	pricing, ok := lookupPricing("gemini/gemini-1.5-flash")
+	if !ok {
+		t.Skip("gemini/gemini-1.5-flash not in pricing map")
+	}
+	usage := Usage{PromptTokens: 80_000, CompletionTokens: 60_000, TotalTokens: 140_000}
+	cost := genericCalculateCost(usage, pricing)
+	// Base rates (prompt below 128k threshold)
+	expected := 80_000*7.5e-8 + 60_000*3e-7
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f (base rate, prompt below 128k), got %.10f", expected, cost)
+	}
+	// Sanity: tiered rate would give a different result
+	tieredWrong := 80_000*1.5e-7 + 60_000*6e-7
+	if almostEqual(cost, tieredWrong) {
+		t.Errorf("got tiered rate when prompt is below threshold — regression!")
+	}
+}
+
 func TestGeminiCalculator_Cost_Above200k(t *testing.T) {
-	// gemini-2.5-pro above 200k: input=2.5e-6, output=1.5e-5
+	// gemini-2.5-pro: tiering is triggered by PROMPT tokens > 200k.
+	// prompt=210k > 200k → above-200k rates apply.
 	pricing, ok := lookupPricing("gemini/gemini-2.5-pro")
 	if !ok {
 		t.Skip("gemini/gemini-2.5-pro not in pricing map")
 	}
-	usage := Usage{PromptTokens: 150_000, CompletionTokens: 75_000, TotalTokens: 225_000}
+	usage := Usage{PromptTokens: 210_000, CompletionTokens: 50_000, TotalTokens: 260_000}
 	cost := genericCalculateCost(usage, pricing)
-	expected := 150_000*2.5e-6 + 75_000*1.5e-5
+	expected := 210_000*2.5e-6 + 50_000*1.5e-5
 	if !almostEqual(cost, expected) {
 		t.Errorf("expected %.10f (above-200k rate), got %.10f", expected, cost)
 	}
@@ -779,8 +804,9 @@ func TestGeminiCalculator_Cost_Above200k(t *testing.T) {
 
 func TestGeminiCalculator_Adjust_PassThrough(t *testing.T) {
 	c := &GeminiCalculator{}
-	if c.Adjust(1.23, Usage{}, ModelPricing{}) != 1.23 {
-		t.Error("Adjust should be a pass-through for Gemini")
+	// No grounding queries → cost passes through unchanged
+	if c.Adjust(1.23, Usage{GeminiWebSearchRequests: 0}, ModelPricing{Provider: "gemini"}) != 1.23 {
+		t.Error("Adjust with no grounding queries should be a pass-through")
 	}
 }
 
@@ -1031,8 +1057,39 @@ func TestGeminiCalculator_Normalize_ToolUsePromptTokens(t *testing.T) {
 	}
 }
 
-// TestGeminiCalculator_Cost_ToolUse_TokenFallback verifies that when the model
-// has no WebSearchCostPerRequest, tool use tokens are billed at the standard input rate.
+// TestGeminiCalculator_Normalize_ToolUsePromptTokensDetails verifies that
+// toolUsePromptTokensDetails is parsed without error and does NOT alter the
+// billing calculation — all tool-use tokens are billed as a unit via
+// ToolUsePromptTokens (matching LiteLLM's behaviour).
+func TestGeminiCalculator_Normalize_ToolUsePromptTokensDetails(t *testing.T) {
+	// Response with both toolUsePromptTokenCount and its per-modality breakdown.
+	// The billing should use only the aggregate count (25), not split by modality.
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 100,
+			"candidatesTokenCount": 50,
+			"totalTokenCount": 150,
+			"toolUsePromptTokenCount": 25,
+			"toolUsePromptTokensDetails": [
+				{"modality": "TEXT",  "tokenCount": 15},
+				{"modality": "AUDIO", "tokenCount": 10}
+			]
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Aggregate count is preserved; per-modality breakdown doesn't split the value
+	if u.ToolUsePromptTokens != 25 {
+		t.Errorf("expected ToolUsePromptTokens=25, got %d", u.ToolUsePromptTokens)
+	}
+	// Base token counts are unaffected
+	if u.PromptTokens != 100 || u.CompletionTokens != 50 {
+		t.Errorf("unexpected base token counts: %+v", u)
+	}
+}
 func TestGeminiCalculator_Cost_ToolUse_TokenFallback(t *testing.T) {
 	pricing, ok := lookupPricing("gemini/gemini-2.0-flash")
 	if !ok {
@@ -1085,6 +1142,489 @@ func TestGeminiCalculator_Cost_ToolUse_FixedFee(t *testing.T) {
 	tokenBased := float64(100)*1e-6 + float64(50)*2e-6 + float64(25)*1e-6
 	if almostEqual(cost, tokenBased) {
 		t.Errorf("expected flat fee to differ from per-token billing")
+	}
+}
+
+// TestGeminiCalculator_Normalize_TrafficType verifies that trafficType values
+// are correctly mapped to ServiceTier.
+func TestGeminiCalculator_Normalize_TrafficType(t *testing.T) {
+	tests := []struct {
+		trafficType  string
+		expectedTier string
+	}{
+		{"ON_DEMAND_PRIORITY", "priority"},
+		{"FLEX", "flex"},
+		{"BATCH", "flex"},
+		{"ON_DEMAND", ""},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		body, _ := json.Marshal(map[string]any{
+			"usageMetadata": map[string]any{
+				"promptTokenCount":     100,
+				"candidatesTokenCount": 50,
+				"totalTokenCount":      150,
+				"trafficType":          tc.trafficType,
+			},
+		})
+		c := &GeminiCalculator{}
+		u, err := c.Normalize(body, nil)
+		if err != nil {
+			t.Fatalf("trafficType=%q: unexpected error: %v", tc.trafficType, err)
+		}
+		if u.ServiceTier != tc.expectedTier {
+			t.Errorf("trafficType=%q: expected ServiceTier=%q, got %q",
+				tc.trafficType, tc.expectedTier, u.ServiceTier)
+		}
+	}
+}
+
+// TestGeminiCalculator_Cost_Priority verifies that ON_DEMAND_PRIORITY requests
+// are billed at _priority rate variants instead of standard rates.
+func TestGeminiCalculator_Cost_Priority(t *testing.T) {
+	p := ModelPricing{
+		InputCostPerToken:               1e-6,
+		OutputCostPerToken:              2e-6,
+		InputCostPerTokenPriority:       3e-6, // 3× standard input
+		OutputCostPerTokenPriority:      6e-6, // 3× standard output
+		CacheReadInputTokenCostPriority: 0.5e-6,
+	}
+	usage := Usage{
+		PromptTokens:     100,
+		CompletionTokens: 50,
+		TotalTokens:      150,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, p)
+	expected := float64(100)*3e-6 + float64(50)*6e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+	// Confirm it differs from standard rates
+	standardCost := float64(100)*1e-6 + float64(50)*2e-6
+	if almostEqual(cost, standardCost) {
+		t.Errorf("priority cost should differ from standard cost")
+	}
+}
+
+// TestGeminiCalculator_Cost_Priority_Above200k verifies >200k tiered priority rates.
+func TestGeminiCalculator_Cost_Priority_Above200k(t *testing.T) {
+	p := ModelPricing{
+		InputCostPerToken:                   1e-6,
+		OutputCostPerToken:                  2e-6,
+		InputCostPerTokenAbove200k:          1.5e-6,
+		OutputCostPerTokenAbove200k:         3e-6,
+		InputCostPerTokenPriority:           3e-6,
+		OutputCostPerTokenPriority:          6e-6,
+		InputCostPerTokenAbove200kPriority:  4e-6,
+		OutputCostPerTokenAbove200kPriority: 8e-6,
+	}
+	usage := Usage{
+		PromptTokens:     210_000,
+		CompletionTokens: 50,
+		TotalTokens:      210_050,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, p)
+	// Tiering uses promptTokens (210k > 200k threshold) → above_200k_priority rates
+	expected := float64(210_000)*4e-6 + float64(50)*8e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Cost_Priority_AudioRate verifies that audio input uses the
+// standard audio rate even when ServiceTier == "priority". LiteLLM does not apply
+// the _priority suffix to audio token rates.
+func TestGeminiCalculator_Cost_Priority_AudioRate(t *testing.T) {
+	p := ModelPricing{
+		InputCostPerToken:              1e-6,
+		OutputCostPerToken:             2e-6,
+		InputCostPerAudioToken:         1.5e-6,
+		InputCostPerTokenPriority:      3e-6,
+		OutputCostPerTokenPriority:     6e-6,
+		InputCostPerAudioTokenPriority: 4e-6, // stored in pricing but NOT applied (LiteLLM parity)
+	}
+	usage := Usage{
+		PromptTokens:     100,
+		AudioInputTokens: 50,
+		CompletionTokens: 20,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, p)
+	// text prompt: (100-50) × 3e-6 (priority), audio: 50 × 1.5e-6 (standard!), completion: 20 × 6e-6 (priority)
+	expected := float64(100-50)*3e-6 + float64(50)*1.5e-6 + float64(20)*6e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Normalize_WebSearchRequests verifies that
+// groundingMetadata.webSearchQueries are counted across candidates.
+func TestGeminiCalculator_Normalize_WebSearchRequests(t *testing.T) {
+	body := []byte(`{
+		"candidates": [
+			{"groundingMetadata": {"webSearchQueries": ["what is Go", "golang specs"]}},
+			{"groundingMetadata": {"webSearchQueries": ["goroutines"]}}
+		],
+		"usageMetadata": {
+			"promptTokenCount": 100,
+			"candidatesTokenCount": 50,
+			"totalTokenCount": 150
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.GeminiWebSearchRequests != 3 {
+		t.Errorf("expected GeminiWebSearchRequests=3, got %d", u.GeminiWebSearchRequests)
+	}
+}
+
+// TestGeminiCalculator_Adjust_Grounding_GoogleAI verifies per-query grounding fee
+// for Google AI Studio (provider="gemini").
+func TestGeminiCalculator_Adjust_Grounding_GoogleAI(t *testing.T) {
+	p := ModelPricing{Provider: "gemini"}
+	usage := Usage{GeminiWebSearchRequests: 3}
+	c := &GeminiCalculator{}
+	cost := c.Adjust(0.001, usage, p)
+	// 0.001 base + 3 × $0.035 grounding
+	expected := 0.001 + 3*0.035
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.6f, got %.6f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Adjust_Grounding_VertexAI verifies flat grounding fee
+// for Vertex AI (provider="vertex_ai*"), regardless of query count.
+func TestGeminiCalculator_Adjust_Grounding_VertexAI(t *testing.T) {
+	p := ModelPricing{Provider: "vertex_ai"}
+	usage := Usage{GeminiWebSearchRequests: 5}
+	c := &GeminiCalculator{}
+	cost := c.Adjust(0.001, usage, p)
+	// 0.001 base + flat $0.035 (Vertex AI doesn't multiply by query count)
+	expected := 0.001 + 0.035
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.6f, got %.6f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Adjust_Grounding_NoQueries verifies no extra cost when
+// there are no grounding queries.
+func TestGeminiCalculator_Adjust_Grounding_NoQueries(t *testing.T) {
+	p := ModelPricing{Provider: "gemini"}
+	usage := Usage{GeminiWebSearchRequests: 0}
+	c := &GeminiCalculator{}
+	cost := c.Adjust(0.001, usage, p)
+	if !almostEqual(cost, 0.001) {
+		t.Errorf("expected 0.001 (no grounding), got %.6f", cost)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Azure AI calculator
+// ---------------------------------------------------------------------------
+
+// TestGeminiCalculator_Cost_CacheRead_Above200k verifies that cached tokens use
+// the tiered cache read rate (cache_read_input_token_cost_above_200k_tokens)
+// when the prompt is above the 200k threshold.
+func TestGeminiCalculator_Cost_CacheRead_Above200k(t *testing.T) {
+	// gemini/gemini-2.5-pro: has both >200k input rate AND >200k cache read rate
+	pricing, ok := lookupPricing("gemini/gemini-2.5-pro")
+	if !ok {
+		t.Skip("gemini/gemini-2.5-pro not in pricing map")
+	}
+	if pricing.CacheReadInputTokenCostAbove200k == 0 {
+		t.Skip("model has no above-200k cache read rate")
+	}
+
+	// prompt=210k (above 200k threshold), with 50k cached tokens
+	usage := Usage{
+		PromptTokens:     210_000,
+		CompletionTokens: 1_000,
+		TotalTokens:      211_000,
+		CachedReadTokens: 50_000,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// 160k regular text tokens at above-200k input rate
+	// 50k cached tokens at above-200k cache read rate
+	// 1k completion at above-200k output rate
+	expectedInput := float64(160_000) * pricing.InputCostPerTokenAbove200k
+	expectedCache := float64(50_000) * pricing.CacheReadInputTokenCostAbove200k
+	expectedOutput := float64(1_000) * pricing.OutputCostPerTokenAbove200k
+	expected := expectedInput + expectedCache + expectedOutput
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+	// Sanity: base rate cache read would differ
+	baseRateCache := float64(160_000)*pricing.InputCostPerToken +
+		float64(50_000)*pricing.CacheReadInputTokenCost +
+		float64(1_000)*pricing.OutputCostPerToken
+	if almostEqual(cost, baseRateCache) {
+		t.Errorf("expected tiered rate to differ from base rate — regression!")
+	}
+}
+
+// TestGeminiCalculator_Cost_Priority_CacheRead verifies that cached tokens use
+// the priority cache read rate when ServiceTier == "priority".
+func TestGeminiCalculator_Cost_Priority_CacheRead(t *testing.T) {
+	p := ModelPricing{
+		InputCostPerToken:               1e-6,
+		OutputCostPerToken:              2e-6,
+		CacheReadInputTokenCost:         0.25e-6,
+		InputCostPerTokenPriority:       3e-6,
+		OutputCostPerTokenPriority:      6e-6,
+		CacheReadInputTokenCostPriority: 0.75e-6, // 3× standard cache read rate
+	}
+	usage := Usage{
+		PromptTokens:     1_000,
+		CompletionTokens: 200,
+		TotalTokens:      1_200,
+		CachedReadTokens: 500,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, p)
+	// regular text: (1000-500) × 3e-6, cache: 500 × 0.75e-6, output: 200 × 6e-6
+	expected := float64(500)*3e-6 + float64(500)*0.75e-6 + float64(200)*6e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+	// Confirm differs from standard rates
+	standard := float64(500)*1e-6 + float64(500)*0.25e-6 + float64(200)*2e-6
+	if almostEqual(cost, standard) {
+		t.Errorf("priority cost should differ from standard cost")
+	}
+}
+
+// TestGeminiCalculator_Normalize_CachedAudioInput verifies that cached audio
+// tokens from cacheTokensDetails are stored in CachedAudioInputTokens.
+func TestGeminiCalculator_Normalize_CachedAudioInput(t *testing.T) {
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 500,
+			"candidatesTokenCount": 100,
+			"totalTokenCount": 600,
+			"cachedContentTokenCount": 200,
+			"promptTokensDetails": [
+				{"modality": "TEXT",  "tokenCount": 300},
+				{"modality": "AUDIO", "tokenCount": 200}
+			],
+			"cacheTokensDetails": [
+				{"modality": "AUDIO", "tokenCount": 150}
+			]
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 200 raw audio - 150 cached = 50 non-cached audio input
+	if u.AudioInputTokens != 50 {
+		t.Errorf("expected AudioInputTokens=50, got %d", u.AudioInputTokens)
+	}
+	// 150 cached audio tokens tracked separately
+	if u.CachedAudioInputTokens != 150 {
+		t.Errorf("expected CachedAudioInputTokens=150, got %d", u.CachedAudioInputTokens)
+	}
+	// Total cached read tokens = 200 (the cachedContentTokenCount)
+	if u.CachedReadTokens != 200 {
+		t.Errorf("expected CachedReadTokens=200, got %d", u.CachedReadTokens)
+	}
+}
+
+// TestGeminiCalculator_Cost_CachedAudioRate verifies that cached audio tokens are
+// billed at the dedicated audio cache read rate (cache_read_input_token_cost_per_audio_token).
+func TestGeminiCalculator_Cost_CachedAudioRate(t *testing.T) {
+	p := ModelPricing{
+		InputCostPerToken:                    1e-6,
+		OutputCostPerToken:                   2e-6,
+		InputCostPerAudioToken:               5e-7,
+		CacheReadInputTokenCost:              2.5e-8, // text cache read rate
+		CacheReadInputTokenCostPerAudioToken: 5e-8,   // audio cache read rate (2× text)
+	}
+	usage := Usage{
+		PromptTokens:           500,
+		CompletionTokens:       100,
+		TotalTokens:            600,
+		CachedReadTokens:       200,
+		CachedAudioInputTokens: 150, // 150 of the 200 cached tokens are audio
+		AudioInputTokens:       50,  // 50 non-cached audio tokens
+	}
+	cost := genericCalculateCost(usage, p)
+	// text input: (500 - 200 - 50) = 250 × 1e-6
+	// non-cached audio: 50 × 5e-7
+	// text cached: (200-150)=50 × 2.5e-8
+	// audio cached: 150 × 5e-8
+	// output: 100 × 2e-6
+	expected := float64(250)*1e-6 +
+		float64(50)*5e-7 +
+		float64(50)*2.5e-8 +
+		float64(150)*5e-8 +
+		float64(100)*2e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+	// Confirm differs from billing all cached tokens at text rate
+	allTextCache := float64(250)*1e-6 + float64(50)*5e-7 + float64(200)*2.5e-8 + float64(100)*2e-6
+	if almostEqual(cost, allTextCache) {
+		t.Errorf("audio cache rate should produce different result from text-only cache rate")
+	}
+}
+
+// TestGeminiCalculator_Cost_CachedAudioRate_Fallback verifies that when no dedicated
+// audio cache rate is set, all cached tokens fall back to the standard cache read rate.
+func TestGeminiCalculator_Cost_CachedAudioRate_Fallback(t *testing.T) {
+	p := ModelPricing{
+		InputCostPerToken:       1e-6,
+		OutputCostPerToken:      2e-6,
+		CacheReadInputTokenCost: 2.5e-8,
+		// No CacheReadInputTokenCostPerAudioToken set
+	}
+	usage := Usage{
+		PromptTokens:           300,
+		CompletionTokens:       50,
+		TotalTokens:            350,
+		CachedReadTokens:       100,
+		CachedAudioInputTokens: 60,
+	}
+	cost := genericCalculateCost(usage, p)
+	// All 100 cached tokens at text rate (fallback)
+	// regular: (300-100)=200 × 1e-6, cache: 100 × 2.5e-8, output: 50 × 2e-6
+	expected := float64(200)*1e-6 + float64(100)*2.5e-8 + float64(50)*2e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_EndToEnd_Grounding verifies the full Normalize → genericCalculateCost
+// → Adjust pipeline for a response with grounding (web search queries).
+// This is critical because Adjust() adds grounding cost, but Cost_* tests bypass it
+// by calling genericCalculateCost directly.
+func TestGeminiCalculator_EndToEnd_Grounding(t *testing.T) {
+	pricing, ok := lookupPricing("gemini/gemini-2.0-flash")
+	if !ok {
+		t.Skip("gemini/gemini-2.0-flash not in pricing map")
+	}
+
+	// Response with 2 grounding queries in candidates[0].groundingMetadata
+	body := []byte(`{
+		"modelVersion": "gemini-2.0-flash",
+		"candidates": [
+			{
+				"groundingMetadata": {
+					"webSearchQueries": ["golang generics", "go 1.18 features"]
+				}
+			}
+		],
+		"usageMetadata": {
+			"promptTokenCount": 100,
+			"candidatesTokenCount": 50,
+			"totalTokenCount": 150
+		}
+	}`)
+
+	c := &GeminiCalculator{}
+	usage, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	if usage.GeminiWebSearchRequests != 2 {
+		t.Errorf("expected GeminiWebSearchRequests=2, got %d", usage.GeminiWebSearchRequests)
+	}
+
+	baseCost := genericCalculateCost(usage, pricing)
+	finalCost := c.Adjust(baseCost, usage, pricing)
+
+	// Google AI Studio (provider=gemini): $0.035 × 2 queries on top of token cost
+	expectedGrounding := 2 * 0.035
+	expectedBase := float64(100)*pricing.InputCostPerToken + float64(50)*pricing.OutputCostPerToken
+	expected := expectedBase + expectedGrounding
+	if !almostEqual(finalCost, expected) {
+		t.Errorf("expected %.10f (%.10f base + %.10f grounding), got %.10f",
+			expected, expectedBase, expectedGrounding, finalCost)
+	}
+}
+
+// TestGeminiCalculator_EndToEnd_Priority verifies the full Normalize → Calculate
+// pipeline for a response with ON_DEMAND_PRIORITY trafficType.
+func TestGeminiCalculator_EndToEnd_Priority(t *testing.T) {
+	pricing, ok := lookupPricing("vertex_ai/gemini-3-flash-preview")
+	if !ok {
+		t.Skip("vertex_ai/gemini-3-flash-preview not in pricing map")
+	}
+	if pricing.InputCostPerTokenPriority == 0 {
+		t.Skip("model has no priority input rate")
+	}
+
+	body := []byte(`{
+		"modelVersion": "gemini-3-flash-preview",
+		"usageMetadata": {
+			"promptTokenCount": 1000,
+			"candidatesTokenCount": 500,
+			"totalTokenCount": 1500,
+			"trafficType": "ON_DEMAND_PRIORITY"
+		}
+	}`)
+
+	c := &GeminiCalculator{}
+	usage, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	if usage.ServiceTier != "priority" {
+		t.Errorf("expected ServiceTier=priority, got %q", usage.ServiceTier)
+	}
+
+	cost := genericCalculateCost(usage, pricing)
+	c.Adjust(cost, usage, pricing) // no grounding, just verifies no panic
+
+	expected := float64(1000)*pricing.InputCostPerTokenPriority +
+		float64(500)*pricing.OutputCostPerTokenPriority
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_EndToEnd_Thinking verifies the full Normalize → Calculate
+// pipeline for a thinking model response with exclusive thoughtsTokenCount.
+func TestGeminiCalculator_EndToEnd_Thinking(t *testing.T) {
+	// Use synthetic rates to keep the arithmetic clear
+	pricing := ModelPricing{
+		InputCostPerToken:           1e-6,
+		OutputCostPerToken:          2e-6,
+		OutputCostPerReasoningToken: 3e-6, // thinking billed at 3× output rate
+	}
+
+	// Exclusive case: prompt=100, candidates=80 (text), thoughts=20, total=200
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount":     100,
+			"candidatesTokenCount": 80,
+			"thoughtsTokenCount":   20,
+			"totalTokenCount":      200
+		}
+	}`)
+
+	c := &GeminiCalculator{}
+	usage, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	// Exclusive: completionTokens = 80+20 = 100, reasoningTokens = 20
+	if usage.CompletionTokens != 100 || usage.ReasoningTokens != 20 {
+		t.Errorf("unexpected usage: CompletionTokens=%d ReasoningTokens=%d",
+			usage.CompletionTokens, usage.ReasoningTokens)
+	}
+
+	cost := genericCalculateCost(usage, pricing)
+	// 100 prompt × 1e-6, 80 text output × 2e-6, 20 reasoning × 3e-6
+	expected := float64(100)*1e-6 + float64(80)*2e-6 + float64(20)*3e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
 	}
 }
 

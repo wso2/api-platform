@@ -16,14 +16,18 @@
 
 package llmcost
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // GeminiCalculator handles models with provider "gemini", "vertex_ai",
 // and the various "vertex_ai-*" subfamilies. Gemini uses a different response
 // field namespace ("usageMetadata") from OpenAI.
 //
-// Context-window tiering (>128k, >200k) is handled generically by
-// genericCalculateCost — no per-provider logic is needed here.
+// Context-window tiering (>128k, >200k) and service-tier priority rates are
+// handled generically by genericCalculateCost. Grounding cost is applied in
+// Adjust() because it uses a fixed per-query fee not captured in token rates.
 type GeminiCalculator struct{}
 
 // modalityTokenDetail is a single entry in Gemini's per-modality token arrays.
@@ -34,6 +38,14 @@ type modalityTokenDetail struct {
 
 func (c *GeminiCalculator) Normalize(responseBody []byte, _ []byte) (Usage, error) {
 	var resp struct {
+		// candidates array: used for groundingMetadata (web search queries)
+		Candidates []struct {
+			GroundingMetadata struct {
+				// WebSearchQueries is a list of search queries issued for grounding.
+				// Google AI Studio bills $0.035 per query; Vertex AI bills $0.035 flat.
+				WebSearchQueries []string `json:"webSearchQueries"`
+			} `json:"groundingMetadata"`
+		} `json:"candidates"`
 		UsageMetadata struct {
 			PromptTokenCount        int64 `json:"promptTokenCount"`
 			CandidatesTokenCount    int64 `json:"candidatesTokenCount"`
@@ -60,6 +72,18 @@ func (c *GeminiCalculator) Normalize(responseBody []byte, _ []byte) (Usage, erro
 			// These are SEPARATE from promptTokenCount (not a subset) and represent
 			// search result context injected back into the model.
 			ToolUsePromptTokenCount int64 `json:"toolUsePromptTokenCount"`
+
+			// Per-modality breakdown of toolUsePromptTokenCount (e.g. AUDIO, TEXT).
+			// Parsed for completeness and future use; not currently used for per-modality
+			// billing because LiteLLM bills all tool-use tokens at a single rate
+			// (flat fee or standard input rate). If Gemini introduces per-modality
+			// tool-use pricing in the future, use this field to split the cost.
+			ToolUsePromptTokensDetails []modalityTokenDetail `json:"toolUsePromptTokensDetails"`
+
+			// trafficType indicates the Gemini service tier for this request.
+			// Values: "ON_DEMAND" (default), "ON_DEMAND_PRIORITY", "FLEX", "BATCH".
+			// Mapped to ServiceTier: "priority" or "flex" (ON_DEMAND → "").
+			TrafficType string `json:"trafficType"`
 		} `json:"usageMetadata"`
 	}
 	if err := json.Unmarshal(responseBody, &resp); err != nil {
@@ -144,16 +168,35 @@ func (c *GeminiCalculator) Normalize(responseBody []byte, _ []byte) (Usage, erro
 		}
 	}
 
+	// Map trafficType → ServiceTier string (matches LiteLLM's _map_traffic_type_to_service_tier).
+	var serviceTier string
+	switch m.TrafficType {
+	case "ON_DEMAND_PRIORITY":
+		serviceTier = "priority"
+	case "FLEX", "BATCH":
+		serviceTier = "flex"
+	}
+
+	// Count grounding web search queries across all candidates.
+	// Used in Adjust() to add the $0.035/query (Google AI Studio) or $0.035 flat (Vertex AI) fee.
+	var webSearchRequests int64
+	for _, cand := range resp.Candidates {
+		webSearchRequests += int64(len(cand.GroundingMetadata.WebSearchQueries))
+	}
+
 	return Usage{
-		PromptTokens:        m.PromptTokenCount,
-		CompletionTokens:    completionTokens,
-		TotalTokens:         m.TotalTokenCount,
-		ReasoningTokens:     reasoningTokens,
-		CachedReadTokens:    m.CachedContentTokenCount,
-		AudioInputTokens:    audioIn,
-		AudioOutputTokens:   audioOut,
-		ImageOutputTokens:   imageOut,
-		ToolUsePromptTokens: m.ToolUsePromptTokenCount,
+		PromptTokens:            m.PromptTokenCount,
+		CompletionTokens:        completionTokens,
+		TotalTokens:             m.TotalTokenCount,
+		ReasoningTokens:         reasoningTokens,
+		CachedReadTokens:        m.CachedContentTokenCount,
+		CachedAudioInputTokens:  cachedAudioIn,
+		AudioInputTokens:        audioIn,
+		AudioOutputTokens:       audioOut,
+		ImageOutputTokens:       imageOut,
+		ToolUsePromptTokens:     m.ToolUsePromptTokenCount,
+		ServiceTier:             serviceTier,
+		GeminiWebSearchRequests: webSearchRequests,
 		// Note: imageIn tokens are already counted in PromptTokens and priced at
 		// the standard input rate for most Gemini models. A separate
 		// input_cost_per_image_token would require an ImageInputTokens field;
@@ -162,6 +205,22 @@ func (c *GeminiCalculator) Normalize(responseBody []byte, _ []byte) (Usage, erro
 	}, nil
 }
 
-func (c *GeminiCalculator) Adjust(baseCost float64, _ Usage, _ ModelPricing) float64 {
-	return baseCost
+func (c *GeminiCalculator) Adjust(baseCost float64, usage Usage, pricing ModelPricing) float64 {
+	total := baseCost
+
+	// Grounding / web search cost: $0.035 per query (Google AI Studio) or $0.035
+	// flat per call (Vertex AI), charged on top of token costs.
+	// Matches LiteLLM's StandardBuiltInToolCostTracking.get_cost_for_built_in_tools().
+	const groundingCostPerQuery = 35e-3 // $0.035
+	if usage.GeminiWebSearchRequests > 0 {
+		if strings.HasPrefix(pricing.Provider, "vertex_ai") {
+			// Vertex AI: flat fee regardless of how many search queries were issued
+			total += groundingCostPerQuery
+		} else {
+			// Google AI Studio: per-query fee
+			total += float64(usage.GeminiWebSearchRequests) * groundingCostPerQuery
+		}
+	}
+
+	return total
 }

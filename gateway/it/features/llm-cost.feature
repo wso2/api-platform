@@ -467,6 +467,208 @@ Feature: LLM Cost System Policy
     When I delete the LLM provider template "llm-cost-custom-override-template"
     Then the response status code should be 200
 
+  Scenario: Gemini context caching — cached tokens billed at reduced cache read rate
+    # Model: gemini-2.0-flash — input=1e-7/token, output=4e-7/token, cache_read=2.5e-8/token
+    # Usage: 500 prompt (includes 200 cached) + 100 completion
+    # cost = (500-200)*1e-7 + 200*2.5e-8 + 100*4e-7
+    #      = 3e-5 + 5e-6 + 4e-5 = 0.0000750000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-gemini-cached-template
+      spec:
+        displayName: LLM Cost Gemini Cached Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-gemini-cached-provider
+      spec:
+        displayName: LLM Cost Gemini Cached Provider
+        version: v1.0
+        context: /llm-cost-gemini-cached
+        template: llm-cost-gemini-cached-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-gemini-cached/gemini/v1/cached/gemini-2.0-flash:generateContent" to be ready with method "POST" and body '{"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-gemini-cached/gemini/v1/cached/gemini-2.0-flash:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0000750000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-gemini-cached-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-gemini-cached-template"
+    Then the response status code should be 200
+
+  Scenario: Gemini thinking model — thinking tokens billed at reasoning rate (exclusive mode)
+    # Model: gemini-2.5-flash-preview-04-17 — input=1.5e-7, output=6e-7, reasoning=3.5e-6
+    # EXCLUSIVE: totalTokenCount = prompt + candidates + thoughts (100+50+30=180)
+    # After normalize: CompletionTokens=80 (50+30), ReasoningTokens=30
+    # cost = 100*1.5e-7 + (80-30)*6e-7 + 30*3.5e-6
+    #      = 1.5e-5 + 3e-5 + 1.05e-4 = 0.0001500000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-gemini-thinking-template
+      spec:
+        displayName: LLM Cost Gemini Thinking Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-gemini-thinking-provider
+      spec:
+        displayName: LLM Cost Gemini Thinking Provider
+        version: v1.0
+        context: /llm-cost-gemini-thinking
+        template: llm-cost-gemini-thinking-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-gemini-thinking/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" to be ready with method "POST" and body '{"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-gemini-thinking/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0001500000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-gemini-thinking-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-gemini-thinking-template"
+    Then the response status code should be 200
+
+  Scenario: Anthropic cache reads — previously cached tokens billed at reduced cache read rate
+    # Model: claude-3-5-haiku-20241022 — input=8e-7/token, output=4e-6/token, cache_read=8e-8/token
+    # Usage: 50 regular input + 200 cache_read + 25 output
+    # PromptTokens = 50+200 = 250; regularPrompt = 250-200 = 50
+    # cost = 50*8e-7 + 200*8e-8 + 25*4e-6
+    #      = 4e-5 + 1.6e-5 + 1e-4 = 0.0001560000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-anthropic-cache-read-template
+      spec:
+        displayName: LLM Cost Anthropic Cache Read Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-anthropic-cache-read-provider
+      spec:
+        displayName: LLM Cost Anthropic Cache Read Provider
+        version: v1.0
+        context: /llm-cost-anthropic-cache-read
+        template: llm-cost-anthropic-cache-read-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-cache-read/anthropic/v1/messages-cache-read" to be ready with method "POST" and body '{"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-anthropic-cache-read/anthropic/v1/messages-cache-read" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0001560000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-anthropic-cache-read-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-anthropic-cache-read-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI prompt caching — cached prompt tokens billed at reduced rate
+    # Model: gpt-4.1-2025-04-14 — input=2e-6/token, output=8e-6/token, cache_read=5e-7/token
+    # Usage: 200 prompt (100 cached) + 50 completion
+    # cost = (200-100)*2e-6 + 100*5e-7 + 50*8e-6
+    #      = 2e-4 + 5e-5 + 4e-4 = 0.0006500000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-openai-cached-template
+      spec:
+        displayName: LLM Cost OpenAI Cached Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-openai-cached-provider
+      spec:
+        displayName: LLM Cost OpenAI Cached Provider
+        version: v1.0
+        context: /llm-cost-openai-cached
+        template: llm-cost-openai-cached-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-openai-cached/openai/v1/chat-cached" to be ready with method "POST" and body '{"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-openai-cached/openai/v1/chat-cached" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0006500000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-openai-cached-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-openai-cached-template"
+    Then the response status code should be 200
+
   Scenario: RestApi kind — x-llm-cost header is not injected (policy is LLM-only)
     # llm-cost is a system policy restricted to LlmProvider/LlmProxy kinds.
     # A plain RestApi pointing at an LLM backend must NOT receive the x-llm-cost header.
