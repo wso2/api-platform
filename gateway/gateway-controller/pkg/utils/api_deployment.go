@@ -366,7 +366,6 @@ func (s *APIDeploymentService) logValidationErrors(logger *slog.Logger, apiID st
 		slog.String("name", apiName),
 		slog.Int("num_errors", len(validationErrors)))
 	for _, e := range validationErrors {
-		fmt.Println(e.Message)
 		logger.Warn("Validation error",
 			slog.String("field", e.Field),
 			slog.String("message", e.Message))
