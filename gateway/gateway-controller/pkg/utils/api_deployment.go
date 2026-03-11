@@ -561,7 +561,25 @@ func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterCo
 	switch cfg.Kind {
 	case api.RestApi:
 		apiData, err := cfg.Spec.AsAPIConfigData()
-		if err != nil || apiData.Vhosts == nil {
+		if err != nil {
+			return nil
+		}
+		if apiData.Vhosts == nil {
+			// Populate defaults when vhosts is omitted entirely (e.g. direct gateway deployment
+			// without platform-api injecting sentinels). This freezes the current gateway defaults
+			// so that routing is immune to future config changes.
+			apiData.Vhosts = &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: routerCfg.VHosts.Main.Default,
+			}
+			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+				apiData.Vhosts.Sandbox = &sandboxDefault
+			}
+			if err := cfg.Spec.FromAPIConfigData(apiData); err != nil {
+				return fmt.Errorf("failed to re-encode RestApi spec after vhost materialization: %w", err)
+			}
 			return nil
 		}
 		modified := false
@@ -585,7 +603,22 @@ func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterCo
 		}
 	case api.WebSubApi:
 		webhookData, err := cfg.Spec.AsWebhookAPIData()
-		if err != nil || webhookData.Vhosts == nil {
+		if err != nil {
+			return nil
+		}
+		if webhookData.Vhosts == nil {
+			webhookData.Vhosts = &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: routerCfg.VHosts.Main.Default,
+			}
+			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+				webhookData.Vhosts.Sandbox = &sandboxDefault
+			}
+			if err := cfg.Spec.FromWebhookAPIData(webhookData); err != nil {
+				return fmt.Errorf("failed to re-encode WebSubApi spec after vhost materialization: %w", err)
+			}
 			return nil
 		}
 		modified := false

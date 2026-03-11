@@ -815,7 +815,29 @@ func TestResolveVhostSentinels_ExplicitValuesUnchanged(t *testing.T) {
 	assert.Equal(t, "custom-sandbox.example.com", *resolved.Vhosts.Sandbox)
 }
 
-func TestResolveVhostSentinels_NilVhostsNoOp(t *testing.T) {
+func TestResolveVhostSentinels_NilVhostsPopulatesDefaults(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	cfg := &api.APIConfiguration{Kind: api.RestApi}
+	apiData := api.APIConfigData{Vhosts: nil}
+	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
+
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+
+	resolved, err := cfg.Spec.AsAPIConfigData()
+	require.NoError(t, err)
+	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with defaults")
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_NilVhostsNoSandboxDefault(t *testing.T) {
 	routerCfg := &config.RouterConfig{
 		VHosts: config.VHostsConfig{
 			Main: config.VHostEntry{Default: "*.wso2.com"},
@@ -826,11 +848,35 @@ func TestResolveVhostSentinels_NilVhostsNoOp(t *testing.T) {
 	apiData := api.APIConfigData{Vhosts: nil}
 	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg)) // should not panic
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
 
 	resolved, err := cfg.Spec.AsAPIConfigData()
 	require.NoError(t, err)
-	assert.Nil(t, resolved.Vhosts)
+	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with main default")
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	assert.Nil(t, resolved.Vhosts.Sandbox, "sandbox should remain nil when no sandbox default configured")
+}
+
+func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	cfg := &api.APIConfiguration{Kind: api.WebSubApi}
+	webhookData := api.WebhookAPIData{Vhosts: nil}
+	require.NoError(t, cfg.Spec.FromWebhookAPIData(webhookData))
+
+	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+
+	resolved, err := cfg.Spec.AsWebhookAPIData()
+	require.NoError(t, err)
+	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with defaults")
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
 }
 
 func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
