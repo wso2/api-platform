@@ -329,7 +329,7 @@ paths:
               example:
                 code: 400
                 message: "Bad Request"
-                description: "LLM Provider ID is required"
+                description: "Invalid UUID for providerId"
         '401':
           description: Unauthorized - Invalid or missing API key
           content:
@@ -427,7 +427,7 @@ paths:
               example:
                 code: 400
                 message: "Bad Request"
-                description: "LLM Proxy ID is required"
+                description: "Invalid UUID for proxyId"
         '401':
           description: Unauthorized - Invalid or missing API key
           content:
@@ -525,7 +525,7 @@ paths:
               example:
                 code: 400
                 message: "Bad Request"
-                description: "MCP Proxy ID is required"
+                description: "Invalid UUID for proxyId"
         '401':
           description: Unauthorized - Invalid or missing API key
           content:

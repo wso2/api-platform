@@ -375,29 +375,6 @@ func mapMCPProxyModelToListItem(m *model.MCPProxy) *api.MCPProxyListItem {
 	}
 }
 
-// Generate generates MCP configuration from the given URL
-func Generate(url string, outputDir string, headerName string, headerValue string) error {
-	fmt.Printf("Generating MCP configuration for server: %s\n", url)
-
-	// Use FetchMCPServerInfo to get all server information
-	serverInfo, err := utils.FetchMCPServerInfo(url, headerName, headerValue)
-	if err != nil {
-		return err
-	}
-
-	if serverInfo.Tools != nil {
-		fmt.Printf("→ Available Tools: %d\n", len(*serverInfo.Tools))
-	}
-	if serverInfo.Prompts != nil {
-		fmt.Printf("→ Available Prompts: %d\n", len(*serverInfo.Prompts))
-	}
-	if serverInfo.Resources != nil {
-		fmt.Printf("→ Available Resources: %d\n", len(*serverInfo.Resources))
-	}
-	fmt.Println("MCP generated successfully.")
-	return nil
-}
-
 // mapMCPPoliciesAPIToModel converts API policies to model policies
 func mapMCPPoliciesAPIToModel(in *[]api.Policy) []model.Policy {
 	if in == nil || len(*in) == 0 {

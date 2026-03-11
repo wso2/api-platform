@@ -205,12 +205,12 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		if v, exists := metadata["endpointUrl"]; exists {
 			endpointURL, ok := v.(string)
 			if !ok {
-				return nil, fmt.Errorf("invalid endpoint URL in metadata: expected string, got %T", v)
+				return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: expected string, got %T", constants.ErrInvalidInput, v)
 			}
 			if endpointURL != "" {
 				// Validate endpoint URL format
 				if err := validateEndpointURL(endpointURL); err != nil {
-					return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
+					return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: %v", constants.ErrInvalidInput, err)
 				}
 
 				// Override endpoint URL in deployment content
