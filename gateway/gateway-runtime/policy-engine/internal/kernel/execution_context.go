@@ -34,6 +34,10 @@ import (
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
+// maxStreamAccumulatorSize is the maximum allowed size for stream accumulators.
+// When exceeded, the accumulated data is flushed regardless of policy readiness.
+const maxStreamAccumulatorSize = 10 * 1024 * 1024 // 10MB default
+
 // PolicyExecutionContext manages the lifecycle of a single request through the policy chain.
 // This context is created when a request arrives and lives until the response is completed.
 // It encapsulates all state needed for processing both request and response phases.
@@ -406,10 +410,21 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		"end_of_stream", chunk.EndOfStream,
 	)
 
+	// Check if accumulator has grown too large and force flush to prevent unbounded memory growth
+	shouldForceFlush := len(ec.streamAccumulator) > maxStreamAccumulatorSize
+
+	if shouldForceFlush {
+		slog.Warn("[streaming] response accumulator size limit exceeded, forcing flush",
+			"route", ec.routeKey,
+			"accumulated_bytes", len(ec.streamAccumulator),
+			"max_size", maxStreamAccumulatorSize,
+		)
+	}
+
 	// Consult ChunkBuffering policies to decide whether to flush now.
 	// In FULL_DUPLEX_STREAMED mode an empty BodyResponse passes the chunk through unchanged,
 	// so we must explicitly suppress it with an empty StreamedBodyResponse while accumulating.
-	if !chunk.EndOfStream && ec.anyPolicyNeedsMoreData(ec.streamAccumulator) {
+	if !chunk.EndOfStream && !shouldForceFlush && ec.anyPolicyNeedsMoreData(ec.streamAccumulator) {
 		slog.Debug("[streaming] accumulating — waiting for more response data",
 			"route", ec.routeKey,
 			"accumulated_bytes", len(ec.streamAccumulator),
@@ -478,10 +493,21 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		"end_of_stream", chunk.EndOfStream,
 	)
 
+	// Check if accumulator has grown too large and force flush to prevent unbounded memory growth
+	shouldForceFlush := len(ec.requestStreamAccumulator) > maxStreamAccumulatorSize
+
+	if shouldForceFlush {
+		slog.Warn("[streaming] request accumulator size limit exceeded, forcing flush",
+			"route", ec.routeKey,
+			"accumulated_bytes", len(ec.requestStreamAccumulator),
+			"max_size", maxStreamAccumulatorSize,
+		)
+	}
+
 	// Consult streaming policies to decide whether to flush now.
 	// In FULL_DUPLEX_STREAMED mode an empty BodyResponse passes the chunk through unchanged,
 	// so we must explicitly suppress it with an empty StreamedBodyResponse while accumulating.
-	if !chunk.EndOfStream && ec.anyPolicyNeedsMoreRequestData(ec.requestStreamAccumulator) {
+	if !chunk.EndOfStream && !shouldForceFlush && ec.anyPolicyNeedsMoreRequestData(ec.requestStreamAccumulator) {
 		slog.Debug("[streaming] accumulating — waiting for more request data",
 			"route", ec.routeKey,
 			"accumulated_bytes", len(ec.requestStreamAccumulator),
