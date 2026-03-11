@@ -372,101 +372,110 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 }
 
 // =============================================================================
-// translateRequestActionsCore Tests
+// TranslateRequestHeaderActions Tests
 // =============================================================================
 
-func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
+func TestTranslateRequestHeaderActions_EmptyResult(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.requestHeaderCtx = &policy.RequestHeaderContext{
 		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
+		Headers:       policy.NewHeaders(map[string][]string{}),
 	}
 
-	result := &executor.RequestExecutionResult{
-		Results: []executor.RequestPolicyResult{},
+	result := &executor.RequestHeaderExecutionResult{
+		Results: []executor.RequestHeaderPolicyResult{},
 	}
 
-	headerMutation, bodyMutation, analyticsData, _, pathMutation, immResp, err := translateRequestActionsCore(result, execCtx)
+	resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	assert.NotNil(t, headerMutation)
-	assert.Nil(t, bodyMutation)
-	assert.NotNil(t, analyticsData)
-	assert.Nil(t, pathMutation)
+	require.NotNil(t, resp)
+	assert.NotNil(t, resp.GetRequestHeaders())
 }
 
-func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
+func TestTranslateRequestHeaderActions_WithSetHeaders(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.requestHeaderCtx = &policy.RequestHeaderContext{
 		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
+		Headers:       policy.NewHeaders(map[string][]string{}),
 	}
 
-	result := &executor.RequestExecutionResult{
-		Results: []executor.RequestPolicyResult{
+	result := &executor.RequestHeaderExecutionResult{
+		Results: []executor.RequestHeaderPolicyResult{
 			{
 				Skipped: false,
-				Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{
-						"x-custom": "value",
-					},
+				Action: &policy.RequestHeaderAction{
+					Set: map[string]string{"x-custom": "value"},
 				},
 			},
 		},
 	}
 
-	headerMutation, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	require.NotNil(t, headerMutation)
-	assert.Len(t, headerMutation.SetHeaders, 1)
+	assert.Nil(t, resp.GetImmediateResponse())
+	reqHdrs := resp.GetRequestHeaders()
+	require.NotNil(t, reqHdrs)
+	require.NotNil(t, reqHdrs.Response)
+	require.NotNil(t, reqHdrs.Response.HeaderMutation)
+	assert.Len(t, reqHdrs.Response.HeaderMutation.SetHeaders, 1)
 }
 
-func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
+func TestTranslateRequestBodyActions_WithBodyModification(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.requestHeaderCtx = &policy.RequestHeaderContext{
 		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
+		Headers:       policy.NewHeaders(map[string][]string{}),
+	}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: &policy.SharedContext{},
+		Headers:       policy.NewHeaders(map[string][]string{}),
 	}
 
-	result := &executor.RequestExecutionResult{
-		Results: []executor.RequestPolicyResult{
+	result := &executor.RequestBodyExecutionResult{
+		Results: []executor.RequestBodyPolicyResult{
 			{
 				Skipped: false,
-				Action: policy.UpstreamRequestModifications{
-					Body: []byte("modified body"),
+				Action: &policy.RequestAction{
+					BodyMutation: []byte("modified body"),
 				},
 			},
 		},
 	}
 
-	headerMutation, bodyMutation, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	resp, err := TranslateRequestBodyActions(result, chain, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	require.NotNil(t, bodyMutation)
-	assert.Equal(t, []byte("modified body"), bodyMutation.GetBody())
+	assert.Nil(t, resp.GetImmediateResponse())
+	reqBody := resp.GetRequestBody()
+	require.NotNil(t, reqBody)
+	require.NotNil(t, reqBody.Response)
+	require.NotNil(t, reqBody.Response.BodyMutation)
+	assert.Equal(t, []byte("modified body"), reqBody.Response.BodyMutation.GetBody())
 	// Content-Length should be set
-	require.NotNil(t, headerMutation)
+	require.NotNil(t, reqBody.Response.HeaderMutation)
 	var foundContentLength bool
-	for _, h := range headerMutation.SetHeaders {
+	for _, h := range reqBody.Response.HeaderMutation.SetHeaders {
 		if h.Header.Key == "content-length" {
 			foundContentLength = true
 			assert.Equal(t, []byte("13"), h.Header.RawValue)
@@ -475,130 +484,227 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 	assert.True(t, foundContentLength)
 }
 
-func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
+func TestTranslateRequestHeaderActions_ShortCircuit(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.requestHeaderCtx = &policy.RequestHeaderContext{
 		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
+		Headers:       policy.NewHeaders(map[string][]string{}),
 	}
 
-	result := &executor.RequestExecutionResult{
+	result := &executor.RequestHeaderExecutionResult{
 		ShortCircuited: true,
-		FinalAction: policy.ImmediateResponse{
-			StatusCode: 403,
-			Headers: map[string]string{
-				"content-type": "application/json",
+		FinalAction: &policy.RequestHeaderAction{
+			ImmediateResponse: &policy.ImmediateResponse{
+				StatusCode: 403,
+				Headers: map[string]string{
+					"content-type": "application/json",
+				},
+				Body: []byte(`{"error":"forbidden"}`),
 			},
-			Body: []byte(`{"error":"forbidden"}`),
 		},
 	}
 
-	_, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, immResp)
-
-	immediate := immResp.GetImmediateResponse()
+	require.NotNil(t, resp)
+	immediate := resp.GetImmediateResponse()
 	require.NotNil(t, immediate)
 	assert.Equal(t, uint32(403), uint32(immediate.Status.Code))
 }
 
-func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
+func TestTranslateRequestHeaderActions_SkippedPolicy(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.requestHeaderCtx = &policy.RequestHeaderContext{
 		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
+		Headers:       policy.NewHeaders(map[string][]string{}),
 	}
 
-	result := &executor.RequestExecutionResult{
-		Results: []executor.RequestPolicyResult{
+	result := &executor.RequestHeaderExecutionResult{
+		Results: []executor.RequestHeaderPolicyResult{
 			{
-				Skipped: true, // This policy was skipped
-				Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{
-						"should-not-appear": "value",
-					},
+				Skipped: true,
+				Action: &policy.RequestHeaderAction{
+					Set: map[string]string{"should-not-appear": "value"},
 				},
 			},
 		},
 	}
 
-	headerMutation, _, _, _, _, _, err := translateRequestActionsCore(result, execCtx)
+	resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
 
 	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	reqHdrs := resp.GetRequestHeaders()
+	require.NotNil(t, reqHdrs)
 	// Skipped policy actions should not be applied
-	assert.Empty(t, headerMutation.SetHeaders)
+	mutation := reqHdrs.GetResponse().GetHeaderMutation()
+	if mutation != nil {
+		assert.Empty(t, mutation.SetHeaders)
+	}
 }
 
-func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
+// =============================================================================
+// TranslateStreamingResponseChunkAction Tests
+// =============================================================================
+
+func TestTranslateStreamingResponseChunkAction_FinalActionNil_UsesOriginal(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
-	}
 
-	result := &executor.RequestExecutionResult{
-		Results: []executor.RequestPolicyResult{
-			{
-				Skipped: false,
-				Action: policy.UpstreamRequestModifications{
-					AddQueryParameters: map[string][]string{
-						"added": {"param"},
-					},
-				},
-			},
-		},
-	}
+	result := &executor.StreamingResponseExecutionResult{FinalAction: nil}
+	original := &policy.StreamBody{Chunk: []byte("original bytes"), EndOfStream: false}
 
-	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	resp, err := TranslateStreamingResponseChunkAction(result, original, execCtx)
 
-	assert.NoError(t, err)
-	require.NotNil(t, pathMutation)
-	assert.Contains(t, *pathMutation, "added=param")
+	require.NoError(t, err)
+	sr := resp.GetResponseBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	require.NotNil(t, sr)
+	assert.Equal(t, []byte("original bytes"), sr.Body)
+	assert.False(t, sr.EndOfStream)
 }
 
-func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
+func TestTranslateStreamingResponseChunkAction_WithMutation(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
-	}
 
-	newPath := "/new/path"
-	result := &executor.RequestExecutionResult{
-		Results: []executor.RequestPolicyResult{
-			{
-				Skipped: false,
-				Action: policy.UpstreamRequestModifications{
-					Path: &newPath,
-				},
-			},
-		},
-	}
+	action := policy.ResponseChunkAction{BodyMutation: []byte("mutated")}
+	result := &executor.StreamingResponseExecutionResult{FinalAction: &action}
+	original := &policy.StreamBody{Chunk: []byte("original")}
 
-	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	resp, err := TranslateStreamingResponseChunkAction(result, original, execCtx)
 
-	assert.NoError(t, err)
-	require.NotNil(t, pathMutation)
-	assert.Equal(t, "/new/path", *pathMutation)
+	require.NoError(t, err)
+	sr := resp.GetResponseBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	assert.Equal(t, []byte("mutated"), sr.Body)
+}
+
+func TestTranslateStreamingResponseChunkAction_FinalActionNilMutation_UsesOriginal(t *testing.T) {
+	// FinalAction set (policy executed) but no body mutation — translator should fall back to original
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	action := policy.ResponseChunkAction{BodyMutation: nil}
+	result := &executor.StreamingResponseExecutionResult{FinalAction: &action}
+	original := &policy.StreamBody{Chunk: []byte("original")}
+
+	resp, err := TranslateStreamingResponseChunkAction(result, original, execCtx)
+
+	require.NoError(t, err)
+	sr := resp.GetResponseBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	assert.Equal(t, []byte("original"), sr.Body)
+}
+
+func TestTranslateStreamingResponseChunkAction_EndOfStreamPropagated(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	result := &executor.StreamingResponseExecutionResult{FinalAction: nil}
+	original := &policy.StreamBody{Chunk: []byte("last chunk"), EndOfStream: true}
+
+	resp, err := TranslateStreamingResponseChunkAction(result, original, execCtx)
+
+	require.NoError(t, err)
+	sr := resp.GetResponseBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	assert.True(t, sr.EndOfStream)
+}
+
+// =============================================================================
+// TranslateStreamingRequestChunkAction Tests
+// =============================================================================
+
+func TestTranslateStreamingRequestChunkAction_FinalActionNil_UsesOriginal(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	result := &executor.StreamingRequestExecutionResult{FinalAction: nil}
+	original := &policy.StreamBody{Chunk: []byte("original bytes"), EndOfStream: false}
+
+	resp, err := TranslateStreamingRequestChunkAction(result, original, execCtx)
+
+	require.NoError(t, err)
+	sr := resp.GetRequestBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	require.NotNil(t, sr)
+	assert.Equal(t, []byte("original bytes"), sr.Body)
+	assert.False(t, sr.EndOfStream)
+}
+
+func TestTranslateStreamingRequestChunkAction_WithMutation(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	action := policy.RequestChunkAction{BodyMutation: []byte("mutated")}
+	result := &executor.StreamingRequestExecutionResult{FinalAction: &action}
+	original := &policy.StreamBody{Chunk: []byte("original")}
+
+	resp, err := TranslateStreamingRequestChunkAction(result, original, execCtx)
+
+	require.NoError(t, err)
+	sr := resp.GetRequestBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	assert.Equal(t, []byte("mutated"), sr.Body)
+}
+
+func TestTranslateStreamingRequestChunkAction_FinalActionNilMutation_UsesOriginal(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	action := policy.RequestChunkAction{BodyMutation: nil}
+	result := &executor.StreamingRequestExecutionResult{FinalAction: &action}
+	original := &policy.StreamBody{Chunk: []byte("original")}
+
+	resp, err := TranslateStreamingRequestChunkAction(result, original, execCtx)
+
+	require.NoError(t, err)
+	sr := resp.GetRequestBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	assert.Equal(t, []byte("original"), sr.Body)
+}
+
+func TestTranslateStreamingRequestChunkAction_EndOfStreamPropagated(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	result := &executor.StreamingRequestExecutionResult{FinalAction: nil}
+	original := &policy.StreamBody{Chunk: []byte("last"), EndOfStream: true}
+
+	resp, err := TranslateStreamingRequestChunkAction(result, original, execCtx)
+
+	require.NoError(t, err)
+	sr := resp.GetRequestBody().GetResponse().GetBodyMutation().GetStreamedResponse()
+	assert.True(t, sr.EndOfStream)
 }

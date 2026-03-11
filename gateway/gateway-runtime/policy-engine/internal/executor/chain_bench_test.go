@@ -43,32 +43,67 @@ func TestMain(m *testing.M) {
 }
 
 // =============================================================================
-// Mock CEL Evaluator
+// Mock CEL Evaluators
 // =============================================================================
 
-// alwaysTrueCELEvaluator implements CELEvaluator with no real CEL overhead.
+// alwaysTrueCELEvaluator implements CELEvaluator returning true for all conditions.
 type alwaysTrueCELEvaluator struct{}
 
-func (e *alwaysTrueCELEvaluator) EvaluateRequestCondition(string, *policy.RequestContext) (bool, error) {
+func (e *alwaysTrueCELEvaluator) EvaluateRequestHeaderCondition(_ string, _ *policy.RequestHeaderContext) (bool, error) {
 	return true, nil
 }
 
-func (e *alwaysTrueCELEvaluator) EvaluateResponseCondition(string, *policy.ResponseContext) (bool, error) {
+func (e *alwaysTrueCELEvaluator) EvaluateRequestBodyCondition(_ string, _ *policy.RequestContext) (bool, error) {
 	return true, nil
 }
 
-// sometimesFalseCELEvaluator skips policies based on index for realistic testing.
+func (e *alwaysTrueCELEvaluator) EvaluateResponseHeaderCondition(_ string, _ *policy.ResponseHeaderContext) (bool, error) {
+	return true, nil
+}
+
+func (e *alwaysTrueCELEvaluator) EvaluateResponseBodyCondition(_ string, _ *policy.ResponseContext) (bool, error) {
+	return true, nil
+}
+
+func (e *alwaysTrueCELEvaluator) EvaluateStreamingRequestCondition(_ string, _ *policy.RequestStreamContext) (bool, error) {
+	return true, nil
+}
+
+func (e *alwaysTrueCELEvaluator) EvaluateStreamingResponseCondition(_ string, _ *policy.ResponseStreamContext) (bool, error) {
+	return true, nil
+}
+
+// sometimesFalseCELEvaluator skips every third policy for realistic testing.
 type sometimesFalseCELEvaluator struct {
 	counter int
 }
 
-func (e *sometimesFalseCELEvaluator) EvaluateRequestCondition(string, *policy.RequestContext) (bool, error) {
+func (e *sometimesFalseCELEvaluator) EvaluateRequestHeaderCondition(_ string, _ *policy.RequestHeaderContext) (bool, error) {
 	e.counter++
-	// Every third policy is skipped
 	return e.counter%3 != 0, nil
 }
 
-func (e *sometimesFalseCELEvaluator) EvaluateResponseCondition(string, *policy.ResponseContext) (bool, error) {
+func (e *sometimesFalseCELEvaluator) EvaluateRequestBodyCondition(_ string, _ *policy.RequestContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+
+func (e *sometimesFalseCELEvaluator) EvaluateResponseHeaderCondition(_ string, _ *policy.ResponseHeaderContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+
+func (e *sometimesFalseCELEvaluator) EvaluateResponseBodyCondition(_ string, _ *policy.ResponseContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+
+func (e *sometimesFalseCELEvaluator) EvaluateStreamingRequestCondition(_ string, _ *policy.RequestStreamContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+
+func (e *sometimesFalseCELEvaluator) EvaluateStreamingResponseCondition(_ string, _ *policy.ResponseStreamContext) (bool, error) {
 	e.counter++
 	return e.counter%3 != 0, nil
 }
@@ -77,80 +112,56 @@ func (e *sometimesFalseCELEvaluator) EvaluateResponseCondition(string, *policy.R
 // Mock Policies
 // =============================================================================
 
-// passthroughPolicy implements policy.Policy with no modifications.
-type passthroughPolicy struct{}
+// passthroughRequestPolicy implements RequestHeaderPolicy with no modifications.
+type passthroughRequestPolicy struct{}
 
-func (p *passthroughPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeSkip,
+func (p *passthroughRequestPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{}
+}
+
+// passthroughResponsePolicy implements ResponseHeaderPolicy with no modifications.
+type passthroughResponsePolicy struct{}
+
+func (p *passthroughResponsePolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
+	return policy.ResponseHeaderAction{}
+}
+
+// headerModifyRequestPolicy adds headers to the request.
+type headerModifyRequestPolicy struct{}
+
+func (p *headerModifyRequestPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{
+		Set:    map[string]string{"x-bench-header": "bench-value"},
+		Append: map[string][]string{"x-multi": {"v1", "v2"}},
 	}
 }
 
-func (p *passthroughPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return nil
-}
+// headerModifyResponsePolicy adds headers to the response.
+type headerModifyResponsePolicy struct{}
 
-func (p *passthroughPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
-}
-
-// headerModifyPolicy adds headers to measure modification overhead.
-type headerModifyPolicy struct{}
-
-func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeSkip,
+func (p *headerModifyResponsePolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
+	return policy.ResponseHeaderAction{
+		Set: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
 
-func (p *headerModifyPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.UpstreamRequestModifications{
-		SetHeaders:    map[string]string{"x-bench-header": "bench-value"},
-		AppendHeaders: map[string][]string{"x-multi": {"v1", "v2"}},
+// shortCircuitRequestPolicy short-circuits with ImmediateResponse.
+type shortCircuitRequestPolicy struct{}
+
+func (p *shortCircuitRequestPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{
+		ImmediateResponse: &policy.ImmediateResponse{
+			StatusCode: 401,
+			Headers:    map[string]string{"content-type": "application/json"},
+			Body:       []byte(`{"error":"unauthorized"}`),
+		},
 	}
-}
-
-func (p *headerModifyPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return policy.UpstreamResponseModifications{
-		SetHeaders: map[string]string{"x-bench-resp": "bench-resp-value"},
-	}
-}
-
-// shortCircuitPolicy returns ImmediateResponse.
-type shortCircuitPolicy struct{}
-
-func (p *shortCircuitPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeSkip,
-		ResponseBodyMode:   policy.BodyModeSkip,
-	}
-}
-
-func (p *shortCircuitPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.ImmediateResponse{
-		StatusCode: 401,
-		Headers:    map[string]string{"content-type": "application/json"},
-		Body:       []byte(`{"error":"unauthorized"}`),
-	}
-}
-
-func (p *shortCircuitPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
 }
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
 
-// buildPolicySpec creates a PolicySpec for benchmarks.
 func buildPolicySpec(name, version string, condition *string) policy.PolicySpec {
 	return policy.PolicySpec{
 		Name:               name,
@@ -161,7 +172,6 @@ func buildPolicySpec(name, version string, condition *string) policy.PolicySpec 
 	}
 }
 
-// buildDisabledPolicySpec creates a disabled PolicySpec.
 func buildDisabledPolicySpec(name, version string) policy.PolicySpec {
 	return policy.PolicySpec{
 		Name:       name,
@@ -171,9 +181,8 @@ func buildDisabledPolicySpec(name, version string) policy.PolicySpec {
 	}
 }
 
-// buildTestRequestContext creates a realistic RequestContext for benchmarks.
-func buildTestRequestContext() *policy.RequestContext {
-	return &policy.RequestContext{
+func buildTestRequestHeaderContext() *policy.RequestHeaderContext {
+	return &policy.RequestHeaderContext{
 		SharedContext: &policy.SharedContext{
 			RequestID:     "bench-req-id",
 			APIName:       "PetStore",
@@ -190,13 +199,11 @@ func buildTestRequestContext() *policy.RequestContext {
 	}
 }
 
-// buildTestResponseContext creates a realistic ResponseContext for benchmarks.
-func buildTestResponseContext() *policy.ResponseContext {
-	reqCtx := buildTestRequestContext()
-	return &policy.ResponseContext{
+func buildTestResponseHeaderContext() *policy.ResponseHeaderContext {
+	reqCtx := buildTestRequestHeaderContext()
+	return &policy.ResponseHeaderContext{
 		SharedContext:   reqCtx.SharedContext,
 		RequestHeaders:  reqCtx.Headers,
-		RequestBody:     reqCtx.Body,
 		RequestPath:     reqCtx.Path,
 		RequestMethod:   reqCtx.Method,
 		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}, "x-custom": {"value"}}),
@@ -205,11 +212,10 @@ func buildTestResponseContext() *policy.ResponseContext {
 }
 
 // =============================================================================
-// Request Policy Execution Benchmarks
+// Request Header Policy Execution Benchmarks
 // =============================================================================
 
-// BenchmarkExecuteRequestPolicies benchmarks request policy chain execution.
-func BenchmarkExecuteRequestPolicies(b *testing.B) {
+func BenchmarkExecuteRequestHeaderPolicies(b *testing.B) {
 	scenarios := []struct {
 		name        string
 		numPolicies int
@@ -238,36 +244,34 @@ func BenchmarkExecuteRequestPolicies(b *testing.B) {
 			cond := `request.Method == "GET"`
 
 			for i := 0; i < sc.numPolicies; i++ {
-				policies = append(policies, &passthroughPolicy{})
+				policies = append(policies, &passthroughRequestPolicy{})
 				var condPtr *string
 				if sc.withCEL {
 					condPtr = &cond
 				}
-				specs = append(specs, buildPolicySpec(
-					fmt.Sprintf("p%d", i), "v1.0", condPtr))
+				specs = append(specs, buildPolicySpec(fmt.Sprintf("p%d", i), "v1.0", condPtr))
 			}
 
-			reqCtx := buildTestRequestContext()
+			reqCtx := buildTestRequestHeaderContext()
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_, _ = exec.ExecuteRequestPolicies(
+				_, _ = exec.ExecuteRequestHeaderPolicies(
 					context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", sc.withCEL)
 			}
 		})
 	}
 }
 
-// BenchmarkExecuteRequestPolicies_WithModifications benchmarks with header modifications.
-func BenchmarkExecuteRequestPolicies_WithModifications(b *testing.B) {
+func BenchmarkExecuteRequestHeaderPolicies_WithModifications(b *testing.B) {
 	tracer := trace.NewNoopTracerProvider().Tracer("bench")
 	exec := NewChainExecutor(nil, nil, tracer)
 
 	policies := []policy.Policy{
-		&headerModifyPolicy{},
-		&headerModifyPolicy{},
-		&headerModifyPolicy{},
+		&headerModifyRequestPolicy{},
+		&headerModifyRequestPolicy{},
+		&headerModifyRequestPolicy{},
 	}
 	specs := []policy.PolicySpec{
 		buildPolicySpec("mod-1", "v1.0", nil),
@@ -275,26 +279,24 @@ func BenchmarkExecuteRequestPolicies_WithModifications(b *testing.B) {
 		buildPolicySpec("mod-3", "v1.0", nil),
 	}
 
-	reqCtx := buildTestRequestContext()
+	reqCtx := buildTestRequestHeaderContext()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = exec.ExecuteRequestPolicies(
+		_, _ = exec.ExecuteRequestHeaderPolicies(
 			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }
 
-// BenchmarkExecuteRequestPolicies_ShortCircuit benchmarks short-circuit behavior.
-func BenchmarkExecuteRequestPolicies_ShortCircuit(b *testing.B) {
+func BenchmarkExecuteRequestHeaderPolicies_ShortCircuit(b *testing.B) {
 	tracer := trace.NewNoopTracerProvider().Tracer("bench")
 	exec := NewChainExecutor(nil, nil, tracer)
 
-	// Policy that short-circuits followed by policies that won't execute
 	policies := []policy.Policy{
-		&shortCircuitPolicy{},
-		&passthroughPolicy{},
-		&passthroughPolicy{},
+		&shortCircuitRequestPolicy{},
+		&passthroughRequestPolicy{},
+		&passthroughRequestPolicy{},
 	}
 	specs := []policy.PolicySpec{
 		buildPolicySpec("auth", "v1.0", nil),
@@ -302,27 +304,26 @@ func BenchmarkExecuteRequestPolicies_ShortCircuit(b *testing.B) {
 		buildPolicySpec("should-skip-2", "v1.0", nil),
 	}
 
-	reqCtx := buildTestRequestContext()
+	reqCtx := buildTestRequestHeaderContext()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = exec.ExecuteRequestPolicies(
+		_, _ = exec.ExecuteRequestHeaderPolicies(
 			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }
 
-// BenchmarkExecuteRequestPolicies_WithDisabled benchmarks with disabled policies.
-func BenchmarkExecuteRequestPolicies_WithDisabled(b *testing.B) {
+func BenchmarkExecuteRequestHeaderPolicies_WithDisabled(b *testing.B) {
 	tracer := trace.NewNoopTracerProvider().Tracer("bench")
 	exec := NewChainExecutor(nil, nil, tracer)
 
 	policies := []policy.Policy{
-		&passthroughPolicy{},
-		&passthroughPolicy{}, // disabled
-		&passthroughPolicy{},
-		&passthroughPolicy{}, // disabled
-		&passthroughPolicy{},
+		&passthroughRequestPolicy{},
+		&passthroughRequestPolicy{}, // disabled
+		&passthroughRequestPolicy{},
+		&passthroughRequestPolicy{}, // disabled
+		&passthroughRequestPolicy{},
 	}
 	specs := []policy.PolicySpec{
 		buildPolicySpec("p1", "v1.0", nil),
@@ -332,29 +333,28 @@ func BenchmarkExecuteRequestPolicies_WithDisabled(b *testing.B) {
 		buildPolicySpec("p5", "v1.0", nil),
 	}
 
-	reqCtx := buildTestRequestContext()
+	reqCtx := buildTestRequestHeaderContext()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = exec.ExecuteRequestPolicies(
+		_, _ = exec.ExecuteRequestHeaderPolicies(
 			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }
 
-// BenchmarkExecuteRequestPolicies_CELSkipping benchmarks CEL condition-based skipping.
-func BenchmarkExecuteRequestPolicies_CELSkipping(b *testing.B) {
+func BenchmarkExecuteRequestHeaderPolicies_CELSkipping(b *testing.B) {
 	celEval := &sometimesFalseCELEvaluator{}
 	tracer := trace.NewNoopTracerProvider().Tracer("bench")
 	exec := NewChainExecutor(nil, celEval, tracer)
 
 	cond := `request.Method == "GET"`
 	policies := []policy.Policy{
-		&passthroughPolicy{},
-		&passthroughPolicy{},
-		&passthroughPolicy{},
-		&passthroughPolicy{},
-		&passthroughPolicy{},
+		&passthroughRequestPolicy{},
+		&passthroughRequestPolicy{},
+		&passthroughRequestPolicy{},
+		&passthroughRequestPolicy{},
+		&passthroughRequestPolicy{},
 	}
 	specs := []policy.PolicySpec{
 		buildPolicySpec("p1", "v1.0", &cond),
@@ -364,23 +364,22 @@ func BenchmarkExecuteRequestPolicies_CELSkipping(b *testing.B) {
 		buildPolicySpec("p5", "v1.0", &cond),
 	}
 
-	reqCtx := buildTestRequestContext()
+	reqCtx := buildTestRequestHeaderContext()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		celEval.counter = 0 // Reset counter for consistent behavior
-		_, _ = exec.ExecuteRequestPolicies(
+		celEval.counter = 0
+		_, _ = exec.ExecuteRequestHeaderPolicies(
 			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", true)
 	}
 }
 
 // =============================================================================
-// Response Policy Execution Benchmarks
+// Response Header Policy Execution Benchmarks
 // =============================================================================
 
-// BenchmarkExecuteResponsePolicies benchmarks response policy chain execution.
-func BenchmarkExecuteResponsePolicies(b *testing.B) {
+func BenchmarkExecuteResponseHeaderPolicies(b *testing.B) {
 	scenarios := []struct {
 		name        string
 		numPolicies int
@@ -407,21 +406,20 @@ func BenchmarkExecuteResponsePolicies(b *testing.B) {
 			cond := `response.ResponseStatus == 200`
 
 			for i := 0; i < sc.numPolicies; i++ {
-				policies = append(policies, &headerModifyPolicy{})
+				policies = append(policies, &headerModifyResponsePolicy{})
 				var condPtr *string
 				if sc.withCEL {
 					condPtr = &cond
 				}
-				specs = append(specs, buildPolicySpec(
-					fmt.Sprintf("p%d", i), "v1.0", condPtr))
+				specs = append(specs, buildPolicySpec(fmt.Sprintf("p%d", i), "v1.0", condPtr))
 			}
 
-			respCtx := buildTestResponseContext()
+			respCtx := buildTestResponseHeaderContext()
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_, _ = exec.ExecuteResponsePolicies(
+				_, _ = exec.ExecuteResponseHeaderPolicies(
 					context.Background(), policies, respCtx, specs, "PetStore", "bench-route", sc.withCEL)
 			}
 		})
@@ -432,15 +430,14 @@ func BenchmarkExecuteResponsePolicies(b *testing.B) {
 // Parallel Execution Benchmarks
 // =============================================================================
 
-// BenchmarkExecuteRequestPolicies_Parallel benchmarks parallel execution.
-func BenchmarkExecuteRequestPolicies_Parallel(b *testing.B) {
+func BenchmarkExecuteRequestHeaderPolicies_Parallel(b *testing.B) {
 	tracer := trace.NewNoopTracerProvider().Tracer("bench")
 	exec := NewChainExecutor(nil, nil, tracer)
 
 	policies := []policy.Policy{
-		&passthroughPolicy{},
-		&headerModifyPolicy{},
-		&passthroughPolicy{},
+		&passthroughRequestPolicy{},
+		&headerModifyRequestPolicy{},
+		&passthroughRequestPolicy{},
 	}
 	specs := []policy.PolicySpec{
 		buildPolicySpec("p1", "v1.0", nil),
@@ -452,28 +449,25 @@ func BenchmarkExecuteRequestPolicies_Parallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			// Create fresh context per iteration to avoid data races
-			reqCtx := buildTestRequestContext()
-			_, _ = exec.ExecuteRequestPolicies(
+			reqCtx := buildTestRequestHeaderContext()
+			_, _ = exec.ExecuteRequestHeaderPolicies(
 				context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 		}
 	})
 }
 
 // =============================================================================
-// Latency Distribution Benchmark
+// Realistic Workload Benchmark
 // =============================================================================
 
-// BenchmarkExecuteRequestPolicies_RealisticWorkload simulates realistic API gateway workload.
-func BenchmarkExecuteRequestPolicies_RealisticWorkload(b *testing.B) {
-	// Realistic scenario: auth check + rate limit + header manipulation
+func BenchmarkExecuteRequestHeaderPolicies_RealisticWorkload(b *testing.B) {
 	tracer := trace.NewNoopTracerProvider().Tracer("bench")
 	exec := NewChainExecutor(nil, nil, tracer)
 
 	policies := []policy.Policy{
-		&passthroughPolicy{},  // Auth (simulated as passthrough)
-		&passthroughPolicy{},  // Rate limit (simulated as passthrough)
-		&headerModifyPolicy{}, // Add correlation headers
+		&passthroughRequestPolicy{},  // Auth (simulated as passthrough)
+		&passthroughRequestPolicy{},  // Rate limit (simulated as passthrough)
+		&headerModifyRequestPolicy{}, // Add correlation headers
 	}
 	specs := []policy.PolicySpec{
 		buildPolicySpec("jwt-auth", "v1.0", nil),
@@ -484,8 +478,8 @@ func BenchmarkExecuteRequestPolicies_RealisticWorkload(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		reqCtx := buildTestRequestContext()
-		_, _ = exec.ExecuteRequestPolicies(
+		reqCtx := buildTestRequestHeaderContext()
+		_, _ = exec.ExecuteRequestHeaderPolicies(
 			context.Background(), policies, reqCtx, specs, "PetStore", "bench-route", false)
 	}
 }

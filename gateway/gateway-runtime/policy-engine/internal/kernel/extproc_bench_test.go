@@ -104,72 +104,43 @@ func (m *mockProcessStream) RecvMsg(interface{}) error    { return nil }
 // Mock Policy Implementations
 // =============================================================================
 
-// passthroughPolicy implements policy.Policy with no modifications.
+// passthroughPolicy implements RequestHeaderPolicy and ResponseHeaderPolicy with no modifications.
 type passthroughPolicy struct{}
 
-func (p *passthroughPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeSkip,
-	}
+func (p *passthroughPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{}
 }
 
-func (p *passthroughPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return nil // passthrough - no modifications
-}
-
-func (p *passthroughPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil // passthrough - no modifications
+func (p *passthroughPolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
+	return policy.ResponseHeaderAction{}
 }
 
 // headerModifyPolicy adds headers to measure modification overhead.
 type headerModifyPolicy struct{}
 
-func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeSkip,
+func (p *headerModifyPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{
+		Set: map[string]string{"x-bench-header": "bench-value"},
 	}
 }
 
-func (p *headerModifyPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.UpstreamRequestModifications{
-		SetHeaders: map[string]string{"x-bench-header": "bench-value"},
+func (p *headerModifyPolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
+	return policy.ResponseHeaderAction{
+		Set: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
 
-func (p *headerModifyPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return policy.UpstreamResponseModifications{
-		SetHeaders: map[string]string{"x-bench-resp": "bench-resp-value"},
-	}
-}
-
-// shortCircuitPolicy returns ImmediateResponse (simulates auth reject).
+// shortCircuitPolicy short-circuits the request with ImmediateResponse (simulates auth reject).
 type shortCircuitPolicy struct{}
 
-func (p *shortCircuitPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeSkip,
-		ResponseBodyMode:   policy.BodyModeSkip,
+func (p *shortCircuitPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{
+		ImmediateResponse: &policy.ImmediateResponse{
+			StatusCode: 401,
+			Headers:    map[string]string{"content-type": "application/json"},
+			Body:       []byte(`{"error":"unauthorized"}`),
+		},
 	}
-}
-
-func (p *shortCircuitPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.ImmediateResponse{
-		StatusCode: 401,
-		Headers:    map[string]string{"content-type": "application/json"},
-		Body:       []byte(`{"error":"unauthorized"}`),
-	}
-}
-
-func (p *shortCircuitPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
 }
 
 // =============================================================================
@@ -451,7 +422,7 @@ func BenchmarkBuildRequestContext(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ec := newPolicyExecutionContext(server, "bench-route", chain)
-			ec.buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+			ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 		}
 	})
 
@@ -476,7 +447,7 @@ func BenchmarkBuildRequestContext(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ec := newPolicyExecutionContext(server, "bench-route", chain)
-			ec.buildRequestContext(reqNoID.GetRequestHeaders(), routeMetadata)
+			ec.buildRequestContexts(reqNoID.GetRequestHeaders(), routeMetadata)
 		}
 	})
 }
@@ -493,8 +464,8 @@ func BenchmarkBuildResponseContext(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ec := newPolicyExecutionContext(server, "bench-route", chain)
-		ec.buildRequestContext(req.GetRequestHeaders(), routeMetadata)
-		ec.buildResponseContext(respHeaders)
+		ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
+		ec.buildResponseContexts(respHeaders)
 	}
 }
 
@@ -521,36 +492,36 @@ func BenchmarkGetModeOverride(b *testing.B) {
 	}
 }
 
-// BenchmarkTranslateRequestHeadersActions benchmarks protobuf response building.
-func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
+// BenchmarkTranslateRequestHeaderActions benchmarks protobuf response building.
+func BenchmarkTranslateRequestHeaderActions(b *testing.B) {
 	scenarios := []struct {
 		name    string
-		results []executor.RequestPolicyResult
+		results []executor.RequestHeaderPolicyResult
 	}{
 		{
 			"NoModifications",
-			[]executor.RequestPolicyResult{
+			[]executor.RequestHeaderPolicyResult{
 				{PolicyName: "p1", PolicyVersion: "v1.0", Action: nil, Skipped: false},
 			},
 		},
 		{
 			"WithHeaderMods",
-			[]executor.RequestPolicyResult{
-				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					SetHeaders:    map[string]string{"x-added": "val1", "x-added2": "val2"},
-					RemoveHeaders: []string{"x-remove-me"},
+			[]executor.RequestHeaderPolicyResult{
+				{PolicyName: "p1", PolicyVersion: "v1.0", Action: &policy.RequestHeaderAction{
+					Set:    map[string]string{"x-added": "val1", "x-added2": "val2"},
+					Remove: []string{"x-remove-me"},
 				}, Skipped: false},
 			},
 		},
 		{
 			"MultiplePolicesWithMods",
-			[]executor.RequestPolicyResult{
-				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{"x-p1": "v1"},
+			[]executor.RequestHeaderPolicyResult{
+				{PolicyName: "p1", PolicyVersion: "v1.0", Action: &policy.RequestHeaderAction{
+					Set: map[string]string{"x-p1": "v1"},
 				}, Skipped: false},
-				{PolicyName: "p2", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					SetHeaders:    map[string]string{"x-p2": "v2"},
-					RemoveHeaders: []string{"x-p1"},
+				{PolicyName: "p2", PolicyVersion: "v1.0", Action: &policy.RequestHeaderAction{
+					Set:    map[string]string{"x-p2": "v2"},
+					Remove: []string{"x-p1"},
 				}, Skipped: false},
 				{PolicyName: "p3", PolicyVersion: "v1.0", Action: nil, Skipped: true},
 			},
@@ -567,9 +538,9 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 			ec := newPolicyExecutionContext(server, "bench-route", chain)
 			req := buildRequestHeadersProcessingRequest("bench-route")
 			routeMetadata := RouteMetadata{RouteName: "bench-route", APIName: "PetStore"}
-			ec.buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+			ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 
-			execResult := &executor.RequestExecutionResult{
+			execResult := &executor.RequestHeaderExecutionResult{
 				Results:        sc.results,
 				ShortCircuited: false,
 			}
@@ -577,7 +548,7 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_, _ = TranslateRequestHeadersActions(execResult, chain, ec)
+				_, _ = TranslateRequestHeaderActions(execResult, chain, ec)
 			}
 		})
 	}

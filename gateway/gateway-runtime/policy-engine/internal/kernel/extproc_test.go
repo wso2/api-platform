@@ -623,7 +623,7 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	assert.Equal(t, "test-route", routeMeta.RouteName)
 	assert.Equal(t, "test-route", execCtx.routeKey)
 	assert.Equal(t, "req-123", execCtx.requestID)
-	assert.NotNil(t, execCtx.requestContext)
-	assert.Equal(t, "/api/v1/pets", execCtx.requestContext.Path)
-	assert.Equal(t, "GET", execCtx.requestContext.Method)
+	assert.NotNil(t, execCtx.requestHeaderCtx)
+	assert.Equal(t, "/api/v1/pets", execCtx.requestHeaderCtx.Path)
+	assert.Equal(t, "GET", execCtx.requestHeaderCtx.Method)
 }

@@ -50,7 +50,7 @@ type SharedContext struct {
 
 	// OperationPath is the operation path pattern from the API definition
 	// (e.g., "/pets/{id}" for a parameterized path)
-	// This differs from RequestContext.Path which contains the actual request path
+	// This differs from RequestHeaderContext.Path which contains the actual request path
 	// with resolved parameters (e.g., "/petstore/v1.0.0/pets/123")
 	OperationPath string
 
@@ -59,9 +59,25 @@ type SharedContext struct {
 	AuthContext *AuthContext
 }
 
-// RequestContext is mutable context for request phase containing current request state
+// ─── Request-phase contexts ──────────────────────────────────────────────────
+
+// RequestHeaderContext is passed to RequestHeaderPolicy.OnRequestHeaders.
+// The request body is not yet available at this phase.
+type RequestHeaderContext struct {
+	*SharedContext
+
+	// Current request headers (read-only for policies)
+	Headers   *Headers
+	Path      string
+	Method    string
+	Authority string
+	Scheme    string
+	Vhost     string
+}
+
+// RequestBodyContext is passed to RequestBodyPolicy.OnRequestBody.
+// The complete buffered request body is available.
 type RequestContext struct {
-	// Shared data across request/response lifecycle
 	*SharedContext
 
 	// Current request headers (read-only for policies)
@@ -76,12 +92,32 @@ type RequestContext struct {
 	Vhost     string
 }
 
-// ResponseContext is context for response phase containing request and response state
-type ResponseContext struct {
-	// Shared data across request/response lifecycle
+// ─── Response-phase contexts ─────────────────────────────────────────────────
+
+// ResponseHeaderContext is passed to ResponseHeaderPolicy.OnResponseHeaders.
+// The response body is not yet available at this phase.
+type ResponseHeaderContext struct {
 	*SharedContext
 
-	// Original request data (immutable, from request phase)
+	// Original request data (read-only, from request phase)
+	RequestHeaders *Headers
+	RequestBody    *Body
+	RequestPath    string
+	RequestMethod  string
+
+	// Current response headers (read-only for policies)
+	ResponseHeaders *Headers
+
+	// Current response status code
+	ResponseStatus int
+}
+
+// ResponseBodyContext is passed to ResponseBodyPolicy.OnResponseBody.
+// The complete buffered response body is available.
+type ResponseContext struct {
+	*SharedContext
+
+	// Original request data (read-only, from request phase)
 	RequestHeaders *Headers
 	RequestBody    *Body
 	RequestPath    string
@@ -96,6 +132,54 @@ type ResponseContext struct {
 	// nil if no body or body not required
 	ResponseBody *Body
 
-	// Current response status code (mutable)
+	// Current response status code
+	ResponseStatus int
+}
+
+// ─── Streaming contexts ──────────────────────────────────────────────────────
+
+// StreamBody holds a single chunk of body data delivered during streaming processing.
+// Unlike Body, it does not carry the "Present" flag — a chunk is always present by definition.
+type StreamBody struct {
+	// Chunk is the raw bytes for this piece of body data.
+	// May be empty when EndOfStream is true (a terminal signal with no payload).
+	Chunk []byte
+
+	// EndOfStream signals that no more chunks will follow for this message.
+	// Policies should finalize any accumulated state when true.
+	EndOfStream bool
+}
+
+// RequestStreamContext is the per-chunk context passed to StreamingRequestBodyPolicy.
+// It mirrors RequestHeaderContext — headers are read-only and body data is delivered
+// one chunk at a time via the StreamBody argument.
+type RequestStreamContext struct {
+	*SharedContext
+
+	// Current request headers (read-only)
+	Headers   *Headers
+	Path      string
+	Method    string
+	Authority string
+	Scheme    string
+	Vhost     string
+}
+
+// ResponseStreamContext is the per-chunk context passed to StreamingResponseBodyPolicy.
+// It mirrors ResponseHeaderContext — response body is delivered chunk-by-chunk
+// via the StreamBody argument.
+type ResponseStreamContext struct {
+	*SharedContext
+
+	// Original request data (read-only, from request phase)
+	RequestHeaders *Headers
+	RequestBody    *Body
+	RequestPath    string
+	RequestMethod  string
+
+	// Current response headers (read-only)
+	ResponseHeaders *Headers
+
+	// Current response status code
 	ResponseStatus int
 }

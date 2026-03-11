@@ -34,9 +34,9 @@ func NewTestSharedContext() *policy.SharedContext {
 	}
 }
 
-// NewTestRequestContext creates a RequestContext with default test values.
-func NewTestRequestContext() *policy.RequestContext {
-	return &policy.RequestContext{
+// NewTestRequestHeaderContext creates a RequestHeaderContext with default test values.
+func NewTestRequestHeaderContext() *policy.RequestHeaderContext {
+	return &policy.RequestHeaderContext{
 		SharedContext: NewTestSharedContext(),
 		Headers:       policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
 		Path:          "/api/v1/users/123",
@@ -46,9 +46,9 @@ func NewTestRequestContext() *policy.RequestContext {
 	}
 }
 
-// NewTestRequestContextWithHeaders creates a RequestContext with custom headers.
-func NewTestRequestContextWithHeaders(headers map[string][]string) *policy.RequestContext {
-	return &policy.RequestContext{
+// NewTestRequestHeaderContextWithHeaders creates a RequestHeaderContext with custom headers.
+func NewTestRequestHeaderContextWithHeaders(headers map[string][]string) *policy.RequestHeaderContext {
+	return &policy.RequestHeaderContext{
 		SharedContext: NewTestSharedContext(),
 		Headers:       policy.NewHeaders(headers),
 		Path:          "/test/path",
@@ -58,23 +58,48 @@ func NewTestRequestContextWithHeaders(headers map[string][]string) *policy.Reque
 	}
 }
 
-// NewTestResponseContext creates a ResponseContext with default test values.
-func NewTestResponseContext() *policy.ResponseContext {
-	reqCtx := NewTestRequestContext()
-	return &policy.ResponseContext{
-		SharedContext:   reqCtx.SharedContext,
-		RequestHeaders:  reqCtx.Headers,
-		RequestBody:     reqCtx.Body,
-		RequestPath:     reqCtx.Path,
-		RequestMethod:   reqCtx.Method,
+// NewTestRequestBodyContext creates a RequestBodyContext with default test values.
+func NewTestRequestBodyContext() *policy.RequestContext {
+	sharedCtx := NewTestSharedContext()
+	return &policy.RequestContext{
+		SharedContext: sharedCtx,
+		Headers:       policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+		Path:          "/api/v1/users/123",
+		Method:        "GET",
+		Authority:     "api.example.com",
+		Scheme:        "https",
+	}
+}
+
+// NewTestResponseHeaderContext creates a ResponseHeaderContext with default test values.
+func NewTestResponseHeaderContext() *policy.ResponseHeaderContext {
+	reqHdrCtx := NewTestRequestHeaderContext()
+	return &policy.ResponseHeaderContext{
+		SharedContext:   reqHdrCtx.SharedContext,
+		RequestHeaders:  reqHdrCtx.Headers,
+		RequestPath:     reqHdrCtx.Path,
+		RequestMethod:   reqHdrCtx.Method,
 		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
 		ResponseStatus:  200,
 	}
 }
 
-// NewTestResponseContextWithStatus creates a ResponseContext with a custom status code.
-func NewTestResponseContextWithStatus(status int) *policy.ResponseContext {
-	ctx := NewTestResponseContext()
+// NewTestResponseHeaderContextWithStatus creates a ResponseHeaderContext with a custom status code.
+func NewTestResponseHeaderContextWithStatus(status int) *policy.ResponseHeaderContext {
+	ctx := NewTestResponseHeaderContext()
 	ctx.ResponseStatus = status
 	return ctx
+}
+
+// NewTestResponseBodyContext creates a ResponseBodyContext with default test values.
+func NewTestResponseBodyContext() *policy.ResponseContext {
+	reqHdrCtx := NewTestRequestHeaderContext()
+	return &policy.ResponseContext{
+		SharedContext:   reqHdrCtx.SharedContext,
+		RequestHeaders:  reqHdrCtx.Headers,
+		RequestPath:     reqHdrCtx.Path,
+		RequestMethod:   reqHdrCtx.Method,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+		ResponseStatus:  200,
+	}
 }

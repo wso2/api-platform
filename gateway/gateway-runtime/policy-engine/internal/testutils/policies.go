@@ -26,54 +26,31 @@ import (
 // NoopPolicy - A policy that does nothing
 // =============================================================================
 
-// NoopPolicy is a policy implementation that does nothing.
+// NoopPolicy satisfies the Policy marker interface with no processing.
 // Useful for testing policy chains without side effects.
 type NoopPolicy struct{}
 
-// Mode returns an empty ProcessingMode.
-func (p *NoopPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{}
-}
-
-// OnRequest returns nil (no action).
-func (p *NoopPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return nil
-}
-
-// OnResponse returns nil (no action).
-func (p *NoopPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
-}
-
 // =============================================================================
-// HeaderModifyingPolicy - A policy that modifies headers
+// HeaderModifyingPolicy - A policy that modifies request and response headers
 // =============================================================================
 
-// HeaderModifyingPolicy is a policy that sets a header on request and response.
+// HeaderModifyingPolicy implements RequestHeaderPolicy and ResponseHeaderPolicy.
 type HeaderModifyingPolicy struct {
 	Key   string
 	Value string
 }
 
-// Mode returns a ProcessingMode that processes headers.
-func (p *HeaderModifyingPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		ResponseHeaderMode: policy.HeaderModeProcess,
+// OnRequestHeaders returns modifications to set the configured header.
+func (p *HeaderModifyingPolicy) OnRequestHeaders(*policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{
+		Set: map[string]string{p.Key: p.Value},
 	}
 }
 
-// OnRequest returns modifications to set the configured header.
-func (p *HeaderModifyingPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.UpstreamRequestModifications{
-		SetHeaders: map[string]string{p.Key: p.Value},
-	}
-}
-
-// OnResponse returns modifications to set the configured header.
-func (p *HeaderModifyingPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return policy.UpstreamResponseModifications{
-		SetHeaders: map[string]string{p.Key: p.Value},
+// OnResponseHeaders returns modifications to set the configured header.
+func (p *HeaderModifyingPolicy) OnResponseHeaders(*policy.ResponseHeaderContext) policy.ResponseHeaderAction {
+	return policy.ResponseHeaderAction{
+		Set: map[string]string{p.Key: p.Value},
 	}
 }
 
@@ -81,30 +58,21 @@ func (p *HeaderModifyingPolicy) OnResponse(*policy.ResponseContext, map[string]i
 // ShortCircuitingPolicy - A policy that returns an immediate response
 // =============================================================================
 
-// ShortCircuitingPolicy is a policy that short-circuits with an immediate response.
+// ShortCircuitingPolicy implements RequestHeaderPolicy and short-circuits with
+// an ImmediateResponse.
 type ShortCircuitingPolicy struct {
 	StatusCode int
 	Body       []byte
 }
 
-// Mode returns a ProcessingMode that processes request headers.
-func (p *ShortCircuitingPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode: policy.HeaderModeProcess,
+// OnRequestHeaders returns an ImmediateResponse to short-circuit the request.
+func (p *ShortCircuitingPolicy) OnRequestHeaders(*policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.RequestHeaderAction{
+		ImmediateResponse: &policy.ImmediateResponse{
+			StatusCode: p.StatusCode,
+			Body:       p.Body,
+		},
 	}
-}
-
-// OnRequest returns an ImmediateResponse to short-circuit the request.
-func (p *ShortCircuitingPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.ImmediateResponse{
-		StatusCode: p.StatusCode,
-		Body:       p.Body,
-	}
-}
-
-// OnResponse returns nil (no action).
-func (p *ShortCircuitingPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
 }
 
 // =============================================================================
@@ -113,57 +81,36 @@ func (p *ShortCircuitingPolicy) OnResponse(*policy.ResponseContext, map[string]i
 
 // ConfigurableMockPolicy is a mock policy with configurable behavior via callbacks.
 type ConfigurableMockPolicy struct {
-	Name    string
-	Version string
-	MockMode policy.ProcessingMode
-	OnReqFn  func(*policy.RequestContext, map[string]interface{}) policy.RequestAction
-	OnRespFn func(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction
+	Name     string
+	Version  string
+	OnReqFn  func(*policy.RequestHeaderContext) policy.RequestHeaderAction
+	OnRespFn func(*policy.ResponseHeaderContext) policy.ResponseHeaderAction
 }
 
-// Mode returns the configured ProcessingMode.
-func (m *ConfigurableMockPolicy) Mode() policy.ProcessingMode {
-	return m.MockMode
-}
-
-// OnRequest calls the configured callback or returns nil.
-func (m *ConfigurableMockPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+// OnRequestHeaders calls the configured callback or returns an empty action.
+func (m *ConfigurableMockPolicy) OnRequestHeaders(ctx *policy.RequestHeaderContext) policy.RequestHeaderAction {
 	if m.OnReqFn != nil {
-		return m.OnReqFn(ctx, params)
+		return m.OnReqFn(ctx)
 	}
-	return nil
+	return policy.RequestHeaderAction{}
 }
 
-// OnResponse calls the configured callback or returns nil.
-func (m *ConfigurableMockPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+// OnResponseHeaders calls the configured callback or returns an empty action.
+func (m *ConfigurableMockPolicy) OnResponseHeaders(ctx *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
 	if m.OnRespFn != nil {
-		return m.OnRespFn(ctx, params)
+		return m.OnRespFn(ctx)
 	}
-	return nil
+	return policy.ResponseHeaderAction{}
 }
 
 // =============================================================================
 // SimpleMockPolicy - A simple mock policy for registry tests
 // =============================================================================
 
-// SimpleMockPolicy is a minimal mock policy that stores name and version.
+// SimpleMockPolicy is a minimal mock policy that satisfies the Policy marker interface.
 type SimpleMockPolicy struct {
 	Name    string
 	Version string
-}
-
-// Mode returns an empty ProcessingMode.
-func (m *SimpleMockPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{}
-}
-
-// OnRequest returns nil (no action).
-func (m *SimpleMockPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return nil
-}
-
-// OnResponse returns nil (no action).
-func (m *SimpleMockPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return nil
 }
 
 // =============================================================================

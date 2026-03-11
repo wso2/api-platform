@@ -125,6 +125,10 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 	requiresRequestBody := false
 	requiresResponseBody := false
 	hasExecutionConditions := false
+	requiresRequestHeader := false
+	requiresResponseHeader := false
+	supportsRequestStreaming := true
+	supportsResponseStreaming := true
 
 	for _, policyConfig := range config.Policies {
 		// Create metadata with route and API information
@@ -163,17 +167,32 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 		policyList = append(policyList, impl)
 		policySpecs = append(policySpecs, spec)
 
-		// Get policy mode and update body requirements
-		mode := impl.Mode()
+		// Discover body capabilities via type assertions
+		_, hasReqBody := impl.(policy.RequestPolicy)
+		_, hasStreamingReqBody := impl.(policy.StreamingRequestPolicy)
+		_, hasRespBody := impl.(policy.ResponsePolicy)
+		_, hasStreamingRespBody := impl.(policy.StreamingResponsePolicy)
+		_, hasRequestHeaderPolicy := impl.(policy.RequestHeaderPolicy)
+		_, hasResponseHeaderPolicy := impl.(policy.ResponseHeaderPolicy)
 
-		// Update request body requirement (if any policy needs buffering)
-		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
+		if hasReqBody || hasStreamingReqBody {
 			requiresRequestBody = true
+			if !hasStreamingReqBody {
+				supportsRequestStreaming = false
+			}
+		}
+		if hasRespBody || hasStreamingRespBody {
+			requiresResponseBody = true
+			if !hasStreamingRespBody {
+				supportsResponseStreaming = false
+			}
 		}
 
-		// Update response body requirement (if any policy needs buffering)
-		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
-			requiresResponseBody = true
+		if hasRequestHeaderPolicy {
+			requiresRequestHeader = true
+		}
+		if hasResponseHeaderPolicy {
+			requiresResponseHeader = true
 		}
 	}
 
@@ -183,6 +202,10 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 		RequiresRequestBody:  requiresRequestBody,
 		RequiresResponseBody: requiresResponseBody,
 		HasExecutionConditions:     hasExecutionConditions,
+		RequiresRequestHeader: requiresRequestHeader,
+		RequiresResponseHeader: requiresResponseHeader,
+		SupportsRequestStreaming: supportsRequestStreaming,
+		SupportsResponseStreaming: supportsResponseStreaming,
 	}
 
 	return chain, nil

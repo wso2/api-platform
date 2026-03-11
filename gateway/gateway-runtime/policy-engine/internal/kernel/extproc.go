@@ -146,7 +146,6 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		defer span.End()
 
 		// Initialize execution context for this request
-		routeMetadata := s.extractRouteMetadata(req)
 		rm := s.initializeExecutionContext(ctx, req, execCtx)
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
@@ -168,7 +167,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			}
 			metrics.RouteLookupFailuresTotal.Inc()
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
-			return s.skipAllProcessing(routeMetadata), nil
+			return s.skipAllProcessing(*rm), nil
 		}
 		if span.IsRecording() {
 			span.SetAttributes(attribute.Int(constants.AttrPolicyCount, len((*execCtx).policyChain.Policies)))
@@ -362,7 +361,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 
 	// Build request context from Envoy headers with route metadata
 	// Request ID will be extracted from x-request-id header or generated if not present
-	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+	(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 	return &routeMetadata
 }
 

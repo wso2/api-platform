@@ -2,7 +2,8 @@
 # This configuration uses static YAML file for policy chain configuration
 
 [policy_engine.server]
-# Port for ext_proc gRPC server (receives requests from Envoy)
+# Use TCP so Envoy (in Docker) can reach the policy engine running on the host.
+mode = "tcp"
 extproc_port = 9001
 
 [policy_engine.config_mode]
