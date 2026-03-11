@@ -360,6 +360,113 @@ spec:
 	assert.Nil(t, result)
 }
 
+func TestDeployAPIConfiguration_UnsupportedKind(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	params := APIDeploymentParams{
+		Data:          []byte(`kind: RestApi`),
+		ContentType:   "application/yaml",
+		Kind:          "UnknownKind",
+		CorrelationID: "test-corr",
+		Logger:        logger,
+	}
+
+	result, err := service.DeployAPIConfiguration(params)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "unsupported resource kind")
+	assert.Contains(t, err.Error(), "UnknownKind")
+}
+
+func TestDeployAPIConfiguration_InferKindFromPayload(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("Infers RestApi kind from payload", func(t *testing.T) {
+		yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: inferred-api
+spec:
+  displayName: ""
+  version: ""
+  context: ""
+`
+		// Kind param is empty — should be inferred as RestApi from payload,
+		// then fail validation (not kind resolution)
+		params := APIDeploymentParams{
+			Data:          []byte(yamlData),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+		}
+
+		_, err := service.DeployAPIConfiguration(params)
+		assert.Error(t, err)
+		// The error should be a validation error, proving RestApi branch was reached
+		var validationErr *ValidationErrorListError
+		assert.ErrorAs(t, err, &validationErr)
+	})
+
+	t.Run("Infers WebSubApi kind from payload", func(t *testing.T) {
+		yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: WebSubApi
+metadata:
+  name: inferred-websub
+spec:
+  displayName: ""
+  version: ""
+  context: ""
+`
+		params := APIDeploymentParams{
+			Data:          []byte(yamlData),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+		}
+
+		_, err := service.DeployAPIConfiguration(params)
+		assert.Error(t, err)
+		var validationErr *ValidationErrorListError
+		assert.ErrorAs(t, err, &validationErr)
+	})
+}
+
+func TestDeployAPIConfiguration_EmptyKindInPayload(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+metadata:
+  name: no-kind-api
+spec:
+  displayName: No Kind API
+  version: 1.0.0
+  context: /nokind
+`
+	params := APIDeploymentParams{
+		Data:          []byte(yamlData),
+		ContentType:   "application/yaml",
+		CorrelationID: "test-corr",
+		Logger:        logger,
+	}
+
+	result, err := service.DeployAPIConfiguration(params)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "resource kind is required")
+}
+
 func TestAPIDeploymentService_Fields(t *testing.T) {
 	store := storage.NewConfigStore()
 	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
@@ -517,6 +624,7 @@ spec:
 			Data:          []byte(yamlData),
 			APIID:         "0000-existing-websub-0000-000000000000",
 			ContentType:   "application/yaml",
+			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
 			Logger:        logger,
 		}

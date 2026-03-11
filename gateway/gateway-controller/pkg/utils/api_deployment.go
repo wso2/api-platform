@@ -102,7 +102,22 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		kind         string
 	)
 
-	switch params.Kind {
+	// If Kind is not provided, infer it from the payload
+	resolvedKind := params.Kind
+	if resolvedKind == "" {
+		var envelope struct {
+			Kind string `json:"kind" yaml:"kind"`
+		}
+		if err := s.parser.Parse(params.Data, params.ContentType, &envelope); err != nil {
+			return nil, fmt.Errorf("failed to parse configuration to infer kind: %w", err)
+		}
+		if envelope.Kind == "" {
+			return nil, fmt.Errorf("resource kind is required: set Kind in deployment params or include a 'kind' field in the payload")
+		}
+		resolvedKind = envelope.Kind
+	}
+
+	switch resolvedKind {
 	case "WebSubApi":
 		var webSubConfig api.WebSubAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &webSubConfig); err != nil {
@@ -120,7 +135,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
 			return nil, &ValidationErrorListError{Errors: validationErrors}
 		}
-	default: // "RestApi" or empty (backwards compat)
+	case "RestApi":
 		var restConfig api.RestAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &restConfig); err != nil {
 			return nil, fmt.Errorf("failed to parse configuration: %w", err)
@@ -137,6 +152,8 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
 			return nil, &ValidationErrorListError{Errors: validationErrors}
 		}
+	default:
+		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\" or \"WebSubApi\"", resolvedKind)
 	}
 
 	// Generate API ID if not provided
