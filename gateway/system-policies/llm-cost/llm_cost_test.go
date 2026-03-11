@@ -622,6 +622,8 @@ func TestAnthropicCalculator_Cost_WebSearch_ZeroRequests(t *testing.T) {
 }
 
 func TestGeminiCalculator_Normalize(t *testing.T) {
+	// INCLUSIVE case: promptTokenCount + candidatesTokenCount == totalTokenCount
+	// meaning candidatesTokenCount already contains thinking tokens.
 	body := []byte(`{
 		"model": "gemini-2.0-flash",
 		"usageMetadata": {
@@ -637,6 +639,7 @@ func TestGeminiCalculator_Normalize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// Inclusive: CompletionTokens stays at 200 (thinking already included)
 	if u.PromptTokens != 400 || u.CompletionTokens != 200 || u.TotalTokens != 600 {
 		t.Errorf("wrong token counts: %+v", u)
 	}
@@ -645,6 +648,63 @@ func TestGeminiCalculator_Normalize(t *testing.T) {
 	}
 	if u.CachedReadTokens != 50 {
 		t.Errorf("expected CachedReadTokens=50, got %d", u.CachedReadTokens)
+	}
+}
+
+// TestGeminiCalculator_Normalize_ThinkingExclusive verifies the exclusive case where
+// candidatesTokenCount does NOT include thinking tokens (Gemini 2.5 series behaviour).
+// In this case totalTokenCount = promptTokenCount + candidatesTokenCount + thoughtsTokenCount.
+// We must add reasoning tokens to CompletionTokens so genericCalculateCost can subtract
+// them correctly and still arrive at the right text output count.
+func TestGeminiCalculator_Normalize_ThinkingExclusive(t *testing.T) {
+	// prompt=100, candidates=100 (text only), thoughts=50, total=250
+	// 100+100 != 250 → exclusive
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 100,
+			"candidatesTokenCount": 100,
+			"totalTokenCount": 250,
+			"thoughtsTokenCount": 50
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Exclusive: CompletionTokens must be adjusted to candidates + thoughts = 150
+	if u.CompletionTokens != 150 {
+		t.Errorf("exclusive: expected CompletionTokens=150 (100 text + 50 thinking), got %d", u.CompletionTokens)
+	}
+	if u.ReasoningTokens != 50 {
+		t.Errorf("expected ReasoningTokens=50, got %d", u.ReasoningTokens)
+	}
+	// After genericCalculateCost subtracts: regularOutput = 150 - 50 = 100 (correct text count)
+}
+
+// TestGeminiCalculator_Cost_ThinkingExclusive verifies that an exclusive-mode thinking
+// response is billed correctly: text output tokens at output rate, thinking at reasoning rate.
+func TestGeminiCalculator_Cost_ThinkingExclusive(t *testing.T) {
+	pricing, ok := lookupPricing("gemini/gemini-2.5-flash")
+	if !ok {
+		t.Skip("gemini/gemini-2.5-flash not in pricing map")
+	}
+	// Exclusive: 100 text output, 50 thinking — CompletionTokens adjusted to 150
+	usage := Usage{
+		PromptTokens:     100,
+		CompletionTokens: 150, // candidates(100) + thoughts(50) after exclusive adjustment
+		TotalTokens:      250,
+		ReasoningTokens:  50,
+	}
+	cost := genericCalculateCost(usage, pricing)
+	// regularOutput = 150 - 50 = 100 text tokens at output rate
+	// reasoning = 50 tokens at reasoning rate (= output rate for this model)
+	expectedOutputRate := pricing.OutputCostPerToken
+	expected := float64(100)*pricing.InputCostPerToken +
+		float64(100)*expectedOutputRate +
+		float64(50)*expectedOutputRate
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
 	}
 }
 
@@ -943,6 +1003,88 @@ func TestGeminiCalculator_Normalize_ResponseTokensDetails(t *testing.T) {
 	}
 	if u.AudioOutputTokens != 200 {
 		t.Errorf("expected AudioOutputTokens=200 (from responseTokensDetails), got %d", u.AudioOutputTokens)
+	}
+}
+
+// TestGeminiCalculator_Normalize_ToolUsePromptTokens verifies that
+// toolUsePromptTokenCount from Gemini Live sessions is parsed into ToolUsePromptTokens.
+func TestGeminiCalculator_Normalize_ToolUsePromptTokens(t *testing.T) {
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 100,
+			"candidatesTokenCount": 50,
+			"totalTokenCount": 150,
+			"toolUsePromptTokenCount": 25
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.ToolUsePromptTokens != 25 {
+		t.Errorf("expected ToolUsePromptTokens=25, got %d", u.ToolUsePromptTokens)
+	}
+	// Normal prompt/completion tokens are unaffected
+	if u.PromptTokens != 100 || u.CompletionTokens != 50 {
+		t.Errorf("unexpected base token counts: %+v", u)
+	}
+}
+
+// TestGeminiCalculator_Cost_ToolUse_TokenFallback verifies that when the model
+// has no WebSearchCostPerRequest, tool use tokens are billed at the standard input rate.
+func TestGeminiCalculator_Cost_ToolUse_TokenFallback(t *testing.T) {
+	pricing, ok := lookupPricing("gemini/gemini-2.0-flash")
+	if !ok {
+		t.Skip("gemini/gemini-2.0-flash not in pricing map")
+	}
+	// Confirm no fixed web search fee on this model
+	if pricing.WebSearchCostPerRequest != 0 {
+		t.Skip("model has WebSearchCostPerRequest set — fixed-fee path not tested here")
+	}
+
+	usage := Usage{
+		PromptTokens:        100,
+		CompletionTokens:    50,
+		TotalTokens:         150,
+		ToolUsePromptTokens: 25,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// Expected: (100 prompt + 25 tool) * inputRate + 50 * outputRate
+	expected := float64(100)*pricing.InputCostPerToken +
+		float64(50)*pricing.OutputCostPerToken +
+		float64(25)*pricing.InputCostPerToken
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Cost_ToolUse_FixedFee verifies that when WebSearchCostPerRequest
+// is set in pricing, a flat fee is charged instead of per-token billing.
+func TestGeminiCalculator_Cost_ToolUse_FixedFee(t *testing.T) {
+	pricing := ModelPricing{
+		InputCostPerToken:       1e-6,
+		OutputCostPerToken:      2e-6,
+		WebSearchCostPerRequest: 0.01,
+	}
+	usage := Usage{
+		PromptTokens:        100,
+		CompletionTokens:    50,
+		TotalTokens:         150,
+		ToolUsePromptTokens: 25,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// Tool tokens billed as flat fee, NOT per-token
+	expected := float64(100)*1e-6 + float64(50)*2e-6 + 0.01
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+	// Sanity: per-token billing would have given a different (much smaller) result
+	tokenBased := float64(100)*1e-6 + float64(50)*2e-6 + float64(25)*1e-6
+	if almostEqual(cost, tokenBased) {
+		t.Errorf("expected flat fee to differ from per-token billing")
 	}
 }
 
