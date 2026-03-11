@@ -106,13 +106,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		Url: &upstream,
 	}
 	// If provider has vhost configured add a host adding policy
-	providerRestCfg, ok := provider.Configuration.(api.RestAPI)
-	if !ok {
-		return nil, fmt.Errorf("provider configuration is not a RestAPI")
-	}
-	apiData := providerRestCfg.Spec
-	if apiData.Vhosts != nil && apiData.Vhosts.Main != "" {
-		providerVhost := apiData.Vhosts.Main
+	if providerConfig.Spec.Vhost != nil && *providerConfig.Spec.Vhost != "" {
+		providerVhost := *providerConfig.Spec.Vhost
 		// Add host header adding policy at API level
 		hParams, err := GetHostAdditionPolicyParams(providerVhost)
 		if err != nil {
