@@ -314,7 +314,7 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 
 // TranslateRequestBodyActions converts request body execution result to ext_proc response
 func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, dynamicMetadata, _, _, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, dynamicMetadata, path, method, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, path, method, dynamicMetadata)
 
 	return response, nil
 }
