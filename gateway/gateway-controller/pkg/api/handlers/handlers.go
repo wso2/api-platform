@@ -3379,21 +3379,22 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 			return
 		}
 		if cfg.Kind == string(api.RestApi) {
-			specData, err := cfg.Configuration.Spec.AsAPIConfigData()
-			if err == nil && specData.SubscriptionPlans != nil && len(*specData.SubscriptionPlans) > 0 {
-				enabled := false
-				for _, name := range *specData.SubscriptionPlans {
-					if strings.EqualFold(name, plan.PlanName) {
-						enabled = true
-						break
+			if restAPI, ok := cfg.Configuration.(api.RestAPI); ok {
+				if restAPI.Spec.SubscriptionPlans != nil && len(*restAPI.Spec.SubscriptionPlans) > 0 {
+					enabled := false
+					for _, name := range *restAPI.Spec.SubscriptionPlans {
+						if strings.EqualFold(name, plan.PlanName) {
+							enabled = true
+							break
+						}
 					}
-				}
-				if !enabled {
-					c.JSON(http.StatusBadRequest, api.ErrorResponse{
-						Status:  "error",
-						Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
-					})
-					return
+					if !enabled {
+						c.JSON(http.StatusBadRequest, api.ErrorResponse{
+							Status:  "error",
+							Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
+						})
+						return
+					}
 				}
 			}
 		}

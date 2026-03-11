@@ -469,7 +469,7 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		if cfg == nil {
 			continue
 		}
-		if cfg.Configuration.Kind != api.RestApi {
+		if cfg.Kind != string(api.RestApi) {
 			continue
 		}
 
