@@ -188,6 +188,7 @@ func NewClient(
 		store,
 		db,
 		snapshotManager,
+		policyManager,
 	)
 
 	// Initialize API utils service with the proper base URL using the method
@@ -1884,6 +1885,25 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 		return
 	}
 
+	// Check if MCP proxy exists on this gateway
+	mcpConfig, err := c.findAPIConfig(proxyID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("MCP proxy configuration not found for undeployment",
+				slog.String("proxy_id", proxyID),
+			)
+			// Not an error - the MCP proxy might already be undeployed or deleted
+			return
+		}
+		// Real storage error - log and abort
+		c.logger.Error("Failed to fetch MCP proxy configuration for undeployment",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
 	if c.mcpDeploymentService == nil {
 		c.logger.Error("MCP deployment service not available",
 			slog.String("proxy_id", proxyID),
@@ -1892,7 +1912,7 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 		return
 	}
 
-	_, err = c.mcpDeploymentService.DeleteMCPProxy(proxyID, deletedEvent.CorrelationID, c.logger)
+	_, err = c.mcpDeploymentService.DeleteMCPProxy(mcpConfig.Handle, deletedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete MCP proxy configuration",
 			slog.String("proxy_id", proxyID),
@@ -1900,9 +1920,6 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 		)
 		return
 	}
-
-	// Remove derived policy configuration (after all other operations)
-	c.removePolicyConfiguration(proxyID, deletedEvent.CorrelationID, false)
 
 	c.logger.Info("Successfully processed MCP proxy deleted event",
 		slog.String("proxy_id", proxyID),

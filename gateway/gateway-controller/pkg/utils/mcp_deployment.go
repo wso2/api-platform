@@ -28,6 +28,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -52,6 +53,7 @@ type MCPDeploymentService struct {
 	parser          *config.Parser
 	validator       *config.MCPValidator
 	transformer     Transformer
+	policyManager   *policyxds.PolicyManager
 }
 
 // NewMCPDeploymentService creates a new MCP deployment service
@@ -59,6 +61,7 @@ func NewMCPDeploymentService(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
+	policyManager *policyxds.PolicyManager,
 ) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		store:           store,
@@ -67,6 +70,7 @@ func NewMCPDeploymentService(
 		parser:          config.NewParser(),
 		validator:       config.NewMCPValidator(),
 		transformer:     NewMCPTransformer(),
+		policyManager:   policyManager,
 	}
 }
 
@@ -405,6 +409,16 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 			logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
+
+	// Remove derived policy configuration
+	if s.policyManager != nil {
+		policyID := cfg.UUID + "-policies"
+		if err := s.policyManager.RemovePolicy(policyID); err != nil {
+			logger.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
+		} else {
+			logger.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
+		}
+	}
 
 	return cfg, nil
 }
