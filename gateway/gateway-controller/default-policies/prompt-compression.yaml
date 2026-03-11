@@ -5,7 +5,6 @@ description: |
   compression. Reduces token usage while preserving semantic meaning and intent.
   The compression-prompt library analyzes word importance and removes lower-importance
   words based on the target compression ratio.
-runtime: python
 
 processingMode:
   requestHeaderMode: SKIP
@@ -41,10 +40,11 @@ parameters:
       x-wso2-policy-advanced-param: true
       description: |
         Minimum number of tokens required to trigger compression.
-        Inputs shorter than this will be passed through unchanged.
+        Note: The policy now bypasses library limits and compresses any length.
+        This parameter is kept for backward compatibility but has no effect.
         Roughly 4 characters = 1 token.
-      default: 100
-      minimum: 50
+      default: 1
+      minimum: 1
     preserveCodeBlocks:
       type: boolean
       x-wso2-policy-advanced-param: true

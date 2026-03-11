@@ -34,7 +34,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     git \
     make \
-    ca-certificates
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv
 
 WORKDIR /workspace
 

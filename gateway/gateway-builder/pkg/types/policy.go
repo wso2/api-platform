@@ -38,8 +38,8 @@ type DiscoveredPolicy struct {
 	GoModuleVersion  string // Resolved version for gomodule entries (e.g., "v0.1.0")
 	IsFilePathEntry  bool   // True if from filePath manifest entry (needs replace directive)
 
-	// NEW fields for Python support
-	Runtime         string                 // "go" (default) or "python"
+	// Runtime is auto-detected: "go" or "python"
+	Runtime         string
 	PythonSourceDir string                 // Path to Python source directory
 	ProcessingMode  *policy.ProcessingMode // Parsed from policy-definition.yaml (Python only)
 }

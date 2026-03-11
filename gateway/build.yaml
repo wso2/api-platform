@@ -79,3 +79,7 @@ policies:
     filePath: ./sample-policies/add-python-header
   - name: prompt-compression
     filePath: ./sample-policies/prompt-compression
+  #-  name: prompt-compression
+    # pipPackage: wso2-gateway-policy-prompt-compression==0.1.1
+  - name: uppercase-body
+    filePath: ./sample-policies/uppercase-body

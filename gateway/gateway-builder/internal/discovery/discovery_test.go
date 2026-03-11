@@ -146,7 +146,7 @@ policies:
 	_, err := LoadBuildFile(lockPath)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "either filePath or gomodule must be provided")
+	assert.Contains(t, err.Error(), "either filePath, gomodule, or pipPackage must be provided")
 }
 
 func TestLoadBuildFile_DuplicatePolicy(t *testing.T) {
@@ -171,7 +171,7 @@ policies:
 func TestLoadBuildFile_BothFilePathAndGomodule(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// This should succeed but warn (filePath preferred)
+	// Multiple sources should be rejected
 	manifestContent := `version: v1
 policies:
   - name: test-policy
@@ -181,11 +181,10 @@ policies:
 	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
-	manifest, err := LoadBuildFile(lockPath)
+	_, err := LoadBuildFile(lockPath)
 
-	require.NoError(t, err)
-	assert.Equal(t, "./policies/test", manifest.Policies[0].FilePath)
-	assert.Equal(t, "github.com/example/test", manifest.Policies[0].Gomodule)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only one of filePath, gomodule, or pipPackage may be provided")
 }
 
 // ==== ParsePolicyYAML tests ====
@@ -457,8 +456,7 @@ policies:
 
 	require.Error(t, err)
 	assert.Nil(t, policies)
-	// The error occurs when trying to read go.mod from the non-existent policy path
-	assert.Contains(t, err.Error(), "failed to read module path from go.mod for missing-policy")
+	assert.Contains(t, err.Error(), "from build file entry missing-policy")
 }
 
 func TestDiscoverPoliciesFromBuildFile_NoFilePathOrGomodule(t *testing.T) {
@@ -475,7 +473,7 @@ policies:
 
 	require.Error(t, err)
 	assert.Nil(t, policies)
-	assert.Contains(t, err.Error(), "either filePath or gomodule must be provided")
+	assert.Contains(t, err.Error(), "either filePath, gomodule, or pipPackage must be provided")
 }
 
 func TestDiscoverPoliciesFromBuildFile_NameMismatch(t *testing.T) {
@@ -534,12 +532,12 @@ policies:
 func TestDiscoverPoliciesFromBuildFile_InvalidPolicyStructure(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create policy directory without go.mod
+	// Create policy directory without go.mod and without .py files — ambiguous
 	policyDir := filepath.Join(tmpDir, "policies", "invalid")
 	testutils.CreateDir(t, policyDir)
 
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: invalid\nversion: v1.0.0\n")
-	// Missing go.mod
+	// No go.mod, no .py files → defaults to Go, which will fail
 
 	manifestContent := `version: v1
 policies:
@@ -553,7 +551,6 @@ policies:
 
 	require.Error(t, err)
 	assert.Nil(t, policies)
-	// The error occurs when trying to read go.mod which doesn't exist
 	assert.Contains(t, err.Error(), "failed to read module path from go.mod for invalid")
 }
 
@@ -819,4 +816,200 @@ policies:
 	require.Len(t, policies, 1)
 	assert.Equal(t, "local-policy", policies[0].Name)
 	assert.True(t, policies[0].IsFilePathEntry)
+}
+
+// ==== DetectRuntime tests ====
+
+func TestDetectRuntime_GoPolicy(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "module test\n\ngo 1.23")
+	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.go"), "package test")
+
+	runtime := DetectRuntime(tmpDir)
+
+	assert.Equal(t, "go", runtime)
+}
+
+func TestDetectRuntime_PythonPolicy(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.py"), "def on_request(): pass")
+	testutils.WriteFile(t, filepath.Join(tmpDir, "requirements.txt"), "")
+
+	runtime := DetectRuntime(tmpDir)
+
+	assert.Equal(t, "python", runtime)
+}
+
+func TestDetectRuntime_GoTakesPrecedence(t *testing.T) {
+	// If both go.mod and .py files exist, Go wins
+	tmpDir := t.TempDir()
+	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "module test\n\ngo 1.23")
+	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.go"), "package test")
+	testutils.WriteFile(t, filepath.Join(tmpDir, "helper.py"), "# python helper")
+
+	runtime := DetectRuntime(tmpDir)
+
+	assert.Equal(t, "go", runtime)
+}
+
+func TestDetectRuntime_EmptyDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	runtime := DetectRuntime(tmpDir)
+
+	assert.Equal(t, "go", runtime)
+}
+
+func TestDetectRuntime_NonexistentDirectory(t *testing.T) {
+	runtime := DetectRuntime("/nonexistent/path")
+
+	assert.Equal(t, "go", runtime)
+}
+
+// ==== ParsePipPackageRef tests ====
+
+func TestParsePipPackageRef_SimplePackage(t *testing.T) {
+	pkg, version, indexURL, err := ParsePipPackageRef("wso2-gateway-policy-prompt-compression==1.0.0")
+
+	require.NoError(t, err)
+	assert.Equal(t, "wso2-gateway-policy-prompt-compression", pkg)
+	assert.Equal(t, "1.0.0", version)
+	assert.Empty(t, indexURL)
+}
+
+func TestParsePipPackageRef_WithPrivateIndex(t *testing.T) {
+	pkg, version, indexURL, err := ParsePipPackageRef("my-org-auth-policy==2.3.0@https://pypi.my-company.com/simple")
+
+	require.NoError(t, err)
+	assert.Equal(t, "my-org-auth-policy", pkg)
+	assert.Equal(t, "2.3.0", version)
+	assert.Equal(t, "https://pypi.my-company.com/simple", indexURL)
+}
+
+func TestParsePipPackageRef_MissingVersion(t *testing.T) {
+	_, _, _, err := ParsePipPackageRef("my-package")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid pipPackage format")
+}
+
+func TestParsePipPackageRef_EmptyVersion(t *testing.T) {
+	_, _, _, err := ParsePipPackageRef("my-package==")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid pipPackage format")
+}
+
+func TestParsePipPackageRef_EmptyPackageName(t *testing.T) {
+	_, _, _, err := ParsePipPackageRef("==1.0.0")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid pipPackage format")
+}
+
+// ==== Fingerprint-based discovery tests ====
+
+func TestDiscoverPoliciesFromBuildFile_PythonAutoDetect(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a Python policy directory (no go.mod, has .py files)
+	policyDir := filepath.Join(tmpDir, "policies", "my-python-policy")
+	testutils.CreateDir(t, policyDir)
+
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), `name: my-python-policy
+version: v1.0.0
+processingMode:
+  requestHeaderMode: PROCESS
+  requestBodyMode: SKIP
+  responseHeaderMode: SKIP
+  responseBodyMode: SKIP
+`)
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.py"), "def on_request(): pass\n")
+	testutils.WriteFile(t, filepath.Join(policyDir, "requirements.txt"), "")
+
+	manifestContent := `version: v1
+policies:
+  - name: my-python-policy
+    filePath: ./policies/my-python-policy
+`
+	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	testutils.WriteFile(t, manifestPath, manifestContent)
+
+	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
+
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	assert.Equal(t, "my-python-policy", policies[0].Name)
+	assert.Equal(t, "python", policies[0].Runtime)
+	assert.NotNil(t, policies[0].ProcessingMode)
+}
+
+func TestDiscoverPoliciesFromBuildFile_GoAutoDetect(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a Go policy directory
+	policyDir := filepath.Join(tmpDir, "policies", "my-go-policy")
+	testutils.CreateDir(t, policyDir)
+
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: my-go-policy\nversion: v1.0.0\n")
+	testutils.WriteGoMod(t, policyDir, "github.com/example/my-go-policy")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), "package mygopolicy\n")
+
+	manifestContent := `version: v1
+policies:
+  - name: my-go-policy
+    filePath: ./policies/my-go-policy
+`
+	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	testutils.WriteFile(t, manifestPath, manifestContent)
+
+	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
+
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	assert.Equal(t, "my-go-policy", policies[0].Name)
+	assert.Equal(t, "go", policies[0].Runtime)
+}
+
+func TestDiscoverPoliciesFromBuildFile_MixedGoAndPython(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Go policy
+	goDir := filepath.Join(tmpDir, "policies", "go-policy")
+	testutils.CreateDir(t, goDir)
+	testutils.WriteFile(t, filepath.Join(goDir, "policy-definition.yaml"), "name: go-policy\nversion: v1.0.0\n")
+	testutils.WriteGoMod(t, goDir, "github.com/example/go-policy")
+	testutils.WriteFile(t, filepath.Join(goDir, "policy.go"), "package gopolicy\n")
+
+	// Python policy
+	pyDir := filepath.Join(tmpDir, "policies", "py-policy")
+	testutils.CreateDir(t, pyDir)
+	testutils.WriteFile(t, filepath.Join(pyDir, "policy-definition.yaml"), `name: py-policy
+version: v1.0.0
+processingMode:
+  requestHeaderMode: PROCESS
+  requestBodyMode: SKIP
+  responseHeaderMode: SKIP
+  responseBodyMode: SKIP
+`)
+	testutils.WriteFile(t, filepath.Join(pyDir, "policy.py"), "def on_request(): pass\n")
+
+	manifestContent := `version: v1
+policies:
+  - name: go-policy
+    filePath: ./policies/go-policy
+  - name: py-policy
+    filePath: ./policies/py-policy
+`
+	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	testutils.WriteFile(t, manifestPath, manifestContent)
+
+	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
+
+	require.NoError(t, err)
+	require.Len(t, policies, 2)
+	assert.Equal(t, "go-policy", policies[0].Name)
+	assert.Equal(t, "go", policies[0].Runtime)
+	assert.Equal(t, "py-policy", policies[1].Name)
+	assert.Equal(t, "python", policies[1].Runtime)
 }

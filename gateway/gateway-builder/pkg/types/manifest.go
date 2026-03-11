@@ -26,8 +26,8 @@ type BuildFile struct {
 
 // BuildEntry represents a single policy entry in the build file
 type BuildEntry struct {
-	Name         string `yaml:"name"`
-	FilePath     string `yaml:"filePath,omitempty"`
-	Gomodule     string `yaml:"gomodule,omitempty"`
-	Pythonmodule string `yaml:"pythonmodule,omitempty"` // NEW: Python module reference
+	Name       string `yaml:"name"`
+	FilePath   string `yaml:"filePath,omitempty"`
+	Gomodule   string `yaml:"gomodule,omitempty"`
+	PipPackage string `yaml:"pipPackage,omitempty"`
 }

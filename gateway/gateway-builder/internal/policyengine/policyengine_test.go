@@ -375,6 +375,10 @@ func TestGenerateCode_Success(t *testing.T) {
 	testutils.CreateDir(t, mainPkgDir)
 	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
+	// Create python-executor sibling directory (required by generatePythonExecutorBase)
+	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
+	testutils.CreateDir(t, pythonExecDir)
+
 	// Create policy directory
 	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
 
@@ -382,7 +386,8 @@ func TestGenerateCode_Success(t *testing.T) {
 		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policyPath, "github.com/policy-engine/policies/ratelimit"),
 	}
 
-	err := GenerateCode(tmpDir, policies)
+	outputDir := t.TempDir()
+	err := GenerateCode(tmpDir, policies, outputDir)
 	require.NoError(t, err)
 
 	// Verify plugin_registry.go was generated
@@ -411,10 +416,15 @@ func TestGenerateCode_EmptyPolicies(t *testing.T) {
 	testutils.CreateDir(t, mainPkgDir)
 	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
+	// Create python-executor sibling directory
+	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
+	testutils.CreateDir(t, pythonExecDir)
+
 	// Empty policies
 	policies := []*types.DiscoveredPolicy{}
 
-	err := GenerateCode(tmpDir, policies)
+	outputDir := t.TempDir()
+	err := GenerateCode(tmpDir, policies, outputDir)
 	require.NoError(t, err)
 
 	// Files should still be generated
@@ -428,11 +438,16 @@ func TestGenerateCode_MissingCmdDirectory(t *testing.T) {
 	// Create go.mod but NOT the cmd/policy-engine directory
 	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
+	// Create python-executor sibling directory
+	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
+	testutils.CreateDir(t, pythonExecDir)
+
 	policies := []*types.DiscoveredPolicy{
 		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", "/policies/ratelimit", "github.com/example/ratelimit"),
 	}
 
-	err := GenerateCode(tmpDir, policies)
+	outputDir := t.TempDir()
+	err := GenerateCode(tmpDir, policies, outputDir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to write plugin_registry.go")
 }
@@ -443,6 +458,10 @@ func TestGenerateCode_MissingGoMod(t *testing.T) {
 	mainPkgDir := filepath.Join(tmpDir, "cmd", "policy-engine")
 	testutils.CreateDir(t, mainPkgDir)
 
+	// Create python-executor sibling directory
+	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
+	testutils.CreateDir(t, pythonExecDir)
+
 	// No go.mod file
 	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
 
@@ -450,7 +469,8 @@ func TestGenerateCode_MissingGoMod(t *testing.T) {
 		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", policyPath, "github.com/example/ratelimit"),
 	}
 
-	err := GenerateCode(tmpDir, policies)
+	outputDir := t.TempDir()
+	err := GenerateCode(tmpDir, policies, outputDir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to update go.mod")
 }
@@ -461,6 +481,10 @@ func TestGenerateCode_MultiplePolicies(t *testing.T) {
 	mainPkgDir := filepath.Join(tmpDir, "cmd", "policy-engine")
 	testutils.CreateDir(t, mainPkgDir)
 	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	// Create python-executor sibling directory
+	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
+	testutils.CreateDir(t, pythonExecDir)
 
 	// Create multiple policy directories
 	policy1Path := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
@@ -473,7 +497,8 @@ func TestGenerateCode_MultiplePolicies(t *testing.T) {
 		testutils.NewLocalDiscoveredPolicy("cors", "v2.0.0", policy3Path, "github.com/policy-engine/policies/cors"),
 	}
 
-	err := GenerateCode(tmpDir, policies)
+	outputDir := t.TempDir()
+	err := GenerateCode(tmpDir, policies, outputDir)
 	require.NoError(t, err)
 
 	// Verify all policies are in the registry

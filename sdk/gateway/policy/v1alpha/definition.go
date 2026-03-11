@@ -27,9 +27,9 @@ type PolicyDefinition struct {
 	// SystemParameters for THIS version
 	SystemParameters map[string]interface{} `yaml:"systemParameters" json:"systemParameters"`
 
-	// NEW fields for Python support
-	Runtime              string                `yaml:"runtime,omitempty" json:"runtime,omitempty"`              // "go" (default) or "python"
-	ProcessingModeConfig *ProcessingModeConfig `yaml:"processingMode,omitempty" json:"processingMode,omitempty"` // Required for python runtime
+	// ProcessingModeConfig declares how the policy engine should handle headers/bodies.
+	// Required for Python policies; Go policies return this dynamically from Mode().
+	ProcessingModeConfig *ProcessingModeConfig `yaml:"processingMode,omitempty" json:"processingMode,omitempty"`
 }
 
 // ProcessingModeConfig is the YAML-parseable version of ProcessingMode

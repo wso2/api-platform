@@ -1,7 +1,6 @@
 name: add-python-header
 version: v1.0.0
 description: Adds a custom header to requests. Demonstrates a basic Python policy.
-runtime: python
 
 processingMode:
   requestHeaderMode: PROCESS
