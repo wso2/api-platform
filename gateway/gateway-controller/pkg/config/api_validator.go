@@ -81,6 +81,14 @@ func (v *APIValidator) Validate(config interface{}) []ValidationError {
 func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []ValidationError {
 	var errors []ValidationError
 
+	// Validate kind
+	if config.Kind != api.RestApi {
+		errors = append(errors, ValidationError{
+			Field:   "kind",
+			Message: "Unsupported kind (must be 'RestApi')",
+		})
+	}
+
 	// Validate version
 	if config.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
 		errors = append(errors, ValidationError{
@@ -107,6 +115,14 @@ func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []Valid
 // validateWebSubAPIConfiguration performs comprehensive validation on a WebSub API configuration
 func (v *APIValidator) validateWebSubAPIConfiguration(config *api.WebSubAPI) []ValidationError {
 	var errors []ValidationError
+
+	// Validate kind
+	if config.Kind != api.WebSubApi {
+		errors = append(errors, ValidationError{
+			Field:   "kind",
+			Message: "Unsupported kind (must be 'WebSubApi')",
+		})
+	}
 
 	// Validate version
 	if config.ApiVersion != api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {

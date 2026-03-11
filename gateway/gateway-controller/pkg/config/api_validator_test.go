@@ -162,10 +162,44 @@ func TestAPIValidator_ValidateKind(t *testing.T) {
 	})
 
 	// Test unsupported type
-	t.Run("Invalid kind", func(t *testing.T) {
+	t.Run("Unsupported type", func(t *testing.T) {
 		errors := v.Validate("InvalidKind")
 		if len(errors) == 0 {
 			t.Error("expected error for unsupported type, got none")
+		}
+	})
+
+	// Test invalid Kind on RestAPI
+	t.Run("Invalid RestApi kind", func(t *testing.T) {
+		config := createValidRestAPIConfig()
+		config.Kind = "InvalidKind"
+		errors := v.Validate(config)
+		hasKindError := false
+		for _, e := range errors {
+			if e.Field == "kind" {
+				hasKindError = true
+				break
+			}
+		}
+		if !hasKindError {
+			t.Error("expected kind error for invalid RestAPI kind, got none")
+		}
+	})
+
+	// Test invalid Kind on WebSubAPI
+	t.Run("Invalid WebSubApi kind", func(t *testing.T) {
+		config := createValidWebSubAPIConfig()
+		config.Kind = "InvalidKind"
+		errors := v.Validate(config)
+		hasKindError := false
+		for _, e := range errors {
+			if e.Field == "kind" {
+				hasKindError = true
+				break
+			}
+		}
+		if !hasKindError {
+			t.Error("expected kind error for invalid WebSubAPI kind, got none")
 		}
 	})
 }
