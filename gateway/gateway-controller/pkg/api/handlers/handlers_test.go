@@ -1672,27 +1672,20 @@ func TestValidationErrorsInUpdateAPI(t *testing.T) {
 func TestGetLLMProviderByIdFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	// Create a stored config for LLM provider - use RestAPI for Configuration
-	apiConfig := api.RestAPI{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	providerConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
 		},
-		Spec: api.APIConfigData{
+		Spec: api.LLMProviderConfigData{
 			DisplayName: "test-llm",
 			Version:     "v1.0",
-			Context:     "/llm",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://llm-backend.com"),
-				},
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("http://llm-backend.com"),
 			},
-			Operations: []api.Operation{
-				{Method: "POST", Path: "/generate"},
-			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	cfg := &models.StoredConfig{
@@ -1701,8 +1694,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 		Handle:              "test-llm-provider",
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
+		SourceConfiguration: providerConfig,
 		Status:              models.StatusDeployed,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
@@ -1719,26 +1711,17 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 func TestGetLLMProxyByIdFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	// Create a stored config for LLM proxy
-	apiConfig2 := api.RestAPI{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	proxyConfig := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
 		},
-		Spec: api.APIConfigData{
+		Spec: api.LLMProxyConfigData{
 			DisplayName: "test-llm-proxy",
 			Version:     "v1.0",
-			Context:     "/llm-proxy",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://llm-backend.com"),
-				},
-			},
-			Operations: []api.Operation{
-				{Method: "POST", Path: "/generate"},
+			Provider: api.LLMProxyProvider{
+				Id: "test-llm-provider",
 			},
 		},
 	}
@@ -1748,8 +1731,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 		Handle:              "test-llm-proxy-handle",
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
-		Configuration:       apiConfig2,
-		SourceConfiguration: apiConfig2,
+		SourceConfiguration: proxyConfig,
 		Status:              models.StatusDeployed,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
@@ -1767,26 +1749,20 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 
 	deployedAt := time.Now()
-	apiConfig := api.RestAPI{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	providerConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
 		},
-		Spec: api.APIConfigData{
+		Spec: api.LLMProviderConfigData{
 			DisplayName: "test-llm",
 			Version:     "v1.0",
-			Context:     "/llm",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://llm-backend.com"),
-				},
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("http://llm-backend.com"),
 			},
-			Operations: []api.Operation{
-				{Method: "POST", Path: "/generate"},
-			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	cfg := &models.StoredConfig{
@@ -1795,8 +1771,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 		Handle:              "test-llm-provider",
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
+		SourceConfiguration: providerConfig,
 		Status:              models.StatusDeployed,
 		DeployedAt:          &deployedAt,
 		CreatedAt:           time.Now(),
@@ -1822,25 +1797,17 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 
 	deployedAt := time.Now()
-	apiConfig2 := api.RestAPI{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	proxyConfig := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
 		},
-		Spec: api.APIConfigData{
+		Spec: api.LLMProxyConfigData{
 			DisplayName: "test-llm-proxy",
 			Version:     "v1.0",
-			Context:     "/llm-proxy",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://llm-backend.com"),
-				},
-			},
-			Operations: []api.Operation{
-				{Method: "POST", Path: "/generate"},
+			Provider: api.LLMProxyProvider{
+				Id: "test-llm-provider",
 			},
 		},
 	}
@@ -1850,8 +1817,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 		Handle:              "test-llm-proxy-handle",
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
-		Configuration:       apiConfig2,
-		SourceConfiguration: apiConfig2,
+		SourceConfiguration: proxyConfig,
 		Status:              models.StatusDeployed,
 		DeployedAt:          &deployedAt,
 		CreatedAt:           time.Now(),
