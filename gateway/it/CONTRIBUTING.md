@@ -62,8 +62,8 @@ Given I set header "Content-Type" to "application/json"
 Given I clear all headers
 
 # GET requests
-When I send a GET request to "http://localhost:9090/health"
-When I send a GET request to the "gateway-controller" service at "/health"
+When I send a GET request to "http://localhost:9092/health"
+When I send a GET request to the "gateway-controller-admin" service at "/health"
 
 # POST requests
 When I send a POST request to "http://localhost:9090/api"
@@ -233,7 +233,7 @@ docker compose -f docker-compose.test.yaml -p gateway-it logs -f
 ### Check service health
 
 ```bash
-curl http://localhost:9090/health
+curl http://localhost:9092/health
 curl http://localhost:9901/ready
 ```
 
