@@ -59,6 +59,7 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: config.InsecureSkipVerify,
+			MinVersion:         tls.VersionTLS12,
 		},
 		// Connection pool tuning
 		MaxIdleConns:        20,
@@ -462,7 +463,7 @@ func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string
 		ID:            proxyID,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
-	}, nil, nil)
+	})
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy MCP proxy configuration from YAML: %w", err)

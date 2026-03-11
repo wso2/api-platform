@@ -121,11 +121,21 @@ func (u *MCPUtils) GenerateMCPDeploymentYAML(proxy *model.MCPProxy) (string, err
 			Version:     proxy.Version,
 			Context:     contextValue,
 			Vhost:       vhostValue,
-			Upstream:    proxy.Configuration.Upstream,
 			SpecVersion: proxy.Configuration.SpecVersion,
 			Policies:    proxy.Configuration.Policies,
 		},
 	}
+
+	// Considering upstream main only as the sandbox is not supported in the gateway side currently.
+	var upstream model.MCPProxyUpstream
+	if proxy.Configuration.Upstream.Main != nil {
+		upstream.URL = proxy.Configuration.Upstream.Main.URL
+		if proxy.Configuration.Upstream.Main.Auth != nil {
+			upstream.Auth = proxy.Configuration.Upstream.Main.Auth
+		}
+
+	}
+	mcpDeploymentYaml.Spec.Upstream = upstream
 
 	if proxy.ProjectUUID != nil {
 		mcpDeploymentYaml.Metadata.Labels = map[string]string{
