@@ -188,16 +188,18 @@ type APIKeyStateResource struct {
 
 // APIKeyData represents an API key in the state resource
 type APIKeyData struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	APIKey    string     `json:"apiKey"`
-	APIId     string     `json:"apiId"`
-	Status    string     `json:"status"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	CreatedBy  string     `json:"createdBy"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
-	ExpiresAt  *time.Time `json:"expiresAt"`
-	Source     string     `json:"source"` // "local" | "external"
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	APIKey         string     `json:"apiKey"`
+	APIId          string     `json:"apiId"`
+	Status         string     `json:"status"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	CreatedBy      string     `json:"createdBy"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	ExpiresAt      *time.Time `json:"expiresAt"`
+	Source         string     `json:"source"` // "local" | "external"
+	ProvisionedBy  *string    `json:"provisionedBy,omitempty"`
+	AllowedTargets string     `json:"allowedTargets"`
 }
 
 // TranslateAPIKeys translates API key configurations to xDS resources
@@ -208,16 +210,18 @@ func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[strin
 	apiKeyData := make([]APIKeyData, 0, len(apiKeys))
 	for _, apiKey := range apiKeys {
 		data := APIKeyData{
-			ID:        apiKey.ID,
-			Name:      apiKey.Name,
-			APIKey:    apiKey.APIKey,
-			APIId:     apiKey.APIId,
-			Status:    string(apiKey.Status),
-			CreatedAt:  apiKey.CreatedAt,
-			CreatedBy:  apiKey.CreatedBy,
-			UpdatedAt:  apiKey.UpdatedAt,
-			ExpiresAt:  apiKey.ExpiresAt,
-			Source:     apiKey.Source,
+			ID:             apiKey.ID,
+			Name:           apiKey.Name,
+			APIKey:         apiKey.APIKey,
+			APIId:          apiKey.APIId,
+			Status:         string(apiKey.Status),
+			CreatedAt:      apiKey.CreatedAt,
+			CreatedBy:      apiKey.CreatedBy,
+			UpdatedAt:      apiKey.UpdatedAt,
+			ExpiresAt:      apiKey.ExpiresAt,
+			Source:         apiKey.Source,
+			ProvisionedBy:  apiKey.ProvisionedBy,
+			AllowedTargets: apiKey.AllowedTargets,
 		}
 		apiKeyData = append(apiKeyData, data)
 	}

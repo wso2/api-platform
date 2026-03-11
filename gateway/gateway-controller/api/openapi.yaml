@@ -2385,6 +2385,17 @@ components:
             UUID v7 of the API key from the platform API, used for cross-system correlation.
             If not provided, the gateway generates one locally.
           example: "01942f3e-7a1b-7c3d-8e4f-9a0b1c2d3e4f"
+        provisionedBy:
+          type: string
+          description: |
+            Identifies the portal that created this key. If provided, only api keys generated from
+            the same portal will be accepted. If not provided, there is no portal restriction.
+          example: "choreo-portal"
+        allowedTargets:
+          type: string
+          description: |
+            Comma-separated list of allowed API targets. Use "ALL" or leave empty for no restriction.
+          example: "weather-api-v1.0,maps-api-v2.0"
     APIKeyCreationResponse:
       type: object
       properties:

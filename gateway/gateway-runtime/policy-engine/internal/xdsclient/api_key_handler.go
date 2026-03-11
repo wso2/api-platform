@@ -134,12 +134,14 @@ func (h *APIKeyOperationHandler) handleStoreOperation(operation policyenginev1.A
 		APIKey:     operation.APIKey.APIKey, // hashed key
 		APIId:      operation.APIKey.APIId,
 		Operations: operation.APIKey.Operations,
-		Status:     apikey.APIKeyStatus(operation.APIKey.Status),
-		CreatedAt:  operation.APIKey.CreatedAt,
-		CreatedBy:  operation.APIKey.CreatedBy,
-		UpdatedAt:  operation.APIKey.UpdatedAt,
-		ExpiresAt:  operation.APIKey.ExpiresAt,
-		Source:     operation.APIKey.Source,
+		Status:         apikey.APIKeyStatus(operation.APIKey.Status),
+		CreatedAt:      operation.APIKey.CreatedAt,
+		CreatedBy:      operation.APIKey.CreatedBy,
+		UpdatedAt:      operation.APIKey.UpdatedAt,
+		ExpiresAt:      operation.APIKey.ExpiresAt,
+		Source:         operation.APIKey.Source,
+		ProvisionedBy:  operation.APIKey.ProvisionedBy,
+		AllowedTargets: operation.APIKey.AllowedTargets,
 	}
 
 	// Store the API key in the policy validation store
@@ -212,12 +214,14 @@ func (h *APIKeyOperationHandler) replaceAllAPIKeys(apiKeyDataList []APIKeyData) 
 			APIKey:     apiKeyData.APIKey, // hashed key
 			APIId:      apiKeyData.APIId,
 			Operations: apiKeyData.Operations,
-			Status:     apikey.APIKeyStatus(apiKeyData.Status),
-			CreatedAt:  apiKeyData.CreatedAt,
-			CreatedBy:  apiKeyData.CreatedBy,
-			UpdatedAt:  apiKeyData.UpdatedAt,
-			ExpiresAt:  apiKeyData.ExpiresAt,
-			Source:     apiKeyData.Source,
+			Status:         apikey.APIKeyStatus(apiKeyData.Status),
+			CreatedAt:      apiKeyData.CreatedAt,
+			CreatedBy:      apiKeyData.CreatedBy,
+			UpdatedAt:      apiKeyData.UpdatedAt,
+			ExpiresAt:      apiKeyData.ExpiresAt,
+			Source:         apiKeyData.Source,
+			ProvisionedBy:  apiKeyData.ProvisionedBy,
+			AllowedTargets: apiKeyData.AllowedTargets,
 		}
 
 		// Store the API key in the policy validation store
@@ -246,15 +250,17 @@ type APIKeyStateResource struct {
 
 // APIKeyData represents an API key in the state resource
 type APIKeyData struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	APIKey     string     `json:"apiKey"`
-	APIId      string     `json:"apiId"`
-	Operations string     `json:"operations"`
-	Status     string     `json:"status"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	CreatedBy  string     `json:"createdBy"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
-	ExpiresAt  *time.Time `json:"expiresAt"`
-	Source     string     `json:"source"` // "local" | "external"
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	APIKey         string     `json:"apiKey"`
+	APIId          string     `json:"apiId"`
+	Operations     string     `json:"operations"`
+	Status         string     `json:"status"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	CreatedBy      string     `json:"createdBy"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	ExpiresAt      *time.Time `json:"expiresAt"`
+	Source         string     `json:"source"` // "local" | "external"
+	ProvisionedBy  *string    `json:"provisionedBy,omitempty"`
+	AllowedTargets string     `json:"allowedTargets"`
 }

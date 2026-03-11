@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1526,18 +1525,6 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		}
 	}
 
-	// Validate DisplayName - optional field (pointer may be nil)
-	if keyCreatedEvent.Payload.DisplayName != nil && strings.TrimSpace(*keyCreatedEvent.Payload.DisplayName) != "" {
-		// Validate the display name format
-		if err := utils.ValidateDisplayName(*keyCreatedEvent.Payload.DisplayName); err != nil {
-			baseLogger.Error("API key created event has invalid display_name",
-				slog.Any("correlation_id", event["correlationId"]),
-				slog.Any("error", err),
-			)
-			return
-		}
-	}
-
 	logger := baseLogger.With(
 		slog.String("correlation_id", keyCreatedEvent.CorrelationID),
 		slog.String("user_id", keyCreatedEvent.UserId),
@@ -1563,7 +1550,6 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		ApiKeyHashes:   &payload.ApiKeyHashes,
 		MaskedApiKey:   &payload.MaskedApiKey,
-		DisplayName:    payload.DisplayName,
 		Name:           &payload.Name,
 		ExternalRefId:  payload.ExternalRefId,
 		ApiKeyUuid:     apiKeyUUID,
@@ -1749,26 +1735,6 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		)
 		return
 	}
-	if payload.DisplayName == "" {
-		baseLogger.Error("API key updated event missing required display_name",
-			slog.Any("correlation_id", event["correlationId"]),
-			slog.String("api_id", payload.ApiId),
-			slog.String("key_name", payload.KeyName),
-		)
-		return
-	}
-
-	// Validate the display name format
-	if err := utils.ValidateDisplayName(payload.DisplayName); err != nil {
-		baseLogger.Error("API key updated event has invalid display_name",
-			slog.Any("correlation_id", event["correlationId"]),
-			slog.String("api_id", payload.ApiId),
-			slog.String("key_name", payload.KeyName),
-			slog.Any("error", err),
-		)
-		return
-	}
-
 	logger := baseLogger.With(
 		slog.String("correlation_id", evt.CorrelationID),
 		slog.String("user_id", evt.UserId),
@@ -1789,7 +1755,6 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		ApiKeyHashes:   &payload.ApiKeyHashes,
 		MaskedApiKey:   &payload.MaskedApiKey,
-		DisplayName:    &payload.DisplayName,
 		ExternalRefId:  &payload.ExternalRefId,
 		Name:           &payload.KeyName,
 		ProvisionedBy:  payload.ProvisionedBy,

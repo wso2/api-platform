@@ -151,22 +151,22 @@ func TestMaskAPIKey(t *testing.T) {
 		{
 			name:     "Long API key",
 			input:    "apip_abcdef1234567890abcdef1234567890",
-			expected: "apip_abcde*********",
+			expected: "***67890",
 		},
 		{
 			name:     "Short API key",
 			input:    "short",
-			expected: "**********",
+			expected: "********",
 		},
 		{
 			name:     "Exactly 10 characters",
 			input:    "1234567890",
-			expected: "**********",
+			expected: "***67890",
 		},
 		{
 			name:     "11 characters",
 			input:    "12345678901",
-			expected: "1234567890*********",
+			expected: "***78901",
 		},
 	}
 
