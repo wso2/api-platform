@@ -48,23 +48,28 @@ type StoredPolicyConfig struct {
 
 // ResourceHandler handles xDS resource updates
 type ResourceHandler struct {
-	kernel             *kernel.Kernel
-	registry           *registry.PolicyRegistry
-	configLoader       *kernel.ConfigLoader
-	apiKeyHandler      *APIKeyOperationHandler
+	kernel              *kernel.Kernel
+	registry            *registry.PolicyRegistry
+	configLoader        *kernel.ConfigLoader
+	apiKeyHandler       *APIKeyOperationHandler
 	lazyResourceHandler *LazyResourceHandler
+	subscriptionStore   *policyenginev1.SubscriptionStore
+	subscriptionHandler *SubscriptionStateHandler
 }
 
 // NewResourceHandler creates a new ResourceHandler
 func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *ResourceHandler {
 	apiKeyStore := apikey.GetAPIkeyStoreInstance()
 	lazyResourceStore := policy.GetLazyResourceStoreInstance()
+	subStore := policyenginev1.GetSubscriptionStoreInstance()
 	return &ResourceHandler{
 		kernel:              k,
 		registry:            reg,
 		configLoader:        kernel.NewConfigLoader(k, reg),
 		apiKeyHandler:       NewAPIKeyOperationHandler(apiKeyStore, slog.Default()),
 		lazyResourceHandler: NewLazyResourceHandler(lazyResourceStore, slog.Default()),
+		subscriptionStore:   subStore,
+		subscriptionHandler: NewSubscriptionStateHandler(subStore, slog.Default()),
 	}
 }
 
@@ -301,11 +306,11 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 	}
 
 	chain := &registry.PolicyChain{
-		Policies:             policyList,
-		PolicySpecs:          policySpecs,
-		RequiresRequestBody:  requiresRequestBody,
-		RequiresResponseBody: requiresResponseBody,
-		HasExecutionConditions:     hasExecutionConditions,
+		Policies:               policyList,
+		PolicySpecs:            policySpecs,
+		RequiresRequestBody:    requiresRequestBody,
+		RequiresResponseBody:   requiresResponseBody,
+		HasExecutionConditions: hasExecutionConditions,
 	}
 
 	return chain, nil

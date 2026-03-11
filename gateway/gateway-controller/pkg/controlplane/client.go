@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -111,11 +112,12 @@ type Client struct {
 	apiUtilsService      *utils.APIUtilsService
 	apiKeyService        *utils.APIKeyService
 	llmDeploymentService *utils.LLMDeploymentService
-	apiKeyXDSManager     utils.XDSManager
-	routerConfig         *config.RouterConfig
-	policyManager        *policyxds.PolicyManager
-	systemConfig         *config.Config
-	policyDefinitions    map[string]api.PolicyDefinition
+	apiKeyXDSManager              utils.XDSManager
+	routerConfig                  *config.RouterConfig
+	policyManager                 *policyxds.PolicyManager
+	systemConfig                  *config.Config
+	policyDefinitions             map[string]api.PolicyDefinition
+	subscriptionSnapshotManager   *subscriptionxds.SnapshotManager
 }
 
 // NewClient creates a new control plane client
@@ -134,24 +136,26 @@ func NewClient(
 	policyDefinitions map[string]api.PolicyDefinition,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
+	subSnapshotManager *subscriptionxds.SnapshotManager,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
-		config:            cfg,
-		logger:            logger,
-		store:             store,
-		db:                db,
-		snapshotManager:   snapshotManager,
-		parser:            config.NewParser(),
-		validator:         validator,
-		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
-		apiKeyService:     utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig),
-		apiKeyXDSManager:  apiKeyXDSManager,
-		routerConfig:      routerConfig,
-		policyManager:     policyManager,
-		systemConfig:      systemConfig,
-		policyDefinitions: policyDefinitions,
+		config:                      cfg,
+		logger:                      logger,
+		store:                       store,
+		db:                          db,
+		snapshotManager:             snapshotManager,
+		parser:                      config.NewParser(),
+		validator:                   validator,
+		deploymentService:           utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
+		apiKeyService:               utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig),
+		apiKeyXDSManager:            apiKeyXDSManager,
+		routerConfig:                routerConfig,
+		policyManager:               policyManager,
+		systemConfig:                systemConfig,
+		policyDefinitions:           policyDefinitions,
+		subscriptionSnapshotManager: subSnapshotManager,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -320,6 +324,19 @@ func (c *Client) Connect() error {
 		slog.String("connection_id", c.state.ConnectionID),
 	)
 
+	// Capture a stable gateway ID for background sync work to avoid
+	// reading mutable state from goroutines.
+	gatewayID := c.state.GatewayID
+
+	// Perform a one-time bulk sync: plans first (since subscriptions reference
+	// plans via FK), then subscriptions for all known APIs.
+	c.wg.Add(1)
+	go func(gwID string) {
+		defer c.wg.Done()
+		c.syncSubscriptionPlans(gwID)
+		c.syncSubscriptionsForExistingAPIs(gwID)
+	}(gatewayID)
+
 	// Start heartbeat monitor
 	c.wg.Add(1)
 	go c.heartbeatMonitor()
@@ -360,6 +377,168 @@ func (c *Client) waitForConnectionAck(conn *websocket.Conn) error {
 	)
 
 	return nil
+}
+
+// refreshSubscriptionSnapshot triggers an xDS snapshot rebuild so the policy
+// engine picks up the latest subscription state from the DB.
+func (c *Client) refreshSubscriptionSnapshot() {
+	if c.subscriptionSnapshotManager == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.subscriptionSnapshotManager.UpdateSnapshot(ctx); err != nil {
+		c.logger.Warn("Failed to refresh subscription xDS snapshot after event", slog.Any("error", err))
+	}
+}
+
+// syncSubscriptionPlans fetches all subscription plans from the control plane
+// and persists them locally. This must run before subscription sync since
+// subscriptions reference plans via foreign key.
+func (c *Client) syncSubscriptionPlans(gatewayID string) {
+	if c.apiUtilsService == nil || c.db == nil {
+		return
+	}
+
+	c.logger.Info("Starting bulk sync of subscription plans")
+
+	plans, err := c.apiUtilsService.FetchSubscriptionPlans()
+	if err != nil {
+		c.logger.Warn("Failed to bulk-sync subscription plans", slog.Any("error", err))
+		return
+	}
+
+	saved := 0
+	fetchedIDs := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info("Subscription plan sync aborted: client shutting down")
+			return
+		default:
+		}
+
+		plan.GatewayID = ""
+		if err := c.db.SaveSubscriptionPlan(&plan); err != nil {
+			if storage.IsConflictError(err) {
+				if err := c.db.UpdateSubscriptionPlan(&plan); err != nil {
+					c.logger.Warn("Failed to update existing subscription plan during bulk sync",
+						slog.String("planId", plan.ID), slog.Any("error", err))
+				}
+			} else {
+				c.logger.Warn("Failed to save subscription plan during bulk sync",
+					slog.String("planId", plan.ID), slog.Any("error", err))
+			}
+		} else {
+			saved++
+		}
+		fetchedIDs = append(fetchedIDs, plan.ID)
+	}
+
+	if err := c.db.DeleteSubscriptionPlansNotIn(fetchedIDs); err != nil {
+		c.logger.Warn("Failed to reconcile deleted subscription plans during bulk sync", slog.Any("error", err))
+	}
+
+	c.logger.Info("Subscription plan bulk sync complete",
+		slog.Int("total", len(plans)), slog.Int("saved", saved))
+}
+
+// syncSubscriptionsForExistingAPIs performs a one-time bulk sync of subscriptions
+// for all currently known REST APIs after the WebSocket connection is established.
+// The gatewayID parameter is a stable snapshot of the gateway identifier at the
+// time the sync was scheduled, ensuring we don't cross-contaminate state across
+// reconnects.
+func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
+	if c.apiUtilsService == nil || c.db == nil || c.store == nil {
+		return
+	}
+
+	configs := c.store.GetAll()
+	for _, cfg := range configs {
+		// Abort promptly if the client is shutting down.
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info("Stopping subscription bulk sync due to client context cancellation")
+			return
+		case <-c.stopChan:
+			c.logger.Info("Stopping subscription bulk sync due to stop signal")
+			return
+		default:
+		}
+
+		if cfg == nil {
+			continue
+		}
+		if cfg.Configuration.Kind != api.RestApi {
+			continue
+		}
+
+		apiID := cfg.UUID
+		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
+		if err != nil {
+			c.logger.Warn("Failed to bulk-sync subscriptions for API",
+				slog.String("api_id", apiID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		fetchedSubIDs := make([]string, 0, len(subs))
+		for i := range subs {
+			select {
+			case <-c.ctx.Done():
+				c.logger.Info("Stopping subscription bulk sync during subscription processing due to client context cancellation")
+				return
+			case <-c.stopChan:
+				c.logger.Info("Stopping subscription bulk sync during subscription processing due to stop signal")
+				return
+			default:
+			}
+
+			sub := subs[i] // copy
+			if sub.ID == "" {
+				continue
+			}
+
+			sub.APIID = apiID
+			sub.GatewayID = ""
+
+			if err := c.db.SaveSubscription(&sub); err != nil {
+				if storage.IsConflictError(err) {
+					existing, err2 := c.db.GetSubscriptionByID(sub.ID, "")
+					if err2 != nil || existing == nil {
+						continue
+					}
+					// Copy all mutable fields from control-plane sub into existing before update.
+					existing.APIID = sub.APIID
+					existing.ApplicationID = sub.ApplicationID
+					existing.SubscriptionToken = sub.SubscriptionToken
+					existing.SubscriptionPlanID = sub.SubscriptionPlanID
+					existing.Status = sub.Status
+					existing.UpdatedAt = sub.UpdatedAt
+					if err := c.db.UpdateSubscription(existing); err != nil {
+						c.logger.Error("Failed to update subscription during bulk sync conflict handling",
+							slog.String("subscription_id", existing.ID),
+							slog.Any("error", err))
+					}
+				} else {
+					c.logger.Warn("Failed to upsert subscription during bulk sync",
+						slog.String("subscription_id", sub.ID),
+						slog.String("api_id", apiID),
+						slog.Any("error", err),
+					)
+				}
+			}
+			fetchedSubIDs = append(fetchedSubIDs, sub.ID)
+		}
+
+		if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, fetchedSubIDs); err != nil {
+			c.logger.Warn("Failed to reconcile deleted subscriptions for API during bulk sync",
+				slog.String("api_id", apiID), slog.Any("error", err))
+		}
+	}
+
+	c.refreshSubscriptionSnapshot()
 }
 
 // Close closes the WebSocket connection
@@ -505,6 +684,19 @@ func (c *Client) waitForDisconnection() {
 	}
 }
 
+// redactSensitiveEventPayload returns a redaction message for event types that contain sensitive data.
+// Used for logging so raw subscription tokens and API keys are never written to logs.
+func redactSensitiveEventPayload(eventType string) string {
+	switch eventType {
+	case "subscription.created", "subscription.updated", "subscription.deleted":
+		return "[REDACTED - contains sensitive subscription token]"
+	case "apikey.created", "apikey.updated", "apikey.revoked":
+		return "[REDACTED - contains sensitive API key data]"
+	default:
+		return "[REDACTED]"
+	}
+}
+
 // handleMessage processes incoming WebSocket messages
 func (c *Client) handleMessage(messageType int, message []byte) {
 	// Log the message type
@@ -540,12 +732,14 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		return
 	}
 
-	// Log the event to console (skip payload for API key events with sensitive data)
-	isSensitiveEvent := eventType == "apikey.created" || eventType == "apikey.updated" || eventType == "apikey.revoked"
+	// Log the event to console (skip payload for events with sensitive data)
+	isSensitiveEvent := eventType == "apikey.created" || eventType == "apikey.updated" || eventType == "apikey.revoked" ||
+		eventType == "subscription.created" || eventType == "subscription.updated" || eventType == "subscription.deleted"
 	if isSensitiveEvent {
+		redactMsg := redactSensitiveEventPayload(eventType)
 		c.logger.Info("Received WebSocket event",
 			slog.String("type", eventType),
-			slog.String("payload", "[REDACTED - contains sensitive API key data]"),
+			slog.String("payload", redactMsg),
 		)
 	} else {
 		c.logger.Info("Received WebSocket event",
@@ -579,6 +773,18 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleAPIKeyUpdatedEvent(event)
 	case "apikey.revoked":
 		c.handleAPIKeyRevokedEvent(event)
+	case "subscription.created":
+		c.handleSubscriptionCreatedEvent(event)
+	case "subscription.updated":
+		c.handleSubscriptionUpdatedEvent(event)
+	case "subscription.deleted":
+		c.handleSubscriptionDeletedEvent(event)
+	case "subscriptionPlan.created":
+		c.handleSubscriptionPlanCreatedEvent(event)
+	case "subscriptionPlan.updated":
+		c.handleSubscriptionPlanUpdatedEvent(event)
+	case "subscriptionPlan.deleted":
+		c.handleSubscriptionPlanDeletedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -1845,6 +2051,315 @@ func (c *Client) calculateNextRetryDelay() {
 	if c.state.NextRetryDelay > c.config.ReconnectMax {
 		c.state.NextRetryDelay = c.config.ReconnectMax
 	}
+}
+
+// handleSubscriptionCreatedEvent processes subscription.created events from platform-api.
+func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	// If no database is configured (in-memory mode), ignore subscription persistence.
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscription.created persistence")
+		return
+	}
+
+	var createdEvent SubscriptionCreatedEvent
+	if err := utils.MapToStruct(event, &createdEvent); err != nil {
+		baseLogger.Error("Failed to parse subscription.created event", slog.Any("error", err))
+		return
+	}
+	payload := createdEvent.Payload
+	if payload.APIID == "" || payload.SubscriptionID == "" || payload.SubscriptionToken == "" {
+		baseLogger.Error("subscription.created event missing required fields",
+			slog.String("apiId", payload.APIID),
+			slog.String("subscriptionId", payload.SubscriptionID),
+			slog.Bool("hasToken", payload.SubscriptionToken != ""))
+		return
+	}
+
+	status := models.SubscriptionStatus(payload.Status)
+	sub := &models.Subscription{
+		ID:                payload.SubscriptionID,
+		APIID:             payload.APIID,
+		SubscriptionToken: payload.SubscriptionToken,
+		Status:            status,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+	if payload.ApplicationID != "" {
+		sub.ApplicationID = &payload.ApplicationID
+	}
+	if payload.SubscriptionPlanId != "" {
+		sub.SubscriptionPlanID = &payload.SubscriptionPlanId
+	}
+
+	if err := c.db.SaveSubscription(sub); err != nil {
+		if storage.IsConflictError(err) {
+			existing, err2 := c.db.GetSubscriptionByID(sub.ID, "")
+			if err2 != nil || existing == nil {
+				return
+			}
+			// Copy all mutable fields from incoming sub into existing before update.
+			existing.APIID = sub.APIID
+			existing.ApplicationID = sub.ApplicationID
+			existing.SubscriptionToken = sub.SubscriptionToken
+			existing.SubscriptionPlanID = sub.SubscriptionPlanID
+			existing.Status = sub.Status
+			existing.UpdatedAt = sub.UpdatedAt
+			if err := c.db.UpdateSubscription(existing); err != nil {
+				baseLogger.Error("Failed to update subscription during subscription.created conflict handling",
+					slog.String("subscription_id", sub.ID), slog.Any("error", err))
+				return
+			}
+			c.refreshSubscriptionSnapshot()
+			return
+		}
+		baseLogger.Error("Failed to persist subscription from subscription.created event",
+			slog.Any("error", err))
+		return
+	}
+	c.refreshSubscriptionSnapshot()
+}
+
+// handleSubscriptionUpdatedEvent processes subscription.updated events from platform-api.
+func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscription.updated persistence")
+		return
+	}
+
+	var updatedEvent SubscriptionUpdatedEvent
+	if err := utils.MapToStruct(event, &updatedEvent); err != nil {
+		baseLogger.Error("Failed to parse subscription.updated event", slog.Any("error", err))
+		return
+	}
+	payload := updatedEvent.Payload
+	if payload.SubscriptionID == "" {
+		baseLogger.Error("subscription.updated event missing subscriptionId")
+		return
+	}
+
+	existing, err := c.db.GetSubscriptionByID(payload.SubscriptionID, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			baseLogger.Debug("Subscription not found for subscription.updated event; skipping",
+				slog.String("id", payload.SubscriptionID))
+			return
+		}
+		baseLogger.Error("Failed to fetch subscription for update", slog.Any("error", err))
+		return
+	}
+	if existing == nil {
+		baseLogger.Debug("Subscription nil for subscription.updated event; skipping",
+			slog.String("id", payload.SubscriptionID))
+		return
+	}
+
+	// Copy all mutable fields from payload into existing before update.
+	if payload.APIID != "" {
+		existing.APIID = payload.APIID
+	}
+	if payload.ApplicationID != "" {
+		existing.ApplicationID = &payload.ApplicationID
+	} else {
+		existing.ApplicationID = nil
+	}
+	if payload.SubscriptionToken != "" {
+		existing.SubscriptionToken = payload.SubscriptionToken
+	}
+	if payload.SubscriptionPlanId != "" {
+		existing.SubscriptionPlanID = &payload.SubscriptionPlanId
+	} else {
+		existing.SubscriptionPlanID = nil
+	}
+	existing.Status = models.SubscriptionStatus(payload.Status)
+	if err := c.db.UpdateSubscription(existing); err != nil {
+		baseLogger.Error("Failed to update subscription from subscription.updated event",
+			slog.Any("error", err))
+		return
+	}
+	c.refreshSubscriptionSnapshot()
+}
+
+// handleSubscriptionDeletedEvent processes subscription.deleted events from platform-api.
+func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscription.deleted persistence")
+		return
+	}
+
+	var deletedEvent SubscriptionDeletedEvent
+	if err := utils.MapToStruct(event, &deletedEvent); err != nil {
+		baseLogger.Error("Failed to parse subscription.deleted event", slog.Any("error", err))
+		return
+	}
+	payload := deletedEvent.Payload
+	if payload.SubscriptionID == "" {
+		baseLogger.Error("subscription.deleted event missing subscriptionId")
+		return
+	}
+
+	if err := c.db.DeleteSubscription(payload.SubscriptionID, ""); err != nil {
+		baseLogger.Warn("Failed to delete subscription from subscription.deleted event",
+			slog.Any("error", err))
+		return
+	}
+	c.refreshSubscriptionSnapshot()
+}
+
+// handleSubscriptionPlanCreatedEvent processes subscriptionPlan.created events.
+func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.created persistence")
+		return
+	}
+
+	var created SubscriptionPlanCreatedEvent
+	if err := utils.MapToStruct(event, &created); err != nil {
+		baseLogger.Error("Failed to parse subscriptionPlan.created event", slog.Any("error", err))
+		return
+	}
+	payload := created.Payload
+	if payload.PlanId == "" || payload.PlanName == "" {
+		baseLogger.Error("subscriptionPlan.created event missing required fields", slog.Any("payload", payload))
+		return
+	}
+
+	var billingPlan, throttleLimitUnit *string
+	if payload.BillingPlan != "" {
+		billingPlan = &payload.BillingPlan
+	}
+	if payload.ThrottleLimitUnit != "" {
+		throttleLimitUnit = &payload.ThrottleLimitUnit
+	}
+	plan := &models.SubscriptionPlan{
+		ID:                 payload.PlanId,
+		PlanName:           payload.PlanName,
+		BillingPlan:        billingPlan,
+		StopOnQuotaReach:   payload.StopOnQuotaReach,
+		ThrottleLimitCount: payload.ThrottleLimitCount,
+		ThrottleLimitUnit:  throttleLimitUnit,
+		ExpiryTime:         payload.ExpiryTime,
+		Status:             models.SubscriptionPlanStatus(payload.Status),
+	}
+
+	if err := c.db.SaveSubscriptionPlan(plan); err != nil {
+		if storage.IsConflictError(err) {
+			if err := c.db.UpdateSubscriptionPlan(plan); err != nil {
+				baseLogger.Error("Failed to update existing subscription plan from subscriptionPlan.created event (conflict)",
+					slog.String("planId", plan.ID), slog.Any("error", err))
+				return
+			}
+			baseLogger.Debug("Subscription plan already existed; updated from subscriptionPlan.created event",
+				slog.String("planId", plan.ID))
+		} else {
+			baseLogger.Error("Failed to persist subscription plan from subscriptionPlan.created event",
+				slog.Any("error", err))
+			return
+		}
+	}
+	c.refreshSubscriptionSnapshot()
+}
+
+// handleSubscriptionPlanUpdatedEvent processes subscriptionPlan.updated events.
+func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.updated persistence")
+		return
+	}
+
+	var updated SubscriptionPlanUpdatedEvent
+	if err := utils.MapToStruct(event, &updated); err != nil {
+		baseLogger.Error("Failed to parse subscriptionPlan.updated event", slog.Any("error", err))
+		return
+	}
+	payload := updated.Payload
+	if payload.PlanId == "" {
+		baseLogger.Error("subscriptionPlan.updated event missing planId")
+		return
+	}
+
+	existing, err := c.db.GetSubscriptionPlanByID(payload.PlanId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			baseLogger.Debug("Subscription plan not found for update; skipping",
+				slog.String("planId", payload.PlanId))
+			return
+		}
+		baseLogger.Error("Failed to fetch subscription plan for update", slog.Any("error", err))
+		return
+	}
+
+	if payload.PlanName != "" {
+		existing.PlanName = payload.PlanName
+	}
+	// BillingPlan and ThrottleLimitUnit: empty string in payload clears (nil); non-empty sets
+	var billingPlan, throttleLimitUnit *string
+	if payload.BillingPlan != "" {
+		bp := payload.BillingPlan
+		billingPlan = &bp
+	}
+	existing.BillingPlan = billingPlan
+	existing.StopOnQuotaReach = payload.StopOnQuotaReach
+	existing.ThrottleLimitCount = payload.ThrottleLimitCount
+	if payload.ThrottleLimitUnit != "" {
+		tlu := payload.ThrottleLimitUnit
+		throttleLimitUnit = &tlu
+	}
+	existing.ThrottleLimitUnit = throttleLimitUnit
+	existing.ExpiryTime = payload.ExpiryTime
+	if payload.Status != "" {
+		existing.Status = models.SubscriptionPlanStatus(payload.Status)
+	}
+
+	if err := c.db.UpdateSubscriptionPlan(existing); err != nil {
+		baseLogger.Error("Failed to update subscription plan from subscriptionPlan.updated event",
+			slog.Any("error", err))
+		return
+	}
+	c.refreshSubscriptionSnapshot()
+}
+
+// handleSubscriptionPlanDeletedEvent processes subscriptionPlan.deleted events.
+func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.deleted persistence")
+		return
+	}
+
+	var deleted SubscriptionPlanDeletedEvent
+	if err := utils.MapToStruct(event, &deleted); err != nil {
+		baseLogger.Error("Failed to parse subscriptionPlan.deleted event", slog.Any("error", err))
+		return
+	}
+	payload := deleted.Payload
+	if payload.PlanId == "" {
+		baseLogger.Error("subscriptionPlan.deleted event missing planId")
+		return
+	}
+
+	if err := c.db.DeleteSubscriptionPlan(payload.PlanId, ""); err != nil {
+		baseLogger.Warn("Failed to delete subscription plan from subscriptionPlan.deleted event",
+			slog.Any("error", err))
+		return
+	}
+	c.refreshSubscriptionSnapshot()
 }
 
 // setState updates the connection state

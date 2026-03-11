@@ -34,7 +34,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-
 // Helper to create a fresh API key store for each test
 func createTestAPIKeyStore() *apikey.APIkeyStore {
 	return apikey.NewAPIkeyStore()

@@ -592,6 +592,326 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /subscription-plans:
+    post:
+      summary: Create a subscription plan
+      operationId: createSubscriptionPlan
+      tags:
+        - API Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionPlanCreateRequest"
+      responses:
+        '201':
+          description: Subscription plan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: List subscription plans
+      operationId: listSubscriptionPlans
+      tags:
+        - API Management
+      responses:
+        '200':
+          description: List of subscription plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription-plans/{planId}:
+    get:
+      summary: Get a subscription plan by ID
+      operationId: getSubscriptionPlan
+      tags:
+        - API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscription plan details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Update a subscription plan
+      operationId: updateSubscriptionPlan
+      tags:
+        - API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionPlanUpdateRequest"
+      responses:
+        '200':
+          description: Subscription plan updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete a subscription plan
+      operationId: deleteSubscriptionPlan
+      tags:
+        - API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Subscription plan deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscriptions:
+    post:
+      summary: Create a subscription
+      description: |
+        Creates an application-level subscription for the specified API.
+        Used by control plane sync and admin. applicationId references applications in DevPortal/STS.
+      operationId: createSubscription
+      tags:
+        - API Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionCreateRequest"
+      responses:
+        '201':
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - subscription already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: List subscriptions
+      description: Returns application-level subscriptions filtered by API and/or application.
+      operationId: listSubscriptions
+      tags:
+        - API Management
+      parameters:
+        - name: apiId
+          in: query
+          required: false
+          description: Filter by API ID (deployment ID or handle)
+          schema:
+            type: string
+        - name: applicationId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, REVOKED]
+      responses:
+        '200':
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscriptions/{subscriptionId}:
+    get:
+      summary: Get a subscription by ID
+      operationId: getSubscription
+      tags:
+        - API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Update a subscription
+      operationId: updateSubscription
+      tags:
+        - API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionUpdateRequest"
+      responses:
+        '200':
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete a subscription
+      operationId: deleteSubscription
+      tags:
+        - API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Subscription deleted
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /websub-apis:
     post:
       summary: Create a new WebSub API configuration
@@ -2121,6 +2441,12 @@ components:
               description: Custom virtual host/domain for sandbox traffic
               pattern: '^[a-zA-Z0-9\.\-]+$'
               example: sandbox-api.example.com
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names available for this API
+          items:
+            type: string
+          example: ["Gold", "Silver"]
         policies:
           type: array
           description: List of API-level policies applied to all operations unless overridden
@@ -2801,6 +3127,150 @@ components:
       required:
         - status
         - message
+
+    SubscriptionPlanCreateRequest:
+      type: object
+      required:
+        - planName
+      properties:
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+          default: true
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+          enum: [Min, Hour, Day, Month]
+        expiryTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          default: ACTIVE
+    SubscriptionPlanUpdateRequest:
+      type: object
+      properties:
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+          enum: [Min, Hour, Day, Month]
+        expiryTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+    SubscriptionPlanResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+        expiryTime:
+          type: string
+          format: date-time
+        gatewayId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionPlanListResponse:
+      type: object
+      properties:
+        subscriptionPlans:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanResponse"
+        count:
+          type: integer
+
+    SubscriptionCreateRequest:
+      type: object
+      required:
+        - apiId
+      properties:
+        apiId:
+          type: string
+          description: API identifier (deployment ID or handle)
+          example: "c9f2b6ae-1234-5678-9abc-def012345678"
+        applicationId:
+          type: string
+          description: Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID for rate limit and billing configuration.
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+          default: ACTIVE
+    SubscriptionUpdateRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+    SubscriptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        apiId:
+          type: string
+        applicationId:
+          type: string
+        subscriptionToken:
+          type: string
+          description: Opaque subscription token for API invocation
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID
+        gatewayId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionListResponse:
+      type: object
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionResponse"
+        count:
+          type: integer
 
     RestAPIListItem:
       type: object

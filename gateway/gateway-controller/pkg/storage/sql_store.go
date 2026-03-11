@@ -19,17 +19,27 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
+
+// hashSubscriptionToken computes a SHA-256 hash of the token for secure storage.
+// The same token always produces the same hash for deterministic lookups.
+func hashSubscriptionToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
 
 type sqlStore struct {
 	db *sql.DB
@@ -40,26 +50,33 @@ type sqlStore struct {
 
 	rebindQuery func(string) string
 
-	isConfigUniqueViolation      func(error) bool
-	isCertificateUniqueViolation func(error) bool
-	isTemplateUniqueViolation    func(error) bool
-	isAPIKeyUniqueViolation      func(error) bool
+	isConfigUniqueViolation          func(error) bool
+	isCertificateUniqueViolation    func(error) bool
+	isTemplateUniqueViolation       func(error) bool
+	isAPIKeyUniqueViolation         func(error) bool
+	isSubscriptionUniqueViolation   func(error) bool
+	isSubscriptionPlanUniqueViolation func(error) bool
 
 	backendName string
+
+	subscriptionTokenEncryptionKey string
 }
 
-func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string) *sqlStore {
+func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string, subscriptionTokenEncryptionKey string) *sqlStore {
 	return &sqlStore{
 		db:          db,
 		logger:      logger,
 		gatewayId:   gatewayId,
 		backendName: backendName,
+		subscriptionTokenEncryptionKey: subscriptionTokenEncryptionKey,
 		// Defaults are identity/false; backends can override.
-		rebindQuery:                  func(query string) string { return query },
-		isConfigUniqueViolation:      func(error) bool { return false },
-		isCertificateUniqueViolation: func(error) bool { return false },
-		isTemplateUniqueViolation:    func(error) bool { return false },
-		isAPIKeyUniqueViolation:      func(error) bool { return false },
+		rebindQuery:                     func(query string) string { return query },
+		isConfigUniqueViolation:         func(error) bool { return false },
+		isCertificateUniqueViolation:    func(error) bool { return false },
+		isTemplateUniqueViolation:       func(error) bool { return false },
+		isAPIKeyUniqueViolation:         func(error) bool { return false },
+		isSubscriptionUniqueViolation:   func(error) bool { return false },
+		isSubscriptionPlanUniqueViolation: func(error) bool { return false },
 	}
 }
 
@@ -1591,4 +1608,422 @@ func (s *sqlStore) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, er
 	}
 
 	return count, nil
+}
+
+// ========================================
+// Subscription Plan Methods
+// ========================================
+
+// SaveSubscriptionPlan persists a new subscription plan.
+func (s *sqlStore) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	if plan == nil {
+		return fmt.Errorf("failed to insert subscription plan: nil plan")
+	}
+	plan.GatewayID = s.gatewayId
+	now := time.Now()
+	plan.CreatedAt = now
+	plan.UpdatedAt = now
+	query := `
+		INSERT INTO subscription_plans (id, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
+			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.exec(query, plan.ID, s.gatewayId, plan.PlanName, plan.BillingPlan,
+		plan.StopOnQuotaReach, plan.ThrottleLimitCount, plan.ThrottleLimitUnit,
+		plan.ExpiryTime, string(plan.Status), plan.CreatedAt, plan.UpdatedAt)
+	if err != nil {
+		if s.isSubscriptionPlanUniqueViolation(err) {
+			return fmt.Errorf("%w: subscription plan already exists", ErrConflict)
+		}
+		return fmt.Errorf("failed to insert subscription plan: %w", err)
+	}
+	return nil
+}
+
+// GetSubscriptionPlanByID retrieves a subscription plan by ID and gateway.
+func (s *sqlStore) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
+	query := `
+		SELECT id, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
+			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at
+		FROM subscription_plans
+		WHERE id = ? AND gateway_id = ?
+	`
+	plan := &models.SubscriptionPlan{}
+	err := s.queryRow(query, id, s.gatewayId).Scan(
+		&plan.ID, &plan.GatewayID, &plan.PlanName, &plan.BillingPlan,
+		&plan.StopOnQuotaReach, &plan.ThrottleLimitCount, &plan.ThrottleLimitUnit,
+		&plan.ExpiryTime, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return plan, nil
+}
+
+// ListSubscriptionPlans returns all subscription plans for a gateway.
+func (s *sqlStore) ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error) {
+	query := `
+		SELECT id, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
+			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at
+		FROM subscription_plans
+		WHERE gateway_id = ?
+		ORDER BY created_at DESC
+	`
+	rows, err := s.query(query, s.gatewayId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list subscription plans: %w", err)
+	}
+	defer rows.Close()
+	var list []*models.SubscriptionPlan
+	for rows.Next() {
+		plan := &models.SubscriptionPlan{}
+		if err := rows.Scan(
+			&plan.ID, &plan.GatewayID, &plan.PlanName, &plan.BillingPlan,
+			&plan.StopOnQuotaReach, &plan.ThrottleLimitCount, &plan.ThrottleLimitUnit,
+			&plan.ExpiryTime, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		list = append(list, plan)
+	}
+	return list, rows.Err()
+}
+
+// UpdateSubscriptionPlan updates an existing subscription plan.
+func (s *sqlStore) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	if plan == nil {
+		return fmt.Errorf("failed to update subscription plan: nil plan")
+	}
+	plan.GatewayID = s.gatewayId
+	plan.UpdatedAt = time.Now()
+	query := `
+		UPDATE subscription_plans
+		SET plan_name = ?, billing_plan = ?, stop_on_quota_reach = ?, throttle_limit_count = ?,
+			throttle_limit_unit = ?, expiry_time = ?, status = ?, updated_at = ?
+		WHERE id = ? AND gateway_id = ?
+	`
+	result, err := s.exec(query,
+		plan.PlanName, plan.BillingPlan, plan.StopOnQuotaReach,
+		plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.ExpiryTime,
+		string(plan.Status), plan.UpdatedAt,
+		plan.ID, s.gatewayId,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update subscription plan: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected when updating subscription plan: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: subscription plan not found: %s", ErrNotFound, plan.ID)
+	}
+	return nil
+}
+
+// DeleteSubscriptionPlan removes a subscription plan by ID and gateway.
+func (s *sqlStore) DeleteSubscriptionPlan(id, gatewayID string) error {
+	query := `DELETE FROM subscription_plans WHERE id = ? AND gateway_id = ?`
+	result, err := s.exec(query, id, s.gatewayId)
+	if err != nil {
+		return fmt.Errorf("failed to delete subscription plan: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected when deleting subscription plan: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: subscription plan not found: %s", ErrNotFound, id)
+	}
+	return nil
+}
+
+// DeleteSubscriptionPlansNotIn removes plans for this gateway whose IDs are not in the given set.
+// Used for bulk-sync reconciliation when plans were deleted on the control plane during downtime.
+func (s *sqlStore) DeleteSubscriptionPlansNotIn(ids []string) error {
+	gatewayID := s.gatewayId
+	if len(ids) == 0 {
+		query := `DELETE FROM subscription_plans WHERE gateway_id = ?`
+		_, err := s.exec(query, gatewayID)
+		if err != nil {
+			return fmt.Errorf("failed to delete subscription plans not in set: %w", err)
+		}
+		return nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, 0, len(ids)+1)
+	args = append(args, gatewayID)
+	for i := range ids {
+		placeholders[i] = "?"
+		args = append(args, ids[i])
+	}
+	query := fmt.Sprintf(`DELETE FROM subscription_plans WHERE gateway_id = ? AND id NOT IN (%s)`,
+		strings.Join(placeholders, ","))
+	_, err := s.exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete subscription plans not in set: %w", err)
+	}
+	return nil
+}
+
+// SaveSubscription persists a new subscription.
+// Receives plain token from platform-api; encrypts and hashes before storage.
+func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
+	if sub == nil {
+		return fmt.Errorf("failed to insert subscription: nil subscription")
+	}
+	sub.GatewayID = s.gatewayId
+	plainToken := sub.SubscriptionToken
+	tokenHash := hashSubscriptionToken(plainToken)
+
+	if s.subscriptionTokenEncryptionKey == "" {
+		return fmt.Errorf("subscription token encryption key required; configure subscriptions.subscription_token_encryption_key to store subscriptions")
+	}
+	key, err := DeriveEncryptionKey(s.subscriptionTokenEncryptionKey)
+	if err != nil {
+		return fmt.Errorf("subscription token encryption key: %w", err)
+	}
+	encryptedToken, err := EncryptSubscriptionToken(key, plainToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt subscription token: %w", err)
+	}
+
+	now := time.Now()
+	sub.CreatedAt = now
+	sub.UpdatedAt = now
+	query := `
+		INSERT INTO subscriptions (id, gateway_id, api_id, application_id, subscription_token, subscription_token_hash,
+			subscription_plan_id, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.exec(query, sub.ID, s.gatewayId, sub.APIID, sub.ApplicationID,
+		encryptedToken, tokenHash, sub.SubscriptionPlanID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
+	if err != nil {
+		if s.isSubscriptionUniqueViolation(err) {
+			return fmt.Errorf("%w: subscription token already exists for this API", ErrConflict)
+		}
+		return fmt.Errorf("failed to insert subscription: %w", err)
+	}
+	return nil
+}
+
+// GetSubscriptionByID retrieves a subscription by ID and gateway.
+// Decrypts subscription_token for API response.
+func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
+	query := `
+		SELECT id, api_id, application_id, subscription_token, subscription_token_hash, subscription_plan_id,
+			gateway_id, status, created_at, updated_at
+		FROM subscriptions
+		WHERE id = ? AND gateway_id = ?
+	`
+	sub := &models.Subscription{}
+	var storedToken string
+	err := s.queryRow(query, id, s.gatewayId).Scan(
+		&sub.ID, &sub.APIID, &sub.ApplicationID, &storedToken, &sub.SubscriptionTokenHash,
+		&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status,
+		&sub.CreatedAt, &sub.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	plainToken, err := s.decryptSubscriptionToken(storedToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt subscription token: %w", err)
+	}
+	sub.SubscriptionToken = plainToken
+	return sub, nil
+}
+
+func (s *sqlStore) decryptSubscriptionToken(stored string) (string, error) {
+	if stored == "" {
+		return "", nil
+	}
+	if s.subscriptionTokenEncryptionKey == "" {
+		return stored, nil // stored without encryption, return as-is
+	}
+	key, err := DeriveEncryptionKey(s.subscriptionTokenEncryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("key derivation: %w", err)
+	}
+	plain, err := DecryptSubscriptionToken(key, stored)
+	if err != nil {
+		return "", fmt.Errorf("decryption: %w", err)
+	}
+	return plain, nil
+}
+
+// ListSubscriptionsByAPI returns subscriptions for an API with optional filters.
+func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
+	query := `
+		SELECT id, api_id, application_id, subscription_token, subscription_token_hash, subscription_plan_id,
+			gateway_id, status, created_at, updated_at
+		FROM subscriptions
+		WHERE gateway_id = ?
+	`
+	args := []interface{}{s.gatewayId}
+	if apiID != "" {
+		query += ` AND api_id = ?`
+		args = append(args, apiID)
+	}
+	if applicationID != nil && *applicationID != "" {
+		query += ` AND application_id = ?`
+		args = append(args, *applicationID)
+	}
+	if status != nil && *status != "" {
+		query += ` AND status = ?`
+		args = append(args, *status)
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := s.query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+	}
+	defer rows.Close()
+	var list []*models.Subscription
+	for rows.Next() {
+		sub := &models.Subscription{}
+		var storedToken string
+		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &storedToken, &sub.SubscriptionTokenHash,
+			&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
+			return nil, err
+		}
+		plainToken, err := s.decryptSubscriptionToken(storedToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt subscription token for %s: %w", sub.ID, err)
+		}
+		sub.SubscriptionToken = plainToken
+		list = append(list, sub)
+	}
+	return list, rows.Err()
+}
+
+// ListActiveSubscriptions returns all ACTIVE subscriptions for this gateway in one query.
+func (s *sqlStore) ListActiveSubscriptions() ([]*models.Subscription, error) {
+	query := `
+		SELECT id, api_id, application_id, subscription_token, subscription_token_hash, subscription_plan_id,
+			gateway_id, status, created_at, updated_at
+		FROM subscriptions
+		WHERE gateway_id = ? AND status = ?
+		ORDER BY created_at DESC
+	`
+	rows, err := s.query(query, s.gatewayId, string(models.SubscriptionStatusActive))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active subscriptions: %w", err)
+	}
+	defer rows.Close()
+	var list []*models.Subscription
+	for rows.Next() {
+		sub := &models.Subscription{}
+		var storedToken string
+		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &storedToken, &sub.SubscriptionTokenHash,
+			&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
+			return nil, err
+		}
+		plainToken, err := s.decryptSubscriptionToken(storedToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt subscription token for %s: %w", sub.ID, err)
+		}
+		sub.SubscriptionToken = plainToken
+		list = append(list, sub)
+	}
+	return list, rows.Err()
+}
+
+// UpdateSubscription updates an existing subscription.
+// Persists all mutable fields: application_id, subscription_token, subscription_plan_id, status.
+// Receives plain token; encrypts and hashes before storage (same as SaveSubscription).
+func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
+	if sub == nil {
+		return fmt.Errorf("failed to update subscription: nil subscription")
+	}
+	sub.GatewayID = s.gatewayId
+	sub.UpdatedAt = time.Now()
+	plainToken := sub.SubscriptionToken
+	tokenHash := hashSubscriptionToken(plainToken)
+
+	if s.subscriptionTokenEncryptionKey == "" {
+		return fmt.Errorf("subscription token encryption key required; configure subscriptions.subscription_token_encryption_key to store subscriptions")
+	}
+	key, err := DeriveEncryptionKey(s.subscriptionTokenEncryptionKey)
+	if err != nil {
+		return fmt.Errorf("subscription token encryption key: %w", err)
+	}
+	encryptedToken, err := EncryptSubscriptionToken(key, plainToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt subscription token: %w", err)
+	}
+
+	query := `
+		UPDATE subscriptions
+		SET api_id = ?, application_id = ?, subscription_token = ?, subscription_token_hash = ?,
+			subscription_plan_id = ?, status = ?, updated_at = ?
+		WHERE id = ? AND gateway_id = ?
+	`
+	result, err := s.exec(query, sub.APIID, sub.ApplicationID, encryptedToken, tokenHash,
+		sub.SubscriptionPlanID, string(sub.Status), sub.UpdatedAt, sub.ID, s.gatewayId)
+	if err != nil {
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected when updating subscription: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: subscription not found: %s", ErrNotFound, sub.ID)
+	}
+	return nil
+}
+
+// DeleteSubscription removes a subscription by ID and gateway.
+func (s *sqlStore) DeleteSubscription(id, gatewayID string) error {
+	query := `DELETE FROM subscriptions WHERE id = ? AND gateway_id = ?`
+	result, err := s.exec(query, id, s.gatewayId)
+	if err != nil {
+		return fmt.Errorf("failed to delete subscription: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected when deleting subscription: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: subscription not found: %s", ErrNotFound, id)
+	}
+	return nil
+}
+
+// DeleteSubscriptionsForAPINotIn removes subscriptions for the given API whose IDs are not in the set.
+// Used for bulk-sync reconciliation when subscriptions were deleted on the control plane during downtime.
+func (s *sqlStore) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	gatewayID := s.gatewayId
+	if apiID == "" {
+		return fmt.Errorf("apiID is required for DeleteSubscriptionsForAPINotIn")
+	}
+	if len(ids) == 0 {
+		query := `DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ?`
+		_, err := s.exec(query, gatewayID, apiID)
+		if err != nil {
+			return fmt.Errorf("failed to delete subscriptions for API not in set: %w", err)
+		}
+		return nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, 0, len(ids)+2)
+	args = append(args, gatewayID, apiID)
+	for i := range ids {
+		placeholders[i] = "?"
+		args = append(args, ids[i])
+	}
+	query := fmt.Sprintf(`DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ? AND id NOT IN (%s)`,
+		strings.Join(placeholders, ","))
+	_, err := s.exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete subscriptions for API not in set: %w", err)
+	}
+	return nil
 }

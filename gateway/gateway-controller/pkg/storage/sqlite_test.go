@@ -90,6 +90,8 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
+		"subscriptions",
+		"subscription_plans",
 	}
 
 	for _, table := range tables {
