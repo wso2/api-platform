@@ -55,6 +55,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	analyticsData map[string]any,
 	dynamicMetadata map[string]map[string]interface{},
 	pathMutation *string,
+	methodMutation *string,
 	immediateResp *extprocv3.ProcessingResponse,
 	err error) {
 
@@ -76,10 +77,10 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 			// Handle analytics metadata for immediate response
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
 			if err != nil {
-				return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+				return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
-			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, immResp.DynamicMetadata)
-			return nil, nil, nil, nil, nil, response, nil
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, immResp.DynamicMetadata)
+			return nil, nil, nil, nil, nil, nil, response, nil
 		}
 	}
 
@@ -142,6 +143,10 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 
 				if mods.Path != nil {
 					pathMutation = mods.Path
+				}
+
+				if mods.Method != nil {
+					methodMutation = mods.Method
 				}
 
 				// Collect analytics metadata from policies
@@ -256,6 +261,22 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		})
 	}
 
+	// Always pass api_context and upstream_base_path in dynamic metadata when path rewrite is requested
+	// This allows the Lua filter to properly compute the final upstream path
+	if pathMutation != nil {
+		extProcNS := constants.ExtProcFilterName
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		// Only set if not already set by UpstreamName handling above
+		if _, ok := dynamicMetadata[extProcNS]["api_context"]; !ok {
+			dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		}
+		if _, ok := dynamicMetadata[extProcNS]["upstream_base_path"]; !ok {
+			dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+		}
+	}
+
 	// Remove any content-length headers from policy operations if we're managing it ourselves
 	if bodyModified {
 		delete(headerOps, "content-length")
@@ -269,12 +290,12 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, pathMutation, nil, nil
+	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, pathMutation, methodMutation, nil, nil
 }
 
 // TranslateRequestHeadersActions converts request headers execution result to ext_proc response
 func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, dynamicMetadata, path, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, dynamicMetadata, path, method, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -302,14 +323,14 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, path, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, path, method, dynamicMetadata)
 
 	return response, nil
 }
 
 // TranslateRequestBodyActions converts request body execution result to ext_proc response
 func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, dynamicMetadata, _, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, dynamicMetadata, path, method, immediateResp, err := translateRequestActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +358,7 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, path, method, dynamicMetadata)
 
 	return response, nil
 }
@@ -532,7 +553,7 @@ func TranslateResponseHeadersActions(result *executor.ResponseExecutionResult, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
 
 	return response, nil
 }
@@ -562,19 +583,19 @@ func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, exec
 		if err != nil {
 			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 		}
-		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
 		return response, nil
 	}
 
 	if len(dynamicMetadata) > 0 {
-		response.DynamicMetadata = buildDynamicMetadata(nil, nil, dynamicMetadata)
+		response.DynamicMetadata = buildDynamicMetadata(nil, nil, nil, dynamicMetadata)
 	}
 
 	return response, nil
 }
 
-// buildDynamicMetadata creates the dynamic metadata structure for analytics and path rewrite
-func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, extra map[string]map[string]interface{}) *structpb.Struct {
+// buildDynamicMetadata creates the dynamic metadata structure for analytics and path/method rewrite
+func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, method *string, extra map[string]map[string]interface{}) *structpb.Struct {
 	namespaces := make(map[string]*structpb.Struct)
 
 	baseFields := make(map[string]*structpb.Value)
@@ -583,6 +604,9 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, extra 
 	}
 	if path != nil {
 		baseFields["path"] = structpb.NewStringValue(*path)
+	}
+	if method != nil {
+		baseFields["method"] = structpb.NewStringValue(*method)
 	}
 	if len(baseFields) > 0 {
 		namespaces[constants.ExtProcFilterName] = &structpb.Struct{Fields: baseFields}
@@ -601,6 +625,7 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, extra 
 			// Prevent policies from overwriting reserved keys managed by the engine.
 			delete(metaStruct.Fields, "analytics_data")
 			delete(metaStruct.Fields, "path")
+			delete(metaStruct.Fields, "method")
 		}
 		if existing, ok := namespaces[namespace]; ok {
 			for key, value := range metaStruct.Fields {

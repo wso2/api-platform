@@ -24,6 +24,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v0
   - name: cors
     gomodule: github.com/wso2/gateway-controllers/policies/cors@v0
+  - name: dynamic-endpoint
+    gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
   - name: json-schema-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
   - name: json-to-xml
