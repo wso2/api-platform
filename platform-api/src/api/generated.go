@@ -517,6 +517,54 @@ type CreateGatewayRequest struct {
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
 type CreateGatewayRequestFunctionalityType string
 
+// APIKeyItem defines a safe representation of an API key (no secret data)
+type APIKeyItem struct {
+	// Name URL-safe identifier of the API key
+	Name string `json:"name" yaml:"name"`
+
+	// MaskedApiKey Masked representation of the API key for display purposes
+	MaskedApiKey string `json:"maskedApiKey" yaml:"maskedApiKey"`
+
+	// Status Current status of the key (active, revoked)
+	Status string `json:"status" yaml:"status"`
+
+	// CreatedAt Timestamp when the key was created
+	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy User who created the key
+	CreatedBy string `json:"createdBy" yaml:"createdBy"`
+
+	// UpdatedAt Timestamp when the key was last updated
+	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
+
+	// ExpiresAt Optional expiration timestamp
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+
+	// ProvisionedBy Optional identifier of the developer portal that provisioned this key
+	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
+
+	// AllowedTargets Comma-separated list of allowed LLM providers/proxies; 'ALL' means unrestricted
+	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
+}
+
+// LLMProviderAPIKeyListResponse defines the response for listing LLM provider API keys
+type LLMProviderAPIKeyListResponse struct {
+	// Items List of API keys
+	Items []APIKeyItem `json:"items" yaml:"items"`
+
+	// Count Total number of API keys
+	Count int `json:"count" yaml:"count"`
+}
+
+// LLMProxyAPIKeyListResponse defines the response for listing LLM proxy API keys
+type LLMProxyAPIKeyListResponse struct {
+	// Items List of API keys
+	Items []APIKeyItem `json:"items" yaml:"items"`
+
+	// Count Total number of API keys
+	Count int `json:"count" yaml:"count"`
+}
+
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
 	// AllowedTargets Comma-separated list of LLM provider or proxy names this key is valid for. Use 'ALL' to allow all targets (default).

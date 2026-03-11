@@ -100,6 +100,56 @@ func (r *APIKeyRepo) Revoke(artifactUUID, name string) error {
 	return nil
 }
 
+// ListByArtifact retrieves all API keys for a given artifact UUID
+func (r *APIKeyRepo) ListByArtifact(artifactUUID string) ([]*model.APIKey, error) {
+	query := `
+		SELECT uuid, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at, provisioned_by, allowed_targets
+		FROM api_keys
+		WHERE artifact_uuid = ?
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []*model.APIKey
+	for rows.Next() {
+		key := &model.APIKey{}
+		var provisionedBy sql.NullString
+		if err := rows.Scan(
+			&key.UUID, &key.ArtifactUUID, &key.Name, &key.MaskedAPIKey, &key.APIKeyHashes,
+			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+			&provisionedBy, &key.AllowedTargets,
+		); err != nil {
+			return nil, err
+		}
+		if provisionedBy.Valid {
+			key.ProvisionedBy = &provisionedBy.String
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+// Delete removes an API key record permanently
+func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
+	query := `DELETE FROM api_keys WHERE artifact_uuid = ? AND name = ?`
+	result, err := r.db.Exec(r.db.Rebind(query), artifactUUID, name)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("api key not found")
+	}
+	return nil
+}
+
 // GetByArtifactAndName retrieves an API key by artifact UUID and name
 func (r *APIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error) {
 	key := &model.APIKey{}

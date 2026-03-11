@@ -179,6 +179,8 @@ type APIKeyRepository interface {
 	Update(key *model.APIKey) error
 	Revoke(artifactUUID, name string) error
 	GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error)
+	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
+	Delete(artifactUUID, name string) error
 }
 
 // LLMProxyRepository defines the interface for LLM proxy persistence

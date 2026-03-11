@@ -57,6 +57,115 @@ func NewLLMProxyAPIKeyService(
 	}
 }
 
+// ListLLMProxyAPIKeys returns all API keys for an LLM proxy.
+func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
+	ctx context.Context,
+	proxyID, orgID string,
+) (*api.LLMProxyAPIKeyListResponse, error) {
+
+	proxy, err := s.llmProxyRepo.GetByID(proxyID, orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get LLM proxy for API key listing", "proxyId", proxyID, "error", err)
+		return nil, fmt.Errorf("failed to get LLM proxy: %w", err)
+	}
+	if proxy == nil {
+		return nil, constants.ErrAPINotFound
+	}
+
+	keys, err := s.apiKeyRepo.ListByArtifact(proxy.UUID)
+	if err != nil {
+		s.slogger.Error("Failed to list API keys for LLM proxy", "proxyId", proxyID, "error", err)
+		return nil, fmt.Errorf("failed to list API keys: %w", err)
+	}
+
+	items := make([]api.APIKeyItem, 0, len(keys))
+	for _, k := range keys {
+		item := api.APIKeyItem{
+			Name:           k.Name,
+			MaskedApiKey:   k.MaskedAPIKey,
+			Status:         k.Status,
+			CreatedAt:      k.CreatedAt,
+			CreatedBy:      k.CreatedBy,
+			UpdatedAt:      k.UpdatedAt,
+			ExpiresAt:      k.ExpiresAt,
+			ProvisionedBy:  k.ProvisionedBy,
+			AllowedTargets: k.AllowedTargets,
+		}
+		items = append(items, item)
+	}
+
+	return &api.LLMProxyAPIKeyListResponse{
+		Items: items,
+		Count: len(items),
+	}, nil
+}
+
+// DeleteLLMProxyAPIKey broadcasts a revoke event to gateways and deletes the API key from the database.
+func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
+	ctx context.Context,
+	proxyID, orgID, userID, keyName string,
+) error {
+
+	proxy, err := s.llmProxyRepo.GetByID(proxyID, orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get LLM proxy for API key deletion", "proxyId", proxyID, "error", err)
+		return fmt.Errorf("failed to get LLM proxy: %w", err)
+	}
+	if proxy == nil {
+		return constants.ErrAPINotFound
+	}
+
+	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(proxy.UUID, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for deletion", "proxyId", proxyID, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if existingKey == nil {
+		return constants.ErrAPIKeyNotFound
+	}
+
+	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get gateways for API key deletion broadcast", "proxyId", proxyID, "error", err)
+		return fmt.Errorf("failed to get gateways: %w", err)
+	}
+	if len(gateways) == 0 {
+		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
+		return constants.ErrGatewayUnavailable
+	}
+
+	event := &model.APIKeyRevokedEvent{
+		ApiId:   proxyID,
+		KeyName: keyName,
+	}
+
+	successCount := 0
+	var lastError error
+	for _, gateway := range gateways {
+		gatewayID := gateway.ID
+		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
+			lastError = err
+			s.slogger.Error("Failed to broadcast LLM proxy API key revoked event", "proxyId", proxyID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
+		} else {
+			successCount++
+			s.slogger.Info("Successfully broadcast LLM proxy API key revoked event", "proxyId", proxyID, "gatewayId", gatewayID, "keyName", keyName)
+		}
+	}
+
+	if successCount == 0 {
+		s.slogger.Error("Failed to deliver LLM proxy API key revoke event to any gateway", "proxyId", proxyID, "keyName", keyName)
+		return fmt.Errorf("failed to deliver API key revoke event to any gateway: %w", lastError)
+	}
+
+	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName); err != nil {
+		s.slogger.Error("Failed to delete LLM proxy API key from database", "proxyId", proxyID, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to delete API key: %w", err)
+	}
+
+	s.slogger.Info("Successfully deleted LLM proxy API key", "proxyId", proxyID, "keyName", keyName)
+	return nil
+}
+
 // CreateLLMProxyAPIKey generates an API key for an LLM proxy and broadcasts it to all gateways.
 func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	ctx context.Context,

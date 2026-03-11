@@ -57,6 +57,115 @@ func NewLLMProviderAPIKeyService(
 	}
 }
 
+// ListLLMProviderAPIKeys returns all API keys for an LLM provider.
+func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
+	ctx context.Context,
+	providerID, orgID string,
+) (*api.LLMProviderAPIKeyListResponse, error) {
+
+	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get LLM provider for API key listing", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to get LLM provider: %w", err)
+	}
+	if provider == nil {
+		return nil, constants.ErrAPINotFound
+	}
+
+	keys, err := s.apiKeyRepo.ListByArtifact(provider.UUID)
+	if err != nil {
+		s.slogger.Error("Failed to list API keys for LLM provider", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to list API keys: %w", err)
+	}
+
+	items := make([]api.APIKeyItem, 0, len(keys))
+	for _, k := range keys {
+		item := api.APIKeyItem{
+			Name:           k.Name,
+			MaskedApiKey:   k.MaskedAPIKey,
+			Status:         k.Status,
+			CreatedAt:      k.CreatedAt,
+			CreatedBy:      k.CreatedBy,
+			UpdatedAt:      k.UpdatedAt,
+			ExpiresAt:      k.ExpiresAt,
+			ProvisionedBy:  k.ProvisionedBy,
+			AllowedTargets: k.AllowedTargets,
+		}
+		items = append(items, item)
+	}
+
+	return &api.LLMProviderAPIKeyListResponse{
+		Items: items,
+		Count: len(items),
+	}, nil
+}
+
+// DeleteLLMProviderAPIKey broadcasts a revoke event to gateways and deletes the API key from the database.
+func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
+	ctx context.Context,
+	providerID, orgID, userID, keyName string,
+) error {
+
+	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get LLM provider for API key deletion", "providerId", providerID, "error", err)
+		return fmt.Errorf("failed to get LLM provider: %w", err)
+	}
+	if provider == nil {
+		return constants.ErrAPINotFound
+	}
+
+	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(provider.UUID, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for deletion", "providerId", providerID, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if existingKey == nil {
+		return constants.ErrAPIKeyNotFound
+	}
+
+	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get gateways for API key deletion broadcast", "providerId", providerID, "error", err)
+		return fmt.Errorf("failed to get gateways: %w", err)
+	}
+	if len(gateways) == 0 {
+		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
+		return constants.ErrGatewayUnavailable
+	}
+
+	event := &model.APIKeyRevokedEvent{
+		ApiId:   providerID,
+		KeyName: keyName,
+	}
+
+	successCount := 0
+	var lastError error
+	for _, gateway := range gateways {
+		gatewayID := gateway.ID
+		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
+			lastError = err
+			s.slogger.Error("Failed to broadcast LLM provider API key revoked event", "providerId", providerID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
+		} else {
+			successCount++
+			s.slogger.Info("Successfully broadcast LLM provider API key revoked event", "providerId", providerID, "gatewayId", gatewayID, "keyName", keyName)
+		}
+	}
+
+	if successCount == 0 {
+		s.slogger.Error("Failed to deliver LLM provider API key revoke event to any gateway", "providerId", providerID, "keyName", keyName)
+		return fmt.Errorf("failed to deliver API key revoke event to any gateway: %w", lastError)
+	}
+
+	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
+		s.slogger.Error("Failed to delete LLM provider API key from database", "providerId", providerID, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to delete API key: %w", err)
+	}
+
+	s.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName)
+	return nil
+}
+
 // CreateLLMProviderAPIKey generates an API key for an LLM provider and broadcasts it to all gateways.
 func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	ctx context.Context,
