@@ -63,7 +63,7 @@ type TLS struct {
 type JWT struct {
 	SecretKey      string   `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
 	Issuer         string   `envconfig:"ISSUER" default:"thunder"`
-	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies"`
+	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans"`
 	SkipValidation bool     `envconfig:"SKIP_VALIDATION" default:"true"` // Skip signature validation for development
 }
 
@@ -97,6 +97,11 @@ type Database struct {
 	// Set to false when the DB user lacks DDL privileges (e.g. deployed Postgres with restricted role).
 	// Env: DATABASE_EXECUTE_SCHEMA_DDL (default: true)
 	ExecuteSchemaDDL bool `envconfig:"EXECUTE_SCHEMA_DDL" default:"true"`
+
+	// SubscriptionTokenEncryptionKey is the 32-byte key for AES-256-GCM encryption of subscription tokens.
+	// Provide as 64 hex chars or 44 base64 chars. Required for storing tokens in encrypted form (retrievable on GET).
+	// Env: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY. If empty, falls back to JWT_SECRET_KEY.
+	SubscriptionTokenEncryptionKey string `envconfig:"SUBSCRIPTION_TOKEN_ENCRYPTION_KEY" default:""`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations

@@ -46,12 +46,13 @@ type VhostsConfig struct {
 }
 
 type RestAPIConfig struct {
-	Name       string         `json:"name,omitempty"`
-	Version    string         `json:"version,omitempty"`
-	Context    *string        `json:"context,omitempty"`
-	Upstream   UpstreamConfig `json:"upstream,omitempty"`
-	Policies   []Policy       `json:"policies,omitempty"`
-	Operations []Operation    `json:"operations,omitempty"`
+	Name              string         `json:"name,omitempty"`
+	Version           string         `json:"version,omitempty"`
+	Context           *string        `json:"context,omitempty"`
+	Upstream          UpstreamConfig `json:"upstream,omitempty"`
+	Policies          []Policy       `json:"policies,omitempty"`
+	Operations        []Operation    `json:"operations,omitempty"`
+	SubscriptionPlans []string       `json:"subscriptionPlans,omitempty"`
 }
 
 // TableName returns the table name for the API model

@@ -148,3 +148,16 @@ var (
 	ErrAPIKeyEventDelivery = errors.New("failed to deliver api key event to gateway")
 	ErrAPIKeyHashingFailed = errors.New("failed to hash api key")
 )
+
+var (
+	// Subscription errors (application-level subscriptions for REST APIs)
+	ErrSubscriptionNotFound      = errors.New("subscription not found")
+	ErrSubscriptionAlreadyExists = errors.New("application is already subscribed to this API")
+)
+
+var (
+	// Subscription plan errors
+	ErrSubscriptionPlanNotFound          = errors.New("subscription plan not found")
+	ErrSubscriptionPlanNotFoundOrInactive = errors.New("subscription plan not found or not active")
+	ErrSubscriptionPlanAlreadyExists     = errors.New("subscription plan with this name already exists for the organization")
+)

@@ -142,4 +142,3 @@ type LazyResourceData struct {
 	ResourceType string                 `json:"resource_type"`
 	Resource     map[string]interface{} `json:"resource"`
 }
-

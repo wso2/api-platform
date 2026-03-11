@@ -624,6 +624,9 @@ type CreateRESTAPIRequest struct {
 	// ProjectId ID of the project this API belongs to
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
+	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver)
+	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+
 	// Transport Supported transports for the API (http and/or https)
 	Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
 
@@ -1648,6 +1651,9 @@ type RESTAPI struct {
 
 	// ProjectId ID of the project this API belongs to
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver)
+	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// Transport Supported transports for the API (http and/or https)
 	Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`

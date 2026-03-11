@@ -294,6 +294,30 @@ func isPostgresAPIKeyUniqueConstraintError(err error) bool {
 	}
 }
 
+// isPostgresSubscriptionUniqueConstraintError checks for subscription (api_id, subscription_token_hash, gateway_id) uniqueness.
+func isPostgresSubscriptionUniqueConstraintError(err error) bool {
+	pgErr := extractPgError(err)
+	if pgErr == nil || pgErr.Code != pgUniqueViolationCode {
+		return false
+	}
+	return pgErr.TableName == "subscriptions" &&
+		(pgErr.ConstraintName == "subscriptions_api_id_subscription_token_hash_gateway_id_key" ||
+			(strings.Contains(pgErr.ConstraintName, "subscriptions") && strings.Contains(pgErr.ConstraintName, "subscription_token")))
+}
+
+// isPostgresSubscriptionPlanUniqueConstraintError checks for subscription_plans (gateway_id, plan_name) uniqueness.
+// Does not match subscription_plans_pkey or other constraints.
+func isPostgresSubscriptionPlanUniqueConstraintError(err error) bool {
+	pgErr := extractPgError(err)
+	if pgErr == nil || pgErr.Code != pgUniqueViolationCode {
+		return false
+	}
+	return pgErr.TableName == "subscription_plans" &&
+		(pgErr.ConstraintName == "subscription_plans_gateway_id_plan_name_key" ||
+			(strings.Contains(pgErr.ConstraintName, "subscription_plans") &&
+				strings.Contains(pgErr.ConstraintName, "plan_name")))
+}
+
 func extractPgError(err error) *pgconn.PgError {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {

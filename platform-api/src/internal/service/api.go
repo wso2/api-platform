@@ -42,22 +42,24 @@ import (
 
 // APIService handles business logic for API operations
 type APIService struct {
-	apiRepo              repository.APIRepository
-	projectRepo          repository.ProjectRepository
-	orgRepo              repository.OrganizationRepository
-	gatewayRepo          repository.GatewayRepository
-	devPortalRepo        repository.DevPortalRepository
-	publicationRepo      repository.APIPublicationRepository
-	gatewayEventsService *GatewayEventsService
-	devPortalService     *DevPortalService
-	apiUtil              *utils.APIUtil
-	slogger              *slog.Logger
+	apiRepo               repository.APIRepository
+	projectRepo           repository.ProjectRepository
+	orgRepo               repository.OrganizationRepository
+	gatewayRepo           repository.GatewayRepository
+	devPortalRepo         repository.DevPortalRepository
+	publicationRepo       repository.APIPublicationRepository
+	subscriptionPlanRepo  repository.SubscriptionPlanRepository
+	gatewayEventsService  *GatewayEventsService
+	devPortalService      *DevPortalService
+	apiUtil               *utils.APIUtil
+	slogger               *slog.Logger
 }
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
 	orgRepo repository.OrganizationRepository, gatewayRepo repository.GatewayRepository,
 	devPortalRepo repository.DevPortalRepository, publicationRepo repository.APIPublicationRepository,
+	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil,
 	slogger *slog.Logger) *APIService {
 	return &APIService{
@@ -67,6 +69,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 		gatewayRepo:          gatewayRepo,
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
+		subscriptionPlanRepo:  subscriptionPlanRepo,
 		gatewayEventsService: gatewayEventsService,
 		devPortalService:     devPortalService,
 		apiUtil:              apiUtil,
@@ -616,6 +619,35 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		}
 	}
 
+	// Validate subscription plans if provided
+	if err := s.validateSubscriptionPlans(req.SubscriptionPlans, orgUUID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateSubscriptionPlans ensures each plan name exists in the organization and is ACTIVE.
+// It normalizes planNames in place by trimming each element. Repository errors are returned
+// directly; ErrSubscriptionPlanNotFoundOrInactive is only returned when plan is nil or inactive.
+func (s *APIService) validateSubscriptionPlans(planNames *[]string, orgUUID string) error {
+	if planNames == nil || len(*planNames) == 0 {
+		return nil
+	}
+	for i := range *planNames {
+		(*planNames)[i] = strings.TrimSpace((*planNames)[i])
+		name := (*planNames)[i]
+		if name == "" {
+			continue
+		}
+		plan, err := s.subscriptionPlanRepo.GetByNameAndOrg(name, orgUUID)
+		if err != nil {
+			return err
+		}
+		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
+			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, name)
+		}
+	}
 	return nil
 }
 
@@ -656,6 +688,9 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 	if req.Policies != nil {
 		existingAPI.Policies = req.Policies
 	}
+	if req.SubscriptionPlans != nil {
+		existingAPI.SubscriptionPlans = req.SubscriptionPlans
+	}
 	if !s.isEmptyUpstream(req.Upstream) {
 		existingAPI.Upstream = req.Upstream
 	}
@@ -693,6 +728,11 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 				return constants.ErrInvalidTransport
 			}
 		}
+	}
+
+	// Validate subscription plans if provided
+	if err := s.validateSubscriptionPlans(req.SubscriptionPlans, orgUUID); err != nil {
+		return err
 	}
 
 	return nil
@@ -1326,20 +1366,21 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 	}
 
 	return &api.RESTAPI{
-		Channels:        req.Channels,
-		Context:         req.Context,
-		CreatedBy:       req.CreatedBy,
-		Description:     req.Description,
-		Id:              utils.StringPtrIfNotEmpty(handle),
-		Kind:            req.Kind,
-		LifeCycleStatus: lifecycle,
-		Name:            req.Name,
-		Operations:      req.Operations,
-		Policies:        req.Policies,
-		ProjectId:       req.ProjectId,
-		Transport:       req.Transport,
-		Upstream:        req.Upstream,
-		Version:         req.Version,
+		Channels:          req.Channels,
+		Context:           req.Context,
+		CreatedBy:         req.CreatedBy,
+		Description:       req.Description,
+		Id:                utils.StringPtrIfNotEmpty(handle),
+		Kind:              req.Kind,
+		LifeCycleStatus:   lifecycle,
+		Name:              req.Name,
+		Operations:        req.Operations,
+		Policies:          req.Policies,
+		ProjectId:         req.ProjectId,
+		SubscriptionPlans: req.SubscriptionPlans,
+		Transport:         req.Transport,
+		Upstream:          req.Upstream,
+		Version:           req.Version,
 	}
 }
 
@@ -1384,6 +1425,9 @@ func (s *APIService) restAPIToCreateRequest(rest *api.RESTAPI) *api.CreateRESTAP
 	if rest.Policies != nil && len(*rest.Policies) > 0 {
 		req.Policies = rest.Policies
 	}
+	if rest.SubscriptionPlans != nil && len(*rest.SubscriptionPlans) > 0 {
+		req.SubscriptionPlans = rest.SubscriptionPlans
+	}
 
 	return req
 }
@@ -1422,6 +1466,11 @@ func (s *APIService) createRequestFromAPIYAMLData(yamlData *dto.APIYAMLData) *ap
 			}
 		}
 		req.Policies = &policies
+	}
+
+	// SubscriptionPlans
+	if len(yamlData.SubscriptionPlans) > 0 {
+		req.SubscriptionPlans = &yamlData.SubscriptionPlans
 	}
 
 	// Operations
