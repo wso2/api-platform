@@ -118,6 +118,11 @@ type ModelPricing struct {
 	InputCostPerTokenBatches  float64 `json:"input_cost_per_token_batches"`
 	OutputCostPerTokenBatches float64 `json:"output_cost_per_token_batches"`
 
+	// Modality-specific token rates (Gemini audio/image models)
+	InputCostPerAudioToken  float64 `json:"input_cost_per_audio_token"`
+	OutputCostPerAudioToken float64 `json:"output_cost_per_audio_token"`
+	OutputCostPerImageToken float64 `json:"output_cost_per_image_token"`
+
 	// Built-in web search tool cost (Anthropic, OpenAI).
 	// The JSON value is an object keyed by search_context_size: low / medium / high.
 	// We decode it as a map and pick the right entry at runtime.
@@ -163,6 +168,16 @@ type Usage struct {
 	CacheWriteTokens    int64 // 5-minute TTL cache write tokens
 	CacheWrite1hrTokens int64 // 1-hour TTL cache write tokens
 	ReasoningTokens     int64
+
+	// Modality-specific tokens for multi-modal models (Gemini).
+	// Audio input tokens are billed at InputCostPerAudioToken; they are already
+	// included in PromptTokens so genericCalculateCost deducts them from regular
+	// prompt cost and re-bills at the audio rate.
+	// Audio and image output tokens similarly are already in CompletionTokens and
+	// are re-billed at their respective modality rates.
+	AudioInputTokens  int64
+	AudioOutputTokens int64
+	ImageOutputTokens int64
 
 	// Anthropic-specific: geo routing and speed mode
 	InferenceGeo string // echoed in response usage.inference_geo
@@ -298,14 +313,15 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		outputRate = pricing.OutputCostPerTokenAbove128k
 	}
 
-	// Regular (non-cached, non-reasoning) prompt tokens
-	regularPromptTokens := usage.PromptTokens - usage.CachedReadTokens - usage.CacheWriteTokens - usage.CacheWrite1hrTokens
+	// Regular (non-cached, non-reasoning) prompt tokens (audio tokens also excluded
+	// so they can be billed at their own modality rate below)
+	regularPromptTokens := usage.PromptTokens - usage.CachedReadTokens - usage.CacheWriteTokens - usage.CacheWrite1hrTokens - usage.AudioInputTokens
 	if regularPromptTokens < 0 {
 		regularPromptTokens = 0
 	}
 
-	// Regular (non-reasoning) completion tokens
-	regularCompletionTokens := usage.CompletionTokens - usage.ReasoningTokens
+	// Regular (non-reasoning, non-audio, non-image) completion tokens
+	regularCompletionTokens := usage.CompletionTokens - usage.ReasoningTokens - usage.AudioOutputTokens - usage.ImageOutputTokens
 	if regularCompletionTokens < 0 {
 		regularCompletionTokens = 0
 	}
@@ -321,6 +337,26 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		reasoningRate = outputRate
 	}
 	reasoningCost := float64(usage.ReasoningTokens) * reasoningRate
+
+	// Modality-specific costs (Gemini audio/image): bill at per-modality rates when
+	// they exist in the model pricing; fall back to the standard input/output rate.
+	audioInputRate := pricing.InputCostPerAudioToken
+	if audioInputRate == 0 {
+		audioInputRate = inputRate
+	}
+	audioInputCost := float64(usage.AudioInputTokens) * audioInputRate
+
+	audioOutputRate := pricing.OutputCostPerAudioToken
+	if audioOutputRate == 0 {
+		audioOutputRate = outputRate
+	}
+	audioOutputCost := float64(usage.AudioOutputTokens) * audioOutputRate
+
+	imageOutputRate := pricing.OutputCostPerImageToken
+	if imageOutputRate == 0 {
+		imageOutputRate = outputRate
+	}
+	imageOutputCost := float64(usage.ImageOutputTokens) * imageOutputRate
 
 	// Built-in web search tool: flat per-query fee, independent of token costs.
 	// The rate is keyed by search_context_size (low/medium/high); default is medium
@@ -338,5 +374,5 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		}
 	}
 
-	return promptCost + completionCost + cacheReadCost + cacheWriteCost + reasoningCost + webSearchCost
+	return promptCost + completionCost + cacheReadCost + cacheWriteCost + reasoningCost + webSearchCost + audioInputCost + audioOutputCost + imageOutputCost
 }

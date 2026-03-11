@@ -724,6 +724,228 @@ func TestGeminiCalculator_Adjust_PassThrough(t *testing.T) {
 	}
 }
 
+// TestGeminiCalculator_Normalize_AudioInput verifies that promptTokensDetails is
+// parsed and audio input tokens are separated from regular text tokens.
+func TestGeminiCalculator_Normalize_AudioInput(t *testing.T) {
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 500,
+			"candidatesTokenCount": 100,
+			"totalTokenCount": 600,
+			"promptTokensDetails": [
+				{"modality": "TEXT",  "tokenCount": 300},
+				{"modality": "AUDIO", "tokenCount": 200}
+			]
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.AudioInputTokens != 200 {
+		t.Errorf("expected AudioInputTokens=200, got %d", u.AudioInputTokens)
+	}
+	if u.PromptTokens != 500 {
+		t.Errorf("expected PromptTokens=500 (total prompt count unchanged), got %d", u.PromptTokens)
+	}
+}
+
+// TestGeminiCalculator_Normalize_AudioInput_CachedSubtracted verifies that
+// cached audio tokens (from cacheTokensDetails) are subtracted so only
+// non-cached audio tokens are billed at the audio rate.
+func TestGeminiCalculator_Normalize_AudioInput_CachedSubtracted(t *testing.T) {
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 500,
+			"candidatesTokenCount": 100,
+			"totalTokenCount": 600,
+			"promptTokensDetails": [
+				{"modality": "TEXT",  "tokenCount": 300},
+				{"modality": "AUDIO", "tokenCount": 200}
+			],
+			"cacheTokensDetails": [
+				{"modality": "AUDIO", "tokenCount": 50}
+			]
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 200 total audio - 50 cached = 150 billable at audio rate
+	if u.AudioInputTokens != 150 {
+		t.Errorf("expected AudioInputTokens=150 (200-50 cached), got %d", u.AudioInputTokens)
+	}
+}
+
+// TestGeminiCalculator_Normalize_AudioOutput verifies parsing of candidatesTokensDetails
+// for native audio output models (e.g. gemini-2.0-flash-live).
+func TestGeminiCalculator_Normalize_AudioOutput(t *testing.T) {
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 100,
+			"candidatesTokenCount": 300,
+			"totalTokenCount": 400,
+			"candidatesTokensDetails": [
+				{"modality": "TEXT",  "tokenCount": 100},
+				{"modality": "AUDIO", "tokenCount": 200}
+			]
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.AudioOutputTokens != 200 {
+		t.Errorf("expected AudioOutputTokens=200, got %d", u.AudioOutputTokens)
+	}
+}
+
+// TestGeminiCalculator_Normalize_ImageOutput verifies parsing of candidatesTokensDetails
+// for image generation models (e.g. gemini-2.5-flash-image).
+func TestGeminiCalculator_Normalize_ImageOutput(t *testing.T) {
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 200,
+			"candidatesTokenCount": 350,
+			"totalTokenCount": 550,
+			"candidatesTokensDetails": [
+				{"modality": "TEXT",  "tokenCount": 50},
+				{"modality": "IMAGE", "tokenCount": 300}
+			]
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.ImageOutputTokens != 300 {
+		t.Errorf("expected ImageOutputTokens=300, got %d", u.ImageOutputTokens)
+	}
+}
+
+// TestGeminiCalculator_Cost_AudioInput verifies that audio input tokens are billed
+// at the model's audio rate and excluded from the standard input rate.
+func TestGeminiCalculator_Cost_AudioInput(t *testing.T) {
+	// gemini-2.5-flash has input_cost_per_token and input_cost_per_audio_token
+	pricing, ok := lookupPricing("gemini/gemini-2.5-flash")
+	if !ok {
+		t.Skip("gemini/gemini-2.5-flash not in pricing map")
+	}
+	if pricing.InputCostPerAudioToken == 0 {
+		t.Skip("gemini/gemini-2.5-flash has no audio input rate")
+	}
+
+	// 300 text input + 200 audio input, 100 output
+	usage := Usage{
+		PromptTokens:     500,
+		CompletionTokens: 100,
+		TotalTokens:      600,
+		AudioInputTokens: 200,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// 300 text tokens at standard rate + 200 audio at audio rate + 100 output at output rate
+	expected := float64(300)*pricing.InputCostPerToken +
+		float64(200)*pricing.InputCostPerAudioToken +
+		float64(100)*pricing.OutputCostPerToken
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Cost_AudioOutput verifies that audio output tokens are billed
+// at the model's audio output rate.
+func TestGeminiCalculator_Cost_AudioOutput(t *testing.T) {
+	// gemini-2.0-flash-live-preview has output_cost_per_audio_token
+	pricing, ok := lookupPricing("gemini-2.0-flash-live-preview-04-09")
+	if !ok {
+		t.Skip("gemini-2.0-flash-live-preview-04-09 not in pricing map")
+	}
+	if pricing.OutputCostPerAudioToken == 0 {
+		t.Skip("model has no audio output rate")
+	}
+
+	// 100 text output + 200 audio output
+	usage := Usage{
+		PromptTokens:      100,
+		CompletionTokens:  300,
+		TotalTokens:       400,
+		AudioOutputTokens: 200,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// 100 prompt at input rate + 100 text output at output rate + 200 audio output at audio output rate
+	expected := float64(100)*pricing.InputCostPerToken +
+		float64(100)*pricing.OutputCostPerToken +
+		float64(200)*pricing.OutputCostPerAudioToken
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Cost_ImageOutput verifies that image output tokens are billed
+// at the model's image output rate.
+func TestGeminiCalculator_Cost_ImageOutput(t *testing.T) {
+	pricing, ok := lookupPricing("gemini/gemini-2.5-flash-image")
+	if !ok {
+		t.Skip("gemini/gemini-2.5-flash-image not in pricing map")
+	}
+	if pricing.OutputCostPerImageToken == 0 {
+		t.Skip("model has no image output rate")
+	}
+
+	// 200 prompt, 50 text output + 300 image output
+	usage := Usage{
+		PromptTokens:      200,
+		CompletionTokens:  350,
+		TotalTokens:       550,
+		ImageOutputTokens: 300,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// 200 prompt at input rate + 50 text output at output rate + 300 image at image output rate
+	expected := float64(200)*pricing.InputCostPerToken +
+		float64(50)*pricing.OutputCostPerToken +
+		float64(300)*pricing.OutputCostPerImageToken
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// TestGeminiCalculator_Normalize_ResponseTokensDetails verifies Gemini Live's
+// responseTokensDetails (streaming audio) is parsed and audio output set.
+func TestGeminiCalculator_Normalize_ResponseTokensDetails(t *testing.T) {
+	body := []byte(`{
+		"usageMetadata": {
+			"promptTokenCount": 100,
+			"candidatesTokenCount": 200,
+			"responseTokenCount": 250,
+			"totalTokenCount": 350,
+			"responseTokensDetails": [
+				{"modality": "TEXT",  "tokenCount": 50},
+				{"modality": "AUDIO", "tokenCount": 200}
+			]
+		}
+	}`)
+	c := &GeminiCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// responseTokenCount wins over candidatesTokenCount for Gemini Live
+	if u.CompletionTokens != 250 {
+		t.Errorf("expected CompletionTokens=250 (from responseTokenCount), got %d", u.CompletionTokens)
+	}
+	if u.AudioOutputTokens != 200 {
+		t.Errorf("expected AudioOutputTokens=200 (from responseTokensDetails), got %d", u.AudioOutputTokens)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Azure AI calculator
 // ---------------------------------------------------------------------------

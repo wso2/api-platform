@@ -3549,6 +3549,14 @@
     "output_cost_per_token": 0,
     "provider": "vertex_ai-embedding-models"
   },
+  "gemini-embedding-2-preview": {
+    "input_cost_per_token": 2e-07,
+    "input_cost_per_image": 0.00012,
+    "input_cost_per_audio_per_second": 0.00016,
+    "input_cost_per_video_per_second": 0.00079,
+    "output_cost_per_token": 0,
+    "provider": "gemini"
+  },
   "gemini-flash-experimental": {
     "input_cost_per_character": 0,
     "input_cost_per_token": 0,
@@ -3594,6 +3602,14 @@
     "input_cost_per_token": 1.5e-07,
     "max_input_tokens": 2048,
     "max_tokens": 2048,
+    "output_cost_per_token": 0,
+    "provider": "gemini"
+  },
+  "gemini/gemini-embedding-2-preview": {
+    "input_cost_per_token": 2e-07,
+    "input_cost_per_image": 0.00012,
+    "input_cost_per_audio_per_second": 0.00016,
+    "input_cost_per_video_per_second": 0.00079,
     "output_cost_per_token": 0,
     "provider": "gemini"
   },
