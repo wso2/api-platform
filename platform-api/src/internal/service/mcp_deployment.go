@@ -44,13 +44,14 @@ type MCPDeploymentService struct {
 }
 
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
-	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
+	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
 	gatewayEventsService *GatewayEventsService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		artifactRepo:         artifactRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		utils:                &utils.MCPUtils{},

@@ -60,12 +60,14 @@ func (h *MCPProxyHandler) RegisterRoutes(r *gin.Engine) {
 func (h *MCPProxyHandler) CreateMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
+		h.slogger.Error("MCP request validation failed", "reason", "Organization claim not found in token")
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	var req api.MCPProxy
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.slogger.Error("MCP request validation failed", "org_id", orgID, "reason", "Invalid request body", "error", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
@@ -89,6 +91,7 @@ func (h *MCPProxyHandler) CreateMCPProxy(c *gin.Context) {
 func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
+		h.slogger.Error("MCP request validation failed", "reason", "Organization claim not found in token")
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
@@ -143,6 +146,7 @@ func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 func (h *MCPProxyHandler) GetMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
+		h.slogger.Error("MCP request validation failed", "reason", "Organization claim not found in token")
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
@@ -161,6 +165,7 @@ func (h *MCPProxyHandler) GetMCPProxy(c *gin.Context) {
 func (h *MCPProxyHandler) UpdateMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
+		h.slogger.Error("MCP request validation failed", "reason", "Organization claim not found in token")
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
@@ -168,6 +173,7 @@ func (h *MCPProxyHandler) UpdateMCPProxy(c *gin.Context) {
 
 	var req api.MCPProxy
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.slogger.Error("MCP request validation failed", "org_id", orgID, "proxy_id", id, "reason", "Invalid request body", "error", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
@@ -185,6 +191,7 @@ func (h *MCPProxyHandler) UpdateMCPProxy(c *gin.Context) {
 func (h *MCPProxyHandler) DeleteMCPProxy(c *gin.Context) {
 	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
+		h.slogger.Error("MCP request validation failed", "reason", "Organization claim not found in token")
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
@@ -200,14 +207,16 @@ func (h *MCPProxyHandler) DeleteMCPProxy(c *gin.Context) {
 
 // FetchMCPProxyServerInfo handles POST /api/v1/mcp-proxies/fetch-server-info
 func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
-	_, ok := middleware.GetOrganizationFromContext(c)
+	orgID, ok := middleware.GetOrganizationFromContext(c)
 	if !ok {
+		h.slogger.Error("MCP request validation failed", "reason", "Organization claim not found in token")
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	var req api.MCPServerInfoFetchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.slogger.Error("MCP request validation failed", "org_id", orgID, "reason", "Invalid request body", "error", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
@@ -232,12 +241,16 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 func (h *MCPProxyHandler) handleServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, constants.ErrInvalidInput):
+		h.slogger.Error("MCP request validation failed", "reason", err.Error())
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 	case errors.Is(err, constants.ErrMCPProxyNotFound):
+		h.slogger.Error("MCP proxy not found", "reason", err.Error())
 		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "MCP proxy not found"))
 	case errors.Is(err, constants.ErrMCPProxyExists):
+		h.slogger.Error("MCP proxy conflict", "reason", err.Error())
 		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "MCP proxy with this ID already exists"))
 	case errors.Is(err, constants.ErrProjectNotFound):
+		h.slogger.Error("MCP request validation failed", "reason", "Project not found")
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
 	default:
 		h.slogger.Error("MCP proxy service error", "error", err)

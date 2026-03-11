@@ -20,7 +20,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,7 +61,7 @@ func (db *DB) Driver() string {
 }
 
 // NewConnection creates a new database connection using configuration
-func NewConnection(cfg *config.Database) (*DB, error) {
+func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 	var db *sql.DB
 	var err error
 
@@ -83,7 +83,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 			return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 		}
-		log.Printf("Successfully opened SQLite database connection: path=%s\n", cfg.Path)
+		slogger.Info("Successfully opened SQLite database connection", "path", cfg.Path)
 	case DriverPostgres, DriverPostgreSQL, DriverPGX:
 		// Build PostgreSQL DSN from config
 		dsn := fmt.Sprintf(
@@ -96,7 +96,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open postgres database: %w", err)
 		}
-		log.Printf("Successfully opened PostgreSQL database connection: host=%s port=%d dbname=%s\n", cfg.Host, cfg.Port, cfg.Name)
+		slogger.Info("Successfully opened PostgreSQL database connection", "host", cfg.Host, "port", cfg.Port, "dbname", cfg.Name)
 	default:
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
@@ -124,7 +124,8 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 // Automatically selects the appropriate schema file based on the database driver.
 // If dbSchemaPath is provided (e.g., "./internal/database/schema.sql"), it will
 // be used to derive the directory and then select schema.{driver}.sql
-func (db *DB) InitSchema(dbSchemaPath string) error {
+func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
+	slogger.Info("Initializing database schema", "driver", db.driver)
 	var schemaPath string
 
 	// Determine schema file path based on driver

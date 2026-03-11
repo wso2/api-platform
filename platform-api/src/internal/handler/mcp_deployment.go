@@ -166,7 +166,7 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, *deploymentId, *gatewayId, orgId)
+	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
@@ -224,7 +224,7 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, *deploymentId, *gatewayId, orgId)
+	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):
@@ -302,7 +302,7 @@ func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	c.Status(http.StatusNoContent)
 }
 
 // GetMCPProxyDeployment handles GET /api/v1/mcp-proxies/:id/deployments/:deploymentId
@@ -372,17 +372,17 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(c *gin.Context) {
 		return
 	}
 
-	var gatewayId, status *string
+	gatewayVal := ""
 	if params.GatewayId != nil {
-		value := string(*params.GatewayId)
-		gatewayId = &value
-	}
-	if params.Status != nil {
-		value := string(*params.Status)
-		status = &value
+		gatewayVal = string(*params.GatewayId)
 	}
 
-	deployments, err := h.deploymentService.GetDeploymentsByHandle(proxyId, *gatewayId, *status, orgId)
+	statusVal := ""
+	if params.Status != nil {
+		statusVal = string(*params.Status)
+	}
+
+	deployments, err := h.deploymentService.GetDeploymentsByHandle(proxyId, gatewayVal, statusVal, orgId)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrMCPProxyNotFound):

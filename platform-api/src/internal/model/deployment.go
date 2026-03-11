@@ -75,7 +75,7 @@ type MCPProxyDeploymentSpec struct {
 	DisplayName string         `yaml:"displayName" binding:"required"`
 	Version     string         `yaml:"version" binding:"required"`
 	Context     string         `yaml:"context" binding:"required"`
-	Vhost       string         `yaml:"vhost" binding:"required"`
+	Vhost       *string        `yaml:"vhost" binding:"required"`
 	Upstream    UpstreamConfig `yaml:"upstream" binding:"required"`
 	SpecVersion string         `yaml:"specVersion" binding:"required"`
 	Policies    []Policy       `yaml:"policies,omitempty"`

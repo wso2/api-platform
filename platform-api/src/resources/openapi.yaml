@@ -3674,8 +3674,18 @@ paths:
           description: Unique identifier of the MCP proxy
           schema:
             type: string
-        - $ref: '#/components/parameters/deploymentId-Q'
-        - $ref: '#/components/parameters/gatewayId-Q'
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
@@ -3716,8 +3726,18 @@ paths:
           description: Unique identifier of the MCP proxy
           schema:
             type: string
-        - $ref: '#/components/parameters/deploymentId-Q'
-        - $ref: '#/components/parameters/gatewayId-Q'
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.

@@ -2363,9 +2363,6 @@ type ApiId = string
 // DeploymentId defines model for deploymentId.
 type DeploymentId = openapi_types.UUID
 
-// DeploymentIdQ defines model for deploymentId-Q.
-type DeploymentIdQ = string
-
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
 
@@ -2555,20 +2552,20 @@ type GetMCPProxyDeploymentsParamsStatus string
 
 // RestoreMCPProxyDeploymentParams defines parameters for RestoreMCPProxyDeployment.
 type RestoreMCPProxyDeploymentParams struct {
-	// DeploymentId **Deployment ID** consisting of the **UUID** of the Deployment to filter status by.
-	DeploymentId *DeploymentIdQ `form:"deploymentId,omitempty" json:"deploymentId,omitempty" yaml:"deploymentId,omitempty"`
+	// DeploymentId UUID of the deployment to undeploy
+	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
 
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
-	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployMCPProxyDeploymentParams defines parameters for UndeployMCPProxyDeployment.
 type UndeployMCPProxyDeploymentParams struct {
-	// DeploymentId **Deployment ID** consisting of the **UUID** of the Deployment to filter status by.
-	DeploymentId *DeploymentIdQ `form:"deploymentId,omitempty" json:"deploymentId,omitempty" yaml:"deploymentId,omitempty"`
+	// DeploymentId UUID of the deployment to undeploy
+	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
 
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
-	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.

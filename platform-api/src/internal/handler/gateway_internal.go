@@ -512,7 +512,7 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
 	// Extract and validate API key from header
 	apiKey := c.GetHeader("api-key")
 	if apiKey == "" {
-		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"API key is required. Provide 'api-key' header."))
 		return
@@ -521,7 +521,7 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
 	// Authenticate gateway using API key
 	gateway, err := h.gatewayService.VerifyToken(apiKey)
 	if err != nil {
-		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
+		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 			"Invalid or expired API key"))
 		return
@@ -539,15 +539,18 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
 	proxy, err := h.gatewayInternalService.GetActiveMCPProxyDeploymentByGateway(proxyID, orgID, gatewayID)
 	if err != nil {
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			h.slogger.Error("No active deployment found for MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this MCP proxy on this gateway"))
 			return
 		}
 		if errors.Is(err, constants.ErrMCPProxyNotFound) {
+			h.slogger.Error("MCP proxy not found", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		}
+		h.slogger.Error("Failed to get MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get MCP proxy"))
 		return

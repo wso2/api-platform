@@ -105,9 +105,9 @@ func (u *MCPUtils) GenerateMCPDeploymentYAML(proxy *model.MCPProxy) (string, err
 	if proxy.Configuration.Context != nil && *proxy.Configuration.Context != "" {
 		contextValue = *proxy.Configuration.Context
 	}
-	vhostValue := ""
+	var vhostValue *string
 	if proxy.Configuration.Vhost != nil {
-		vhostValue = *proxy.Configuration.Vhost
+		vhostValue = proxy.Configuration.Vhost
 	}
 
 	mcpDeploymentYaml := model.MCPProxyDeploymentYAML{
@@ -275,8 +275,14 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 		return "", nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// Check HTTP status code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", nil, fmt.Errorf("initialize request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
 	// Check if response is event stream and parse it
-	if isEventStream(resp) {
+	isEventStreamResp := isEventStream(resp)
+	if isEventStreamResp {
 		data, err := parseEventStream(body)
 		if err == nil {
 			body = data
@@ -285,14 +291,22 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 
 	// Parse initialize response for server info
 	var initResult InitializeResult
+	if err := json.Unmarshal(body, &initResult); err != nil {
+		// Only ignore unmarshal error if this was a valid event stream (parsed above)
+		if !isEventStreamResp {
+			return "", nil, fmt.Errorf("failed to parse initialize response: %w, body: %s", err, string(body))
+		}
+		// For event stream, if unmarshal fails after successful parsing, that's still an error
+		return "", nil, fmt.Errorf("failed to parse initialize response from event stream: %w, body: %s", err, string(body))
+	}
+
+	if initResult.Error != nil {
+		return "", nil, fmt.Errorf("initialize request returned an error: %s", initResult.Error.Message)
+	}
+
 	var serverInfo map[string]any
-	if err := json.Unmarshal(body, &initResult); err == nil {
-		if initResult.Error != nil {
-			return "", nil, fmt.Errorf("initialize request returned an error: %s", initResult.Error.Message)
-		}
-		if initResult.Result.ServerInfo != nil {
-			serverInfo = initResult.Result.ServerInfo
-		}
+	if initResult.Result.ServerInfo != nil {
+		serverInfo = initResult.Result.ServerInfo
 	}
 
 	sessionID := getSessionIDFromResponse(resp)
@@ -329,12 +343,17 @@ func postJSONRPCWithSession(url string, req any, sessionID string, headerName st
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check HTTP status code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	// Check if response is event stream
@@ -342,7 +361,7 @@ func postJSONRPCWithSession(url string, req any, sessionID string, headerName st
 		// Extract JSON data from event stream
 		data, err := parseEventStream(body)
 		if err != nil {
-			return body, nil // Return original body if parsing fails
+			return nil, fmt.Errorf("failed to parse event stream: %w, body: %s", err, string(body))
 		}
 		return data, nil
 	}

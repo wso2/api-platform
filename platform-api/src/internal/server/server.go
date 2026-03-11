@@ -60,7 +60,7 @@ type Server struct {
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
 	// Initialize database using configuration
-	db, err := database.NewConnection(&cfg.Database)
+	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
 		slogger.Error("Failed to connect to database", "error", err)
 		return nil, err
@@ -68,7 +68,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// Initialize schema (skip when ExecuteSchemaDDL is false, e.g. deployed Postgres without DDL access)
 	if cfg.Database.ExecuteSchemaDDL {
-		if err := db.InitSchema(cfg.DBSchemaPath); err != nil {
+		if err := db.InitSchema(cfg.DBSchemaPath, slogger); err != nil {
 			slogger.Error("Failed to initialize database schema", "error", err)
 			return nil, err
 		}
@@ -196,6 +196,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		cfg,
 		slogger,
 	)
+	mcpDeploymentService := service.NewMCPDeploymentService(
+		mcpProxyRepo,
+		deploymentRepo,
+		gatewayRepo,
+		orgRepo,
+		artifactRepo,
+		gatewayEventsService,
+		cfg,
+		slogger,
+	)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, slogger)
@@ -216,6 +226,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
+	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
 	slogger.Info("Initialized all services and handlers successfully")
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {
@@ -263,6 +274,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyAPIKeyHandler.RegisterRoutes(router)
 	llmProxyDeploymentHandler.RegisterRoutes(router)
 	mcpProxyHandler.RegisterRoutes(router)
+	mcpProxyDeploymentHandler.RegisterRoutes(router)
 	slogger.Info("Registered API routes successfully")
 
 	slogger.Info("WebSocket manager initialized",
