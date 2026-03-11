@@ -72,6 +72,10 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		return nil, constants.ErrInvalidInput
 	}
 
+	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
+		return nil, constants.ErrInvalidInput
+	}
+
 	// Validate project exists if provided
 	if s.projectRepo != nil && req.ProjectId != nil && *req.ProjectId != "" {
 		project, err := s.projectRepo.GetProjectByUUID(*req.ProjectId)
@@ -182,6 +186,10 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 		return nil, constants.ErrInvalidInput
 	}
 	if req.Name == "" || req.Version == "" {
+		return nil, constants.ErrInvalidInput
+	}
+
+	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, constants.ErrInvalidInput
 	}
 

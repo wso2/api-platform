@@ -159,6 +159,16 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(c *gin.Context) {
 
 	deploymentId := params.DeploymentId
 	gatewayId := params.GatewayId
+	if deploymentId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"deploymentId is required"))
+		return
+	}
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"gatewayId is required"))
+		return
+	}
 
 	if proxyId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
