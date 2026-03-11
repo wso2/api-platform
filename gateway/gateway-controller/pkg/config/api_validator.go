@@ -60,10 +60,16 @@ func (v *APIValidator) Validate(config interface{}) []ValidationError {
 	// Type switch to handle different configuration types
 	switch cfg := config.(type) {
 	case *api.RestAPI:
+		if cfg == nil {
+			return []ValidationError{{Field: "config", Message: "RestAPI configuration is nil"}}
+		}
 		return v.validateRestAPIConfiguration(cfg)
 	case api.RestAPI:
 		return v.validateRestAPIConfiguration(&cfg)
 	case *api.WebSubAPI:
+		if cfg == nil {
+			return []ValidationError{{Field: "config", Message: "WebSubAPI configuration is nil"}}
+		}
 		return v.validateWebSubAPIConfiguration(cfg)
 	case api.WebSubAPI:
 		return v.validateWebSubAPIConfiguration(&cfg)
