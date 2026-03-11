@@ -1889,14 +1889,14 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 	mcpConfig, err := c.findAPIConfig(proxyID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.logger.Warn("MCP proxy configuration not found for undeployment",
+			c.logger.Warn("MCP proxy configuration not found for deletion",
 				slog.String("proxy_id", proxyID),
 			)
 			// Not an error - the MCP proxy might already be undeployed or deleted
 			return
 		}
 		// Real storage error - log and abort
-		c.logger.Error("Failed to fetch MCP proxy configuration for undeployment",
+		c.logger.Error("Failed to fetch MCP proxy configuration for deletion",
 			slog.String("proxy_id", proxyID),
 			slog.String("correlation_id", deletedEvent.CorrelationID),
 			slog.Any("error", err),
