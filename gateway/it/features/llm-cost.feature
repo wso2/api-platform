@@ -222,6 +222,55 @@ Feature: LLM Cost System Policy
     When I delete the LLM provider template "llm-cost-anthropic-cache1hr-template"
     Then the response status code should be 200
 
+  Scenario: Anthropic web search tool — per-query cost added on top of token cost
+    # Model: claude-3-5-haiku-20241022 — input=8e-7/token, output=4e-6/token, web_search=0.01/query (medium)
+    # Usage: 50 input + 25 output + 2 web search queries (no search_context_size → defaults to medium)
+    # cost = 50*8e-7 + 25*4e-6 + 2*0.01 = 0.00004 + 0.00010 + 0.02 = 0.0201400000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-anthropic-websearch-template
+      spec:
+        displayName: LLM Cost Anthropic Web Search Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-anthropic-websearch-provider
+      spec:
+        displayName: LLM Cost Anthropic Web Search Provider
+        version: v1.0
+        context: /llm-cost-anthropic-websearch
+        template: llm-cost-anthropic-websearch-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-websearch/anthropic/v1/messages-web-search" to be ready with method "POST" and body '{"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Search the web"}], "max_tokens": 100}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-anthropic-websearch/anthropic/v1/messages-web-search" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Search the web"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0201400000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-anthropic-websearch-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-anthropic-websearch-template"
+    Then the response status code should be 200
+
   Scenario: Gemini native response — cost is calculated from usageMetadata fields
     # Model: gemini-1.5-flash-002 — input=7.5e-8/token, output=3e-7/token
     # Usage: 100 prompt + 100 completion = (100*7.5e-8) + (100*3e-7) = 7.5e-6 + 3e-5 = 0.0000375000

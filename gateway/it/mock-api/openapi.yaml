@@ -26,6 +26,8 @@ paths:
     $ref: ./paths/anthropic/messages_geo_speed.yaml
   /anthropic/v1/messages-cache-1hr:
     $ref: ./paths/anthropic/messages_cache_1hr.yaml
+  /anthropic/v1/messages-web-search:
+    $ref: ./paths/anthropic/messages_web_search.yaml
   # Mock Gemini native
   /gemini/v1/models/{model}:generateContent:
     $ref: ./paths/gemini/generate_content.yaml

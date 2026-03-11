@@ -49,21 +49,32 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 				Ephemeral5mInputTokens int64 `json:"ephemeral_5m_input_tokens"`
 				Ephemeral1hInputTokens int64 `json:"ephemeral_1h_input_tokens"`
 			} `json:"cache_creation"`
+			// Built-in server tools (web search, tool search).
+			// web_search_requests is the count of web search queries made during the call.
+			ServerToolUse *struct {
+				WebSearchRequests int64 `json:"web_search_requests"`
+			} `json:"server_tool_use"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(responseBody, &resp); err != nil {
 		return Usage{}, err
 	}
 
-	// speed is a request-side parameter Anthropic does not echo in the response.
-	// Read it from the original request body (available via ctx.RequestBody).
-	var speed string
+	// speed and web_search_options are request-side parameters Anthropic does not echo.
+	// Read them from the original request body (available via ctx.RequestBody).
+	var speed, searchContextSize string
 	if len(requestBody) > 0 {
 		var req struct {
-			Speed string `json:"speed"`
+			Speed            string `json:"speed"`
+			WebSearchOptions *struct {
+				SearchContextSize string `json:"search_context_size"`
+			} `json:"web_search_options"`
 		}
 		if err := json.Unmarshal(requestBody, &req); err == nil {
 			speed = req.Speed
+			if req.WebSearchOptions != nil {
+				searchContextSize = req.WebSearchOptions.SearchContextSize
+			}
 		}
 	}
 
@@ -84,6 +95,11 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 		cacheWrite5m = u.CacheCreationInputTokens
 	}
 
+	var webSearchRequests int64
+	if u.ServerToolUse != nil {
+		webSearchRequests = u.ServerToolUse.WebSearchRequests
+	}
+
 	return Usage{
 		PromptTokens:          u.InputTokens,
 		CompletionTokens:      u.OutputTokens,
@@ -94,6 +110,8 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 		CacheWrite1hrTokens:   cacheWrite1hr,
 		InferenceGeo:          u.InferenceGeo,
 		Speed:                 speed,
+		WebSearchRequests:     webSearchRequests,
+		SearchContextSize:     searchContextSize,
 	}, nil
 }
 

@@ -118,6 +118,11 @@ type ModelPricing struct {
 	InputCostPerTokenBatches  float64 `json:"input_cost_per_token_batches"`
 	OutputCostPerTokenBatches float64 `json:"output_cost_per_token_batches"`
 
+	// Built-in web search tool cost (Anthropic, OpenAI).
+	// The JSON value is an object keyed by search_context_size: low / medium / high.
+	// We decode it as a map and pick the right entry at runtime.
+	SearchContextCostPerQuery map[string]float64 `json:"search_context_cost_per_query"`
+
 	// Azure AI Foundry model router flat cost
 	// Stored under input_cost_per_token for the azure_ai/model_router entry.
 	// Handled separately in AzureAICalculator.
@@ -162,6 +167,15 @@ type Usage struct {
 	// Anthropic-specific: geo routing and speed mode
 	InferenceGeo string // echoed in response usage.inference_geo
 	Speed        string // NOT echoed — read from ctx.RequestBody ($.speed)
+
+	// Built-in web search tool use (Anthropic).
+	// WebSearchRequests is the number of web search queries made, read from
+	// usage.server_tool_use.web_search_requests in the Anthropic response.
+	// SearchContextSize is the context size tier (low/medium/high) read from
+	// web_search_options.search_context_size in the request body; defaults to
+	// "medium" when absent, matching LiteLLM's behaviour.
+	WebSearchRequests int64
+	SearchContextSize string // "low", "medium", or "high"
 }
 
 // providerCalculator is implemented by each provider-specific calculator file.
@@ -308,5 +322,21 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	}
 	reasoningCost := float64(usage.ReasoningTokens) * reasoningRate
 
-	return promptCost + completionCost + cacheReadCost + cacheWriteCost + reasoningCost
+	// Built-in web search tool: flat per-query fee, independent of token costs.
+	// The rate is keyed by search_context_size (low/medium/high); default is medium
+	// when no size was specified in the request, matching LiteLLM's behaviour.
+	// The JSON keys use the format "search_context_size_<tier>" (e.g. "search_context_size_medium").
+	var webSearchCost float64
+	if usage.WebSearchRequests > 0 && len(pricing.SearchContextCostPerQuery) > 0 {
+		size := usage.SearchContextSize
+		if size == "" {
+			size = "medium"
+		}
+		jsonKey := "search_context_size_" + size
+		if rate, ok := pricing.SearchContextCostPerQuery[jsonKey]; ok {
+			webSearchCost = float64(usage.WebSearchRequests) * rate
+		}
+	}
+
+	return promptCost + completionCost + cacheReadCost + cacheWriteCost + reasoningCost + webSearchCost
 }

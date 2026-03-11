@@ -497,6 +497,128 @@ func TestAnthropicCalculator_Cost_Mixed5mAnd1hrCacheWrites(t *testing.T) {
 	}
 }
 
+func TestAnthropicCalculator_Normalize_WebSearchRequests(t *testing.T) {
+	// Verify that web_search_requests is read from usage.server_tool_use
+	// and search_context_size is read from the request body.
+	responseBody := []byte(`{
+		"usage": {
+			"input_tokens": 100,
+			"output_tokens": 50,
+			"server_tool_use": {
+				"web_search_requests": 3
+			}
+		}
+	}`)
+	requestBody := []byte(`{
+		"model": "claude-opus-4-6",
+		"web_search_options": {"search_context_size": "high"}
+	}`)
+	c := &AnthropicCalculator{}
+	u, err := c.Normalize(responseBody, requestBody)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	if u.WebSearchRequests != 3 {
+		t.Errorf("WebSearchRequests: got %d, want 3", u.WebSearchRequests)
+	}
+	if u.SearchContextSize != "high" {
+		t.Errorf("SearchContextSize: got %q, want \"high\"", u.SearchContextSize)
+	}
+}
+
+func TestAnthropicCalculator_Normalize_WebSearch_DefaultsToMedium(t *testing.T) {
+	// When web_search_options is absent, SearchContextSize should be empty
+	// so that genericCalculateCost defaults to "medium".
+	responseBody := []byte(`{
+		"usage": {
+			"input_tokens": 10,
+			"output_tokens": 5,
+			"server_tool_use": {"web_search_requests": 1}
+		}
+	}`)
+	c := &AnthropicCalculator{}
+	u, err := c.Normalize(responseBody, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	if u.WebSearchRequests != 1 {
+		t.Errorf("WebSearchRequests: got %d, want 1", u.WebSearchRequests)
+	}
+	if u.SearchContextSize != "" {
+		t.Errorf("SearchContextSize: got %q, want empty (defaults to medium at calc time)", u.SearchContextSize)
+	}
+}
+
+func TestAnthropicCalculator_Cost_WebSearch_MediumDefault(t *testing.T) {
+	// When SearchContextSize is empty, genericCalculateCost should default to "medium".
+	// claude-opus-4-6: search_context_cost_per_query.medium = 0.01
+	pricing, ok := lookupPricing("claude-opus-4-6")
+	if !ok {
+		t.Skip("claude-opus-4-6 not in pricing map")
+	}
+	if len(pricing.SearchContextCostPerQuery) == 0 {
+		t.Skip("no search_context_cost_per_query for claude-opus-4-6")
+	}
+
+	usage := Usage{
+		PromptTokens:      100,
+		CompletionTokens:  50,
+		TotalTokens:       150,
+		WebSearchRequests: 2,
+		SearchContextSize: "", // should default to medium
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	tokenCost := float64(100)*pricing.InputCostPerToken + float64(50)*pricing.OutputCostPerToken
+	mediumRate := pricing.SearchContextCostPerQuery["search_context_size_medium"]
+	expected := tokenCost + 2*mediumRate
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f (2 × medium=%.4f), got %.10f", expected, mediumRate, cost)
+	}
+}
+
+func TestAnthropicCalculator_Cost_WebSearch_HighContextSize(t *testing.T) {
+	// When SearchContextSize is "high", the high rate should be used.
+	// claude-opus-4-6: search_context_cost_per_query.high = 0.01 (same tier for Anthropic)
+	pricing, ok := lookupPricing("claude-opus-4-6")
+	if !ok {
+		t.Skip("claude-opus-4-6 not in pricing map")
+	}
+	if len(pricing.SearchContextCostPerQuery) == 0 {
+		t.Skip("no search_context_cost_per_query for claude-opus-4-6")
+	}
+
+	usage := Usage{
+		PromptTokens:      50,
+		CompletionTokens:  20,
+		TotalTokens:       70,
+		WebSearchRequests: 5,
+		SearchContextSize: "high",
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	tokenCost := float64(50)*pricing.InputCostPerToken + float64(20)*pricing.OutputCostPerToken
+	highRate := pricing.SearchContextCostPerQuery["search_context_size_high"]
+	expected := tokenCost + 5*highRate
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f (5 × high=%.4f), got %.10f", expected, highRate, cost)
+	}
+}
+
+func TestAnthropicCalculator_Cost_WebSearch_ZeroRequests(t *testing.T) {
+	// When WebSearchRequests is 0, no search cost should be added.
+	pricing, ok := lookupPricing("claude-opus-4-6")
+	if !ok {
+		t.Skip("claude-opus-4-6 not in pricing map")
+	}
+
+	usageWithSearch := Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150, WebSearchRequests: 0}
+	usageNoSearch := Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150}
+	if genericCalculateCost(usageWithSearch, pricing) != genericCalculateCost(usageNoSearch, pricing) {
+		t.Error("zero WebSearchRequests should not add any cost")
+	}
+}
+
 func TestGeminiCalculator_Normalize(t *testing.T) {
 	body := []byte(`{
 		"model": "gemini-2.0-flash",
