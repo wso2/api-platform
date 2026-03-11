@@ -172,11 +172,11 @@ Feature: LLM Cost System Policy
     Then the response status code should be 200
 
   Scenario: Anthropic 1-hour TTL cache writes — billed at higher rate than 5-minute TTL
-    # Model: claude-opus-4-6 — 5m_write=6.25e-6, 1hr_write=1e-5, output=2.5e-5
-    # Usage: 10 input + 5 output + 100 5m-write + 500 1hr-write (via cache_creation breakdown)
-    # regularPrompt = 10 - 100 - 500 → clamped to 0
-    # cost = 0*5e-6 + 5*2.5e-5 + 100*6.25e-6 + 500*1e-5
-    #      = 0 + 0.000125 + 0.000625 + 0.005 = 0.0057500000
+    # Model: claude-opus-4-6 — 5m_write=6.25e-6, 1hr_write=1e-5, input=5e-6, output=2.5e-5
+    # Usage: 10 input (regular) + 5 output + 100 5m-write + 500 1hr-write (via cache_creation breakdown)
+    # PromptTokens = 10+600+0 = 610; regularPrompt = 610-0-100-500 = 10
+    # cost = 10*5e-6 + 5*2.5e-5 + 100*6.25e-6 + 500*1e-5
+    #      = 0.00005 + 0.000125 + 0.000625 + 0.005 = 0.0058000000
     When I create this LLM provider template:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -215,7 +215,7 @@ Feature: LLM Cost System Policy
       {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
       """
     Then the response status code should be 200
-    And the response header "x-llm-cost" should be "0.0057500000"
+    And the response header "x-llm-cost" should be "0.0058000000"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-anthropic-cache1hr-provider"
     Then the response status code should be 200

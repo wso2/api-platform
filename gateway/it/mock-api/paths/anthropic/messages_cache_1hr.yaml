@@ -27,10 +27,10 @@ post:
       content:
         application/json:
           # claude-opus-4-6: input=5e-6, output=2.5e-5, 5m_write=6.25e-6, 1hr_write=1e-5
-          # 10 input_tokens + 5 output_tokens + 100 5m-write + 500 1hr-write
-          # regularPrompt = 10 - 100 - 500 → clamped to 0
-          # cost = 0*5e-6 + 5*2.5e-5 + 100*6.25e-6 + 500*1e-5
-          #      = 0 + 0.000125 + 0.000625 + 0.005 = 0.0057500000
+          # 10 input_tokens (regular) + 5 output_tokens + 100 5m-write + 500 1hr-write
+          # PromptTokens = 10 + 600 + 0 = 610; regularPrompt = 610 - 0 - 100 - 500 = 10
+          # cost = 10*5e-6 + 5*2.5e-5 + 100*6.25e-6 + 500*1e-5
+          #      = 0.00005 + 0.000125 + 0.000625 + 0.005 = 0.0058000000
           example:
             id: msg_cache1hr_example
             type: message
@@ -49,3 +49,7 @@ post:
               cache_creation:
                 ephemeral_5m_input_tokens: 100
                 ephemeral_1h_input_tokens: 500
+              server_tool_use:
+                web_search_requests: 0
+                web_fetch_requests: 0
+              service_tier: standard

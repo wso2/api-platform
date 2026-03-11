@@ -100,8 +100,15 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 		webSearchRequests = u.ServerToolUse.WebSearchRequests
 	}
 
+	// Anthropic's input_tokens is ONLY the regular (non-cached) input tokens.
+	// Cache tokens are separate fields. genericCalculateCost expects PromptTokens
+	// to include ALL input types (regular + cache writes + cache reads) and subtracts
+	// the cache buckets to derive the regular count. We must add cache tokens here so
+	// the subtraction yields the correct regular input count — same approach as LiteLLM.
+	promptTokens := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+
 	return Usage{
-		PromptTokens:          u.InputTokens,
+		PromptTokens:          promptTokens,
 		CompletionTokens:      u.OutputTokens,
 		TotalTokens:           total,
 		InputTokensForTiering: inputForTiering,

@@ -215,7 +215,9 @@ func TestAnthropicCalculator_Normalize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if u.PromptTokens != 300 || u.CompletionTokens != 150 {
+	if u.PromptTokens != 450 || u.CompletionTokens != 150 {
+		// PromptTokens = input_tokens(300) + cache_creation(50) + cache_read(100) = 450
+		// genericCalculateCost subtracts cache buckets to recover regular input count.
 		t.Errorf("wrong token counts: %+v", u)
 	}
 	if u.TotalTokens != 450 {
@@ -748,7 +750,9 @@ func TestAzureAICalculator_Normalize_ClaudeModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if u.PromptTokens != 200 || u.CompletionTokens != 100 {
+	// After Anthropic convention fix: PromptTokens = input_tokens + cache_creation + cache_read
+	// = 200 + 0 + 30 = 230; genericCalculateCost then subtracts cached tokens to get regular input
+	if u.PromptTokens != 230 || u.CompletionTokens != 100 {
 		t.Errorf("expected Anthropic field mapping for claude model: %+v", u)
 	}
 	if u.CachedReadTokens != 30 {
