@@ -55,6 +55,12 @@ type APIKeyCreatedEvent struct {
 
 	// ExpiresAt is the optional expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
+
+	// ProvisionedBy identifies the developer portal that provisioned this key; nil (omitted) if not provided
+	ProvisionedBy *string `json:"provisionedBy,omitempty"`
+
+	// AllowedTargets is a comma-separated list of allowed LLM providers/proxies; defaults to 'ALL'
+	AllowedTargets string `json:"allowedTargets,omitempty"`
 }
 
 // APIKeyRevokedEvent represents the payload for "apikey.revoked" event type.
@@ -87,4 +93,10 @@ type APIKeyUpdatedEvent struct {
 
 	// ExpiresAt is the optional new expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
+
+	// ProvisionedBy identifies the developer portal that provisioned this key; nil (omitted) if not provided
+	ProvisionedBy *string `json:"provisionedBy,omitempty"`
+
+	// AllowedTargets is a comma-separated list of allowed LLM providers/proxies; defaults to 'ALL'
+	AllowedTargets string `json:"allowedTargets,omitempty"`
 }

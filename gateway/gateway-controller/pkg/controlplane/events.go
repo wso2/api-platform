@@ -146,7 +146,9 @@ type APIKeyCreatedEventPayload struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	DisplayName *string `json:"displayName,omitempty"`
+	DisplayName    *string `json:"displayName,omitempty"`
+	ProvisionedBy  *string `json:"provisionedBy,omitempty"`  // nil if not provided by the platform API
+	AllowedTargets *string `json:"allowedTargets,omitempty"` // nil means use default 'ALL'
 }
 
 // APIKeyCreatedEvent represents the complete API key created event
@@ -169,7 +171,9 @@ type APIKeyUpdatedEventPayload struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	DisplayName string `json:"displayName"`
+	DisplayName    string  `json:"displayName"`
+	ProvisionedBy  *string `json:"provisionedBy,omitempty"`  // nil if not provided by the platform API
+	AllowedTargets *string `json:"allowedTargets,omitempty"` // nil means use default 'ALL'
 }
 
 // APIKeyUpdatedEvent represents the complete API key updated event

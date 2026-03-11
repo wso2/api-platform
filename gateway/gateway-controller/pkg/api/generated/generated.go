@@ -453,6 +453,12 @@ type APIKeyCreationRequest struct {
 
 	// Name Identifier of the API key. If not provided, a default identifier will be generated
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// ProvisionedBy Identifier of the developer portal that provisioned this API key. nil if not provided.
+	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
+
+	// AllowedTargets Comma-separated list of allowed LLM providers/proxies. Defaults to 'ALL' if nil.
+	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
 }
 
 // APIKeyCreationRequestExpiresInUnit Time unit for expiration

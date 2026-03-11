@@ -21,14 +21,16 @@ import "time"
 
 // APIKey represents a persisted API key record in the database.
 type APIKey struct {
-	UUID         string
-	ArtifactUUID string
-	Name         string
-	MaskedAPIKey string
-	APIKeyHashes string // JSON string mapping algorithm to hash e.g. {"sha256": "<hashed_api_key>"}
-	Status       string
-	CreatedAt    time.Time
-	CreatedBy    string
-	UpdatedAt    time.Time
-	ExpiresAt    *time.Time
+	UUID           string
+	ArtifactUUID   string
+	Name           string
+	MaskedAPIKey   string
+	APIKeyHashes   string // JSON string mapping algorithm to hash e.g. {"sha256": "<hashed_api_key>"}
+	Status         string
+	CreatedAt      time.Time
+	CreatedBy      string
+	UpdatedAt      time.Time
+	ExpiresAt      *time.Time
+	ProvisionedBy  *string // Identifier of the developer portal that provisioned this key; nil if not provided
+	AllowedTargets string  // Comma-separated list of allowed LLM providers/proxies; defaults to 'ALL'
 }

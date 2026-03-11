@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -34,6 +35,7 @@ import (
 type LLMProviderAPIKeyService struct {
 	llmProviderRepo      repository.LLMProviderRepository
 	gatewayRepo          repository.GatewayRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 }
@@ -42,12 +44,14 @@ type LLMProviderAPIKeyService struct {
 func NewLLMProviderAPIKeyService(
 	llmProviderRepo repository.LLMProviderRepository,
 	gatewayRepo repository.GatewayRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 ) *LLMProviderAPIKeyService {
 	return &LLMProviderAPIKeyService{
 		llmProviderRepo:      llmProviderRepo,
 		gatewayRepo:          gatewayRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 	}
@@ -129,12 +133,50 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	}
 	maskedAPIKey := maskAPIKey(apiKey)
 
+	apiKeyUUID, err := utils.GenerateUUID()
+	if err != nil {
+		s.slogger.Error("Failed to generate UUID for LLM provider API key", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to generate API key UUID: %w", err)
+	}
+
+	// Apply defaults for provisionedBy and allowedTargets
+	var provisionedBy *string
+	if req.ProvisionedBy != nil && strings.TrimSpace(*req.ProvisionedBy) != "" {
+		v := strings.TrimSpace(*req.ProvisionedBy)
+		provisionedBy = &v
+	}
+	allowedTargets := constants.APIKeyAllowedTargetsAll
+	if req.AllowedTargets != nil && strings.TrimSpace(*req.AllowedTargets) != "" {
+		allowedTargets = strings.TrimSpace(*req.AllowedTargets)
+	}
+
+	// Persist the API key to the database before broadcasting
+	dbKey := &model.APIKey{
+		UUID:           apiKeyUUID,
+		ArtifactUUID:   provider.UUID,
+		Name:           name,
+		MaskedAPIKey:   maskedAPIKey,
+		APIKeyHashes:   apiKeyHashesJSON,
+		Status:         "active",
+		CreatedBy:      userID,
+		ExpiresAt:      req.ExpiresAt,
+		ProvisionedBy:  provisionedBy,
+		AllowedTargets: allowedTargets,
+	}
+	if err := s.apiKeyRepo.Create(dbKey); err != nil {
+		s.slogger.Error("Failed to persist LLM provider API key to database", "providerId", providerID, "keyName", name, "error", err)
+		return nil, fmt.Errorf("failed to persist API key: %w", err)
+	}
+
 	event := &model.APIKeyCreatedEvent{
-		ApiId:        providerID,
-		Name:         name,
-		ApiKeyHashes: apiKeyHashesJSON,
-		MaskedApiKey: maskedAPIKey,
-		ExpiresAt:    expiresAt,
+		UUID:           apiKeyUUID,
+		ApiId:          providerID,
+		Name:           name,
+		ApiKeyHashes:   apiKeyHashesJSON,
+		MaskedApiKey:   maskedAPIKey,
+		ExpiresAt:      expiresAt,
+		ProvisionedBy:  provisionedBy,
+		AllowedTargets: allowedTargets,
 	}
 
 	successCount := 0

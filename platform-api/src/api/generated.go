@@ -439,6 +439,9 @@ type CreateAPIKeyRequest struct {
 	// Name Unique identifier for this API key within the API (optional; if omitted,
 	// generated from displayName)
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// ProvisionedBy Identifier of the developer portal that provisioned this API key. nil if not provided.
+	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
 }
 
 // CreateAPIKeyResponse defines model for CreateAPIKeyResponse.
@@ -516,6 +519,9 @@ type CreateGatewayRequestFunctionalityType string
 
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
+	// AllowedTargets Comma-separated list of LLM provider or proxy names this key is valid for. Use 'ALL' to allow all targets (default).
+	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
+
 	// DisplayName User-friendly name for the API key
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
@@ -524,6 +530,9 @@ type CreateLLMProviderAPIKeyRequest struct {
 
 	// Name Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// ProvisionedBy Identifier of the developer portal that provisioned this API key. nil if not provided.
+	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
 }
 
 // CreateLLMProviderAPIKeyResponse defines model for CreateLLMProviderAPIKeyResponse.
@@ -543,6 +552,9 @@ type CreateLLMProviderAPIKeyResponse struct {
 
 // CreateLLMProxyAPIKeyRequest defines model for CreateLLMProxyAPIKeyRequest.
 type CreateLLMProxyAPIKeyRequest struct {
+	// AllowedTargets Comma-separated list of LLM provider or proxy names this key is valid for. Use 'ALL' to allow all targets (default).
+	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
+
 	// DisplayName User-friendly name for the API key
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
@@ -551,6 +563,9 @@ type CreateLLMProxyAPIKeyRequest struct {
 
 	// Name Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// ProvisionedBy Identifier of the developer portal that provisioned this API key. nil if not provided.
+	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
 }
 
 // CreateLLMProxyAPIKeyResponse defines model for CreateLLMProxyAPIKeyResponse.

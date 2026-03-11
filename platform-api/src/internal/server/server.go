@@ -180,8 +180,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		cfg,
 		slogger,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, gatewayEventsService, slogger)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, gatewayEventsService, slogger)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
 		deploymentRepo,

@@ -82,6 +82,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     expires_at TIMESTAMPTZ NULL,
     source TEXT NOT NULL DEFAULT 'local',
     external_ref_id TEXT NULL,
+    provisioned_by TEXT NULL DEFAULT NULL,
+    allowed_targets TEXT NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
     UNIQUE (apiId, name, gateway_id)
 );
@@ -101,6 +103,8 @@ ALTER TABLE certificates ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAU
 ALTER TABLE llm_provider_templates ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS gateway_id TEXT NOT NULL DEFAULT 'platform-gateway-id';
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_key_uuid TEXT NULL;
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS provisioned_by TEXT NULL DEFAULT NULL;
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS allowed_targets TEXT NOT NULL DEFAULT 'ALL';
 
 ALTER TABLE deployments DROP CONSTRAINT IF EXISTS deployments_display_name_version_key;
 ALTER TABLE deployments DROP CONSTRAINT IF EXISTS deployments_handle_key;

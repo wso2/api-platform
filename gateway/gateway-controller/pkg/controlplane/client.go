@@ -36,6 +36,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -1553,13 +1554,21 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	if payload.UUID != "" {
 		apiKeyUUID = &payload.UUID
 	}
+	// allowedTargets defaults to constants.APIKeyAllowedTargetsAll if not provided in the event
+	allowedTargets := constants.APIKeyAllowedTargetsAll
+	if payload.AllowedTargets != nil && *payload.AllowedTargets != "" {
+		allowedTargets = *payload.AllowedTargets
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKeyHashes:  &payload.ApiKeyHashes,
-		MaskedApiKey:  &payload.MaskedApiKey,
-		DisplayName:   payload.DisplayName,
-		Name:          &payload.Name,
-		ExternalRefId: payload.ExternalRefId,
-		ApiKeyUuid:    apiKeyUUID,
+		ApiKeyHashes:   &payload.ApiKeyHashes,
+		MaskedApiKey:   &payload.MaskedApiKey,
+		DisplayName:    payload.DisplayName,
+		Name:           &payload.Name,
+		ExternalRefId:  payload.ExternalRefId,
+		ApiKeyUuid:     apiKeyUUID,
+		ProvisionedBy:  payload.ProvisionedBy,
+		AllowedTargets: &allowedTargets,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
@@ -1771,12 +1780,20 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
+	// allowedTargets defaults to constants.APIKeyAllowedTargetsAll if not provided in the event
+	updAllowedTargets := constants.APIKeyAllowedTargetsAll
+	if payload.AllowedTargets != nil && *payload.AllowedTargets != "" {
+		updAllowedTargets = *payload.AllowedTargets
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKeyHashes:  &payload.ApiKeyHashes,
-		MaskedApiKey:  &payload.MaskedApiKey,
-		DisplayName:   &payload.DisplayName,
-		ExternalRefId: &payload.ExternalRefId,
-		Name:          &payload.KeyName,
+		ApiKeyHashes:   &payload.ApiKeyHashes,
+		MaskedApiKey:   &payload.MaskedApiKey,
+		DisplayName:    &payload.DisplayName,
+		ExternalRefId:  &payload.ExternalRefId,
+		Name:           &payload.KeyName,
+		ProvisionedBy:  payload.ProvisionedBy,
+		AllowedTargets: &updAllowedTargets,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time

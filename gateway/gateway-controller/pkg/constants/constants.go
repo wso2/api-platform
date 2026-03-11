@@ -139,7 +139,8 @@ const (
 		"    value: '%s'\n"
 
 	// API Key constants
-	APIKeyPrefix = "apip_"
+	APIKeyAllowedTargetsAll = "ALL" // Sentinel value meaning all LLM providers/proxies are allowed
+	APIKeyPrefix            = "apip_"
 	APIKeyLen    = 32 // Length of the random part of the API key in bytes
 
 	// API Key length constants

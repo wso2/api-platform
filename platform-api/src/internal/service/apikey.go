@@ -307,15 +307,26 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		s.slogger.Error("Failed to generate UUID for API key", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to generate API key UUID: %w", err)
 	}
+
+	// Apply defaults for provisionedBy and allowedTargets
+	var provisionedBy *string
+	if req.ProvisionedBy != nil && strings.TrimSpace(*req.ProvisionedBy) != "" {
+		v := strings.TrimSpace(*req.ProvisionedBy)
+		provisionedBy = &v
+	}
+	allowedTargets := constants.APIKeyAllowedTargetsAll
+
 	dbKey := &model.APIKey{
-		UUID:         apiKeyUUID,
-		ArtifactUUID: apiId,
-		Name:         keyName,
-		MaskedAPIKey: maskedAPIKey,
-		APIKeyHashes: apiKeyHashesJSON,
-		Status:       "active",
-		CreatedBy:    userId,
-		ExpiresAt:    expiresAt,
+		UUID:           apiKeyUUID,
+		ArtifactUUID:   apiId,
+		Name:           keyName,
+		MaskedAPIKey:   maskedAPIKey,
+		APIKeyHashes:   apiKeyHashesJSON,
+		Status:         "active",
+		CreatedBy:      userId,
+		ExpiresAt:      expiresAt,
+		ProvisionedBy:  provisionedBy,
+		AllowedTargets: allowedTargets,
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
 		s.slogger.Error("Failed to persist API key to database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
@@ -324,12 +335,14 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyCreatedEvent{
-		UUID:          apiKeyUUID,
-		ApiId:         apiHandle,
-		Name:          keyName,
-		ApiKeyHashes:  apiKeyHashesJSON,
-		MaskedApiKey:  maskedAPIKey,
-		ExternalRefId: req.ExternalRefId,
+		UUID:           apiKeyUUID,
+		ApiId:          apiHandle,
+		Name:           keyName,
+		ApiKeyHashes:   apiKeyHashesJSON,
+		MaskedApiKey:   maskedAPIKey,
+		ExternalRefId:  req.ExternalRefId,
+		ProvisionedBy:  provisionedBy, 
+		AllowedTargets: allowedTargets,
 	}
 	if expiresAt != nil {
 		expiresAtStr := expiresAt.Format(time.RFC3339)

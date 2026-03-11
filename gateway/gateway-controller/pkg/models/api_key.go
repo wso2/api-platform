@@ -52,6 +52,12 @@ type APIKey struct {
 	// APIKeyUUID is the UUID v7 from platform API, used to correlate keys across systems.
 	// Populated from the apikey.created event; generated locally if not provided.
 	APIKeyUUID *string `json:"apiKeyUuid" db:"api_key_uuid"`
+
+	// ProvisionedBy identifies the developer portal that provisioned this key; nil if not provided
+	ProvisionedBy *string `json:"provisionedBy,omitempty" db:"provisioned_by"`
+
+	// AllowedTargets is a comma-separated list of allowed LLM providers/proxies; defaults to 'ALL'
+	AllowedTargets string `json:"allowedTargets" db:"allowed_targets"`
 }
 
 // IsValid checks if the API key is valid (active and not expired)

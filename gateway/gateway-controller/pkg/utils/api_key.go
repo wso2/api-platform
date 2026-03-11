@@ -1072,6 +1072,16 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		apiKey.ExternalRefId = &externalRefId
 	}
 
+	// Set provisionedBy (nil if not provided) and allowedTargets (defaults to ALL)
+	if request.ProvisionedBy != nil && strings.TrimSpace(*request.ProvisionedBy) != "" {
+		v := strings.TrimSpace(*request.ProvisionedBy)
+		apiKey.ProvisionedBy = &v
+	}
+	apiKey.AllowedTargets = constants.APIKeyAllowedTargetsAll
+	if request.AllowedTargets != nil && strings.TrimSpace(*request.AllowedTargets) != "" {
+		apiKey.AllowedTargets = strings.TrimSpace(*request.AllowedTargets)
+	}
+
 	// Temporarily store the plain key for response generation
 	// This field is not persisted and only used for returning to user
 	// For external keys, we do NOT store the plain key (caller already has it)

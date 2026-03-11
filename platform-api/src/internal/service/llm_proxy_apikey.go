@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -34,6 +35,7 @@ import (
 type LLMProxyAPIKeyService struct {
 	llmProxyRepo         repository.LLMProxyRepository
 	gatewayRepo          repository.GatewayRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 }
@@ -42,12 +44,14 @@ type LLMProxyAPIKeyService struct {
 func NewLLMProxyAPIKeyService(
 	llmProxyRepo repository.LLMProxyRepository,
 	gatewayRepo repository.GatewayRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 ) *LLMProxyAPIKeyService {
 	return &LLMProxyAPIKeyService{
 		llmProxyRepo:         llmProxyRepo,
 		gatewayRepo:          gatewayRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 	}
@@ -109,16 +113,56 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	}
 	maskedAPIKey := maskAPIKey(apiKey)
 
-	event := &model.APIKeyCreatedEvent{
-		ApiId:        proxyID,
-		Name:         name,
-		ApiKeyHashes: apiKeyHashesJSON,
-		MaskedApiKey: maskedAPIKey,
+	apiKeyUUID, err := utils.GenerateUUID()
+	if err != nil {
+		s.slogger.Error("Failed to generate UUID for LLM proxy API key", "proxyId", proxyID, "error", err)
+		return nil, fmt.Errorf("failed to generate API key UUID: %w", err)
 	}
 
+	// Apply defaults for provisionedBy and allowedTargets
+	var provisionedBy *string
+	if req.ProvisionedBy != nil && strings.TrimSpace(*req.ProvisionedBy) != "" {
+		v := strings.TrimSpace(*req.ProvisionedBy)
+		provisionedBy = &v
+	}
+	allowedTargets := constants.APIKeyAllowedTargetsAll
+	if req.AllowedTargets != nil && strings.TrimSpace(*req.AllowedTargets) != "" {
+		allowedTargets = strings.TrimSpace(*req.AllowedTargets)
+	}
+
+	// Persist the API key to the database before broadcasting
+	dbKey := &model.APIKey{
+		UUID:           apiKeyUUID,
+		ArtifactUUID:   proxy.UUID,
+		Name:           name,
+		MaskedAPIKey:   maskedAPIKey,
+		APIKeyHashes:   apiKeyHashesJSON,
+		Status:         "active",
+		CreatedBy:      userID,
+		ExpiresAt:      req.ExpiresAt,
+		ProvisionedBy:  provisionedBy,
+		AllowedTargets: allowedTargets,
+	}
+	if err := s.apiKeyRepo.Create(dbKey); err != nil {
+		s.slogger.Error("Failed to persist LLM proxy API key to database", "proxyId", proxyID, "keyName", name, "error", err)
+		return nil, fmt.Errorf("failed to persist API key: %w", err)
+	}
+
+	var expiresAt *string
 	if req.ExpiresAt != nil {
 		expiresAtStr := req.ExpiresAt.Format(time.RFC3339)
-		event.ExpiresAt = &expiresAtStr
+		expiresAt = &expiresAtStr
+	}
+
+	event := &model.APIKeyCreatedEvent{
+		UUID:           apiKeyUUID,
+		ApiId:          proxyID,
+		Name:           name,
+		ApiKeyHashes:   apiKeyHashesJSON,
+		MaskedApiKey:   maskedAPIKey,
+		ExpiresAt:      expiresAt,
+		ProvisionedBy:  provisionedBy,
+		AllowedTargets: allowedTargets,
 	}
 
 	successCount := 0

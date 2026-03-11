@@ -4003,6 +4003,11 @@ components:
         expiresIn:
           $ref: '#/components/schemas/ExpirationDuration'
           description: Optional expiration duration
+        provisionedBy:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "bijira-devportal"
 
     CreateAPIKeyResponse:
       type: object
@@ -5739,6 +5744,18 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
+        provisionedBy:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "bijira-devportal"
+        allowedTargets:
+          type: string
+          description: |
+            Comma-separated list of LLM provider or proxy names this key is valid for.
+            Use 'ALL' to allow all targets (default).
+          nullable: true
+          example: "openai,azure-openai"
     CreateLLMProviderAPIKeyResponse:
       type: object
       required:
@@ -5782,6 +5799,18 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
+        provisionedBy:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "bijira-devportal"
+        allowedTargets:
+          type: string
+          description: |
+            Comma-separated list of LLM provider or proxy names this key is valid for.
+            Use 'ALL' to allow all targets (default).
+          nullable: true
+          example: "openai,azure-openai"
     CreateLLMProxyAPIKeyResponse:
       type: object
       required:

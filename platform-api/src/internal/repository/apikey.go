@@ -42,12 +42,13 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 	key.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO api_keys (uuid, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at, provisioned_by, allowed_targets)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
 		key.UUID, key.ArtifactUUID, key.Name, key.MaskedAPIKey, key.APIKeyHashes,
 		key.Status, key.CreatedAt, key.CreatedBy, key.UpdatedAt, key.ExpiresAt,
+		key.ProvisionedBy, key.AllowedTargets,
 	)
 	return err
 }
@@ -102,20 +103,25 @@ func (r *APIKeyRepo) Revoke(artifactUUID, name string) error {
 // GetByArtifactAndName retrieves an API key by artifact UUID and name
 func (r *APIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error) {
 	key := &model.APIKey{}
+	var provisionedBy sql.NullString
 	query := `
-		SELECT uuid, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at
+		SELECT uuid, artifact_uuid, name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at, provisioned_by, allowed_targets
 		FROM api_keys
 		WHERE artifact_uuid = ? AND name = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, name).Scan(
 		&key.UUID, &key.ArtifactUUID, &key.Name, &key.MaskedAPIKey, &key.APIKeyHashes,
 		&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+		&provisionedBy, &key.AllowedTargets,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if provisionedBy.Valid {
+		key.ProvisionedBy = &provisionedBy.String
 	}
 	return key, nil
 }

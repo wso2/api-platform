@@ -715,9 +715,9 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 9
 		}
 
-		// Migration to version 10: Drop operations column from api_keys
+		// Migration to version 10: Drop operations column from api_keys; add api_key_uuid, provisioned_by and allowed_targets
 		if version == 9 {
-			s.logger.Info("Migrating schema to version 10 (removing operations column from api_keys)")
+			s.logger.Info("Migrating schema to version 10 (removing operations column; adding api_key_uuid, provisioned_by and allowed_targets to api_keys)")
 
 			if _, err := s.db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
 				return fmt.Errorf("failed to disable foreign keys for migration to version 10: %w", err)
@@ -752,6 +752,8 @@ func (s *SQLiteStorage) initSchema() error {
 				expires_at TIMESTAMP NULL,
 				source TEXT NOT NULL DEFAULT 'local',
 				external_ref_id TEXT NULL,
+				provisioned_by TEXT NULL DEFAULT NULL,
+				allowed_targets TEXT NOT NULL DEFAULT 'ALL',
 				FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
 				UNIQUE (apiId, name, gateway_id)
 			);`); err != nil {
@@ -816,7 +818,7 @@ func (s *SQLiteStorage) initSchema() error {
 				return fmt.Errorf("failed to re-enable foreign keys after migration to version 10: %w", err)
 			}
 
-			s.logger.Info("Schema migrated to version 10 (removed operations column from api_keys)")
+			s.logger.Info("Schema migrated to version 10 (removed operations column; added api_key_uuid, provisioned_by and allowed_targets to api_keys)")
 			version = 10
 		}
 	}
