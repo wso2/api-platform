@@ -384,12 +384,17 @@ paths:
         ```
         batch.zip
         ├── {deploymentId-1}/
-        │   └── api.yaml
+        │   └── api-{artifactId}.yaml          # RestApi
         ├── {deploymentId-2}/
-        │   └── api.yaml
+        │   └── llm-provider-{artifactId}.yaml  # LlmProvider
         └── {deploymentId-N}/
-            └── api.yaml
+            └── llm-proxy-{artifactId}.yaml    # LlmProxy
         ```
+        
+        The filename prefix is determined by the artifact kind:
+        - `api-{artifactId}.yaml` for `RestApi`
+        - `llm-provider-{artifactId}.yaml` for `LlmProvider`
+        - `llm-proxy-{artifactId}.yaml` for `LlmProxy`
         
         This endpoint is used by gateways to efficiently fetch
         multiple deployment artifacts that need to be updated locally.

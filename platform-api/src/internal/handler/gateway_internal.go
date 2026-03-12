@@ -24,12 +24,17 @@ import (
 	"net/http"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/model"
 	"platform-api/src/internal/utils"
+	"time"
 
 	"platform-api/src/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
+
+// errMissingAPIKey is returned when the API key header is not provided
+var errMissingAPIKey = errors.New("API key is required")
 
 type GatewayInternalAPIHandler struct {
 	gatewayService         *service.GatewayService
@@ -46,30 +51,42 @@ func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
 	}
 }
 
+// authenticateGateway validates the API key and returns the authenticated gateway.
+func (h *GatewayInternalAPIHandler) authenticateGateway(apiKey string) (*model.Gateway, error) {
+	if apiKey == "" {
+		return nil, errMissingAPIKey
+	}
+	return h.gatewayService.VerifyToken(apiKey)
+}
+
+// authenticateRequest extracts the API key from headers and authenticates the gateway.
+func (h *GatewayInternalAPIHandler) authenticateRequest(c *gin.Context) (orgID, gatewayID string, ok bool) {
+	clientIP := c.ClientIP()
+	apiKey := c.GetHeader("api-key")
+
+	gateway, err := h.authenticateGateway(apiKey)
+	if err != nil {
+		if errors.Is(err, errMissingAPIKey) {
+			h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+			c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+				"API key is required. Provide 'api-key' header."))
+		} else {
+			h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
+			c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+				"Invalid or expired API key"))
+		}
+		return "", "", false
+	}
+	return gateway.OrganizationID, gateway.ID, true
+}
+
 // GetAPIsByOrganization handles GET /api/internal/v1/apis
 func (h *GatewayInternalAPIHandler) GetAPIsByOrganization(c *gin.Context) {
-	// Extract client IP for rate limiting
-	clientIP := c.ClientIP()
-
-	// Extract and validate API key from header
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
+	orgID, _, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
 
-	// Authenticate gateway using API key
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
-		return
-	}
-
-	orgID := gateway.OrganizationID
 	apis, err := h.gatewayInternalService.GetAPIsByOrganization(orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
@@ -102,29 +119,11 @@ func (h *GatewayInternalAPIHandler) GetAPIsByOrganization(c *gin.Context) {
 
 // GetAPI handles GET /api/internal/v1/apis/:apiId
 func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
-	// Extract client IP for rate limiting
-	clientIP := c.ClientIP()
-
-	// Extract and validate API key from header
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
 
-	// Authenticate gateway using API key
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
-		return
-	}
-
-	orgID := gateway.OrganizationID
-	gatewayID := gateway.ID
 	apiID := c.Param("apiId")
 	if apiID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -169,24 +168,8 @@ func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
 
 // CreateGatewayDeployment handles POST /api/internal/v1/apis/{apiId}/gateway-deployments
 func (h *GatewayInternalAPIHandler) CreateGatewayDeployment(c *gin.Context) {
-	// Extract client IP for logging
-	clientIP := c.ClientIP()
-
-	// Extract and validate API key from header
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
-		return
-	}
-
-	// Authenticate gateway using API key
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
 
@@ -208,15 +191,12 @@ func (h *GatewayInternalAPIHandler) CreateGatewayDeployment(c *gin.Context) {
 	// Parse and validate request body
 	var notification dto.DeploymentNotification
 	if err := c.ShouldBindJSON(&notification); err != nil {
+		clientIP := c.ClientIP()
 		h.slogger.Warn("Invalid request body", "clientIP", clientIP, "error", err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Invalid request body: "+err.Error()))
 		return
 	}
-
-	// Create API and deployment using the service
-	orgID := gateway.OrganizationID
-	gatewayID := gateway.ID
 
 	response, err := h.gatewayInternalService.CreateGatewayDeployment(
 		apiID, orgID, gatewayID, notification, deploymentIDPtr)
@@ -252,29 +232,11 @@ func (h *GatewayInternalAPIHandler) CreateGatewayDeployment(c *gin.Context) {
 
 // GetLLMProvider handles GET /api/internal/v1/llm-providers/:providerId
 func (h *GatewayInternalAPIHandler) GetLLMProvider(c *gin.Context) {
-	// Extract client IP for rate limiting
-	clientIP := c.ClientIP()
-
-	// Extract and validate API key from header
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
 
-	// Authenticate gateway using API key
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
-		return
-	}
-
-	orgID := gateway.OrganizationID
-	gatewayID := gateway.ID
 	providerID := c.Param("providerId")
 	if providerID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -319,29 +281,11 @@ func (h *GatewayInternalAPIHandler) GetLLMProvider(c *gin.Context) {
 
 // GetLLMProxy handles GET /api/internal/v1/llm-proxies/:proxyId
 func (h *GatewayInternalAPIHandler) GetLLMProxy(c *gin.Context) {
-	// Extract client IP for rate limiting
-	clientIP := c.ClientIP()
-
-	// Extract and validate API key from header
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
 
-	// Authenticate gateway using API key
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
-		return
-	}
-
-	orgID := gateway.OrganizationID
-	gatewayID := gateway.ID
 	proxyID := c.Param("proxyId")
 	if proxyID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -384,6 +328,97 @@ func (h *GatewayInternalAPIHandler) GetLLMProxy(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
+// GetGatewayDeployments handles GET /api/internal/v1/deployments
+// Returns the list of deployments that should be active on a gateway for startup sync
+func (h *GatewayInternalAPIHandler) GetGatewayDeployments(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	// Parse optional "since" query parameter for incremental sync
+	var since *time.Time
+	sinceStr := c.Query("since")
+	if sinceStr != "" {
+		parsedTime, err := time.Parse(time.RFC3339, sinceStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid 'since' parameter. Expected ISO 8601 format (e.g., 2026-03-04T10:00:00Z)"))
+			return
+		}
+		since = &parsedTime
+	}
+
+	deployments, err := h.gatewayInternalService.GetDeploymentsByGateway(orgID, gatewayID, since)
+	if err != nil {
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		h.slogger.Error("Failed to get gateway deployments", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get deployments"))
+		return
+	}
+
+	c.JSON(http.StatusOK, deployments)
+}
+
+// BatchFetchDeployments handles POST /api/internal/v1/deployments/batch
+// Fetches multiple deployment artifacts in a single request for gateway startup sync
+func (h *GatewayInternalAPIHandler) BatchFetchDeployments(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	// Parse request body
+	var req dto.BatchDeploymentsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Invalid request body: "+err.Error()))
+		return
+	}
+
+	if len(req.DeploymentIDs) == 0 {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"At least one deployment ID is required"))
+		return
+	}
+
+	// Fetch deployment content
+	contentMap, err := h.gatewayInternalService.GetDeploymentContentBatch(orgID, gatewayID, req.DeploymentIDs)
+	if err != nil {
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		h.slogger.Error("Failed to get deployment content batch", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get deployment content"))
+		return
+	}
+
+	// Create ZIP file from deployment content
+	zipData, err := utils.CreateBatchDeploymentZip(contentMap)
+	if err != nil {
+		h.slogger.Error("Failed to create batch ZIP file", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create deployment package"))
+		return
+	}
+
+	// Set headers for ZIP file download
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"deployments-batch-%s.zip\"", gatewayID))
+	c.Header("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	// Return ZIP file
+	c.Data(http.StatusOK, "application/zip", zipData)
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
@@ -400,5 +435,11 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	llmProxyGroup := r.Group("/api/internal/v1/llm-proxies")
 	{
 		llmProxyGroup.GET("/:proxyId", h.GetLLMProxy)
+	}
+
+	deploymentGroup := r.Group("/api/internal/v1/deployments")
+	{
+		deploymentGroup.GET("", h.GetGatewayDeployments)
+		deploymentGroup.POST("/batch", h.BatchFetchDeployments)
 	}
 }
