@@ -26,9 +26,9 @@ servers:
 paths:
   /rest-apis:
     post:
-      summary: Create a new API configuration
+      summary: Create a new RestAPI
       description: |
-        Submit a new API configuration to the Gateway Controller. The configuration
+        Submit a new RestAPI to the Gateway Controller. The configuration
         is validated, persisted, and translated to Envoy xDS resources. The Router
         begins routing traffic for the API within 5 seconds.
 
@@ -37,7 +37,7 @@ paths:
         - Context must start with `/` and not end with `/`
         - At least one upstream and one operation required
         - For same API name, context must be consistent across versions
-      operationId: createAPI
+      operationId: createRestAPI
       tags:
         - API Management
       requestBody:
@@ -94,7 +94,7 @@ paths:
                     path: /store/order
       responses:
         "201":
-          description: API configuration created successfully
+          description: RestAPI created successfully
           content:
             application/json:
               schema:
@@ -119,11 +119,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
     get:
-      summary: List all API configurations
+      summary: List all RestAPIs
       description: |
-        Retrieve a list of all deployed API configurations with metadata.
+        Retrieve a list of all deployed RestAPIs with metadata.
         Returns basic information about each API (name, version, context, deployment time).
-      operationId: listAPIs
+      operationId: listRestAPIs
       tags:
         - API Management
       parameters:
@@ -158,7 +158,7 @@ paths:
           example: pending
       responses:
         "200":
-          description: List of API configurations
+          description: List of RestAPIs
           content:
             application/json:
               schema:
@@ -183,11 +183,11 @@ paths:
 
   /rest-apis/{id}:
     get:
-      summary: Get API configuration by id
+      summary: Get RestAPI by id
       description: |
-        Retrieve the complete configuration for a specific API by its id.
+        Retrieve the complete configuration for a specific RestAPI by its id.
         The id is a unique string identifier (not a UUID).
-      operationId: getAPIById
+      operationId: getRestAPIById
       tags:
         - API Management
       parameters:
@@ -201,7 +201,7 @@ paths:
           example: weather-api-v1.0
       responses:
         "200":
-          description: API configuration details
+          description: RestAPI details
           content:
             application/json:
               schema:
@@ -210,7 +210,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/RestAPIDetailResponse"
         "404":
-          description: API configuration not found
+          description: RestAPI not found
           content:
             application/json:
               schema:
@@ -223,14 +223,14 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
     put:
-      summary: Update an existing API configuration
+      summary: Update an existing RestAPI
       description: |
-        Update an existing API configuration. The update is validated and applied atomically.
+        Update an existing RestAPI. The update is validated and applied atomically.
         The Router receives the updated configuration within 5 seconds. In-flight requests
         complete with the old configuration; new requests use the updated configuration.
 
         **Important:** If validation fails, the existing configuration remains active.
-      operationId: updateAPI
+      operationId: updateRestAPI
       tags:
         - API Management
       parameters:
@@ -253,7 +253,7 @@ paths:
               $ref: "#/components/schemas/RestAPI"
       responses:
         "200":
-          description: API configuration updated successfully
+          description: RestAPI updated successfully
           content:
             application/json:
               schema:
@@ -265,7 +265,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: API configuration not found
+          description: RestAPI not found
           content:
             application/json:
               schema:
@@ -278,12 +278,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
     delete:
-      summary: Delete an API configuration
+      summary: Delete a RestAPI
       description: |
-        Remove an API configuration from the Gateway Controller. The Router stops
+        Remove a RestAPI from the Gateway Controller. The Router stops
         accepting traffic for this API within 5 seconds. In-flight requests complete
         successfully; new requests receive 404 Not Found.
-      operationId: deleteAPI
+      operationId: deleteRestAPI
       tags:
         - API Management
       parameters:
@@ -297,7 +297,7 @@ paths:
           example: weather-api-v1.0
       responses:
         "200":
-          description: API configuration deleted successfully
+          description: RestAPI deleted successfully
           content:
             application/json:
               schema:
@@ -308,12 +308,12 @@ paths:
                     example: success
                   message:
                     type: string
-                    example: API configuration deleted successfully
+                    example: RestAPI deleted successfully
                   id:
                     type: string
                     example: weather-api-v1.0
         "404":
-          description: API configuration not found
+          description: RestAPI not found
           content:
             application/json:
               schema:
@@ -368,7 +368,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: API configuration not found
+          description: RestAPI not found
           content:
             application/json:
               schema:
@@ -405,7 +405,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/APIKeyListResponse"
         "404":
-          description: API configuration not found
+          description: RestAPI not found
           content:
             application/json:
               schema:
@@ -468,7 +468,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: API configuration not found
+          description: RestAPI not found
           content:
             application/json:
               schema:
@@ -580,7 +580,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: API configuration not found
+          description: RestAPI not found
           content:
             application/json:
               schema:
@@ -2870,10 +2870,10 @@ components:
           example: success
         message:
           type: string
-          example: API configuration created successfully
+          example: RestAPI created successfully
         id:
           type: string
-          description: Unique id for the created API configuration
+          description: Unique id for the created RestAPI
           example: weather-api-v1.0
         createdAt:
           type: string
@@ -2887,7 +2887,7 @@ components:
           example: success
         message:
           type: string
-          example: API configuration updated successfully
+          example: RestAPI updated successfully
         id:
           type: string
           example: weather-api-v1.0
@@ -3345,7 +3345,7 @@ components:
           properties:
             id:
               type: string
-              description: Unique id for the API configuration
+              description: Unique id for the RestAPI
               example: weather-api-v1.0
             configuration:
               $ref: "#/components/schemas/RestAPI"
@@ -4434,7 +4434,7 @@ tags:
   - name: System
     description: System health and status endpoints
   - name: API Management
-    description: CRUD operations for API configurations
+    description: CRUD operations for RestAPIs
   - name: MCP Proxy Management
     description: CRUD operations for MCP Proxy configurations
   - name: Policy Management

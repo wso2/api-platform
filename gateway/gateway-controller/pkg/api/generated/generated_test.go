@@ -111,7 +111,7 @@ func TestJSONProcessing_ErrorPaths(t *testing.T) {
 		// The mock handler is called and returns 201 since it doesn't validate the body
 		// JSON validation would happen in the actual handler implementation, not in the mock
 		t.Logf("Received status code: %d", recorder.Code)
-		assert.True(t, mock.CreateAPICalled, "CreateAPI handler should be called")
+		assert.True(t, mock.CreateRestAPICalled, "CreateRestAPI handler should be called")
 		assert.Equal(t, http.StatusCreated, recorder.Code)
 	})
 }
@@ -137,11 +137,11 @@ func TestSwaggerSpec_ErrorHandling(t *testing.T) {
 
 // MockServerInterface is a mock implementation of ServerInterface for testing
 type MockServerInterface struct {
-	ListAPIsCalled                   bool
-	CreateAPICalled                  bool
-	DeleteAPICalled                  bool
-	GetAPIByIdCalled                 bool
-	UpdateAPICalled                  bool
+	ListRestAPIsCalled               bool
+	CreateRestAPICalled              bool
+	DeleteRestAPICalled              bool
+	GetRestAPIByIdCalled             bool
+	UpdateRestAPICalled              bool
 	ListAPIKeysCalled                bool
 	CreateAPIKeyCalled               bool
 	UpdateAPIKeyCalled               bool
@@ -243,28 +243,28 @@ func (m *MockServerInterface) UpdateAPIKey(c *gin.Context, id string, apiKeyName
 	c.JSON(http.StatusOK, gin.H{"status": "updated"})
 }
 
-func (m *MockServerInterface) ListAPIs(c *gin.Context, params ListAPIsParams) {
-	m.ListAPIsCalled = true
+func (m *MockServerInterface) ListRestAPIs(c *gin.Context, params ListRestAPIsParams) {
+	m.ListRestAPIsCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func (m *MockServerInterface) CreateAPI(c *gin.Context) {
-	m.CreateAPICalled = true
+func (m *MockServerInterface) CreateRestAPI(c *gin.Context) {
+	m.CreateRestAPICalled = true
 	c.JSON(http.StatusCreated, gin.H{"status": "created"})
 }
 
-func (m *MockServerInterface) DeleteAPI(c *gin.Context, id string) {
-	m.DeleteAPICalled = true
+func (m *MockServerInterface) DeleteRestAPI(c *gin.Context, id string) {
+	m.DeleteRestAPICalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "deleted", "id": id})
 }
 
-func (m *MockServerInterface) GetAPIById(c *gin.Context, id string) {
-	m.GetAPIByIdCalled = true
+func (m *MockServerInterface) GetRestAPIById(c *gin.Context, id string) {
+	m.GetRestAPIByIdCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "id": id})
 }
 
-func (m *MockServerInterface) UpdateAPI(c *gin.Context, id string) {
-	m.UpdateAPICalled = true
+func (m *MockServerInterface) UpdateRestAPI(c *gin.Context, id string) {
+	m.UpdateRestAPICalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "updated", "id": id})
 }
 
@@ -1443,7 +1443,7 @@ func TestRegisterHandlersWithOptions(t *testing.T) {
 func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	t.Run("ListAPIs with query parameters", func(t *testing.T) {
+	t.Run("ListRestAPIs with query parameters", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
 		RegisterHandlers(router, mockServer)
@@ -1453,10 +1453,10 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.True(t, mockServer.ListAPIsCalled)
+		assert.True(t, mockServer.ListRestAPIsCalled)
 	})
 
-	t.Run("CreateAPI", func(t *testing.T) {
+	t.Run("CreateRestAPI", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
 		RegisterHandlers(router, mockServer)
@@ -1466,10 +1466,10 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
-		assert.True(t, mockServer.CreateAPICalled)
+		assert.True(t, mockServer.CreateRestAPICalled)
 	})
 
-	t.Run("GetAPIById", func(t *testing.T) {
+	t.Run("GetRestAPIById", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
 		RegisterHandlers(router, mockServer)
@@ -1479,10 +1479,10 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.True(t, mockServer.GetAPIByIdCalled)
+		assert.True(t, mockServer.GetRestAPIByIdCalled)
 	})
 
-	t.Run("UpdateAPI", func(t *testing.T) {
+	t.Run("UpdateRestAPI", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
 		RegisterHandlers(router, mockServer)
@@ -1492,10 +1492,10 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.True(t, mockServer.UpdateAPICalled)
+		assert.True(t, mockServer.UpdateRestAPICalled)
 	})
 
-	t.Run("DeleteAPI", func(t *testing.T) {
+	t.Run("DeleteRestAPI", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
 		RegisterHandlers(router, mockServer)
@@ -1505,7 +1505,7 @@ func TestServerInterfaceWrapper_APIRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.True(t, mockServer.DeleteAPICalled)
+		assert.True(t, mockServer.DeleteRestAPICalled)
 	})
 }
 
@@ -1935,7 +1935,7 @@ func TestServerInterfaceWrapper_MiscRoutes(t *testing.T) {
 func TestServerInterfaceWrapper_QueryParamsEdgeCases(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	t.Run("ListAPIs with all optional params", func(t *testing.T) {
+	t.Run("ListRestAPIs with all optional params", func(t *testing.T) {
 		router := gin.New()
 		mockServer := &MockServerInterface{}
 		RegisterHandlers(router, mockServer)
@@ -1945,7 +1945,7 @@ func TestServerInterfaceWrapper_QueryParamsEdgeCases(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.True(t, mockServer.ListAPIsCalled)
+		assert.True(t, mockServer.ListRestAPIsCalled)
 	})
 
 	t.Run("ListLLMProviders with all optional params", func(t *testing.T) {

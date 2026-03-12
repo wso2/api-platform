@@ -192,9 +192,9 @@ func (s *APIServer) GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse {
 	}
 }
 
-// CreateAPI implements ServerInterface.CreateAPI
-// (POST /apis)
-func (s *APIServer) CreateAPI(c *gin.Context) {
+// CreateRestAPI implements ServerInterface.CreateRestAPI
+// (POST /rest-apis)
+func (s *APIServer) CreateRestAPI(c *gin.Context) {
 	startTime := time.Now()
 	operation := "create"
 
@@ -307,9 +307,9 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	}
 }
 
-// ListAPIs implements ServerInterface.ListAPIs
-// (GET /apis)
-func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
+// ListRestAPIs implements ServerInterface.ListRestAPIs
+// (GET /rest-apis)
+func (s *APIServer) ListRestAPIs(c *gin.Context, params api.ListRestAPIsParams) {
 	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
 		s.SearchDeployments(c, string(api.RestApi))
 		return
@@ -543,9 +543,9 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	})
 }
 
-// GetAPIById implements ServerInterface.GetAPIById
-// (GET /apis/{id})
-func (s *APIServer) GetAPIById(c *gin.Context, id string) {
+// GetRestAPIById implements ServerInterface.GetRestAPIById
+// (GET /rest-apis/{id})
+func (s *APIServer) GetRestAPIById(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
@@ -601,9 +601,9 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 	})
 }
 
-// UpdateAPI implements ServerInterface.UpdateAPI
-// (PUT /apis/{handle})
-func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
+// UpdateRestAPI implements ServerInterface.UpdateRestAPI
+// (PUT /rest-apis/{id})
+func (s *APIServer) UpdateRestAPI(c *gin.Context, id string) {
 	startTime := time.Now()
 	operation := "update"
 
@@ -797,9 +797,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	}
 }
 
-// DeleteAPI implements ServerInterface.DeleteAPI
-// (DELETE /apis/{handle})
-func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
+// DeleteRestAPI implements ServerInterface.DeleteRestAPI
+// (DELETE /rest-apis/{id})
+func (s *APIServer) DeleteRestAPI(c *gin.Context, id string) {
 	startTime := time.Now()
 	operation := "delete"
 
