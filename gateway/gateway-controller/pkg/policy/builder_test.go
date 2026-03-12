@@ -56,15 +56,12 @@ func makeStoredConfig(t *testing.T, sandbox *api.Upstream) *models.StoredConfig 
 		},
 	}
 
-	var spec api.APIConfiguration_Spec
-	require.NoError(t, spec.FromAPIConfigData(apiData))
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
 		Metadata: api.Metadata{
 			Name: "test-api",
 		},
-		Spec: spec,
+		Spec: apiData,
 	}
 
 	return &models.StoredConfig{

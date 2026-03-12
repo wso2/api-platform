@@ -96,11 +96,10 @@ spec:
 		cfg, err := db.GetConfigByHandle("no-vhosts")
 		require.NoError(t, err)
 
-		srcCfg, ok := cfg.SourceConfiguration.(api.APIConfiguration)
-		require.True(t, ok, "SourceConfiguration should be api.APIConfiguration")
+		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
+		require.True(t, ok, "SourceConfiguration should be api.RestAPI")
 
-		apiData, err := srcCfg.Spec.AsAPIConfigData()
-		require.NoError(t, err)
+		apiData := srcCfg.Spec
 
 		require.NotNil(t, apiData.Vhosts, "vhosts should be populated")
 		assert.Equal(t, mainDefault, apiData.Vhosts.Main)
@@ -127,11 +126,10 @@ spec:
 		cfg, err := db.GetConfigByHandle("sentinel-vhosts")
 		require.NoError(t, err)
 
-		srcCfg, ok := cfg.SourceConfiguration.(api.APIConfiguration)
+		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
 		require.True(t, ok)
 
-		apiData, err := srcCfg.Spec.AsAPIConfigData()
-		require.NoError(t, err)
+		apiData := srcCfg.Spec
 
 		require.NotNil(t, apiData.Vhosts)
 		assert.Equal(t, mainDefault, apiData.Vhosts.Main, "sentinel should resolve to router default")
@@ -158,11 +156,10 @@ spec:
 		cfg, err := db.GetConfigByHandle("explicit-vhosts")
 		require.NoError(t, err)
 
-		srcCfg, ok := cfg.SourceConfiguration.(api.APIConfiguration)
+		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
 		require.True(t, ok)
 
-		apiData, err := srcCfg.Spec.AsAPIConfigData()
-		require.NoError(t, err)
+		apiData := srcCfg.Spec
 
 		require.NotNil(t, apiData.Vhosts)
 		assert.Equal(t, "custom.example.com", apiData.Vhosts.Main, "explicit vhost should be unchanged")
@@ -191,11 +188,10 @@ spec:
 		cfg, err := db.GetConfigByHandle("no-sandbox-default")
 		require.NoError(t, err)
 
-		srcCfg, ok := cfg.SourceConfiguration.(api.APIConfiguration)
+		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
 		require.True(t, ok)
 
-		apiData, err := srcCfg.Spec.AsAPIConfigData()
-		require.NoError(t, err)
+		apiData := srcCfg.Spec
 
 		require.NotNil(t, apiData.Vhosts, "vhosts should be populated")
 		assert.Equal(t, mainDefault, apiData.Vhosts.Main, "main vhost should be populated")

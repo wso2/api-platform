@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -842,24 +843,22 @@ func TestResolveVhostSentinels_RestApi(t *testing.T) {
 	}
 
 	main := vhostGatewayDefault
-	cfg := &api.APIConfiguration{
+	var cfg any = api.RestAPI{
 		Kind: api.RestApi,
-	}
-	apiData := api.APIConfigData{
-		Vhosts: &struct {
-			Main    string  `json:"main" yaml:"main"`
-			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main:    main,
-			Sandbox: &sandbox,
+		Spec: api.APIConfigData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    main,
+				Sandbox: &sandbox,
+			},
 		},
 	}
-	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
 
-	resolved, err := cfg.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	resolved := cfg.(api.RestAPI).Spec
 	require.NotNil(t, resolved.Vhosts)
 	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
 	require.NotNil(t, resolved.Vhosts.Sandbox)
@@ -875,22 +874,22 @@ func TestResolveVhostSentinels_ExplicitValuesUnchanged(t *testing.T) {
 		},
 	}
 
-	cfg := &api.APIConfiguration{Kind: api.RestApi}
-	apiData := api.APIConfigData{
-		Vhosts: &struct {
-			Main    string  `json:"main" yaml:"main"`
-			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main:    "custom.example.com",
-			Sandbox: &sandboxValue,
+	var cfg any = api.RestAPI{
+		Kind: api.RestApi,
+		Spec: api.APIConfigData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    "custom.example.com",
+				Sandbox: &sandboxValue,
+			},
 		},
 	}
-	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
 
-	resolved, err := cfg.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	resolved := cfg.(api.RestAPI).Spec
 	require.NotNil(t, resolved.Vhosts)
 	assert.Equal(t, "custom.example.com", resolved.Vhosts.Main)
 	require.NotNil(t, resolved.Vhosts.Sandbox)
@@ -905,14 +904,14 @@ func TestResolveVhostSentinels_NilVhostsPopulatesDefaults(t *testing.T) {
 		},
 	}
 
-	cfg := &api.APIConfiguration{Kind: api.RestApi}
-	apiData := api.APIConfigData{Vhosts: nil}
-	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
+	var cfg any = api.RestAPI{
+		Kind: api.RestApi,
+		Spec: api.APIConfigData{Vhosts: nil},
+	}
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
 
-	resolved, err := cfg.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	resolved := cfg.(api.RestAPI).Spec
 	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with defaults")
 	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
 	require.NotNil(t, resolved.Vhosts.Sandbox)
@@ -926,14 +925,14 @@ func TestResolveVhostSentinels_NilVhostsNoSandboxDefault(t *testing.T) {
 		},
 	}
 
-	cfg := &api.APIConfiguration{Kind: api.RestApi}
-	apiData := api.APIConfigData{Vhosts: nil}
-	require.NoError(t, cfg.Spec.FromAPIConfigData(apiData))
+	var cfg any = api.RestAPI{
+		Kind: api.RestApi,
+		Spec: api.APIConfigData{Vhosts: nil},
+	}
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
 
-	resolved, err := cfg.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	resolved := cfg.(api.RestAPI).Spec
 	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with main default")
 	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
 	assert.Nil(t, resolved.Vhosts.Sandbox, "sandbox should remain nil when no sandbox default configured")
@@ -947,14 +946,14 @@ func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T
 		},
 	}
 
-	cfg := &api.APIConfiguration{Kind: api.WebSubApi}
-	webhookData := api.WebhookAPIData{Vhosts: nil}
-	require.NoError(t, cfg.Spec.FromWebhookAPIData(webhookData))
+	var cfg any = api.WebSubAPI{
+		Kind: api.WebSubApi,
+		Spec: api.WebhookAPIData{Vhosts: nil},
+	}
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
 
-	resolved, err := cfg.Spec.AsWebhookAPIData()
-	require.NoError(t, err)
+	resolved := cfg.(api.WebSubAPI).Spec
 	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with defaults")
 	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
 	require.NotNil(t, resolved.Vhosts.Sandbox)
@@ -970,22 +969,22 @@ func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
 		},
 	}
 
-	cfg := &api.APIConfiguration{Kind: api.WebSubApi}
-	webhookData := api.WebhookAPIData{
-		Vhosts: &struct {
-			Main    string  `json:"main" yaml:"main"`
-			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main:    vhostGatewayDefault,
-			Sandbox: &sandbox,
+	var cfg any = api.WebSubAPI{
+		Kind: api.WebSubApi,
+		Spec: api.WebhookAPIData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    vhostGatewayDefault,
+				Sandbox: &sandbox,
+			},
 		},
 	}
-	require.NoError(t, cfg.Spec.FromWebhookAPIData(webhookData))
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
 
-	resolved, err := cfg.Spec.AsWebhookAPIData()
-	require.NoError(t, err)
+	resolved := cfg.(api.WebSubAPI).Spec
 	require.NotNil(t, resolved.Vhosts)
 	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
 	require.NotNil(t, resolved.Vhosts.Sandbox)
@@ -1001,22 +1000,22 @@ func TestResolveVhostSentinels_WebSubApi_ExplicitValues(t *testing.T) {
 		},
 	}
 
-	cfg := &api.APIConfiguration{Kind: api.WebSubApi}
-	webhookData := api.WebhookAPIData{
-		Vhosts: &struct {
-			Main    string  `json:"main" yaml:"main"`
-			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main:    "custom.example.com",
-			Sandbox: &sandboxValue,
+	var cfg any = api.WebSubAPI{
+		Kind: api.WebSubApi,
+		Spec: api.WebhookAPIData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    "custom.example.com",
+				Sandbox: &sandboxValue,
+			},
 		},
 	}
-	require.NoError(t, cfg.Spec.FromWebhookAPIData(webhookData))
 
-	require.NoError(t, resolveVhostSentinels(cfg, routerCfg))
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
 
-	resolved, err := cfg.Spec.AsWebhookAPIData()
-	require.NoError(t, err)
+	resolved := cfg.(api.WebSubAPI).Spec
 	require.NotNil(t, resolved.Vhosts)
 	assert.Equal(t, "custom.example.com", resolved.Vhosts.Main)
 	require.NotNil(t, resolved.Vhosts.Sandbox)
@@ -1029,6 +1028,6 @@ func TestResolveVhostSentinels_NilCfgNoOp(t *testing.T) {
 }
 
 func TestResolveVhostSentinels_NilRouterCfgNoOp(t *testing.T) {
-	cfg := &api.APIConfiguration{Kind: api.RestApi}
-	require.NoError(t, resolveVhostSentinels(cfg, nil)) // should not panic
+	var cfg any = api.RestAPI{Kind: api.RestApi}
+	require.NoError(t, resolveVhostSentinels(&cfg, nil)) // should not panic
 }

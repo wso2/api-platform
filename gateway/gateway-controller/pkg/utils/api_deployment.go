@@ -573,95 +573,72 @@ func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpCl
 // gateway-controller should resolve and persist its current configured default vhost values.
 const vhostGatewayDefault = "_gateway_default_"
 
-// resolveVhostSentinels replaces the gateway-default sentinel in an APIConfiguration's vhosts
-// with the actual default values from the router config. This ensures that the stored value in
-// bbolt is always a concrete hostname, making deployments immune to future gateway config changes.
-func resolveVhostSentinels(cfg *api.APIConfiguration, routerCfg *config.RouterConfig) error {
+// resolveVhostSentinels replaces the gateway-default sentinel in a RestAPI or WebSubAPI's vhosts
+// with the actual default values from the router config. This ensures that the stored value is
+// always a concrete hostname, making deployments immune to future gateway config changes.
+// cfg must be a pointer to an any holding either api.RestAPI or api.WebSubAPI.
+func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 	if cfg == nil || routerCfg == nil {
 		return nil
 	}
-	switch cfg.Kind {
-	case api.RestApi:
-		apiData, err := cfg.Spec.AsAPIConfigData()
-		if err != nil {
-			return nil
-		}
-		if apiData.Vhosts == nil {
+	switch c := (*cfg).(type) {
+	case api.RestAPI:
+		if c.Spec.Vhosts == nil {
 			// Populate defaults when vhosts is omitted entirely (e.g. direct gateway deployment
 			// without platform-api injecting sentinels). This freezes the current gateway defaults
 			// so that routing is immune to future config changes.
-			apiData.Vhosts = &struct {
+			main := routerCfg.VHosts.Main.Default
+			c.Spec.Vhosts = &struct {
 				Main    string  `json:"main" yaml:"main"`
 				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 			}{
-				Main: routerCfg.VHosts.Main.Default,
+				Main: main,
 			}
 			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
-				apiData.Vhosts.Sandbox = &sandboxDefault
+				c.Spec.Vhosts.Sandbox = &sandboxDefault
 			}
-			if err := cfg.Spec.FromAPIConfigData(apiData); err != nil {
-				return fmt.Errorf("failed to re-encode RestApi spec after vhost materialization: %w", err)
-			}
+			*cfg = c
 			return nil
 		}
-		modified := false
-		if apiData.Vhosts.Main == vhostGatewayDefault {
-			apiData.Vhosts.Main = routerCfg.VHosts.Main.Default
-			modified = true
+		if c.Spec.Vhosts.Main == vhostGatewayDefault {
+			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
 		}
-		if apiData.Vhosts.Sandbox != nil && *apiData.Vhosts.Sandbox == vhostGatewayDefault {
+		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == vhostGatewayDefault {
 			resolved := routerCfg.VHosts.Sandbox.Default
 			if resolved != "" {
-				apiData.Vhosts.Sandbox = &resolved
+				c.Spec.Vhosts.Sandbox = &resolved
 			} else {
-				apiData.Vhosts.Sandbox = nil
-			}
-			modified = true
-		}
-		if modified {
-			if err := cfg.Spec.FromAPIConfigData(apiData); err != nil {
-				return fmt.Errorf("failed to re-encode RestApi spec after vhost resolution: %w", err)
+				c.Spec.Vhosts.Sandbox = nil
 			}
 		}
-	case api.WebSubApi:
-		webhookData, err := cfg.Spec.AsWebhookAPIData()
-		if err != nil {
-			return nil
-		}
-		if webhookData.Vhosts == nil {
-			webhookData.Vhosts = &struct {
+		*cfg = c
+	case api.WebSubAPI:
+		if c.Spec.Vhosts == nil {
+			main := routerCfg.VHosts.Main.Default
+			c.Spec.Vhosts = &struct {
 				Main    string  `json:"main" yaml:"main"`
 				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 			}{
-				Main: routerCfg.VHosts.Main.Default,
+				Main: main,
 			}
 			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
-				webhookData.Vhosts.Sandbox = &sandboxDefault
+				c.Spec.Vhosts.Sandbox = &sandboxDefault
 			}
-			if err := cfg.Spec.FromWebhookAPIData(webhookData); err != nil {
-				return fmt.Errorf("failed to re-encode WebSubApi spec after vhost materialization: %w", err)
-			}
+			*cfg = c
 			return nil
 		}
-		modified := false
-		if webhookData.Vhosts.Main == vhostGatewayDefault {
-			webhookData.Vhosts.Main = routerCfg.VHosts.Main.Default
-			modified = true
+		if c.Spec.Vhosts.Main == vhostGatewayDefault {
+			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
 		}
-		if webhookData.Vhosts.Sandbox != nil && *webhookData.Vhosts.Sandbox == vhostGatewayDefault {
+		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == vhostGatewayDefault {
 			resolved := routerCfg.VHosts.Sandbox.Default
 			if resolved != "" {
-				webhookData.Vhosts.Sandbox = &resolved
+				c.Spec.Vhosts.Sandbox = &resolved
 			} else {
-				webhookData.Vhosts.Sandbox = nil
-			}
-			modified = true
-		}
-		if modified {
-			if err := cfg.Spec.FromWebhookAPIData(webhookData); err != nil {
-				return fmt.Errorf("failed to re-encode WebSubApi spec after vhost resolution: %w", err)
+				c.Spec.Vhosts.Sandbox = nil
 			}
 		}
+		*cfg = c
 	}
 	return nil
 }
