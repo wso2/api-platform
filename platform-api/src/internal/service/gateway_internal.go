@@ -357,3 +357,40 @@ func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, ga
 		Created:      apiCreated,
 	}, nil
 }
+
+// GetDeploymentsByGateway retrieves all deployments for a specific gateway
+// Used to compare local gateway state with platform-api state
+// If since is provided, only returns deployments updated after that timestamp
+func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID string, since *time.Time) (*dto.GatewayDeploymentsResponse, error) {
+	// Get all deployments for this gateway (optionally filtered by timestamp)
+	deployments, err := s.deploymentRepo.GetAllDeploymentsByGateway(gatewayID, orgID, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployments: %w", err)
+	}
+
+	// Convert to response DTO
+	items := make([]dto.GatewayDeploymentInfo, len(deployments))
+	for i, dep := range deployments {
+		items[i] = dto.GatewayDeploymentInfo{
+			ArtifactID:   dep.Handle,
+			DeploymentID: dep.DeploymentID,
+			Kind:         dep.Kind,
+			State:        string(dep.Status),
+			DeployedAt:   dep.UpdatedAt,
+		}
+	}
+
+	return &dto.GatewayDeploymentsResponse{
+		Deployments: items,
+	}, nil
+}
+
+// GetDeploymentContentBatch retrieves deployment content for multiple deployment IDs
+// Returns a map of deploymentID -> DeploymentContent (artifact ID + YAML bytes)
+func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID string, deploymentIDs []string) (map[string]*model.DeploymentContent, error) {
+	contentMap, err := s.deploymentRepo.GetDeploymentContentByIDs(deploymentIDs, orgID, gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment content: %w", err)
+	}
+	return contentMap, nil
+}

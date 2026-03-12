@@ -401,22 +401,22 @@ func (h *GatewayInternalAPIHandler) BatchFetchDeployments(c *gin.Context) {
 		return
 	}
 
-	// Create ZIP file from deployment content
-	zipData, err := utils.CreateBatchDeploymentZip(contentMap)
+	// Create TAR.GZ archive from deployment content
+	tarGzData, err := utils.CreateBatchDeploymentTarGz(contentMap)
 	if err != nil {
-		h.slogger.Error("Failed to create batch ZIP file", "gatewayID", gatewayID, "error", err)
+		h.slogger.Error("Failed to create batch TAR.GZ archive", "gatewayID", gatewayID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to create deployment package"))
 		return
 	}
 
-	// Set headers for ZIP file download
-	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"deployments-batch-%s.zip\"", gatewayID))
-	c.Header("Content-Length", fmt.Sprintf("%d", len(zipData)))
+	// Set headers for TAR.GZ download
+	c.Header("Content-Type", "application/x-tar+gzip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"deployments-batch-%s.tar.gz\"", gatewayID))
+	c.Header("Content-Length", fmt.Sprintf("%d", len(tarGzData)))
 
-	// Return ZIP file
-	c.Data(http.StatusOK, "application/zip", zipData)
+	// Return TAR.GZ archive
+	c.Data(http.StatusOK, "application/x-tar+gzip", tarGzData)
 }
 
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {

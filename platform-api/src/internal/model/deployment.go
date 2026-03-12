@@ -46,6 +46,15 @@ func (Deployment) TableName() string {
 	return "deployments"
 }
 
+// DeploymentContent holds the artifact content for a single deployment,
+// used internally when constructing batch archive responses.
+type DeploymentContent struct {
+	DeploymentID string
+	ArtifactID   string
+	Kind         string
+	Content      []byte
+}
+
 // DeploymentStatus represents the status of a deployment
 // Note: ARCHIVED is a derived state (not stored in database)
 type DeploymentStatus string
@@ -55,3 +64,14 @@ const (
 	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
 	DeploymentStatusArchived   DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )
+
+// DeploymentInfo is a lightweight representation of a deployment
+// Contains only the essential fields needed for listing deployments
+type DeploymentInfo struct {
+	DeploymentID string           `json:"deploymentId" db:"deployment_id"`
+	ArtifactID   string           `json:"artifactId" db:"artifact_uuid"`
+	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
+	Kind         string           `json:"kind" db:"kind"`     // Artifact kind: RestAPI, LLMProvider, LLMProxy
+	Status       DeploymentStatus `json:"status" db:"status"`
+	UpdatedAt    time.Time        `json:"updatedAt" db:"updated_at"` // DeployedAt timestamp
+}
