@@ -77,6 +77,28 @@ func TestLookupPricing_ProviderPrefixStrip(t *testing.T) {
 	}
 }
 
+func TestLookupPricing_ProviderPrefixPrepend_Mistral(t *testing.T) {
+	// Mistral's API returns bare model names (e.g. "mistral-large-latest")
+	// but the pricing JSON keys are "mistral/mistral-large-latest".
+	// lookupPricing must prepend the "mistral/" prefix automatically.
+	for _, bare := range []string{
+		"mistral-large-latest",
+		"mistral-small-latest",
+		"magistral-medium-latest",
+		"codestral-latest",
+		"ministral-3b-latest",
+	} {
+		p, ok := lookupPricing(bare)
+		if !ok {
+			t.Errorf("expected lookup to succeed for bare Mistral model %q", bare)
+			continue
+		}
+		if p.Provider != "mistral" {
+			t.Errorf("model %q: expected provider=mistral, got %q", bare, p.Provider)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // OpenAI calculator
 // ---------------------------------------------------------------------------
@@ -169,7 +191,17 @@ func TestAzureOpenAICalculator_Cost(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestMistralCalculator_Normalize(t *testing.T) {
-	body := []byte(`{"model":"mistral/mistral-small-latest","usage":{"prompt_tokens":200,"completion_tokens":100,"total_tokens":300}}`)
+	// Real Mistral API responses return a bare model name (no "mistral/" prefix)
+	// and include prompt_audio_seconds (null for non-audio requests).
+	body := []byte(`{
+		"model": "mistral-small-latest",
+		"usage": {
+			"prompt_tokens": 200,
+			"completion_tokens": 100,
+			"total_tokens": 300,
+			"prompt_audio_seconds": null
+		}
+	}`)
 	c := &MistralCalculator{}
 	u, err := c.Normalize(body, nil)
 	if err != nil {
@@ -180,15 +212,63 @@ func TestMistralCalculator_Normalize(t *testing.T) {
 	}
 }
 
+func TestMistralCalculator_Normalize_WithAudioSeconds(t *testing.T) {
+	// Voxtral chat responses include prompt_audio_seconds as an integer.
+	// It is mapped to AudioInputSeconds in Usage for per-second billing.
+	body := []byte(`{
+		"model": "voxtral-small-latest",
+		"usage": {
+			"prompt_tokens": 50,
+			"completion_tokens": 30,
+			"total_tokens": 80,
+			"prompt_audio_seconds": 12
+		}
+	}`)
+	c := &MistralCalculator{}
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.PromptTokens != 50 || u.CompletionTokens != 30 || u.TotalTokens != 80 {
+		t.Errorf("unexpected token usage: %+v", u)
+	}
+	if u.AudioInputSeconds != 12 {
+		t.Errorf("expected AudioInputSeconds=12, got %f", u.AudioInputSeconds)
+	}
+}
+
+func TestMistralCalculator_Cost_VoxtralAudio(t *testing.T) {
+	// Voxtral Small: text in=$0.10/1M, out=$0.30/1M, audio=$0.004/min
+	// Usage: 100 text prompt tokens + 30 completion tokens + 120 audio seconds (2 min)
+	// Expected: (100*1e-7) + (30*3e-7) + (120 * 0.004/60)
+	//         = 1e-5 + 9e-6 + 8e-3 = 0.008019000
+	pricing, ok := lookupPricing("voxtral-small-latest")
+	if !ok {
+		t.Skip("mistral/voxtral-small-latest not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:      100,
+		CompletionTokens:  30,
+		TotalTokens:       130,
+		AudioInputSeconds: 120, // 2 minutes
+	}
+	cost := genericCalculateCost(usage, pricing)
+	audioRate := 0.004 / 60
+	expected := 100*1e-7 + 30*3e-7 + 120*audioRate
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
 func TestMistralCalculator_Cost(t *testing.T) {
-	// mistral/mistral-small-latest: input=6e-8, output=1.8e-7
+	// mistral/mistral-small-latest: input=$0.10/1M (1e-7), output=$0.30/1M (3e-7)
 	pricing, ok := lookupPricing("mistral/mistral-small-latest")
 	if !ok {
 		t.Skip("mistral/mistral-small-latest not in pricing map")
 	}
 	usage := Usage{PromptTokens: 1000, CompletionTokens: 500, TotalTokens: 1500}
 	cost := genericCalculateCost(usage, pricing)
-	expected := 1000*6e-8 + 500*1.8e-7
+	expected := 1000*1e-7 + 500*3e-7
 	if !almostEqual(cost, expected) {
 		t.Errorf("expected %.10f, got %.10f", expected, cost)
 	}

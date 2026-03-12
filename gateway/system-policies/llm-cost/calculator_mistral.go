@@ -30,17 +30,25 @@ func (c *MistralCalculator) Normalize(responseBody []byte, _ []byte) (Usage, err
 			PromptTokens     int64 `json:"prompt_tokens"`
 			CompletionTokens int64 `json:"completion_tokens"`
 			TotalTokens      int64 `json:"total_tokens"`
+			// PromptAudioSeconds is the duration of audio input for Voxtral chat models.
+			// Mistral bills audio per-minute separately from text tokens; prompt_tokens
+			// represents only the text portion. We convert to seconds for genericCalculateCost.
+			PromptAudioSeconds *int64 `json:"prompt_audio_seconds"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(responseBody, &resp); err != nil {
 		return Usage{}, err
 	}
 	u := resp.Usage
-	return Usage{
+	usage := Usage{
 		PromptTokens:     u.PromptTokens,
 		CompletionTokens: u.CompletionTokens,
 		TotalTokens:      u.TotalTokens,
-	}, nil
+	}
+	if u.PromptAudioSeconds != nil {
+		usage.AudioInputSeconds = float64(*u.PromptAudioSeconds)
+	}
+	return usage, nil
 }
 
 func (c *MistralCalculator) Adjust(baseCost float64, _ Usage, _ ModelPricing) float64 {

@@ -140,6 +140,12 @@ type ModelPricing struct {
 	OutputCostPerAudioToken float64 `json:"output_cost_per_audio_token"`
 	OutputCostPerImageToken float64 `json:"output_cost_per_image_token"`
 
+	// InputCostPerAudioPerSecond is used for providers (e.g. Mistral Voxtral)
+	// that bill audio input by duration rather than by token count. The response
+	// includes a prompt_audio_seconds field; cost = seconds × this rate.
+	// Maps to the existing input_cost_per_audio_per_second JSON field.
+	InputCostPerAudioPerSecond float64 `json:"input_cost_per_audio_per_second"`
+
 	// Built-in web search tool cost (Anthropic, OpenAI).
 	// The JSON value is an object keyed by search_context_size: low / medium / high.
 	// We decode it as a map and pick the right entry at runtime.
@@ -207,6 +213,13 @@ type Usage struct {
 	// audio cache read rate instead of the standard text cache read rate.
 	// Parsed from cacheTokensDetails modality=AUDIO in Gemini responses.
 	CachedAudioInputTokens int64
+
+	// AudioInputSeconds is the duration of audio input in seconds for providers
+	// that bill audio by time rather than by token count (e.g. Mistral Voxtral).
+	// Parsed from prompt_audio_seconds in the Mistral chat completion response.
+	// Cost = AudioInputSeconds × ModelPricing.InputCostPerAudioPerSecond.
+	// When InputCostPerAudioPerSecond is zero, no extra charge is added.
+	AudioInputSeconds float64
 
 	// Gemini Live only: tool use prompt tokens from grounding / web search.
 	// These are SEPARATE from PromptTokens (not included in them) and represent
@@ -284,6 +297,18 @@ func selectCalculator(provider string) providerCalculator {
 // deployment slugs) to find a prefix match.
 //
 // Returns (pricing, true) on success, (zero, false) if no entry found.
+// knownProviderPrefixes lists the provider namespaces whose APIs return bare
+// model names (without a "/" prefix) in the response body. For example,
+// Mistral's API echoes "mistral-large-latest" but the pricing key is
+// "mistral/mistral-large-latest". We try each prefix so that callers do not
+// need to include the provider slug in the model name they send.
+var knownProviderPrefixes = []string{
+	"mistral/",
+	"vertex_ai/",
+	"azure_ai/",
+	"bedrock/",
+}
+
 func lookupPricing(modelName string) (ModelPricing, bool) {
 	// 1. Exact match
 	if p, ok := pricingMap[modelName]; ok {
@@ -299,7 +324,19 @@ func lookupPricing(modelName string) (ModelPricing, bool) {
 		}
 	}
 
-	// 3. Progressive suffix stripping: "gpt-4o-2024-11-20" → "gpt-4o-2024-11" → "gpt-4o-2024" → "gpt-4o"
+	// 3. Try prepending known provider prefixes. Providers such as Mistral
+	//    return bare model names (e.g. "mistral-large-latest") in $.model, but
+	//    the pricing JSON stores them under a namespaced key
+	//    (e.g. "mistral/mistral-large-latest").
+	if !strings.Contains(modelName, "/") {
+		for _, prefix := range knownProviderPrefixes {
+			if p, ok := pricingMap[prefix+modelName]; ok {
+				return p, true
+			}
+		}
+	}
+
+	// 4. Progressive suffix stripping: "gpt-4o-2024-11-20" → "gpt-4o-2024-11" → "gpt-4o-2024" → "gpt-4o"
 	parts := strings.Split(modelName, "-")
 	for i := len(parts) - 1; i >= 1; i-- {
 		candidate := strings.Join(parts[:i], "-")
@@ -480,5 +517,10 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		}
 	}
 
-	return promptCost + completionCost + cacheReadCost + cacheWriteCost + reasoningCost + webSearchCost + toolUseCost + audioInputCost + audioOutputCost + imageOutputCost
+	// Audio input billed by duration (e.g. Mistral Voxtral chat models).
+	// prompt_audio_seconds is a separate dimension from prompt_tokens; when
+	// InputCostPerAudioPerSecond is set, we add the per-second charge on top.
+	audioSecondsCost := usage.AudioInputSeconds * pricing.InputCostPerAudioPerSecond
+
+	return promptCost + completionCost + cacheReadCost + cacheWriteCost + reasoningCost + webSearchCost + toolUseCost + audioInputCost + audioOutputCost + imageOutputCost + audioSecondsCost
 }
