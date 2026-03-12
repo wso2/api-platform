@@ -124,13 +124,14 @@ type DeploymentMetadata struct {
 
 // APIYAMLData represents a basic spec section of the API deployment YAML
 type APIYAMLData struct {
-	DisplayName string               `yaml:"displayName"`
-	Version     string               `yaml:"version"`
-	Context     string               `yaml:"context"`
-	Upstream    *UpstreamYAML        `yaml:"upstream,omitempty"`
-	Policies    []Policy             `yaml:"policies,omitempty"`
-	Operations  []api.OperationRequest `yaml:"operations,omitempty"`
-	Channels    []api.ChannelRequest   `yaml:"channels,omitempty"`
+	DisplayName       string               `yaml:"displayName"`
+	Version           string               `yaml:"version"`
+	Context           string               `yaml:"context"`
+	SubscriptionPlans []string             `yaml:"subscriptionPlans,omitempty"`
+	Upstream          *UpstreamYAML        `yaml:"upstream,omitempty"`
+	Policies          []Policy             `yaml:"policies,omitempty"`
+	Operations        []api.OperationRequest `yaml:"operations,omitempty"`
+	Channels          []api.ChannelRequest   `yaml:"channels,omitempty"`
 }
 
 // UpstreamYAML represents the upstream configuration for API deployment YAML

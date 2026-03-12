@@ -686,7 +686,7 @@ jobs:
                     livenessProbe:
                       httpGet:
                         path: /health
-                        port: rest
+                        port: admin
                       initialDelaySeconds: 10
                       periodSeconds: 10
                       timeoutSeconds: 5
@@ -694,7 +694,7 @@ jobs:
                     readinessProbe:
                       httpGet:
                         path: /health
-                        port: rest
+                        port: admin
                       initialDelaySeconds: 5
                       periodSeconds: 5
                       timeoutSeconds: 3
@@ -1048,11 +1048,11 @@ jobs:
           # Give it a moment to stabilize
           sleep 20
           # Port forward the new controller to check health
-          kubectl port-forward svc/test-gateway-gateway-controller 9091:9090 &
+          kubectl port-forward svc/test-gateway-gateway-controller 9092:9092 &
           PF_PID=$!
           sleep 5
-          
-          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9091/health)
+
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9092/health)
           echo "Controller Health Status: $HEALTH_STATUS"
           
           kill $PF_PID || true

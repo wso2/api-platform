@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"platform-api/src/config"
@@ -33,33 +34,40 @@ import (
 
 // GatewayInternalAPIService handles internal gateway API operations
 type GatewayInternalAPIService struct {
-	apiRepo        repository.APIRepository
-	providerRepo   repository.LLMProviderRepository
-	proxyRepo      repository.LLMProxyRepository
-	deploymentRepo repository.DeploymentRepository
-	gatewayRepo    repository.GatewayRepository
-	orgRepo        repository.OrganizationRepository
-	projectRepo    repository.ProjectRepository
-	apiUtil        *utils.APIUtil
-	cfg            *config.Server
-	slogger        *slog.Logger
+	apiRepo              repository.APIRepository
+	subscriptionRepo     repository.SubscriptionRepository
+	subscriptionPlanRepo repository.SubscriptionPlanRepository
+	providerRepo         repository.LLMProviderRepository
+	proxyRepo            repository.LLMProxyRepository
+	mcpProxyRepo         repository.MCPProxyRepository
+	deploymentRepo       repository.DeploymentRepository
+	gatewayRepo          repository.GatewayRepository
+	orgRepo              repository.OrganizationRepository
+	projectRepo          repository.ProjectRepository
+	apiUtil              *utils.APIUtil
+	cfg                  *config.Server
+	slogger              *slog.Logger
 }
 
 // NewGatewayInternalAPIService creates a new gateway internal API service
-func NewGatewayInternalAPIService(apiRepo repository.APIRepository, providerRepo repository.LLMProviderRepository,
-	proxyRepo repository.LLMProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
+func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
+	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
+	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
-		apiRepo:        apiRepo,
-		providerRepo:   providerRepo,
-		proxyRepo:      proxyRepo,
-		deploymentRepo: deploymentRepo,
-		gatewayRepo:    gatewayRepo,
-		orgRepo:        orgRepo,
-		projectRepo:    projectRepo,
-		apiUtil:        &utils.APIUtil{},
-		cfg:            cfg,
-		slogger:        slogger,
+		apiRepo:              apiRepo,
+		subscriptionRepo:     subscriptionRepo,
+		subscriptionPlanRepo: subscriptionPlanRepo,
+		providerRepo:         providerRepo,
+		proxyRepo:            proxyRepo,
+		mcpProxyRepo:         mcpProxyRepo,
+		deploymentRepo:       deploymentRepo,
+		gatewayRepo:          gatewayRepo,
+		orgRepo:              orgRepo,
+		projectRepo:          projectRepo,
+		apiUtil:              &utils.APIUtil{},
+		cfg:                  cfg,
+		slogger:              slogger,
 	}
 }
 
@@ -158,6 +166,114 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 	}
 	if proxy == nil {
 		return nil, constants.ErrLLMProxyNotFound
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxy.UUID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, constants.ErrDeploymentNotActive
+	}
+
+	proxyYaml := string(deployment.Content)
+	proxyYamlMap := map[string]string{
+		proxyID: proxyYaml,
+	}
+	return proxyYamlMap, nil
+}
+
+// IsAPIDeployedOnGateway returns nil if the API is deployed on the gateway, ErrAPINotFound if the API
+// does not exist, or ErrDeploymentNotActive if the API exists but is not deployed on the gateway.
+func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, orgID string) error {
+	api, err := s.apiRepo.GetAPIByUUID(apiID, orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			return err
+		}
+		return fmt.Errorf("failed to get api: %w", err)
+	}
+	if api == nil || api.OrganizationID != orgID {
+		return constants.ErrAPINotFound
+	}
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(apiID, gatewayID, orgID)
+	if err != nil {
+		return fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return constants.ErrDeploymentNotActive
+	}
+	return nil
+}
+
+// ListSubscriptionsForAPI lists subscriptions for a given API within an organization.
+func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string) ([]*model.Subscription, error) {
+	if apiID == "" || orgID == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	// apiID here is the API UUID (rest_apis.uuid) used as deployment id for REST APIs.
+	// First, ensure the API exists and belongs to the organization so callers can map
+	// unknown APIs to a 404 instead of silently returning an empty list.
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiID, orgID)
+	if err != nil {
+		// Preserve explicit not-found signaling from the repository so callers
+		// can translate it to a 404, while still wrapping unexpected failures.
+		if errors.Is(err, constants.ErrAPINotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get api for listing subscriptions: %w", err)
+	}
+	if apiModel == nil || apiModel.OrganizationID != orgID {
+		return nil, constants.ErrAPINotFound
+	}
+
+	// Internal sync: fetch all subscriptions for the API via pagination so reconciliation
+	// (DeleteSubscriptionsForAPINotIn) never performs destructive deletes due to a cutoff.
+	const pageSize = 1000
+	var subs []*model.Subscription
+	for offset := 0; ; offset += pageSize {
+		page, err := s.subscriptionRepo.ListByFilters(orgID, &apiID, nil, nil, pageSize, offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list subscriptions for API %s: %w", apiID, err)
+		}
+		subs = append(subs, page...)
+		if len(page) < pageSize {
+			break
+		}
+	}
+	return subs, nil
+}
+
+// ListSubscriptionPlansForOrg lists all subscription plans for an organization.
+func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([]*model.SubscriptionPlan, error) {
+	if orgID == "" {
+		return nil, constants.ErrInvalidInput
+	}
+	// Internal sync: fetch all plans for the organization via pagination so reconciliation
+	// (DeleteSubscriptionPlansNotIn) never performs destructive deletes due to a cutoff.
+	const pageSize = 1000
+	var plans []*model.SubscriptionPlan
+	for offset := 0; ; offset += pageSize {
+		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, pageSize, offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list subscription plans for org %s: %w", orgID, err)
+		}
+		plans = append(plans, page...)
+		if len(page) < pageSize {
+			break
+		}
+	}
+	return plans, nil
+}
+
+// GetActiveMCPProxyDeploymentByGateway retrieves the currently deployed MCP proxy artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID, orgID, gatewayID string) (map[string]string, error) {
+	proxy, err := s.mcpProxyRepo.GetByUUID(proxyID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MCP proxy: %w", err)
+	}
+	if proxy == nil {
+		return nil, constants.ErrMCPProxyNotFound
 	}
 
 	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxy.UUID, gatewayID, orgID)

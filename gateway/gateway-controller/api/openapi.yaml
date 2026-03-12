@@ -24,29 +24,7 @@ servers:
     description: Docker/Kubernetes deployment
 
 paths:
-  /health:
-    get:
-      summary: Health check endpoint
-      description: Returns the health status of the Gateway Controller
-      operationId: healthCheck
-      tags:
-        - System
-      responses:
-        "200":
-          description: Gateway Controller is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: healthy
-                  timestamp:
-                    type: string
-                    format: date-time
-
-  /apis:
+  /rest-apis:
     post:
       summary: Create a new API configuration
       description: |
@@ -67,10 +45,10 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/APIConfiguration"
+              $ref: "#/components/schemas/RestAPI"
           application/json:
             schema:
-              $ref: "#/components/schemas/APIConfiguration"
+              $ref: "#/components/schemas/RestAPI"
             example:
               version: gateway.api-platform.wso2.com/v1alpha1
               kind: RestApi
@@ -120,7 +98,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APICreateResponse"
+                $ref: "#/components/schemas/RestAPICreateResponse"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -195,7 +173,7 @@ paths:
                   apis:
                     type: array
                     items:
-                      $ref: "#/components/schemas/APIListItem"
+                      $ref: "#/components/schemas/RestAPIListItem"
         "500":
           description: Internal server error
           content:
@@ -203,7 +181,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}:
+  /rest-apis/{id}:
     get:
       summary: Get API configuration by id
       description: |
@@ -227,10 +205,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APIDetailResponse"
+                $ref: "#/components/schemas/RestAPIDetailResponse"
             application/yaml:
               schema:
-                $ref: "#/components/schemas/APIDetailResponse"
+                $ref: "#/components/schemas/RestAPIDetailResponse"
         "404":
           description: API configuration not found
           content:
@@ -269,17 +247,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/APIConfiguration"
+              $ref: "#/components/schemas/RestAPI"
           application/json:
             schema:
-              $ref: "#/components/schemas/APIConfiguration"
+              $ref: "#/components/schemas/RestAPI"
       responses:
         "200":
           description: API configuration updated successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APIUpdateResponse"
+                $ref: "#/components/schemas/RestAPIUpdateResponse"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -347,7 +325,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/api-keys:
+  /rest-apis/{id}/api-keys:
     post:
       summary: Create a new API key for an API
       description: |
@@ -439,7 +417,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/api-keys/{apiKeyName}/regenerate:
+  /rest-apis/{id}/api-keys/{apiKeyName}/regenerate:
     post:
       summary: Regenerate API key for an API
       description: |
@@ -502,7 +480,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/api-keys/{apiKeyName}:
+  /rest-apis/{id}/api-keys/{apiKeyName}:
     put:
       summary: Update an API key with a new regenerated value
       description: |
@@ -603,6 +581,574 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: API configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription-plans:
+    post:
+      summary: Create a subscription plan
+      operationId: createSubscriptionPlan
+      tags:
+        - API Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionPlanCreateRequest"
+      responses:
+        '201':
+          description: Subscription plan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: List subscription plans
+      operationId: listSubscriptionPlans
+      tags:
+        - API Management
+      responses:
+        '200':
+          description: List of subscription plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription-plans/{planId}:
+    get:
+      summary: Get a subscription plan by ID
+      operationId: getSubscriptionPlan
+      tags:
+        - API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscription plan details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Update a subscription plan
+      operationId: updateSubscriptionPlan
+      tags:
+        - API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionPlanUpdateRequest"
+      responses:
+        '200':
+          description: Subscription plan updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete a subscription plan
+      operationId: deleteSubscriptionPlan
+      tags:
+        - API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Subscription plan deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscriptions:
+    post:
+      summary: Create a subscription
+      description: |
+        Creates an application-level subscription for the specified API.
+        Used by control plane sync and admin. applicationId references applications in DevPortal/STS.
+      operationId: createSubscription
+      tags:
+        - API Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionCreateRequest"
+      responses:
+        '201':
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - subscription already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: List subscriptions
+      description: Returns application-level subscriptions filtered by API and/or application.
+      operationId: listSubscriptions
+      tags:
+        - API Management
+      parameters:
+        - name: apiId
+          in: query
+          required: false
+          description: Filter by API ID (deployment ID or handle)
+          schema:
+            type: string
+        - name: applicationId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, REVOKED]
+      responses:
+        '200':
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscriptions/{subscriptionId}:
+    get:
+      summary: Get a subscription by ID
+      operationId: getSubscription
+      tags:
+        - API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Update a subscription
+      operationId: updateSubscription
+      tags:
+        - API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionUpdateRequest"
+      responses:
+        '200':
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete a subscription
+      operationId: deleteSubscription
+      tags:
+        - API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Subscription deleted
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websub-apis:
+    post:
+      summary: Create a new WebSub API configuration
+      description: |
+        Submit a new WebSub API configuration to the Gateway Controller. The configuration
+        is validated, persisted, and translated to Envoy xDS resources. The Router
+        begins routing traffic for the WebSub API within 5 seconds.
+      operationId: createWebSubAPI
+      tags:
+        - WebSub API Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+      responses:
+        "201":
+          description: WebSub API configuration created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPICreateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - WebSub API with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all WebSub API configurations
+      description: |
+        Retrieve a list of all deployed WebSub API configurations with metadata.
+        Returns basic information about each WebSub API (name, version, context, deployment time).
+      operationId: listWebSubAPIs
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by WebSub API display name
+          schema:
+            type: string
+          example: Weather WebSub API
+        - name: version
+          in: query
+          required: false
+          description: Filter by WebSub API version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by WebSub API context/path
+          schema:
+            type: string
+          example: /weather-events
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ pending, deployed, failed ]
+          example: pending
+      responses:
+        "200":
+          description: List of WebSub API configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  apis:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebSubAPIListItem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websub-apis/{id}:
+    get:
+      summary: Get WebSub API configuration by id
+      description: |
+        Retrieve the complete configuration for a specific WebSub API by its id.
+        The id is a unique string identifier (not a UUID).
+      operationId: getWebSubAPIById
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier for the WebSub API.
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        "200":
+          description: WebSub API configuration details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPIDetailResponse"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/WebSubAPIDetailResponse"
+        "404":
+          description: WebSub API configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing WebSub API configuration
+      description: |
+        Update an existing WebSub API configuration. The update is validated and applied atomically.
+        The Router receives the updated configuration within 5 seconds.
+      operationId: updateWebSubAPI
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebSub API to update.
+          schema:
+            type: string
+          example: weather-websub-api
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+      responses:
+        "200":
+          description: WebSub API configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPIUpdateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: WebSub API configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a WebSub API configuration
+      description: |
+        Remove a WebSub API configuration from the Gateway Controller. The Router stops
+        accepting traffic for this WebSub API within 5 seconds.
+      operationId: deleteWebSubAPI
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebSub API to delete.
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        "200":
+          description: WebSub API configuration deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: WebSub API configuration deleted successfully
+                  id:
+                    type: string
+                    example: weather-websub-api
+        "404":
+          description: WebSub API configuration not found
           content:
             application/json:
               schema:
@@ -1760,7 +2306,7 @@ paths:
 
 components:
   schemas:
-    APIConfiguration:
+    RestAPI:
       type: object
       required:
         - apiVersion
@@ -1780,14 +2326,35 @@ components:
           example: RestApi
           enum:
             - RestApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/APIConfigData'
+
+    WebSubAPI:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: API specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: API type
+          example: WebSubApi
+          enum:
             - WebSubApi
         metadata:
           $ref: "#/components/schemas/Metadata"
         spec:
-          description: API configuration payload (REST or Async API variants)
-          anyOf:
-            - $ref: '#/components/schemas/APIConfigData'
-            - $ref: '#/components/schemas/WebhookAPIData'
+          $ref: '#/components/schemas/WebhookAPIData'
 
     Metadata:
       type: object
@@ -1874,6 +2441,12 @@ components:
               description: Custom virtual host/domain for sandbox traffic
               pattern: '^[a-zA-Z0-9\.\-]+$'
               example: sandbox-api.example.com
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names available for this API
+          items:
+            type: string
+          example: ["Gold", "Silver"]
         policies:
           type: array
           description: List of API-level policies applied to all operations unless overridden
@@ -2289,7 +2862,7 @@ components:
               issue:
                 type: object
 
-    APICreateResponse:
+    RestAPICreateResponse:
       type: object
       properties:
         status:
@@ -2306,7 +2879,7 @@ components:
           type: string
           format: date-time
           example: 2025-10-11T10:30:00Z
-    APIUpdateResponse:
+    RestAPIUpdateResponse:
       type: object
       properties:
         status:
@@ -2318,6 +2891,40 @@ components:
         id:
           type: string
           example: weather-api-v1.0
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T11:45:00Z
+
+    WebSubAPICreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: WebSub API configuration created successfully
+        id:
+          type: string
+          description: Unique id for the created WebSub API configuration
+          example: weather-websub-api
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+    WebSubAPIUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: WebSub API configuration updated successfully
+        id:
+          type: string
+          example: weather-websub-api
         updatedAt:
           type: string
           format: date-time
@@ -2521,7 +3128,151 @@ components:
         - status
         - message
 
-    APIListItem:
+    SubscriptionPlanCreateRequest:
+      type: object
+      required:
+        - planName
+      properties:
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+          default: true
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+          enum: [Min, Hour, Day, Month]
+        expiryTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          default: ACTIVE
+    SubscriptionPlanUpdateRequest:
+      type: object
+      properties:
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+          enum: [Min, Hour, Day, Month]
+        expiryTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+    SubscriptionPlanResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+        expiryTime:
+          type: string
+          format: date-time
+        gatewayId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionPlanListResponse:
+      type: object
+      properties:
+        subscriptionPlans:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanResponse"
+        count:
+          type: integer
+
+    SubscriptionCreateRequest:
+      type: object
+      required:
+        - apiId
+      properties:
+        apiId:
+          type: string
+          description: API identifier (deployment ID or handle)
+          example: "c9f2b6ae-1234-5678-9abc-def012345678"
+        applicationId:
+          type: string
+          description: Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID for rate limit and billing configuration.
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+          default: ACTIVE
+    SubscriptionUpdateRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+    SubscriptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        apiId:
+          type: string
+        applicationId:
+          type: string
+        subscriptionToken:
+          type: string
+          description: Opaque subscription token for API invocation
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID
+        gatewayId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionListResponse:
+      type: object
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionResponse"
+        count:
+          type: integer
+
+    RestAPIListItem:
       type: object
       properties:
         id:
@@ -2552,7 +3303,38 @@ components:
           type: string
           format: date-time
           example: 2025-10-11T10:30:00Z
-    APIDetailResponse:
+    WebSubAPIListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: weather-websub-api
+        displayName:
+          type: string
+          example: weather-websub
+        version:
+          type: string
+          example: v1.0
+        context:
+          type: string
+          example: /weather-events
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+    RestAPIDetailResponse:
       type: object
       properties:
         status:
@@ -2566,7 +3348,45 @@ components:
               description: Unique id for the API configuration
               example: weather-api-v1.0
             configuration:
-              $ref: "#/components/schemas/APIConfiguration"
+              $ref: "#/components/schemas/RestAPI"
+            metadata:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - pending
+                    - deployed
+                    - failed
+                  example: deployed
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                deployedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:05Z
+
+    WebSubAPIDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        api:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Unique id for the WebSub API configuration
+              example: weather-websub-api
+            configuration:
+              $ref: "#/components/schemas/WebSubAPI"
             metadata:
               type: object
               properties:

@@ -237,7 +237,7 @@ gateway:
       livenessProbe:
         httpGet:
           path: /health
-          port: rest
+          port: admin
         initialDelaySeconds: 10
         periodSeconds: 10
         timeoutSeconds: 5
@@ -245,7 +245,7 @@ gateway:
       readinessProbe:
         httpGet:
           path: /health
-          port: rest
+          port: admin
         initialDelaySeconds: 5
         periodSeconds: 5
         timeoutSeconds: 3

@@ -268,16 +268,9 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
 	}
 
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err))
-		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
-	}
-
 	apiId := config.UUID
-	apiName := apiConfig.DisplayName
-	apiVersion := apiConfig.Version
+	apiName := config.DisplayName
+	apiVersion := config.Version
 	logger.Info("Storing API key in policy engine",
 		slog.String("name", apiKey.Name),
 		slog.String("api_name", apiName),
@@ -334,6 +327,14 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 			slog.Any("error", err))
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 	}
+
+	// Validate config type before any storage mutations to fail fast
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
+		logger.Error("Configuration is not a RestAPI")
+		return nil, fmt.Errorf("configuration is not a RestAPI")
+	}
+	apiConfig := restCfg.Spec
 
 	var apiKey *models.APIKey
 	var matchedKey *models.APIKey
@@ -427,13 +428,6 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// remove the api key from the policy engine
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err))
-		return nil, fmt.Errorf("failed to revoke API key: %w", err)
-	}
-
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
@@ -492,6 +486,14 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		logger.Warn("API configuration not found for API key update")
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 	}
+
+	// Validate config type before any storage mutations to fail fast
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
+		logger.Error("Configuration is not a RestAPI")
+		return nil, fmt.Errorf("configuration is not a RestAPI")
+	}
+	apiConfig := restCfg.Spec
 
 	// Get the existing API key by name
 	existingKey, err := s.store.GetAPIKeyByName(config.UUID, params.APIKeyName)
@@ -601,13 +603,6 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("failed to update API key in ConfigStore: %w", err)
 	}
 
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err))
-		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
-	}
-
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
@@ -678,6 +673,16 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 			slog.String("correlation_id", params.CorrelationID))
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 	}
+
+	// Validate config type before any storage mutations to fail fast
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
+		logger.Error("Configuration is not a RestAPI",
+			slog.String("handle", params.Handle),
+			slog.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("configuration is not a RestAPI")
+	}
+	apiConfig := restCfg.Spec
 
 	// Get the existing API key by name
 	existingKey, err := s.store.GetAPIKeyByName(config.UUID, params.APIKeyName)
@@ -791,15 +796,6 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 			}
 		}
 		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
-	}
-
-	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		logger.Error("Failed to parse API configuration data",
-			slog.Any("error", err),
-			slog.String("handle", params.Handle),
-			slog.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
 	}
 
 	apiId := config.UUID

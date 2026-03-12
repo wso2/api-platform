@@ -51,14 +51,14 @@ func TestLLMProviderTransformer_Transform_InvalidInput(t *testing.T) {
 	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	t.Run("Invalid input type returns error", func(t *testing.T) {
-		output := &api.APIConfiguration{}
+		output := &api.RestAPI{}
 		_, err := transformer.Transform("invalid-type", output)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input type")
 	})
 
 	t.Run("Nil input returns error", func(t *testing.T) {
-		output := &api.APIConfiguration{}
+		output := &api.RestAPI{}
 		_, err := transformer.Transform(nil, output)
 		assert.Error(t, err)
 	})
@@ -557,7 +557,7 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err := transformer.Transform(provider, output)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to retrieve template")
@@ -597,7 +597,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -641,7 +641,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -693,16 +693,14 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	// Check that policies were added
-	apiData, err := result.Spec.AsAPIConfigData()
-	assert.NoError(t, err)
-	require.NotEmpty(t, apiData.Operations)
-	for _, op := range apiData.Operations {
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
 		require.NotNil(t, op.Policies)
 		found := false
 		for _, p := range *op.Policies {
@@ -746,7 +744,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	providerOut := &api.APIConfiguration{}
+	providerOut := &api.RestAPI{}
 	providerAPI, err := transformer.Transform(provider, providerOut)
 	require.NoError(t, err)
 	require.NotNil(t, providerAPI)
@@ -783,17 +781,15 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(proxy, output)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	apiData, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
-	require.NotEmpty(t, apiData.Operations)
+	require.NotEmpty(t, result.Spec.Operations)
 
 	// Ensure upstream-auth policy is present on all operations
-	for _, op := range apiData.Operations {
+	for _, op := range result.Spec.Operations {
 		require.NotNil(t, op.Policies)
 		found := false
 		for _, p := range *op.Policies {
@@ -840,7 +836,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err = transformer.Transform(provider, output)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported access control mode")

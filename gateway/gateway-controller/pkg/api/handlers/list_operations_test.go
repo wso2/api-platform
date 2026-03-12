@@ -93,7 +93,7 @@ func TestListAPIKeysSuccess(t *testing.T) {
 	server.db.(*MockStorage).apiKeys["0000-key1-0000-000000000000"] = key1
 	server.db.(*MockStorage).apiKeys["0000-key2-0000-000000000000"] = key2
 
-	c, w := createTestContext("GET", "/apis/test-handle/api-keys", nil)
+	c, w := createTestContext("GET", "/rest-apis/test-handle/api-keys", nil)
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
@@ -113,7 +113,7 @@ func TestListAPIKeysSuccess(t *testing.T) {
 func TestListAPIKeysAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/apis/nonexistent/api-keys", nil)
+	c, w := createTestContext("GET", "/rest-apis/nonexistent/api-keys", nil)
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},

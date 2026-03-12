@@ -1,5 +1,5 @@
 name: request-rewrite
-version: v0.2.1
+version: v0.2.2
 description: |
   Rewrites incoming requests by updating paths, query parameters, and/or HTTP methods before forwarding to upstream services.
   Supports multiple path rewrite types: prefix replacement, full path replacement, and regex-based substitution.

@@ -71,6 +71,7 @@ services:
       - DATABASE_CONN_MAX_LIFETIME=300
       - DB_SCHEMA_PATH=./schema.postgres.sql
       - DATABASE_EXECUTE_SCHEMA_DDL=true
+      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY}
     depends_on:
       postgres:
         condition: service_healthy

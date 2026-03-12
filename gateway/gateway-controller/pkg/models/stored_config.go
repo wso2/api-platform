@@ -42,7 +42,7 @@ type StoredConfig struct {
 	Handle              string               `json:"handle"`
 	DisplayName         string               `json:"displayName"`
 	Version             string               `json:"version"`
-	Configuration       api.APIConfiguration `json:"configuration"`
+	Configuration       any                  `json:"configuration"`
 	SourceConfiguration any                  `json:"source_configuration,omitempty"`
 	Status              ConfigStatus         `json:"status"`
 	CreatedAt           time.Time            `json:"createdAt"`
@@ -59,19 +59,10 @@ func (c *StoredConfig) GetCompositeKey() string {
 // GetContext returns the context path from SourceConfiguration.
 func (c *StoredConfig) GetContext() (string, error) {
 	switch sc := c.SourceConfiguration.(type) {
-	case api.APIConfiguration:
-		if sc.Kind == api.WebSubApi {
-			asyncData, err := sc.Spec.AsWebhookAPIData()
-			if err != nil {
-				return "", fmt.Errorf("failed to get webhook API data: %w", err)
-			}
-			return asyncData.Context, nil
-		}
-		configData, err := sc.Spec.AsAPIConfigData()
-		if err != nil {
-			return "", fmt.Errorf("failed to get API config data: %w", err)
-		}
-		return configData.Context, nil
+	case api.RestAPI:
+		return sc.Spec.Context, nil
+	case api.WebSubAPI:
+		return sc.Spec.Context, nil
 	case api.LLMProviderConfiguration:
 		if sc.Spec.Context != nil {
 			return *sc.Spec.Context, nil
@@ -92,15 +83,31 @@ func (c *StoredConfig) GetContext() (string, error) {
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if sc, ok := c.SourceConfiguration.(api.APIConfiguration); ok {
-		if sc.Kind == api.RestApi {
-			httpData, err := sc.Spec.AsAPIConfigData()
-			if err != nil {
-				return nil
-			}
-			return httpData.Policies
-		}
-		// TODO: enable when policies are supported for WebSubHub
+	if sc, ok := c.SourceConfiguration.(api.RestAPI); ok {
+		return sc.Spec.Policies
+	}
+	// TODO: enable when policies are supported for WebSubHub
+	return nil
+}
+
+// GetMetadata returns the metadata from the Configuration, regardless of type.
+func (c *StoredConfig) GetMetadata() *api.Metadata {
+	switch cfg := c.Configuration.(type) {
+	case api.RestAPI:
+		return &cfg.Metadata
+	case api.WebSubAPI:
+		return &cfg.Metadata
+	}
+	return nil
+}
+
+// GetLabels returns the labels from the Configuration metadata, regardless of type.
+func (c *StoredConfig) GetLabels() *map[string]string {
+	switch cfg := c.Configuration.(type) {
+	case api.RestAPI:
+		return cfg.Metadata.Labels
+	case api.WebSubAPI:
+		return cfg.Metadata.Labels
 	}
 	return nil
 }

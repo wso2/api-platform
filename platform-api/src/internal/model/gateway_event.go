@@ -146,3 +146,36 @@ type GatewayConfigEvent struct {
 	// Action specifies the configuration change action ("update", "delete", "refresh")
 	Action string `json:"action"`
 }
+
+// MCPProxyDeploymentEvent contains payload data for "mcpproxy.deployed" event type.
+// This event is sent when an MCP proxy is successfully deployed to a gateway.
+type MCPProxyDeploymentEvent struct {
+	// ProxyId identifies the deployed MCP proxy (handle)
+	ProxyId string `json:"proxyId"`
+
+	// DeploymentID identifies the specific deployment artifact
+	DeploymentID string `json:"deploymentId"`
+
+	// Vhost specifies the virtual host where the proxy is deployed
+	Vhost string `json:"vhost"`
+}
+
+// MCPProxyUndeploymentEvent contains payload data for "mcpproxy.undeployed" event type.
+// This event is sent when an MCP proxy is undeployed from a gateway.
+type MCPProxyUndeploymentEvent struct {
+	// ProxyId identifies the undeployed MCP proxy (handle)
+	ProxyId string `json:"proxyId"`
+
+	// Vhost specifies the virtual host from which the proxy is undeployed
+	Vhost string `json:"vhost"`
+}
+
+// MCPProxyDeletionEvent contains payload data for "mcpproxy.deleted" event type.
+// This event is sent when an MCP proxy is permanently deleted from the platform.
+type MCPProxyDeletionEvent struct {
+	// ProxyId identifies the deleted MCP proxy
+	ProxyId string `json:"proxyId"`
+
+	// Vhost specifies the virtual host from which the proxy should be removed
+	Vhost string `json:"vhost"`
+}

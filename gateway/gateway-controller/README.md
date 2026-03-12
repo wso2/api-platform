@@ -286,7 +286,7 @@ Response:
 #### Create API Configuration
 
 ```bash
-POST /apis
+POST /rest-apis
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -315,24 +315,24 @@ Response:
 #### List All APIs
 
 ```bash
-GET /apis
+GET /rest-apis
 ```
 
 #### Get API by Name and Version
 
 ```bash
-GET /apis/{name}/{version}
+GET /rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-GET /apis/Weather%20API/v1.0
+GET /rest-apis/Weather%20API/v1.0
 ```
 
 #### Update API
 
 ```bash
-PUT /apis/{name}/{version}
+PUT /rest-apis/{name}/{version}
 Content-Type: application/yaml
 
 <updated configuration>
@@ -340,7 +340,7 @@ Content-Type: application/yaml
 
 Example:
 ```bash
-PUT /apis/Weather%20API/v1.0
+PUT /rest-apis/Weather%20API/v1.0
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -359,12 +359,12 @@ data:
 #### Delete API
 
 ```bash
-DELETE /apis/{name}/{version}
+DELETE /rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-DELETE /apis/Weather%20API/v1.0
+DELETE /rest-apis/Weather%20API/v1.0
 ```
 
 ## Data Storage

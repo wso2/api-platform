@@ -26,6 +26,12 @@ local function resolve_target_method(metadata)
     return nil
   end
 
+  -- Check the new SDK format first (mods.Method sets this)
+  local method_key = metadata["method"]
+  if method_key ~= nil then
+    return method_key
+  end
+
   local direct = metadata["request_transformation.target_method"]
   if direct ~= nil then
     return direct
@@ -47,6 +53,12 @@ end
 local function resolve_target_path(metadata)
   if metadata == nil then
     return nil
+  end
+
+  -- Check the new SDK format first (mods.Path sets this)
+  local path_key = metadata["path"]
+  if path_key ~= nil then
+    return path_key
   end
 
   local direct = metadata["request_transformation.target_path"]

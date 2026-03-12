@@ -22,7 +22,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
+	"errors"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"platform-api/src/internal/model"
@@ -166,6 +171,38 @@ func CreateBatchDeploymentTarGz(deploymentContentMap map[string]*model.Deploymen
 	return buf.Bytes(), nil
 }
 
+// CreateMCPProxyYamlZip creates a ZIP file containing MCP proxy YAML files
+func CreateMCPProxyYamlZip(proxyYamlMap map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+
+	for proxyID, yamlContent := range proxyYamlMap {
+		fileName := fmt.Sprintf("mcp-proxy-%s.yaml", proxyID)
+		fileWriter, err := zipWriter.Create(fileName)
+		if err != nil {
+			if closeErr := zipWriter.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to create file in zip: %w (close error: %v)", err, closeErr)
+			}
+			return nil, fmt.Errorf("failed to create file in zip: %w", err)
+		}
+
+		_, err = fileWriter.Write([]byte(yamlContent))
+		if err != nil {
+			if closeErr := zipWriter.Close(); closeErr != nil {
+				return nil, fmt.Errorf("failed to write file content: %w (close error: %v)", err, closeErr)
+			}
+			return nil, fmt.Errorf("failed to write file content: %w", err)
+		}
+	}
+
+	err := zipWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
 // OpenAPIUUIDToString converts an OpenAPI UUID to string.
 func OpenAPIUUIDToString(id openapi_types.UUID) string {
 	return uuid.UUID(id).String()
@@ -209,7 +246,7 @@ func ParseOpenAPIUUIDOrZero(id string) openapi_types.UUID {
 
 // StringPtrIfNotEmpty returns a pointer for non-empty strings.
 func StringPtrIfNotEmpty(value string) *string {
-	if value == "" {
+	if strings.TrimSpace(value) == "" {
 		return nil
 	}
 	return &value
@@ -231,6 +268,14 @@ func stringSlicePtr(values []string) *[]string {
 	}
 
 	return &values
+}
+
+// stringSliceValue returns the slice value or nil slice if the pointer is nil.
+func stringSliceValue(ptr *[]string) []string {
+	if ptr == nil {
+		return nil
+	}
+	return *ptr
 }
 
 // TimePtrIfNotZero returns a pointer for non-zero timestamps.
@@ -270,6 +315,30 @@ func StringPtrValue(ptr *string) string {
 	return *ptr
 }
 
+// ValueOrEmpty returns the string value or empty string if nil
+func ValueOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// DefaultStringPtr returns the string value if not nil/empty, otherwise the default
+func DefaultStringPtr(v *string, def string) string {
+	if v == nil {
+		return def
+	}
+	if strings.TrimSpace(*v) == "" {
+		return def
+	}
+	return *v
+}
+
+// TimePtr returns a pointer to the given time
+func TimePtr(t time.Time) *time.Time {
+	return &t
+}
+
 // GenerateUUID generates a new UUID v7 string
 func GenerateUUID() (string, error) {
 	u, err := uuid.NewV7()
@@ -277,4 +346,64 @@ func GenerateUUID() (string, error) {
 		return "", fmt.Errorf("failed to generate UUID v7: %w", err)
 	}
 	return u.String(), nil
+}
+
+// ValidateURL validates a URL with additional checks
+func ValidateURL(ctx context.Context, rawURL string) error {
+	if rawURL == "" {
+		return errors.New("URL is required")
+	}
+
+	parsedURL, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return errors.New("Invalid URL format")
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return errors.New("URL must use http or https")
+	}
+
+	if parsedURL.Host == "" {
+		return errors.New("URL must include a valid host")
+	}
+
+	if parsedURL.User != nil {
+		return errors.New("URL must not include user credentials")
+	}
+
+	if parsedURL.Fragment != "" {
+		return errors.New("URL must not include a fragment")
+	}
+
+	if parsedURL.Port() != "" {
+		port, err := strconv.Atoi(parsedURL.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return errors.New("URL must include a valid port")
+		}
+	}
+
+	if hasTraversalSegments(parsedURL.EscapedPath()) {
+		return errors.New("URL path must not contain traversal segments")
+	}
+
+	return nil
+}
+
+func hasTraversalSegments(escapedPath string) bool {
+	for segment := range strings.SplitSeq(escapedPath, "/") {
+		if segment == "" {
+			continue
+		}
+
+		unescapedSegment, err := url.PathUnescape(segment)
+		if err != nil {
+			return true
+		}
+
+		if unescapedSegment == "." || unescapedSegment == ".." || strings.Contains(unescapedSegment, `\`) {
+			return true
+		}
+	}
+
+	return false
 }

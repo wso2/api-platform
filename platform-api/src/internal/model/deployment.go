@@ -75,3 +75,34 @@ type DeploymentInfo struct {
 	Status       DeploymentStatus `json:"status" db:"status"`
 	UpdatedAt    time.Time        `json:"updatedAt" db:"updated_at"` // DeployedAt timestamp
 }
+
+// DeploymentMetadata represents the metadata section of the API deployment YAML
+type DeploymentMetadata struct {
+	Name   string            `yaml:"name" binding:"required"`
+	Labels map[string]string `yaml:"labels,omitempty"`
+}
+
+// MCPProxyDeploymentYAML represents the structure of the YAML used for deploying an MCP proxy
+type MCPProxyDeploymentYAML struct {
+	ApiVersion string                 `yaml:"apiVersion" binding:"required"`
+	Kind       string                 `yaml:"kind" binding:"required"`
+	Metadata   DeploymentMetadata     `yaml:"metadata" binding:"required"`
+	Spec       MCPProxyDeploymentSpec `yaml:"spec" binding:"required"`
+}
+
+// MCPProxyDeploymentSpec represents the spec section of the MCP proxy deployment YAML
+type MCPProxyDeploymentSpec struct {
+	DisplayName string           `yaml:"displayName" binding:"required"`
+	Version     string           `yaml:"version" binding:"required"`
+	Context     string           `yaml:"context" binding:"required"`
+	Vhost       *string          `yaml:"vhost" binding:"required"`
+	Upstream    MCPProxyUpstream `yaml:"upstream" binding:"required"`
+	SpecVersion string           `yaml:"specVersion" binding:"required"`
+	Policies    []Policy         `yaml:"policies,omitempty"`
+}
+
+// Adding this type to support the model in the gateway side
+type MCPProxyUpstream struct {
+	URL  string        `yaml:"url" binding:"required"`
+	Auth *UpstreamAuth `json:"auth,omitempty"`
+}
