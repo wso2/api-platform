@@ -20,24 +20,6 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// Defines values for APIConfigurationApiVersion.
-const (
-	APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 APIConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
-)
-
-// Defines values for APIConfigurationKind.
-const (
-	RestApi   APIConfigurationKind = "RestApi"
-	WebSubApi APIConfigurationKind = "WebSubApi"
-)
-
-// Defines values for APIDetailResponseApiMetadataStatus.
-const (
-	APIDetailResponseApiMetadataStatusDeployed APIDetailResponseApiMetadataStatus = "deployed"
-	APIDetailResponseApiMetadataStatusFailed   APIDetailResponseApiMetadataStatus = "failed"
-	APIDetailResponseApiMetadataStatusPending  APIDetailResponseApiMetadataStatus = "pending"
-)
-
 // Defines values for APIKeySource.
 const (
 	External APIKeySource = "external"
@@ -69,14 +51,6 @@ const (
 	APIKeyRegenerationRequestExpiresInUnitMonths  APIKeyRegenerationRequestExpiresInUnit = "months"
 	APIKeyRegenerationRequestExpiresInUnitSeconds APIKeyRegenerationRequestExpiresInUnit = "seconds"
 	APIKeyRegenerationRequestExpiresInUnitWeeks   APIKeyRegenerationRequestExpiresInUnit = "weeks"
-)
-
-// Defines values for APIListItemStatus.
-const (
-	APIListItemStatusDeployed   APIListItemStatus = "deployed"
-	APIListItemStatusFailed     APIListItemStatus = "failed"
-	APIListItemStatusPending    APIListItemStatus = "pending"
-	APIListItemStatusUndeployed APIListItemStatus = "undeployed"
 )
 
 // Defines values for CertificateResponseStatus.
@@ -210,7 +184,7 @@ const (
 
 // Defines values for MCPProxyConfigurationApiVersion.
 const (
-	GatewayApiPlatformWso2Comv1alpha1 MCPProxyConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+	MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 MCPProxyConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
 // Defines values for MCPProxyConfigurationKind.
@@ -236,6 +210,31 @@ const (
 	OperationMethodPUT     OperationMethod = "PUT"
 )
 
+// Defines values for RestAPIApiVersion.
+const (
+	RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 RestAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for RestAPIKind.
+const (
+	RestApi RestAPIKind = "RestApi"
+)
+
+// Defines values for RestAPIDetailResponseApiMetadataStatus.
+const (
+	RestAPIDetailResponseApiMetadataStatusDeployed RestAPIDetailResponseApiMetadataStatus = "deployed"
+	RestAPIDetailResponseApiMetadataStatusFailed   RestAPIDetailResponseApiMetadataStatus = "failed"
+	RestAPIDetailResponseApiMetadataStatusPending  RestAPIDetailResponseApiMetadataStatus = "pending"
+)
+
+// Defines values for RestAPIListItemStatus.
+const (
+	RestAPIListItemStatusDeployed   RestAPIListItemStatus = "deployed"
+	RestAPIListItemStatusFailed     RestAPIListItemStatus = "failed"
+	RestAPIListItemStatusPending    RestAPIListItemStatus = "pending"
+	RestAPIListItemStatusUndeployed RestAPIListItemStatus = "undeployed"
+)
+
 // Defines values for RouteExceptionMethods.
 const (
 	DELETE RouteExceptionMethods = "DELETE"
@@ -243,6 +242,61 @@ const (
 	PATCH  RouteExceptionMethods = "PATCH"
 	POST   RouteExceptionMethods = "POST"
 	PUT    RouteExceptionMethods = "PUT"
+)
+
+// Defines values for SubscriptionCreateRequestStatus.
+const (
+	SubscriptionCreateRequestStatusACTIVE   SubscriptionCreateRequestStatus = "ACTIVE"
+	SubscriptionCreateRequestStatusINACTIVE SubscriptionCreateRequestStatus = "INACTIVE"
+	SubscriptionCreateRequestStatusREVOKED  SubscriptionCreateRequestStatus = "REVOKED"
+)
+
+// Defines values for SubscriptionPlanCreateRequestStatus.
+const (
+	SubscriptionPlanCreateRequestStatusACTIVE   SubscriptionPlanCreateRequestStatus = "ACTIVE"
+	SubscriptionPlanCreateRequestStatusINACTIVE SubscriptionPlanCreateRequestStatus = "INACTIVE"
+)
+
+// Defines values for SubscriptionPlanCreateRequestThrottleLimitUnit.
+const (
+	SubscriptionPlanCreateRequestThrottleLimitUnitDay   SubscriptionPlanCreateRequestThrottleLimitUnit = "Day"
+	SubscriptionPlanCreateRequestThrottleLimitUnitHour  SubscriptionPlanCreateRequestThrottleLimitUnit = "Hour"
+	SubscriptionPlanCreateRequestThrottleLimitUnitMin   SubscriptionPlanCreateRequestThrottleLimitUnit = "Min"
+	SubscriptionPlanCreateRequestThrottleLimitUnitMonth SubscriptionPlanCreateRequestThrottleLimitUnit = "Month"
+)
+
+// Defines values for SubscriptionPlanResponseStatus.
+const (
+	SubscriptionPlanResponseStatusACTIVE   SubscriptionPlanResponseStatus = "ACTIVE"
+	SubscriptionPlanResponseStatusINACTIVE SubscriptionPlanResponseStatus = "INACTIVE"
+)
+
+// Defines values for SubscriptionPlanUpdateRequestStatus.
+const (
+	SubscriptionPlanUpdateRequestStatusACTIVE   SubscriptionPlanUpdateRequestStatus = "ACTIVE"
+	SubscriptionPlanUpdateRequestStatusINACTIVE SubscriptionPlanUpdateRequestStatus = "INACTIVE"
+)
+
+// Defines values for SubscriptionPlanUpdateRequestThrottleLimitUnit.
+const (
+	SubscriptionPlanUpdateRequestThrottleLimitUnitDay   SubscriptionPlanUpdateRequestThrottleLimitUnit = "Day"
+	SubscriptionPlanUpdateRequestThrottleLimitUnitHour  SubscriptionPlanUpdateRequestThrottleLimitUnit = "Hour"
+	SubscriptionPlanUpdateRequestThrottleLimitUnitMin   SubscriptionPlanUpdateRequestThrottleLimitUnit = "Min"
+	SubscriptionPlanUpdateRequestThrottleLimitUnitMonth SubscriptionPlanUpdateRequestThrottleLimitUnit = "Month"
+)
+
+// Defines values for SubscriptionResponseStatus.
+const (
+	SubscriptionResponseStatusACTIVE   SubscriptionResponseStatus = "ACTIVE"
+	SubscriptionResponseStatusINACTIVE SubscriptionResponseStatus = "INACTIVE"
+	SubscriptionResponseStatusREVOKED  SubscriptionResponseStatus = "REVOKED"
+)
+
+// Defines values for SubscriptionUpdateRequestStatus.
+const (
+	SubscriptionUpdateRequestStatusACTIVE   SubscriptionUpdateRequestStatus = "ACTIVE"
+	SubscriptionUpdateRequestStatusINACTIVE SubscriptionUpdateRequestStatus = "INACTIVE"
+	SubscriptionUpdateRequestStatusREVOKED  SubscriptionUpdateRequestStatus = "REVOKED"
 )
 
 // Defines values for UpstreamHostRewrite.
@@ -256,11 +310,29 @@ const (
 	UpstreamAuthAuthTypeApiKey UpstreamAuthAuthType = "api-key"
 )
 
-// Defines values for ListAPIsParamsStatus.
+// Defines values for WebSubAPIApiVersion.
 const (
-	ListAPIsParamsStatusDeployed ListAPIsParamsStatus = "deployed"
-	ListAPIsParamsStatusFailed   ListAPIsParamsStatus = "failed"
-	ListAPIsParamsStatusPending  ListAPIsParamsStatus = "pending"
+	WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 WebSubAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for WebSubAPIKind.
+const (
+	WebSubApi WebSubAPIKind = "WebSubApi"
+)
+
+// Defines values for WebSubAPIDetailResponseApiMetadataStatus.
+const (
+	WebSubAPIDetailResponseApiMetadataStatusDeployed WebSubAPIDetailResponseApiMetadataStatus = "deployed"
+	WebSubAPIDetailResponseApiMetadataStatusFailed   WebSubAPIDetailResponseApiMetadataStatus = "failed"
+	WebSubAPIDetailResponseApiMetadataStatusPending  WebSubAPIDetailResponseApiMetadataStatus = "pending"
+)
+
+// Defines values for WebSubAPIListItemStatus.
+const (
+	WebSubAPIListItemStatusDeployed   WebSubAPIListItemStatus = "deployed"
+	WebSubAPIListItemStatusFailed     WebSubAPIListItemStatus = "failed"
+	WebSubAPIListItemStatusPending    WebSubAPIListItemStatus = "pending"
+	WebSubAPIListItemStatusUndeployed WebSubAPIListItemStatus = "undeployed"
 )
 
 // Defines values for ListLLMProvidersParamsStatus.
@@ -284,6 +356,27 @@ const (
 	ListMCPProxiesParamsStatusPending  ListMCPProxiesParamsStatus = "pending"
 )
 
+// Defines values for ListAPIsParamsStatus.
+const (
+	ListAPIsParamsStatusDeployed ListAPIsParamsStatus = "deployed"
+	ListAPIsParamsStatusFailed   ListAPIsParamsStatus = "failed"
+	ListAPIsParamsStatusPending  ListAPIsParamsStatus = "pending"
+)
+
+// Defines values for ListSubscriptionsParamsStatus.
+const (
+	ACTIVE   ListSubscriptionsParamsStatus = "ACTIVE"
+	INACTIVE ListSubscriptionsParamsStatus = "INACTIVE"
+	REVOKED  ListSubscriptionsParamsStatus = "REVOKED"
+)
+
+// Defines values for ListWebSubAPIsParamsStatus.
+const (
+	Deployed ListWebSubAPIsParamsStatus = "deployed"
+	Failed   ListWebSubAPIsParamsStatus = "failed"
+	Pending  ListWebSubAPIsParamsStatus = "pending"
+)
+
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
 	// Context Base path for all API routes (must start with /, no trailing slash)
@@ -297,6 +390,9 @@ type APIConfigData struct {
 
 	// Policies List of API-level policies applied to all operations unless overridden
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names available for this API
+	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// Upstream API-level upstream configuration
 	Upstream struct {
@@ -322,60 +418,6 @@ type APIConfigData struct {
 		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 	} `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 }
-
-// APIConfiguration defines model for APIConfiguration.
-type APIConfiguration struct {
-	// ApiVersion API specification version
-	ApiVersion APIConfigurationApiVersion `json:"apiVersion" yaml:"apiVersion"`
-
-	// Kind API type
-	Kind     APIConfigurationKind `json:"kind" yaml:"kind"`
-	Metadata Metadata             `json:"metadata" yaml:"metadata"`
-
-	// Spec API configuration payload (REST or Async API variants)
-	Spec APIConfiguration_Spec `json:"spec" yaml:"spec"`
-}
-
-// APIConfigurationApiVersion API specification version
-type APIConfigurationApiVersion string
-
-// APIConfigurationKind API type
-type APIConfigurationKind string
-
-// APIConfiguration_Spec API configuration payload (REST or Async API variants)
-type APIConfiguration_Spec struct {
-	union json.RawMessage
-}
-
-// APICreateResponse defines model for APICreateResponse.
-type APICreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-	// Id Unique id for the created API configuration
-	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
-	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
-	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// APIDetailResponse defines model for APIDetailResponse.
-type APIDetailResponse struct {
-	Api *struct {
-		Configuration *APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-
-		// Id Unique id for the API configuration
-		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata *struct {
-			CreatedAt  *time.Time                          `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			DeployedAt *time.Time                          `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-			Status     *APIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                          `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// APIDetailResponseApiMetadataStatus defines model for APIDetailResponse.Api.Metadata.Status.
-type APIDetailResponseApiMetadataStatus string
 
 // APIKey Details of an API key
 type APIKey struct {
@@ -508,28 +550,6 @@ type APIKeyRevocationResponse struct {
 
 // APIKeyUpdateRequest defines model for APIKeyUpdateRequest.
 type APIKeyUpdateRequest = APIKeyCreationRequest
-
-// APIListItem defines model for APIListItem.
-type APIListItem struct {
-	Context     *string            `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt   *time.Time         `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string            `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string            `json:"id,omitempty" yaml:"id,omitempty"`
-	Status      *APIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt   *time.Time         `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version     *string            `json:"version,omitempty" yaml:"version,omitempty"`
-}
-
-// APIListItemStatus defines model for APIListItem.Status.
-type APIListItemStatus string
-
-// APIUpdateResponse defines model for APIUpdateResponse.
-type APIUpdateResponse struct {
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-}
 
 // CertificateListResponse defines model for CertificateListResponse.
 type CertificateListResponse struct {
@@ -1198,6 +1218,75 @@ type PolicyListResponse struct {
 	Status   *string             `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
+// RestAPI defines model for RestAPI.
+type RestAPI struct {
+	// ApiVersion API specification version
+	ApiVersion RestAPIApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind API type
+	Kind     RestAPIKind   `json:"kind" yaml:"kind"`
+	Metadata Metadata      `json:"metadata" yaml:"metadata"`
+	Spec     APIConfigData `json:"spec" yaml:"spec"`
+}
+
+// RestAPIApiVersion API specification version
+type RestAPIApiVersion string
+
+// RestAPIKind API type
+type RestAPIKind string
+
+// RestAPICreateResponse defines model for RestAPICreateResponse.
+type RestAPICreateResponse struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Unique id for the created API configuration
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// RestAPIDetailResponse defines model for RestAPIDetailResponse.
+type RestAPIDetailResponse struct {
+	Api *struct {
+		Configuration *RestAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+
+		// Id Unique id for the API configuration
+		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
+		Metadata *struct {
+			CreatedAt  *time.Time                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+			DeployedAt *time.Time                              `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
+			Status     *RestAPIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	} `json:"api,omitempty" yaml:"api,omitempty"`
+	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// RestAPIDetailResponseApiMetadataStatus defines model for RestAPIDetailResponse.Api.Metadata.Status.
+type RestAPIDetailResponseApiMetadataStatus string
+
+// RestAPIListItem defines model for RestAPIListItem.
+type RestAPIListItem struct {
+	Context     *string                `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time             `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName *string                `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Id          *string                `json:"id,omitempty" yaml:"id,omitempty"`
+	Status      *RestAPIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt   *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version     *string                `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// RestAPIListItemStatus defines model for RestAPIListItem.Status.
+type RestAPIListItemStatus string
+
+// RestAPIUpdateResponse defines model for RestAPIUpdateResponse.
+type RestAPIUpdateResponse struct {
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
 // RouteException defines model for RouteException.
 type RouteException struct {
 	// Methods HTTP methods
@@ -1209,6 +1298,114 @@ type RouteException struct {
 
 // RouteExceptionMethods defines model for RouteException.Methods.
 type RouteExceptionMethods string
+
+// SubscriptionCreateRequest defines model for SubscriptionCreateRequest.
+type SubscriptionCreateRequest struct {
+	// ApiId API identifier (deployment ID or handle)
+	ApiId string `json:"apiId" yaml:"apiId"`
+
+	// ApplicationId Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
+	ApplicationId *string                          `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	Status        *SubscriptionCreateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionPlanId Subscription plan UUID for rate limit and billing configuration.
+	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+}
+
+// SubscriptionCreateRequestStatus defines model for SubscriptionCreateRequest.Status.
+type SubscriptionCreateRequestStatus string
+
+// SubscriptionListResponse defines model for SubscriptionListResponse.
+type SubscriptionListResponse struct {
+	Count         *int                    `json:"count,omitempty" yaml:"count,omitempty"`
+	Subscriptions *[]SubscriptionResponse `json:"subscriptions,omitempty" yaml:"subscriptions,omitempty"`
+}
+
+// SubscriptionPlanCreateRequest defines model for SubscriptionPlanCreateRequest.
+type SubscriptionPlanCreateRequest struct {
+	BillingPlan        *string                                         `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	ExpiryTime         *time.Time                                      `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	PlanName           string                                          `json:"planName" yaml:"planName"`
+	Status             *SubscriptionPlanCreateRequestStatus            `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach   *bool                                           `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+	ThrottleLimitCount *int                                            `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  *SubscriptionPlanCreateRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+}
+
+// SubscriptionPlanCreateRequestStatus defines model for SubscriptionPlanCreateRequest.Status.
+type SubscriptionPlanCreateRequestStatus string
+
+// SubscriptionPlanCreateRequestThrottleLimitUnit defines model for SubscriptionPlanCreateRequest.ThrottleLimitUnit.
+type SubscriptionPlanCreateRequestThrottleLimitUnit string
+
+// SubscriptionPlanListResponse defines model for SubscriptionPlanListResponse.
+type SubscriptionPlanListResponse struct {
+	Count             *int                        `json:"count,omitempty" yaml:"count,omitempty"`
+	SubscriptionPlans *[]SubscriptionPlanResponse `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+}
+
+// SubscriptionPlanResponse defines model for SubscriptionPlanResponse.
+type SubscriptionPlanResponse struct {
+	BillingPlan        *string                         `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	CreatedAt          *time.Time                      `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	ExpiryTime         *time.Time                      `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	GatewayId          *string                         `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Id                 *string                         `json:"id,omitempty" yaml:"id,omitempty"`
+	PlanName           *string                         `json:"planName,omitempty" yaml:"planName,omitempty"`
+	Status             *SubscriptionPlanResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach   *bool                           `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+	ThrottleLimitCount *int                            `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  *string                         `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+	UpdatedAt          *time.Time                      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionPlanResponseStatus defines model for SubscriptionPlanResponse.Status.
+type SubscriptionPlanResponseStatus string
+
+// SubscriptionPlanUpdateRequest defines model for SubscriptionPlanUpdateRequest.
+type SubscriptionPlanUpdateRequest struct {
+	BillingPlan        *string                                         `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	ExpiryTime         *time.Time                                      `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	PlanName           *string                                         `json:"planName,omitempty" yaml:"planName,omitempty"`
+	Status             *SubscriptionPlanUpdateRequestStatus            `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach   *bool                                           `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+	ThrottleLimitCount *int                                            `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  *SubscriptionPlanUpdateRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+}
+
+// SubscriptionPlanUpdateRequestStatus defines model for SubscriptionPlanUpdateRequest.Status.
+type SubscriptionPlanUpdateRequestStatus string
+
+// SubscriptionPlanUpdateRequestThrottleLimitUnit defines model for SubscriptionPlanUpdateRequest.ThrottleLimitUnit.
+type SubscriptionPlanUpdateRequestThrottleLimitUnit string
+
+// SubscriptionResponse defines model for SubscriptionResponse.
+type SubscriptionResponse struct {
+	ApiId         *string                     `json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	ApplicationId *string                     `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	CreatedAt     *time.Time                  `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	GatewayId     *string                     `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Id            *string                     `json:"id,omitempty" yaml:"id,omitempty"`
+	Status        *SubscriptionResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionPlanId Subscription plan UUID
+	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+
+	// SubscriptionToken Opaque subscription token for API invocation
+	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionResponseStatus defines model for SubscriptionResponse.Status.
+type SubscriptionResponseStatus string
+
+// SubscriptionUpdateRequest defines model for SubscriptionUpdateRequest.
+type SubscriptionUpdateRequest struct {
+	Status *SubscriptionUpdateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// SubscriptionUpdateRequestStatus defines model for SubscriptionUpdateRequest.Status.
+type SubscriptionUpdateRequestStatus string
 
 // Upstream Upstream backend configuration (single target or reference)
 type Upstream struct {
@@ -1246,16 +1443,19 @@ type UpstreamAuthAuthType string
 
 // UpstreamDefinition Reusable upstream configuration with optional timeout and load balancing settings
 type UpstreamDefinition struct {
+	// BasePath Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended.
+	BasePath *string `json:"basePath,omitempty" yaml:"basePath,omitempty"`
+
 	// Name Unique identifier for this upstream definition
 	Name string `json:"name" yaml:"name"`
 
 	// Timeout Timeout configuration for upstream requests
 	Timeout *UpstreamTimeout `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 
-	// Upstreams List of backend targets with optional weights
+	// Upstreams List of backend targets with optional weights for load balancing
 	Upstreams []struct {
-		// Urls Backend URLs for this upstream target
-		Urls []string `json:"urls" yaml:"urls"`
+		// Url Backend URL (host and port only, path comes from basePath)
+		Url string `json:"url" yaml:"url"`
 
 		// Weight Weight for load balancing (optional, default 100)
 		Weight *int `json:"weight,omitempty" yaml:"weight,omitempty"`
@@ -1275,6 +1475,75 @@ type ValidationError struct {
 
 	// Message Human-readable error message
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+// WebSubAPI defines model for WebSubAPI.
+type WebSubAPI struct {
+	// ApiVersion API specification version
+	ApiVersion WebSubAPIApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind API type
+	Kind     WebSubAPIKind  `json:"kind" yaml:"kind"`
+	Metadata Metadata       `json:"metadata" yaml:"metadata"`
+	Spec     WebhookAPIData `json:"spec" yaml:"spec"`
+}
+
+// WebSubAPIApiVersion API specification version
+type WebSubAPIApiVersion string
+
+// WebSubAPIKind API type
+type WebSubAPIKind string
+
+// WebSubAPICreateResponse defines model for WebSubAPICreateResponse.
+type WebSubAPICreateResponse struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Unique id for the created WebSub API configuration
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// WebSubAPIDetailResponse defines model for WebSubAPIDetailResponse.
+type WebSubAPIDetailResponse struct {
+	Api *struct {
+		Configuration *WebSubAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+
+		// Id Unique id for the WebSub API configuration
+		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
+		Metadata *struct {
+			CreatedAt  *time.Time                                `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+			DeployedAt *time.Time                                `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
+			Status     *WebSubAPIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                                `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	} `json:"api,omitempty" yaml:"api,omitempty"`
+	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// WebSubAPIDetailResponseApiMetadataStatus defines model for WebSubAPIDetailResponse.Api.Metadata.Status.
+type WebSubAPIDetailResponseApiMetadataStatus string
+
+// WebSubAPIListItem defines model for WebSubAPIListItem.
+type WebSubAPIListItem struct {
+	Context     *string                  `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time               `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName *string                  `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Id          *string                  `json:"id,omitempty" yaml:"id,omitempty"`
+	Status      *WebSubAPIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt   *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version     *string                  `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// WebSubAPIListItemStatus defines model for WebSubAPIListItem.Status.
+type WebSubAPIListItemStatus string
+
+// WebSubAPIUpdateResponse defines model for WebSubAPIUpdateResponse.
+type WebSubAPIUpdateResponse struct {
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // WebhookAPIData defines model for WebhookAPIData.
@@ -1303,24 +1572,6 @@ type WebhookAPIData struct {
 		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 	} `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 }
-
-// ListAPIsParams defines parameters for ListAPIs.
-type ListAPIsParams struct {
-	// DisplayName Filter by API display name
-	DisplayName *string `form:"displayName,omitempty" json:"displayName,omitempty" yaml:"displayName,omitempty"`
-
-	// Version Filter by API version
-	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Context Filter by API context/path
-	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
-
-	// Status Filter by deployment status
-	Status *ListAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// ListAPIsParamsStatus defines parameters for ListAPIs.
-type ListAPIsParamsStatus string
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
@@ -1388,20 +1639,52 @@ type ListMCPProxiesParams struct {
 // ListMCPProxiesParamsStatus defines parameters for ListMCPProxies.
 type ListMCPProxiesParamsStatus string
 
-// CreateAPIJSONRequestBody defines body for CreateAPI for application/json ContentType.
-type CreateAPIJSONRequestBody = APIConfiguration
+// ListAPIsParams defines parameters for ListAPIs.
+type ListAPIsParams struct {
+	// DisplayName Filter by API display name
+	DisplayName *string `form:"displayName,omitempty" json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
-// UpdateAPIJSONRequestBody defines body for UpdateAPI for application/json ContentType.
-type UpdateAPIJSONRequestBody = APIConfiguration
+	// Version Filter by API version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 
-// CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
-type CreateAPIKeyJSONRequestBody = APIKeyCreationRequest
+	// Context Filter by API context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
 
-// UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
-type UpdateAPIKeyJSONRequestBody = APIKeyUpdateRequest
+	// Status Filter by deployment status
+	Status *ListAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
 
-// RegenerateAPIKeyJSONRequestBody defines body for RegenerateAPIKey for application/json ContentType.
-type RegenerateAPIKeyJSONRequestBody = APIKeyRegenerationRequest
+// ListAPIsParamsStatus defines parameters for ListAPIs.
+type ListAPIsParamsStatus string
+
+// ListSubscriptionsParams defines parameters for ListSubscriptions.
+type ListSubscriptionsParams struct {
+	// ApiId Filter by API ID (deployment ID or handle)
+	ApiId         *string                        `form:"apiId,omitempty" json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	ApplicationId *string                        `form:"applicationId,omitempty" json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	Status        *ListSubscriptionsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// ListSubscriptionsParamsStatus defines parameters for ListSubscriptions.
+type ListSubscriptionsParamsStatus string
+
+// ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
+type ListWebSubAPIsParams struct {
+	// DisplayName Filter by WebSub API display name
+	DisplayName *string `form:"displayName,omitempty" json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Version Filter by WebSub API version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Context Filter by WebSub API context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
+
+	// Status Filter by deployment status
+	Status *ListWebSubAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// ListWebSubAPIsParamsStatus defines parameters for ListWebSubAPIs.
+type ListWebSubAPIsParamsStatus string
 
 // UploadCertificateJSONRequestBody defines body for UploadCertificate for application/json ContentType.
 type UploadCertificateJSONRequestBody = CertificateUploadRequest
@@ -1430,67 +1713,38 @@ type CreateMCPProxyJSONRequestBody = MCPProxyConfiguration
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
 type UpdateMCPProxyJSONRequestBody = MCPProxyConfiguration
 
-// AsAPIConfigData returns the union data inside the APIConfiguration_Spec as a APIConfigData
-func (t APIConfiguration_Spec) AsAPIConfigData() (APIConfigData, error) {
-	var body APIConfigData
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
+// CreateAPIJSONRequestBody defines body for CreateAPI for application/json ContentType.
+type CreateAPIJSONRequestBody = RestAPI
 
-// FromAPIConfigData overwrites any union data inside the APIConfiguration_Spec as the provided APIConfigData
-func (t *APIConfiguration_Spec) FromAPIConfigData(v APIConfigData) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
+// UpdateAPIJSONRequestBody defines body for UpdateAPI for application/json ContentType.
+type UpdateAPIJSONRequestBody = RestAPI
 
-// MergeAPIConfigData performs a merge with any union data inside the APIConfiguration_Spec, using the provided APIConfigData
-func (t *APIConfiguration_Spec) MergeAPIConfigData(v APIConfigData) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
+// CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
+type CreateAPIKeyJSONRequestBody = APIKeyCreationRequest
 
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
+// UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
+type UpdateAPIKeyJSONRequestBody = APIKeyUpdateRequest
 
-// AsWebhookAPIData returns the union data inside the APIConfiguration_Spec as a WebhookAPIData
-func (t APIConfiguration_Spec) AsWebhookAPIData() (WebhookAPIData, error) {
-	var body WebhookAPIData
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
+// RegenerateAPIKeyJSONRequestBody defines body for RegenerateAPIKey for application/json ContentType.
+type RegenerateAPIKeyJSONRequestBody = APIKeyRegenerationRequest
 
-// FromWebhookAPIData overwrites any union data inside the APIConfiguration_Spec as the provided WebhookAPIData
-func (t *APIConfiguration_Spec) FromWebhookAPIData(v WebhookAPIData) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
+// CreateSubscriptionPlanJSONRequestBody defines body for CreateSubscriptionPlan for application/json ContentType.
+type CreateSubscriptionPlanJSONRequestBody = SubscriptionPlanCreateRequest
 
-// MergeWebhookAPIData performs a merge with any union data inside the APIConfiguration_Spec, using the provided WebhookAPIData
-func (t *APIConfiguration_Spec) MergeWebhookAPIData(v WebhookAPIData) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
+// UpdateSubscriptionPlanJSONRequestBody defines body for UpdateSubscriptionPlan for application/json ContentType.
+type UpdateSubscriptionPlanJSONRequestBody = SubscriptionPlanUpdateRequest
 
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
+// CreateSubscriptionJSONRequestBody defines body for CreateSubscription for application/json ContentType.
+type CreateSubscriptionJSONRequestBody = SubscriptionCreateRequest
 
-func (t APIConfiguration_Spec) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
+// UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
+type UpdateSubscriptionJSONRequestBody = SubscriptionUpdateRequest
 
-func (t *APIConfiguration_Spec) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
+// CreateWebSubAPIJSONRequestBody defines body for CreateWebSubAPI for application/json ContentType.
+type CreateWebSubAPIJSONRequestBody = WebSubAPI
+
+// UpdateWebSubAPIJSONRequestBody defines body for UpdateWebSubAPI for application/json ContentType.
+type UpdateWebSubAPIJSONRequestBody = WebSubAPI
 
 // AsLLMProviderConfigDataUpstream0 returns the union data inside the LLMProviderConfigData_Upstream as a LLMProviderConfigDataUpstream0
 func (t LLMProviderConfigData_Upstream) AsLLMProviderConfigDataUpstream0() (LLMProviderConfigDataUpstream0, error) {
@@ -1894,36 +2148,6 @@ func (t *Upstream) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// List all API configurations
-	// (GET /apis)
-	ListAPIs(c *gin.Context, params ListAPIsParams)
-	// Create a new API configuration
-	// (POST /apis)
-	CreateAPI(c *gin.Context)
-	// Delete an API configuration
-	// (DELETE /apis/{id})
-	DeleteAPI(c *gin.Context, id string)
-	// Get API configuration by id
-	// (GET /apis/{id})
-	GetAPIById(c *gin.Context, id string)
-	// Update an existing API configuration
-	// (PUT /apis/{id})
-	UpdateAPI(c *gin.Context, id string)
-	// Get the list of API keys for an API
-	// (GET /apis/{id}/api-keys)
-	ListAPIKeys(c *gin.Context, id string)
-	// Create a new API key for an API
-	// (POST /apis/{id}/api-keys)
-	CreateAPIKey(c *gin.Context, id string)
-	// Revoke an API key
-	// (DELETE /apis/{id}/api-keys/{apiKeyName})
-	RevokeAPIKey(c *gin.Context, id string, apiKeyName string)
-	// Update an API key with a new regenerated value
-	// (PUT /apis/{id}/api-keys/{apiKeyName})
-	UpdateAPIKey(c *gin.Context, id string, apiKeyName string)
-	// Regenerate API key for an API
-	// (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
-	RegenerateAPIKey(c *gin.Context, id string, apiKeyName string)
 	// List all custom certificates
 	// (GET /certificates)
 	ListCertificates(c *gin.Context)
@@ -1936,9 +2160,6 @@ type ServerInterface interface {
 	// Delete a certificate
 	// (DELETE /certificates/{id})
 	DeleteCertificate(c *gin.Context, id string)
-	// Health check endpoint
-	// (GET /health)
-	HealthCheck(c *gin.Context)
 	// List all LLM provider templates
 	// (GET /llm-provider-templates)
 	ListLLMProviderTemplates(c *gin.Context, params ListLLMProviderTemplatesParams)
@@ -2002,6 +2223,81 @@ type ServerInterface interface {
 	// List all registered policy definitions
 	// (GET /policies)
 	ListPolicies(c *gin.Context)
+	// List all API configurations
+	// (GET /rest-apis)
+	ListAPIs(c *gin.Context, params ListAPIsParams)
+	// Create a new API configuration
+	// (POST /rest-apis)
+	CreateAPI(c *gin.Context)
+	// Delete an API configuration
+	// (DELETE /rest-apis/{id})
+	DeleteAPI(c *gin.Context, id string)
+	// Get API configuration by id
+	// (GET /rest-apis/{id})
+	GetAPIById(c *gin.Context, id string)
+	// Update an existing API configuration
+	// (PUT /rest-apis/{id})
+	UpdateAPI(c *gin.Context, id string)
+	// Get the list of API keys for an API
+	// (GET /rest-apis/{id}/api-keys)
+	ListAPIKeys(c *gin.Context, id string)
+	// Create a new API key for an API
+	// (POST /rest-apis/{id}/api-keys)
+	CreateAPIKey(c *gin.Context, id string)
+	// Revoke an API key
+	// (DELETE /rest-apis/{id}/api-keys/{apiKeyName})
+	RevokeAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Update an API key with a new regenerated value
+	// (PUT /rest-apis/{id}/api-keys/{apiKeyName})
+	UpdateAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Regenerate API key for an API
+	// (POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate)
+	RegenerateAPIKey(c *gin.Context, id string, apiKeyName string)
+	// List subscription plans
+	// (GET /subscription-plans)
+	ListSubscriptionPlans(c *gin.Context)
+	// Create a subscription plan
+	// (POST /subscription-plans)
+	CreateSubscriptionPlan(c *gin.Context)
+	// Delete a subscription plan
+	// (DELETE /subscription-plans/{planId})
+	DeleteSubscriptionPlan(c *gin.Context, planId string)
+	// Get a subscription plan by ID
+	// (GET /subscription-plans/{planId})
+	GetSubscriptionPlan(c *gin.Context, planId string)
+	// Update a subscription plan
+	// (PUT /subscription-plans/{planId})
+	UpdateSubscriptionPlan(c *gin.Context, planId string)
+	// List subscriptions
+	// (GET /subscriptions)
+	ListSubscriptions(c *gin.Context, params ListSubscriptionsParams)
+	// Create a subscription
+	// (POST /subscriptions)
+	CreateSubscription(c *gin.Context)
+	// Delete a subscription
+	// (DELETE /subscriptions/{subscriptionId})
+	DeleteSubscription(c *gin.Context, subscriptionId string)
+	// Get a subscription by ID
+	// (GET /subscriptions/{subscriptionId})
+	GetSubscription(c *gin.Context, subscriptionId string)
+	// Update a subscription
+	// (PUT /subscriptions/{subscriptionId})
+	UpdateSubscription(c *gin.Context, subscriptionId string)
+	// List all WebSub API configurations
+	// (GET /websub-apis)
+	ListWebSubAPIs(c *gin.Context, params ListWebSubAPIsParams)
+	// Create a new WebSub API configuration
+	// (POST /websub-apis)
+	CreateWebSubAPI(c *gin.Context)
+	// Delete a WebSub API configuration
+	// (DELETE /websub-apis/{id})
+	DeleteWebSubAPI(c *gin.Context, id string)
+	// Get WebSub API configuration by id
+	// (GET /websub-apis/{id})
+	GetWebSubAPIById(c *gin.Context, id string)
+	// Update an existing WebSub API configuration
+	// (PUT /websub-apis/{id})
+	UpdateWebSubAPI(c *gin.Context, id string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -2012,288 +2308,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
-
-// ListAPIs operation middleware
-func (siw *ServerInterfaceWrapper) ListAPIs(c *gin.Context) {
-
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListAPIsParams
-
-	// ------------- Optional query parameter "displayName" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "displayName", c.Request.URL.Query(), &params.DisplayName)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter displayName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "version" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "context" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "status" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListAPIs(c, params)
-}
-
-// CreateAPI operation middleware
-func (siw *ServerInterfaceWrapper) CreateAPI(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateAPI(c)
-}
-
-// DeleteAPI operation middleware
-func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteAPI(c, id)
-}
-
-// GetAPIById operation middleware
-func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetAPIById(c, id)
-}
-
-// UpdateAPI operation middleware
-func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.UpdateAPI(c, id)
-}
-
-// ListAPIKeys operation middleware
-func (siw *ServerInterfaceWrapper) ListAPIKeys(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListAPIKeys(c, id)
-}
-
-// CreateAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) CreateAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateAPIKey(c, id)
-}
-
-// RevokeAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) RevokeAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "apiKeyName" -------------
-	var apiKeyName string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.RevokeAPIKey(c, id, apiKeyName)
-}
-
-// UpdateAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) UpdateAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "apiKeyName" -------------
-	var apiKeyName string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.UpdateAPIKey(c, id, apiKeyName)
-}
-
-// RegenerateAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) RegenerateAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "apiKeyName" -------------
-	var apiKeyName string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.RegenerateAPIKey(c, id, apiKeyName)
-}
 
 // ListCertificates operation middleware
 func (siw *ServerInterfaceWrapper) ListCertificates(c *gin.Context) {
@@ -2356,19 +2370,6 @@ func (siw *ServerInterfaceWrapper) DeleteCertificate(c *gin.Context) {
 	}
 
 	siw.Handler.DeleteCertificate(c, id)
-}
-
-// HealthCheck operation middleware
-func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.HealthCheck(c)
 }
 
 // ListLLMProviderTemplates operation middleware
@@ -2916,6 +2917,648 @@ func (siw *ServerInterfaceWrapper) ListPolicies(c *gin.Context) {
 	siw.Handler.ListPolicies(c)
 }
 
+// ListAPIs operation middleware
+func (siw *ServerInterfaceWrapper) ListAPIs(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAPIsParams
+
+	// ------------- Optional query parameter "displayName" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "displayName", c.Request.URL.Query(), &params.DisplayName)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter displayName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListAPIs(c, params)
+}
+
+// CreateAPI operation middleware
+func (siw *ServerInterfaceWrapper) CreateAPI(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateAPI(c)
+}
+
+// DeleteAPI operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteAPI(c, id)
+}
+
+// GetAPIById operation middleware
+func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetAPIById(c, id)
+}
+
+// UpdateAPI operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateAPI(c, id)
+}
+
+// ListAPIKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListAPIKeys(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListAPIKeys(c, id)
+}
+
+// CreateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateAPIKey(c, id)
+}
+
+// RevokeAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RevokeAPIKey(c, id, apiKeyName)
+}
+
+// UpdateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateAPIKey(c, id, apiKeyName)
+}
+
+// RegenerateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RegenerateAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RegenerateAPIKey(c, id, apiKeyName)
+}
+
+// ListSubscriptionPlans operation middleware
+func (siw *ServerInterfaceWrapper) ListSubscriptionPlans(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSubscriptionPlans(c)
+}
+
+// CreateSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) CreateSubscriptionPlan(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateSubscriptionPlan(c)
+}
+
+// DeleteSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSubscriptionPlan(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "planId" -------------
+	var planId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planId", c.Param("planId"), &planId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter planId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSubscriptionPlan(c, planId)
+}
+
+// GetSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) GetSubscriptionPlan(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "planId" -------------
+	var planId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planId", c.Param("planId"), &planId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter planId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSubscriptionPlan(c, planId)
+}
+
+// UpdateSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSubscriptionPlan(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "planId" -------------
+	var planId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planId", c.Param("planId"), &planId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter planId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateSubscriptionPlan(c, planId)
+}
+
+// ListSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) ListSubscriptions(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSubscriptionsParams
+
+	// ------------- Optional query parameter "apiId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "apiId", c.Request.URL.Query(), &params.ApiId)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "applicationId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "applicationId", c.Request.URL.Query(), &params.ApplicationId)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter applicationId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSubscriptions(c, params)
+}
+
+// CreateSubscription operation middleware
+func (siw *ServerInterfaceWrapper) CreateSubscription(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateSubscription(c)
+}
+
+// DeleteSubscription operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSubscription(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "subscriptionId" -------------
+	var subscriptionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscriptionId", c.Param("subscriptionId"), &subscriptionId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter subscriptionId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSubscription(c, subscriptionId)
+}
+
+// GetSubscription operation middleware
+func (siw *ServerInterfaceWrapper) GetSubscription(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "subscriptionId" -------------
+	var subscriptionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscriptionId", c.Param("subscriptionId"), &subscriptionId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter subscriptionId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSubscription(c, subscriptionId)
+}
+
+// UpdateSubscription operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSubscription(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "subscriptionId" -------------
+	var subscriptionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscriptionId", c.Param("subscriptionId"), &subscriptionId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter subscriptionId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateSubscription(c, subscriptionId)
+}
+
+// ListWebSubAPIs operation middleware
+func (siw *ServerInterfaceWrapper) ListWebSubAPIs(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWebSubAPIsParams
+
+	// ------------- Optional query parameter "displayName" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "displayName", c.Request.URL.Query(), &params.DisplayName)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter displayName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListWebSubAPIs(c, params)
+}
+
+// CreateWebSubAPI operation middleware
+func (siw *ServerInterfaceWrapper) CreateWebSubAPI(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateWebSubAPI(c)
+}
+
+// DeleteWebSubAPI operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWebSubAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteWebSubAPI(c, id)
+}
+
+// GetWebSubAPIById operation middleware
+func (siw *ServerInterfaceWrapper) GetWebSubAPIById(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWebSubAPIById(c, id)
+}
+
+// UpdateWebSubAPI operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWebSubAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateWebSubAPI(c, id)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -2943,21 +3586,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.GET(options.BaseURL+"/apis", wrapper.ListAPIs)
-	router.POST(options.BaseURL+"/apis", wrapper.CreateAPI)
-	router.DELETE(options.BaseURL+"/apis/:id", wrapper.DeleteAPI)
-	router.GET(options.BaseURL+"/apis/:id", wrapper.GetAPIById)
-	router.PUT(options.BaseURL+"/apis/:id", wrapper.UpdateAPI)
-	router.GET(options.BaseURL+"/apis/:id/api-keys", wrapper.ListAPIKeys)
-	router.POST(options.BaseURL+"/apis/:id/api-keys", wrapper.CreateAPIKey)
-	router.DELETE(options.BaseURL+"/apis/:id/api-keys/:apiKeyName", wrapper.RevokeAPIKey)
-	router.PUT(options.BaseURL+"/apis/:id/api-keys/:apiKeyName", wrapper.UpdateAPIKey)
-	router.POST(options.BaseURL+"/apis/:id/api-keys/:apiKeyName/regenerate", wrapper.RegenerateAPIKey)
 	router.GET(options.BaseURL+"/certificates", wrapper.ListCertificates)
 	router.POST(options.BaseURL+"/certificates", wrapper.UploadCertificate)
 	router.POST(options.BaseURL+"/certificates/reload", wrapper.ReloadCertificates)
 	router.DELETE(options.BaseURL+"/certificates/:id", wrapper.DeleteCertificate)
-	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
 	router.GET(options.BaseURL+"/llm-provider-templates", wrapper.ListLLMProviderTemplates)
 	router.POST(options.BaseURL+"/llm-provider-templates", wrapper.CreateLLMProviderTemplate)
 	router.DELETE(options.BaseURL+"/llm-provider-templates/:id", wrapper.DeleteLLMProviderTemplate)
@@ -2979,6 +3611,31 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/mcp-proxies/:id", wrapper.GetMCPProxyById)
 	router.PUT(options.BaseURL+"/mcp-proxies/:id", wrapper.UpdateMCPProxy)
 	router.GET(options.BaseURL+"/policies", wrapper.ListPolicies)
+	router.GET(options.BaseURL+"/rest-apis", wrapper.ListAPIs)
+	router.POST(options.BaseURL+"/rest-apis", wrapper.CreateAPI)
+	router.DELETE(options.BaseURL+"/rest-apis/:id", wrapper.DeleteAPI)
+	router.GET(options.BaseURL+"/rest-apis/:id", wrapper.GetAPIById)
+	router.PUT(options.BaseURL+"/rest-apis/:id", wrapper.UpdateAPI)
+	router.GET(options.BaseURL+"/rest-apis/:id/api-keys", wrapper.ListAPIKeys)
+	router.POST(options.BaseURL+"/rest-apis/:id/api-keys", wrapper.CreateAPIKey)
+	router.DELETE(options.BaseURL+"/rest-apis/:id/api-keys/:apiKeyName", wrapper.RevokeAPIKey)
+	router.PUT(options.BaseURL+"/rest-apis/:id/api-keys/:apiKeyName", wrapper.UpdateAPIKey)
+	router.POST(options.BaseURL+"/rest-apis/:id/api-keys/:apiKeyName/regenerate", wrapper.RegenerateAPIKey)
+	router.GET(options.BaseURL+"/subscription-plans", wrapper.ListSubscriptionPlans)
+	router.POST(options.BaseURL+"/subscription-plans", wrapper.CreateSubscriptionPlan)
+	router.DELETE(options.BaseURL+"/subscription-plans/:planId", wrapper.DeleteSubscriptionPlan)
+	router.GET(options.BaseURL+"/subscription-plans/:planId", wrapper.GetSubscriptionPlan)
+	router.PUT(options.BaseURL+"/subscription-plans/:planId", wrapper.UpdateSubscriptionPlan)
+	router.GET(options.BaseURL+"/subscriptions", wrapper.ListSubscriptions)
+	router.POST(options.BaseURL+"/subscriptions", wrapper.CreateSubscription)
+	router.DELETE(options.BaseURL+"/subscriptions/:subscriptionId", wrapper.DeleteSubscription)
+	router.GET(options.BaseURL+"/subscriptions/:subscriptionId", wrapper.GetSubscription)
+	router.PUT(options.BaseURL+"/subscriptions/:subscriptionId", wrapper.UpdateSubscription)
+	router.GET(options.BaseURL+"/websub-apis", wrapper.ListWebSubAPIs)
+	router.POST(options.BaseURL+"/websub-apis", wrapper.CreateWebSubAPI)
+	router.DELETE(options.BaseURL+"/websub-apis/:id", wrapper.DeleteWebSubAPI)
+	router.GET(options.BaseURL+"/websub-apis/:id", wrapper.GetWebSubAPIById)
+	router.PUT(options.BaseURL+"/websub-apis/:id", wrapper.UpdateWebSubAPI)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object

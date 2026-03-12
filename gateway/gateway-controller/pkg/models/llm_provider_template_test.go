@@ -35,7 +35,7 @@ func TestStoredLLMProviderTemplate_GetHandle(t *testing.T) {
 		{
 			name: "Standard template name",
 			template: StoredLLMProviderTemplate{
-				ID: "template-1",
+				UUID: "0000-template-1-0000-000000000000",
 				Configuration: api.LLMProviderTemplate{
 					Metadata: api.Metadata{
 						Name: "openai-template",
@@ -49,7 +49,7 @@ func TestStoredLLMProviderTemplate_GetHandle(t *testing.T) {
 		{
 			name: "Empty template name",
 			template: StoredLLMProviderTemplate{
-				ID: "template-2",
+				UUID: "0000-template-2-0000-000000000000",
 				Configuration: api.LLMProviderTemplate{
 					Metadata: api.Metadata{
 						Name: "",
@@ -61,7 +61,7 @@ func TestStoredLLMProviderTemplate_GetHandle(t *testing.T) {
 		{
 			name: "Template name with special characters",
 			template: StoredLLMProviderTemplate{
-				ID: "template-3",
+				UUID: "0000-template-3-0000-000000000000",
 				Configuration: api.LLMProviderTemplate{
 					Metadata: api.Metadata{
 						Name: "azure-openai-gpt4-v1",

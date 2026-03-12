@@ -39,14 +39,18 @@ spec:
 `
 
 	// Build a StoredAPIConfig from the YAML
-	var apiCfg api.APIConfiguration
+	var apiCfg api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlConfig), "application/yaml", &apiCfg); err != nil {
 		t.Fatalf("failed to parse inline yaml: %v", err)
 	}
 
 	cfg := &models.StoredConfig{
-		ID:              "test-config-1",
+		UUID:            "0000-test-config-1-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapi",
+		DisplayName:     "testapi",
+		Version:         "v1",
 		Configuration:   apiCfg,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -60,8 +64,8 @@ spec:
 		t.Fatalf("failed to add config to store: %v", err)
 	}
 	t.Logf("topics after add: %v", configStore.TopicManager.GetAllForConfig())
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic2"))
 }
 
 func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
@@ -88,14 +92,18 @@ spec:
 `
 
 	// Build a StoredAPIConfig from the YAML
-	var apiCfg api.APIConfiguration
+	var apiCfg api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlConfig), "application/yaml", &apiCfg); err != nil {
 		t.Fatalf("failed to parse inline yaml: %v", err)
 	}
 
 	cfg := &models.StoredConfig{
-		ID:              "test-config-1",
+		UUID:            "0000-test-config-1-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapi",
+		DisplayName:     "testapi",
+		Version:         "v1",
 		Configuration:   apiCfg,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -108,8 +116,8 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic2"))
 
 	// Second deployment with topic2 removed -> should deregister topic2
 	yamlConfig2 := `kind: WebSubApi
@@ -147,8 +155,8 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic1"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic2"))
 }
 
 func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
@@ -189,7 +197,7 @@ spec:
     - name: /topic4
       method: SUB`
 
-	var apiCfgA, apiCfgB api.APIConfiguration
+	var apiCfgA, apiCfgB api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlA), "application/yaml", &apiCfgA); err != nil {
 		t.Fatalf("failed to parse yamlA: %v", err)
@@ -199,7 +207,11 @@ spec:
 	}
 
 	cfgA := &models.StoredConfig{
-		ID:              "cfg-a",
+		UUID:            "0000-cfg-a-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapiA",
+		DisplayName:     "testapiA",
+		Version:         "v1",
 		Configuration:   apiCfgA,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -209,7 +221,11 @@ spec:
 	}
 
 	cfgB := &models.StoredConfig{
-		ID:              "cfg-b",
+		UUID:            "0000-cfg-b-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapiB",
+		DisplayName:     "testapiB",
+		Version:         "v1",
 		Configuration:   apiCfgB,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -247,12 +263,12 @@ spec:
 	}
 
 	// Verify topics for cfgA
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testA_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "testA_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.UUID, "testA_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.UUID, "testA_topic2"))
 
 	// Verify topics for cfgB
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testB_topic3"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.ID, "testB_topic4"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.UUID, "testB_topic3"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfgB.UUID, "testB_topic4"))
 }
 
 func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
@@ -278,14 +294,18 @@ spec:
       method: SUB`
 
 	// Build a StoredAPIConfig from the YAML
-	var apiCfg api.APIConfiguration
+	var apiCfg api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlConfig), "application/yaml", &apiCfg); err != nil {
 		t.Fatalf("failed to parse inline yaml: %v", err)
 	}
 
 	cfg := &models.StoredConfig{
-		ID:              "test-config-1",
+		UUID:            "0000-test-config-1-0000-000000000000",
+		Kind:            string(api.WebSubApi),
+		Handle:          "testapi",
+		DisplayName:     "testapi",
+		Version:         "v1",
 		Configuration:   apiCfg,
 		Status:          models.StatusPending,
 		CreatedAt:       time.Now(),
@@ -298,14 +318,14 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to add config to store: %v", err)
 	}
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
-	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic1"))
+	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic2"))
 
-	err = service.store.Delete(cfg.ID)
+	err = service.store.Delete(cfg.UUID)
 	if err != nil {
 		t.Fatalf("failed to delete config from store: %v", err)
 	}
 
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic1"))
-	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.ID, "test_topic2"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic1"))
+	assert.False(t, configStore.TopicManager.IsTopicExist(cfg.UUID, "test_topic2"))
 }

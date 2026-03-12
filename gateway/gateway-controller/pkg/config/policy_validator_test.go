@@ -25,7 +25,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
 
-func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
+func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 	// Setup policy definitions
 	policyDefs := map[string]api.PolicyDefinition{
 		"APIKeyValidation|v1.0.0": {
@@ -48,46 +48,42 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 
 	validator := NewPolicyValidator(policyDefs)
 
-	specUnion := api.APIConfiguration_Spec{}
-	if err := specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "Test API",
-		Version: "v1.0",
-		Context: "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	// Create API config with valid policy
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "APIKeyValidation",
-				Version: "v1",
-				Params: &map[string]interface{}{
-					"header":    "X-API-Key",
-					"mandatory": true,
+			Policies: &[]api.Policy{
+				{
+					Name:    "APIKeyValidation",
+					Version: "v1",
+					Params: &map[string]interface{}{
+						"header":    "X-API-Key",
+						"mandatory": true,
+					},
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
 				},
 			},
 		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	}); err != nil {
-		t.Fatalf("Failed to create API config data: %v", err)
-	}
-	// Create API config with valid policy
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:    api.RestApi,
-		Spec:    specUnion,
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) > 0 {
 		t.Errorf("Expected no validation errors, got %d: %v", len(errors), errors)
 	}
@@ -98,41 +94,38 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 	policyDefs := map[string]api.PolicyDefinition{}
 	validator := NewPolicyValidator(policyDefs)
 
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "Test API",
-		Version: "v1.0",
-		Context: "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "NonExistentPolicy",
-				Version: "v1",
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
 	// Create API config with non-existent policy
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:    api.RestApi,
-		Spec:    specUnion,
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "NonExistentPolicy",
+					Version: "v1",
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) != 1 {
 		t.Errorf("Expected 1 validation error, got %d", len(errors))
 	}
@@ -165,43 +158,41 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with invalid params (missing required field)
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "Test API",
-		Version: "v1.0",
-		Context: "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "APIKeyValidation",
-				Version: "v1",
-				Params: &map[string]interface{}{
-					"mandatory": true,
-					// Missing required "header" field
+			Policies: &[]api.Policy{
+				{
+					Name:    "APIKeyValidation",
+					Version: "v1",
+					Params: &map[string]interface{}{
+						"mandatory": true,
+						// Missing required "header" field
+					},
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
 				},
 			},
 		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:    api.RestApi,
-		Spec:    specUnion,
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) == 0 {
 		t.Error("Expected validation errors for missing required parameter")
 	}
@@ -228,42 +219,40 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with operation-level policy
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "Test API",
-		Version: "v1.0",
-		Context: "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-				Policies: &[]api.Policy{
-					{
-						Name:    "RateLimiting",
-						Version: "v1",
-						Params: &map[string]interface{}{
-							"rate": 100,
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+					Policies: &[]api.Policy{
+						{
+							Name:    "RateLimiting",
+							Version: "v1",
+							Params: &map[string]interface{}{
+								"rate": 100,
+							},
 						},
 					},
 				},
 			},
 		},
-	})
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:    api.RestApi,
-		Spec:    specUnion,
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) > 0 {
 		t.Errorf("Expected no validation errors, got %d: %v", len(errors), errors)
 	}
@@ -281,49 +270,47 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with multiple invalid policies
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "Test API",
-		Version: "v1.0",
-		Context: "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "NonExistent1",
-				Version: "v1",
+			Policies: &[]api.Policy{
+				{
+					Name:    "NonExistent1",
+					Version: "v1",
+				},
+				{
+					Name:    "NonExistent2",
+					Version: "v1",
+				},
 			},
-			{
-				Name:    "NonExistent2",
-				Version: "v1",
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-				Policies: &[]api.Policy{
-					{
-						Name:    "NonExistent3",
-						Version: "v1",
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+					Policies: &[]api.Policy{
+						{
+							Name:    "NonExistent3",
+							Version: "v1",
+						},
 					},
 				},
 			},
 		},
-	})
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:    api.RestApi,
-		Spec:    specUnion,
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) != 3 {
 		t.Errorf("Expected 3 validation errors, got %d", len(errors))
 	}
@@ -349,42 +336,40 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with wrong type (string instead of integer)
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "Test API",
-		Version: "v1.0",
-		Context: "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "TestPolicy",
-				Version: "v1",
-				Params: &map[string]interface{}{
-					"count": "not-a-number",
+			Policies: &[]api.Policy{
+				{
+					Name:    "TestPolicy",
+					Version: "v1",
+					Params: &map[string]interface{}{
+						"count": "not-a-number",
+					},
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
 				},
 			},
 		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:    api.RestApi,
-		Spec:    specUnion,
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) == 0 {
 		t.Error("Expected validation error for type mismatch")
 	}
@@ -414,40 +399,38 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Test case 1: Policy with nil params (should fail validation for required field)
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "Test API",
-		Version: "v1.0",
-		Context: "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "JWTValidation",
+					Version: "v1",
+					Params:  nil, // No params provided
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
 			},
 		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "JWTValidation",
-				Version: "v1",
-				Params:  nil, // No params provided
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:    api.RestApi,
-		Spec:    specUnion,
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) == 0 {
 		t.Error("Expected validation error for missing required parameter 'issuer'")
 	} else {
@@ -463,25 +446,18 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		}
 	}
 
-	apiData, err := apiConfig.Spec.AsAPIConfigData()
-	if err != nil {
-		t.Fatalf("Failed to parse API data: %v", err)
-	}
-
 	// Test case 2: Policy with empty params map (should also fail)
-	(*apiData.Policies)[0].Params = &map[string]interface{}{}
-	apiConfig.Spec.FromAPIConfigData(apiData)
-	errors = validator.ValidatePolicies(apiConfig)
+	(*apiConfig.Spec.Policies)[0].Params = &map[string]interface{}{}
+	errors = validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) == 0 {
 		t.Error("Expected validation error for missing required parameter 'issuer'")
 	}
 
 	// Test case 3: Policy with required param provided (should pass)
-	(*apiData.Policies)[0].Params = &map[string]interface{}{
+	(*apiConfig.Spec.Policies)[0].Params = &map[string]interface{}{
 		"issuer": "https://auth.example.com",
 	}
-	apiConfig.Spec.FromAPIConfigData(apiData)
-	errors = validator.ValidatePolicies(apiConfig)
+	errors = validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) > 0 {
 		t.Errorf("Expected no validation errors, got: %v", errors)
 	}
@@ -503,46 +479,41 @@ func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
 
 	validator := NewPolicyValidator(policyDefs)
 
-	specUnion := api.APIConfiguration_Spec{}
-	if err := specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-				Policies: &[]api.Policy{
-					{
-						Name:    "MultiVersionPolicy",
-						Version: "v1", // major-only v1
-					},
-					{
-						Name:    "MultiVersionPolicy",
-						Version: "v2", // major-only v2
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+					Policies: &[]api.Policy{
+						{
+							Name:    "MultiVersionPolicy",
+							Version: "v1", // major-only v1
+						},
+						{
+							Name:    "MultiVersionPolicy",
+							Version: "v2", // major-only v2
+						},
 					},
 				},
 			},
 		},
-	}); err != nil {
-		t.Fatalf("Failed to create API config data: %v", err)
 	}
 
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
-		Spec:       specUnion,
-	}
-
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) > 0 {
 		t.Errorf("Expected no validation errors for mixed major-only versions, got %d: %v", len(errors), errors)
 	}
@@ -560,39 +531,34 @@ func TestPolicyValidator_FullSemverRejected(t *testing.T) {
 
 	validator := NewPolicyValidator(policyDefs)
 
-	specUnion := api.APIConfiguration_Spec{}
-	if err := specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "SomePolicy",
-				Version: "v1.0.0", // full semver not allowed
-			},
-		},
-		Operations: []api.Operation{
-			{Method: "GET", Path: "/resource"},
-		},
-	}); err != nil {
-		t.Fatalf("Failed to create API config data: %v", err)
-	}
-
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.RestApi,
-		Spec:       specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "SomePolicy",
+					Version: "v1.0.0", // full semver not allowed
+				},
+			},
+			Operations: []api.Operation{
+				{Method: "GET", Path: "/resource"},
+			},
+		},
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) == 0 {
 		t.Fatal("Expected validation error when policy version is full semver (v1.0.0), got none")
 	}
@@ -619,42 +585,37 @@ func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
 
 	validator := NewPolicyValidator(policyDefs)
 
-	specUnion := api.APIConfiguration_Spec{}
-	if err := specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "MyPolicy",
-				Version: "v0", // Major-only version
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	}); err != nil {
-		t.Fatalf("Failed to create API config data: %v", err)
-	}
-
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.RestApi,
-		Spec:       specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "MyPolicy",
+					Version: "v0", // Major-only version
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) > 0 {
 		t.Errorf("Expected no validation errors for major-only version, got %d: %v", len(errors), errors)
 	}
@@ -671,40 +632,37 @@ func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
 
 	validator := NewPolicyValidator(policyDefs)
 
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "MyPolicy",
-				Version: "v0", // Major that does not exist
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.RestApi,
-		Spec:       specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "MyPolicy",
+					Version: "v0", // Major that does not exist
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) != 1 {
 		t.Fatalf("Expected 1 validation error for unresolved major version, got %d: %v", len(errors), errors)
 	}
@@ -728,40 +686,37 @@ func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 
 	validator := NewPolicyValidator(policyDefs)
 
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Policies: &[]api.Policy{
-			{
-				Name:    "MyPolicy",
-				Version: "v0", // Ambiguous major; multiple matches
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
-	apiConfig := &api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.RestApi,
-		Spec:       specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "MyPolicy",
+					Version: "v0", // Ambiguous major; multiple matches
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
 	}
 
-	errors := validator.ValidatePolicies(apiConfig)
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
 	if len(errors) != 1 {
 		t.Fatalf("Expected 1 validation error for ambiguous major version, got %d: %v", len(errors), errors)
 	}

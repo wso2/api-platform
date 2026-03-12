@@ -26,7 +26,7 @@ import (
 
 // StoredLLMProviderTemplate represents the LLM provider template stored in the database and in-memory
 type StoredLLMProviderTemplate struct {
-	ID            string                  `json:"id"`
+	UUID          string                  `json:"uuid"`
 	Configuration api.LLMProviderTemplate `json:"configuration"`
 	CreatedAt     time.Time               `json:"createdAt"`
 	UpdatedAt     time.Time               `json:"updatedAt"`

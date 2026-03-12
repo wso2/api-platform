@@ -44,10 +44,14 @@ type Config struct {
 	MockAzureContentSafetyURL  string
 	MockAWSBedrockGuardrailURL string
 	MockEmbeddingProviderURL   string
+	MockPlatformAPIURL         string
 	RedisURL                   string
 	HTTPTimeout                time.Duration
 	Users                      map[string]AuthUser
 }
+
+// MockPlatformAPIPort is the port for mock-platform-api inject endpoint
+const MockPlatformAPIPort = "9244"
 
 // MockJWKSPort is the port for mock-jwks service
 const MockJWKSPort = "8082"
@@ -77,6 +81,7 @@ func DefaultConfig() *Config {
 		MockAzureContentSafetyURL:  fmt.Sprintf("http://localhost:%s", MockAzureContentSafetyPort),
 		MockAWSBedrockGuardrailURL: fmt.Sprintf("http://localhost:%s", MockAWSBedrockGuardrailPort),
 		MockEmbeddingProviderURL:   fmt.Sprintf("http://localhost:%s", MockEmbeddingProviderPort),
+		MockPlatformAPIURL:         fmt.Sprintf("http://localhost:%s", MockPlatformAPIPort),
 		RedisURL:                   fmt.Sprintf("localhost:%s", RedisPort),
 		HTTPTimeout:                10 * time.Second,
 		Users: map[string]AuthUser{

@@ -1,0 +1,38 @@
+name: subscription-validation
+version: v0.1.0
+description: |
+  Validates that the request has an active subscription to the
+  requested API. Checks the Subscription-Key header first; if not found,
+  checks the subscription key cookie (when configured); falls back to
+  application_id from request metadata (set by auth policy).
+  If the subscription plan has throttle limits, enforces rate limiting
+  keyed by the subscription token.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    enabled:
+      type: boolean
+      default: true
+      description: >
+        When false, the subscription validation check is disabled and the
+        policy is effectively a no-op.
+    subscriptionKeyHeader:
+      type: string
+      default: Subscription-Key
+      description: >
+        Request header name containing the subscription token.
+        Checked first before cookie or applicationId fallback.
+    subscriptionKeyCookie:
+      type: string
+      default: ""
+      description: >
+        Optional cookie name containing the subscription token.
+        When set, checked after the header if no token was found.
+        When empty, cookie lookup is skipped.
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties: {}

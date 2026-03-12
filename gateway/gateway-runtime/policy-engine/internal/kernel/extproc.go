@@ -352,6 +352,14 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	// Create execution context for this request-response lifecycle
 	*execCtx = newPolicyExecutionContext(s, routeMetadata.RouteName, chain)
 
+	// Set default upstream cluster for dynamic cluster routing
+	(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
+
+	// Set upstream path information for dynamic path rewriting when UpstreamName is used
+	(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
+	(*execCtx).apiContext = routeMetadata.Context
+	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
+
 	// Build request context from Envoy headers with route metadata
 	// Request ID will be extracted from x-request-id header or generated if not present
 	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
@@ -372,7 +380,7 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 	}
 
 	// Build dynamic metadata structure
-	dynamicMetadata := buildDynamicMetadata(analyticsStruct, nil, nil)
+	dynamicMetadata := buildDynamicMetadata(analyticsStruct, nil, nil, nil)
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -391,17 +399,20 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 
 // RouteMetadata contains metadata about the route
 type RouteMetadata struct {
-	RouteName      string
-	APIId          string
-	APIName        string
-	APIVersion     string
-	Context        string
-	OperationPath  string
-	Vhost          string
-	APIKind        string
-	TemplateHandle string
-	ProviderName   string
-	ProjectID      string
+	RouteName               string
+	APIId                   string
+	APIName                 string
+	APIVersion              string
+	Context                 string
+	OperationPath           string
+	Vhost                   string
+	APIKind                 string
+	TemplateHandle          string
+	ProviderName            string
+	ProjectID               string
+	DefaultUpstreamCluster  string            // Default cluster for dynamic cluster routing
+	UpstreamBasePath        string            // Base path for the upstream (e.g., /anything)
+	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL paths
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata.
@@ -443,6 +454,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 				metadata.TemplateHandle = cachedMeta.TemplateHandle
 				metadata.ProviderName = cachedMeta.ProviderName
 				metadata.ProjectID = cachedMeta.ProjectID
+				metadata.DefaultUpstreamCluster = cachedMeta.DefaultUpstreamCluster
+				metadata.UpstreamBasePath = cachedMeta.UpstreamBasePath
+				metadata.UpstreamDefinitionPaths = cachedMeta.UpstreamDefinitionPaths
 			} else {
 				// Cache miss - parse the protobuf text format string
 				var envoyMetadata core.Metadata
@@ -480,6 +494,21 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 						}
 						if projectIDValue, ok := routeStruct.Fields["project_id"]; ok {
 							metadata.ProjectID = projectIDValue.GetStringValue()
+						}
+						if defaultClusterValue, ok := routeStruct.Fields["default_upstream_cluster"]; ok {
+							metadata.DefaultUpstreamCluster = defaultClusterValue.GetStringValue()
+						}
+						if upstreamBasePathValue, ok := routeStruct.Fields["upstream_base_path"]; ok {
+							metadata.UpstreamBasePath = upstreamBasePathValue.GetStringValue()
+						}
+						// Parse upstream_definition_paths map for dynamic path rewriting
+						if upstreamDefPathsValue, ok := routeStruct.Fields["upstream_definition_paths"]; ok {
+							if upstreamDefPathsStruct := upstreamDefPathsValue.GetStructValue(); upstreamDefPathsStruct != nil {
+								metadata.UpstreamDefinitionPaths = make(map[string]string)
+								for name, pathValue := range upstreamDefPathsStruct.Fields {
+									metadata.UpstreamDefinitionPaths[name] = pathValue.GetStringValue()
+								}
+							}
 						}
 					}
 					// Cache the parsed metadata for future requests

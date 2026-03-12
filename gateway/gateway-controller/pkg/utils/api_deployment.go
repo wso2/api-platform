@@ -40,6 +40,7 @@ import (
 type APIDeploymentParams struct {
 	Data          []byte       // Raw configuration data (YAML/JSON)
 	ContentType   string       // Content type for parsing
+	Kind          string       // API kind: "RestApi" or "WebSubApi"
 	APIID         string       // API ID (if provided, used for updates; if empty, generates new UUID)
 	CorrelationID string       // Correlation ID for tracking
 	Logger        *slog.Logger // Logger instance
@@ -93,48 +94,66 @@ func NewAPIDeploymentService(
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
-	var apiConfig api.APIConfiguration
-	// Parse configuration
-	err := s.parser.Parse(params.Data, params.ContentType, &apiConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse configuration: %w", err)
+	var (
+		parsedConfig any
+		apiName      string
+		apiVersion   string
+		handle       string
+		kind         string
+	)
+
+	// If Kind is not provided, infer it from the payload
+	resolvedKind := params.Kind
+	if resolvedKind == "" {
+		var envelope struct {
+			Kind string `json:"kind" yaml:"kind"`
+		}
+		if err := s.parser.Parse(params.Data, params.ContentType, &envelope); err != nil {
+			return nil, fmt.Errorf("failed to parse configuration to infer kind: %w", err)
+		}
+		if envelope.Kind == "" {
+			return nil, fmt.Errorf("resource kind is required: set Kind in deployment params or include a 'kind' field in the payload")
+		}
+		resolvedKind = envelope.Kind
 	}
 
-	var apiName string
-	var apiVersion string
-
-	switch apiConfig.Kind {
-	case api.RestApi:
-		apiData, err := apiConfig.Spec.AsAPIConfigData()
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
+	switch resolvedKind {
+	case "WebSubApi":
+		var webSubConfig api.WebSubAPI
+		if err := s.parser.Parse(params.Data, params.ContentType, &webSubConfig); err != nil {
+			return nil, fmt.Errorf("failed to parse configuration: %w", err)
 		}
-		apiName = apiData.DisplayName
-		apiVersion = apiData.Version
-	case api.WebSubApi:
-		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse WebSub API data: %w", err)
-		}
-		apiName = webhookData.DisplayName
-		apiVersion = webhookData.Version
-	}
+		apiName = webSubConfig.Spec.DisplayName
+		apiVersion = webSubConfig.Spec.Version
+		handle = webSubConfig.Metadata.Name
+		kind = string(webSubConfig.Kind)
+		parsedConfig = webSubConfig
 
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		params.Logger.Warn("Configuration validation failed",
-			slog.String("api_id", params.APIID),
-			slog.String("name", apiName),
-			slog.Int("num_errors", len(validationErrors)))
-
-		for _, e := range validationErrors {
-			fmt.Println(e.Message)
-			params.Logger.Warn("Validation error",
-				slog.String("field", e.Field),
-				slog.String("message", e.Message))
+		// Validate
+		validationErrors := s.validator.Validate(&webSubConfig)
+		if len(validationErrors) > 0 {
+			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
+			return nil, &ValidationErrorListError{Errors: validationErrors}
 		}
-		return nil, &ValidationErrorListError{Errors: validationErrors}
+	case "RestApi":
+		var restConfig api.RestAPI
+		if err := s.parser.Parse(params.Data, params.ContentType, &restConfig); err != nil {
+			return nil, fmt.Errorf("failed to parse configuration: %w", err)
+		}
+		apiName = restConfig.Spec.DisplayName
+		apiVersion = restConfig.Spec.Version
+		handle = restConfig.Metadata.Name
+		kind = string(restConfig.Kind)
+		parsedConfig = restConfig
+
+		// Validate
+		validationErrors := s.validator.Validate(&restConfig)
+		if len(validationErrors) > 0 {
+			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
+			return nil, &ValidationErrorListError{Errors: validationErrors}
+		}
+	default:
+		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\" or \"WebSubApi\"", resolvedKind)
 	}
 
 	// Generate API ID if not provided
@@ -147,35 +166,25 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
-	handle := apiConfig.Metadata.Name
-
 	// Determine if this is an update or create by checking if config with apiID already exists
 	var existingConfig *models.StoredConfig
 	var isUpdate bool
 
 	// Check for conflicts with other configurations
-	// For updates: only error if name/version/handle belong to a different config ID
-	// For creates: any conflict is an error
 	if s.store != nil {
 		existingConfig, _ = s.store.Get(apiID)
 		isUpdate = existingConfig != nil
 
-		// Check name+version conflict
 		if conflicting, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {
-			// For updates: only error if the conflict is with a different API
-			// For creates: any conflict is an error
-			if !isUpdate || conflicting.ID != apiID {
+			if !isUpdate || conflicting.UUID != apiID {
 				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, apiName, apiVersion)
 			}
 		}
 
-		// Check handle conflict
 		if handle != "" {
 			for _, c := range s.store.GetAll() {
-				if c.GetHandle() == handle {
-					// For updates: only error if the conflict is with a different API
-					// For creates: any conflict is an error
-					if !isUpdate || c.ID != apiID {
+				if c.Handle == handle {
+					if !isUpdate || c.UUID != apiID {
 						return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
 					}
 				}
@@ -186,10 +195,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		ID:                  apiID,
-		Kind:                string(apiConfig.Kind),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
+		UUID:                apiID,
+		Kind:                kind,
+		Handle:              handle,
+		DisplayName:         apiName,
+		Version:             apiVersion,
+		Configuration:       parsedConfig,
+		SourceConfiguration: parsedConfig,
 		Status:              models.StatusPending,
 		CreatedAt:           now,
 		UpdatedAt:           now,
@@ -197,7 +209,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedVersion:     0,
 	}
 
-	if apiConfig.Kind == api.WebSubApi {
+	if kind == "WebSubApi" {
 		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -287,9 +299,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	// Try to save/update the configuration
-	isUpdate, err = s.saveOrUpdateConfig(storedCfg, params.Logger)
-	if err != nil {
-		return nil, err
+	var saveErr error
+	isUpdate, saveErr = s.saveOrUpdateConfig(storedCfg, params.Logger)
+	if saveErr != nil {
+		return nil, saveErr
 	}
 
 	// Log success
@@ -327,16 +340,16 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 }
 
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {
-	topics := s.store.TopicManager.GetAllByConfig(apiConfig.ID)
+	topics := s.store.TopicManager.GetAllByConfig(apiConfig.UUID)
 	topicsToRegister := []string{}
 	topicsToUnregister := []string{}
 	apiTopicsPerRevision := make(map[string]bool)
 
-	asyncData, err := apiConfig.Configuration.Spec.AsWebhookAPIData()
-	if err != nil {
-		// Return empty lists if parsing fails
+	webSubCfg, ok := apiConfig.Configuration.(api.WebSubAPI)
+	if !ok {
 		return topicsToRegister, topicsToUnregister
 	}
+	asyncData := webSubCfg.Spec
 
 	for _, topic := range asyncData.Channels {
 		// Remove leading '/' from name, context, version and topic path if present
@@ -355,7 +368,7 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 	}
 
 	for topic := range apiTopicsPerRevision {
-		if s.store.TopicManager.IsTopicExist(apiConfig.ID, topic) {
+		if s.store.TopicManager.IsTopicExist(apiConfig.UUID, topic) {
 			continue
 		}
 		topicsToRegister = append(topicsToRegister, topic)
@@ -364,20 +377,32 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 	return topicsToRegister, topicsToUnregister
 }
 
+func (s *APIDeploymentService) logValidationErrors(logger *slog.Logger, apiID string, apiName string, validationErrors []config.ValidationError) {
+	logger.Warn("Configuration validation failed",
+		slog.String("api_id", apiID),
+		slog.String("name", apiName),
+		slog.Int("num_errors", len(validationErrors)))
+	for _, e := range validationErrors {
+		logger.Warn("Validation error",
+			slog.String("field", e.Field),
+			slog.String("message", e.Message))
+	}
+}
+
 func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig) []string {
-	return s.store.TopicManager.GetAllByConfig(apiConfig.ID)
+	return s.store.TopicManager.GetAllByConfig(apiConfig.UUID)
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	existing, _ := s.store.Get(storedCfg.ID)
+	existing, _ := s.store.Get(storedCfg.UUID)
 
 	// If config already exists, update it
 	if existing != nil {
 		logger.Info("API configuration already exists, updating",
-			slog.String("api_id", storedCfg.ID),
-			slog.String("displayName", storedCfg.GetDisplayName()),
-			slog.String("version", storedCfg.GetVersion()))
+			slog.String("api_id", storedCfg.UUID),
+			slog.String("displayName", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version))
 		return s.updateExistingConfig(storedCfg, existing, logger)
 	}
 
@@ -385,9 +410,9 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
 			logger.Info("Error saving new API configuration to database",
-				slog.String("api_id", storedCfg.ID),
-				slog.String("displayName", storedCfg.GetDisplayName()),
-				slog.String("version", storedCfg.GetVersion()))
+				slog.String("api_id", storedCfg.UUID),
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
 			return false, fmt.Errorf("failed to save config to database: %w", err)
 		}
 	}
@@ -397,10 +422,10 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		// Rollback database write (only if persistent mode)
 		if s.db != nil {
 			logger.Info("Error adding new API configuration to memory store, rolling back database",
-				slog.String("api_id", storedCfg.ID),
-				slog.String("displayName", storedCfg.GetDisplayName()),
-				slog.String("version", storedCfg.GetVersion()))
-			_ = s.db.DeleteConfig(storedCfg.ID)
+				slog.String("api_id", storedCfg.UUID),
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
+			_ = s.db.DeleteConfig(storedCfg.UUID)
 		}
 		return false, fmt.Errorf("failed to add config to memory store: %w", err)
 	}
@@ -415,8 +440,12 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	// Backup original state for potential rollback
 	original := *existing
 
-	// Update the existing configuration
+	// Update the existing configuration (including denormalized fields used by secondary indexes)
 	now := time.Now()
+	existing.Kind = newConfig.Kind
+	existing.Handle = newConfig.Handle
+	existing.DisplayName = newConfig.DisplayName
+	existing.Version = newConfig.Version
 	existing.Configuration = newConfig.Configuration
 	existing.SourceConfiguration = newConfig.SourceConfiguration
 	existing.Status = models.StatusPending
@@ -438,9 +467,9 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
 				logger.Error("Failed to rollback DB after memory update failure",
 					slog.Any("error", rbErr),
-					slog.String("id", original.ID),
-					slog.String("displayName", original.GetDisplayName()),
-					slog.String("version", original.GetVersion()))
+					slog.String("id", original.UUID),
+					slog.String("displayName", original.DisplayName),
+					slog.String("version", original.Version))
 			}
 		}
 		return false, fmt.Errorf("failed to update config in memory store: %w", err)

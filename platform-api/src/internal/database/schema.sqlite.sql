@@ -49,7 +49,10 @@ CREATE TABLE IF NOT EXISTS artifacts (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE RESTRICT,
     UNIQUE(handle, organization_uuid),
-    UNIQUE(name, version, organization_uuid)
+    UNIQUE(name, version, organization_uuid),
+    -- Ensure (uuid, organization_uuid) pairs are unique so they can be safely
+    -- referenced from subscriptions to enforce API–organization consistency.
+    UNIQUE(uuid, organization_uuid)
 );
 
 -- REST APIs table
@@ -64,6 +67,55 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
 );
+
+-- Subscription plans table (organization-scoped rate/billing plans)
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    uuid VARCHAR(40) PRIMARY KEY,
+    plan_name VARCHAR(40) NOT NULL,
+    billing_plan VARCHAR(255),
+    stop_on_quota_reach BOOLEAN DEFAULT 1,
+    throttle_limit_count INTEGER,
+    throttle_limit_unit VARCHAR(20),
+    expiry_time DATETIME,
+    organization_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, plan_name),
+    UNIQUE(uuid, organization_uuid),
+    CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    CONSTRAINT chk_plan_throttle_pair CHECK (
+      (throttle_limit_count IS NULL AND throttle_limit_unit IS NULL) OR
+      (throttle_limit_count IS NOT NULL AND throttle_limit_unit IS NOT NULL)
+    )
+);
+
+-- Subscriptions table (application-level subscriptions for REST APIs)
+-- subscription_token: encrypted value (AES-256-GCM) for retrieval (legacy rows have hash)
+-- subscription_token_hash: SHA-256 hash for uniqueness and gateway sync
+CREATE TABLE IF NOT EXISTS subscriptions (
+    uuid VARCHAR(40) PRIMARY KEY,
+    api_uuid VARCHAR(40) NOT NULL,
+    application_id VARCHAR(255),
+    subscription_token VARCHAR(512) NOT NULL,
+    subscription_token_hash VARCHAR(64) NOT NULL,
+    subscription_plan_uuid VARCHAR(40),
+    organization_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_plan_uuid, organization_uuid)
+      REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE RESTRICT,
+    FOREIGN KEY (api_uuid, organization_uuid)
+      REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
+    UNIQUE(api_uuid, subscription_token_hash),
+    UNIQUE(api_uuid, application_id, organization_uuid),
+    CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVOKED'))
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
 
 -- Gateways table (scoped to organizations)
 -- Must be created before deployments which references it
@@ -239,6 +291,18 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT
 );
 
+-- MCP Proxies table
+CREATE TABLE IF NOT EXISTS mcp_proxies (
+    uuid VARCHAR(40) PRIMARY KEY,
+    project_uuid VARCHAR(40),
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    configuration TEXT NOT NULL,
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
+);
+
 -- API Keys table (stores API keys for artifacts with hashes as JSON string)
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -260,6 +324,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_api_uuid ON subscriptions(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_organization_uuid ON subscriptions(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_artifact_deployments_artifact_gateway ON deployments(artifact_uuid, gateway_uuid);

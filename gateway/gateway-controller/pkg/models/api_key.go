@@ -33,12 +33,12 @@ const (
 
 // APIKey represents an API key for an API
 type APIKey struct {
-	ID           string       `json:"id" db:"id"`
+	UUID         string       `json:"uuid" db:"uuid"`
 	Name         string       `json:"name" db:"name"`                   // URL-safe identifier (auto-generated, immutable)
 	APIKey       string       `json:"apiKey" db:"api_key"`              // Stores hashed API key
 	MaskedAPIKey string       `json:"maskedApiKey" db:"masked_api_key"` // Stores masked API key for display
 	PlainAPIKey  string       `json:"-" db:"-"`                         // Temporary field for plain API key (not persisted)
-	APIId        string       `json:"apiId" db:"apiId"`
+	ArtifactUUID string       `json:"artifactUuid" db:"artifact_uuid"`
 	Status       APIKeyStatus `json:"status" db:"status"`
 	CreatedAt    time.Time    `json:"createdAt" db:"created_at"`
 	CreatedBy    string       `json:"createdBy" db:"created_by"`

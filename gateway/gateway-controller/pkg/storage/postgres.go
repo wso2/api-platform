@@ -39,7 +39,6 @@ import (
 var postgresSchemaSQL string
 
 const (
-	postgresSchemaVersion = 9
 	postgresSchemaLockID  = int64(749251473)
 	pgUniqueViolationCode = "23505"
 )
@@ -126,78 +125,37 @@ func (s *PostgresStorage) initSchema() (retErr error) {
 
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to acquire postgres connection for schema migration: %w", err)
+		return fmt.Errorf("failed to acquire postgres connection for schema init: %w", err)
 	}
 	defer func() {
 		if closeErr := conn.Close(); closeErr != nil {
 			if retErr != nil {
-				retErr = fmt.Errorf("%w; failed to close schema migration connection: %v", retErr, closeErr)
+				retErr = fmt.Errorf("%w; failed to close schema init connection: %v", retErr, closeErr)
 			} else {
-				retErr = fmt.Errorf("failed to close schema migration connection: %w", closeErr)
+				retErr = fmt.Errorf("failed to close schema init connection: %w", closeErr)
 			}
 		}
 	}()
 
 	if _, err := conn.ExecContext(ctx, s.rebind(`SELECT pg_advisory_lock(?)`), postgresSchemaLockID); err != nil {
-		return fmt.Errorf("failed to acquire schema migration lock: %w", err)
+		return fmt.Errorf("failed to acquire schema init lock: %w", err)
 	}
 	defer func() {
 		if _, unlockErr := conn.ExecContext(ctx, s.rebind(`SELECT pg_advisory_unlock(?)`), postgresSchemaLockID); unlockErr != nil {
 			if retErr != nil {
-				retErr = fmt.Errorf("%w; failed to release schema migration lock: %v", retErr, unlockErr)
+				retErr = fmt.Errorf("%w; failed to release schema init lock: %v", retErr, unlockErr)
 			} else {
-				retErr = fmt.Errorf("failed to release schema migration lock: %w", unlockErr)
+				retErr = fmt.Errorf("failed to release schema init lock: %w", unlockErr)
 			}
 		}
 	}()
 
-	if _, err := conn.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			id INTEGER PRIMARY KEY,
-			version INTEGER NOT NULL,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`); err != nil {
-		return fmt.Errorf("failed to ensure schema_migrations table: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, `
-		INSERT INTO schema_migrations (id, version)
-		VALUES (1, 0)
-		ON CONFLICT (id) DO NOTHING
-	`); err != nil {
-		return fmt.Errorf("failed to initialize schema_migrations row: %w", err)
+	s.logger.Info("Initializing PostgreSQL schema")
+	if err := s.execSchemaStatements(ctx, conn, postgresSchemaSQL); err != nil {
+		return fmt.Errorf("failed to execute postgres schema: %w", err)
 	}
 
-	var version int
-	if err := conn.QueryRowContext(ctx, `SELECT version FROM schema_migrations WHERE id = 1`).Scan(&version); err != nil {
-		return fmt.Errorf("failed to query schema version: %w", err)
-	}
-
-	if version < postgresSchemaVersion {
-		s.logger.Info("Initializing PostgreSQL schema", slog.Int("target_version", postgresSchemaVersion))
-
-		// Migration from v8 to v9: drop operations column
-		if version == 8 {
-			if _, err := conn.ExecContext(ctx, `ALTER TABLE api_keys DROP COLUMN IF EXISTS operations`); err != nil {
-				return fmt.Errorf("failed to drop operations column during migration to version 9: %w", err)
-			}
-			s.logger.Info("Dropped operations column from api_keys (migration to version 9)")
-		}
-
-		if err := s.execSchemaStatements(ctx, conn, postgresSchemaSQL); err != nil {
-			return fmt.Errorf("failed to execute postgres schema: %w", err)
-		}
-		if _, err := conn.ExecContext(ctx, s.rebind(`
-			UPDATE schema_migrations
-			SET version = ?, updated_at = CURRENT_TIMESTAMP
-			WHERE id = 1
-		`), postgresSchemaVersion); err != nil {
-			return fmt.Errorf("failed to update schema_migrations: %w", err)
-		}
-		version = postgresSchemaVersion
-	}
-
-	s.logger.Info("PostgreSQL schema up to date", slog.Int("version", version))
+	s.logger.Info("PostgreSQL schema initialized")
 	return nil
 }
 
@@ -334,6 +292,30 @@ func isPostgresAPIKeyUniqueConstraintError(err error) bool {
 	default:
 		return strings.Contains(pgErr.TableName, "api_keys")
 	}
+}
+
+// isPostgresSubscriptionUniqueConstraintError checks for subscription (api_id, subscription_token_hash, gateway_id) uniqueness.
+func isPostgresSubscriptionUniqueConstraintError(err error) bool {
+	pgErr := extractPgError(err)
+	if pgErr == nil || pgErr.Code != pgUniqueViolationCode {
+		return false
+	}
+	return pgErr.TableName == "subscriptions" &&
+		(pgErr.ConstraintName == "subscriptions_api_id_subscription_token_hash_gateway_id_key" ||
+			(strings.Contains(pgErr.ConstraintName, "subscriptions") && strings.Contains(pgErr.ConstraintName, "subscription_token")))
+}
+
+// isPostgresSubscriptionPlanUniqueConstraintError checks for subscription_plans (gateway_id, plan_name) uniqueness.
+// Does not match subscription_plans_pkey or other constraints.
+func isPostgresSubscriptionPlanUniqueConstraintError(err error) bool {
+	pgErr := extractPgError(err)
+	if pgErr == nil || pgErr.Code != pgUniqueViolationCode {
+		return false
+	}
+	return pgErr.TableName == "subscription_plans" &&
+		(pgErr.ConstraintName == "subscription_plans_gateway_id_plan_name_key" ||
+			(strings.Contains(pgErr.ConstraintName, "subscription_plans") &&
+				strings.Contains(pgErr.ConstraintName, "plan_name")))
 }
 
 func extractPgError(err error) *pgconn.PgError {

@@ -18,6 +18,8 @@
 
 package controlplane
 
+import "time"
+
 // ConnectionAckMessage represents the acknowledgment message sent by the control plane
 // upon successful WebSocket connection establishment
 type ConnectionAckMessage struct {
@@ -196,4 +198,155 @@ type APIKeyRevokedEvent struct {
 	Timestamp     string                    `json:"timestamp"`
 	CorrelationID string                    `json:"correlationId"`
 	UserId        string                    `json:"userId"`
+}
+
+// MCPProxyDeployedEventPayload represents the payload of an MCP proxy deployment event
+type MCPProxyDeployedEventPayload struct {
+	ProxyID      string `json:"proxyId"`
+	Environment  string `json:"environment"`
+	DeploymentID string `json:"deploymentId"`
+	VHost        string `json:"vhost"`
+}
+
+// MCPProxyDeployedEvent represents the complete MCP proxy deployment event
+type MCPProxyDeployedEvent struct {
+	Type          string                       `json:"type"`
+	Payload       MCPProxyDeployedEventPayload `json:"payload"`
+	Timestamp     string                       `json:"timestamp"`
+	CorrelationID string                       `json:"correlationId"`
+}
+
+// MCPProxyUndeployedEventPayload represents the payload of an MCP proxy undeployment event
+type MCPProxyUndeployedEventPayload struct {
+	ProxyID     string `json:"proxyId"`
+	Environment string `json:"environment"`
+	VHost       string `json:"vhost"`
+}
+
+// MCPProxyUndeployedEvent represents the complete MCP proxy undeployment event
+type MCPProxyUndeployedEvent struct {
+	Type          string                         `json:"type"`
+	Payload       MCPProxyUndeployedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
+}
+
+// MCPProxyDeletedEventPayload represents the payload of an MCP proxy deletion event
+type MCPProxyDeletedEventPayload struct {
+	ProxyID string `json:"proxyId"`
+	VHost   string `json:"vhost"`
+}
+
+// MCPProxyDeletedEvent represents the complete MCP proxy deletion event
+type MCPProxyDeletedEvent struct {
+	Type          string                      `json:"type"`
+	Payload       MCPProxyDeletedEventPayload `json:"payload"`
+	Timestamp     string                      `json:"timestamp"`
+	CorrelationID string                      `json:"correlationId"`
+}
+
+// SubscriptionCreatedEventPayload represents the payload of a subscription created event.
+type SubscriptionCreatedEventPayload struct {
+	APIID              string `json:"apiId"`
+	SubscriptionID     string `json:"subscriptionId"`
+	ApplicationID      string `json:"applicationId,omitempty"`
+	SubscriptionToken  string `json:"subscriptionToken"`
+	SubscriptionPlanId string `json:"subscriptionPlanId,omitempty"`
+	Status             string `json:"status"`
+}
+
+// SubscriptionCreatedEvent represents the complete subscription.created event.
+type SubscriptionCreatedEvent struct {
+	Type          string                          `json:"type"`
+	Payload       SubscriptionCreatedEventPayload `json:"payload"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
+}
+
+// SubscriptionUpdatedEventPayload represents the payload of a subscription updated event.
+type SubscriptionUpdatedEventPayload struct {
+	APIID              string `json:"apiId"`
+	SubscriptionID     string `json:"subscriptionId"`
+	ApplicationID      string `json:"applicationId,omitempty"`
+	SubscriptionToken  string `json:"subscriptionToken"`
+	SubscriptionPlanId string `json:"subscriptionPlanId,omitempty"`
+	Status             string `json:"status"`
+}
+
+// SubscriptionUpdatedEvent represents the complete subscription.updated event.
+type SubscriptionUpdatedEvent struct {
+	Type          string                          `json:"type"`
+	Payload       SubscriptionUpdatedEventPayload `json:"payload"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
+}
+
+// SubscriptionDeletedEventPayload represents the payload of a subscription deleted event.
+type SubscriptionDeletedEventPayload struct {
+	APIID             string `json:"apiId"`
+	SubscriptionID    string `json:"subscriptionId"`
+	ApplicationID     string `json:"applicationId,omitempty"`
+	SubscriptionToken string `json:"subscriptionToken"`
+}
+
+// SubscriptionDeletedEvent represents the complete subscription.deleted event.
+type SubscriptionDeletedEvent struct {
+	Type          string                          `json:"type"`
+	Payload       SubscriptionDeletedEventPayload `json:"payload"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
+}
+
+// SubscriptionPlanCreatedEventPayload represents the payload of a subscriptionPlan.created event.
+type SubscriptionPlanCreatedEventPayload struct {
+	PlanId             string     `json:"planId"`
+	PlanName           string     `json:"planName"`
+	BillingPlan        string     `json:"billingPlan,omitempty"`
+	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
+	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
+	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
+	Status             string     `json:"status"`
+}
+
+// SubscriptionPlanCreatedEvent represents the complete subscriptionPlan.created event.
+type SubscriptionPlanCreatedEvent struct {
+	Type          string                              `json:"type"`
+	Payload       SubscriptionPlanCreatedEventPayload `json:"payload"`
+	Timestamp     string                              `json:"timestamp"`
+	CorrelationID string                              `json:"correlationId"`
+}
+
+// SubscriptionPlanUpdatedEventPayload represents the payload of a subscriptionPlan.updated event.
+type SubscriptionPlanUpdatedEventPayload struct {
+	PlanId             string     `json:"planId"`
+	PlanName           string     `json:"planName"`
+	BillingPlan        string     `json:"billingPlan,omitempty"`
+	StopOnQuotaReach   bool       `json:"stopOnQuotaReach"`
+	ThrottleLimitCount *int       `json:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  string     `json:"throttleLimitUnit,omitempty"`
+	ExpiryTime         *time.Time `json:"expiryTime,omitempty"`
+	Status             string     `json:"status"`
+}
+
+// SubscriptionPlanUpdatedEvent represents the complete subscriptionPlan.updated event.
+type SubscriptionPlanUpdatedEvent struct {
+	Type          string                              `json:"type"`
+	Payload       SubscriptionPlanUpdatedEventPayload `json:"payload"`
+	Timestamp     string                              `json:"timestamp"`
+	CorrelationID string                              `json:"correlationId"`
+}
+
+// SubscriptionPlanDeletedEventPayload represents the payload of a subscriptionPlan.deleted event.
+type SubscriptionPlanDeletedEventPayload struct {
+	PlanId   string `json:"planId"`
+	PlanName string `json:"planName"`
+}
+
+// SubscriptionPlanDeletedEvent represents the complete subscriptionPlan.deleted event.
+type SubscriptionPlanDeletedEvent struct {
+	Type          string                              `json:"type"`
+	Payload       SubscriptionPlanDeletedEventPayload `json:"payload"`
+	Timestamp     string                              `json:"timestamp"`
+	CorrelationID string                              `json:"correlationId"`
 }

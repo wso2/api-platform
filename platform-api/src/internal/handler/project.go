@@ -232,6 +232,11 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 				"Project has associated APIs"))
 			return
 		}
+		if errors.Is(err, constants.ErrProjectHasAssociatedMCPProxies) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Project has associated MCP proxies"))
+			return
+		}
 		h.slogger.Error("Failed to delete project", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to delete project"))

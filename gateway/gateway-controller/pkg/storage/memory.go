@@ -68,30 +68,29 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	defer cs.mu.Unlock()
 
 	key := cfg.GetCompositeKey()
-	handle := cfg.GetHandle()
-	if existingID, exists := cs.handle[handle]; exists {
+	if existingID, exists := cs.handle[cfg.Handle]; exists {
 		return fmt.Errorf("%w: configuration with handle '%s' already exists (ID: %s)",
-			ErrConflict, handle, existingID)
+			ErrConflict, cfg.Handle, existingID)
 	}
 	if existingID, exists := cs.nameVersion[key]; exists {
 		return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (ID: %s)",
-			ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingID)
+			ErrConflict, cfg.DisplayName, cfg.Version, existingID)
 	}
 
-	cs.configs[cfg.ID] = cfg
-	cs.handle[handle] = cfg.ID
-	cs.nameVersion[key] = cfg.ID
+	cs.configs[cfg.UUID] = cfg
+	cs.handle[cfg.Handle] = cfg.UUID
+	cs.nameVersion[key] = cfg.UUID
 
 	// Store labels if present
-	if cfg.Configuration.Metadata.Labels != nil {
+	if labels := cfg.GetLabels(); labels != nil {
 		labelsCopy := make(map[string]string)
-		for k, v := range *cfg.Configuration.Metadata.Labels {
+		for k, v := range *labels {
 			labelsCopy[k] = v
 		}
-		cs.labelsByAPI[handle] = labelsCopy
+		cs.labelsByAPI[cfg.Handle] = labelsCopy
 	}
 
-	if cfg.Configuration.Kind == api.WebSubApi {
+	if cfg.Kind == "WebSubApi" {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -105,23 +104,23 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	existing, exists := cs.configs[cfg.ID]
+	existing, exists := cs.configs[cfg.UUID]
 	if !exists {
-		return fmt.Errorf("configuration with ID '%s' not found", cfg.ID)
+		return fmt.Errorf("configuration with UUID '%s' not found", cfg.UUID)
 	}
 
 	// If handle changed, update the handle index
-	oldHandle := existing.GetHandle()
-	newHandle := cfg.GetHandle()
+	oldHandle := existing.Handle
+	newHandle := cfg.Handle
 
 	if oldHandle != newHandle {
 		// Check if new handle already exists
-		if existingID, exists := cs.handle[newHandle]; exists && existingID != cfg.ID {
-			return fmt.Errorf("%w: configuration with handle '%s' already exists (ID: %s)",
-				ErrConflict, newHandle, existingID)
+		if existingUUID, exists := cs.handle[newHandle]; exists && existingUUID != cfg.UUID {
+			return fmt.Errorf("%w: configuration with handle '%s' already exists (UUID: %s)",
+				ErrConflict, newHandle, existingUUID)
 		}
 		delete(cs.handle, oldHandle)
-		cs.handle[newHandle] = cfg.ID
+		cs.handle[newHandle] = cfg.UUID
 	}
 
 	// If name/version changed, update the nameVersion index
@@ -130,60 +129,55 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 
 	if oldKey != newKey {
 		// Check if new name:version combination already exists
-		if existingID, exists := cs.nameVersion[newKey]; exists && existingID != cfg.ID {
-			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (ID: %s)",
-				ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingID)
+		if existingUUID, exists := cs.nameVersion[newKey]; exists && existingUUID != cfg.UUID {
+			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (UUID: %s)",
+				ErrConflict, cfg.DisplayName, cfg.Version, existingUUID)
 		}
 		delete(cs.nameVersion, oldKey)
-		cs.nameVersion[newKey] = cfg.ID
+		cs.nameVersion[newKey] = cfg.UUID
 	}
 
-	if cfg.Configuration.Kind == api.WebSubApi {
+	if cfg.Kind == "WebSubApi" {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
 		}
 	}
 
-	cs.configs[cfg.ID] = cfg
+	cs.configs[cfg.UUID] = cfg
 
 	// Store labels with new handle
-	// Check if handles are same(because this is the key of the map)
-	// If same, update the labels or remove the entry if labels are nil
-	// If not same and if the labels are not nil, create a new entry with new handle
-	// else we can ignore it
+	labels := cfg.GetLabels()
 	if oldHandle != newHandle {
-		// Remove old handle entry
 		delete(cs.labelsByAPI, oldHandle)
-		if cfg.Configuration.Metadata.Labels != nil {
+		if labels != nil {
 			labelsCopy := make(map[string]string)
-			for k, v := range *cfg.Configuration.Metadata.Labels {
+			for k, v := range *labels {
 				labelsCopy[k] = v
 			}
 			cs.labelsByAPI[newHandle] = labelsCopy
 		}
 	} else {
-		if cfg.Configuration.Metadata.Labels != nil {
+		if labels != nil {
 			labelsCopy := make(map[string]string)
-			for k, v := range *cfg.Configuration.Metadata.Labels {
+			for k, v := range *labels {
 				labelsCopy[k] = v
 			}
 			cs.labelsByAPI[oldHandle] = labelsCopy
 		} else {
-			// Remove entry if labels are nil
 			delete(cs.labelsByAPI, oldHandle)
 		}
-
 	}
 
 	return nil
 }
 
 func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
-	asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
-	if err != nil {
-		return fmt.Errorf("failed to parse async API data: %w", err)
+	webSubCfg, ok := cfg.Configuration.(api.WebSubAPI)
+	if !ok {
+		return fmt.Errorf("configuration is not a WebSubAPI")
 	}
+	asyncData := webSubCfg.Spec
 	// Maintaining a topic map to process topics
 	// Running these inside Add or Delete configs might add extra latency to the API Deployment process
 	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
@@ -195,13 +189,13 @@ func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
 		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
 		name := strings.TrimPrefix(topic.Name, "/")
 		modifiedTopic := fmt.Sprintf("%s_%s", contextWithVersion, name)
-		cs.TopicManager.Add(cfg.ID, modifiedTopic)
+		cs.TopicManager.Add(cfg.UUID, modifiedTopic)
 		apiTopicsPerRevision[modifiedTopic] = true
 	}
 
-	for _, topic := range cs.TopicManager.GetAllByConfig(cfg.ID) {
+	for _, topic := range cs.TopicManager.GetAllByConfig(cfg.UUID) {
 		if _, exists := apiTopicsPerRevision[topic]; !exists {
-			cs.TopicManager.Remove(cfg.ID, topic)
+			cs.TopicManager.Remove(cfg.UUID, topic)
 		}
 	}
 	return nil
@@ -217,17 +211,14 @@ func (cs *ConfigStore) Delete(id string) error {
 		return fmt.Errorf("configuration with ID '%s' not found", id)
 	}
 
-	key := cfg.GetCompositeKey()
-	handle := cfg.GetHandle()
-
-	if cfg.Configuration.Kind == api.WebSubApi {
-		cs.TopicManager.RemoveAllForConfig(cfg.ID)
+	if cfg.Kind == "WebSubApi" {
+		cs.TopicManager.RemoveAllForConfig(cfg.UUID)
 	}
-	delete(cs.handle, handle)
-	delete(cs.nameVersion, key)
+	delete(cs.handle, cfg.Handle)
+	delete(cs.nameVersion, cfg.GetCompositeKey())
 	delete(cs.configs, id)
 	// Remove from labels map
-	delete(cs.labelsByAPI, handle)
+	delete(cs.labelsByAPI, cfg.Handle)
 	return nil
 }
 
@@ -277,7 +268,7 @@ func (cs *ConfigStore) GetByHandle(handle string) (*models.StoredConfig, error) 
 		return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
 	}
 
-	if cfg.GetHandle() != handle {
+	if cfg.Handle != handle {
 		return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
 	}
 	return cfg, nil
@@ -310,7 +301,7 @@ func (cs *ConfigStore) GetAllByKind(kind string) []*models.StoredConfig {
 }
 
 // GetByKindNameAndVersion returns a configuration of a specific kind, name and version
-func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version string) *models.StoredConfig {
+func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version string) (*models.StoredConfig, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -318,16 +309,15 @@ func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version
 		if cfg.Kind != kind {
 			continue
 		}
-		sc := cfg
-		if sc.GetDisplayName() == name && sc.GetVersion() == version {
-			return sc
+		if cfg.DisplayName == name && cfg.Version == version {
+			return cfg, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // GetByKindAndHandle returns a configuration of a specific kind, and handle
-func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) *models.StoredConfig {
+func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -335,12 +325,11 @@ func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) *models.St
 		if cfg.Kind != kind {
 			continue
 		}
-		sc := cfg
-		if sc.GetHandle() == handle {
-			return sc
+		if cfg.Handle == handle {
+			return cfg, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // IncrementSnapshotVersion atomically increments and returns the next snapshot version
@@ -378,14 +367,14 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 	defer cs.mu.Unlock()
 
 	// Normalize inputs
-	uuid := strings.TrimSpace(template.ID)
+	uuid := strings.TrimSpace(template.UUID)
 	handle := strings.TrimSpace(template.GetHandle())
 
 	if uuid == "" || handle == "" {
-		return fmt.Errorf("template ID and handle is required")
+		return fmt.Errorf("template UUID and handle is required")
 	}
 
-	// Enforce unique immutable ID: cannot add if ID already exists
+	// Enforce unique immutable UUID: cannot add if UUID already exists
 	if _, exists := cs.templates[uuid]; exists {
 		return fmt.Errorf("template with uuid '%s' already exists", uuid)
 	}
@@ -407,7 +396,7 @@ func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate
 	defer cs.mu.Unlock()
 
 	// Normalize inputs
-	uuid := strings.TrimSpace(template.ID)
+	uuid := strings.TrimSpace(template.UUID)
 	newHandle := strings.TrimSpace(template.GetHandle())
 
 	if uuid == "" || newHandle == "" {
@@ -504,7 +493,7 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 	if strings.TrimSpace(apiKey.APIKey) == "" {
 		return fmt.Errorf("API key value cannot be empty")
 	}
-	if strings.TrimSpace(apiKey.APIId) == "" {
+	if strings.TrimSpace(apiKey.ArtifactUUID) == "" {
 		return fmt.Errorf("API apiId cannot be empty")
 	}
 
@@ -512,7 +501,7 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 	defer cs.mu.Unlock()
 
 	// Check if an API key with the same apiId and name already exists
-	existingKeys, apiIdExists := cs.apiKeysByAPI[apiKey.APIId]
+	existingKeys, apiIdExists := cs.apiKeysByAPI[apiKey.ArtifactUUID]
 	var existingKeyID = ""
 
 	if apiIdExists {
@@ -525,23 +514,26 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 	}
 
 	if existingKeyID != "" {
+		// Prevent replacing an existing key's identity — the incoming key must have the same UUID
+		if apiKey.UUID != existingKeyID {
+			return fmt.Errorf("API key with name %q already exists for artifact %s with a different ID", apiKey.Name, apiKey.ArtifactUUID)
+		}
 		// Update the existing entry in apiKeysByAPI
-		delete(cs.apiKeysByAPI[apiKey.APIId], existingKeyID)
-		cs.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey // in API key rotation scenario apiKey.ID = existingKeyID
+		cs.apiKeysByAPI[apiKey.ArtifactUUID][existingKeyID] = apiKey
 	} else {
 		// Insert new API key
 		// Check if API key ID already exists
-		if _, exists := cs.apiKeysByAPI[apiKey.APIId][apiKey.ID]; exists {
+		if _, exists := cs.apiKeysByAPI[apiKey.ArtifactUUID][apiKey.UUID]; exists {
 			return ErrConflict
 		}
 
 		// Initialize the map for this API ID if it doesn't exist
-		if cs.apiKeysByAPI[apiKey.APIId] == nil {
-			cs.apiKeysByAPI[apiKey.APIId] = make(map[string]*models.APIKey)
+		if cs.apiKeysByAPI[apiKey.ArtifactUUID] == nil {
+			cs.apiKeysByAPI[apiKey.ArtifactUUID] = make(map[string]*models.APIKey)
 		}
 
 		// Store API key by API ID and API key ID
-		cs.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
+		cs.apiKeysByAPI[apiKey.ArtifactUUID][apiKey.UUID] = apiKey
 	}
 
 	return nil

@@ -60,44 +60,44 @@ func TestListAPIKeysSuccess(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Create test API configuration
-	apiConfig := createTestStoredConfig("test-handle", "Test API", "1.0.0", "/test")
-	server.db.(*MockStorage).configs["test-handle"] = apiConfig
+	apiConfig := createTestStoredConfig("0000-test-handle-0000-000000000000", "Test API", "1.0.0", "/test")
+	server.db.(*MockStorage).configs["0000-test-handle-0000-000000000000"] = apiConfig
 	server.store.Add(apiConfig)
 
 	// Create test API keys
 	key1 := &models.APIKey{
-		ID:           "key1",
-		Name:         "key1",
+		UUID:           "0000-key1-0000-000000000000",
+		Name:         "0000-key1-0000-000000000000",
 		APIKey:       "hashed-key-1",
 		MaskedAPIKey: "***key-1",
-		APIId:        "test-handle",
+		ArtifactUUID:        "0000-test-handle-0000-000000000000",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",
 		UpdatedAt:    time.Now(),
 	}
 	key2 := &models.APIKey{
-		ID:           "key2",
-		Name:         "key2",
+		UUID:           "0000-key2-0000-000000000000",
+		Name:         "0000-key2-0000-000000000000",
 		APIKey:       "hashed-key-2",
 		MaskedAPIKey: "***key-2",
-		APIId:        "test-handle",
+		ArtifactUUID:        "0000-test-handle-0000-000000000000",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",
 		UpdatedAt:    time.Now(),
 	}
 
-	server.db.(*MockStorage).apiKeys["key1"] = key1
-	server.db.(*MockStorage).apiKeys["key2"] = key2
+	server.db.(*MockStorage).apiKeys["0000-key1-0000-000000000000"] = key1
+	server.db.(*MockStorage).apiKeys["0000-key2-0000-000000000000"] = key2
 
-	c, w := createTestContext("GET", "/apis/test-handle/api-keys", nil)
+	c, w := createTestContext("GET", "/rest-apis/test-handle/api-keys", nil)
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
 	})
 
-	server.ListAPIKeys(c, "test-handle")
+	server.ListAPIKeys(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -111,7 +111,7 @@ func TestListAPIKeysSuccess(t *testing.T) {
 func TestListAPIKeysAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/apis/nonexistent/api-keys", nil)
+	c, w := createTestContext("GET", "/rest-apis/nonexistent/api-keys", nil)
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},
@@ -149,10 +149,10 @@ func TestListLLMProviderTemplatesWithData(t *testing.T) {
 
 	now := time.Now()
 	template1 := &models.StoredLLMProviderTemplate{
-		ID: "template1",
+		UUID: "0000-template1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{
-				Name: "template1",
+				Name: "0000-template1-0000-000000000000",
 			},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "OpenAI Template",
@@ -162,10 +162,10 @@ func TestListLLMProviderTemplatesWithData(t *testing.T) {
 		UpdatedAt: now,
 	}
 	template2 := &models.StoredLLMProviderTemplate{
-		ID: "template2",
+		UUID: "0000-template2-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{
-				Name: "template2",
+				Name: "0000-template2-0000-000000000000",
 			},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "Claude Template",
@@ -200,10 +200,10 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 
 	now := time.Now()
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template1",
+		UUID: "0000-template1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{
-				Name: "template1",
+				Name: "0000-template1-0000-000000000000",
 			},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "OpenAI Template",
@@ -216,7 +216,7 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 	server.store.AddTemplate(template)
 
 	c, w := createTestContext("GET", "/llm-provider-templates/template1", nil)
-	server.GetLLMProviderTemplateById(c, "template1")
+	server.GetLLMProviderTemplateById(c, "0000-template1-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -227,7 +227,7 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 	assert.NotNil(t, response["template"])
 
 	tmpl := response["template"].(map[string]interface{})
-	assert.Equal(t, "template1", tmpl["id"])
+	assert.Equal(t, "0000-template1-0000-000000000000", tmpl["id"])
 }
 
 // TestListLLMProvidersEmpty tests listing with no providers
@@ -252,7 +252,7 @@ func TestListLLMProvidersWithData(t *testing.T) {
 
 	now := time.Now()
 	provider := &models.StoredConfig{
-		ID:     "provider1",
+		UUID:     "0000-provider1-0000-000000000000",
 		Kind:   "LlmProvider",
 		Status: "active",
 		SourceConfiguration: api.LLMProviderConfiguration{
@@ -314,14 +314,14 @@ func TestListLLMProxiesWithData(t *testing.T) {
 
 	now := time.Now()
 	proxy := &models.StoredConfig{
-		ID:     "proxy1",
+		UUID:     "0000-proxy1-0000-000000000000",
 		Kind:   "LlmProxy",
 		Status: "active",
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProxy,
 			Metadata: api.Metadata{
-				Name: "llm-proxy-1",
+				Name: "0000-llm-proxy-1-0000-000000000000",
 			},
 			Spec: api.LLMProxyConfigData{
 				DisplayName: "LLM Proxy 1",

@@ -51,14 +51,14 @@ func TestLLMProviderTransformer_Transform_InvalidInput(t *testing.T) {
 	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
 
 	t.Run("Invalid input type returns error", func(t *testing.T) {
-		output := &api.APIConfiguration{}
+		output := &api.RestAPI{}
 		_, err := transformer.Transform("invalid-type", output)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input type")
 	})
 
 	t.Run("Nil input returns error", func(t *testing.T) {
-		output := &api.APIConfiguration{}
+		output := &api.RestAPI{}
 		_, err := transformer.Transform(nil, output)
 		assert.Error(t, err)
 	})
@@ -242,17 +242,17 @@ func TestMergeParams(t *testing.T) {
 	})
 
 	t.Run("Merge with base only", func(t *testing.T) {
-		base := map[string]interface{}{"key1": "value1"}
+		base := map[string]interface{}{"0000-key1-0000-000000000000": "value1"}
 		extra := map[string]interface{}{}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value1", (*result)["key1"])
+		assert.Equal(t, "value1", (*result)["0000-key1-0000-000000000000"])
 	})
 
 	t.Run("Merge with extra only", func(t *testing.T) {
 		base := map[string]interface{}{}
-		extra := map[string]interface{}{"key2": "value2"}
+		extra := map[string]interface{}{"0000-key2-0000-000000000000": "value2"}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value2", (*result)["key2"])
+		assert.Equal(t, "value2", (*result)["0000-key2-0000-000000000000"])
 	})
 
 	t.Run("Merge with overlapping keys", func(t *testing.T) {
@@ -264,11 +264,11 @@ func TestMergeParams(t *testing.T) {
 	})
 
 	t.Run("Merge with different keys", func(t *testing.T) {
-		base := map[string]interface{}{"key1": "value1"}
-		extra := map[string]interface{}{"key2": "value2"}
+		base := map[string]interface{}{"0000-key1-0000-000000000000": "value1"}
+		extra := map[string]interface{}{"0000-key2-0000-000000000000": "value2"}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value1", (*result)["key1"])
-		assert.Equal(t, "value2", (*result)["key2"])
+		assert.Equal(t, "value1", (*result)["0000-key1-0000-000000000000"])
+		assert.Equal(t, "value2", (*result)["0000-key2-0000-000000000000"])
 	})
 }
 
@@ -557,7 +557,7 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err := transformer.Transform(provider, output)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to retrieve template")
@@ -572,7 +572,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -597,7 +597,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -613,7 +613,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -641,7 +641,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -657,7 +657,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -693,16 +693,14 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	// Check that policies were added
-	apiData, err := result.Spec.AsAPIConfigData()
-	assert.NoError(t, err)
-	require.NotEmpty(t, apiData.Operations)
-	for _, op := range apiData.Operations {
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
 		require.NotNil(t, op.Policies)
 		found := false
 		for _, p := range *op.Policies {
@@ -722,7 +720,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 
 	// Add a template to the store (required for proxy transform to resolve provider template params)
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -746,14 +744,17 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	providerOut := &api.APIConfiguration{}
+	providerOut := &api.RestAPI{}
 	providerAPI, err := transformer.Transform(provider, providerOut)
 	require.NoError(t, err)
 	require.NotNil(t, providerAPI)
 
 	storedProvider := &models.StoredConfig{
-		ID:                  "prov-cfg-1",
+		UUID:                "0000-prov-cfg-1-0000-000000000000",
 		Kind:                string(api.LlmProvider),
+		Handle:              "openai-provider",
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
 		Configuration:       *providerAPI,
 		SourceConfiguration: *provider,
 		Status:              models.StatusDeployed,
@@ -780,17 +781,15 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(proxy, output)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	apiData, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
-	require.NotEmpty(t, apiData.Operations)
+	require.NotEmpty(t, result.Spec.Operations)
 
 	// Ensure upstream-auth policy is present on all operations
-	for _, op := range apiData.Operations {
+	for _, op := range result.Spec.Operations {
 		require.NotNil(t, op.Policies)
 		found := false
 		for _, p := range *op.Policies {
@@ -812,7 +811,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
@@ -837,7 +836,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err = transformer.Transform(provider, output)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported access control mode")

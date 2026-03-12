@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
@@ -107,7 +108,7 @@ func NewAPIServer(
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
+		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, &systemConfig.Router, policyVersionResolver, policyValidator),
 		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
@@ -146,16 +147,16 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.Int64("version", version))
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle))
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
 		cfg.DeployedVersion = 0
 		log.Error("Configuration deployment failed",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.String("kind", cfg.Kind))
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle))
 	}
 
 	cfg.UpdatedAt = now
@@ -171,15 +172,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	if err := s.store.Update(cfg); err != nil {
 		log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
 	}
-}
-
-// HealthCheck implements ServerInterface.HealthCheck
-// (GET /health)
-func (s *APIServer) HealthCheck(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "healthy",
-		"timestamp": time.Now().Format(time.RFC3339),
-	})
 }
 
 // GetXDSSyncStatus implements the GET /xds_sync_status endpoint.
@@ -229,6 +221,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
+		Kind:          "RestApi",
 		APIID:         "", // Empty to generate new UUID
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -271,14 +264,14 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(result.StoredConfig.ID, correlationID, log)
+		go s.waitForDeploymentAndPush(result.StoredConfig.UUID, correlationID, log)
 	}
 
 	// Return success response (id is the handle)
-	c.JSON(http.StatusCreated, api.APICreateResponse{
+	c.JSON(http.StatusCreated, api.RestAPICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration created successfully"),
-		Id:        stringPtr(result.StoredConfig.GetHandle()),
+		Id:        stringPtr(result.StoredConfig.Handle),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 
@@ -295,7 +288,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 			}
 		} else if result.IsUpdate {
 			// API was updated and no longer has policies, remove the existing policy configuration
-			policyID := result.StoredConfig.ID + "-policies"
+			policyID := result.StoredConfig.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Only treat "policy not found" as non-error (API may never have had policies)
 				// Other errors (storage failures, snapshot update failures) should be logged as errors
@@ -323,15 +316,20 @@ func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
 	}
 	configs := s.store.GetAllByKind(string(api.RestApi))
 
-	items := make([]api.APIListItem, 0, len(configs))
+	items := make([]api.RestAPIListItem, 0, len(configs))
 	for _, cfg := range configs {
+		cfgContext, err := cfg.GetContext()
+		if err != nil {
+			s.logger.Error("Failed to get context for API config", slog.Any("error", err), slog.String("uuid", cfg.UUID))
+			continue
+		}
 		status := string(cfg.Status)
-		items = append(items, api.APIListItem{
-			Id:          stringPtr(cfg.GetHandle()),
-			DisplayName: stringPtr(cfg.GetDisplayName()),
-			Version:     stringPtr(cfg.GetVersion()),
-			Context:     stringPtr(cfg.GetContext()),
-			Status:      (*api.APIListItemStatus)(&status),
+		items = append(items, api.RestAPIListItem{
+			Id:          stringPtr(cfg.Handle),
+			DisplayName: stringPtr(cfg.DisplayName),
+			Version:     stringPtr(cfg.Version),
+			Context:     stringPtr(cfgContext),
+			Status:      (*api.RestAPIListItemStatus)(&status),
 			CreatedAt:   timePtr(cfg.CreatedAt),
 			UpdatedAt:   timePtr(cfg.UpdatedAt),
 		})
@@ -368,13 +366,21 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		// Return MCP proxy format
 		mcpItems := make([]api.MCPProxyListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for MCP config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
 			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
@@ -385,16 +391,16 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
 			var mcp api.MCPProxyConfiguration
 			j, _ := json.Marshal(cfg.SourceConfiguration)
-			err := json.Unmarshal(j, &mcp)
+			err = json.Unmarshal(j, &mcp)
 			if err != nil {
 				s.logger.Error("Failed to unmarshal stored MCP configuration",
-					slog.String("id", cfg.ID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName))
 				continue
 			}
 
 			li := api.MCPProxyListItem{
-				Id:          stringPtr(cfg.GetHandle()),
+				Id:          stringPtr(cfg.Handle),
 				DisplayName: stringPtr(mcp.Spec.DisplayName),
 				Version:     stringPtr(mcp.Spec.Version),
 				Status:      &status,
@@ -412,17 +418,25 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			"count":      len(mcpItems),
 			"mcpProxies": mcpItems,
 		})
-	} else {
-		// Return API format
-		apiItems := make([]api.APIListItem, 0)
+	} else if kind == string(api.WebSubApi) {
+		// Return WebSub API format
+		websubItems := make([]api.WebSubAPIListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
 			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
@@ -430,12 +444,54 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			}
 
 			status := string(cfg.Status)
-			apiItems = append(apiItems, api.APIListItem{
-				Id:          stringPtr(cfg.GetHandle()),
-				DisplayName: stringPtr(cfg.GetDisplayName()),
-				Version:     stringPtr(cfg.GetVersion()),
-				Context:     stringPtr(cfg.GetContext()),
-				Status:      (*api.APIListItemStatus)(&status),
+			websubItems = append(websubItems, api.WebSubAPIListItem{
+				Id:          stringPtr(cfg.Handle),
+				DisplayName: stringPtr(cfg.DisplayName),
+				Version:     stringPtr(cfg.Version),
+				Context:     stringPtr(cfgContext),
+				Status:      (*api.WebSubAPIListItemStatus)(&status),
+				CreatedAt:   timePtr(cfg.CreatedAt),
+				UpdatedAt:   timePtr(cfg.UpdatedAt),
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":     "success",
+			"count":      len(websubItems),
+			"websubApis": websubItems,
+		})
+	} else {
+		// Return REST API format
+		apiItems := make([]api.RestAPIListItem, 0)
+		for _, cfg := range configs {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
+				continue
+			}
+			if v, ok := filters["version"]; ok && cfg.Version != v {
+				continue
+			}
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
+				continue
+			}
+			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+				continue
+			}
+
+			status := string(cfg.Status)
+			apiItems = append(apiItems, api.RestAPIListItem{
+				Id:          stringPtr(cfg.Handle),
+				DisplayName: stringPtr(cfg.DisplayName),
+				Version:     stringPtr(cfg.Version),
+				Context:     stringPtr(cfgContext),
+				Status:      (*api.RestAPIListItemStatus)(&status),
 				CreatedAt:   timePtr(cfg.CreatedAt),
 				UpdatedAt:   timePtr(cfg.UpdatedAt),
 			})
@@ -468,7 +524,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -513,20 +569,20 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 		return
 	}
 
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) {
+	if cfg.Kind != string(api.RestApi) {
 		log.Warn("Configuration kind mismatch",
-			slog.String("expected", "RestApi or async/websub"),
+			slog.String("expected", "RestApi"),
 			slog.String("actual", cfg.Kind),
 			slog.String("handle", handle))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Configuration with handle '%s' is not an API", handle),
+			Message: fmt.Sprintf("Configuration with handle '%s' is not a REST API", handle),
 		})
 		return
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -570,7 +626,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	// Parse configuration
 	contentType := c.GetHeader("Content-Type")
-	var apiConfig api.APIConfiguration
+	var apiConfig api.RestAPI
 	err = s.parser.Parse(body, contentType, &apiConfig)
 	if err != nil {
 		log.Error("Failed to parse configuration", slog.Any("error", err))
@@ -648,102 +704,11 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Update stored configuration
 	now := time.Now()
 	existing.Configuration = apiConfig
+	existing.SourceConfiguration = apiConfig
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
 	existing.DeployedVersion = 0
-
-	if apiConfig.Kind == api.WebSubApi {
-		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
-		var regErrs int32
-		var deregErrs int32
-
-		if len(topicsToRegister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
-				//fmt.Println("Topics Registering Started")
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to register topic with WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-							atomic.AddInt32(&regErrs, 1)
-						} else {
-							log.Info("Successfully registered topic with WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToRegister)
-		}
-
-		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-							atomic.AddInt32(&deregErrs, 1)
-						} else {
-							log.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-		wg2.Wait()
-
-		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", existing.ID),
-			slog.Int("registered", len(topicsToRegister)),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("register_errors", int(regErrs)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if regErrs > 0 || deregErrs > 0 {
-			log.Error("Failed to register & deregister topics",
-				slog.Int("topics_to_register", len(topicsToRegister)),
-				slog.Int("topics_to_unregister", len(topicsToUnregister)),
-				slog.Int("register_errors", int(regErrs)),
-				slog.Int("deregister_errors", int(deregErrs)))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Topic lifecycle operations failed",
-			})
-			return
-		}
-	}
 
 	// Atomic dual-write: database + in-memory
 	// Update database first (only if persistent mode)
@@ -762,7 +727,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
 			log.Info("API configuration handle already exists",
-				slog.String("id", existing.ID),
+				slog.String("id", existing.UUID),
 				slog.String("handle", handle))
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
@@ -792,7 +757,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	}()
 
 	log.Info("API configuration updated",
-		slog.String("id", existing.ID),
+		slog.String("id", existing.UUID),
 		slog.String("handle", handle))
 
 	// Record successful operation metrics
@@ -800,10 +765,10 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 
 	// Return success response (id is the handle)
-	c.JSON(http.StatusOK, api.APIUpdateResponse{
+	c.JSON(http.StatusOK, api.RestAPIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
-		Id:        stringPtr(existing.GetHandle()),
+		Id:        stringPtr(existing.Handle),
 		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
@@ -820,7 +785,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			}
 		} else {
 			// API no longer has policies, remove the existing policy configuration
-			policyID := existing.ID + "-policies"
+			policyID := existing.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if API never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -867,7 +832,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			log.Error("Failed to delete config from database", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
@@ -877,7 +842,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		}
 
 		// Delete associated API keys from database
-		err := s.db.RemoveAPIKeysAPI(cfg.ID)
+		err := s.db.RemoveAPIKeysAPI(cfg.UUID)
 		if err != nil {
 			log.Warn("Failed to remove API keys from database",
 				slog.String("handle", handle),
@@ -886,7 +851,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}
 
 	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(cfg.ID); err != nil {
+	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil {
 		log.Warn("Failed to remove API keys from ConfigStore",
 			slog.String("handle", handle),
 			slog.Any("error", err))
@@ -895,11 +860,10 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	// Remove API keys from policy engine via xDS
 	if s.apiKeyXDSManager != nil {
 		// Extract API name and version from the config
-		apiConfig, err := cfg.Configuration.Spec.AsAPIConfigData()
-		if err == nil {
-			apiId := cfg.ID
-			apiName := apiConfig.DisplayName
-			apiVersion := apiConfig.Version
+		if restCfg, ok := cfg.Configuration.(api.RestAPI); ok {
+			apiId := cfg.UUID
+			apiName := restCfg.Spec.DisplayName
+			apiVersion := restCfg.Spec.Version
 			correlationID := middleware.GetCorrelationID(c)
 
 			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
@@ -920,12 +884,11 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 			}
 		} else {
 			log.Warn("Failed to extract API config data for API key removal",
-				slog.String("handle", handle),
-				slog.Any("error", err))
+				slog.String("handle", handle))
 		}
 	}
 
-	if cfg.Configuration.Kind == api.WebSubApi {
+	if cfg.Kind == "WebSubApi" {
 		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 
 		var deregErrs int32
@@ -935,7 +898,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 			wg.Add(1)
 			go func(list []string) {
 				defer wg.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.ID))
+				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.UUID))
 				var childWg sync.WaitGroup
 				for _, topic := range list {
 					childWg.Add(1)
@@ -947,12 +910,12 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 							log.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
-								slog.String("api_id", cfg.ID))
+								slog.String("api_id", cfg.UUID))
 							atomic.AddInt32(&deregErrs, 1)
 						} else {
 							log.Info("Successfully deregistered topic from WebSubHub",
 								slog.String("topic", topic),
-								slog.String("api_id", cfg.ID))
+								slog.String("api_id", cfg.UUID))
 						}
 					}(topic)
 				}
@@ -963,7 +926,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		wg.Wait()
 
 		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", cfg.ID),
+			slog.String("api_id", cfg.UUID),
 			slog.Int("deregistered", len(topicsToUnregister)),
 			slog.Int("deregister_errors", int(deregErrs)))
 
@@ -979,7 +942,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}
 
 	// Delete from in-memory store
-	if err := s.store.Delete(cfg.ID); err != nil {
+	if err := s.store.Delete(cfg.UUID); err != nil {
 		log.Error("Failed to delete config from memory store", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
@@ -1002,7 +965,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}()
 
 	log.Info("API configuration deleted",
-		slog.String("id", cfg.ID),
+		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
 
 	// Record successful operation metrics
@@ -1018,7 +981,610 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 
 	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
+		policyID := cfg.UUID + "-policies"
+		if err := s.policyManager.RemovePolicy(policyID); err != nil {
+			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
+		} else {
+			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
+		}
+	}
+}
+
+// CreateWebSubAPI implements ServerInterface.CreateWebSubAPI
+// (POST /websub-apis)
+func (s *APIServer) CreateWebSubAPI(c *gin.Context) {
+	startTime := time.Now()
+	operation := "create"
+
+	log := middleware.GetLogger(c, s.logger)
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "websub_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	correlationID := middleware.GetCorrelationID(c)
+
+	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		Kind:          "WebSubApi",
+		APIID:         "",
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+
+	if err != nil {
+		log.Error("Failed to deploy WebSub API configuration", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "websub_api").Inc()
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else if validationErr := new(utils.ValidationErrorListError); errors.As(err, &validationErr) {
+			valErrors := make([]api.ValidationError, len(validationErr.Errors))
+			for i, e := range validationErr.Errors {
+				valErrors[i] = api.ValidationError{
+					Field:   stringPtr(e.Field),
+					Message: stringPtr(e.Message),
+				}
+			}
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Configuration validation failed",
+				Errors:  &valErrors,
+			})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "websub_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "websub_api").Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues("websub_api", "active").Inc()
+
+	c.JSON(http.StatusCreated, api.WebSubAPICreateResponse{
+		Status:    stringPtr("success"),
+		Message:   stringPtr("WebSub API configuration created successfully"),
+		Id:        stringPtr(result.StoredConfig.Handle),
+		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
+	})
+
+	if s.policyManager != nil {
+		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
+		if storedPolicy != nil {
+			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
+			} else {
+				log.Info("Derived policy configuration added",
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		} else if result.IsUpdate {
+			policyID := result.StoredConfig.UUID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				if storage.IsPolicyNotFoundError(err) {
+					log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
+				} else {
+					log.Error("Failed to remove policy configuration",
+						slog.Any("error", err),
+						slog.String("policy_id", policyID))
+				}
+			} else {
+				log.Info("Derived policy configuration removed (API no longer has policies)",
+					slog.String("policy_id", policyID))
+			}
+		}
+	}
+}
+
+// ListWebSubAPIs implements ServerInterface.ListWebSubAPIs
+// (GET /websub-apis)
+func (s *APIServer) ListWebSubAPIs(c *gin.Context, params api.ListWebSubAPIsParams) {
+	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
+		s.SearchDeployments(c, string(api.WebSubApi))
+		return
+	}
+	configs := s.store.GetAllByKind(string(api.WebSubApi))
+
+	items := make([]api.WebSubAPIListItem, 0, len(configs))
+	for _, cfg := range configs {
+		cfgContext, err := cfg.GetContext()
+		if err != nil {
+			s.logger.Error("Failed to get context for WebSub API config", slog.Any("error", err), slog.String("uuid", cfg.UUID))
+			continue
+		}
+		status := string(cfg.Status)
+		items = append(items, api.WebSubAPIListItem{
+			Id:          stringPtr(cfg.Handle),
+			DisplayName: stringPtr(cfg.DisplayName),
+			Version:     stringPtr(cfg.Version),
+			Context:     stringPtr(cfgContext),
+			Status:      (*api.WebSubAPIListItemStatus)(&status),
+			CreatedAt:   timePtr(cfg.CreatedAt),
+			UpdatedAt:   timePtr(cfg.UpdatedAt),
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":     "success",
+		"count":      len(items),
+		"websubApis": items,
+	})
+}
+
+// GetWebSubAPIById implements ServerInterface.GetWebSubAPIById
+// (GET /websub-apis/{id})
+func (s *APIServer) GetWebSubAPIById(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	cfg, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		log.Warn("WebSub API configuration not found",
+			slog.String("handle", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+		})
+		return
+	}
+
+	if cfg.Kind != string(api.WebSubApi) {
+		log.Warn("Configuration kind mismatch",
+			slog.String("expected", "WebSubApi"),
+			slog.String("actual", cfg.Kind),
+			slog.String("handle", handle))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with handle '%s' is not a WebSub API", handle),
+		})
+		return
+	}
+
+	apiDetail := gin.H{
+		"id":            cfg.Handle,
+		"configuration": cfg.Configuration,
+		"metadata": gin.H{
+			"status":    string(cfg.Status),
+			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
+			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
+		},
+	}
+
+	if cfg.DeployedAt != nil {
+		apiDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"api":    apiDetail,
+	})
+}
+
+// UpdateWebSubAPI implements ServerInterface.UpdateWebSubAPI
+// (PUT /websub-apis/{id})
+func (s *APIServer) UpdateWebSubAPI(c *gin.Context, id string) {
+	startTime := time.Now()
+	operation := "update"
+
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "websub_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	contentType := c.GetHeader("Content-Type")
+	var apiConfig api.WebSubAPI
+	err = s.parser.Parse(body, contentType, &apiConfig)
+	if err != nil {
+		log.Error("Failed to parse configuration", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "websub_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Failed to parse configuration: %v", err),
+		})
+		return
+	}
+
+	if apiConfig.Metadata.Name != "" {
+		if apiConfig.Metadata.Name != handle {
+			log.Warn("Handle mismatch between path and YAML metadata",
+				slog.String("path_handle", handle),
+				slog.String("yaml_handle", apiConfig.Metadata.Name))
+			metrics.APIOperationsTotal.WithLabelValues(operation, "error", "websub_api").Inc()
+			metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
+			})
+			return
+		}
+	}
+
+	validationErrors := s.validator.Validate(&apiConfig)
+	if len(validationErrors) > 0 {
+		log.Warn("Configuration validation failed",
+			slog.String("handle", handle),
+			slog.Int("num_errors", len(validationErrors)))
+
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "websub_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErrors)))
+
+		valErrors := make([]api.ValidationError, len(validationErrors))
+		for i, e := range validationErrors {
+			valErrors[i] = api.ValidationError{
+				Field:   stringPtr(e.Field),
+				Message: stringPtr(e.Message),
+			}
+		}
+
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Configuration validation failed",
+			Errors:  &valErrors,
+		})
+		return
+	}
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	existing, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		log.Warn("WebSub API configuration not found",
+			slog.String("handle", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+		})
+		return
+	}
+
+	now := time.Now()
+	existing.Configuration = apiConfig
+	existing.SourceConfiguration = apiConfig
+	existing.Status = models.StatusPending
+	existing.UpdatedAt = now
+	existing.DeployedAt = nil
+	existing.DeployedVersion = 0
+
+	// Handle WebSub topic registration/deregistration
+	topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
+	var wg2 sync.WaitGroup
+	var regErrs int32
+	var deregErrs int32
+
+	if len(topicsToRegister) > 0 {
+		wg2.Add(1)
+		go func(list []string) {
+			defer wg2.Done()
+			log.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.UUID))
+			var childWg sync.WaitGroup
+			for _, topic := range list {
+				childWg.Add(1)
+				go func(topic string) {
+					defer childWg.Done()
+					ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+					defer cancel()
+					if err := s.deploymentService.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
+						log.Error("Failed to register topic with WebSubHub",
+							slog.Any("error", err),
+							slog.String("topic", topic),
+							slog.String("api_id", existing.UUID))
+						atomic.AddInt32(&regErrs, 1)
+					} else {
+						log.Info("Successfully registered topic with WebSubHub",
+							slog.String("topic", topic),
+							slog.String("api_id", existing.UUID))
+					}
+				}(topic)
+			}
+			childWg.Wait()
+		}(topicsToRegister)
+	}
+
+	if len(topicsToUnregister) > 0 {
+		wg2.Add(1)
+		go func(list []string) {
+			defer wg2.Done()
+			log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.UUID))
+			var childWg sync.WaitGroup
+			for _, topic := range list {
+				childWg.Add(1)
+				go func(topic string) {
+					defer childWg.Done()
+					ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+					defer cancel()
+					if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
+						log.Error("Failed to deregister topic from WebSubHub",
+							slog.Any("error", err),
+							slog.String("topic", topic),
+							slog.String("api_id", existing.UUID))
+						atomic.AddInt32(&deregErrs, 1)
+					} else {
+						log.Info("Successfully deregistered topic from WebSubHub",
+							slog.String("topic", topic),
+							slog.String("api_id", existing.UUID))
+					}
+				}(topic)
+			}
+			childWg.Wait()
+		}(topicsToUnregister)
+	}
+	wg2.Wait()
+
+	log.Info("Topic lifecycle operations completed",
+		slog.String("api_id", existing.UUID),
+		slog.Int("registered", len(topicsToRegister)),
+		slog.Int("deregistered", len(topicsToUnregister)),
+		slog.Int("register_errors", int(regErrs)),
+		slog.Int("deregister_errors", int(deregErrs)))
+
+	if regErrs > 0 || deregErrs > 0 {
+		log.Error("Failed to register & deregister topics",
+			slog.Int("topics_to_register", len(topicsToRegister)),
+			slog.Int("topics_to_unregister", len(topicsToUnregister)),
+			slog.Int("register_errors", int(regErrs)),
+			slog.Int("deregister_errors", int(deregErrs)))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Topic lifecycle operations failed",
+		})
+		return
+	}
+
+	// Atomic dual-write: database + in-memory
+	if s.db != nil {
+		if err := s.db.UpdateConfig(existing); err != nil {
+			log.Error("Failed to update config in database", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to persist configuration update",
+			})
+			return
+		}
+	}
+
+	if err := s.store.Update(existing); err != nil {
+		if storage.IsConflictError(err) {
+			log.Info("WebSub API configuration handle already exists",
+				slog.String("id", existing.UUID),
+				slog.String("handle", handle))
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			log.Error("Failed to update config in memory store", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to update configuration in memory store",
+			})
+		}
+		return
+	}
+
+	correlationID := middleware.GetCorrelationID(c)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+		defer cancel()
+
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
+		}
+	}()
+
+	log.Info("WebSub API configuration updated",
+		slog.String("id", existing.UUID),
+		slog.String("handle", handle))
+
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "websub_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "websub_api").Observe(time.Since(startTime).Seconds())
+
+	c.JSON(http.StatusOK, api.WebSubAPIUpdateResponse{
+		Status:    stringPtr("success"),
+		Message:   stringPtr("WebSub API configuration updated successfully"),
+		Id:        stringPtr(existing.Handle),
+		UpdatedAt: timePtr(existing.UpdatedAt),
+	})
+
+	if s.policyManager != nil {
+		storedPolicy := s.buildStoredPolicyFromAPI(existing)
+		if storedPolicy != nil {
+			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
+			} else {
+				log.Info("Derived policy configuration updated",
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		} else {
+			policyID := existing.UUID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
+			} else {
+				log.Info("Derived policy configuration removed (API no longer has policies)",
+					slog.String("policy_id", policyID))
+			}
+		}
+	}
+}
+
+// DeleteWebSubAPI implements ServerInterface.DeleteWebSubAPI
+// (DELETE /websub-apis/{id})
+func (s *APIServer) DeleteWebSubAPI(c *gin.Context, id string) {
+	startTime := time.Now()
+	operation := "delete"
+
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	cfg, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		log.Warn("WebSub API configuration not found",
+			slog.String("handle", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+		})
+		return
+	}
+
+	if cfg.Kind != "WebSubApi" {
+		log.Warn("Configuration kind mismatch",
+			slog.String("expected", "WebSubApi"),
+			slog.String("actual", cfg.Kind),
+			slog.String("handle", handle))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with handle '%s' is not a WebSub API", handle),
+		})
+		return
+	}
+
+	// Delete from database
+	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		log.Error("Failed to delete config from database", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete configuration from database",
+		})
+		return
+	}
+
+	// Handle WebSub topic deregistration
+	topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
+
+	var deregErrs int32
+	var wg sync.WaitGroup
+
+	if len(topicsToUnregister) > 0 {
+		wg.Add(1)
+		go func(list []string) {
+			defer wg.Done()
+			log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.UUID))
+			var childWg sync.WaitGroup
+			for _, topic := range list {
+				childWg.Add(1)
+				go func(topic string) {
+					defer childWg.Done()
+					ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+					defer cancel()
+					if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
+						log.Error("Failed to deregister topic from WebSubHub",
+							slog.Any("error", err),
+							slog.String("topic", topic),
+							slog.String("api_id", cfg.UUID))
+						atomic.AddInt32(&deregErrs, 1)
+					} else {
+						log.Info("Successfully deregistered topic from WebSubHub",
+							slog.String("topic", topic),
+							slog.String("api_id", cfg.UUID))
+					}
+				}(topic)
+			}
+			childWg.Wait()
+		}(topicsToUnregister)
+	}
+
+	wg.Wait()
+
+	log.Info("Topic lifecycle operations completed",
+		slog.String("api_id", cfg.UUID),
+		slog.Int("deregistered", len(topicsToUnregister)),
+		slog.Int("deregister_errors", int(deregErrs)))
+
+	if deregErrs > 0 {
+		log.Error("Failed to deregister topics", slog.Int("deregister_errors", int(deregErrs)))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Topic lifecycle operations failed",
+		})
+		return
+	}
+
+	// Delete from in-memory store
+	if err := s.store.Delete(cfg.UUID); err != nil {
+		log.Error("Failed to delete config from memory store", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete configuration",
+		})
+		return
+	}
+
+	correlationID := middleware.GetCorrelationID(c)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
+		}
+	}()
+
+	log.Info("WebSub API configuration deleted",
+		slog.String("id", cfg.UUID),
+		slog.String("handle", handle))
+
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "websub_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "websub_api").Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues("websub_api", "active").Dec()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "WebSub API configuration deleted successfully",
+		"id":      handle,
+	})
+
+	if s.policyManager != nil {
+		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
@@ -1059,7 +1625,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	log.Info("LLM provider template created successfully",
-		slog.String("uuid", storedTemplate.ID),
+		slog.String("uuid", storedTemplate.UUID),
 		slog.String("handle", storedTemplate.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
@@ -1154,7 +1720,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template updated successfully",
-		slog.String("uuid", updated.ID),
+		slog.String("uuid", updated.UUID),
 		slog.String("handle", updated.GetHandle()))
 
 	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
@@ -1181,7 +1747,7 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template deleted successfully",
-		slog.String("uuid", deleted.ID),
+		slog.String("uuid", deleted.UUID),
 		slog.String("handle", deleted.GetHandle()))
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1206,7 +1772,7 @@ func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProviders
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &prov); err != nil {
 			log.Error("Failed to unmarshal stored LLM provider configuration",
-				slog.String("uuid", cfg.ID), slog.Any("error", err))
+				slog.String("uuid", cfg.UUID), slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
 				Message: "Failed to get stored LLM provider configuration"})
 			return
@@ -1265,17 +1831,17 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	}
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.ID, correlationID, log)
+		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
 	}
 
 	log.Info("LLM provider created successfully",
-		slog.String("uuid", stored.ID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.UUID),
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM provider created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -1297,7 +1863,15 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	if err != nil {
+		log.Error("Failed to look up LLM provider", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to look up LLM provider",
+		})
+		return
+	}
 	if cfg == nil {
 		log.Warn("LLM provider configuration not found",
 			slog.String("handle", id))
@@ -1368,7 +1942,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM provider updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1387,7 +1961,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 			}
 		} else {
 			// LLM provider no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
+			policyID := updated.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if LLM provider never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -1426,12 +2000,12 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
 	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
+		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
@@ -1454,7 +2028,7 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 		var proxy api.LLMProxyConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &proxy); err != nil {
-			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.ID),
+			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.UUID),
 				slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status: "error", Message: "Failed to get stored LLM proxy configuration"})
@@ -1514,17 +2088,17 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	}
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.ID, correlationID, log)
+		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
 	}
 
 	log.Info("LLM proxy created successfully",
-		slog.String("uuid", stored.ID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.UUID),
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProxyCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM proxy created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -1546,7 +2120,15 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	if err != nil {
+		log.Error("Failed to look up LLM proxy", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to look up LLM proxy",
+		})
+		return
+	}
 	if cfg == nil {
 		log.Warn("LLM proxy configuration not found",
 			slog.String("handle", id))
@@ -1617,7 +2199,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM proxy updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1636,7 +2218,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 			}
 		} else {
 			// LLM proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
+			policyID := updated.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if LLM provider never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -1675,12 +2257,12 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM proxy deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
 	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
+		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
 		} else {
@@ -1809,12 +2391,12 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration created successfully"),
-		Id:        stringPtr(cfg.GetHandle()),
+		Id:        stringPtr(cfg.Handle),
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(cfg.ID, correlationID, log)
+		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
 	}
 
 	// Build and add policy config derived from API configuration if policies are present
@@ -1850,8 +2432,8 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		err := json.Unmarshal(j, &mcp)
 		if err != nil {
 			s.logger.Error("Failed to unmarshal stored MCP configuration",
-				slog.String("id", cfg.ID),
-				slog.String("displayName", cfg.GetDisplayName()))
+				slog.String("id", cfg.UUID),
+				slog.String("displayName", cfg.DisplayName))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
@@ -1859,7 +2441,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 			return
 		}
 		li := api.MCPProxyListItem{
-			Id:          stringPtr(cfg.GetHandle()),
+			Id:          stringPtr(cfg.Handle),
 			DisplayName: stringPtr(mcp.Spec.DisplayName),
 			Version:     stringPtr(mcp.Spec.Version),
 			Status:      &status,
@@ -1931,7 +2513,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	}
 
 	mcpDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
 			"status":    string(cfg.Status),
@@ -1991,7 +2573,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	}
 
 	log.Info("MCP proxy configuration updated",
-		slog.String("id", updated.ID),
+		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
 
 	// Rebuild and update derived policy configuration
@@ -2007,7 +2589,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 			}
 		} else {
 			// MCP proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
+			policyID := updated.UUID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if MCP proxy never had policies
 				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
@@ -2022,7 +2604,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration updated successfully"),
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 }
@@ -2055,28 +2637,8 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 		return
 	}
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
-
 	log.Info("MCP proxy configuration deleted",
-		slog.String("id", cfg.ID),
+		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
 
 	c.JSON(http.StatusOK, gin.H{
@@ -2118,7 +2680,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			if cfg.Status == models.StatusDeployed {
 				log.Info("API deployed successfully, pushing to control plane",
 					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 
 				apiID := configID
 				deploymentID := ""
@@ -2136,7 +2698,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			} else if cfg.Status == models.StatusFailed {
 				log.Warn("API deployment failed, skipping control plane push",
 					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 				return
 			}
 			// Continue waiting if status is still pending
@@ -2178,9 +2740,9 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 
 	for _, cfg := range allConfigs {
 		// Use handle (metadata.name) as the id in the dump
-		configHandle := cfg.GetHandle()
+		configHandle := cfg.Handle
 		if configHandle == "" {
-			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.ID))
+			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.UUID))
 			continue
 		}
 
@@ -2260,7 +2822,7 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 
 			certStatus := "success"
 			certificates = append(certificates, adminapi.CertificateResponse{
-				Id:       &cert.ID,
+				Id:       &cert.UUID,
 				Name:     &cert.Name,
 				Subject:  &cert.Subject,
 				Issuer:   &cert.Issuer,
@@ -2654,6 +3216,708 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
 }
+
+// resolveAPIIDByHandle resolves an API identifier (deployment ID or handle) to the internal deployment ID.
+// It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
+// Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
+func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slog.Logger) (string, error) {
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return "", fmt.Errorf("database not available")
+	}
+
+	// First, try treating the input as a deployment ID.
+	cfgByID, err := s.db.GetConfig(handle)
+	if err != nil {
+		if !storage.IsNotFoundError(err) {
+			log.Error("Failed to look up API configuration by ID",
+				slog.String("id", handle),
+				slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to resolve API identifier",
+			})
+			return "", fmt.Errorf("database error")
+		}
+	} else if cfgByID != nil {
+		if cfgByID.Kind != string(api.RestApi) {
+			log.Warn("Configuration is not a REST API",
+				slog.String("id", handle),
+				slog.String("kind", cfgByID.Kind))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
+			})
+			return "", fmt.Errorf("invalid api kind")
+		}
+		return cfgByID.UUID, nil
+	}
+
+	// Fallback: resolve by handle (metadata.name)
+	cfg, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			log.Warn("API configuration not found", slog.String("handle_or_id", handle))
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("API configuration with identifier '%s' not found", handle),
+			})
+			return "", fmt.Errorf("api not found")
+		}
+		log.Error("Failed to look up API configuration by handle",
+			slog.String("handle", handle),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to resolve API identifier",
+		})
+		return "", fmt.Errorf("database error")
+	}
+	if cfg == nil {
+		log.Warn("API configuration not found", slog.String("handle_or_id", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("API configuration with identifier '%s' not found", handle),
+		})
+		return "", fmt.Errorf("api not found")
+	}
+	if cfg.Kind != string(api.RestApi) {
+		log.Warn("Configuration is not a REST API",
+			slog.String("handle", handle),
+			slog.String("kind", cfg.Kind))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
+		})
+		return "", fmt.Errorf("invalid api kind")
+	}
+	return cfg.UUID, nil
+	}
+
+// CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
+func (s *APIServer) CreateSubscription(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		log.Error("Database storage not available for subscription creation")
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	var req api.SubscriptionCreateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription create body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+	if strings.TrimSpace(req.ApiId) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiId is required"})
+		return
+	}
+
+	// Resolve apiId (deployment ID or handle) to the internal deployment ID used for persistence.
+	apiID, err := s.resolveAPIIDByHandle(c, req.ApiId, log)
+	if err != nil {
+		// resolveAPIIDByHandle already wrote the appropriate response.
+		return
+	}
+
+	// Validate subscription plan when provided: must exist, be ACTIVE, and be enabled for this API.
+	if req.SubscriptionPlanId != nil && *req.SubscriptionPlanId != "" {
+		plan, err := s.db.GetSubscriptionPlanByID(*req.SubscriptionPlanId, "")
+		if err != nil || plan == nil {
+			log.Warn("Subscription plan not found for subscription creation",
+				slog.String("subscription_plan_id", *req.SubscriptionPlanId),
+				slog.String("api_id", apiID))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Subscription plan not found or not enabled",
+			})
+			return
+		}
+		if plan.Status != models.SubscriptionPlanStatusActive {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Subscription plan is not active",
+			})
+			return
+		}
+		cfg, err := s.db.GetConfig(apiID)
+		if err != nil || cfg == nil {
+			log.Error("Failed to load API configuration for subscription plan validation",
+				slog.String("api_id", apiID), slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to validate subscription plan",
+			})
+			return
+		}
+		if cfg.Kind == string(api.RestApi) {
+			if restAPI, ok := cfg.Configuration.(api.RestAPI); ok {
+				if restAPI.Spec.SubscriptionPlans != nil && len(*restAPI.Spec.SubscriptionPlans) > 0 {
+					enabled := false
+					for _, name := range *restAPI.Spec.SubscriptionPlans {
+						if strings.EqualFold(name, plan.PlanName) {
+							enabled = true
+							break
+						}
+					}
+					if !enabled {
+						c.JSON(http.StatusBadRequest, api.ErrorResponse{
+							Status:  "error",
+							Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
+						})
+						return
+					}
+				}
+			}
+		}
+	}
+
+	status := models.SubscriptionStatusActive
+	if req.Status != nil {
+		st := models.SubscriptionStatus(*req.Status)
+		switch st {
+		case models.SubscriptionStatusActive,
+			models.SubscriptionStatusInactive,
+			models.SubscriptionStatusRevoked:
+			status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("invalid status: %s", *req.Status),
+			})
+			return
+		}
+	}
+	var appID *string
+	if req.ApplicationId != nil && *req.ApplicationId != "" {
+		appID = req.ApplicationId
+	}
+	sub := &models.Subscription{
+		ID:                uuid.New().String(),
+		APIID:             apiID,
+		ApplicationID:     appID,
+		SubscriptionPlanID: req.SubscriptionPlanId,
+		Status:            status,
+	}
+	if err := s.db.SaveSubscription(sub); err != nil {
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Application already subscribed to this API"})
+			return
+		}
+		log.Error("Failed to save subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription"})
+		return
+	}
+	resp := subscriptionToResponseWithToken(sub)
+	c.JSON(http.StatusCreated, resp)
+}
+
+// ListSubscriptions implements ServerInterface.ListSubscriptions (GET /subscriptions)
+func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptionsParams) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		log.Error("Database storage not available for listing subscriptions")
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	var apiID, appID, status *string
+	if params.ApiId != nil && *params.ApiId != "" {
+		// Normalize apiId to the internal deployment ID (accepts handle or deployment ID).
+		resolvedID, err := s.resolveAPIIDByHandle(c, *params.ApiId, log)
+		if err != nil {
+			// resolveAPIIDByHandle already wrote the response.
+			return
+		}
+		apiIDCopy := resolvedID
+		apiID = &apiIDCopy
+	}
+	if params.ApplicationId != nil && *params.ApplicationId != "" {
+		appID = params.ApplicationId
+	}
+	if params.Status != nil && *params.Status != "" {
+		st := string(*params.Status)
+		status = &st
+	}
+	// apiId is an optional filter. When omitted, all subscriptions for this gateway are returned
+	// (optionally filtered by applicationId and/or status).
+	apiIDValue := ""
+	if apiID != nil {
+		apiIDValue = *apiID
+	}
+	list, err := s.db.ListSubscriptionsByAPI(apiIDValue, "", appID, status)
+	if err != nil {
+		log.Error("Failed to list subscriptions", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscriptions"})
+		return
+	}
+	out := make([]api.SubscriptionResponse, 0, len(list))
+	for _, sub := range list {
+		out = append(out, subscriptionToResponse(sub))
+	}
+	c.JSON(http.StatusOK, api.SubscriptionListResponse{
+		Subscriptions: &out,
+		Count:         ptr(int(len(list))),
+	})
+}
+
+// GetSubscription implements ServerInterface.GetSubscription (GET /subscriptions/{subscriptionId})
+func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		log.Error("Database storage not available for getting subscription")
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to get subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		return
+	}
+	if sub == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionToResponse(sub))
+}
+
+// UpdateSubscription implements ServerInterface.UpdateSubscription (PUT /subscriptions/{subscriptionId})
+func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		log.Error("Database storage not available for updating subscription")
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to get subscription for update", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		return
+	}
+	if sub == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		return
+	}
+	var req api.SubscriptionUpdateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription update body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+	if req.Status != nil {
+		st := models.SubscriptionStatus(*req.Status)
+		switch st {
+		case models.SubscriptionStatusActive,
+			models.SubscriptionStatusInactive,
+			models.SubscriptionStatusRevoked:
+			sub.Status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("invalid status: %s", *req.Status),
+			})
+			return
+		}
+	}
+	if err := s.db.UpdateSubscription(sub); err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to update subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionToResponse(sub))
+}
+
+// DeleteSubscription implements ServerInterface.DeleteSubscription (DELETE /subscriptions/{subscriptionId})
+func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		log.Error("Database storage not available for deleting subscription")
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to get subscription for deletion", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		return
+	}
+	if sub == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		return
+	}
+	if err := s.db.DeleteSubscription(subscriptionId, ""); err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to delete subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// ========================================
+// Subscription Plan Handlers
+// ========================================
+
+// validateThrottleLimits ensures throttleLimitCount and throttleLimitUnit are provided together,
+// count is positive, and unit is one of Day, Hour, Min, Month.
+func validateThrottleLimits(count *int, unit *string) error {
+	countProvided := count != nil
+	unitProvided := unit != nil && *unit != ""
+	if countProvided != unitProvided {
+		return fmt.Errorf("throttleLimitCount and throttleLimitUnit must be provided together")
+	}
+	if !countProvided {
+		return nil
+	}
+	if *count <= 0 {
+		return fmt.Errorf("throttleLimitCount must be positive")
+	}
+	switch *unit {
+	case "Day", "Hour", "Min", "Month":
+		return nil
+	default:
+		return fmt.Errorf("throttleLimitUnit must be one of: Day, Hour, Min, Month")
+	}
+}
+
+// CreateSubscriptionPlan implements ServerInterface.CreateSubscriptionPlan (POST /subscription-plans)
+func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
+		return
+	}
+
+	var req api.SubscriptionPlanCreateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription plan create body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+	planName := strings.TrimSpace(req.PlanName)
+	if planName == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName is required"})
+		return
+	}
+
+	var unitStr *string
+	if req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		unitStr = &s
+	}
+	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		return
+	}
+
+	status := models.SubscriptionPlanStatusActive
+	if req.Status != nil {
+		st := models.SubscriptionPlanStatus(*req.Status)
+		switch st {
+		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
+			status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
+			return
+		}
+	}
+
+	plan := &models.SubscriptionPlan{
+		ID:               uuid.New().String(),
+		PlanName:         planName,
+		StopOnQuotaReach: true,
+		Status:           status,
+	}
+	if req.BillingPlan != nil {
+		plan.BillingPlan = req.BillingPlan
+	}
+	if req.StopOnQuotaReach != nil {
+		plan.StopOnQuotaReach = *req.StopOnQuotaReach
+	}
+	if req.ThrottleLimitCount != nil && req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		plan.ThrottleLimitCount = req.ThrottleLimitCount
+		plan.ThrottleLimitUnit = &s
+	}
+	if req.ExpiryTime != nil {
+		plan.ExpiryTime = req.ExpiryTime
+	}
+
+	if err := s.db.SaveSubscriptionPlan(plan); err != nil {
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan already exists"})
+			return
+		}
+		log.Error("Failed to save subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription plan"})
+		return
+	}
+	c.JSON(http.StatusCreated, subscriptionPlanToResponse(plan))
+}
+
+// ListSubscriptionPlans implements ServerInterface.ListSubscriptionPlans (GET /subscription-plans)
+func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
+		return
+	}
+
+	list, err := s.db.ListSubscriptionPlans("")
+	if err != nil {
+		log.Error("Failed to list subscription plans", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscription plans"})
+		return
+	}
+	items := make([]api.SubscriptionPlanResponse, 0, len(list))
+	for _, p := range list {
+		items = append(items, subscriptionPlanToResponse(p))
+	}
+	count := len(items)
+	c.JSON(http.StatusOK, api.SubscriptionPlanListResponse{SubscriptionPlans: &items, Count: &count})
+}
+
+// GetSubscriptionPlan implements ServerInterface.GetSubscriptionPlan (GET /subscription-plans/{planId})
+func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
+		return
+	}
+
+	plan, err := s.db.GetSubscriptionPlanByID(planId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			return
+		}
+		log.Error("Failed to get subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
+		return
+	}
+	if plan == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionPlanToResponse(plan))
+}
+
+// UpdateSubscriptionPlan implements ServerInterface.UpdateSubscriptionPlan (PUT /subscription-plans/{planId})
+func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
+		return
+	}
+
+	existing, err := s.db.GetSubscriptionPlanByID(planId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			return
+		}
+		log.Error("Failed to get subscription plan for update", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+		return
+	}
+
+	var req api.SubscriptionPlanUpdateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription plan update body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+
+	var unitStr *string
+	if req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		unitStr = &s
+	}
+	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		return
+	}
+
+	if req.PlanName != nil {
+		trimmed := strings.TrimSpace(*req.PlanName)
+		if trimmed == "" {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName cannot be empty"})
+			return
+		}
+		existing.PlanName = trimmed
+	}
+	if req.BillingPlan != nil {
+		existing.BillingPlan = req.BillingPlan
+	}
+	if req.StopOnQuotaReach != nil {
+		existing.StopOnQuotaReach = *req.StopOnQuotaReach
+	}
+	if req.ThrottleLimitCount != nil && req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		existing.ThrottleLimitCount = req.ThrottleLimitCount
+		existing.ThrottleLimitUnit = &s
+	}
+	if req.ExpiryTime != nil {
+		existing.ExpiryTime = req.ExpiryTime
+	}
+	if req.Status != nil {
+		st := models.SubscriptionPlanStatus(*req.Status)
+		switch st {
+		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
+			existing.Status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
+			return
+		}
+	}
+
+	if err := s.db.UpdateSubscriptionPlan(existing); err != nil {
+		log.Error("Failed to update subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription plan"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionPlanToResponse(existing))
+}
+
+// DeleteSubscriptionPlan implements ServerInterface.DeleteSubscriptionPlan (DELETE /subscription-plans/{planId})
+func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
+		return
+	}
+
+	if err := s.db.DeleteSubscriptionPlan(planId, ""); err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			return
+		}
+		log.Error("Failed to delete subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription plan"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionPlanResponse {
+	resp := api.SubscriptionPlanResponse{
+		Id:               ptr(plan.ID),
+		PlanName:         ptr(plan.PlanName),
+		GatewayId:        ptr(plan.GatewayID),
+		StopOnQuotaReach: ptr(plan.StopOnQuotaReach),
+		CreatedAt:        &plan.CreatedAt,
+		UpdatedAt:        &plan.UpdatedAt,
+	}
+	if plan.BillingPlan != nil && *plan.BillingPlan != "" {
+		resp.BillingPlan = plan.BillingPlan
+	}
+	if plan.ThrottleLimitCount != nil {
+		resp.ThrottleLimitCount = plan.ThrottleLimitCount
+	}
+	if plan.ThrottleLimitUnit != nil && *plan.ThrottleLimitUnit != "" {
+		resp.ThrottleLimitUnit = plan.ThrottleLimitUnit
+	}
+	if plan.ExpiryTime != nil {
+		resp.ExpiryTime = plan.ExpiryTime
+	}
+	if plan.Status != "" {
+		st := api.SubscriptionPlanResponseStatus(plan.Status)
+		resp.Status = &st
+	}
+	return resp
+}
+
+// subscriptionToResponse builds a response without the subscription token.
+// The token is only returned once at creation; DB reads contain hashes and must never be exposed.
+func subscriptionToResponse(sub *models.Subscription) api.SubscriptionResponse {
+	resp := api.SubscriptionResponse{
+		Id:        ptr(sub.ID),
+		ApiId:     ptr(sub.APIID),
+		GatewayId: ptr(sub.GatewayID),
+		CreatedAt: &sub.CreatedAt,
+		UpdatedAt: &sub.UpdatedAt,
+	}
+	if sub.ApplicationID != nil {
+		resp.ApplicationId = sub.ApplicationID
+	}
+	if sub.SubscriptionPlanID != nil {
+		resp.SubscriptionPlanId = sub.SubscriptionPlanID
+	}
+	if sub.Status != "" {
+		st := api.SubscriptionResponseStatus(sub.Status)
+		resp.Status = &st
+	}
+	return resp
+}
+
+// subscriptionToResponseWithToken adds the token to the response (create flow only).
+// Call only when sub has the raw token from creation, never from DB reads.
+func subscriptionToResponseWithToken(sub *models.Subscription) api.SubscriptionResponse {
+	resp := subscriptionToResponse(sub)
+	if sub.SubscriptionToken != "" {
+		resp.SubscriptionToken = ptr(sub.SubscriptionToken)
+	}
+	return resp
+}
+
+func ptr[T any](v T) *T { return &v }
 
 // extractAuthenticatedUser extracts and validates the authenticated user from Gin context
 // Returns the AuthenticatedUser object and handles error responses automatically

@@ -161,8 +161,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			description:   "API policies execute first, operation policies append (execution order matters, not declaration)",
 		},
 	}
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
+	baseSpec := api.APIConfigData{
 		DisplayName: "test-api",
 		Version:     "v1.0",
 		Context:     "/test",
@@ -180,30 +179,32 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				Path:   "/resource",
 			},
 		},
-	})
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Build a minimal StoredAPIConfig
-			cfg := &models.StoredConfig{
-				Configuration: api.APIConfiguration{
-					ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-					Kind:       api.APIConfigurationKind(api.RestApi),
-					Spec:       specUnion,
-				},
-			}
-
-			apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
-			require.NoError(t, err)
+			// Build a minimal StoredAPIConfig - copy the base spec for each test
+			specData := baseSpec
+			opsCopy := make([]api.Operation, len(baseSpec.Operations))
+			copy(opsCopy, baseSpec.Operations)
+			specData.Operations = opsCopy
 
 			// Set policies
 			if tt.apiPolicies != nil {
-				apiData.Policies = &tt.apiPolicies
-				cfg.Configuration.Spec.FromAPIConfigData(apiData)
+				specData.Policies = &tt.apiPolicies
 			}
 			if tt.operationPolicies != nil {
-				apiData.Operations[0].Policies = &tt.operationPolicies
-				cfg.Configuration.Spec.FromAPIConfigData(apiData)
+				specData.Operations[0].Policies = &tt.operationPolicies
+			}
+
+			apiCfg := api.RestAPI{
+				ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+				Kind:       api.RestApi,
+				Spec:       specData,
+			}
+			cfg := &models.StoredConfig{
+				Configuration:       apiCfg,
+				SourceConfiguration: apiCfg,
 			}
 
 			// Call the function
@@ -274,55 +275,54 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		{Name: "auth", Version: "v5"},
 	}
 
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-api",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiCfg := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "test-api",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
+			Operations: []api.Operation{
+				{
+					Method:   "GET",
+					Path:     "/resource1",
+					Policies: &op1Policies,
+				},
+				{
+					Method:   "POST",
+					Path:     "/resource2",
+					Policies: &op2Policies,
+				},
+				{
+					Method:   "PUT",
+					Path:     "/resource3",
+					Policies: &op3Policies,
+				},
+				{
+					Method: "DELETE",
+					Path:   "/resource4",
+					// No policies
+				},
+				{
+					Method:   "PATCH",
+					Path:     "/resource5",
+					Policies: &op5Policies,
+				},
+			},
+			Policies: &apiPolicies,
 		},
-		Operations: []api.Operation{
-			{
-				Method:   "GET",
-				Path:     "/resource1",
-				Policies: &op1Policies,
-			},
-			{
-				Method:   "POST",
-				Path:     "/resource2",
-				Policies: &op2Policies,
-			},
-			{
-				Method:   "PUT",
-				Path:     "/resource3",
-				Policies: &op3Policies,
-			},
-			{
-				Method: "DELETE",
-				Path:   "/resource4",
-				// No policies
-			},
-			{
-				Method:   "PATCH",
-				Path:     "/resource5",
-				Policies: &op5Policies,
-			},
-		},
-		Policies: &apiPolicies,
-	})
-
+	}
 	cfg := &models.StoredConfig{
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-			Kind:       api.APIConfigurationKind(api.RestApi),
-			Spec:       specUnion,
-		},
+		Configuration:       apiCfg,
+		SourceConfiguration: apiCfg,
 	}
 
 	server := newTestAPIServer()
@@ -420,35 +420,34 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 		{Name: "validation", Version: "v1"},
 	}
 
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-api",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiCfg := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "test-api",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Operations: []api.Operation{
-			{
-				Method:   "GET",
-				Path:     "/resource",
-				Policies: &operationPolicies,
+			Operations: []api.Operation{
+				{
+					Method:   "GET",
+					Path:     "/resource",
+					Policies: &operationPolicies,
+				},
 			},
+			Policies: &apiPolicies,
 		},
-		Policies: &apiPolicies,
-	})
-
+	}
 	cfg := &models.StoredConfig{
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-			Kind:       api.APIConfigurationKind(api.RestApi),
-			Spec:       specUnion,
-		},
+		Configuration:       apiCfg,
+		SourceConfiguration: apiCfg,
 	}
 
 	// Run 100 times to catch any non-deterministic behavior

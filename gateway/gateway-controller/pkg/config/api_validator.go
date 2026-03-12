@@ -59,70 +59,87 @@ func (v *APIValidator) SetPolicyValidator(policyValidator *PolicyValidator) {
 func (v *APIValidator) Validate(config interface{}) []ValidationError {
 	// Type switch to handle different configuration types
 	switch cfg := config.(type) {
-	case *api.APIConfiguration:
-		return v.validateAPIConfiguration(cfg)
-	case api.APIConfiguration:
-		return v.validateAPIConfiguration(&cfg)
+	case *api.RestAPI:
+		if cfg == nil {
+			return []ValidationError{{Field: "config", Message: "RestAPI configuration is nil"}}
+		}
+		return v.validateRestAPIConfiguration(cfg)
+	case api.RestAPI:
+		return v.validateRestAPIConfiguration(&cfg)
+	case *api.WebSubAPI:
+		if cfg == nil {
+			return []ValidationError{{Field: "config", Message: "WebSubAPI configuration is nil"}}
+		}
+		return v.validateWebSubAPIConfiguration(cfg)
+	case api.WebSubAPI:
+		return v.validateWebSubAPIConfiguration(&cfg)
 	default:
 		return []ValidationError{
 			{
 				Field:   "config",
-				Message: "Unsupported configuration type for APIValidator (expected APIConfiguration)",
+				Message: "Unsupported configuration type for APIValidator (expected RestAPI or WebSubAPI)",
 			},
 		}
 	}
 }
 
-// validateAPIConfiguration performs comprehensive validation on an API configuration
-func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []ValidationError {
+// validateRestAPIConfiguration performs comprehensive validation on a REST API configuration
+func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []ValidationError {
 	var errors []ValidationError
 
-	// Validate version
-	if config.ApiVersion != api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
-		errors = append(errors, ValidationError{
-			Field:   "version",
-			Message: "Unsupported API version (must be 'api-platform.wso2.com/v1')",
-		})
-	}
-
 	// Validate kind
-	if config.Kind != api.RestApi && config.Kind != api.WebSubApi {
+	if config.Kind != api.RestApi {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Unsupported API kind (only 'RestApi' and 'WebSubApi' are supported)",
+			Message: "Unsupported kind (must be 'RestApi')",
 		})
 	}
 
-	switch config.Kind {
-	case api.RestApi:
-		spec, err := config.Spec.AsAPIConfigData()
-		if err != nil {
-			errors = append(errors, ValidationError{
-				Field:   "spec",
-				Message: fmt.Sprintf("Invalid spec format for RestApi: %v", err),
-			})
-		} else {
-			// Validate data section
-			errors = append(errors, v.validateRestData(&spec)...)
-		}
-	case api.WebSubApi:
-		spec, err := config.Spec.AsWebhookAPIData()
-		if err != nil {
-			errors = append(errors, ValidationError{
-				Field:   "spec",
-				Message: fmt.Sprintf("Invalid spec format for async/websub: %v", err),
-			})
-		} else {
-			// Validate data section
-			errors = append(errors, v.validateAsyncData(&spec)...)
-		}
+	// Validate version
+	if config.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+		errors = append(errors, ValidationError{
+			Field:   "version",
+			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1alpha1')",
+		})
 	}
+
+	// Validate data section
+	errors = append(errors, v.validateRestData(&config.Spec)...)
 
 	// Validate policies if policy validator is set
 	if v.policyValidator != nil {
-		policyErrors := v.policyValidator.ValidatePolicies(config)
+		policyErrors := v.policyValidator.ValidateRestAPIPolicies(config)
 		errors = append(errors, policyErrors...)
 	}
+
+	// Validate metadata (including labels)
+	errors = append(errors, ValidateMetadata(&config.Metadata)...)
+
+	return errors
+}
+
+// validateWebSubAPIConfiguration performs comprehensive validation on a WebSub API configuration
+func (v *APIValidator) validateWebSubAPIConfiguration(config *api.WebSubAPI) []ValidationError {
+	var errors []ValidationError
+
+	// Validate kind
+	if config.Kind != api.WebSubApi {
+		errors = append(errors, ValidationError{
+			Field:   "kind",
+			Message: "Unsupported kind (must be 'WebSubApi')",
+		})
+	}
+
+	// Validate version
+	if config.ApiVersion != api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+		errors = append(errors, ValidationError{
+			Field:   "version",
+			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1alpha1')",
+		})
+	}
+
+	// Validate data section
+	errors = append(errors, v.validateAsyncData(&config.Spec)...)
 
 	// Validate metadata (including labels)
 	errors = append(errors, ValidateMetadata(&config.Metadata)...)
@@ -286,35 +303,32 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 		}
 
 		for j, upstream := range def.Upstreams {
-			// Validate URLs
-			if len(upstream.Urls) == 0 {
+			// Validate URL
+			if upstream.Url == "" {
 				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls", i, j),
-					Message: "At least one URL is required",
+					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+					Message: "URL is required",
 				})
 				continue
 			}
 
-			for k, urlStr := range upstream.Urls {
-				parsedURL, err := url.Parse(urlStr)
-				if err != nil {
-					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
-						Message: fmt.Sprintf("Invalid URL format: %v", err),
-					})
-					continue
-				}
-
+			parsedURL, err := url.Parse(upstream.Url)
+			if err != nil {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+					Message: fmt.Sprintf("Invalid URL format: %v", err),
+				})
+			} else {
 				if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
 						Message: "URL must use http or https scheme",
 					})
 				}
 
 				if parsedURL.Host == "" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].urls[%d]", i, j, k),
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
 						Message: "URL must include a host",
 					})
 				}

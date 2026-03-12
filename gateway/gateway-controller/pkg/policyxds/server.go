@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -44,6 +45,7 @@ type Server struct {
 	snapshotManager         *SnapshotManager
 	apiKeySnapshotMgr       *apikeyxds.APIKeySnapshotManager
 	lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager
+	subscriptionSnapshotMgr *subscriptionxds.SnapshotManager
 	port                    int
 	tlsConfig               *TLSConfig
 	onFirstConnect          chan struct{}
@@ -79,11 +81,12 @@ func WithOnFirstConnect(ch chan struct{}) ServerOption {
 }
 
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, subscriptionSnapshotMgr *subscriptionxds.SnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
 	s := &Server{
 		snapshotManager:         snapshotManager,
 		apiKeySnapshotMgr:       apiKeySnapshotMgr,
 		lazyResourceSnapshotMgr: lazyResourceSnapshotMgr,
+		subscriptionSnapshotMgr: subscriptionSnapshotMgr,
 		port:                    port,
 		logger:                  logger,
 		tlsConfig:               &TLSConfig{Enabled: false},
@@ -121,16 +124,18 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	grpcServer := grpc.NewServer(grpcOpts...)
 
-	// Create combined cache that handles policy chains, API key state, and lazy resources
+	// Create combined cache that handles policy chains, API key state, lazy resources, and subscription state
 	policyCache := snapshotManager.GetCache()
 	apiKeyCache := apiKeySnapshotMgr.GetCache()
 	lazyResourceCache := lazyResourceSnapshotMgr.GetCache()
-	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, logger)
+	subscriptionCache := subscriptionSnapshotMgr.GetCache()
+	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
 
 	callbacks := &serverCallbacks{
 		logger:         logger,
 		activeStreams:  make(map[int64]bool),
 		onFirstConnect: s.onFirstConnect,
+		pendingNonces:  make(map[int64]string),
 	}
 	xdsServer := server.NewServer(context.Background(), combinedCache, callbacks)
 
@@ -178,6 +183,7 @@ type serverCallbacks struct {
 	activeStreamsMu  sync.Mutex
 	onFirstConnect   chan struct{}
 	firstConnectOnce sync.Once
+	pendingNonces    map[int64]string // stream_id -> last sent nonce
 }
 
 // OnStreamOpen is called when a new stream is opened
@@ -212,8 +218,14 @@ func (cb *serverCallbacks) OnStreamRequest(streamID int64, req *discoverygrpc.Di
 
 	if _, exists := cb.activeStreams[streamID]; !exists {
 		cb.activeStreams[streamID] = true
-		if cb.onFirstConnect != nil {
-			cb.firstConnectOnce.Do(func() { close(cb.onFirstConnect) })
+	}
+
+	// Detect ACKs by comparing the nonce in the request with the last sent nonce for this stream
+	if req.GetResponseNonce() != "" && req.GetErrorDetail() == nil {
+		if pendingNonce, exists := cb.pendingNonces[streamID]; exists && pendingNonce == req.GetResponseNonce() {
+			if cb.onFirstConnect != nil {
+				cb.firstConnectOnce.Do(func() { close(cb.onFirstConnect) })
+			}
 		}
 	}
 
@@ -222,6 +234,14 @@ func (cb *serverCallbacks) OnStreamRequest(streamID int64, req *discoverygrpc.Di
 
 // OnStreamResponse is called when a discovery response is sent
 func (cb *serverCallbacks) OnStreamResponse(ctx context.Context, streamID int64, req *discoverygrpc.DiscoveryRequest, resp *discoverygrpc.DiscoveryResponse) {
+	// Track the nonce of the response so we can detect ACKs in OnStreamRequest
+	cb.activeStreamsMu.Lock()
+	if cb.pendingNonces == nil {
+		cb.pendingNonces = make(map[int64]string)
+	}
+	cb.pendingNonces[streamID] = resp.GetNonce()
+	cb.activeStreamsMu.Unlock()
+
 	cb.logger.Info("Policy xDS stream response",
 		slog.Int64("stream_id", streamID),
 		slog.String("type_url", resp.GetTypeUrl()),

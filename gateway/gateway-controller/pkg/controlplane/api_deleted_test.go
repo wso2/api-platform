@@ -35,7 +35,9 @@ import (
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
 type mockStorageForDeletion struct {
 	configs            map[string]*models.StoredConfig
+	subscriptions      map[string]*models.Subscription
 	deleteErr          error
+	updateErr          error
 	getErr             error
 	removeKeyErr       error
 	deleteCallCount    int
@@ -44,12 +46,13 @@ type mockStorageForDeletion struct {
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
-		configs: make(map[string]*models.StoredConfig),
+		configs:       make(map[string]*models.StoredConfig),
+		subscriptions: make(map[string]*models.Subscription),
 	}
 }
 
 func (m *mockStorageForDeletion) SaveConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
 }
 
@@ -65,7 +68,7 @@ func (m *mockStorageForDeletion) GetConfig(id string) (*models.StoredConfig, err
 }
 
 func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
 }
 
@@ -100,18 +103,9 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
-func (m *mockStorageForDeletion) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
-	for _, config := range m.configs {
-		if config.GetDisplayName() == name && config.GetVersion() == version {
-			return config, nil
-		}
-	}
-	return nil, fmt.Errorf("config not found")
-}
-
 func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
-		if config.GetHandle() == handle {
+		if config.Handle == handle {
 			return config, nil
 		}
 	}
@@ -128,6 +122,127 @@ func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
 
 func (m *mockStorageForDeletion) GetAPIKey(apiID, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
+}
+
+// Subscription methods
+
+func (m *mockStorageForDeletion) SaveSubscription(sub *models.Subscription) error {
+	// Deletion tests don't depend on subscription persistence
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if sub, ok := m.subscriptions[id]; ok {
+		if gatewayID != "" && sub.GatewayID != gatewayID {
+			return nil, storage.ErrNotFound
+		}
+		return sub, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) ListActiveSubscriptions() ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if sub == nil || sub.Status != models.SubscriptionStatusActive {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *mockStorageForDeletion) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if apiID != "" && sub.APIID != apiID {
+			continue
+		}
+		if gatewayID != "" && sub.GatewayID != gatewayID {
+			continue
+		}
+		if applicationID != nil && *applicationID != "" && (sub.ApplicationID == nil || *sub.ApplicationID != *applicationID) {
+			continue
+		}
+		if status != nil && *status != "" && string(sub.Status) != *status {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *mockStorageForDeletion) UpdateSubscription(sub *models.Subscription) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscription(id, gatewayID string) error {
+	// Don't touch deleteCallCount used for DeleteConfig assertions.
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if m.subscriptions == nil {
+		return storage.ErrNotFound
+	}
+	sub, ok := m.subscriptions[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	if gatewayID != "" && sub.GatewayID != gatewayID {
+		return storage.ErrNotFound
+	}
+	delete(m.subscriptions, id)
+	return nil
+}
+
+// Subscription Plan methods
+
+func (m *mockStorageForDeletion) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error) {
+	return nil, nil
+}
+
+func (m *mockStorageForDeletion) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscriptionPlan(id, gatewayID string) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscriptionPlansNotIn(ids []string) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	return nil
 }
 
 func (m *mockStorageForDeletion) GetAPIKeyByValue(keyValue string) (*models.APIKey, error) {
@@ -259,38 +374,38 @@ func (m *mockXDSManager) RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlat
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
+	return &models.StoredConfig{
+		UUID:        apiID,
+		Handle:      apiID,
 		DisplayName: "Test API",
 		Version:     "v1",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
-	return &models.StoredConfig{
-		ID:     apiID,
-		Status: models.StatusDeployed,
-		Kind:   "API",
-		Configuration: api.APIConfiguration{
-			ApiVersion: "gateway.wso2.com/v1",
+		Status:      models.StatusDeployed,
+		Kind:        "API",
+		Configuration: api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
 			Metadata: api.Metadata{
 				Name: apiID,
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "Test API",
+				Version:     "v1",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://backend.example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{
+						Method: "GET",
+						Path:   "/resource",
+					},
+				},
+			},
 		},
 	}
 }
@@ -570,8 +685,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in database, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 
@@ -594,8 +709,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in memory store, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 
@@ -634,8 +749,8 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in memory when DB is nil, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 }

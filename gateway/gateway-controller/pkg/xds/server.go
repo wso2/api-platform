@@ -118,6 +118,7 @@ type serverCallbacks struct {
 	activeStreamsMu  sync.Mutex
 	onFirstConnect   chan struct{}
 	firstConnectOnce sync.Once
+	pendingNonces    map[int64]string // stream_id -> last sent nonce
 }
 
 func NewServerCallbacks(logger *slog.Logger, onFirstConnect chan struct{}) *serverCallbacks {
@@ -125,6 +126,7 @@ func NewServerCallbacks(logger *slog.Logger, onFirstConnect chan struct{}) *serv
 		logger:         logger,
 		activeStreams:  make(map[int64]string),
 		onFirstConnect: onFirstConnect,
+		pendingNonces:  make(map[int64]string),
 	}
 }
 
@@ -172,8 +174,14 @@ func (cb *serverCallbacks) OnStreamRequest(id int64, req *discoverygrpc.Discover
 	if _, exists := cb.activeStreams[id]; !exists {
 		cb.activeStreams[id] = nodeID
 		metrics.XDSClientsConnected.WithLabelValues("main", nodeID).Inc()
-		if cb.onFirstConnect != nil {
-			cb.firstConnectOnce.Do(func() { close(cb.onFirstConnect) })
+	}
+
+	// Detect ACKs by comparing the nonce in the request with the last sent nonce for this stream
+	if req.ResponseNonce != "" && req.ErrorDetail == nil {
+		if pendingNonce, exists := cb.pendingNonces[id]; exists && pendingNonce == req.ResponseNonce {
+			if cb.onFirstConnect != nil {
+				cb.firstConnectOnce.Do(func() { close(cb.onFirstConnect) })
+			}
 		}
 	}
 
@@ -182,6 +190,11 @@ func (cb *serverCallbacks) OnStreamRequest(id int64, req *discoverygrpc.Discover
 }
 
 func (cb *serverCallbacks) OnStreamResponse(ctx context.Context, id int64, req *discoverygrpc.DiscoveryRequest, resp *discoverygrpc.DiscoveryResponse) {
+	// Track the nonce of the response so we can detect ACKs in OnStreamRequest
+	cb.activeStreamsMu.Lock()
+	cb.pendingNonces[id] = resp.Nonce
+	cb.activeStreamsMu.Unlock()
+
 	// Determine if this is an ACK or NACK
 	status := "ack"
 	if req != nil && resp != nil {

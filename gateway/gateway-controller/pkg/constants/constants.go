@@ -102,6 +102,15 @@ const (
 
 	WEBSUBHUB_INTERNAL_CLUSTER_NAME = "WEBSUBHUB_INTERNAL_CLUSTER"
 
+	// Target Upstream Header for dynamic cluster selection
+	// This header is set by the policy engine when UpstreamName is used
+	// Routes can be configured with cluster_header to read this header and select the target cluster
+	TargetUpstreamHeader = "x-target-upstream"
+
+	// UpstreamDefinitionClusterPrefix is the prefix used for clusters created from upstreamDefinitions
+	// Cluster names follow the format: upstream_<definition_name>
+	UpstreamDefinitionClusterPrefix = "upstream_"
+
 	WEBSUB_PATH                    = "/hub"
 	WEBSUB_HUB_INTERNAL_HTTP_PORT  = 8083
 	WEBSUB_HUB_INTERNAL_HTTPS_PORT = 8446

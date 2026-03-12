@@ -231,9 +231,9 @@ func TestSetContentLengthHeader_ExistingHeaders(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_NoAction(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -249,9 +249,9 @@ func TestFinalizeAnalyticsHeaders_NoAction(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_AllowMode(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -270,9 +270,9 @@ func TestFinalizeAnalyticsHeaders_AllowMode(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_DenyMode(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -347,7 +347,7 @@ func TestBuildDynamicMetadata_WithoutPath(t *testing.T) {
 		"key": "value",
 	})
 
-	result := buildDynamicMetadata(analyticsStruct, nil, nil)
+	result := buildDynamicMetadata(analyticsStruct, nil, nil, nil)
 
 	require.NotNil(t, result)
 	require.NotNil(t, result.Fields)
@@ -361,7 +361,7 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 	})
 	path := "/new/path"
 
-	result := buildDynamicMetadata(analyticsStruct, &path, nil)
+	result := buildDynamicMetadata(analyticsStruct, &path, nil, nil)
 
 	require.NotNil(t, result)
 	// Should include path in metadata
@@ -383,7 +383,7 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -391,7 +391,7 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 		Results: []executor.RequestPolicyResult{},
 	}
 
-	headerMutation, bodyMutation, analyticsData, _, pathMutation, immResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, _, pathMutation, _, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -409,7 +409,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -426,7 +426,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, _, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -442,7 +442,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -457,7 +457,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 		},
 	}
 
-	headerMutation, bodyMutation, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, bodyMutation, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	assert.Nil(t, immResp)
@@ -483,7 +483,7 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -498,7 +498,7 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, immResp)
@@ -516,7 +516,7 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -533,7 +533,7 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, _, _, err := translateRequestActionsCore(result, execCtx)
+	headerMutation, _, _, _, _, _, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	// Skipped policy actions should not be applied
@@ -548,7 +548,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -565,7 +565,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)
@@ -580,7 +580,7 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
+		Path:          "/api/test",
 		SharedContext: &policy.SharedContext{},
 	}
 
@@ -596,7 +596,7 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	_, _, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	require.NotNil(t, pathMutation)

@@ -75,6 +75,7 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                     - Clean all build artifacts'
+	@echo '  make clean-db                  - Remove local dev SQLite database files'
 
 # Build Targets
 .PHONY: build
@@ -208,6 +209,11 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 	echo "$$VERSION"
 
 # Clean Targets
+.PHONY: clean-db
+clean-db: ## Remove local dev SQLite database files
+	rm -f gateway-controller/data/gateway.db gateway-controller/data/gateway.db-shm gateway-controller/data/gateway.db-wal
+	@echo "Cleaned local dev database files"
+
 .PHONY: clean
 clean: ## Clean all build artifacts
 	$(MAKE) -C gateway-controller clean

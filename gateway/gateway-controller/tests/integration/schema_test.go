@@ -103,20 +103,20 @@ func TestSchemaInitialization(t *testing.T) {
 		var version int
 		err := rawDB.QueryRow("PRAGMA user_version").Scan(&version)
 		assert.NoError(t, err)
-		assert.Equal(t, 10, version, "Schema version should be 10 (removed operations from api_keys)")
+		assert.Equal(t, 1, version, "Schema version should be 1")
 	})
 
-	// Verify deployments table exists
+	// Verify artifacts table exists
 	t.Run("TableExists", func(t *testing.T) {
 		var tableName string
-		err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&tableName)
+		err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='artifacts'").Scan(&tableName)
 		assert.NoError(t, err)
-		assert.Equal(t, "deployments", tableName)
+		assert.Equal(t, "artifacts", tableName)
 	})
 
 	// Verify table schema
 	t.Run("TableSchema", func(t *testing.T) {
-		rows, err := rawDB.Query("PRAGMA table_info(deployments)")
+		rows, err := rawDB.Query("PRAGMA table_info(artifacts)")
 		require.NoError(t, err)
 		defer rows.Close()
 
@@ -135,18 +135,16 @@ func TestSchemaInitialization(t *testing.T) {
 
 		// Verify expected columns exist
 		expectedColumns := map[string]string{
-			"id":               "TEXT",
-			"display_name":     "TEXT",
-			"version":          "TEXT",
-			"context":          "TEXT",
-			"kind":             "TEXT",
-			"handle":           "TEXT",
-			"status":           "TEXT",
-			"created_at":       "TIMESTAMP",
-			"updated_at":       "TIMESTAMP",
-			"deployed_at":      "TIMESTAMP",
-			"deployed_version": "INTEGER",
-			"gateway_id":       "TEXT",
+			"uuid":         "TEXT",
+			"display_name": "TEXT",
+			"version":      "TEXT",
+			"kind":         "TEXT",
+			"handle":       "TEXT",
+			"status":       "TEXT",
+			"created_at":   "TIMESTAMP",
+			"updated_at":   "TIMESTAMP",
+			"deployed_at":  "TIMESTAMP",
+			"gateway_id":   "TEXT",
 		}
 
 		for colName, colType := range expectedColumns {
@@ -156,16 +154,20 @@ func TestSchemaInitialization(t *testing.T) {
 		}
 	})
 
-	t.Run("DeploymentConfigsTableExists", func(t *testing.T) {
-		var tableName string
-		err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='deployment_configs'").Scan(&tableName)
-		assert.NoError(t, err)
-		assert.Equal(t, "deployment_configs", tableName)
+	// Verify per-resource-type tables exist
+	t.Run("ResourceTypeTablesExist", func(t *testing.T) {
+		tables := []string{"rest_apis", "websub_apis", "llm_providers", "llm_proxies", "mcp_proxies"}
+		for _, table := range tables {
+			var tableName string
+			err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&tableName)
+			assert.NoError(t, err, "Table %s should exist", table)
+			assert.Equal(t, table, tableName)
+		}
 	})
 
-	// Verify table schema
-	t.Run("DeploymentConfigsTableSchema", func(t *testing.T) {
-		rows, err := rawDB.Query("PRAGMA table_info(deployment_configs)")
+	// Verify rest_apis table schema
+	t.Run("RestApisTableSchema", func(t *testing.T) {
+		rows, err := rawDB.Query("PRAGMA table_info(rest_apis)")
 		require.NoError(t, err)
 		defer rows.Close()
 
@@ -175,30 +177,25 @@ func TestSchemaInitialization(t *testing.T) {
 			var name, colType string
 			var notNull, pk int
 			var dfltValue sql.NullString
-
 			err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk)
 			require.NoError(t, err)
-
 			columns[name] = colType
 		}
 
-		// Verify expected columns exist
 		expectedColumns := map[string]string{
-			"id":                   "TEXT",
-			"configuration":        "TEXT",
-			"source_configuration": "TEXT",
+			"uuid":          "TEXT",
+			"configuration": "TEXT",
 		}
-
 		for colName, colType := range expectedColumns {
 			actualType, exists := columns[colName]
-			assert.True(t, exists, "Column %s should exist", colName)
+			assert.True(t, exists, "Column %s should exist in rest_apis", colName)
 			assert.Equal(t, colType, actualType, "Column %s should have type %s", colName, colType)
 		}
 	})
 
 	// Verify indexes exist
 	t.Run("IndexesExist", func(t *testing.T) {
-		rows, err := rawDB.Query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='deployments'")
+		rows, err := rawDB.Query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='artifacts'")
 		require.NoError(t, err)
 		defer rows.Close()
 
@@ -210,11 +207,9 @@ func TestSchemaInitialization(t *testing.T) {
 			indexes[name] = true
 		}
 
-		// Expected indexes
 		expectedIndexes := []string{
-			"idx_status",
-			"idx_context",
-			"idx_kind",
+			"idx_artifacts_status",
+			"idx_artifacts_kind",
 		}
 
 		for _, idxName := range expectedIndexes {
@@ -222,22 +217,22 @@ func TestSchemaInitialization(t *testing.T) {
 		}
 	})
 
-	// Verify UNIQUE constraint on (name, version, gateway_id)
+	// Verify UNIQUE constraint on artifacts
 	t.Run("UniqueConstraint", func(t *testing.T) {
-		var sql string
-		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&sql)
+		var sqlStr string
+		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'").Scan(&sqlStr)
 		require.NoError(t, err)
 
-		assert.Contains(t, sql, "UNIQUE(display_name, version, gateway_id)", "Should have UNIQUE constraint on (display_name, version, gateway_id)")
+		assert.Contains(t, sqlStr, "UNIQUE(gateway_id, kind, display_name, version)", "Should have UNIQUE constraint on (gateway_id, kind, display_name, version)")
 	})
 
 	// Verify CHECK constraint on status
 	t.Run("CheckConstraint", func(t *testing.T) {
-		var sql string
-		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&sql)
+		var sqlStr string
+		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'").Scan(&sqlStr)
 		require.NoError(t, err)
 
-		assert.Contains(t, sql, "CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed'))", "Should have CHECK constraint on status")
+		assert.Contains(t, sqlStr, "CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed'))", "Should have CHECK constraint on status")
 	})
 
 	// Verify WAL mode is enabled
@@ -287,10 +282,10 @@ func TestSchemaInitializationIdempotent(t *testing.T) {
 	defer db2.Close()
 
 	// Verify configuration still exists
-	retrieved, err := db2.GetConfigByNameVersion("IdempotentAPI", "v1.0")
+	retrieved, err := db2.GetConfigByHandle("IdempotentAPI-v1.0")
 	assert.NoError(t, err)
 	assert.NotNil(t, retrieved)
-	assert.Equal(t, cfg.ID, retrieved.ID)
+	assert.Equal(t, cfg.UUID, retrieved.UUID)
 }
 
 // TestEmptyDatabaseInitialization tests that a fresh database initializes correctly
@@ -324,9 +319,9 @@ func TestEmptyDatabaseInitialization(t *testing.T) {
 	assert.NoError(t, err, "Should be able to save configuration to fresh database")
 
 	// Verify we can retrieve it
-	retrieved, err := db.GetConfig(cfg.ID)
+	retrieved, err := db.GetConfig(cfg.UUID)
 	assert.NoError(t, err)
-	assert.Equal(t, cfg.ID, retrieved.ID)
+	assert.Equal(t, cfg.UUID, retrieved.UUID)
 }
 
 // TestDatabaseIntegrityCheck verifies that the database maintains integrity

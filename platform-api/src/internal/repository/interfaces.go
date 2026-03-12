@@ -138,6 +138,31 @@ type DevPortalRepository interface {
 	SetAsDefault(uuid, orgUUID string) error
 }
 
+// SubscriptionPlanRepository defines the interface for subscription plan data operations
+type SubscriptionPlanRepository interface {
+	Create(plan *model.SubscriptionPlan) error
+	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
+	GetByNameAndOrg(planName, orgUUID string) (*model.SubscriptionPlan, error)
+	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
+	Update(plan *model.SubscriptionPlan) error
+	Delete(planID, orgUUID string) error
+	ExistsByNameAndOrg(planName, orgUUID string) (bool, error)
+}
+
+// SubscriptionRepository defines the interface for application-level subscription data operations
+type SubscriptionRepository interface {
+	Create(sub *model.Subscription) error
+	GetByID(subscriptionID, orgUUID string) (*model.Subscription, error)
+	// ListByFilters returns subscriptions filtered by API and/or application for an organization.
+	// If apiUUID is nil, all APIs are considered. If applicationID is nil, all applications are considered.
+	ListByFilters(orgUUID string, apiUUID *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, error)
+	// CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
+	CountByFilters(orgUUID string, apiUUID *string, applicationID *string, status *string) (int, error)
+	Update(sub *model.Subscription) error
+	Delete(subscriptionID, orgUUID string) error
+	ExistsByAPIAndApplication(apiUUID, applicationID, orgUUID string) (bool, error)
+}
+
 // APIPublicationRepository interface defines operations for API publication tracking
 type APIPublicationRepository interface {
 	// Basic CRUD operations
@@ -197,4 +222,18 @@ type LLMProxyRepository interface {
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
+}
+
+// MCPProxyRepository defines the interface for MCP proxy persistence
+type MCPProxyRepository interface {
+	Create(p *model.MCPProxy) error
+	GetByHandle(handle, orgUUID string) (*model.MCPProxy, error)
+	GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error)
+	List(orgUUID string, limit, offset int) ([]*model.MCPProxy, error)
+	ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error)
+	Count(orgUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	Update(p *model.MCPProxy) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
 }

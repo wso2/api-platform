@@ -79,7 +79,6 @@ func validConfig() *Config {
 				},
 			},
 			PolicyEngine: PolicyEngineConfig{
-				RouteCacheAction: "DEFAULT",
 				TimeoutMs:        1000,
 				MessageTimeoutMs: 500,
 			},
@@ -838,20 +837,16 @@ func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 		port             uint32
 		timeoutMs        uint32
 		messageTimeoutMs uint32
-		routeCacheAction string
 		wantErr          bool
 		errContains      string
 	}{
-		{name: "Valid UDS mode (default)", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: false},
-		{name: "Valid TCP mode", mode: "tcp", host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: false},
-		{name: "TCP missing host", mode: "tcp", host: "", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "host is required"},
-		{name: "TCP zero port", mode: "tcp", host: "localhost", port: 0, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "port is required"},
-		{name: "TCP port too high", mode: "tcp", host: "localhost", port: 70000, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "port must be between"},
-		{name: "Zero timeout", mode: "uds", timeoutMs: 0, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "timeout_ms must be positive"},
-		{name: "Zero message timeout", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 0, routeCacheAction: "DEFAULT", wantErr: true, errContains: "message_timeout_ms must be positive"},
-		{name: "Invalid route cache action", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "INVALID", wantErr: true, errContains: "route_cache_action must be one of"},
-		{name: "Valid RETAIN action", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "RETAIN", wantErr: false},
-		{name: "Valid CLEAR action", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "CLEAR", wantErr: false},
+		{name: "Valid UDS mode (default)", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, wantErr: false},
+		{name: "Valid TCP mode", mode: "tcp", host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: false},
+		{name: "TCP missing host", mode: "tcp", host: "", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: true, errContains: "host is required"},
+		{name: "TCP zero port", mode: "tcp", host: "localhost", port: 0, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: true, errContains: "port is required"},
+		{name: "TCP port too high", mode: "tcp", host: "localhost", port: 70000, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: true, errContains: "port must be between"},
+		{name: "Zero timeout", mode: "uds", timeoutMs: 0, messageTimeoutMs: 500, wantErr: true, errContains: "timeout_ms must be positive"},
+		{name: "Zero message timeout", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 0, wantErr: true, errContains: "message_timeout_ms must be positive"},
 	}
 
 	for _, tt := range tests {
@@ -862,7 +857,6 @@ func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 			cfg.Router.PolicyEngine.Port = tt.port
 			cfg.Router.PolicyEngine.TimeoutMs = tt.timeoutMs
 			cfg.Router.PolicyEngine.MessageTimeoutMs = tt.messageTimeoutMs
-			cfg.Router.PolicyEngine.RouteCacheAction = tt.routeCacheAction
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -898,7 +892,6 @@ func TestConfig_ValidatePolicyEngineTLS(t *testing.T) {
 			cfg.Router.PolicyEngine.Port = 50051
 			cfg.Router.PolicyEngine.TimeoutMs = 1000
 			cfg.Router.PolicyEngine.MessageTimeoutMs = 500
-			cfg.Router.PolicyEngine.RouteCacheAction = "DEFAULT"
 			cfg.Router.PolicyEngine.TLS.Enabled = tt.tlsEnabled
 			cfg.Router.PolicyEngine.TLS.CertPath = tt.certPath
 			cfg.Router.PolicyEngine.TLS.KeyPath = tt.keyPath
@@ -976,7 +969,6 @@ func TestConfig_ValidatePolicyEngineMode(t *testing.T) {
 			cfg.Router.PolicyEngine.Port = tt.port
 			cfg.Router.PolicyEngine.TimeoutMs = 1000
 			cfg.Router.PolicyEngine.MessageTimeoutMs = 500
-			cfg.Router.PolicyEngine.RouteCacheAction = "DEFAULT"
 			cfg.Router.PolicyEngine.TLS.Enabled = tt.tlsEnabled
 			err := cfg.Validate()
 			if tt.wantErr {

@@ -85,16 +85,17 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/llm",
 		}
-		var spec api.APIConfiguration_Spec
-		require.NoError(t, spec.FromAPIConfigData(apiData))
 
 		llmConfig := &models.StoredConfig{
-			ID:   "llm-provider-1",
-			Kind: string(api.LlmProvider),
-			Configuration: api.APIConfiguration{
+			UUID:        "0000-llm-provider-1-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-llm-provider-1-0000-000000000000",
+			DisplayName: "LLM Provider",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
 				Kind:     api.RestApi,
-				Metadata: api.Metadata{Name: "llm-provider-1"},
-				Spec:     spec,
+				Metadata: api.Metadata{Name: "0000-llm-provider-1-0000-000000000000"},
+				Spec:     apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -104,7 +105,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 
 		providers := service.ListLLMProviders(api.ListLLMProvidersParams{})
 		assert.Len(t, providers, 1)
-		assert.Equal(t, "llm-provider-1", providers[0].ID)
+		assert.Equal(t, "0000-llm-provider-1-0000-000000000000", providers[0].UUID)
 	})
 
 	t.Run("Filter by display name", func(t *testing.T) {
@@ -119,16 +120,17 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/first",
 		}
-		var spec1 api.APIConfiguration_Spec
-		require.NoError(t, spec1.FromAPIConfigData(apiData1))
 
 		config1 := &models.StoredConfig{
-			ID:   "llm-provider-1",
-			Kind: string(api.LlmProvider),
-			Configuration: api.APIConfiguration{
+			UUID:        "0000-llm-provider-1-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "first-provider",
+			DisplayName: "First Provider",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "first-provider"},
-				Spec:     spec1,
+				Spec:     apiData1,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -142,16 +144,17 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/filtered",
 		}
-		var spec2 api.APIConfiguration_Spec
-		require.NoError(t, spec2.FromAPIConfigData(apiData2))
 
 		config2 := &models.StoredConfig{
-			ID:   "llm-provider-2",
-			Kind: string(api.LlmProvider),
-			Configuration: api.APIConfiguration{
+			UUID:        "0000-llm-provider-2-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "filtered-provider",
+			DisplayName: "Filtered Provider",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "filtered-provider"},
-				Spec:     spec2,
+				Spec:     apiData2,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -164,7 +167,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			DisplayName: &displayName,
 		})
 		assert.Len(t, providers, 1)
-		assert.Equal(t, "llm-provider-2", providers[0].ID)
+		assert.Equal(t, "0000-llm-provider-2-0000-000000000000", providers[0].UUID)
 	})
 }
 
@@ -186,15 +189,15 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/llm-proxy",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
-
 		llmProxyConfig := &models.StoredConfig{
-			ID:   "llm-proxy-1",
-			Kind: string(api.LlmProxy),
-			Configuration: api.APIConfiguration{
+			UUID:        "0000-llm-proxy-1-0000-000000000000",
+			Kind:        string(api.LlmProxy),
+			Handle:      "0000-llm-proxy-1-0000-000000000000",
+			DisplayName: "LLM Proxy",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -204,7 +207,7 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 
 		proxies := service.ListLLMProxies(api.ListLLMProxiesParams{})
 		assert.Len(t, proxies, 1)
-		assert.Equal(t, "llm-proxy-1", proxies[0].ID)
+		assert.Equal(t, "0000-llm-proxy-1-0000-000000000000", proxies[0].UUID)
 	})
 }
 
@@ -221,7 +224,7 @@ func TestLLMDeploymentService_ListLLMProviderTemplates(t *testing.T) {
 
 	t.Run("Returns all templates with nil filter", func(t *testing.T) {
 		template := &models.StoredLLMProviderTemplate{
-			ID: "template-1",
+			UUID: "0000-template-1-0000-000000000000",
 			Configuration: api.LLMProviderTemplate{
 				Metadata: api.Metadata{Name: "openai"},
 				Spec: api.LLMProviderTemplateData{
@@ -243,7 +246,7 @@ func TestLLMDeploymentService_ListLLMProviderTemplates(t *testing.T) {
 
 	t.Run("Filters by display name", func(t *testing.T) {
 		template2 := &models.StoredLLMProviderTemplate{
-			ID: "template-2",
+			UUID: "0000-template-2-0000-000000000000",
 			Configuration: api.LLMProviderTemplate{
 				Metadata: api.Metadata{Name: "anthropic"},
 				Spec: api.LLMProviderTemplateData{
@@ -267,13 +270,13 @@ func TestLLMDeploymentService_GetLLMProviderTemplateByHandle(t *testing.T) {
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	t.Run("Returns error for non-existent template", func(t *testing.T) {
-		_, err := service.GetLLMProviderTemplateByHandle("non-existent")
+		_, err := service.GetLLMProviderTemplateByHandle("0000-non-existent-0000-000000000000")
 		assert.Error(t, err)
 	})
 
 	t.Run("Returns template by handle", func(t *testing.T) {
 		template := &models.StoredLLMProviderTemplate{
-			ID: "template-1",
+			UUID: "0000-template-1-0000-000000000000",
 			Configuration: api.LLMProviderTemplate{
 				Metadata: api.Metadata{Name: "test-template"},
 				Spec: api.LLMProviderTemplateData{
@@ -346,7 +349,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_NotFound(t *testing.T) {
 		Logger:      logger,
 	}
 
-	_, err := service.UpdateLLMProviderTemplate("non-existent", params)
+	_, err := service.UpdateLLMProviderTemplate("0000-non-existent-0000-000000000000", params)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -360,7 +363,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_HandleChange(t *testing.
 
 	// Add existing template
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "original-handle"},
 			Spec: api.LLMProviderTemplateData{
@@ -396,7 +399,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
 	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
-	_, err := service.DeleteLLMProviderTemplate("non-existent")
+	_, err := service.DeleteLLMProviderTemplate("0000-non-existent-0000-000000000000")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -409,7 +412,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 
 	// Add template
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-to-delete",
+		UUID: "0000-template-to-delete-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "delete-me"},
 			Spec: api.LLMProviderTemplateData{
@@ -482,7 +485,7 @@ func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
 		Logger:        logger,
 	}
 
-	_, err := service.UpdateLLMProvider("non-existent", params)
+	_, err := service.UpdateLLMProvider("0000-non-existent-0000-000000000000", params)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -501,7 +504,7 @@ func TestLLMDeploymentService_UpdateLLMProxy_NotFound(t *testing.T) {
 		Logger:        logger,
 	}
 
-	_, err := service.UpdateLLMProxy("non-existent", params)
+	_, err := service.UpdateLLMProxy("0000-non-existent-0000-000000000000", params)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -513,7 +516,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_NotFound(t *testing.T) {
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteLLMProvider("non-existent", "corr-id", logger)
+	_, err := service.DeleteLLMProvider("0000-non-existent-0000-000000000000", "corr-id", logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -525,7 +528,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteLLMProxy("non-existent", "corr-id", logger)
+	_, err := service.DeleteLLMProxy("0000-non-existent-0000-000000000000", "corr-id", logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -533,8 +536,11 @@ func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 func TestMatchesFilters(t *testing.T) {
 	t.Run("Invalid config returns false", func(t *testing.T) {
 		config := &models.StoredConfig{
-			ID:   "test-config",
-			Kind: string(api.LlmProvider),
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test Config",
+			Version:     "1.0.0",
 			// No valid spec
 		}
 		result := matchesFilters(config, api.ListLLMProvidersParams{})
@@ -547,15 +553,16 @@ func TestMatchesFilters(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
-			ID:   "test-config",
-			Kind: string(api.LlmProvider),
-			Configuration: api.APIConfiguration{
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 		}
 		result := matchesFilters(config, "unsupported type")
@@ -575,15 +582,16 @@ func TestMatchesFilters(t *testing.T) {
 				Main: vhost,
 			},
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
-			ID:   "test-config",
-			Kind: string(api.LlmProvider),
-			Configuration: api.APIConfiguration{
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test Provider",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status: models.StatusPending,
 		}
@@ -609,15 +617,16 @@ func TestMatchesFilters(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
-			ID:   "test-config",
-			Kind: string(api.LlmProvider),
-			Configuration: api.APIConfiguration{
+			UUID:        "0000-test-config-0000-000000000000",
+			Kind:        string(api.LlmProvider),
+			Handle:      "0000-test-config-0000-000000000000",
+			DisplayName: "Test Provider",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 		}
 
@@ -676,7 +685,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T
 
 	// Add existing template
 	existingTemplate := &models.StoredLLMProviderTemplate{
-		ID: "existing-id",
+		UUID: "0000-existing-id-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "existing"},
 			Spec: api.LLMProviderTemplateData{

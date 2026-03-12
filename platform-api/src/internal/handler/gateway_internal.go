@@ -384,12 +384,208 @@ func (h *GatewayInternalAPIHandler) GetLLMProxy(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
+// GetSubscriptions handles GET /api/internal/v1/apis/:apiId/subscriptions
+func (h *GatewayInternalAPIHandler) GetSubscriptions(c *gin.Context) {
+	clientIP := c.ClientIP()
+
+	apiKey := c.GetHeader("api-key")
+	if apiKey == "" {
+		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"API key is required. Provide 'api-key' header."))
+		return
+	}
+
+	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	if err != nil {
+		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Invalid or expired API key"))
+		return
+	}
+
+	orgID := gateway.OrganizationID
+	gatewayID := gateway.ID
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		h.slogger.Error("API ID is required for subscriptions request",
+			"clientIP", clientIP,
+			"organizationId", orgID,
+			"apiId", apiID)
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	if err := h.gatewayInternalService.IsAPIDeployedOnGateway(apiID, gatewayID, orgID); err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			h.slogger.Error("API not found when listing subscriptions",
+				"apiId", apiID,
+				"organizationId", orgID,
+				"gatewayId", gatewayID,
+				"error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			h.slogger.Error("Subscription list denied - API not deployed on gateway",
+				"apiId", apiID,
+				"organizationId", orgID,
+				"gatewayId", gatewayID)
+			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+				"API is not deployed on this gateway"))
+			return
+		}
+		h.slogger.Error("Failed to verify API deployment for subscriptions",
+			"apiId", apiID,
+			"organizationId", orgID,
+			"gatewayId", gatewayID,
+			"error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to verify API deployment"))
+		return
+	}
+
+	subs, err := h.gatewayInternalService.ListSubscriptionsForAPI(apiID, orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			h.slogger.Error("API not found when listing subscriptions",
+				"apiId", apiID,
+				"organizationId", orgID,
+				"error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		h.slogger.Error("Failed to list subscriptions for API",
+			"apiId", apiID,
+			"organizationId", orgID,
+			"error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get subscriptions"))
+		return
+	}
+
+	c.JSON(http.StatusOK, subs)
+}
+
+// GetSubscriptionPlans handles GET /api/internal/v1/subscription-plans
+func (h *GatewayInternalAPIHandler) GetSubscriptionPlans(c *gin.Context) {
+	clientIP := c.ClientIP()
+
+	apiKey := c.GetHeader("api-key")
+	if apiKey == "" {
+		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"API key is required. Provide 'api-key' header."))
+		return
+	}
+
+	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	if err != nil {
+		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Invalid or expired API key"))
+		return
+	}
+
+	orgID := gateway.OrganizationID
+	plans, err := h.gatewayInternalService.ListSubscriptionPlansForOrg(orgID)
+	if err != nil {
+		h.slogger.Error("Failed to list subscription plans",
+			"organizationId", orgID,
+			"error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get subscription plans"))
+		return
+	}
+
+	c.JSON(http.StatusOK, plans)
+}
+
+// GetMCPProxy handles GET /api/internal/v1/mcp-proxies/:proxyId
+func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
+	// Extract client IP for rate limiting
+	clientIP := c.ClientIP()
+
+	// Extract and validate API key from header
+	apiKey := c.GetHeader("api-key")
+	if apiKey == "" {
+		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"API key is required. Provide 'api-key' header."))
+		return
+	}
+
+	// Authenticate gateway using API key
+	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	if err != nil {
+		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Invalid or expired API key"))
+		return
+	}
+
+	orgID := gateway.OrganizationID
+	gatewayID := gateway.ID
+	proxyID := c.Param("proxyId")
+	if proxyID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Proxy ID is required"))
+		return
+	}
+
+	proxy, err := h.gatewayInternalService.GetActiveMCPProxyDeploymentByGateway(proxyID, orgID, gatewayID)
+	if err != nil {
+		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			h.slogger.Error("No active deployment found for MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this MCP proxy on this gateway"))
+			return
+		}
+		if errors.Is(err, constants.ErrMCPProxyNotFound) {
+			h.slogger.Error("MCP proxy not found", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"MCP proxy not found"))
+			return
+		}
+		h.slogger.Error("Failed to get MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get MCP proxy"))
+		return
+	}
+
+	// Create ZIP file from MCP proxy YAML file
+	zipData, err := utils.CreateMCPProxyYamlZip(proxy)
+	if err != nil {
+		h.slogger.Error("Failed to create ZIP file", "proxyID", proxyID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create MCP proxy package"))
+		return
+	}
+
+	// Set headers for ZIP file download
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"mcp-proxy-%s.zip\"", proxyID))
+	c.Header("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	// Return ZIP file
+	c.Data(http.StatusOK, "application/zip", zipData)
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
 		orgGroup.GET("", h.GetAPIsByOrganization)
 		orgGroup.GET("/:apiId", h.GetAPI)
 		orgGroup.POST("/:apiId/gateway-deployments", h.CreateGatewayDeployment)
+		orgGroup.GET("/:apiId/subscriptions", h.GetSubscriptions)
+	}
+
+	subPlanGroup := r.Group("/api/internal/v1")
+	{
+		subPlanGroup.GET("/subscription-plans", h.GetSubscriptionPlans)
 	}
 
 	llmGroup := r.Group("/api/internal/v1/llm-providers")
@@ -400,5 +596,10 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	llmProxyGroup := r.Group("/api/internal/v1/llm-proxies")
 	{
 		llmProxyGroup.GET("/:proxyId", h.GetLLMProxy)
+	}
+
+	mcpProxyGroup := r.Group("/api/internal/v1/mcp-proxies")
+	{
+		mcpProxyGroup.GET("/:proxyId", h.GetMCPProxy)
 	}
 }

@@ -101,27 +101,25 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			specUnion := api.APIConfiguration_Spec{}
-			specUnion.FromAPIConfigData(api.APIConfigData{
-				DisplayName: tt.apiName,
-				Version:     "v1.0",
-				Context:     "/test",
-				Upstream: struct {
-					Main    api.Upstream  `json:"main" yaml:"main"`
-					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-				}{
-					Main: api.Upstream{
-						Url: func() *string { s := "http://example.com"; return &s }(),
+			config := &api.RestAPI{
+				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.RestApi,
+				Spec: api.APIConfigData{
+					DisplayName: tt.apiName,
+					Version:     "v1.0",
+					Context:     "/test",
+					Upstream: struct {
+						Main    api.Upstream  `json:"main" yaml:"main"`
+						Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+					}{
+						Main: api.Upstream{
+							Url: func() *string { s := "http://example.com"; return &s }(),
+						},
+					},
+					Operations: []api.Operation{
+						{Method: "GET", Path: "/test"},
 					},
 				},
-				Operations: []api.Operation{
-					{Method: "GET", Path: "/test"},
-				},
-			})
-			config := &api.APIConfiguration{
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-				Kind:       api.RestApi,
-				Spec:       specUnion,
 			}
 
 			errors := validator.Validate(config)
@@ -354,31 +352,29 @@ func TestValidator_LabelsValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			specUnion := api.APIConfiguration_Spec{}
-			specUnion.FromAPIConfigData(api.APIConfigData{
-				DisplayName: "TestAPI",
-				Version:     "v1.0",
-				Context:     "/test",
-				Upstream: struct {
-					Main    api.Upstream  `json:"main" yaml:"main"`
-					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-				}{
-					Main: api.Upstream{
-						Url: func() *string { s := "http://example.com"; return &s }(),
-					},
-				},
-				Operations: []api.Operation{
-					{Method: "GET", Path: "/test"},
-				},
-			})
-			config := &api.APIConfiguration{
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			config := &api.RestAPI{
+				ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       api.RestApi,
 				Metadata: api.Metadata{
 					Name:   "test-api-v1.0",
 					Labels: &tt.labels,
 				},
-				Spec: specUnion,
+				Spec: api.APIConfigData{
+					DisplayName: "TestAPI",
+					Version:     "v1.0",
+					Context:     "/test",
+					Upstream: struct {
+						Main    api.Upstream  `json:"main" yaml:"main"`
+						Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+					}{
+						Main: api.Upstream{
+							Url: func() *string { s := "http://example.com"; return &s }(),
+						},
+					},
+					Operations: []api.Operation{
+						{Method: "GET", Path: "/test"},
+					},
+				},
 			}
 
 			errors := validator.Validate(config)
@@ -419,31 +415,29 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 
 	// Test RestApi
 	t.Run("RestApi with valid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromAPIConfigData(api.APIConfigData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: func() *string { s := "http://example.com"; return &s }(),
-				},
-			},
-			Operations: []api.Operation{
-				{Method: "GET", Path: "/test"},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &validLabels,
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{Method: "GET", Path: "/test"},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)
@@ -459,26 +453,24 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 
 	// Test WebSubApi
 	t.Run("WebSubApi with valid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Channels: []api.Channel{
-				{
-					Name:   "/events",
-					Method: api.SUB,
-				},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.WebSubAPI{
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &validLabels,
 			},
-			Spec: specUnion,
+			Spec: api.WebhookAPIData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Channels: []api.Channel{
+					{
+						Name:   "/events",
+						Method: api.SUB,
+					},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)
@@ -496,31 +488,29 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 	invalidLabels := map[string]string{"Invalid Key": "value"}
 
 	t.Run("RestApi with invalid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromAPIConfigData(api.APIConfigData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: func() *string { s := "http://example.com"; return &s }(),
-				},
-			},
-			Operations: []api.Operation{
-				{Method: "GET", Path: "/test"},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &invalidLabels,
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{Method: "GET", Path: "/test"},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)
@@ -535,26 +525,24 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 	})
 
 	t.Run("WebSubApi with invalid labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "TestAPI",
-			Version:     "v1.0",
-			Context:     "/test",
-			Channels: []api.Channel{
-				{
-					Name:   "/events",
-					Method: api.SUB,
-				},
-			},
-		})
-		config := &api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		config := &api.WebSubAPI{
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
 				Labels: &invalidLabels,
 			},
-			Spec: specUnion,
+			Spec: api.WebhookAPIData{
+				DisplayName: "TestAPI",
+				Version:     "v1.0",
+				Context:     "/test",
+				Channels: []api.Channel{
+					{
+						Name:   "/events",
+						Method: api.SUB,
+					},
+				},
+			},
 		}
 
 		errors := validator.Validate(config)
@@ -581,11 +569,11 @@ func TestValidateUpstreamDefinitions_Valid(t *testing.T) {
 				Connect: &timeout,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls:   []string{"http://backend-1:8080"},
+					Url:    "http://backend-1:8080",
 					Weight: &weight,
 				},
 			},
@@ -603,22 +591,22 @@ func TestValidateUpstreamDefinitions_DuplicateNames(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-1:8080"},
+					Url: "http://backend-1:8080",
 				},
 			},
 		},
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-2:8080"},
+					Url: "http://backend-2:8080",
 				},
 			},
 		},
@@ -637,11 +625,11 @@ func TestValidateUpstreamDefinitions_MissingName(t *testing.T) {
 		{
 			Name: "",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -660,8 +648,8 @@ func TestValidateUpstreamDefinitions_NoUpstreams(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{},
 		},
 	}
@@ -672,18 +660,18 @@ func TestValidateUpstreamDefinitions_NoUpstreams(t *testing.T) {
 	assert.Contains(t, errors[0].Message, "At least one upstream target is required")
 }
 
-func TestValidateUpstreamDefinitions_NoURLs(t *testing.T) {
+func TestValidateUpstreamDefinitions_NoURL(t *testing.T) {
 	validator := NewAPIValidator()
 
 	definitions := &[]api.UpstreamDefinition{
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{},
+					Url: "",
 				},
 			},
 		},
@@ -691,8 +679,8 @@ func TestValidateUpstreamDefinitions_NoURLs(t *testing.T) {
 
 	errors := validator.validateUpstreamDefinitions(definitions)
 	require.Len(t, errors, 1)
-	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls", errors[0].Field)
-	assert.Contains(t, errors[0].Message, "At least one URL is required")
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "URL is required")
 }
 
 func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
@@ -702,11 +690,11 @@ func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"not-a-valid-url"},
+					Url: "not-a-valid-url",
 				},
 			},
 		},
@@ -714,7 +702,7 @@ func TestValidateUpstreamDefinitions_InvalidURL(t *testing.T) {
 
 	errors := validator.validateUpstreamDefinitions(definitions)
 	require.NotEmpty(t, errors)
-	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls[0]", errors[0].Field)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
 	assert.Contains(t, errors[0].Message, "must use http or https scheme")
 }
 
@@ -725,11 +713,11 @@ func TestValidateUpstreamDefinitions_InvalidURL_MissingHost(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://"},
+					Url: "http://",
 				},
 			},
 		},
@@ -737,7 +725,7 @@ func TestValidateUpstreamDefinitions_InvalidURL_MissingHost(t *testing.T) {
 
 	errors := validator.validateUpstreamDefinitions(definitions)
 	require.Len(t, errors, 1)
-	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].urls[0]", errors[0].Field)
+	assert.Equal(t, "spec.upstreamDefinitions[0].upstreams[0].url", errors[0].Field)
 	assert.Contains(t, errors[0].Message, "URL must include a host")
 }
 
@@ -749,11 +737,11 @@ func TestValidateUpstreamDefinitions_InvalidWeight(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls:   []string{"http://backend:8080"},
+					Url:    "http://backend:8080",
 					Weight: &invalidWeight,
 				},
 			},
@@ -773,11 +761,11 @@ func TestValidateUpstreamDefinitions_NoTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -795,11 +783,11 @@ func TestValidateUpstreamRef_ValidRef(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -817,11 +805,11 @@ func TestValidateUpstreamRef_RefNotFound(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -855,11 +843,11 @@ func TestValidateUpstream_WithRefAndDefinitions(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},

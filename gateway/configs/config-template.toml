@@ -159,7 +159,6 @@ host = "policy-engine"
 port = 9001
 timeout_ms = 60000
 failure_mode_allow = false
-route_cache_action = "RETAIN"
 allow_mode_override = true
 message_timeout_ms = 60000
 

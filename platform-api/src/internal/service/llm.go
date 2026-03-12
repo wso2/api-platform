@@ -22,12 +22,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 )
 
 const (
@@ -85,7 +85,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		OrganizationUUID: orgUUID,
 		ID:               req.Id,
 		Name:             req.Name,
-		Description:      valueOrEmpty(req.Description),
+		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
@@ -126,15 +126,15 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int) (*a
 	for _, t := range items {
 		id := t.ID
 		name := t.Name
-		desc := stringPtrIfNotEmpty(t.Description)
-		createdBy := stringPtrIfNotEmpty(t.CreatedBy)
+		desc := utils.StringPtrIfNotEmpty(t.Description)
+		createdBy := utils.StringPtrIfNotEmpty(t.CreatedBy)
 		resp.List = append(resp.List, api.LLMProviderTemplateListItem{
 			Id:          &id,
 			Name:        &name,
 			Description: desc,
 			CreatedBy:   createdBy,
-			CreatedAt:   timePtr(t.CreatedAt),
-			UpdatedAt:   timePtr(t.UpdatedAt),
+			CreatedAt:   utils.TimePtr(t.CreatedAt),
+			UpdatedAt:   utils.TimePtr(t.UpdatedAt),
 		})
 	}
 	return resp, nil
@@ -169,7 +169,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		OrganizationUUID: orgUUID,
 		ID:               handle,
 		Name:             req.Name,
-		Description:      valueOrEmpty(req.Description),
+		Description:      utils.ValueOrEmpty(req.Description),
 		Metadata:         mapTemplateMetadataAPI(req.Metadata),
 		PromptTokens:     mapExtractionIdentifierAPI(req.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierAPI(req.CompletionTokens),
@@ -271,16 +271,16 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, err
 	}
 
-	contextValue := defaultStringPtr(req.Context, "/")
+	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               req.Id,
 		Name:             req.Name,
-		Description:      valueOrEmpty(req.Description),
+		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
-		OpenAPISpec:      valueOrEmpty(req.Openapi),
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
 		Status:           llmStatusPending,
 		Configuration: model.LLMProviderConfig{
@@ -343,10 +343,10 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		}
 		id := p.ID
 		name := p.Name
-		desc := stringPtrIfNotEmpty(p.Description)
-		createdBy := stringPtrIfNotEmpty(p.CreatedBy)
+		desc := utils.StringPtrIfNotEmpty(p.Description)
+		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
 		version := p.Version
-		template := stringPtrIfNotEmpty(tplHandle)
+		template := utils.StringPtrIfNotEmpty(tplHandle)
 		status := api.LLMProviderListItemStatus(p.Status)
 		resp.List = append(resp.List, api.LLMProviderListItem{
 			Id:          &id,
@@ -356,8 +356,8 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 			Version:     &version,
 			Template:    template,
 			Status:      &status,
-			CreatedAt:   timePtr(p.CreatedAt),
-			UpdatedAt:   timePtr(p.UpdatedAt),
+			CreatedAt:   utils.TimePtr(p.CreatedAt),
+			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
 	}
 	return resp, nil
@@ -425,15 +425,15 @@ func (s *LLMProviderService) Update(orgUUID, handle string, req *api.LLMProvider
 		return nil, constants.ErrLLMProviderTemplateNotFound
 	}
 
-	contextValue := defaultStringPtr(req.Context, "/")
+	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
 		Name:             req.Name,
-		Description:      valueOrEmpty(req.Description),
+		Description:      utils.ValueOrEmpty(req.Description),
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
-		OpenAPISpec:      valueOrEmpty(req.Openapi),
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		ModelProviders:   mapModelProvidersAPI(req.ModelProviders),
 		Status:           llmStatusPending,
 		Configuration: model.LLMProviderConfig{
@@ -523,17 +523,17 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, err
 	}
 
-	contextValue := defaultStringPtr(req.Context, "/")
+	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
 		ID:               req.Id,
 		Name:             req.Name,
-		Description:      valueOrEmpty(req.Description),
+		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
-		OpenAPISpec:      valueOrEmpty(req.Openapi),
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Status:           llmStatusPending,
 		Configuration: model.LLMProxyConfig{
 			Context:      &contextValue,
@@ -604,8 +604,8 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
-		desc := stringPtrIfNotEmpty(p.Description)
-		createdBy := stringPtrIfNotEmpty(p.CreatedBy)
+		desc := utils.StringPtrIfNotEmpty(p.Description)
+		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -625,8 +625,8 @@ func (s *LLMProxyService) List(orgUUID string, projectUUID *string, limit, offse
 			ProjectId:   &projectID,
 			Provider:    &provider,
 			Status:      &status,
-			CreatedAt:   timePtr(p.CreatedAt),
-			UpdatedAt:   timePtr(p.UpdatedAt),
+			CreatedAt:   utils.TimePtr(p.CreatedAt),
+			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
 	}
 	return resp, nil
@@ -667,8 +667,8 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
-		desc := stringPtrIfNotEmpty(p.Description)
-		createdBy := stringPtrIfNotEmpty(p.CreatedBy)
+		desc := utils.StringPtrIfNotEmpty(p.Description)
+		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -688,8 +688,8 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			ProjectId:   &projectID,
 			Provider:    &provider,
 			Status:      &status,
-			CreatedAt:   timePtr(p.CreatedAt),
-			UpdatedAt:   timePtr(p.UpdatedAt),
+			CreatedAt:   utils.TimePtr(p.CreatedAt),
+			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
 	}
 	return resp, nil
@@ -737,15 +737,15 @@ func (s *LLMProxyService) Update(orgUUID, handle string, req *api.LLMProxy) (*ap
 		return nil, constants.ErrLLMProviderNotFound
 	}
 
-	contextValue := defaultStringPtr(req.Context, "/")
+	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
 		Name:             req.Name,
-		Description:      valueOrEmpty(req.Description),
+		Description:      utils.ValueOrEmpty(req.Description),
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
-		OpenAPISpec:      valueOrEmpty(req.Openapi),
+		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Status:           llmStatusPending,
 		Configuration: model.LLMProxyConfig{
 			Context:      &contextValue,
@@ -799,8 +799,8 @@ func isSQLiteUniqueConstraint(err error) bool {
 }
 
 func validateUpstream(u api.Upstream) error {
-	mainUrl := valueOrEmpty(u.Main.Url)
-	mainRef := valueOrEmpty(u.Main.Ref)
+	mainUrl := utils.ValueOrEmpty(u.Main.Url)
+	mainRef := utils.ValueOrEmpty(u.Main.Ref)
 	if strings.TrimSpace(mainUrl) == "" && strings.TrimSpace(mainRef) == "" {
 		return constants.ErrInvalidInput
 	}
@@ -846,36 +846,6 @@ func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *mode
 		updated.Value = existing.Value
 	}
 	return updated
-}
-
-func defaultStringPtr(v *string, def string) string {
-	if v == nil {
-		return def
-	}
-	if strings.TrimSpace(*v) == "" {
-		return def
-	}
-	return *v
-}
-
-func valueOrEmpty(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-func stringPtrIfNotEmpty(s string) *string {
-	if strings.TrimSpace(s) == "" {
-		return nil
-	}
-	v := s
-	return &v
-}
-
-func timePtr(t time.Time) *time.Time {
-	tt := t
-	return &tt
 }
 
 func validateLLMResourceLimit(currentCount int, maxAllowed int, limitErr error) error {
@@ -939,8 +909,8 @@ func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
 	}
 	return &model.UpstreamAuth{
 		Type:   authType,
-		Header: valueOrEmpty(in.Header),
-		Value:  valueOrEmpty(in.Value),
+		Header: utils.ValueOrEmpty(in.Header),
+		Value:  utils.ValueOrEmpty(in.Value),
 	}
 }
 
@@ -966,16 +936,16 @@ func normalizeUpstreamAuthType(authType string) string {
 func mapUpstreamAPIToModel(in api.Upstream) *model.UpstreamConfig {
 	out := &model.UpstreamConfig{}
 	out.Main = &model.UpstreamEndpoint{
-		URL: valueOrEmpty(in.Main.Url),
-		Ref: valueOrEmpty(in.Main.Ref),
+		URL: utils.ValueOrEmpty(in.Main.Url),
+		Ref: utils.ValueOrEmpty(in.Main.Ref),
 	}
 	if in.Main.Auth != nil {
 		out.Main.Auth = mapUpstreamAuthAPIToModel(in.Main.Auth)
 	}
 	if in.Sandbox != nil {
 		out.Sandbox = &model.UpstreamEndpoint{
-			URL: valueOrEmpty(in.Sandbox.Url),
-			Ref: valueOrEmpty(in.Sandbox.Ref),
+			URL: utils.ValueOrEmpty(in.Sandbox.Url),
+			Ref: utils.ValueOrEmpty(in.Sandbox.Ref),
 		}
 		if in.Sandbox.Auth != nil {
 			out.Sandbox.Auth = mapUpstreamAuthAPIToModel(in.Sandbox.Auth)
@@ -1039,7 +1009,7 @@ func mapUpstreamConfigToDTO(in *model.UpstreamConfig) api.Upstream {
 			}
 			main.Auth = &api.UpstreamAuth{
 				Type:   authType,
-				Header: stringPtrIfNotEmpty(in.Main.Auth.Header),
+				Header: utils.StringPtrIfNotEmpty(in.Main.Auth.Header),
 				Value:  nil, // Redact value
 			}
 		}
@@ -1064,7 +1034,7 @@ func mapUpstreamConfigToDTO(in *model.UpstreamConfig) api.Upstream {
 			}
 			s.Auth = &api.UpstreamAuth{
 				Type:   authType,
-				Header: stringPtrIfNotEmpty(in.Sandbox.Auth.Header),
+				Header: utils.StringPtrIfNotEmpty(in.Sandbox.Auth.Header),
 				Value:  nil, // Redact value
 			}
 		}
@@ -1084,8 +1054,8 @@ func mapUpstreamAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
 	}
 	return &api.UpstreamAuth{
 		Type:   authType,
-		Header: stringPtrIfNotEmpty(in.Header),
-		Value:  stringPtrIfNotEmpty(in.Value),
+		Header: utils.StringPtrIfNotEmpty(in.Header),
+		Value:  utils.StringPtrIfNotEmpty(in.Value),
 	}
 }
 
@@ -1220,8 +1190,8 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 	return &api.LLMProviderTemplate{
 		Id:               m.ID,
 		Name:             m.Name,
-		Description:      stringPtrIfNotEmpty(m.Description),
-		CreatedBy:        stringPtrIfNotEmpty(m.CreatedBy),
+		Description:      utils.StringPtrIfNotEmpty(m.Description),
+		CreatedBy:        utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Metadata:         mapTemplateMetadataModelToAPI(m.Metadata),
 		PromptTokens:     mapExtractionIdentifierModelToAPI(m.PromptTokens),
 		CompletionTokens: mapExtractionIdentifierModelToAPI(m.CompletionTokens),
@@ -1229,8 +1199,8 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		RemainingTokens:  mapExtractionIdentifierModelToAPI(m.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierModelToAPI(m.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(m.ResponseModel),
-		CreatedAt:        timePtr(m.CreatedAt),
-		UpdatedAt:        timePtr(m.UpdatedAt),
+		CreatedAt:        utils.TimePtr(m.CreatedAt),
+		UpdatedAt:        utils.TimePtr(m.UpdatedAt),
 	}
 }
 
@@ -1241,16 +1211,16 @@ func mapTemplateMetadataAPI(in *api.LLMProviderTemplateMetadata) *model.LLMProvi
 	var auth *model.LLMProviderTemplateAuth
 	if in.Auth != nil {
 		auth = &model.LLMProviderTemplateAuth{
-			Type:        valueOrEmpty(in.Auth.Type),
-			Header:      valueOrEmpty(in.Auth.Header),
-			ValuePrefix: valueOrEmpty(in.Auth.ValuePrefix),
+			Type:        utils.ValueOrEmpty(in.Auth.Type),
+			Header:      utils.ValueOrEmpty(in.Auth.Header),
+			ValuePrefix: utils.ValueOrEmpty(in.Auth.ValuePrefix),
 		}
 	}
 	out := &model.LLMProviderTemplateMetadata{
-		EndpointURL:    strings.TrimSpace(valueOrEmpty(in.EndpointUrl)),
+		EndpointURL:    strings.TrimSpace(utils.ValueOrEmpty(in.EndpointUrl)),
 		Auth:           auth,
-		LogoURL:        strings.TrimSpace(valueOrEmpty(in.LogoUrl)),
-		OpenapiSpecURL: strings.TrimSpace(valueOrEmpty(in.OpenapiSpecUrl)),
+		LogoURL:        strings.TrimSpace(utils.ValueOrEmpty(in.LogoUrl)),
+		OpenapiSpecURL: strings.TrimSpace(utils.ValueOrEmpty(in.OpenapiSpecUrl)),
 	}
 	if out.EndpointURL == "" && out.LogoURL == "" && out.Auth == nil && out.OpenapiSpecURL == "" {
 		return nil
@@ -1265,16 +1235,16 @@ func mapTemplateMetadataModelToAPI(in *model.LLMProviderTemplateMetadata) *api.L
 	var auth *api.LLMProviderTemplateAuth
 	if in.Auth != nil {
 		auth = &api.LLMProviderTemplateAuth{
-			Type:        stringPtrIfNotEmpty(in.Auth.Type),
-			Header:      stringPtrIfNotEmpty(in.Auth.Header),
-			ValuePrefix: stringPtrIfNotEmpty(in.Auth.ValuePrefix),
+			Type:        utils.StringPtrIfNotEmpty(in.Auth.Type),
+			Header:      utils.StringPtrIfNotEmpty(in.Auth.Header),
+			ValuePrefix: utils.StringPtrIfNotEmpty(in.Auth.ValuePrefix),
 		}
 	}
 	return &api.LLMProviderTemplateMetadata{
-		EndpointUrl:    stringPtrIfNotEmpty(in.EndpointURL),
+		EndpointUrl:    utils.StringPtrIfNotEmpty(in.EndpointURL),
 		Auth:           auth,
-		LogoUrl:        stringPtrIfNotEmpty(in.LogoURL),
-		OpenapiSpecUrl: stringPtrIfNotEmpty(in.OpenapiSpecURL),
+		LogoUrl:        utils.StringPtrIfNotEmpty(in.LogoURL),
+		OpenapiSpecUrl: utils.StringPtrIfNotEmpty(in.OpenapiSpecURL),
 	}
 }
 
@@ -1331,21 +1301,21 @@ func mapProviderModelToAPI(m *model.LLMProvider, templateHandle string) *api.LLM
 	out := &api.LLMProvider{
 		Id:             m.ID,
 		Name:           m.Name,
-		Description:    stringPtrIfNotEmpty(m.Description),
-		CreatedBy:      stringPtrIfNotEmpty(m.CreatedBy),
+		Description:    utils.StringPtrIfNotEmpty(m.Description),
+		CreatedBy:      utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:        m.Version,
 		Context:        ctx,
 		Vhost:          m.Configuration.VHost,
 		Template:       templateHandle,
-		Openapi:        stringPtrIfNotEmpty(m.OpenAPISpec),
+		Openapi:        utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		ModelProviders: modelProviders,
 		RateLimiting:   mapRateLimitingModelToAPI(m.Configuration.RateLimiting),
 		Upstream:       upstream,
 		AccessControl:  ac,
 		Policies:       policies,
 		Security:       mapSecurityModelToAPI(m.Configuration.Security),
-		CreatedAt:      timePtr(m.CreatedAt),
-		UpdatedAt:      timePtr(m.UpdatedAt),
+		CreatedAt:      utils.TimePtr(m.CreatedAt),
+		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
 	return out
 }
@@ -1401,10 +1371,10 @@ func mapModelProvidersAPI(in *[]api.LLMModelProvider) []model.LLMModelProvider {
 		if p.Models != nil {
 			models = make([]model.LLMModel, 0, len(*p.Models))
 			for _, m := range *p.Models {
-				models = append(models, model.LLMModel{ID: m.Id, Name: valueOrEmpty(m.Name), Description: valueOrEmpty(m.Description)})
+				models = append(models, model.LLMModel{ID: m.Id, Name: utils.ValueOrEmpty(m.Name), Description: utils.ValueOrEmpty(m.Description)})
 			}
 		}
-		out = append(out, model.LLMModelProvider{ID: p.Id, Name: valueOrEmpty(p.Name), Models: models})
+		out = append(out, model.LLMModelProvider{ID: p.Id, Name: utils.ValueOrEmpty(p.Name), Models: models})
 	}
 	return out
 }
@@ -1417,10 +1387,10 @@ func mapModelProvidersModelToAPI(in []model.LLMModelProvider) *[]api.LLMModelPro
 	for _, p := range in {
 		models := make([]api.LLMModel, 0, len(p.Models))
 		for _, m := range p.Models {
-			models = append(models, api.LLMModel{Id: m.ID, Name: stringPtrIfNotEmpty(m.Name), Description: stringPtrIfNotEmpty(m.Description)})
+			models = append(models, api.LLMModel{Id: m.ID, Name: utils.StringPtrIfNotEmpty(m.Name), Description: utils.StringPtrIfNotEmpty(m.Description)})
 		}
 		modelsPtr := &models
-		out = append(out, api.LLMModelProvider{Id: p.ID, Name: stringPtrIfNotEmpty(p.Name), Models: modelsPtr})
+		out = append(out, api.LLMModelProvider{Id: p.ID, Name: utils.StringPtrIfNotEmpty(p.Name), Models: modelsPtr})
 	}
 	return &out
 }
@@ -1639,13 +1609,13 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		empty := []api.LLMPolicy{}
 		policies = &empty
 	}
-	createdAt := timePtr(m.CreatedAt)
-	updatedAt := timePtr(m.UpdatedAt)
+	createdAt := utils.TimePtr(m.CreatedAt)
+	updatedAt := utils.TimePtr(m.UpdatedAt)
 	out := &api.LLMProxy{
 		Id:          m.ID,
 		Name:        m.Name,
-		Description: stringPtrIfNotEmpty(m.Description),
-		CreatedBy:   stringPtrIfNotEmpty(m.CreatedBy),
+		Description: utils.StringPtrIfNotEmpty(m.Description),
+		CreatedBy:   utils.StringPtrIfNotEmpty(m.CreatedBy),
 		Version:     m.Version,
 		ProjectId:   m.ProjectUUID,
 		Context:     contextValue,
@@ -1654,7 +1624,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 			Id:   m.Configuration.Provider,
 			Auth: nil,
 		},
-		Openapi:   stringPtrIfNotEmpty(m.OpenAPISpec),
+		Openapi:   utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Security:  mapSecurityModelToAPI(m.Configuration.Security),
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
@@ -1667,7 +1637,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		}
 		out.Provider.Auth = &api.UpstreamAuth{
 			Type:   authType,
-			Header: stringPtrIfNotEmpty(m.Configuration.UpstreamAuth.Header),
+			Header: utils.StringPtrIfNotEmpty(m.Configuration.UpstreamAuth.Header),
 			Value:  nil, // Redact auth credential value
 		}
 	}
@@ -1699,7 +1669,7 @@ func mapSecurityAPIToModel(in *api.SecurityConfig) *model.SecurityConfig {
 	}
 	out := &model.SecurityConfig{Enabled: in.Enabled}
 	if in.ApiKey != nil {
-		key := valueOrEmpty(in.ApiKey.Key)
+		key := utils.ValueOrEmpty(in.ApiKey.Key)
 		inLoc := ""
 		if in.ApiKey.In != nil {
 			inLoc = string(*in.ApiKey.In)
@@ -1720,7 +1690,7 @@ func mapSecurityModelToAPI(in *model.SecurityConfig) *api.SecurityConfig {
 			v := api.APIKeySecurityIn(in.APIKey.In)
 			inLoc = &v
 		}
-		out.ApiKey = &api.APIKeySecurity{Enabled: in.APIKey.Enabled, Key: stringPtrIfNotEmpty(in.APIKey.Key), In: inLoc}
+		out.ApiKey = &api.APIKeySecurity{Enabled: in.APIKey.Enabled, Key: utils.StringPtrIfNotEmpty(in.APIKey.Key), In: inLoc}
 	}
 	return out
 }

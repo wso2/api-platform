@@ -129,6 +129,7 @@ func getFeaturePaths() []string {
 		"features/cel-conditions.feature",
 		"features/analytics-basic.feature",
 		"features/token-based-ratelimit.feature",
+		"features/subscription-validation.feature",
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))
@@ -209,6 +210,7 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			"mock-azure-content-safety":  testState.Config.MockAzureContentSafetyURL,
 			"mock-aws-bedrock-guardrail": testState.Config.MockAWSBedrockGuardrailURL,
 			"mock-embedding-provider":    testState.Config.MockEmbeddingProviderURL,
+			"mock-platform-api":          testState.Config.MockPlatformAPIURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 
@@ -312,6 +314,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
 		RegisterAnalyticsSteps(ctx, testState, httpSteps)
+		RegisterSubscriptionSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps

@@ -86,13 +86,6 @@ type Storage interface {
 	// This is the fastest lookup method (O(1) for most databases).
 	GetConfig(id string) (*models.StoredConfig, error)
 
-	// GetConfigByNameVersion retrieves an API configuration by name and version.
-	//
-	// Returns an error if the configuration is not found.
-	// This is the most common lookup method for API operations.
-	// Implementations should index (name, version) for fast lookups.
-	GetConfigByNameVersion(name, version string) (*models.StoredConfig, error)
-
 	// GetConfigByHandle retrieves an API configuration by handle.
 	//
 	// Returns an error if the configuration is not found.
@@ -206,6 +199,47 @@ type Storage interface {
 	//
 	// Returns the count of active API keys and an error if the operation fails.
 	CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error)
+
+	// ========================================
+	// Subscription Plan Methods
+	// ========================================
+
+	SaveSubscriptionPlan(plan *models.SubscriptionPlan) error
+	GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error)
+	ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error)
+	UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error
+	DeleteSubscriptionPlan(id, gatewayID string) error
+
+	// DeleteSubscriptionPlansNotIn removes plans for this gateway whose IDs are not in the given set.
+	// Used for bulk-sync reconciliation when plans were deleted on the control plane during downtime.
+	DeleteSubscriptionPlansNotIn(ids []string) error
+
+	// ========================================
+	// Subscription Methods (application-level API subscriptions)
+	// ========================================
+
+	// SaveSubscription persists a new subscription.
+	SaveSubscription(sub *models.Subscription) error
+
+	// GetSubscriptionByID retrieves a subscription by ID and gateway.
+	GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error)
+
+	// ListSubscriptionsByAPI returns subscriptions for an API with optional filters.
+	ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error)
+
+	// ListActiveSubscriptions returns all ACTIVE subscriptions for this gateway in one query.
+	// Used for bulk snapshot generation to avoid N+1 per-API lookups.
+	ListActiveSubscriptions() ([]*models.Subscription, error)
+
+	// UpdateSubscription updates an existing subscription.
+	UpdateSubscription(sub *models.Subscription) error
+
+	// DeleteSubscription removes a subscription by ID and gateway.
+	DeleteSubscription(id, gatewayID string) error
+
+	// DeleteSubscriptionsForAPINotIn removes subscriptions for the given API whose IDs are not in the set.
+	// Used for bulk-sync reconciliation when subscriptions were deleted on the control plane during downtime.
+	DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error
 
 	// SaveCertificate persists a new certificate.
 	//

@@ -81,15 +81,15 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		assert.Len(t, configs, 3, "All 3 configurations should persist")
 
 		// Verify each configuration by name/version
-		cfg1, err := db.GetConfigByNameVersion("PersistAPI1", "v1.0")
+		cfg1, err := db.GetConfigByHandle("PersistAPI1-v1.0")
 		assert.NoError(t, err, "Should find PersistAPI1/v1.0")
 		assert.NotNil(t, cfg1)
 
-		cfg2, err := db.GetConfigByNameVersion("PersistAPI2", "v1.0")
+		cfg2, err := db.GetConfigByHandle("PersistAPI2-v1.0")
 		assert.NoError(t, err, "Should find PersistAPI2/v1.0")
 		assert.NotNil(t, cfg2)
 
-		cfg3, err := db.GetConfigByNameVersion("PersistAPI3", "v2.0")
+		cfg3, err := db.GetConfigByHandle("PersistAPI3-v2.0")
 		assert.NoError(t, err, "Should find PersistAPI3/v2.0")
 		assert.NotNil(t, cfg3)
 	}
@@ -101,7 +101,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 
 		// Get and update a configuration
-		cfg, err := db.GetConfigByNameVersion("PersistAPI1", "v1.0")
+		cfg, err := db.GetConfigByHandle("PersistAPI1-v1.0")
 		require.NoError(t, err)
 		cfg.Status = "deployed"
 		cfg.DeployedVersion = 5
@@ -118,10 +118,10 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 		defer db.Close()
 
-		cfg, err := db.GetConfigByNameVersion("PersistAPI1", "v1.0")
+		cfg, err := db.GetConfigByHandle("PersistAPI1-v1.0")
 		assert.NoError(t, err)
 		assert.Equal(t, models.StatusDeployed, cfg.Status)
-		assert.Equal(t, int64(5), cfg.DeployedVersion)
+		// DeployedVersion is runtime-only (not persisted to DB), so it resets to 0 after reload
 	}
 
 	// Phase 5: Delete a configuration and verify deletion persists
@@ -131,11 +131,11 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 
 		// Get the ID of PersistAPI2
-		cfg, err := db.GetConfigByNameVersion("PersistAPI2", "v1.0")
+		cfg, err := db.GetConfigByHandle("PersistAPI2-v1.0")
 		require.NoError(t, err)
 
 		// Delete it
-		require.NoError(t, db.DeleteConfig(cfg.ID))
+		require.NoError(t, db.DeleteConfig(cfg.UUID))
 		require.NoError(t, db.Close())
 		t.Log("Configuration deleted and database closed")
 	}
@@ -153,7 +153,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		assert.Len(t, configs, 2, "Should have 2 configurations after deletion")
 
 		// Verify PersistAPI2 is gone
-		_, err = db.GetConfigByNameVersion("PersistAPI2", "v1.0")
+		_, err = db.GetConfigByHandle("PersistAPI2-v1.0")
 		assert.Error(t, err, "PersistAPI2 should not exist")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	}
@@ -201,9 +201,9 @@ func TestLoadFromDatabaseWithMultipleRestarts(t *testing.T) {
 
 		// Verify configs are correct
 		for _, cfg := range allConfigs {
-			assert.NotEmpty(t, cfg.ID)
-			assert.NotEmpty(t, cfg.GetDisplayName())
-			assert.NotEmpty(t, cfg.GetVersion())
+			assert.NotEmpty(t, cfg.UUID)
+			assert.NotEmpty(t, cfg.DisplayName)
+			assert.NotEmpty(t, cfg.Version)
 		}
 
 		require.NoError(t, db.Close())
@@ -248,14 +248,14 @@ func TestZeroDataLoss(t *testing.T) {
 	// Verify each configuration matches (by ID)
 	beforeMap := make(map[string]*models.StoredConfig)
 	for _, cfg := range configsBefore {
-		beforeMap[cfg.ID] = cfg
+		beforeMap[cfg.UUID] = cfg
 	}
 
 	for _, cfgAfter := range configsAfter {
-		cfgBefore, exists := beforeMap[cfgAfter.ID]
+		cfgBefore, exists := beforeMap[cfgAfter.UUID]
 		assert.True(t, exists, "Configuration should exist in both before and after")
-		assert.Equal(t, cfgBefore.GetDisplayName(), cfgAfter.GetDisplayName())
-		assert.Equal(t, cfgBefore.GetVersion(), cfgAfter.GetVersion())
+		assert.Equal(t, cfgBefore.DisplayName, cfgAfter.DisplayName)
+		assert.Equal(t, cfgBefore.Version, cfgAfter.Version)
 		assert.Equal(t, cfgBefore.Status, cfgAfter.Status)
 	}
 

@@ -37,95 +37,77 @@ const (
 
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
-	ID                  string               `json:"id"`
+	UUID                string               `json:"uuid"`
 	Kind                string               `json:"kind"`
-	Configuration       api.APIConfiguration `json:"configuration"`
+	Handle              string               `json:"handle"`
+	DisplayName         string               `json:"displayName"`
+	Version             string               `json:"version"`
+	Configuration       any                  `json:"configuration"`
 	SourceConfiguration any                  `json:"source_configuration,omitempty"`
 	Status              ConfigStatus         `json:"status"`
 	CreatedAt           time.Time            `json:"createdAt"`
 	UpdatedAt           time.Time            `json:"updatedAt"`
 	DeployedAt          *time.Time           `json:"deployedAt,omitempty"`
-	DeployedVersion     int64                `json:"deployed_version"`
+	DeployedVersion     int64                `json:"deployed_version"` // Runtime-only: xDS snapshot version, not persisted to DB
 }
 
 // GetCompositeKey returns the composite key "displayName:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
-		}
-		return fmt.Sprintf("%s:%s", asyncData.DisplayName, asyncData.Version)
-	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return fmt.Sprintf("%s:%s", configData.DisplayName, configData.Version)
+	return fmt.Sprintf("%s:%s", c.DisplayName, c.Version)
 }
 
-// GetDisplayName returns the API display name
-func (c *StoredConfig) GetDisplayName() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
+// GetContext returns the context path from SourceConfiguration.
+func (c *StoredConfig) GetContext() (string, error) {
+	switch sc := c.SourceConfiguration.(type) {
+	case api.RestAPI:
+		return sc.Spec.Context, nil
+	case api.WebSubAPI:
+		return sc.Spec.Context, nil
+	case api.LLMProviderConfiguration:
+		if sc.Spec.Context != nil {
+			return *sc.Spec.Context, nil
 		}
-		return asyncData.DisplayName
-	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return configData.DisplayName
-}
-
-// GetHandle returns the API handle from metadata.name
-func (c *StoredConfig) GetHandle() string {
-	return c.Configuration.Metadata.Name
-}
-
-// GetVersion returns the API version
-func (c *StoredConfig) GetVersion() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
+		return "", nil
+	case api.LLMProxyConfiguration:
+		if sc.Spec.Context != nil {
+			return *sc.Spec.Context, nil
 		}
-		return asyncData.Version
-	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return configData.Version
-}
-
-// GetContext returns the API context path
-func (c *StoredConfig) GetContext() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
+		return "", nil
+	case api.MCPProxyConfiguration:
+		if sc.Spec.Context != nil {
+			return *sc.Spec.Context, nil
 		}
-		return asyncData.Context
+		return "", nil
 	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return configData.Context
+	return "", fmt.Errorf("unsupported source configuration type: %T", c.SourceConfiguration)
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if c.Configuration.Kind == api.RestApi {
-		httpData, err := c.Configuration.Spec.AsAPIConfigData()
-		if err != nil {
-			return nil
-		}
-		return httpData.Policies
-	} else {
-		// TODO: enable when policies are supported for WebSubHub
+	if sc, ok := c.SourceConfiguration.(api.RestAPI); ok {
+		return sc.Spec.Policies
+	}
+	// TODO: enable when policies are supported for WebSubHub
+	return nil
+}
+
+// GetMetadata returns the metadata from the Configuration, regardless of type.
+func (c *StoredConfig) GetMetadata() *api.Metadata {
+	switch cfg := c.Configuration.(type) {
+	case api.RestAPI:
+		return &cfg.Metadata
+	case api.WebSubAPI:
+		return &cfg.Metadata
+	}
+	return nil
+}
+
+// GetLabels returns the labels from the Configuration metadata, regardless of type.
+func (c *StoredConfig) GetLabels() *map[string]string {
+	switch cfg := c.Configuration.(type) {
+	case api.RestAPI:
+		return cfg.Metadata.Labels
+	case api.WebSubAPI:
+		return cfg.Metadata.Labels
 	}
 	return nil
 }

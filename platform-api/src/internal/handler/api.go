@@ -152,6 +152,12 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 				"Invalid transport protocol"))
 			return
 		}
+		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
+			h.slogger.Error("Subscription plan not found or not active", "organizationId", orgId, "error", err)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				err.Error()))
+			return
+		}
 		h.slogger.Error("Failed to create API", "organizationId", orgId, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to create API"))
@@ -296,6 +302,12 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 			h.slogger.Error("Invalid transport protocol", "apiId", apiId, "organizationId", orgId)
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid transport protocol"))
+			return
+		}
+		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
+			h.slogger.Error("Subscription plan not found or not active", "apiId", apiId, "organizationId", orgId, "error", err)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				err.Error()))
 			return
 		}
 		h.slogger.Error("Failed to update API", "apiId", apiId, "organizationId", orgId, "error", err)
