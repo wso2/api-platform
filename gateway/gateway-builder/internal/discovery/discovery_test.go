@@ -869,10 +869,10 @@ func TestDetectRuntime_NonexistentDirectory(t *testing.T) {
 // ==== ParsePipPackageRef tests ====
 
 func TestParsePipPackageRef_SimplePackage(t *testing.T) {
-	pkg, version, indexURL, err := ParsePipPackageRef("wso2-gateway-policy-prompt-compression==1.0.0")
+	pkg, version, indexURL, err := ParsePipPackageRef("my-gateway-policy==1.0.0")
 
 	require.NoError(t, err)
-	assert.Equal(t, "wso2-gateway-policy-prompt-compression", pkg)
+	assert.Equal(t, "my-gateway-policy", pkg)
 	assert.Equal(t, "1.0.0", version)
 	assert.Empty(t, indexURL)
 }

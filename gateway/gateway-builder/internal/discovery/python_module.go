@@ -50,7 +50,7 @@ func resolvePipExecutable() (exe string, prefixArgs []string) {
 
 // PipPackageInfo contains resolved pip package information
 type PipPackageInfo struct {
-	Package  string // PyPI package name (e.g., "wso2-gateway-policy-prompt-compression")
+	Package  string // PyPI package name (e.g., "my-gateway-policy")
 	Version  string // Version (e.g., "1.0.0")
 	IndexURL string // Optional custom index URL
 	Dir      string // Local directory where the package was installed
@@ -61,7 +61,7 @@ type PipPackageInfo struct {
 // Format: "<package>==<version>[@<index-url>]"
 //
 // Examples:
-//   - "wso2-gateway-policy-prompt-compression==1.0.0"
+//   - "my-gateway-policy==1.0.0"
 //   - "my-org-auth-policy==2.3.0@https://pypi.my-company.com/simple"
 //
 // The package is installed into an isolated directory using pip install --target.
