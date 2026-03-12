@@ -50,6 +50,7 @@ func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps
 	ctx.Step(`^all services should report healthy status$`, h.allServicesShouldReportHealthyStatus)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready$`, h.iWaitForEndpointToBeReady)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with method "([^"]*)" and body '([^']*)'$`, h.iWaitForEndpointToBeReadyWithMethodAndBody)
+	ctx.Step(`^I wait for the endpoint "([^"]*)" to return 403$`, h.iWaitForEndpointToReturn403)
 }
 
 // theGatewayServicesAreRunning verifies that gateway services are available
@@ -175,6 +176,29 @@ func (h *HealthSteps) iWaitForEndpointToBeReady(url string) error {
 	}
 
 	return fmt.Errorf("endpoint %s did not become ready after %d attempts", url, maxAttempts)
+}
+
+// iWaitForEndpointToReturn403 polls an endpoint until it returns 403 (e.g. subscription-protected route blocking unauthenticated requests)
+func (h *HealthSteps) iWaitForEndpointToReturn403(url string) error {
+	maxAttempts := 30
+	attemptInterval := 300 * time.Millisecond
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		resp, err := h.state.HTTPClient.Get(url)
+		if err == nil && resp.StatusCode == http.StatusForbidden {
+			resp.Body.Close()
+			return h.waitForPolicySnapshotSync()
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(attemptInterval)
+		}
+	}
+
+	return fmt.Errorf("endpoint %s did not return 403 after %d attempts", url, maxAttempts)
 }
 
 // iWaitForEndpointToBeReadyWithMethodAndBody polls an endpoint with specified method and body until it returns 200 or times out

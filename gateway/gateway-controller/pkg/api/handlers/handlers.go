@@ -108,7 +108,7 @@ func NewAPIServer(
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
+		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, &systemConfig.Router, policyVersionResolver, policyValidator),
 		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
@@ -2599,26 +2599,6 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 			Message: err.Error(),
 		})
 		return
-	}
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
 	}
 
 	log.Info("MCP proxy configuration deleted",

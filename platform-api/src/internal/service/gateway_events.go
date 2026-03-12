@@ -117,7 +117,7 @@ func (s *GatewayEventsService) BroadcastDeploymentEvent(gatewayID string, deploy
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("Deployment event sent",
+			s.slogger.Debug("Deployment event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
 
 			// Update delivery statistics for this connection
@@ -127,7 +127,7 @@ func (s *GatewayEventsService) BroadcastDeploymentEvent(gatewayID string, deploy
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
 
 	// Return error if all deliveries failed
 	if successCount == 0 {
@@ -194,7 +194,7 @@ func (s *GatewayEventsService) BroadcastUndeploymentEvent(gatewayID string, unde
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("Undeployment event sent",
+			s.slogger.Debug("Undeployment event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -202,7 +202,7 @@ func (s *GatewayEventsService) BroadcastUndeploymentEvent(gatewayID string, unde
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("Undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("Undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver undeployment event to any connection: %w", lastError)
@@ -267,7 +267,7 @@ func (s *GatewayEventsService) BroadcastAPIDeletionEvent(gatewayID string, delet
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("API deletion event sent",
+			s.slogger.Debug("API deletion event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -275,7 +275,7 @@ func (s *GatewayEventsService) BroadcastAPIDeletionEvent(gatewayID string, delet
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("API deletion broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("API deletion broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver API deletion event to any connection: %w", lastError)
@@ -341,7 +341,7 @@ func (s *GatewayEventsService) BroadcastLLMProviderDeploymentEvent(gatewayID str
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("LLM provider deployment event sent",
+			s.slogger.Debug("LLM provider deployment event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -349,7 +349,7 @@ func (s *GatewayEventsService) BroadcastLLMProviderDeploymentEvent(gatewayID str
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("LLM provider deployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("LLM provider deployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver LLM provider deployment event to any connection: %w", lastError)
@@ -414,7 +414,7 @@ func (s *GatewayEventsService) BroadcastLLMProviderUndeploymentEvent(gatewayID s
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("LLM provider undeployment event sent",
+			s.slogger.Debug("LLM provider undeployment event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -422,7 +422,7 @@ func (s *GatewayEventsService) BroadcastLLMProviderUndeploymentEvent(gatewayID s
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("LLM provider undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("LLM provider undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver LLM provider undeployment event to any connection: %w", lastError)
@@ -487,7 +487,7 @@ func (s *GatewayEventsService) BroadcastLLMProxyDeploymentEvent(gatewayID string
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("LLM proxy deployment event sent",
+			s.slogger.Debug("LLM proxy deployment event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -495,7 +495,7 @@ func (s *GatewayEventsService) BroadcastLLMProxyDeploymentEvent(gatewayID string
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("LLM proxy deployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("LLM proxy deployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver LLM proxy deployment event to any connection: %w", lastError)
@@ -560,7 +560,7 @@ func (s *GatewayEventsService) BroadcastLLMProxyUndeploymentEvent(gatewayID stri
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("LLM proxy undeployment event sent",
+			s.slogger.Debug("LLM proxy undeployment event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -568,10 +568,229 @@ func (s *GatewayEventsService) BroadcastLLMProxyUndeploymentEvent(gatewayID stri
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("LLM proxy undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("LLM proxy undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver LLM proxy undeployment event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastMCPProxyDeploymentEvent sends an MCP proxy deployment event to target gateway
+func (s *GatewayEventsService) BroadcastMCPProxyDeploymentEvent(gatewayID string, deployment *model.MCPProxyDeploymentEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(deployment)
+	if err != nil {
+		s.slogger.Error("Failed to serialize MCP proxy deployment event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize MCP proxy deployment event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	// Create gateway event DTO
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "mcpproxy.deployed",
+		Payload:       deployment,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send MCP proxy deployment event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Debug("MCP proxy deployment event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	// Log broadcast summary
+	s.slogger.Debug("MCP proxy deployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver MCP proxy deployment event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastMCPProxyUndeploymentEvent sends an MCP proxy undeployment event to target gateway
+func (s *GatewayEventsService) BroadcastMCPProxyUndeploymentEvent(gatewayID string, undeployment *model.MCPProxyUndeploymentEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(undeployment)
+	if err != nil {
+		s.slogger.Error("Failed to serialize MCP proxy undeployment event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize MCP proxy undeployment event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	// Create gateway event DTO with undeployment type
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "mcpproxy.undeployed",
+		Payload:       undeployment,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send MCP proxy undeployment event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Debug("MCP proxy undeployment event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	// Log broadcast summary
+	s.slogger.Debug("MCP proxy undeployment broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver MCP proxy undeployment event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastMCPProxyDeletionEvent sends an MCP proxy deletion event to target gateway
+func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(gatewayID string, deletion *model.MCPProxyDeletionEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(deletion)
+	if err != nil {
+		s.slogger.Error("Failed to serialize MCP proxy deletion event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize MCP proxy deletion event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	// Create gateway event DTO with deletion type
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "mcpproxy.deleted",
+		Payload:       deletion,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send MCP proxy deletion event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Debug("MCP proxy deletion event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	// Log broadcast summary
+	s.slogger.Debug("MCP proxy deletion broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver MCP proxy deletion event to any connection: %w", lastError)
 	}
 
 	return nil
@@ -685,7 +904,7 @@ func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID, userId string, 
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("API key created event sent",
+			s.slogger.Debug("API key created event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "keyName", event.Name)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -693,7 +912,7 @@ func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID, userId string, 
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "apikey.created", "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "apikey.created", "total", len(connections), "success", successCount, "failed", failureCount)
 
 	// Return error if all deliveries failed
 	if successCount == 0 {
@@ -756,7 +975,7 @@ func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID, userId string, 
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("API key revoked event sent",
+			s.slogger.Debug("API key revoked event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "keyName", event.KeyName)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -764,7 +983,7 @@ func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID, userId string, 
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "apikey.revoked", "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "apikey.revoked", "total", len(connections), "success", successCount, "failed", failureCount)
 
 	// Return error if all deliveries failed
 	if successCount == 0 {
@@ -855,7 +1074,7 @@ func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID, userId string, 
 			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
 		} else {
 			successCount++
-			s.slogger.Info("API key updated event sent",
+			s.slogger.Debug("API key updated event sent",
 				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "keyName", event.KeyName)
 			conn.DeliveryStats.IncrementTotalSent()
 			s.manager.IncrementTotalEventsSent()
@@ -863,7 +1082,7 @@ func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID, userId string, 
 	}
 
 	// Log broadcast summary
-	s.slogger.Info("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "apikey.updated", "total", len(connections), "success", successCount, "failed", failureCount)
+	s.slogger.Debug("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "apikey.updated", "total", len(connections), "success", successCount, "failed", failureCount)
 
 	// Return error if all deliveries failed
 	if successCount == 0 {
