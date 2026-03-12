@@ -299,7 +299,7 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration TEXT NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE RESTRICT
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
 );
 
 -- Indexes for better performance

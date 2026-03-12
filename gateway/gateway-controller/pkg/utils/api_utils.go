@@ -411,7 +411,7 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 	// Construct the MCP proxy URL by appending the resource path
 	proxyURL := s.config.BaseURL + "/mcp-proxies/" + proxyID
 
-	s.logger.Info("Fetching MCP proxy definition",
+	s.logger.Debug("Fetching MCP proxy definition",
 		slog.String("proxy_id", proxyID),
 		slog.String("url", proxyURL),
 	)
@@ -445,7 +445,7 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	s.logger.Info("Successfully fetched MCP proxy definition",
+	s.logger.Debug("Successfully fetched MCP proxy definition",
 		slog.String("proxy_id", proxyID),
 		slog.Int("size_bytes", len(bodyBytes)),
 	)

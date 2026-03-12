@@ -174,8 +174,8 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 		JOIN mcp_proxies p ON a.uuid = p.uuid
 		WHERE a.organization_uuid = ? AND a.kind = ?
 		ORDER BY a.created_at DESC
-		LIMIT ? OFFSET ?`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.MCPProxy, limit, offset)
+		`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.MCPProxy)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +212,59 @@ func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
 		JOIN mcp_proxies p ON a.uuid = p.uuid
 		WHERE a.organization_uuid = ? AND a.kind = ?`
 	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.MCPProxy).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListByProject retrieves all MCP proxies for a specific project
+func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error) {
+	query := `
+		SELECT
+			a.uuid, a.handle, a.name, a.version, a.organization_uuid, a.created_at, a.updated_at,
+			p.project_uuid, p.description, p.created_by, p.status, p.configuration
+		FROM artifacts a
+		JOIN mcp_proxies p ON a.uuid = p.uuid
+		WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
+		ORDER BY a.created_at DESC
+		`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.MCPProxy, projectUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []*model.MCPProxy
+	for rows.Next() {
+		var p model.MCPProxy
+		var configurationJSON sql.NullString
+		err := rows.Scan(
+			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.CreatedAt, &p.UpdatedAt,
+			&p.ProjectUUID, &p.Description, &p.CreatedBy, &p.Status, &configurationJSON,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if configurationJSON.Valid && configurationJSON.String != "" {
+			if config, err := deserializeMCPProxyConfiguration(configurationJSON); err != nil {
+				return nil, fmt.Errorf("unmarshal configuration for MCP proxy %s: %w", p.Handle, err)
+			} else if config != nil {
+				p.Configuration = *config
+			}
+		}
+		res = append(res, &p)
+	}
+	return res, rows.Err()
+}
+
+// CountByProject returns the total number of MCP proxies for a specific project
+func (r *MCPProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
+	var count int
+	query := `
+		SELECT COUNT(*) FROM artifacts a
+		JOIN mcp_proxies p ON a.uuid = p.uuid
+		WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.MCPProxy, projectUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil

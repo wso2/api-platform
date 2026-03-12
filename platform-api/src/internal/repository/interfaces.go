@@ -219,7 +219,9 @@ type MCPProxyRepository interface {
 	GetByHandle(handle, orgUUID string) (*model.MCPProxy, error)
 	GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error)
 	List(orgUUID string, limit, offset int) ([]*model.MCPProxy, error)
+	ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error)
 	Count(orgUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)

@@ -1685,7 +1685,7 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 }
 
 func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
-	c.logger.Info("MCP Proxy Deployment Event",
+	c.logger.Debug("MCP Proxy Deployment Event",
 		slog.Any("payload", event["payload"]),
 		slog.Any("timestamp", event["timestamp"]),
 		slog.Any("correlationId", event["correlationId"]),
@@ -1714,7 +1714,7 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 		return
 	}
 
-	c.logger.Info("Processing MCP proxy deployment",
+	c.logger.Debug("Processing MCP proxy deployment",
 		slog.String("proxy_id", proxyID),
 		slog.String("environment", deployedEvent.Payload.Environment),
 		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
@@ -1773,7 +1773,7 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 }
 
 func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
-	c.logger.Info("MCP Proxy Undeployment Event",
+	c.logger.Debug("MCP Proxy Undeployment Event",
 		slog.Any("payload", event["payload"]),
 		slog.Any("timestamp", event["timestamp"]),
 		slog.Any("correlationId", event["correlationId"]),
@@ -1856,7 +1856,7 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 }
 
 func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
-	c.logger.Info("MCP Proxy Deleted Event",
+	c.logger.Debug("MCP Proxy Deleted Event",
 		slog.Any("payload", event["payload"]),
 		slog.Any("timestamp", event["timestamp"]),
 		slog.Any("correlationId", event["correlationId"]),
@@ -1921,7 +1921,7 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 		return
 	}
 
-	c.logger.Info("Successfully processed MCP proxy deleted event",
+	c.logger.Debug("Successfully processed MCP proxy deleted event",
 		slog.String("proxy_id", proxyID),
 		slog.String("correlation_id", deletedEvent.CorrelationID),
 	)

@@ -29,19 +29,21 @@ import (
 )
 
 type ProjectService struct {
-	projectRepo repository.ProjectRepository
-	orgRepo     repository.OrganizationRepository
-	apiRepo     repository.APIRepository
-	slogger     *slog.Logger
+	projectRepo  repository.ProjectRepository
+	orgRepo      repository.OrganizationRepository
+	apiRepo      repository.APIRepository
+	mcpProxyRepo repository.MCPProxyRepository
+	slogger      *slog.Logger
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
-	apiRepo repository.APIRepository, slogger *slog.Logger) *ProjectService {
+	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
-		projectRepo: projectRepo,
-		orgRepo:     orgRepo,
-		apiRepo:     apiRepo,
-		slogger:     slogger,
+		projectRepo:  projectRepo,
+		orgRepo:      orgRepo,
+		apiRepo:      apiRepo,
+		mcpProxyRepo: mcpProxyRepo,
+		slogger:      slogger,
 	}
 }
 
@@ -225,6 +227,15 @@ func (s *ProjectService) DeleteProject(projectId, orgId string) error {
 	}
 	if len(apis) > 0 {
 		return constants.ErrProjectHasAssociatedAPIs
+	}
+
+	// check if there are any MCP proxies associated with the project
+	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, projectId)
+	if err != nil {
+		return err
+	}
+	if mcpProxiesCount > 0 {
+		return constants.ErrProjectHasAssociatedMCPProxies
 	}
 
 	return s.projectRepo.DeleteProject(projectId)

@@ -40,6 +40,7 @@ var (
 	ErrInvalidProjectName                    = errors.New("invalid project name")
 	ErrOrganizationMustHAveAtLeastOneProject = errors.New("organization must have at least one project")
 	ErrProjectHasAssociatedAPIs              = errors.New("project has associated APIs")
+	ErrProjectHasAssociatedMCPProxies        = errors.New("project has associated MCP proxies")
 	ErrorInvalidProjectUUID                  = errors.New("invalid project UUID")
 )
 
