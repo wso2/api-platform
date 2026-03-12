@@ -895,7 +895,7 @@ func TestGetRestAPIByIdWrongKind(t *testing.T) {
 	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
 	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // TestSearchDeploymentsWithNilStore tests SearchDeployments with nil store
