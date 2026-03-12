@@ -41,21 +41,22 @@ import (
 // request_id → response channel.
 //
 // Flow:
-//   1. Execute() generates a unique request_id, creates a response channel, adds to pendingRequests
-//   2. Sends the ExecutionRequest on the stream (protected by a send mutex)
-//   3. A background goroutine continuously receives from the stream, looks up request_id
-//      in pendingRequests, and sends the response on the channel
-//   4. Execute() waits on the channel with a timeout, returns the result
+//  1. Execute() generates a unique request_id, creates a response channel, adds to pendingRequests
+//  2. Sends the ExecutionRequest on the stream (protected by a send mutex)
+//  3. A background goroutine continuously receives from the stream, looks up request_id
+//     in pendingRequests, and sends the response on the channel
+//  4. Execute() waits on the channel with a timeout, returns the result
 type StreamManager struct {
-	socketPath  string
-	conn        *grpc.ClientConn
-	client      proto.PythonExecutorServiceClient // NEW — for unary RPCs
-	stream      proto.PythonExecutorService_ExecuteStreamClient
-	sendMu      sync.Mutex                               // Protects stream.Send()
-	pendingMu   sync.RWMutex                             // Protects pendingRequests
-	pendingReqs map[string]chan *proto.ExecutionResponse // request_id → response channel
-	connected   bool
-	connectMu   sync.Mutex
+	socketPath   string
+	conn         *grpc.ClientConn
+	client       proto.PythonExecutorServiceClient
+	stream       proto.PythonExecutorService_ExecuteStreamClient
+	streamCancel context.CancelFunc                       // cancels the long-lived stream context on Close()
+	sendMu       sync.Mutex                               // Protects stream.Send()
+	pendingMu    sync.RWMutex                             // Protects pendingRequests
+	pendingReqs  map[string]chan *proto.ExecutionResponse // request_id → response channel
+	connected    bool
+	connectMu    sync.Mutex
 }
 
 // NewStreamManager creates a new StreamManager for the given UDS socket path.
@@ -97,15 +98,27 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 	}
 
 	client := proto.NewPythonExecutorServiceClient(conn)
-	stream, err := client.ExecuteStream(ctx)
+
+	// The stream must live for the lifetime of the connection, not for the
+	// duration of a single InitPolicy call. Use a dedicated background context
+	// that is only cancelled when Close() is explicitly called.
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	stream, err := client.ExecuteStream(streamCtx)
 	if err != nil {
+		streamCancel()
 		conn.Close()
 		return fmt.Errorf("failed to start ExecuteStream: %w", err)
+	}
+
+	// Cancel any previous stream context before replacing it.
+	if sm.streamCancel != nil {
+		sm.streamCancel()
 	}
 
 	sm.conn = conn
 	sm.client = client
 	sm.stream = stream
+	sm.streamCancel = streamCancel
 	sm.connected = true
 
 	// Start receive loop
@@ -154,6 +167,10 @@ func (sm *StreamManager) handleDisconnect() {
 	defer sm.connectMu.Unlock()
 
 	sm.connected = false
+	if sm.streamCancel != nil {
+		sm.streamCancel()
+		sm.streamCancel = nil
+	}
 	if sm.conn != nil {
 		sm.conn.Close()
 		sm.conn = nil
@@ -250,6 +267,12 @@ func (sm *StreamManager) Close() error {
 
 	sm.connected = false
 
+	// Cancel the stream context first so the receiveLoop unblocks cleanly.
+	if sm.streamCancel != nil {
+		sm.streamCancel()
+		sm.streamCancel = nil
+	}
+
 	if sm.stream != nil {
 		sm.stream.CloseSend()
 	}
@@ -288,6 +311,21 @@ func (sm *StreamManager) DestroyPolicy(ctx context.Context, req *proto.DestroyPo
 	resp, err := sm.client.DestroyPolicy(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("DestroyPolicy RPC failed: %w", err)
+	}
+	return resp, nil
+}
+
+// HealthCheck calls the HealthCheck unary RPC to check Python executor readiness.
+func (sm *StreamManager) HealthCheck(ctx context.Context) (*proto.HealthCheckResponse, error) {
+	if !sm.IsConnected() {
+		if err := sm.Connect(ctx); err != nil {
+			return nil, fmt.Errorf("failed to connect to Python Executor: %w", err)
+		}
+	}
+
+	resp, err := sm.client.HealthCheck(ctx, &proto.HealthCheckRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("HealthCheck RPC failed: %w", err)
 	}
 	return resp, nil
 }

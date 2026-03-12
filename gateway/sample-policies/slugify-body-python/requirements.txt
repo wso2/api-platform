@@ -1,0 +1,7 @@
+# Slugify Body Policy Dependencies
+# https://pypi.org/project/python-slugify/
+#
+# python-slugify converts unicode strings into URL-safe ASCII slugs.
+# It handles accented characters (é → e), punctuation stripping,
+# whitespace collapsing, and optional length truncation.
+python-slugify>=8.0.0

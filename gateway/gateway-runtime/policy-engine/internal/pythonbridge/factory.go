@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -81,10 +82,31 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		policyVersion: f.PolicyVersion,
 		mode:          f.Mode,
 		metadata:      metadata,
-		params:        params,
 		streamManager: f.StreamManager,
 		translator:    NewTranslator(),
 		slogger:       slogger,
 		instanceID:    resp.InstanceId,
 	}, nil
+}
+
+// PythonHealthAdapter implements admin.PythonHealthChecker using the StreamManager.
+type PythonHealthAdapter struct {
+	sm *StreamManager
+}
+
+// NewPythonHealthAdapter creates a PythonHealthAdapter from the given StreamManager.
+func NewPythonHealthAdapter(sm *StreamManager) *PythonHealthAdapter {
+	return &PythonHealthAdapter{sm: sm}
+}
+
+// IsPythonHealthy calls the Python executor's HealthCheck RPC.
+func (a *PythonHealthAdapter) IsPythonHealthy() (bool, int32, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := a.sm.HealthCheck(ctx)
+	if err != nil {
+		return false, 0, err
+	}
+	return resp.Ready, resp.LoadedPolicies, nil
 }

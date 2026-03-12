@@ -74,12 +74,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
   - name: xml-to-json
     gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0
-  # Python sample policies
-  - name: add-python-header
-    filePath: ./sample-policies/add-python-header
-  - name: prompt-compression
-    filePath: ./sample-policies/prompt-compression
-  #-  name: prompt-compression
-    # pipPackage: wso2-gateway-policy-prompt-compression==0.1.1
+  # Slugify Body Policy
+  - name: slugify-body-python
+    filePath: ./sample-policies/slugify-body-python
   - name: uppercase-body
     filePath: ./sample-policies/uppercase-body

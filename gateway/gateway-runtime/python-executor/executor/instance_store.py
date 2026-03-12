@@ -16,6 +16,7 @@
 
 import logging
 import threading
+from dataclasses import dataclass
 from typing import Optional
 
 from sdk.policy import Policy
@@ -23,8 +24,14 @@ from sdk.policy import Policy
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class InstanceRecord:
+    """Holds a policy instance."""
+    policy: Policy
+
+
 class PolicyInstanceStore:
-    """Maps instance_id → Policy instance.
+    """Maps instance_id → InstanceRecord.
 
     Thread-safe — guards all mutations with a lock.
     The store does not own instancing logic; it only holds references.
@@ -32,22 +39,23 @@ class PolicyInstanceStore:
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._instances: dict[str, Policy] = {}
+        self._instances: dict[str, InstanceRecord] = {}
 
     def put(self, instance_id: str, instance: Policy) -> None:
         """Store an instance. Overwrites silently if the ID already exists."""
         with self._lock:
-            self._instances[instance_id] = instance
+            self._instances[instance_id] = InstanceRecord(policy=instance)
 
-    def get(self, instance_id: str) -> Optional[Policy]:
-        """Look up an instance. Returns None if not found."""
+    def get(self, instance_id: str) -> Optional[InstanceRecord]:
+        """Look up an instance record. Returns None if not found."""
         with self._lock:
             return self._instances.get(instance_id)
 
     def remove(self, instance_id: str) -> Optional[Policy]:
-        """Remove and return an instance. Returns None if not found."""
+        """Remove and return a policy instance. Returns None if not found."""
         with self._lock:
-            return self._instances.pop(instance_id, None)
+            record = self._instances.pop(instance_id, None)
+            return record.policy if record is not None else None
 
     def count(self) -> int:
         """Return the number of live instances."""
@@ -55,8 +63,8 @@ class PolicyInstanceStore:
             return len(self._instances)
 
     def clear(self) -> list[Policy]:
-        """Remove and return all instances (for shutdown cleanup)."""
+        """Remove and return all policy instances (for shutdown cleanup)."""
         with self._lock:
-            instances = list(self._instances.values())
+            policies = [r.policy for r in self._instances.values()]
             self._instances.clear()
-            return instances
+            return policies

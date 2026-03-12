@@ -37,6 +37,11 @@ type HealthProvider interface {
 	IsHealthy() bool
 }
 
+// PythonHealthChecker checks the health of the Python executor via gRPC.
+type PythonHealthChecker interface {
+	IsPythonHealthy() (ready bool, loadedPolicies int32, err error)
+}
+
 // ConfigDumpHandler handles GET /config_dump requests
 type ConfigDumpHandler struct {
 	kernel   *kernel.Kernel
@@ -118,12 +123,13 @@ func (h *XDSSyncStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 // HealthHandler handles GET /health requests.
 type HealthHandler struct {
-	health HealthProvider
+	health       HealthProvider
+	pythonHealth PythonHealthChecker
 }
 
 // NewHealthHandler creates a new health handler.
-func NewHealthHandler(health HealthProvider) *HealthHandler {
-	return &HealthHandler{health: health}
+func NewHealthHandler(health HealthProvider, pythonHealth PythonHealthChecker) *HealthHandler {
+	return &HealthHandler{health: health, pythonHealth: pythonHealth}
 }
 
 // ServeHTTP implements http.Handler for health checks.
@@ -133,16 +139,34 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status := "healthy"
+	peStatus := "healthy"
 	statusCode := http.StatusOK
 	if h.health != nil && !h.health.IsHealthy() {
-		status = "unhealthy"
+		peStatus = "unhealthy"
 		statusCode = http.StatusServiceUnavailable
 	}
 
 	resp := HealthResponse{
-		Status:    status,
+		Status:    peStatus,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Check Python executor health if checker is configured
+	if h.pythonHealth != nil {
+		ready, loadedPolicies, err := h.pythonHealth.IsPythonHealthy()
+		if err != nil || !ready {
+			resp.PythonExecutor = &PythonExecutorHealth{
+				Status:         "unhealthy",
+				LoadedPolicies: loadedPolicies,
+			}
+			statusCode = http.StatusServiceUnavailable
+			resp.Status = "unhealthy"
+		} else {
+			resp.PythonExecutor = &PythonExecutorHealth{
+				Status:         "healthy",
+				LoadedPolicies: loadedPolicies,
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

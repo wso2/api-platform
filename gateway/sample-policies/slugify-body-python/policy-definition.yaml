@@ -1,0 +1,45 @@
+name: slugify-body-python
+version: v1.0.0
+description: |
+  Converts the plain-text request body to a URL-friendly slug using the
+  python-slugify library. Accented characters are transliterated to ASCII,
+  punctuation is stripped, and words are joined by the configured separator.
+
+  Example:
+    "Hello World! Héllo?" → "hello-world-hello"
+
+  This policy is the canonical sample for Python policy development.
+
+# processingMode tells the gateway which phases to activate for this policy.
+# BUFFER is required for any phase where the policy needs to read or modify the body.
+processingMode:
+  requestHeaderMode: SKIP    # We don't need to inspect request headers
+  requestBodyMode: BUFFER    # We need to read and replace the request body
+  responseHeaderMode: SKIP   # We don't touch response headers
+  responseBodyMode: SKIP     # We don't touch the response body
+
+parameters:
+  type: object
+  properties:
+    separator:
+      type: string
+      description: |
+        Character used to join words in the resulting slug.
+        Allowed values: "-", "_", ".", "~"
+      default: "-"
+      enum:
+        - "-"
+        - "_"
+        - "."
+        - "~"
+    maxLength:
+      type: integer
+      description: |
+        Maximum length of the resulting slug in characters.
+        Set to 0 (default) for no limit.
+      default: 0
+      minimum: 0
+
+systemParameters:
+  type: object
+  properties: {}

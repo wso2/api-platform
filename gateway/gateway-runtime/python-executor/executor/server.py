@@ -15,6 +15,7 @@
 """gRPC server implementation for Python Executor."""
 
 import asyncio
+import collections
 import logging
 import os
 import signal
@@ -163,16 +164,14 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
     ) -> AsyncIterator[proto.ExecutionResponse]:
         """Handle bidirectional streaming execution requests with concurrent fan-out.
 
-        Architecture unchanged from current implementation:
         - Reader task: eagerly consumes request_iterator, spawns a processing task per request
-        - Processing tasks: execute policy in thread pool, put result in response queue
-        - Writer (this generator): yields responses from queue as they complete (out-of-order)
+        - Processing tasks: execute policy in thread pool, append result to deque and notify
+        - Writer: wakes on asyncio.Condition, drains the deque, yields responses (out-of-order)
 
         The Go side correlates responses by request_id, so order doesn't matter.
         """
-        response_queue: asyncio.Queue[proto.ExecutionResponse] = asyncio.Queue(
-            maxsize=self._max_concurrent
-        )
+        response_deque: collections.deque[proto.ExecutionResponse] = collections.deque()
+        response_ready = asyncio.Condition()
         in_flight: set[asyncio.Task] = set()
         reader_done = asyncio.Event()
         concurrency_limit = asyncio.Semaphore(self._max_concurrent)
@@ -186,60 +185,57 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                         self._execute_policy,
                         request,
                     )
-                    await response_queue.put(response)
             except Exception as e:
                 logger.exception(
                     f"Error executing policy {request.policy_name}:{request.policy_version}"
                 )
-                error_resp = self._error_response(
+                response = self._error_response(
                     request.request_id, e, request.policy_name, request.policy_version
                 )
-                await response_queue.put(error_resp)
+            async with response_ready:
+                response_deque.append(response)
+                in_flight.discard(asyncio.current_task())
+                response_ready.notify()
 
         async def reader() -> None:
             try:
                 async for request in request_iterator:
                     task = asyncio.create_task(process_request(request))
                     in_flight.add(task)
-                    task.add_done_callback(in_flight.discard)
             except asyncio.CancelledError:
                 logger.info("Reader cancelled")
             except Exception:
                 logger.exception("Reader encountered error")
             finally:
                 reader_done.set()
+                async with response_ready:
+                    response_ready.notify()
 
         reader_task = asyncio.create_task(reader())
 
         try:
             while True:
-                try:
-                    response = response_queue.get_nowait()
-                    yield response
-                    continue
-                except asyncio.QueueEmpty:
-                    pass
+                async with response_ready:
+                    while not response_deque:
+                        if reader_done.is_set() and len(in_flight) == 0:
+                            break
+                        await response_ready.wait()
+                    batch = list(response_deque)
+                    response_deque.clear()
 
-                if reader_done.is_set() and len(in_flight) == 0 and response_queue.empty():
+                if not batch and reader_done.is_set() and len(in_flight) == 0:
                     break
 
-                try:
-                    response = await asyncio.wait_for(response_queue.get(), timeout=0.1)
-                    yield response
-                except asyncio.TimeoutError:
-                    continue
+                for resp in batch:
+                    yield resp
 
         except asyncio.CancelledError:
-            logger.info("ExecuteStream cancelled, cleaning up")
+            logger.debug("ExecuteStream cancelled, cleaning up")
             reader_task.cancel()
-            try:
-                await reader_task
-            except asyncio.CancelledError:
-                pass
             for task in list(in_flight):
                 task.cancel()
-            if in_flight:
-                await asyncio.wait(in_flight, timeout=5.0)
+            all_tasks = [reader_task] + list(in_flight)
+            await asyncio.shield(asyncio.gather(*all_tasks, return_exceptions=True))
             raise
         finally:
             if not reader_task.done():
@@ -255,13 +251,17 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         Looks up the policy instance by instance_id, then calls
         on_request or on_response.
         """
-        instance = self._store.get(request.instance_id)
-        if instance is None:
+        record = self._store.get(request.instance_id)
+        if record is None:
             raise ValueError(
                 f"No policy instance for instance_id={request.instance_id} "
                 f"(policy={request.policy_name}:{request.policy_version})"
             )
 
+        instance = record.policy
+        # Use per-call params from the request (Go sends the merged system+user params
+        # on every call). This is necessary for singleton policies where one Python
+        # object is shared across multiple routes with different params each.
         params = self._translator.struct_to_dict(request.params)
         shared_ctx = self._translator.to_python_shared_context(request.shared_context)
 

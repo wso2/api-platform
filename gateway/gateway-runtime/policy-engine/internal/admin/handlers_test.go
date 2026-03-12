@@ -474,7 +474,7 @@ func TestDumpPolicySpecs(t *testing.T) {
 
 // TestHealthHandler_Healthy tests that healthy provider returns 200
 func TestHealthHandler_Healthy(t *testing.T) {
-	handler := NewHealthHandler(&mockHealthProvider{healthy: true})
+	handler := NewHealthHandler(&mockHealthProvider{healthy: true}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
@@ -491,7 +491,7 @@ func TestHealthHandler_Healthy(t *testing.T) {
 
 // TestHealthHandler_Unhealthy tests that unhealthy provider returns 503
 func TestHealthHandler_Unhealthy(t *testing.T) {
-	handler := NewHealthHandler(&mockHealthProvider{healthy: false})
+	handler := NewHealthHandler(&mockHealthProvider{healthy: false}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
@@ -508,7 +508,7 @@ func TestHealthHandler_Unhealthy(t *testing.T) {
 
 // TestHealthHandler_NilProvider tests that nil provider returns healthy (safe default)
 func TestHealthHandler_NilProvider(t *testing.T) {
-	handler := NewHealthHandler(nil)
+	handler := NewHealthHandler(nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
@@ -524,7 +524,7 @@ func TestHealthHandler_NilProvider(t *testing.T) {
 
 // TestHealthHandler_MethodNotAllowed tests that non-GET methods return 405
 func TestHealthHandler_MethodNotAllowed(t *testing.T) {
-	handler := NewHealthHandler(&mockHealthProvider{healthy: true})
+	handler := NewHealthHandler(&mockHealthProvider{healthy: true}, nil)
 
 	methods := []string{
 		http.MethodPost,

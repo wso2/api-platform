@@ -41,12 +41,11 @@ type PythonBridge struct {
 	policyVersion string
 	mode          policy.ProcessingMode // Static, from policy-definition.yaml
 	metadata      policy.PolicyMetadata
-	params        map[string]interface{} // Merged system + user params
-	streamManager *StreamManager         // Shared singleton
+	streamManager *StreamManager
 	translator    *Translator
 	slogger       *slog.Logger
-	instanceID    string // NEW — Python-side instance identifier
-	closed        bool   // NEW — prevents double-close
+	instanceID    string
+	closed        bool
 }
 
 // Mode returns the policy's processing mode (declared statically for Python policies).
@@ -56,8 +55,7 @@ func (b *PythonBridge) Mode() policy.ProcessingMode {
 
 // OnRequest executes the policy during request phase by delegating to Python.
 func (b *PythonBridge) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	// Build proto ExecutionRequest
-	req := b.buildRequest(ctx, params, "on_request")
+	req := b.buildRequest(ctx, "on_request", params)
 
 	// Execute via stream manager
 	resp, err := b.streamManager.Execute(context.Background(), req)
@@ -77,7 +75,6 @@ func (b *PythonBridge) OnRequest(ctx *policy.RequestContext, params map[string]i
 
 // OnResponse executes the policy during response phase by delegating to Python.
 func (b *PythonBridge) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	// Build proto ExecutionRequest
 	req := b.buildResponseRequest(ctx, params)
 
 	// Execute via stream manager
@@ -97,7 +94,7 @@ func (b *PythonBridge) OnResponse(ctx *policy.ResponseContext, params map[string
 }
 
 // buildRequest creates an ExecutionRequest for the request phase.
-func (b *PythonBridge) buildRequest(ctx *policy.RequestContext, params map[string]interface{}, phase string) *proto.ExecutionRequest {
+func (b *PythonBridge) buildRequest(ctx *policy.RequestContext, phase string, params map[string]interface{}) *proto.ExecutionRequest {
 	reqID := uuid.New().String()
 
 	// Convert headers - join multiple values with comma
@@ -197,7 +194,7 @@ func (b *PythonBridge) buildResponseRequest(ctx *policy.ResponseContext, params 
 		Context:        &proto.ExecutionRequest_ResponseContext{ResponseContext: respCtx},
 		SharedContext:  sharedCtx,
 		PolicyMetadata: policyMeta,
-		InstanceId:     b.instanceID, // NEW
+		InstanceId:     b.instanceID,
 	}
 }
 

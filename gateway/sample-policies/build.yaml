@@ -10,6 +10,9 @@ policies:
   # CountLetters Policy
   - name: count-letters
     filePath: ./count-letters
+  # Slugify Body Policy (Python — sample / reference implementation)
+  - name: slugify-body-python
+    filePath: ./slugify-body
   # Prompt Compression Policy (Python)
   - name: prompt-compression
     filePath: ./prompt-compression

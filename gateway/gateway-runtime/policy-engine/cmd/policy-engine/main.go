@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pkg/cel"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
@@ -238,7 +239,16 @@ func main() {
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server
 	if cfg.PolicyEngine.Admin.Enabled {
-		adminServer = admin.NewServer(&cfg.PolicyEngine.Admin, k, reg, xdsSyncStatusProvider, healthProvider)
+		// Check if Python executor is available (socket configured)
+		var pythonHealthChecker admin.PythonHealthChecker
+		if _, err := os.Stat(os.Getenv("PYTHON_EXECUTOR_SOCKET")); err == nil {
+			sm := pythonbridge.GetStreamManager()
+			pythonHealthChecker = pythonbridge.NewPythonHealthAdapter(sm)
+		} else if _, err := os.Stat("/var/run/api-platform/python-executor.sock"); err == nil {
+			sm := pythonbridge.GetStreamManager()
+			pythonHealthChecker = pythonbridge.NewPythonHealthAdapter(sm)
+		}
+		adminServer = admin.NewServer(&cfg.PolicyEngine.Admin, k, reg, xdsSyncStatusProvider, healthProvider, pythonHealthChecker)
 		go func() {
 			if err := adminServer.Start(ctx); err != nil {
 				slog.ErrorContext(ctx, "Admin server error", "error", err)

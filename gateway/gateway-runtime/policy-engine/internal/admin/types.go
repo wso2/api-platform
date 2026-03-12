@@ -43,8 +43,15 @@ type XDSSyncStatusResponse struct {
 
 // HealthResponse is the response payload for GET /health.
 type HealthResponse struct {
-	Status    string `json:"status"`
-	Timestamp string `json:"timestamp"`
+	Status         string                `json:"status"`
+	Timestamp      string                `json:"timestamp"`
+	PythonExecutor *PythonExecutorHealth `json:"python_executor,omitempty"`
+}
+
+// PythonExecutorHealth holds the health status of the Python executor.
+type PythonExecutorHealth struct {
+	Status         string `json:"status"`
+	LoadedPolicies int32  `json:"loaded_policies"`
 }
 
 // LazyResourcesDump contains information about all lazy resources
