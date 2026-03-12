@@ -49,9 +49,9 @@ type APIKey struct {
 	Source        string  `json:"source" db:"source"`                 // "local" | "external"
 	ExternalRefId *string `json:"externalRefId" db:"external_ref_id"` // Cloud APIM key ID or other external reference
 
-	// APIKeyUUID is the UUID v7 from platform API, used to correlate keys across systems.
+	// CPKeyUUID is the UUID v7 from the control plane (platform API), used to correlate keys across systems.
 	// Populated from the apikey.created event; generated locally if not provided.
-	APIKeyUUID *string `json:"apiKeyUuid" db:"api_key_uuid"`
+	CPKeyUUID *string `json:"cpKeyUuid" db:"cp_key_uuid"`
 
 	// ProvisionedBy identifies the developer portal that provisioned this key; nil if not provided
 	ProvisionedBy *string `json:"provisionedBy,omitempty" db:"provisioned_by"`

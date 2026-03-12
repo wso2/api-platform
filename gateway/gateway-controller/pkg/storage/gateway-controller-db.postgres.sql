@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid TEXT PRIMARY KEY,
-    api_key_uuid TEXT NULL,
+    cp_key_uuid TEXT NULL,
     gateway_id TEXT NOT NULL,
     name TEXT NOT NULL,
     api_key TEXT NOT NULL UNIQUE,

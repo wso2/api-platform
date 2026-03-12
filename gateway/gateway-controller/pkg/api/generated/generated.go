@@ -468,9 +468,9 @@ type APIKeyCreationRequest struct {
 	// Use this for injecting externally hashed API keys from the platform.
 	ApiKeyHashes *string `json:"apiKeyHashes,omitempty" yaml:"apiKeyHashes,omitempty"`
 
-	// ApiKeyUuid UUID v7 of the API key from the platform API, used for cross-system correlation.
+	// CpKeyUuid UUID v7 of the API key from the control plane (platform API), used for cross-system correlation.
 	// If not provided, the gateway generates one locally.
-	ApiKeyUuid *string `json:"apiKeyUuid,omitempty" yaml:"apiKeyUuid,omitempty"`
+	CpKeyUuid *string `json:"cpKeyUuid,omitempty" yaml:"cpKeyUuid,omitempty"`
 
 	// ExpiresAt Expiration timestamp. If both expiresIn and expiresAt are provided, expiresAt takes precedence.
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`

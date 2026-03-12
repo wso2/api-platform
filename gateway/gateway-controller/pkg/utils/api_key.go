@@ -943,10 +943,10 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		return nil, fmt.Errorf("failed to generate unique ID: %w", err)
 	}
 
-	// Resolve api_key_uuid: use the one from the request if provided, otherwise generate locally
+	// Resolve cp_key_uuid: use the one from the request if provided, otherwise generate locally
 	var apiKeyUUID string
-	if request.ApiKeyUuid != nil && strings.TrimSpace(*request.ApiKeyUuid) != "" {
-		apiKeyUUID = strings.TrimSpace(*request.ApiKeyUuid)
+	if request.CpKeyUuid != nil && strings.TrimSpace(*request.CpKeyUuid) != "" {
+		apiKeyUUID = strings.TrimSpace(*request.CpKeyUuid)
 	} else {
 		apiKeyUUID, err = GenerateUUID()
 		if err != nil {
@@ -1048,7 +1048,7 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 
 	apiKey := &models.APIKey{
 		UUID:           id,
-		APIKeyUUID:   &apiKeyUUID,
+		CPKeyUUID:    &apiKeyUUID,
 		Name:         name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display

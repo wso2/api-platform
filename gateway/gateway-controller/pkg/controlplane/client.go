@@ -2009,7 +2009,7 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		MaskedApiKey:   &payload.MaskedApiKey,
 		Name:           &payload.Name,
 		ExternalRefId:  payload.ExternalRefId,
-		ApiKeyUuid:     apiKeyUUID,
+		CpKeyUuid:      apiKeyUUID,
 		ProvisionedBy:  payload.ProvisionedBy,
 		AllowedTargets: &allowedTargets,
 	}

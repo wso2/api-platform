@@ -7020,7 +7020,7 @@ components:
             Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
           nullable: true
-          example: "openai,azure-openai"
+          example: "dev_gateway,test_gateway"
     CreateLLMProviderAPIKeyResponse:
       type: object
       required:
@@ -7075,7 +7075,7 @@ components:
             Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
           nullable: true
-          example: "openai,azure-openai"
+          example: "dev_gateway,test_gateway"
     CreateLLMProxyAPIKeyResponse:
       type: object
       required:
