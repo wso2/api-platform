@@ -708,7 +708,7 @@ paths:
         to revoke API keys on hybrid gateways.
       operationId: RevokeAPIKey
       tags:
-        - APIs
+        - REST APIs
         - API Keys
       parameters:
         - $ref: '#/components/parameters/apiId'
@@ -1240,6 +1240,7 @@ paths:
       operationId: DeployAPI
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
       requestBody:
@@ -1282,6 +1283,7 @@ paths:
       operationId: GetDeployments
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/gatewayId-Q'
@@ -1311,6 +1313,7 @@ paths:
       operationId: GetDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/deploymentId'
@@ -1335,6 +1338,7 @@ paths:
       operationId: DeleteDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/deploymentId'
@@ -1366,6 +1370,7 @@ paths:
       operationId: UndeployDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - name: deploymentId
@@ -1412,6 +1417,7 @@ paths:
       operationId: RestoreDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - name: deploymentId
@@ -1663,7 +1669,7 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        404:
+        '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
@@ -2546,6 +2552,7 @@ paths:
       operationId: deployLLMProvider
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2593,6 +2600,7 @@ paths:
       operationId: getLLMProviderDeployments
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2627,6 +2635,7 @@ paths:
       operationId: getLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2656,6 +2665,7 @@ paths:
       operationId: deleteLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2692,6 +2702,7 @@ paths:
       operationId: undeployLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2743,6 +2754,7 @@ paths:
       operationId: restoreLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2795,6 +2807,7 @@ paths:
       operationId: deployLLMProxy
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2842,6 +2855,7 @@ paths:
       operationId: getLLMProxyDeployments
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2876,6 +2890,7 @@ paths:
       operationId: getLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2905,6 +2920,7 @@ paths:
       operationId: deleteLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2941,6 +2957,7 @@ paths:
       operationId: undeployLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2992,6 +3009,7 @@ paths:
       operationId: restoreLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -3331,6 +3349,444 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies:
+    post:
+      summary: Create a new MCP proxy
+      description: |
+        Deploy a new MCP proxy configuration.
+      operationId: createMCPProxy
+      tags:
+        - MCP Proxies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPProxy'
+      responses:
+        '201':
+          description: MCP proxy created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List all MCP proxies
+      description: Retrieve a list of all MCP proxies. Optionally filter by project using the projectId query parameter.
+      operationId: listMCPProxies
+      tags:
+        - MCP Proxies
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+        - name: limit
+          in: query
+          description: Maximum number of MCP proxies to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of MCP proxies to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of MCP proxies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}:
+    get:
+      summary: Get MCP proxy by unique identifier
+      description: Retrieve the complete configuration for a specific MCP proxy.
+      operationId: getMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MCP proxy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update an existing MCP proxy
+      description: Update the configuration of an existing MCP proxy.
+      operationId: updateMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPProxy'
+      responses:
+        '200':
+          description: MCP proxy updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    delete:
+      summary: Delete an MCP proxy
+      description: Remove an MCP proxy.
+      operationId: deleteMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      responses:
+        '204':
+          description: MCP proxy deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments:
+    post:
+      summary: Create and deploy a new deployment for MCP proxy
+      description: |
+        Creates an immutable deployment artifact for an MCP proxy and deploys it to a specified gateway.
+        Each deployment targets a single gateway. The id parameter is the MCP proxy handle (identifier),
+        not the UUID. The deployment becomes active immediately on the target gateway. 
+        Access is validated against the organization in the JWT token.
+      operationId: DeployMCPProxy
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '201':
+          description: MCP proxy deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          description: Bad Request. Validation errors (missing name, base, gatewayId, or MCP proxy has no backend services)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found. MCP proxy, gateway, or base deployment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get deployments for an MCP proxy
+      description: |
+        Retrieves all deployment artifacts for a specific MCP proxy. The id parameter is the MCP proxy handle (identifier),
+        not the UUID. Supports filtering by gateway UUID and deployment status. 
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyDeployments
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - $ref: '#/components/parameters/gatewayId-Q'
+        - $ref: '#/components/parameters/deploymentStatus-Q'
+      responses:
+        '200':
+          description: Deployments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/{deploymentId}:
+    get:
+      summary: Get deployment by ID
+      description: |
+        Retrieves metadata for a specific deployment artifact including status, gateway association,
+        and timestamps. Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete deployment
+      description: |
+        Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '204':
+          description: Deployment deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/undeploy:
+    post:
+      summary: Undeploy deployment from gateway
+      description: |
+        Undeploys an active deployment, stopping the MCP proxy from being served on the specified gateway.
+        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
+        Returns the updated deployment object with status changed to UNDEPLOYED.
+        
+        Both deploymentId and gatewayId are required for safety. The backend validates that the 
+        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: UndeployMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/restore:
+    post:
+      summary: Restore a previous deployment
+      description: |
+        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
+        on the specified gateway. This operation changes the deployment state of the MCP proxy on that gateway.
+        The target deployment must not already be in DEPLOYED status.
+        
+        Both deploymentId and gatewayId are required for safety. The backend validates that the 
+        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: RestoreMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/fetch-server-info:
+    post:
+      summary: Fetch server info from MCP proxy backend services
+      description: |
+        Fetches server information from the backend services of an MCP proxy. 
+        This is used to validate connectivity and retrieve metadata about the backend services.
+      operationId: fetchMCPProxyServerInfo
+      tags:
+        - MCP Proxies
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPServerInfoFetchRequest'
+      responses:
+        '200':
+          description: Server info retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerInfoFetchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6329,6 +6785,199 @@ components:
           type: string
           description: The generated API key value (shown only once, 64 hexadecimal characters)
           example: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+
+    MCPProxy:
+      type: object
+      required:
+        - id
+        - name
+        - version
+        - upstream
+      properties:
+        id:
+          type: string
+          description: Unique handle for the proxy
+          example: weather-mcp-proxy
+        name:
+          type: string
+          description: Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Weather Server
+        description:
+          type: string
+          description: Description of the MCP proxy
+          maxLength: 1023
+          example: An MCP server which provides weather information
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        version:
+          type: string
+          description: Semantic version of the MCP proxy
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for all REST API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "mcp.gw.com"
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+        mcpSpecVersion:
+          type: string
+          description: MCP specification version supported by this proxy
+          enum:
+            - "2025-06-18"
+            - "2025-11-25"
+        policies:
+          type: array
+          description: List of policies to be applied
+          items:
+            $ref: '#/components/schemas/Policy'
+        kind:
+          type: string
+          description: Kind of the API based on its communication protocol or architectural style
+          default: Mcp
+          example: Mcp
+        capabilities:
+          type: object
+          description: >
+            List of capabilities supported by this proxy. This will be stored as-is and can be used in the future if we need
+            this for governance purposes
+          $ref: '#/components/schemas/MCPProxyCapabilities'
+
+    MCPProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: weather-mcp-proxy
+        name:
+          type: string
+          example: Weather Server
+        description:
+          type: string
+          example: An MCP server which provides weather information
+        createdBy:
+          type: string
+          example: jane.doe
+        context:
+          type: string
+          description: Context path where the proxy is exposed
+          example: /weather-mcp-proxy
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        mcpSpecVersion:
+          type: string
+          example: 2025-11-25
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    MCPProxyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPProxyListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    
+    MCPServerInfoFetchRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Endpoint URL of the MCP server to fetch information from
+          example: https://mcp.server.com/mcp
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+
+    MCPServerInfoFetchResponse:
+      type: object
+      properties:
+        serverInfo:
+          type: object
+        tools:
+          type: array
+          items:
+            type: object
+        resources:
+          type: array
+          items:
+            type: object
+        prompts:
+          type: array
+          items:
+            type: object
+
+    MCPProxyCapabilities:
+      type: object
+      properties:
+        tools:
+          type: array
+          description: List of tool capabilities supported by this proxy
+          items:
+            type: object
+        resources:
+          type: array
+          description: List of resource capabilities supported by this proxy
+          items:
+            type: object
+        prompts:
+          type: array
+          description: List of prompt capabilities supported by this proxy
+          items:
+            type: object
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -6421,7 +7070,7 @@ components:
       in: query
       required: false
       description: |
-        **Project ID** consisting of the **UUID** of the Project to filter REST APIs by.
+        **Project ID** consisting of the **UUID** of the Project to filter APIs by.
       schema:
         type: string
         example: "yr434567-de34-76uj6-w376-234324532"
@@ -6538,6 +7187,16 @@ components:
         format: uuid
       description: The UUID of the deployment
 
+    deploymentId-Q:
+      name: deploymentId
+      in: query
+      required: false
+      description: |
+        **Deployment ID** consisting of the **UUID** of the Deployment to filter status by.
+      schema:
+        type: string
+        example: "987e6543-e21b-45d3-a789-426614174999"
+
     deploymentStatus-Q:
       name: status
       in: query
@@ -6581,3 +7240,9 @@ tags:
     description: LLM provider deployment operations
   - name: API Keys
     description: API key management operations for REST APIs and LLM Providers
+  - name: MCP Proxies
+    description: MCP proxy management operations
+  - name: MCP Proxy Deployments
+    description: MCP proxy deployment operations
+  - name: Deployments
+    description: Deployment operations for various artifact types
