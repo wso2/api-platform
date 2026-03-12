@@ -669,6 +669,56 @@ Feature: LLM Cost System Policy
     When I delete the LLM provider template "llm-cost-openai-cached-template"
     Then the response status code should be 200
 
+  Scenario: Mistral response — bare model name resolved and cost injected as x-llm-cost header
+    # Model: mistral-small-latest — input=$0.10/1M (1e-7/token), output=$0.30/1M (3e-7/token)
+    # Usage: 100 prompt + 50 completion = (100*1e-7) + (50*3e-7) = 1e-5 + 1.5e-5 = 0.0000250000
+    # Also validates: bare model name "mistral-small-latest" (no prefix) is resolved to
+    # "mistral/mistral-small-latest" in the pricing map, and prompt_audio_seconds is tolerated.
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-mistral-template
+      spec:
+        displayName: LLM Cost Mistral Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-mistral-provider
+      spec:
+        displayName: LLM Cost Mistral Provider
+        version: v1.0
+        context: /llm-cost-mistral
+        template: llm-cost-mistral-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-mistral/mistral/v1/chat/completions" to be ready with method "POST" and body '{"model": "mistral-small-latest", "messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-mistral/mistral/v1/chat/completions" with body:
+      """ json
+      {"model": "mistral-small-latest", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0000250000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-mistral-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-mistral-template"
+    Then the response status code should be 200
+
   Scenario: RestApi kind — x-llm-cost header is not injected (policy is LLM-only)
     # llm-cost is a system policy restricted to LlmProvider/LlmProxy kinds.
     # A plain RestApi pointing at an LLM backend must NOT receive the x-llm-cost header.

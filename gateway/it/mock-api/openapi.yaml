@@ -40,6 +40,9 @@ paths:
   # Mock OpenAI with prompt caching
   /openai/v1/chat-cached:
     $ref: ./paths/openai/chat_cached.yaml
+  # Mock Mistral
+  /mistral/v1/chat/completions:
+    $ref: ./paths/mistral/chat.yaml
   # Mock unknown LLM (no pricing data)
   /unknown-llm/v1/chat:
     $ref: ./paths/unknown-llm/chat.yaml
