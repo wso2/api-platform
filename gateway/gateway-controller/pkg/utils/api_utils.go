@@ -31,7 +31,6 @@ import (
 	"path/filepath"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -443,7 +442,7 @@ func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error 
 // APIDeploymentPush represents the request body for pushing API deployment details to the control plane
 type APIDeploymentPush struct {
 	ID                string               `json:"id" yaml:"id"`
-	Configuration     api.APIConfiguration `json:"configuration" yaml:"configuration"`
+	Configuration     any                  `json:"configuration" yaml:"configuration"`
 	Status            string               `json:"status" yaml:"status"`
 	CreatedAt         time.Time            `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt         time.Time            `json:"updatedAt" yaml:"updatedAt"`

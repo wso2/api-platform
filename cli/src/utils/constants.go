@@ -38,8 +38,8 @@ const (
 
 	// REST API Endpoints
 	GatewayHealthPath       = "/health"
-	GatewayAPIsPath         = "/apis"
-	GatewayAPIByIDPath      = "/apis/%s"
+	GatewayAPIsPath         = "/rest-apis"
+	GatewayAPIByIDPath      = "/rest-apis/%s"
 	GatewayMCPProxiesPath   = "/mcp-proxies"
 	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
 

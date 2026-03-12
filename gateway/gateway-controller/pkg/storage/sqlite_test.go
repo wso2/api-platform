@@ -208,21 +208,29 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	// Create and save multiple configs
 	config1 := createTestStoredConfig()
 	config1.UUID = "config1"
-	config1.Configuration.Metadata.Name = "0000-test-api-1-0000-000000000000"
-	config1.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API 1",
-		Version:     "v1.0.0",
-		Context:     "/test-1",
-	})
+	config1.Configuration = api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: "0000-test-api-1-0000-000000000000"},
+		Spec: api.APIConfigData{
+			DisplayName: "Test API 1",
+			Version:     "v1.0.0",
+			Context:     "/test-1",
+		},
+	}
 
 	config2 := createTestStoredConfig()
 	config2.UUID = "config2"
-	config2.Configuration.Metadata.Name = "test-api-2"
-	config2.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API 2",
-		Version:     "v1.0.0",
-		Context:     "/test-2",
-	})
+	config2.Configuration = api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: "test-api-2"},
+		Spec: api.APIConfigData{
+			DisplayName: "Test API 2",
+			Version:     "v1.0.0",
+			Context:     "/test-2",
+		},
+	}
 
 	err := storage.SaveConfig(config1)
 	assert.NilError(t, err)
@@ -296,22 +304,30 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	apiConfig := createTestStoredConfig()
 	apiConfig.UUID = "api-config"
 	apiConfig.Kind = "RestApi"
-	apiConfig.Configuration.Metadata.Name = "test-api-kind"
-	apiConfig.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API Kind",
-		Version:     "v1.0.0",
-		Context:     "/test-kind",
-	})
+	apiConfig.Configuration = api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: "test-api-kind"},
+		Spec: api.APIConfigData{
+			DisplayName: "Test API Kind",
+			Version:     "v1.0.0",
+			Context:     "/test-kind",
+		},
+	}
 
 	llmConfig := createTestStoredConfig()
 	llmConfig.UUID = "llm-config"
 	llmConfig.Kind = "LlmProvider"
-	llmConfig.Configuration.Metadata.Name = "test-llm-kind"
-	llmConfig.Configuration.Spec.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test LLM Kind",
-		Version:     "v1.0.0",
-		Context:     "/test-llm-kind",
-	})
+	llmConfig.Configuration = api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: "test-llm-kind"},
+		Spec: api.APIConfigData{
+			DisplayName: "Test LLM Kind",
+			Version:     "v1.0.0",
+			Context:     "/test-llm-kind",
+		},
+	}
 	llmConfig.SourceConfiguration = api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.LlmProvider,
@@ -799,18 +815,15 @@ func setupTestStorage(t *testing.T) *sqlStore {
 
 func createTestStoredConfig() *models.StoredConfig {
 	configCounter++
-	apiData := api.APIConfigData{
-		DisplayName: fmt.Sprintf("Test API %d", configCounter),
-		Version:     "v1.0.0",
-		Context:     fmt.Sprintf("/test-%d", configCounter),
-	}
-	var spec api.APIConfiguration_Spec
-	spec.FromAPIConfigData(apiData)
-
-	apiConfig := api.APIConfiguration{
-		Kind:     api.RestApi,
-		Metadata: api.Metadata{Name: fmt.Sprintf("test-api-%d", configCounter)},
-		Spec:     spec,
+	apiConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: fmt.Sprintf("test-api-%d", configCounter)},
+		Spec: api.APIConfigData{
+			DisplayName: fmt.Sprintf("Test API %d", configCounter),
+			Version:     "v1.0.0",
+			Context:     fmt.Sprintf("/test-%d", configCounter),
+		},
 	}
 	return &models.StoredConfig{
 		UUID:                fmt.Sprintf("test-config-%d", configCounter),

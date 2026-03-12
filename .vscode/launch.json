@@ -23,7 +23,18 @@
                 "${workspaceFolder}/gateway/configs/config.toml",
             ],
             "env": {
+                // Database configuration for the controller
+                "APIP_GW_CONTROLLER_STORAGE_TYPE": "sqlite", // sqlite, postgres
+                //// SQLite (default)
                 "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+                //// PostgreSQL
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST": "localhost",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT": "5432",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE": "disable",
+                // Controlplane connectivity details
                 "APIP_GW_CONTROLPLANE_HOST": "",
                 "APIP_GW_GATEWAY_REGISTRATION_TOKEN": "",
                 "APIP_GW_CONTROLLER_LLM_TEMPLATE__DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-llm-provider-templates",

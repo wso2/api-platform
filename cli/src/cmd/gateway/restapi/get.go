@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package api
+package restapi
 
 import (
 	"encoding/json"
@@ -34,11 +34,11 @@ import (
 
 const (
 	GetCmdLiteral = "get"
-	GetCmdExample = `# Get API by ID
-ap gateway api get --id sample-1 --format yaml
+	GetCmdExample = `# Get REST API by ID
+ap gateway rest-api get --id sample-1 --format yaml
 
-# Get API by name and version
-ap gateway api get --name "PetStore API" --version v1.0 --format json`
+# Get REST API by name and version
+ap gateway rest-api get --name "PetStore API" --version v1.0 --format json`
 )
 
 var (

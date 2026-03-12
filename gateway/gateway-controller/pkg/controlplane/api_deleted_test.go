@@ -374,27 +374,6 @@ func (m *mockXDSManager) RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlat
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
 	return &models.StoredConfig{
 		UUID:        apiID,
 		Handle:      apiID,
@@ -402,13 +381,31 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 		Version:     "v1",
 		Status:      models.StatusDeployed,
 		Kind:        "API",
-		Configuration: api.APIConfiguration{
-			ApiVersion: "gateway.wso2.com/v1",
+		Configuration: api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
 			Metadata: api.Metadata{
 				Name: apiID,
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "Test API",
+				Version:     "v1",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://backend.example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{
+						Method: "GET",
+						Path:   "/resource",
+					},
+				},
+			},
 		},
 	}
 }

@@ -414,10 +414,10 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 	var endpoint string
 	var method string
 	if exists {
-		endpoint = fmt.Sprintf("%s/apis/%s", gateway.GetGatewayServiceEndpoint(), url.PathEscape(handle))
+		endpoint = fmt.Sprintf("%s/rest-apis/%s", gateway.GetGatewayServiceEndpoint(), url.PathEscape(handle))
 		method = http.MethodPut
 	} else {
-		endpoint = gateway.GetGatewayServiceEndpoint() + "/apis"
+		endpoint = gateway.GetGatewayServiceEndpoint() + "/rest-apis"
 		method = http.MethodPost
 	}
 
@@ -470,7 +470,7 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 func (r *RestApiReconciler) apiExistsOnGateway(ctx context.Context, gateway *registry.GatewayInfo, handle string) (bool, error) {
 	log := r.Logger.With(zap.String("controller", "RestApi"))
 
-	endpoint := fmt.Sprintf("%s/apis/%s", gateway.GetGatewayServiceEndpoint(), url.PathEscape(handle))
+	endpoint := fmt.Sprintf("%s/rest-apis/%s", gateway.GetGatewayServiceEndpoint(), url.PathEscape(handle))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return false, &RetryableError{Err: fmt.Errorf("failed to create HTTP request for existence check: %w", err)}
@@ -838,7 +838,7 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle string, gateway *registry.GatewayInfo) error {
 	log := r.Logger.With(zap.String("controller", "RestApi"))
 
-	endpoint := fmt.Sprintf("%s/apis/%s",
+	endpoint := fmt.Sprintf("%s/rest-apis/%s",
 		gateway.GetGatewayServiceEndpoint(),
 		url.PathEscape(handle))
 

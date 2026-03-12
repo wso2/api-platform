@@ -85,8 +85,6 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/llm",
 		}
-		var spec api.APIConfiguration_Spec
-		require.NoError(t, spec.FromAPIConfigData(apiData))
 
 		llmConfig := &models.StoredConfig{
 			UUID:        "0000-llm-provider-1-0000-000000000000",
@@ -94,10 +92,10 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Handle:      "0000-llm-provider-1-0000-000000000000",
 			DisplayName: "LLM Provider",
 			Version:     "1.0.0",
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "0000-llm-provider-1-0000-000000000000"},
-				Spec:     spec,
+				Spec:     apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -122,8 +120,6 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/first",
 		}
-		var spec1 api.APIConfiguration_Spec
-		require.NoError(t, spec1.FromAPIConfigData(apiData1))
 
 		config1 := &models.StoredConfig{
 			UUID:        "0000-llm-provider-1-0000-000000000000",
@@ -131,10 +127,10 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Handle:      "first-provider",
 			DisplayName: "First Provider",
 			Version:     "1.0.0",
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "first-provider"},
-				Spec:     spec1,
+				Spec:     apiData1,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -148,8 +144,6 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/filtered",
 		}
-		var spec2 api.APIConfiguration_Spec
-		require.NoError(t, spec2.FromAPIConfigData(apiData2))
 
 		config2 := &models.StoredConfig{
 			UUID:        "0000-llm-provider-2-0000-000000000000",
@@ -157,10 +151,10 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 			Handle:      "filtered-provider",
 			DisplayName: "Filtered Provider",
 			Version:     "1.0.0",
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind:     api.RestApi,
 				Metadata: api.Metadata{Name: "filtered-provider"},
-				Spec:     spec2,
+				Spec:     apiData2,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -195,18 +189,15 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/llm-proxy",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
-
 		llmProxyConfig := &models.StoredConfig{
 			UUID:        "0000-llm-proxy-1-0000-000000000000",
 			Kind:        string(api.LlmProxy),
 			Handle:      "0000-llm-proxy-1-0000-000000000000",
 			DisplayName: "LLM Proxy",
 			Version:     "1.0.0",
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -562,8 +553,6 @@ func TestMatchesFilters(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
 			UUID:        "0000-test-config-0000-000000000000",
@@ -571,9 +560,9 @@ func TestMatchesFilters(t *testing.T) {
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test",
 			Version:     "1.0.0",
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 		}
 		result := matchesFilters(config, "unsupported type")
@@ -593,8 +582,6 @@ func TestMatchesFilters(t *testing.T) {
 				Main: vhost,
 			},
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
 			UUID:        "0000-test-config-0000-000000000000",
@@ -602,9 +589,9 @@ func TestMatchesFilters(t *testing.T) {
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test Provider",
 			Version:     "1.0.0",
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status: models.StatusPending,
 		}
@@ -630,8 +617,6 @@ func TestMatchesFilters(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		config := &models.StoredConfig{
 			UUID:        "0000-test-config-0000-000000000000",
@@ -639,9 +624,9 @@ func TestMatchesFilters(t *testing.T) {
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test Provider",
 			Version:     "1.0.0",
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 		}
 

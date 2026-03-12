@@ -1340,18 +1340,10 @@ func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
 
 	// Create invalid WebSub API config that will cause translation error
 	invalidConfig := &models.StoredConfig{
-		UUID:   "0000-test-websub-invalid-0000-000000000000",
+		UUID: "0000-test-websub-invalid-0000-000000000000",
 		Kind: "WebSubApi",
-		Configuration: api.APIConfiguration{
-			Metadata: api.Metadata{
-				Name: "test-websub-api",
-			},
-			Kind:       api.WebSubApi,
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Spec:       api.APIConfiguration_Spec{
-				// Invalid spec that will cause AsWebhookAPIData to fail
-			},
-		},
+		// Use a non-WebSubAPI type so the type assertion in translateAsyncAPIConfig fails
+		Configuration: "invalid-configuration",
 	}
 
 	result, err := translator.TranslateConfigs([]*models.StoredConfig{invalidConfig}, "test-correlation")
@@ -1547,28 +1539,26 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "http://websub.example.com:8080"
 
 		webhookConfig := &models.StoredConfig{
-			UUID:   "0000-websub-api-1-0000-000000000000",
+			UUID: "0000-websub-api-1-0000-000000000000",
 			Kind: "WebSubApi",
-			Configuration: api.APIConfiguration{
+			Configuration: api.WebSubAPI{
 				Metadata: api.Metadata{
 					Name:   "websub-test",
 					Labels: &map[string]string{"project-id": "proj-123"},
 				},
 				Kind:       api.WebSubApi,
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-				Spec:       api.APIConfiguration_Spec{},
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				Spec: api.WebhookAPIData{
+					DisplayName: "WebSub Test API",
+					Version:     "v1.0",
+					Context:     "/webhook",
+					Channels: []api.Channel{
+						{Name: "/topic1", Method: "POST"},
+						{Name: "topic2", Method: "POST"},
+					},
+				},
 			},
 		}
-
-		require.NoError(t, webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "WebSub Test API",
-			Version:     "v1.0",
-			Context:     "/webhook",
-			Channels: []api.Channel{
-				{Name: "/topic1", Method: "POST"},
-				{Name: "topic2", Method: "POST"},
-			},
-		}))
 
 		routes, clusters, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})
 		require.NoError(t, err)
@@ -1591,20 +1581,20 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "://invalid"
 
 		webhookConfig := &models.StoredConfig{
-			UUID:   "0000-websub-api-2-0000-000000000000",
+			UUID: "0000-websub-api-2-0000-000000000000",
 			Kind: "WebSubApi",
-			Configuration: api.APIConfiguration{
+			Configuration: api.WebSubAPI{
 				Metadata: api.Metadata{Name: "websub-invalid"},
 				Kind:     api.WebSubApi,
-				Spec:     api.APIConfiguration_Spec{},
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				Spec: api.WebhookAPIData{
+					DisplayName: "WebSub Invalid",
+					Version:     "v1.0",
+					Context:     "/webhook",
+					Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
+				},
 			},
 		}
-		require.NoError(t, webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "WebSub Invalid",
-			Version:     "v1.0",
-			Context:     "/webhook",
-			Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
-		}))
 
 		_, _, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})
 		assert.Error(t, err)

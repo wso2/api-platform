@@ -49,7 +49,7 @@ Feature: API Key Management Operations
     Then the response should be successful
     
     # Generate API key
-    When I send a POST request to the "gateway-controller" service at "/apis/apikey-lifecycle-api/api-keys" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/apikey-lifecycle-api/api-keys" with body:
       """
       {
         "name": "test-key-1"
@@ -63,14 +63,14 @@ Feature: API Key Management Operations
     And the JSON response should have field "apiKey.apiKey"
     
     # List API keys - should have 1 key
-    When I send a GET request to the "gateway-controller" service at "/apis/apikey-lifecycle-api/api-keys"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/apikey-lifecycle-api/api-keys"
     Then the response status should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     And the response body should contain "test-key-1"
     
     # Regenerate API key
-    When I send a POST request to the "gateway-controller" service at "/apis/apikey-lifecycle-api/api-keys/test-key-1/regenerate" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/apikey-lifecycle-api/api-keys/test-key-1/regenerate" with body:
       """
       {}
       """
@@ -80,13 +80,13 @@ Feature: API Key Management Operations
     And the JSON response should have field "apiKey.apiKey"
     
     # Revoke API key
-    When I send a DELETE request to the "gateway-controller" service at "/apis/apikey-lifecycle-api/api-keys/test-key-1"
+    When I send a DELETE request to the "gateway-controller" service at "/rest-apis/apikey-lifecycle-api/api-keys/test-key-1"
     Then the response status should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     
     # Verify key is revoked - list should be empty
-    When I send a GET request to the "gateway-controller" service at "/apis/apikey-lifecycle-api/api-keys"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/apikey-lifecycle-api/api-keys"
     Then the response status should be 200
     And the response should be valid JSON
     And the response body should not contain "test-key-1"
@@ -116,7 +116,7 @@ Feature: API Key Management Operations
     Then the response should be successful
     
     # Generate first key
-    When I send a POST request to the "gateway-controller" service at "/apis/multi-key-api/api-keys" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/multi-key-api/api-keys" with body:
       """
       {
         "name": "key-one"
@@ -126,7 +126,7 @@ Feature: API Key Management Operations
     And the response should be valid JSON
     
     # Generate second key
-    When I send a POST request to the "gateway-controller" service at "/apis/multi-key-api/api-keys" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/multi-key-api/api-keys" with body:
       """
       {
         "name": "key-two"
@@ -136,7 +136,7 @@ Feature: API Key Management Operations
     And the response should be valid JSON
     
     # List should show both keys
-    When I send a GET request to the "gateway-controller" service at "/apis/multi-key-api/api-keys"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/multi-key-api/api-keys"
     Then the response status should be 200
     And the response should be valid JSON
     And the response body should contain "key-one"
@@ -165,7 +165,7 @@ Feature: API Key Management Operations
             path: /data
       """
     Then the response should be successful
-    When I send a GET request to the "gateway-controller" service at "/apis/no-keys-api/api-keys"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/no-keys-api/api-keys"
     Then the response status should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -176,7 +176,7 @@ Feature: API Key Management Operations
   # ==================== GENERATE API KEY - ERROR CASES ====================
   
   Scenario: Generate API key for non-existent API returns 404
-    When I send a POST request to the "gateway-controller" service at "/apis/non-existent-api-id/api-keys" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/non-existent-api-id/api-keys" with body:
       """
       {
         "name": "test-key"
@@ -205,7 +205,7 @@ Feature: API Key Management Operations
             path: /data
       """
     Then the response should be successful
-    When I send a POST request to the "gateway-controller" service at "/apis/key-validation-api/api-keys" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/key-validation-api/api-keys" with body:
       """
       {}
       """
@@ -220,20 +220,20 @@ Feature: API Key Management Operations
   # ==================== LIST API KEYS - ERROR CASES ====================
   
   Scenario: List API keys for non-existent API returns 404
-    When I send a GET request to the "gateway-controller" service at "/apis/non-existent-api-id/api-keys"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/non-existent-api-id/api-keys"
     Then the response status should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 
   Scenario: List API keys with invalid API ID format returns 404
-    When I send a GET request to the "gateway-controller" service at "/apis/invalid@api#id/api-keys"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/invalid@api#id/api-keys"
     Then the response status should be 404
     And the response should be valid JSON
 
   # ==================== REVOKE API KEY - ERROR CASES ====================
   
   Scenario: Revoke API key with invalid formats returns 404
-    When I send a DELETE request to the "gateway-controller" service at "/apis/invalid@api/api-keys/invalid@key"
+    When I send a DELETE request to the "gateway-controller" service at "/rest-apis/invalid@api/api-keys/invalid@key"
     Then the response status should be 404
     And the response should be valid JSON
 
@@ -257,7 +257,7 @@ Feature: API Key Management Operations
       """
     Then the response should be successful
     # Revoking non-existent key is idempotent - returns success
-    When I send a DELETE request to the "gateway-controller" service at "/apis/revoke-error-api/api-keys/non-existent-key"
+    When I send a DELETE request to the "gateway-controller" service at "/rest-apis/revoke-error-api/api-keys/non-existent-key"
     Then the response status should be 200
     And the response should be valid JSON
     # Cleanup
@@ -267,7 +267,7 @@ Feature: API Key Management Operations
   # ==================== REGENERATE API KEY - ERROR CASES ====================
   
   Scenario: Regenerate API key for non-existent API returns 404
-    When I send a POST request to the "gateway-controller" service at "/apis/non-existent-api-id/api-keys/test-key/regenerate" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/non-existent-api-id/api-keys/test-key/regenerate" with body:
       """
       {}
       """
@@ -294,7 +294,7 @@ Feature: API Key Management Operations
             path: /test
       """
     Then the response should be successful
-    When I send a POST request to the "gateway-controller" service at "/apis/test-regenerate-api/api-keys/non-existent-key/regenerate" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/test-regenerate-api/api-keys/non-existent-key/regenerate" with body:
       """
       {}
       """
@@ -304,7 +304,7 @@ Feature: API Key Management Operations
     Then the response should be successful
 
   Scenario: Regenerate API key with invalid ID formats returns 404
-    When I send a POST request to the "gateway-controller" service at "/apis/invalid@api/api-keys/invalid@key/regenerate" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/invalid@api/api-keys/invalid@key/regenerate" with body:
       """
       {}
       """
@@ -332,7 +332,7 @@ Feature: API Key Management Operations
             path: /data
       """
     Then the response should be successful
-    When I send a POST request to the "gateway-controller" service at "/apis/invalid-json-key-api/api-keys" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/invalid-json-key-api/api-keys" with body:
       """
       { this is not valid json
       """
@@ -362,7 +362,7 @@ Feature: API Key Management Operations
       """
     Then the response should be successful
     # Generate key with hyphens and underscores (should be allowed)
-    When I send a POST request to the "gateway-controller" service at "/apis/special-char-key-api/api-keys" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/special-char-key-api/api-keys" with body:
       """
       {
         "name": "my-api-key_v1"
@@ -396,7 +396,7 @@ Feature: API Key Management Operations
             path: /data
       """
     Then the response should be successful
-    When I send a GET request to the "gateway-controller" service at "/apis/paginated-keys-api/api-keys?limit=10&offset=0"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/paginated-keys-api/api-keys?limit=10&offset=0"
     Then the response status should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"

@@ -41,8 +41,6 @@ import (
 // Policy execution order: System Policies -> API Level Policies -> Operation Level Policies
 // Each level does not override the previous one; policies are executed in the given order.
 func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config, policyDefinitions map[string]api.PolicyDefinition) *models.StoredPolicyConfig {
-	apiCfg := &cfg.Configuration
-
 	// Collect API-level policies (validate policy version exists, pass major-only to engine)
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
 	if cfg.GetPolicies() != nil {
@@ -58,14 +56,9 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 
 	routes := make([]policyenginev1.PolicyChain, 0)
 
-	switch apiCfg.Kind {
-	case api.WebSubApi:
-		// Build routes with merged policies
-		apiData, err := apiCfg.Spec.AsWebhookAPIData()
-		if err != nil {
-			slog.Error("Failed to convert spec to WebhookAPIData", "error", err)
-			return nil
-		}
+	switch cfgTyped := cfg.Configuration.(type) {
+	case api.WebSubAPI:
+		apiData := cfgTyped.Spec
 		for _, ch := range apiData.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
@@ -103,13 +96,8 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			})
 		}
 
-	case api.RestApi:
-		// Build routes with merged policies
-		apiData, err := apiCfg.Spec.AsAPIConfigData()
-		if err != nil {
-			slog.Error("Failed to convert spec to APIConfigData", "error", err)
-			return nil
-		}
+	case api.RestAPI:
+		apiData := cfgTyped.Spec
 		for _, op := range apiData.Operations {
 			var finalPolicies []policyenginev1.PolicyInstance
 
