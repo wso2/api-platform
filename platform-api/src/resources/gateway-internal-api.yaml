@@ -403,6 +403,15 @@ paths:
       operationId: BatchFetchDeployments
       tags:
         - Gateway Internal APIs
+      parameters:
+        - name: Accept
+          in: header
+          required: true
+          description: Must be `application/x-tar+gzip`
+          schema:
+            type: string
+            enum:
+              - application/x-tar+gzip
       requestBody:
         description: List of deployment IDs to fetch
         required: true
@@ -425,7 +434,7 @@ paths:
                 type: string
                 example: 'attachment; filename="deployments-batch.tar.gz"'
             Content-Length:
-              description: Size of the ZIP file in bytes
+              description: Size of the TAR.GZ archive in bytes
               schema:
                 type: integer
         '400':
