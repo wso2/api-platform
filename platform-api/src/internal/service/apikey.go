@@ -154,6 +154,26 @@ func maskAPIKey(apiKey string) string {
 	return "***" + apiKey[len(apiKey)-5:]
 }
 
+// filterGatewaysByAllowedTargets returns only the gateways whose Name appears in the
+// comma-separated allowedTargets string. When allowedTargets is empty or equals
+// constants.APIKeyAllowedTargetsAll ("ALL") every gateway is returned unchanged.
+func filterGatewaysByAllowedTargets(gateways []*model.Gateway, allowedTargets string) []*model.Gateway {
+	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
+		return gateways
+	}
+	allowed := make(map[string]struct{})
+	for _, name := range strings.Split(allowedTargets, ",") {
+		allowed[strings.TrimSpace(name)] = struct{}{}
+	}
+	filtered := make([]*model.Gateway, 0, len(gateways))
+	for _, gw := range gateways {
+		if _, ok := allowed[gw.Name]; ok {
+			filtered = append(filtered, gw)
+		}
+	}
+	return filtered
+}
+
 // randomHexString generates a random lowercase hex string of the requested length.
 func randomHexString(n int) (string, error) {
 	bytes := make([]byte, (n+1)/2)

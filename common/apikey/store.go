@@ -170,14 +170,10 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 }
 
 // ValidationOptions provides optional parameters for ValidateAPIKey.
-// When not supplied the call behaves identically to the original two-parameter form.
 type ValidationOptions struct {
 	// ProvisionedByFilter, when non-empty, is matched against the key's ProvisionedBy field.
 	// The check is skipped when this field is empty or the key carries no portal label.
 	ProvisionedByFilter string
-	// RequestTarget, when non-empty, is checked against the key's AllowedTargets list.
-	// The check is skipped when this field is empty or the key allows all targets.
-	RequestTarget string
 }
 
 // ValidateAPIKey validates the provided API key against the internal APIkey store.
@@ -216,20 +212,6 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		// provisioned_by check: only enforce when the key carries a portal label
 		if targetAPIKey.ProvisionedBy != nil && *targetAPIKey.ProvisionedBy != "" {
 			if o.ProvisionedByFilter == "" || *targetAPIKey.ProvisionedBy != o.ProvisionedByFilter {
-				return false, nil
-			}
-		}
-
-		// allowed_targets check: skip when sentinel value "ALL" or empty
-		if targetAPIKey.AllowedTargets != "" && targetAPIKey.AllowedTargets != "ALL" {
-			allowed := false
-			for _, t := range strings.Split(targetAPIKey.AllowedTargets, ",") {
-				if strings.TrimSpace(t) == o.RequestTarget {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
 				return false, nil
 			}
 		}
