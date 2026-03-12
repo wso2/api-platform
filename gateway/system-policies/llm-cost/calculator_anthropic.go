@@ -22,17 +22,8 @@ import (
 )
 
 // AnthropicCalculator handles models with provider "anthropic".
-//
-// Anthropic uses different response field names from OpenAI:
-//   - input_tokens  → PromptTokens
-//   - output_tokens → CompletionTokens
-//
-// It also adds cache token fields and echoes inference_geo in the response
-// usage object. The speed flag is NOT echoed — it must be read from the
-// original request body via ctx.RequestBody.
-//
-// The Adjust step carves out cache costs before applying any geo/speed
-// multiplier, then adds them back at their original rate.
+// Uses input_tokens/output_tokens field names and adds cache token fields.
+// The speed flag is not echoed in the response — it is read from the request body.
 type AnthropicCalculator struct{}
 
 func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte) (Usage, error) {
@@ -80,13 +71,10 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 
 	u := resp.Usage
 	total := u.InputTokens + u.OutputTokens
-	// Anthropic's 200k tier threshold is based on all input token categories:
-	// input_tokens + cache_creation_input_tokens + cache_read_input_tokens.
-	// Output tokens do not affect the tier selection.
+	// Anthropic's 200k tier threshold includes all input categories (regular + cache).
 	inputForTiering := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
 
-	// Split cache writes into 5-minute and 1-hour TTL buckets.
-	// When the granular breakdown is absent, treat all writes as 5-minute (the default TTL).
+	// Split cache writes by TTL; default all to 5-min when the breakdown is absent.
 	var cacheWrite5m, cacheWrite1hr int64
 	if u.CacheCreation != nil {
 		cacheWrite5m = u.CacheCreation.Ephemeral5mInputTokens
@@ -100,11 +88,8 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 		webSearchRequests = u.ServerToolUse.WebSearchRequests
 	}
 
-	// Anthropic's input_tokens is ONLY the regular (non-cached) input tokens.
-	// Cache tokens are separate fields. genericCalculateCost expects PromptTokens
-	// to include ALL input types (regular + cache writes + cache reads) and subtracts
-	// the cache buckets to derive the regular count. We must add cache tokens here so
-	// the subtraction yields the correct regular input count — same approach as LiteLLM.
+	// Anthropic reports input_tokens as regular-only; add cache tokens so
+	// genericCalculateCost can subtract them back to derive the regular count.
 	promptTokens := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
 
 	return Usage{
@@ -123,9 +108,7 @@ func (c *AnthropicCalculator) Normalize(responseBody []byte, requestBody []byte)
 }
 
 // Adjust applies Anthropic geo-routing and speed-mode multipliers.
-//
-// Cache costs are excluded from the multiplier — Anthropic charges the same
-// cache rates regardless of geo or speed tier.
+// Cache costs are excluded from the multiplier — they are charged at fixed rates.
 func (c *AnthropicCalculator) Adjust(baseCost float64, usage Usage, pricing ModelPricing) float64 {
 	geoNormalized := strings.ToLower(usage.InferenceGeo)
 	isGeoRouted := geoNormalized != "" &&
@@ -157,9 +140,7 @@ func (c *AnthropicCalculator) Adjust(baseCost float64, usage Usage, pricing Mode
 		return baseCost
 	}
 
-	// Resolve the actual cache rates used by genericCalculateCost for this request.
-	// These depend on whether the >200k tier was triggered (based on InputTokensForTiering).
-	// Using the wrong (base) rate here would understate the carve-out and over-multiply cost.
+	// Resolve the cache rates that genericCalculateCost used (tier-aware).
 	cacheReadRate := pricing.CacheReadInputTokenCost
 	cacheWrite5mRate := pricing.CacheCreationInputTokenCost
 	cacheWrite1hrRate := pricing.CacheCreationInputTokenCostAbove1hr

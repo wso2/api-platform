@@ -6241,7 +6241,6 @@
     "max_tokens": 131072,
     "output_cost_per_token": 4e-08,
     "provider": "mistral",
-    "litellm_provider": "mistral",
     "mode": "chat",
     "input_cost_per_audio_per_second": 1.6666666666666667e-05
   },
@@ -6252,7 +6251,6 @@
     "max_tokens": 131072,
     "output_cost_per_token": 3e-07,
     "provider": "mistral",
-    "litellm_provider": "mistral",
     "mode": "chat",
     "input_cost_per_audio_per_second": 6.666666666666667e-05
   },

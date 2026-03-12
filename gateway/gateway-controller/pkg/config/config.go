@@ -70,10 +70,7 @@ type AnalyticsConfig struct {
 type LLMCostConfig struct {
 	// Enabled is the master switch. When false the policy is not injected into any route.
 	Enabled bool `koanf:"enabled"`
-	// PricingFile is the path to a JSON file that overrides or extends the embedded
-	// LiteLLM pricing database. Only keys present in the file are affected; all other
-	// embedded entries remain unchanged. If empty or the file does not exist, the
-	// embedded database is used as-is.
+	// PricingFile is an optional path to a JSON file that overrides or extends the embedded pricing database.
 	PricingFile string `koanf:"pricing_file"`
 }
 

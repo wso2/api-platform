@@ -110,7 +110,7 @@ type ModelPricing struct {
 
 	// ON_DEMAND_PRIORITY service tier rates (Vertex AI Gemini, OpenAI priority).
 	// When usageMetadata.trafficType == "ON_DEMAND_PRIORITY" the _priority variants
-	// are billed instead of the standard rates. Mirrors LiteLLM's service_tier="priority" path.
+	// are billed instead of the standard rates.
 	InputCostPerTokenPriority                float64 `json:"input_cost_per_token_priority"`
 	OutputCostPerTokenPriority               float64 `json:"output_cost_per_token_priority"`
 	CacheReadInputTokenCostPriority          float64 `json:"cache_read_input_token_cost_priority"`
@@ -137,8 +137,7 @@ type ModelPricing struct {
 
 	// Cached audio token read rate (Gemini models with separate audio caching cost).
 	// When set, cached audio input tokens are billed at this rate instead of
-	// the standard CacheReadInputTokenCost. Matches LiteLLM's
-	// cache_read_input_token_cost_per_audio_token field.
+	// the standard CacheReadInputTokenCost.
 	CacheReadInputTokenCostPerAudioToken float64 `json:"cache_read_input_token_cost_per_audio_token"`
 
 	// Reasoning tokens (o-series, Claude 3.7+, Gemini thinking)
@@ -178,7 +177,7 @@ type ModelPricing struct {
 
 	// Gemini Live: fixed per-invocation fee for grounding / web search tool calls.
 	// When set, any toolUsePromptTokenCount > 0 triggers this flat fee instead of
-	// per-token billing. Matches LiteLLM's web_search_cost_per_request field.
+	// per-token billing.
 	WebSearchCostPerRequest float64 `json:"web_search_cost_per_request"`
 
 	// Azure AI Foundry model router flat cost
@@ -201,84 +200,54 @@ type Usage struct {
 	CompletionTokens int64
 	TotalTokens      int64
 
-	// InputTokensForTiering is the token count used to decide which pricing
-	// tier applies (>128k or >200k). Providers set this explicitly because the
-	// threshold definition varies:
-	//   - Anthropic: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
-	//     (output tokens are excluded; all input categories count toward the threshold)
-	//   - Others: total prompt tokens (PromptTokens)
-	// If zero, genericCalculateCost falls back to TotalTokens.
+	// InputTokensForTiering is used to decide the pricing tier (>128k, >200k).
+	// Anthropic includes all input categories (regular + cache writes + reads);
+	// other providers use PromptTokens. Falls back to PromptTokens when zero.
 	InputTokensForTiering int64
 
 	// Cached / reasoning tokens.
-	// CacheWriteTokens holds 5-minute TTL cache creation tokens (the default).
-	// CacheWrite1hrTokens holds 1-hour TTL cache creation tokens, which are billed
-	// at the higher cache_creation_input_token_cost_above_1hr rate. Anthropic splits
-	// these in the response under usage.cache_creation.ephemeral_5m_input_tokens and
-	// usage.cache_creation.ephemeral_1h_input_tokens. When CacheWrite1hrTokens is
-	// zero we assume all cache writes used the 5-minute TTL.
+	// CacheWrite1hrTokens holds 1-hour TTL writes billed at the higher
+	// cache_creation_input_token_cost_above_1hr rate; 0 means all writes are 5-min.
 	CachedReadTokens    int64
-	CacheWriteTokens    int64 // 5-minute TTL cache write tokens
-	CacheWrite1hrTokens int64 // 1-hour TTL cache write tokens
+	CacheWriteTokens    int64 // 5-min TTL cache write tokens
+	CacheWrite1hrTokens int64 // 1-hr TTL cache write tokens
 	ReasoningTokens     int64
 
-	// Modality-specific tokens for multi-modal models (Gemini).
-	// Audio input tokens are billed at InputCostPerAudioToken; they are already
-	// included in PromptTokens so genericCalculateCost deducts them from regular
-	// prompt cost and re-bills at the audio rate.
-	// Audio and image output tokens similarly are already in CompletionTokens and
-	// are re-billed at their respective modality rates.
+	// Modality-specific tokens (Gemini multi-modal models).
+	// Audio/image tokens are included in PromptTokens/CompletionTokens;
+	// genericCalculateCost re-bills them at their respective modality rates.
 	AudioInputTokens  int64
 	AudioOutputTokens int64
 	ImageOutputTokens int64
 
-	// CachedAudioInputTokens is the number of audio input tokens that were served
-	// from the context cache (included in CachedReadTokens). When set and a model
-	// defines CacheReadInputTokenCostPerAudioToken, those tokens are billed at the
-	// audio cache read rate instead of the standard text cache read rate.
-	// Parsed from cacheTokensDetails modality=AUDIO in Gemini responses.
+	// CachedAudioInputTokens is the subset of CachedReadTokens that are audio.
+	// Billed at CacheReadInputTokenCostPerAudioToken when that rate is defined.
 	CachedAudioInputTokens int64
 
-	// AudioInputSeconds is the duration of audio input in seconds for providers
-	// that bill audio by time rather than by token count (e.g. Mistral Voxtral).
-	// Parsed from prompt_audio_seconds in the Mistral chat completion response.
-	// Cost = AudioInputSeconds × ModelPricing.InputCostPerAudioPerSecond.
-	// When InputCostPerAudioPerSecond is zero, no extra charge is added.
+	// AudioInputSeconds is audio duration for providers that bill by time (e.g. Mistral Voxtral).
+	// Cost = AudioInputSeconds × InputCostPerAudioPerSecond.
 	AudioInputSeconds float64
 
-	// Gemini Live only: tool use prompt tokens from grounding / web search.
-	// These are SEPARATE from PromptTokens (not included in them) and represent
-	// context tokens generated by the search tool and injected into the model.
-	// Billed at WebSearchCostPerRequest (flat fee) when set, otherwise at the
-	// standard input rate as a fallback — matching LiteLLM's behaviour.
+	// ToolUsePromptTokens is the Gemini Live search tool token count.
+	// Separate from PromptTokens; billed at WebSearchCostPerRequest or standard input rate.
 	ToolUsePromptTokens int64
 
-	// ServiceTier captures Gemini's usageMetadata.trafficType mapped to a tier string:
-	//   "ON_DEMAND_PRIORITY" → "priority"  (selects _priority rate variants)
-	//   "FLEX" / "BATCH"    → "flex"       (selects _flex rate variants, if defined)
-	//   "ON_DEMAND" / ""    → ""           (standard rates)
-	// Matches LiteLLM's _map_traffic_type_to_service_tier() logic.
+	// ServiceTier selects rate variants:
+	//   "priority" → _priority fields, "flex" → _flex fields, "" → standard.
 	ServiceTier string
 
-	// GeminiWebSearchRequests is the count of Google Search grounding queries made
-	// during a Gemini API call. Parsed from candidates[].groundingMetadata.webSearchQueries
-	// in the response body. Used to compute the grounding flat fee:
-	//   Google AI Studio (provider=gemini): $0.035 × N queries
-	//   Vertex AI (provider=vertex_ai*):    $0.035 flat per call (regardless of count)
+	// GeminiWebSearchRequests is the grounding query count from candidates[].groundingMetadata.
+	// Google AI Studio: $0.035 × N; Vertex AI: $0.035 flat per call.
 	GeminiWebSearchRequests int64
 
-	// Anthropic-specific: geo routing and speed mode
+	// InferenceGeo and Speed are Anthropic-specific routing fields.
 	InferenceGeo string // echoed in response usage.inference_geo
 	Speed        string // NOT echoed — read from ctx.RequestBody ($.speed)
 
-	// Built-in web search tool use (Anthropic).
-	// WebSearchRequests is the number of web search queries made, read from
-	// usage.server_tool_use.web_search_requests in the Anthropic response.
-	// SearchContextSize is the context size tier (low/medium/high) read from
-	// web_search_options.search_context_size in the request body; defaults to
-	// "medium" when absent, matching LiteLLM's behaviour.
+	// WebSearchRequests and SearchContextSize are set for built-in web search tool calls.
+	// SearchContextSize ("low"/"medium"/"high") comes from the request body.
 	WebSearchRequests int64
-	SearchContextSize string // "low", "medium", or "high"
+	SearchContextSize string
 }
 
 // providerCalculator is implemented by each provider-specific calculator file.
@@ -318,15 +287,9 @@ func selectCalculator(provider string) providerCalculator {
 }
 
 // lookupPricing finds the ModelPricing entry for a given model name.
-// It first tries an exact match, then strips common suffixes (version dates,
-// deployment slugs) to find a prefix match.
-//
-// Returns (pricing, true) on success, (zero, false) if no entry found.
-// knownProviderPrefixes lists the provider namespaces whose APIs return bare
-// model names (without a "/" prefix) in the response body. For example,
-// Mistral's API echoes "mistral-large-latest" but the pricing key is
-// "mistral/mistral-large-latest". We try each prefix so that callers do not
-// need to include the provider slug in the model name they send.
+// It tries: exact match → strip provider prefix → prepend known prefixes → progressive suffix stripping.
+// knownProviderPrefixes are namespaces where the API returns bare model names
+// but the pricing key is namespaced (e.g. "mistral-large-latest" → "mistral/mistral-large-latest").
 var knownProviderPrefixes = []string{
 	"mistral/",
 	"vertex_ai/",
@@ -374,14 +337,9 @@ func lookupPricing(modelName string) (ModelPricing, bool) {
 }
 
 // genericCalculateCost computes cost in USD from a normalised Usage and ModelPricing.
-// It handles:
-//   - Context-window tiering (>128k, >200k)
-//   - Cached read tokens (discounted rate)
-//   - Cache write tokens (creation rate)
-//   - Reasoning tokens (separate rate)
-//
-// This function is provider-agnostic; provider-specific adjustments are done
-// in calculator.Adjust() after this call.
+// Handles context-window tiering, service tiers, cache costs, reasoning tokens,
+// audio/image modality tokens, and web search fees. Provider-specific adjustments
+// are applied in calculator.Adjust() after this call.
 func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	totalTokens := usage.TotalTokens
 	if totalTokens == 0 {
@@ -390,8 +348,7 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 
 	// Use provider-specific input token count for tier decisions when available.
 	// Anthropic defines the 200k threshold as input_tokens + cache tokens (no outputs).
-	// All other providers (Gemini, OpenAI, etc.) tier on prompt tokens only — matching
-	// LiteLLM's _get_token_base_cost which checks usage.prompt_tokens > threshold.
+	// All other providers (Gemini, OpenAI, etc.) tier on prompt tokens only.
 	tierTokens := usage.InputTokensForTiering
 	if tierTokens == 0 {
 		tierTokens = usage.PromptTokens
@@ -431,7 +388,6 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	// Service tier override: priority and flex requests use their respective rate variants.
 	// Priority tiers are checked from the narrowest threshold downward so that a >272k
 	// prompt on a priority tier gets the right compounding rate.
-	// Matches LiteLLM's _get_service_tier_cost_key("...", service_tier) logic.
 	switch usage.ServiceTier {
 	case "priority":
 		switch {
@@ -495,9 +451,8 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	promptCost := float64(regularPromptTokens) * inputRate
 	completionCost := float64(regularCompletionTokens) * outputRate
 
-	// Cache read cost: when a model defines CacheReadInputTokenCostPerAudioToken, cached
-	// audio tokens are billed at that rate and text cached tokens at the standard cache
-	// read rate. Without the audio-specific rate, all cached tokens use cacheReadRate.
+	// Cache read cost: when the model defines a per-audio cache rate, split
+	// cached tokens by modality; otherwise bill all at cacheReadRate.
 	var cacheReadCost float64
 	if pricing.CacheReadInputTokenCostPerAudioToken > 0 {
 		textCachedTokens := usage.CachedReadTokens - usage.CachedAudioInputTokens
@@ -523,9 +478,7 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	if audioInputRate == 0 {
 		audioInputRate = inputRate
 	}
-	// Note: LiteLLM does NOT apply service-tier (_priority) suffix to audio token rates.
-	// Priority rates only affect text input/output tokens. InputCostPerAudioTokenPriority
-	// is stored in ModelPricing for completeness but is not used here.
+	// Note: service-tier (_priority) suffix does not apply to audio token rates.
 	audioInputCost := float64(usage.AudioInputTokens) * audioInputRate
 
 	audioOutputRate := pricing.OutputCostPerAudioToken
@@ -540,16 +493,10 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	}
 	imageOutputCost := float64(usage.ImageOutputTokens) * imageOutputRate
 
-	// Built-in web search tool: flat per-query fee, independent of token costs.
-	// The rate is keyed by search_context_size (low/medium/high); default is medium
-	// when no size was specified in the request, matching LiteLLM's behaviour.
-	// The JSON keys use the format "search_context_size_<tier>" (e.g. "search_context_size_medium").
+	// Web search: variable rate keyed by context size, or flat rate per call.
 	var webSearchCost float64
 	if usage.WebSearchRequests > 0 {
 		if len(pricing.SearchContextCostPerQuery) > 0 {
-			// Variable pricing by context size (e.g. OpenAI search-preview models,
-			// Anthropic). Default to "medium" when no size was requested, matching
-			// LiteLLM's behaviour.
 			size := usage.SearchContextSize
 			if size == "" {
 				size = "medium"
@@ -559,16 +506,11 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 				webSearchCost = float64(usage.WebSearchRequests) * rate
 			}
 		} else if pricing.WebSearchCostPerRequest > 0 {
-			// Flat per-call pricing (e.g. standard OpenAI models using the
-			// web_search_preview tool at $10/1k calls = $0.01/call).
 			webSearchCost = float64(usage.WebSearchRequests) * pricing.WebSearchCostPerRequest
 		}
 	}
 
-	// Gemini Live tool use: grounding/web search tokens injected by the search tool.
-	// These are separate from PromptTokens so we add them on top of the regular cost.
-	// Prefer a flat per-invocation fee (WebSearchCostPerRequest) when defined;
-	// fall back to billing the tool tokens at the standard input rate.
+	// Gemini Live tool-use tokens: flat fee when defined, otherwise standard input rate.
 	var toolUseCost float64
 	if usage.ToolUsePromptTokens > 0 {
 		if pricing.WebSearchCostPerRequest > 0 {
@@ -578,9 +520,7 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		}
 	}
 
-	// Audio input billed by duration (e.g. Mistral Voxtral chat models).
-	// prompt_audio_seconds is a separate dimension from prompt_tokens; when
-	// InputCostPerAudioPerSecond is set, we add the per-second charge on top.
+	// Audio billed by duration (e.g. Mistral Voxtral).
 	audioSecondsCost := usage.AudioInputSeconds * pricing.InputCostPerAudioPerSecond
 
 	return promptCost + completionCost + cacheReadCost + cacheWriteCost + reasoningCost + webSearchCost + toolUseCost + audioInputCost + audioOutputCost + imageOutputCost + audioSecondsCost

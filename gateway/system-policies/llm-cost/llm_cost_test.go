@@ -1167,7 +1167,7 @@ func TestGeminiCalculator_Normalize_ToolUsePromptTokens(t *testing.T) {
 // TestGeminiCalculator_Normalize_ToolUsePromptTokensDetails verifies that
 // toolUsePromptTokensDetails is parsed without error and does NOT alter the
 // billing calculation — all tool-use tokens are billed as a unit via
-// ToolUsePromptTokens (matching LiteLLM's behaviour).
+// ToolUsePromptTokens.
 func TestGeminiCalculator_Normalize_ToolUsePromptTokensDetails(t *testing.T) {
 	// Response with both toolUsePromptTokenCount and its per-modality breakdown.
 	// The billing should use only the aggregate count (25), not split by modality.
@@ -1341,8 +1341,8 @@ func TestGeminiCalculator_Cost_Priority_Above200k(t *testing.T) {
 }
 
 // TestGeminiCalculator_Cost_Priority_AudioRate verifies that audio input uses the
-// standard audio rate even when ServiceTier == "priority". LiteLLM does not apply
-// the _priority suffix to audio token rates.
+// standard audio rate even when ServiceTier == "priority". The _priority suffix
+// does not apply to audio token rates — only text input/output tokens are affected.
 func TestGeminiCalculator_Cost_Priority_AudioRate(t *testing.T) {
 	p := ModelPricing{
 		InputCostPerToken:              1e-6,
@@ -1350,7 +1350,7 @@ func TestGeminiCalculator_Cost_Priority_AudioRate(t *testing.T) {
 		InputCostPerAudioToken:         1.5e-6,
 		InputCostPerTokenPriority:      3e-6,
 		OutputCostPerTokenPriority:     6e-6,
-		InputCostPerAudioTokenPriority: 4e-6, // stored in pricing but NOT applied (LiteLLM parity)
+		InputCostPerAudioTokenPriority: 4e-6, // stored in pricing but NOT applied to audio tokens
 	}
 	usage := Usage{
 		PromptTokens:     100,
@@ -2746,8 +2746,7 @@ func TestOpenAICalculator_Cost_GPT54_Above272k_CachedTokens(t *testing.T) {
 }
 
 // TestGenericCalculateCost_WebSearch_UnknownContextSize_DefaultsToMedium verifies
-// that an unknown search_context_size falls back to the "medium" rate, matching
-// LiteLLM's get_default_cost_for_web_search behaviour.
+// that an unknown search_context_size falls back to the "medium" rate.
 func TestGenericCalculateCost_WebSearch_UnknownContextSize_DefaultsToMedium(t *testing.T) {
 	pricing, ok := lookupPricing("gpt-4o-search-preview")
 	if !ok {

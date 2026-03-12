@@ -5,9 +5,8 @@ description: |
   result as an x-llm-cost response header (value: USD float, e.g. "0.0000423100").
 
   The policy reads the model name from $.model in the response body (or $.modelVersion
-  for Gemini native format), looks it up in an embedded copy of LiteLLM's pricing
-  database, normalises the usage object using a provider-specific calculator, and
-  computes cost using the same formulas as LiteLLM.
+  for Gemini native format), looks it up in an embedded pricing database, normalises
+  the usage object using a provider-specific calculator, and computes the cost.
 
   Supported providers: OpenAI, Azure OpenAI, Azure AI Foundry, Anthropic,
   Gemini (Google AI Studio + Vertex AI), Mistral.
@@ -30,7 +29,7 @@ parameters:
       default: ""
       description: >
         Path to a custom pricing JSON file that overrides or extends the embedded
-        LiteLLM pricing database. Only the keys present in the file are affected;
+        pricing database. Only the keys present in the file are affected;
         all other embedded entries remain unchanged. If empty or the file does not
         exist, the embedded database is used as-is.
   required: []
