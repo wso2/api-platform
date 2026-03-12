@@ -376,13 +376,13 @@ paths:
       summary: Batch fetch deployment content
       description: |
         Fetches multiple deployment artifacts in a single request.
-        Returns a ZIP file containing deployment content organized by deployment ID.
+        Returns a TAR.GZ archive containing deployment content organized by deployment ID.
         
         The gateway is identified from the API key token validation.
         
-        **ZIP Structure:**
+        **Archive Structure:**
         ```
-        batch.zip
+        batch.tar.gz
         ├── {deploymentId-1}/
         │   └── api-{artifactId}.yaml          # RestApi
         ├── {deploymentId-2}/
@@ -412,18 +412,18 @@ paths:
               $ref: '#/components/schemas/BatchDeploymentsRequest'
       responses:
         '200':
-          description: ZIP file containing deployment content
+          description: TAR.GZ archive containing deployment content
           content:
-            application/zip:
+            application/x-tar+gzip:
               schema:
                 type: string
                 format: binary
           headers:
             Content-Disposition:
-              description: Attachment filename for the ZIP file
+              description: Attachment filename for the TAR.GZ archive
               schema:
                 type: string
-                example: 'attachment; filename="deployments-batch.zip"'
+                example: 'attachment; filename="deployments-batch.tar.gz"'
             Content-Length:
               description: Size of the ZIP file in bytes
               schema:
