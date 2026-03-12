@@ -108,9 +108,3 @@ policies:
     - name: xml-to-json
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0
-    - name: slugify-body-python
-      version: v1.0.0
-      filePath: ./sample-policies/slugify-body-python
-    - name: uppercase-body
-      version: v1.0.0
-      filePath: ./sample-policies/uppercase-body

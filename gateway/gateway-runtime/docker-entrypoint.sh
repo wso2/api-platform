@@ -169,7 +169,8 @@ shutdown() {
 trap shutdown SIGTERM SIGINT SIGQUIT
 
 # Check if Python executor is needed (marker file set by builder)
-if [ -f /app/python-executor/main.py ]; then
+# python_policy_registry.py is only generated when Python policies exist;
+if [ -f /app/python-executor/python_policy_registry.py ]; then
     log "Starting Python Executor..."
     python3 /app/python-executor/main.py "${PY_ARGS[@]}" \
         > >(while IFS= read -r line; do echo "[pye] $line"; done) \
