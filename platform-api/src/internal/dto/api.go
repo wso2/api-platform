@@ -122,8 +122,8 @@ type DeploymentMetadata struct {
 	Labels map[string]string `yaml:"labels,omitempty"`
 }
 
-// VhostsYAML represents per-API virtual host overrides in the deployment YAML
-type VhostsYAML struct {
+// Vhosts represents per-API virtual host overrides in the deployment YAML
+type Vhosts struct {
 	Main    string  `yaml:"main"`
 	Sandbox *string `yaml:"sandbox,omitempty"`
 }
@@ -134,7 +134,7 @@ type APIYAMLData struct {
 	Version           string               `yaml:"version"`
 	Context           string               `yaml:"context"`
 	SubscriptionPlans []string             `yaml:"subscriptionPlans,omitempty"`
-    Vhosts            *VhostsYAML          `yaml:"vhosts,omitempty"`
+    Vhosts            *Vhosts              `yaml:"vhosts,omitempty"`
 	Upstream          *UpstreamYAML        `yaml:"upstream,omitempty"`
 	Policies          []Policy             `yaml:"policies,omitempty"`
 	Operations        []api.OperationRequest `yaml:"operations,omitempty"`

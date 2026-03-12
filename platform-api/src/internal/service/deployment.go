@@ -523,7 +523,7 @@ func overrideVhost(contentBytes []byte, main string, sandbox *string) ([]byte, e
 	if err := yaml.Unmarshal(contentBytes, &apiDeployment); err != nil {
 		return nil, fmt.Errorf("failed to parse deployment YAML: %w", err)
 	}
-	apiDeployment.Spec.Vhosts = &dto.VhostsYAML{
+	apiDeployment.Spec.Vhosts = &dto.Vhosts{
 		Main:    main,
 		Sandbox: sandbox,
 	}
