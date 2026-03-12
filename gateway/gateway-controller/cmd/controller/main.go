@@ -265,7 +265,7 @@ func main() {
 		derivedCount := 0
 		for _, apiConfig := range loadedAPIs {
 			// Derive policy configuration from API
-			if apiConfig.Configuration.Kind == api.RestApi {
+			if apiConfig.Kind == "RestApi" || apiConfig.Kind == "WebSubApi" {
 				storedPolicy := policybuilder.DerivePolicyFromAPIConfig(apiConfig, &cfg.Router, cfg, policyDefinitions)
 				if storedPolicy != nil {
 					if err := policyStore.Set(storedPolicy); err != nil {
@@ -504,11 +504,17 @@ func main() {
 
 func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	var DefaultResourceRoles = map[string][]string{
-		"POST /apis":       {"admin", "developer"},
-		"GET /apis":        {"admin", "developer"},
-		"GET /apis/:id":    {"admin", "developer"},
-		"PUT /apis/:id":    {"admin", "developer"},
-		"DELETE /apis/:id": {"admin", "developer"},
+		"POST /rest-apis":       {"admin", "developer"},
+		"GET /rest-apis":        {"admin", "developer"},
+		"GET /rest-apis/:id":    {"admin", "developer"},
+		"PUT /rest-apis/:id":    {"admin", "developer"},
+		"DELETE /rest-apis/:id": {"admin", "developer"},
+
+		"POST /websub-apis":       {"admin", "developer"},
+		"GET /websub-apis":        {"admin", "developer"},
+		"GET /websub-apis/:id":    {"admin", "developer"},
+		"PUT /websub-apis/:id":    {"admin", "developer"},
+		"DELETE /websub-apis/:id": {"admin", "developer"},
 
 		"GET /certificates":         {"admin", "developer"},
 		"POST /certificates":        {"admin", "developer"},
@@ -541,11 +547,11 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/:id":    {"admin", "developer"},
 		"DELETE /llm-proxies/:id": {"admin", "developer"},
 
-		"POST /apis/:id/api-keys":                        {"admin", "consumer"},
-		"GET /apis/:id/api-keys":                         {"admin", "consumer"},
-		"PUT /apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
-		"POST /apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
-		"DELETE /apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+		"POST /rest-apis/:id/api-keys":                        {"admin", "consumer"},
+		"GET /rest-apis/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /rest-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
+		"POST /rest-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
+		"DELETE /rest-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
 		"POST /subscriptions":                   {"admin", "developer"},
@@ -585,7 +591,6 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
-		SkipPaths:     []string{"/health"},
 	}
 	return authConfig
 }

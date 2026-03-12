@@ -24,8 +24,8 @@ Feature: Gateway Health Check
   Background:
     Given the gateway services are running
 
-  Scenario: Gateway controller health endpoint returns OK
-    When I send a GET request to the gateway controller health endpoint
+  Scenario: Gateway controller admin health endpoint returns OK
+    When I send a GET request to the gateway controller admin health endpoint
     Then the response status code should be 200
     And the response should indicate healthy status
 
@@ -38,22 +38,6 @@ Feature: Gateway Health Check
     Then all services should report healthy status
 
   # ==================== HEALTH ENDPOINT RESPONSE VALIDATION ====================
-
-  Scenario: Gateway controller health endpoint returns valid JSON
-    When I send a GET request to the gateway controller health endpoint
-    Then the response status code should be 200
-    And the response should be valid JSON
-
-  Scenario: Gateway controller health endpoint is accessible without authentication
-    When I send a GET request to the gateway controller health endpoint
-    Then the response status code should be 200
-
-  # ==================== GATEWAY CONTROLLER ADMIN HEALTH ====================
-
-  Scenario: Gateway controller admin health endpoint returns OK
-    When I send a GET request to the gateway controller admin health endpoint
-    Then the response status code should be 200
-    And the response should indicate healthy status
 
   Scenario: Gateway controller admin health endpoint returns valid JSON
     When I send a GET request to the gateway controller admin health endpoint

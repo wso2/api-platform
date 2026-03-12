@@ -72,7 +72,7 @@ func NewMCPDeploymentService(
 
 // DeployMCPConfiguration handles the complete MCP configuration deployment process
 func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams,
-	apiConfig *api.APIConfiguration, mcpConfig *api.MCPProxyConfiguration) (*APIDeploymentResult, error) {
+	apiConfig *api.RestAPI, mcpConfig *api.MCPProxyConfiguration) (*APIDeploymentResult, error) {
 
 	// Generate API ID if not provided
 	apiID := params.ID
@@ -233,9 +233,9 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	return true, nil // Successfully updated existing config
 }
 
-func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentParams) (*api.MCPProxyConfiguration, *api.APIConfiguration, error) {
+func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentParams) (*api.MCPProxyConfiguration, *api.RestAPI, error) {
 	var mcpConfig api.MCPProxyConfiguration
-	var apiConfig api.APIConfiguration
+	var apiConfig api.RestAPI
 	// Parse configuration
 	err := s.parser.Parse(params.Data, params.ContentType, &mcpConfig)
 	if err != nil {

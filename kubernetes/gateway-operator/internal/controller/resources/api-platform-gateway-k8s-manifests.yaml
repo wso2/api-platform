@@ -99,7 +99,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 9090
+              port: 9092
             failureThreshold: 3
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -107,7 +107,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 9090
+              port: 9092
             failureThreshold: 3
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -115,6 +115,8 @@ spec:
           name: gateway-controller
           ports:
             - containerPort: 9090
+              protocol: TCP
+            - containerPort: 9092
               protocol: TCP
             - containerPort: 18000
               protocol: TCP

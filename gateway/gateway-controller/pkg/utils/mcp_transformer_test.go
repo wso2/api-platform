@@ -125,17 +125,14 @@ func TestMCPTransformer_Transform(t *testing.T) {
 			SpecVersion: &latest,
 		},
 	}
-	var out api.APIConfiguration
+	var out api.RestAPI
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
 	if err != nil {
 		t.Fatalf("Transform returned an error: %v", err)
 	}
 
-	apiData, err := res.Spec.AsAPIConfigData()
-	if err != nil {
-		t.Fatalf("Transform produced invalid API config data: %v", err)
-	}
+	apiData := res.Spec
 
 	if apiData.DisplayName != name || apiData.Version != version || apiData.Context != context {
 		t.Fatalf("Transform did not copy basic fields correctly: got %+v", res.Spec)
@@ -155,7 +152,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	if res.Kind != api.RestApi {
 		t.Fatalf("expected Kind Httprest, got %s", res.Kind)
 	}
-	if res.ApiVersion != api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if res.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
 		t.Fatalf("expected Version ApiPlatformWso2Comv1, got %s", res.ApiVersion)
 	}
 }
@@ -200,17 +197,14 @@ func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	var out api.APIConfiguration
+	var out api.RestAPI
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
 	if err != nil {
 		t.Fatalf("Transform returned an error: %v", err)
 	}
 
-	apiData, err := res.Spec.AsAPIConfigData()
-	if err != nil {
-		t.Fatalf("Transform produced invalid API config data: %v", err)
-	}
+	apiData := res.Spec
 
 	if apiData.Policies == nil {
 		t.Fatalf("Expected policies to be present")
@@ -241,7 +235,7 @@ func TestNewMCPTransformer(t *testing.T) {
 
 func TestMCPTransformer_Transform_InvalidInput(t *testing.T) {
 	tr := NewMCPTransformer()
-	var out api.APIConfiguration
+	var out api.RestAPI
 
 	// Test with nil input
 	_, err := tr.Transform(nil, &out)
@@ -278,17 +272,14 @@ func TestMCPTransformer_Transform_WithVhost(t *testing.T) {
 		},
 	}
 
-	var out api.APIConfiguration
+	var out api.RestAPI
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
 	if err != nil {
 		t.Fatalf("Transform returned an error: %v", err)
 	}
 
-	apiData, err := res.Spec.AsAPIConfigData()
-	if err != nil {
-		t.Fatalf("Transform produced invalid API config data: %v", err)
-	}
+	apiData := res.Spec
 
 	if apiData.Vhosts == nil {
 		t.Fatal("Expected Vhosts to be set")
@@ -325,17 +316,14 @@ func TestMCPTransformer_Transform_WithCORSPolicy(t *testing.T) {
 		},
 	}
 
-	var out api.APIConfiguration
+	var out api.RestAPI
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
 	if err != nil {
 		t.Fatalf("Transform returned an error: %v", err)
 	}
 
-	apiData, err := res.Spec.AsAPIConfigData()
-	if err != nil {
-		t.Fatalf("Transform produced invalid API config data: %v", err)
-	}
+	apiData := res.Spec
 
 	// With CORS policy, OPTIONS operations should be included
 	foundOptions := false
@@ -372,17 +360,14 @@ func TestMCPTransformer_Transform_WithoutContext(t *testing.T) {
 		},
 	}
 
-	var out api.APIConfiguration
+	var out api.RestAPI
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
 	if err != nil {
 		t.Fatalf("Transform returned an error: %v", err)
 	}
 
-	apiData, err := res.Spec.AsAPIConfigData()
-	if err != nil {
-		t.Fatalf("Transform produced invalid API config data: %v", err)
-	}
+	apiData := res.Spec
 
 	// Context should be empty when not provided
 	if apiData.Context != "" {
@@ -410,7 +395,7 @@ func TestMCPTransformer_Transform_WithEmptySpecVersion(t *testing.T) {
 		},
 	}
 
-	var out api.APIConfiguration
+	var out api.RestAPI
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
 	if err != nil {
@@ -418,10 +403,7 @@ func TestMCPTransformer_Transform_WithEmptySpecVersion(t *testing.T) {
 	}
 
 	// Should use default/latest version
-	apiData, err := res.Spec.AsAPIConfigData()
-	if err != nil {
-		t.Fatalf("Transform produced invalid API config data: %v", err)
-	}
+	apiData := res.Spec
 
 	// Should have operations
 	if len(apiData.Operations) == 0 {

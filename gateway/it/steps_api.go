@@ -35,7 +35,7 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	// Single deploy function used by multiple step patterns
 	deployAPI := func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		err := httpSteps.SendPOSTToService("gateway-controller", "/apis", body)
+		err := httpSteps.SendPOSTToService("gateway-controller", "/rest-apis", body)
 		if err != nil {
 			return err
 		}
@@ -45,7 +45,7 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 	// Single delete function used by multiple step patterns
 	deleteAPI := func(name string) error {
-		err := httpSteps.SendDELETEToService("gateway-controller", "/apis/"+name)
+		err := httpSteps.SendDELETEToService("gateway-controller", "/rest-apis/"+name)
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 	ctx.Step(`^I update the API "([^"]*)" with this configuration:$`, func(apiName string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		err := httpSteps.SendPUTToService("gateway-controller", "/apis/"+apiName, body)
+		err := httpSteps.SendPUTToService("gateway-controller", "/rest-apis/"+apiName, body)
 		if err != nil {
 			return err
 		}
@@ -77,6 +77,6 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	})
 
 	ctx.Step(`^I get the API "([^"]*)"$`, func(name string) error {
-		return httpSteps.SendGETToService("gateway-controller", "/apis/"+name)
+		return httpSteps.SendGETToService("gateway-controller", "/rest-apis/"+name)
 	})
 }

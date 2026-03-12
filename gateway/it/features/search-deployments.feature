@@ -66,7 +66,7 @@ Feature: Search Deployments API
       """
     Then the response should be successful
     # List APIs (no filter = returns all)
-    When I send a GET request to the "gateway-controller" service at "/apis"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -96,7 +96,7 @@ Feature: Search Deployments API
       """
     Then the response should be successful
     # Search by displayName via /apis endpoint
-    When I send a GET request to the "gateway-controller" service at "/apis?displayName=UniqueDisplayName"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?displayName=UniqueDisplayName"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -125,7 +125,7 @@ Feature: Search Deployments API
       """
     Then the response should be successful
     # Search by version via /apis endpoint
-    When I send a GET request to the "gateway-controller" service at "/apis?version=v3.0.0"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?version=v3.0.0"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -153,7 +153,7 @@ Feature: Search Deployments API
       """
     Then the response should be successful
     # Search by context via /apis endpoint
-    When I send a GET request to the "gateway-controller" service at "/apis?context=/unique-context-path"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?context=/unique-context-path"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -182,7 +182,7 @@ Feature: Search Deployments API
     Then the response should be successful
     And I wait for 2 seconds
     # Search by status via /apis endpoint
-    When I send a GET request to the "gateway-controller" service at "/apis?status=DEPLOYED"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?status=DEPLOYED"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -210,7 +210,7 @@ Feature: Search Deployments API
       """
     Then the response should be successful
     # Search with multiple filters via /apis endpoint
-    When I send a GET request to the "gateway-controller" service at "/apis?displayName=MultiFilterAPI&version=v5.0"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?displayName=MultiFilterAPI&version=v5.0"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -219,7 +219,7 @@ Feature: Search Deployments API
     Then the response should be successful
 
   Scenario: Search APIs with non-matching filter returns empty
-    When I send a GET request to the "gateway-controller" service at "/apis?displayName=NonExistentAPIName12345"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?displayName=NonExistentAPIName12345"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"

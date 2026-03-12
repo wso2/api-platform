@@ -120,7 +120,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	// Build set of API IDs that exist in configs (RestApi kind only).
 	apiIDs := make(map[string]bool)
 	for _, cfg := range configs {
-		if cfg != nil && cfg.Configuration.Kind == "RestApi" {
+		if cfg != nil && cfg.Kind == "RestApi" {
 			apiIDs[cfg.UUID] = true
 		}
 	}

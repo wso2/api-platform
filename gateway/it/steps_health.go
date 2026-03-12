@@ -62,9 +62,9 @@ func (h *HealthSteps) theGatewayServicesAreRunning() error {
 	return nil
 }
 
-// iSendGETRequestToGatewayControllerHealth sends a GET request to the gateway controller health endpoint
+// iSendGETRequestToGatewayControllerHealth sends a GET request to the gateway controller admin health endpoint
 func (h *HealthSteps) iSendGETRequestToGatewayControllerHealth() error {
-	url := fmt.Sprintf("%s/health", h.state.Config.GatewayControllerURL)
+	url := fmt.Sprintf("%s/health", h.state.Config.GatewayControllerAdminURL)
 	return h.httpSteps.SendGETRequest(url)
 }
 
@@ -108,8 +108,7 @@ func (h *HealthSteps) iCheckHealthOfAllGatewayServices() error {
 		name string
 		url  string
 	}{
-		{"gateway-controller", fmt.Sprintf("%s/health", h.state.Config.GatewayControllerURL)},
-		{"gateway-controller-admin", fmt.Sprintf("%s/health", h.state.Config.GatewayControllerAdminURL)},
+		{"gateway-controller", fmt.Sprintf("%s/health", h.state.Config.GatewayControllerAdminURL)},
 		{"router", fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)},
 		{"policy-engine", fmt.Sprintf("%s/health", h.state.Config.PolicyEngineURL)},
 	}

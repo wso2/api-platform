@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -94,11 +93,9 @@ func TestGetTopicsForUpdate(t *testing.T) {
 			Kind: string(api.WebSubApi),
 		}
 		// Set up an empty spec that will fail to parse
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(api.APIConfigData{})
-		storedCfg.Configuration = api.APIConfiguration{
+		storedCfg.Configuration = api.WebSubAPI{
 			Kind: api.WebSubApi,
-			Spec: spec,
+			Spec: api.WebhookAPIData{},
 		}
 
 		toRegister, toUnregister := service.GetTopicsForUpdate(storedCfg)
@@ -117,16 +114,12 @@ func TestGetTopicsForUpdate(t *testing.T) {
 			},
 		}
 
-		var spec api.APIConfiguration_Spec
-		err := spec.FromWebhookAPIData(webhookData)
-		require.NoError(t, err)
-
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-websub-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
-				Spec: spec,
+				Spec: webhookData,
 			},
 		}
 
@@ -197,15 +190,13 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		storedCfg := &models.StoredConfig{
 			UUID:   "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -231,16 +222,14 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		// First, add a config
 		existingCfg := &models.StoredConfig{
 			UUID:   "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -254,15 +243,13 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/test-updated",
 		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
 
 		updateCfg := &models.StoredConfig{
 			UUID:   "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: newSpec,
+				Spec: newApiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -287,16 +274,14 @@ func TestUpdateExistingConfig(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/original",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		// Add original config
 		original := &models.StoredConfig{
 			UUID:   "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -310,15 +295,13 @@ func TestUpdateExistingConfig(t *testing.T) {
 			Version:     "2.0.0",
 			Context:     "/updated",
 		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
 			UUID:   "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: newSpec,
+				Spec: newApiData,
 			},
 			Status: models.StatusPending,
 		}
@@ -375,6 +358,113 @@ spec:
 	result, err := service.DeployAPIConfiguration(params)
 	assert.Error(t, err)
 	assert.Nil(t, result)
+}
+
+func TestDeployAPIConfiguration_UnsupportedKind(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	params := APIDeploymentParams{
+		Data:          []byte(`kind: RestApi`),
+		ContentType:   "application/yaml",
+		Kind:          "UnknownKind",
+		CorrelationID: "test-corr",
+		Logger:        logger,
+	}
+
+	result, err := service.DeployAPIConfiguration(params)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "unsupported resource kind")
+	assert.Contains(t, err.Error(), "UnknownKind")
+}
+
+func TestDeployAPIConfiguration_InferKindFromPayload(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("Infers RestApi kind from payload", func(t *testing.T) {
+		yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: inferred-api
+spec:
+  displayName: ""
+  version: ""
+  context: ""
+`
+		// Kind param is empty — should be inferred as RestApi from payload,
+		// then fail validation (not kind resolution)
+		params := APIDeploymentParams{
+			Data:          []byte(yamlData),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+		}
+
+		_, err := service.DeployAPIConfiguration(params)
+		assert.Error(t, err)
+		// The error should be a validation error, proving RestApi branch was reached
+		var validationErr *ValidationErrorListError
+		assert.ErrorAs(t, err, &validationErr)
+	})
+
+	t.Run("Infers WebSubApi kind from payload", func(t *testing.T) {
+		yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: WebSubApi
+metadata:
+  name: inferred-websub
+spec:
+  displayName: ""
+  version: ""
+  context: ""
+`
+		params := APIDeploymentParams{
+			Data:          []byte(yamlData),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+		}
+
+		_, err := service.DeployAPIConfiguration(params)
+		assert.Error(t, err)
+		var validationErr *ValidationErrorListError
+		assert.ErrorAs(t, err, &validationErr)
+	})
+}
+
+func TestDeployAPIConfiguration_EmptyKindInPayload(t *testing.T) {
+	store := storage.NewConfigStore()
+	validator := config.NewAPIValidator()
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+metadata:
+  name: no-kind-api
+spec:
+  displayName: No Kind API
+  version: 1.0.0
+  context: /nokind
+`
+	params := APIDeploymentParams{
+		Data:          []byte(yamlData),
+		ContentType:   "application/yaml",
+		CorrelationID: "test-corr",
+		Logger:        logger,
+	}
+
+	result, err := service.DeployAPIConfiguration(params)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "resource kind is required")
 }
 
 func TestAPIDeploymentService_Fields(t *testing.T) {
@@ -465,6 +555,7 @@ spec:
 		params := APIDeploymentParams{
 			Data:          []byte(yamlData),
 			ContentType:   "application/yaml",
+			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
 			Logger:        logger,
 		}
@@ -501,15 +592,13 @@ spec:
 				{Name: "/old-topic"},
 			},
 		}
-		var spec api.APIConfiguration_Spec
-		require.NoError(t, spec.FromWebhookAPIData(webhookData))
 
 		existingCfg := &models.StoredConfig{
 			UUID:   "0000-existing-websub-0000-000000000000",
 			Kind: string(api.WebSubApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
-				Spec: spec,
+				Spec: webhookData,
 			},
 			Status:    models.StatusDeployed,
 			CreatedAt: time.Now(),
@@ -535,6 +624,7 @@ spec:
 			Data:          []byte(yamlData),
 			APIID:         "0000-existing-websub-0000-000000000000",
 			ContentType:   "application/yaml",
+			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
 			Logger:        logger,
 		}
@@ -558,15 +648,13 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/new",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		newCfg := &models.StoredConfig{
 			UUID:   "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -593,15 +681,13 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/existing",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		existingCfg := &models.StoredConfig{
 			UUID:   "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -615,9 +701,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		updateCfg := &models.StoredConfig{
 			UUID:   "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -642,16 +728,14 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 			Version:     "1.0.0",
 			Context:     "/original",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		// Add original config
 		original := &models.StoredConfig{
 			UUID:   "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: spec,
+				Spec: apiData,
 			},
 			Status:    models.StatusPending,
 			CreatedAt: time.Now(),
@@ -667,15 +751,13 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 			Version:     "2.0.0",
 			Context:     "/updated",
 		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
 			UUID:   "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
+			Configuration: api.RestAPI{
 				Kind: api.RestApi,
-				Spec: newSpec,
+				Spec: newApiData,
 			},
 			Status: models.StatusPending,
 		}
