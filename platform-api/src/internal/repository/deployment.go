@@ -587,7 +587,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 // GetAllDeploymentsByGateway retrieves all deployments for a specific gateway
 // Returns lightweight DeploymentInfo for listing deployments
 // Only returns deployments that have an active status (DEPLOYED or UNDEPLOYED)
-// Results are ordered by kind (RestAPI -> LLMProvider -> LLMProxy) to ensure
+// Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp) to ensure
 // dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
 // If since is provided, only returns deployments updated after that timestamp
 func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
@@ -608,10 +608,11 @@ func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, s
 			WHERE s.gateway_uuid = ? AND s.organization_uuid = ? AND s.updated_at > ?
 			ORDER BY 
 				CASE a.kind 
-					WHEN 'RestAPI' THEN 1 
-					WHEN 'LLMProvider' THEN 2 
-					WHEN 'LLMProxy' THEN 3 
-					ELSE 4 
+					WHEN 'RestApi' THEN 1 
+					WHEN 'LlmProvider' THEN 2 
+					WHEN 'LlmProxy' THEN 3 
+					WHEN 'Mcp' THEN 4 
+					ELSE 5 
 				END,
 				s.updated_at DESC
 		`
@@ -630,10 +631,11 @@ func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, s
 			WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
 			ORDER BY 
 				CASE a.kind 
-					WHEN 'RestAPI' THEN 1 
-					WHEN 'LLMProvider' THEN 2 
-					WHEN 'LLMProxy' THEN 3 
-					ELSE 4 
+					WHEN 'RestApi' THEN 1 
+					WHEN 'LlmProvider' THEN 2 
+					WHEN 'LlmProxy' THEN 3 
+					WHEN 'Mcp' THEN 4 
+					ELSE 5 
 				END,
 				s.updated_at DESC
 		`

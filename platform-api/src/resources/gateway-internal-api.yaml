@@ -678,17 +678,20 @@ paths:
         ```
         batch.tar.gz
         ├── {deploymentId-1}/
-        │   └── api-{artifactId}.yaml          # RestApi
+        │   └── api-{artifactId}.yaml           # RestApi
         ├── {deploymentId-2}/
         │   └── llm-provider-{artifactId}.yaml  # LlmProvider
+        ├── {deploymentId-3}/
+        │   └── llm-proxy-{artifactId}.yaml     # LlmProxy
         └── {deploymentId-N}/
-            └── llm-proxy-{artifactId}.yaml    # LlmProxy
+            └── mcp-proxy-{artifactId}.yaml     # Mcp
         ```
         
         The filename prefix is determined by the artifact kind:
         - `api-{artifactId}.yaml` for `RestApi`
         - `llm-provider-{artifactId}.yaml` for `LlmProvider`
         - `llm-proxy-{artifactId}.yaml` for `LlmProxy`
+        - `mcp-proxy-{artifactId}.yaml` for `Mcp`
         
         This endpoint is used by gateways to efficiently fetch
         multiple deployment artifacts that need to be updated locally.

@@ -143,6 +143,8 @@ func CreateBatchDeploymentTarGz(deploymentContentMap map[string]*model.Deploymen
 			prefix = "llm-provider"
 		case "LlmProxy":
 			prefix = "llm-proxy"
+		case "Mcp":
+			prefix = "mcp-proxy"
 		default: // RestApi and any future kinds
 			prefix = "api"
 		}

@@ -71,7 +71,7 @@ type DeploymentInfo struct {
 	DeploymentID string           `json:"deploymentId" db:"deployment_id"`
 	ArtifactID   string           `json:"artifactId" db:"artifact_uuid"`
 	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
-	Kind         string           `json:"kind" db:"kind"`     // Artifact kind: RestAPI, LLMProvider, LLMProxy
+	Kind         string           `json:"kind" db:"kind"`     // Artifact kind: RestAPI, LLMProvider, LLMProxy, MCPProxy
 	Status       DeploymentStatus `json:"status" db:"status"`
 	UpdatedAt    time.Time        `json:"updatedAt" db:"updated_at"` // DeployedAt timestamp
 }
