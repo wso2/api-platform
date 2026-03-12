@@ -3178,6 +3178,42 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-api-keys/{username}:
+    get:
+      summary: List LLM API keys for a user
+      description: |
+        Returns all API keys for LLM providers and LLM proxies created by the specified user
+        within the organization. Access is restricted to the key owner or an admin.
+        The plain key value is never returned.
+      operationId: listUserLLMAPIKeys
+      tags:
+        - API Keys
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: The username to list LLM API keys for
+          schema:
+            type: string
+          example: user@example.com
+      responses:
+        '200':
+          description: List of LLM API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAPIKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - caller is not the key owner or an admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -3233,7 +3269,39 @@ components:
           description: Optional identifier of the developer portal that provisioned this key
         allowedTargets:
           type: string
-          description: "Comma-separated list of allowed LLM providers/proxies; 'ALL' means unrestricted"
+          description: "Comma-separated list of allowed gateways; 'ALL' means unrestricted"
+
+    UserAPIKeyItem:
+      allOf:
+        - $ref: '#/components/schemas/APIKeyItem'
+        - type: object
+          required:
+            - artifactId
+            - artifactType
+          properties:
+            artifactId:
+              type: string
+              description: Handle (ID) of the LLM provider or proxy this key belongs to
+              example: wso2-openai-provider
+            artifactType:
+              type: string
+              enum: [llm-provider, llm-proxy]
+              description: Type of the artifact this key belongs to
+
+    UserAPIKeyListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserAPIKeyItem'
+          description: List of LLM API keys
+        count:
+          type: integer
+          description: Total number of API keys returned
 
     LLMProviderAPIKeyListResponse:
       type: object
@@ -5979,7 +6047,7 @@ components:
         allowedTargets:
           type: string
           description: |
-            Comma-separated list of LLM provider or proxy names this key is valid for.
+            Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
           nullable: true
           example: "openai,azure-openai"
@@ -6034,7 +6102,7 @@ components:
         allowedTargets:
           type: string
           description: |
-            Comma-separated list of LLM provider or proxy names this key is valid for.
+            Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
           nullable: true
           example: "openai,azure-openai"

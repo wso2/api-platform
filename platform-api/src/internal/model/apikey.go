@@ -32,5 +32,12 @@ type APIKey struct {
 	UpdatedAt      time.Time
 	ExpiresAt      *time.Time
 	ProvisionedBy  *string // Identifier of the developer portal that provisioned this key; nil if not provided
-	AllowedTargets string  // Comma-separated list of allowed LLM providers/proxies; defaults to 'ALL'
+	AllowedTargets string  // Comma-separated list of allowed gateways; defaults to 'ALL'
+}
+
+// UserAPIKey extends APIKey with artifact context, used when listing keys across multiple artifact types.
+type UserAPIKey struct {
+	APIKey
+	ArtifactHandle string // Handle (ID) of the LLM provider or proxy
+	ArtifactKind   string // Kind of the artifact: LlmProvider or LlmProxy
 }

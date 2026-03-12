@@ -73,6 +73,9 @@ const (
 	LLMProxy    = "LlmProxy"
 )
 
+// Admin user identifier used in x-user-id header
+const AdminUserID = "admin"
+
 // API Type Constants
 const (
 	APITypeHTTP       = "HTTP"

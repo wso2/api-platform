@@ -55,8 +55,6 @@ type APIKey struct {
 	Source string `json:"source" yaml:"source"`
 	// ProvisionedBy identifies the portal that created this key; nil means no restriction
 	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
-	// AllowedTargets is a comma-separated list of allowed API targets; "ALL" or "" means unrestricted
-	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
 }
 
 // APIKeyStatus Status of the API key
@@ -229,8 +227,8 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	}
 
     // TODO: Currently, API key creation happens only per API, not per operation, since it was decided to remove the operations field from API keys. 
-	// Therefore, this implementation should include some kind of mapping so that when a policy is attached to a resource, the system can look up that 
-	// mapping and perform the validation.
+	// Therefore, this implementation should include some kind of mapping so that when a policy is attached to a resource, this method  
+	// can look up that mapping and perform the validation.
 	return true, nil
 }
 

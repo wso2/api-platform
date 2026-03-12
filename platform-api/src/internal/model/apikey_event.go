@@ -59,7 +59,7 @@ type APIKeyCreatedEvent struct {
 	// ProvisionedBy identifies the developer portal that provisioned this key; nil (omitted) if not provided
 	ProvisionedBy *string `json:"provisionedBy,omitempty"`
 
-	// AllowedTargets is a comma-separated list of allowed LLM providers/proxies; defaults to 'ALL'
+	// AllowedTargets is a comma-separated list of allowed gateways; defaults to 'ALL'
 	AllowedTargets string `json:"allowedTargets,omitempty"`
 }
 
@@ -97,6 +97,6 @@ type APIKeyUpdatedEvent struct {
 	// ProvisionedBy identifies the developer portal that provisioned this key; nil (omitted) if not provided
 	ProvisionedBy *string `json:"provisionedBy,omitempty"`
 
-	// AllowedTargets is a comma-separated list of allowed LLM providers/proxies; defaults to 'ALL'
+	// AllowedTargets is a comma-separated list of allowed gateways; defaults to 'ALL'
 	AllowedTargets string `json:"allowedTargets,omitempty"`
 }

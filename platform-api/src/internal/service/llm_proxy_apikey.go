@@ -299,13 +299,12 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	s.slogger.Info("LLM proxy API key creation broadcast summary", "proxyId", proxyID, "keyName", name, "total", len(targetGateways), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
-		s.slogger.Error("Failed to deliver LLM proxy API key to any gateway", "proxyId", proxyID, "keyName", name)
-		return nil, fmt.Errorf("failed to deliver API key event to any gateway: %w", lastError)
+		s.slogger.Warn("Failed to deliver LLM proxy API key to any gateway; key is saved to the database", "proxyId", proxyID, "keyName", name, "error", lastError)
 	}
 
 	return &api.CreateLLMProxyAPIKeyResponse{
 		Status:  "success",
-		Message: "API key created and broadcasted to gateways successfully",
+		Message: "API key created successfully",
 		KeyId:   name,
 		ApiKey:  apiKey,
 	}, nil

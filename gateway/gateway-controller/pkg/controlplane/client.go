@@ -1747,9 +1747,9 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	now := time.Now()
 
 	// allowedTargets defaults to constants.APIKeyAllowedTargetsAll if not provided in the event
-	updAllowedTargets := constants.APIKeyAllowedTargetsAll
+	allowedTargets := constants.APIKeyAllowedTargetsAll
 	if payload.AllowedTargets != nil && *payload.AllowedTargets != "" {
-		updAllowedTargets = *payload.AllowedTargets
+		allowedTargets = *payload.AllowedTargets
 	}
 
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
@@ -1758,7 +1758,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		ExternalRefId:  &payload.ExternalRefId,
 		Name:           &payload.KeyName,
 		ProvisionedBy:  payload.ProvisionedBy,
-		AllowedTargets: &updAllowedTargets,
+		AllowedTargets: &allowedTargets,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time

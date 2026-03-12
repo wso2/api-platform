@@ -150,6 +150,46 @@ func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
 	return nil
 }
 
+// ListLLMAPIKeysByUser retrieves all API keys for LLM providers and proxies created by a given user within an org.
+func (r *APIKeyRepo) ListLLMAPIKeysByUser(orgUUID, username string) ([]*model.UserAPIKey, error) {
+	query := `
+		SELECT ak.uuid, ak.artifact_uuid, ak.name, ak.masked_api_key, ak.api_key_hashes,
+		       ak.status, ak.created_at, ak.created_by, ak.updated_at, ak.expires_at,
+		       ak.provisioned_by, ak.allowed_targets,
+		       a.handle, a.kind
+		FROM api_keys ak
+		JOIN artifacts a ON a.uuid = ak.artifact_uuid
+		WHERE ak.created_by = ?
+		  AND a.organization_uuid = ?
+		  AND a.kind IN ('LlmProvider', 'LlmProxy')
+		ORDER BY ak.created_at DESC
+	`
+	rows, err := r.db.Query(r.db.Rebind(query), username, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []*model.UserAPIKey
+	for rows.Next() {
+		key := &model.UserAPIKey{}
+		var provisionedBy sql.NullString
+		if err := rows.Scan(
+			&key.UUID, &key.ArtifactUUID, &key.Name, &key.MaskedAPIKey, &key.APIKeyHashes,
+			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+			&provisionedBy, &key.AllowedTargets,
+			&key.ArtifactHandle, &key.ArtifactKind,
+		); err != nil {
+			return nil, err
+		}
+		if provisionedBy.Valid {
+			key.ProvisionedBy = &provisionedBy.String
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
 // GetByArtifactAndName retrieves an API key by artifact UUID and name
 func (r *APIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error) {
 	key := &model.APIKey{}

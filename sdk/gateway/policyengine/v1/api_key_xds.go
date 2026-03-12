@@ -96,7 +96,7 @@ type APIKeyData struct {
 	// ProvisionedBy identifies the portal that created this key; nil means no restriction
 	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
 
-	// AllowedTargets is a comma-separated list of allowed API targets; "ALL" or "" means unrestricted
+	// AllowedTargets is a comma-separated list of allowed gateways; "ALL" or "" means unrestricted
 	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
 }
 

@@ -547,6 +547,26 @@ type APIKeyItem struct {
 	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
 }
 
+// UserAPIKeyItem extends APIKeyItem with artifact context for cross-resource key listing.
+type UserAPIKeyItem struct {
+	APIKeyItem
+
+	// ArtifactId Handle (ID) of the LLM provider or proxy this key belongs to
+	ArtifactId string `json:"artifactId" yaml:"artifactId"`
+
+	// ArtifactType Type of the artifact: llm-provider or llm-proxy
+	ArtifactType string `json:"artifactType" yaml:"artifactType"`
+}
+
+// UserAPIKeyListResponse defines the response for listing LLM API keys for a user.
+type UserAPIKeyListResponse struct {
+	// Items List of API keys
+	Items []UserAPIKeyItem `json:"items" yaml:"items"`
+
+	// Count Total number of API keys
+	Count int `json:"count" yaml:"count"`
+}
+
 // LLMProviderAPIKeyListResponse defines the response for listing LLM provider API keys
 type LLMProviderAPIKeyListResponse struct {
 	// Items List of API keys

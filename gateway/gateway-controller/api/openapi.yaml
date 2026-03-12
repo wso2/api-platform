@@ -2394,7 +2394,7 @@ components:
         allowedTargets:
           type: string
           description: |
-            Comma-separated list of allowed API targets. Use "ALL" or leave empty for no restriction.
+            Comma-separated list of allowed gateway targets. Use "ALL" or leave empty for no restriction.
           example: "weather-api-v1.0,maps-api-v2.0"
     APIKeyCreationResponse:
       type: object

@@ -418,7 +418,7 @@ type APIKeyStatus string
 
 // APIKeyCreationRequest defines model for APIKeyCreationRequest.
 type APIKeyCreationRequest struct {
-	// AllowedTargets Comma-separated list of allowed API targets. Use "ALL" or leave empty for no restriction.
+	// AllowedTargets Comma-separated list of allowed gateway targets. Use "ALL" or leave empty for no restriction.
 	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
 
 	// ApiKeyHashes Pre-computed hash(es) of the API key provided by the platform API.

@@ -313,13 +313,12 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	s.slogger.Info("LLM provider API key creation broadcast summary", "providerId", providerID, "keyName", name, "total", len(targetGateways), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
-		s.slogger.Error("Failed to deliver LLM provider API key to any gateway", "providerId", providerID, "keyName", name)
-		return nil, fmt.Errorf("failed to deliver API key event to any gateway: %w", lastError)
+		s.slogger.Warn("Failed to deliver LLM provider API key to any gateway; key is saved to the database", "providerId", providerID, "keyName", name, "error", lastError)
 	}
 
 	return &api.CreateLLMProviderAPIKeyResponse{
 		Status:  "success",
-		Message: "API key created and broadcasted to gateways successfully",
+		Message: "API key created successfully",
 		KeyId:   name,
 		ApiKey:  apiKey,
 	}, nil
