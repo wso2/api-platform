@@ -110,7 +110,7 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 }
 
 
-func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	if m.unavailable {
 		return nil, storage.ErrDatabaseUnavailable
 	}
@@ -118,7 +118,7 @@ func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, er
 		return nil, m.getErr
 	}
 	for _, cfg := range m.configs {
-		if cfg.Handle == handle {
+		if cfg.Kind == kind && cfg.Handle == handle {
 			return cfg, nil
 		}
 	}

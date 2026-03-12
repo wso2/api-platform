@@ -558,21 +558,9 @@ func (s *APIServer) GetRestAPIById(c *gin.Context, id string) {
 		return
 	}
 
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	if cfg.Kind != string(api.RestApi) {
-		log.Warn("Configuration kind mismatch",
-			slog.String("expected", "RestApi"),
-			slog.String("actual", cfg.Kind),
 			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
@@ -690,21 +678,9 @@ func (s *APIServer) UpdateRestAPI(c *gin.Context, id string) {
 	}
 
 	// Check if config exists
-	existing, err := s.db.GetConfigByHandle(handle)
+	existing, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	if existing.Kind != string(api.RestApi) {
-		log.Warn("Configuration kind mismatch",
-			slog.String("expected", "RestApi"),
-			slog.String("actual", existing.Kind),
 			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
@@ -831,21 +807,9 @@ func (s *APIServer) DeleteRestAPI(c *gin.Context, id string) {
 	}
 
 	// Check if config exists
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	if cfg.Kind != string(api.RestApi) {
-		log.Warn("Configuration kind mismatch",
-			slog.String("expected", "RestApi"),
-			slog.String("actual", cfg.Kind),
 			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
@@ -1163,25 +1127,13 @@ func (s *APIServer) GetWebSubAPIById(c *gin.Context, id string) {
 		return
 	}
 
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		log.Warn("WebSub API configuration not found",
 			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("WebSubAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	if cfg.Kind != string(api.WebSubApi) {
-		log.Warn("Configuration kind mismatch",
-			slog.String("expected", "WebSubApi"),
-			slog.String("actual", cfg.Kind),
-			slog.String("handle", handle))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Configuration with handle '%s' is not a WebSub API", handle),
 		})
 		return
 	}
@@ -1289,7 +1241,7 @@ func (s *APIServer) UpdateWebSubAPI(c *gin.Context, id string) {
 		return
 	}
 
-	existing, err := s.db.GetConfigByHandle(handle)
+	existing, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		log.Warn("WebSub API configuration not found",
 			slog.String("handle", handle))
@@ -1488,25 +1440,13 @@ func (s *APIServer) DeleteWebSubAPI(c *gin.Context, id string) {
 		return
 	}
 
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		log.Warn("WebSub API configuration not found",
 			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("WebSubAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	if cfg.Kind != "WebSubApi" {
-		log.Warn("Configuration kind mismatch",
-			slog.String("expected", "WebSubApi"),
-			slog.String("actual", cfg.Kind),
-			slog.String("handle", handle))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Configuration with handle '%s' is not a WebSub API", handle),
 		})
 		return
 	}
@@ -3301,7 +3241,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 	}
 
 	// Fallback: resolve by handle (metadata.name)
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			log.Warn("API configuration not found", slog.String("handle_or_id", handle))
@@ -3327,16 +3267,6 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 			Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
 		})
 		return "", fmt.Errorf("api not found")
-	}
-	if cfg.Kind != string(api.RestApi) {
-		log.Warn("Configuration is not a REST API",
-			slog.String("handle", handle),
-			slog.String("kind", cfg.Kind))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
-		})
-		return "", fmt.Errorf("invalid api kind")
 	}
 	return cfg.UUID, nil
 	}

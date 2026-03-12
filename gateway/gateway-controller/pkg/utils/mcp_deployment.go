@@ -283,7 +283,7 @@ func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.Store
 		return nil, storage.ErrDatabaseUnavailable
 	}
 
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -333,14 +333,6 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
 	}
 
-	if existing.Kind != string(api.Mcp) {
-		logger.Warn("Configuration kind mismatch",
-			slog.String("expected", string(api.Mcp)),
-			slog.String("actual", existing.Kind),
-			slog.String("handle", handle))
-		return nil, fmt.Errorf("configuration kind mismatch: expected '%s', got '%s' for handle '%s'", string(api.Mcp), existing.Kind, handle)
-	}
-
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
 	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
@@ -362,20 +354,11 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 	}
 
 	// Check if config exists
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
 	if err != nil {
 		logger.Warn("MCP proxy configuration not found",
 			slog.String("handle", handle))
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
-	}
-
-	// Ensure existing config is of kind MCP
-	if cfg.Kind != string(api.Mcp) {
-		logger.Warn("Configuration kind mismatch",
-			slog.String("expected", string(api.Mcp)),
-			slog.String("actual", cfg.Kind),
-			slog.String("handle", handle))
-		return nil, fmt.Errorf("configuration kind mismatch: expected '%s', got '%s' for handle '%s'", string(api.Mcp), cfg.Kind, handle)
 	}
 
 	// Delete from database first (only if persistent mode)

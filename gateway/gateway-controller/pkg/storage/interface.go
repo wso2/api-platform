@@ -86,12 +86,13 @@ type Storage interface {
 	// This is the fastest lookup method (O(1) for most databases).
 	GetConfig(id string) (*models.StoredConfig, error)
 
-	// GetConfigByHandle retrieves an API configuration by handle.
+	// GetConfigByKindAndHandle retrieves an API configuration by kind and handle.
 	//
 	// Returns an error if the configuration is not found.
 	// The handle is the metadata.name from the API YAML configuration.
+	// The kind filter prevents cross-kind reads (e.g. fetching a WebSub API when a REST API is expected).
 	// This is the recommended lookup method for REST API endpoints.
-	GetConfigByHandle(handle string) (*models.StoredConfig, error)
+	GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error)
 
 	// GetAllConfigs retrieves all API configurations.
 	//
