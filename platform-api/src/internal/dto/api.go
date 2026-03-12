@@ -134,7 +134,7 @@ type APIYAMLData struct {
 	Version           string               `yaml:"version"`
 	Context           string               `yaml:"context"`
 	SubscriptionPlans []string             `yaml:"subscriptionPlans,omitempty"`
-  Vhosts            *VhostsYAML          `yaml:"vhosts,omitempty"`
+    Vhosts            *VhostsYAML          `yaml:"vhosts,omitempty"`
 	Upstream          *UpstreamYAML        `yaml:"upstream,omitempty"`
 	Policies          []Policy             `yaml:"policies,omitempty"`
 	Operations        []api.OperationRequest `yaml:"operations,omitempty"`
