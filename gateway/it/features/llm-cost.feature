@@ -669,6 +669,252 @@ Feature: LLM Cost System Policy
     When I delete the LLM provider template "llm-cost-openai-cached-template"
     Then the response status code should be 200
 
+  Scenario: OpenAI flex service tier — lower rates applied when response reports service_tier=flex
+    # Model: gpt-5.4 — input_flex=1.25e-6/token, output_flex=7.5e-6/token
+    # Usage: 100 prompt + 50 completion, service_tier=flex
+    # cost = 100*1.25e-6 + 50*7.5e-6 = 1.25e-4 + 3.75e-4 = 0.0005000000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-openai-flex-template
+      spec:
+        displayName: LLM Cost OpenAI Flex Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-openai-flex-provider
+      spec:
+        displayName: LLM Cost OpenAI Flex Provider
+        version: v1.0
+        context: /llm-cost-openai-flex
+        template: llm-cost-openai-flex-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-openai-flex/openai/v1/chat-flex" to be ready with method "POST" and body '{"model": "gpt-5.4", "messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-openai-flex/openai/v1/chat-flex" with body:
+      """ json
+      {"model": "gpt-5.4", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0005000000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-openai-flex-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-openai-flex-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI priority service tier — higher rates applied when response reports service_tier=priority
+    # Model: gpt-4.1 — input_priority=3.5e-6/token, output_priority=1.4e-5/token
+    # Usage: 100 prompt + 50 completion, service_tier=priority
+    # cost = 100*3.5e-6 + 50*1.4e-5 = 3.5e-4 + 7.0e-4 = 0.0010500000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-openai-priority-template
+      spec:
+        displayName: LLM Cost OpenAI Priority Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-openai-priority-provider
+      spec:
+        displayName: LLM Cost OpenAI Priority Provider
+        version: v1.0
+        context: /llm-cost-openai-priority
+        template: llm-cost-openai-priority-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-openai-priority/openai/v1/chat-priority" to be ready with method "POST" and body '{"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-openai-priority/openai/v1/chat-priority" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0010500000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-openai-priority-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-openai-priority-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI batch service tier — batch rates applied when response reports service_tier=batch
+    # Model: gpt-4.1 — input_batches=1e-6/token, output_batches=4e-6/token
+    # Usage: 100 prompt + 50 completion, service_tier=batch
+    # cost = 100*1e-6 + 50*4e-6 = 1e-4 + 2e-4 = 0.0003000000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-openai-batch-template
+      spec:
+        displayName: LLM Cost OpenAI Batch Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-openai-batch-provider
+      spec:
+        displayName: LLM Cost OpenAI Batch Provider
+        version: v1.0
+        context: /llm-cost-openai-batch
+        template: llm-cost-openai-batch-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-openai-batch/openai/v1/chat-batch" to be ready with method "POST" and body '{"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-openai-batch/openai/v1/chat-batch" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0003000000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-openai-batch-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-openai-batch-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI reasoning tokens — o-series model reasoning tokens billed at standard output rate
+    # Model: o4-mini-2025-04-16 — input=1.1e-6/token, output=4.4e-6/token
+    # Usage: 100 prompt + 80 completion (includes 30 reasoning_tokens)
+    # Reasoning tokens have no separate rate; they bill at the standard output rate.
+    # cost = 100*1.1e-6 + 80*4.4e-6 = 1.1e-4 + 3.52e-4 = 0.0004620000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-openai-reasoning-template
+      spec:
+        displayName: LLM Cost OpenAI Reasoning Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-openai-reasoning-provider
+      spec:
+        displayName: LLM Cost OpenAI Reasoning Provider
+        version: v1.0
+        context: /llm-cost-openai-reasoning
+        template: llm-cost-openai-reasoning-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-openai-reasoning/openai/v1/chat-reasoning" to be ready with method "POST" and body '{"model": "o4-mini-2025-04-16", "messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-openai-reasoning/openai/v1/chat-reasoning" with body:
+      """ json
+      {"model": "o4-mini-2025-04-16", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0004620000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-openai-reasoning-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-openai-reasoning-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI web search tool — url_citation annotation triggers flat per-call fee
+    # Model: gpt-4.1-2025-04-14 — input=2e-6/token, output=8e-6/token, web_search=0.01/call
+    # Usage: 50 prompt + 25 completion + 1 web search call (url_citation annotation present)
+    # cost = 50*2e-6 + 25*8e-6 + 0.01 = 1e-4 + 2e-4 + 0.01 = 0.0103000000
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-openai-web-search-template
+      spec:
+        displayName: LLM Cost OpenAI Web Search Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-openai-web-search-provider
+      spec:
+        displayName: LLM Cost OpenAI Web Search Provider
+        version: v1.0
+        context: /llm-cost-openai-web-search
+        template: llm-cost-openai-web-search-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-openai-web-search/openai/v1/chat-web-search" to be ready with method "POST" and body '{"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-openai-web-search/openai/v1/chat-web-search" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0103000000"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-openai-web-search-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-openai-web-search-template"
+    Then the response status code should be 200
+
   Scenario: Mistral response — bare model name resolved and cost injected as x-llm-cost header
     # Model: mistral-small-latest — input=$0.10/1M (1e-7/token), output=$0.30/1M (3e-7/token)
     # Usage: 100 prompt + 50 completion = (100*1e-7) + (50*3e-7) = 1e-5 + 1.5e-5 = 0.0000250000

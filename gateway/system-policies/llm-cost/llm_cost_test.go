@@ -128,6 +128,33 @@ func TestOpenAICalculator_Normalize(t *testing.T) {
 	if u.ReasoningTokens != 10 {
 		t.Errorf("expected ReasoningTokens=10, got %d", u.ReasoningTokens)
 	}
+	if u.ServiceTier != "" {
+		t.Errorf("expected ServiceTier='', got %q", u.ServiceTier)
+	}
+}
+
+func TestOpenAICalculator_Normalize_ServiceTier(t *testing.T) {
+	c := &OpenAICalculator{}
+	tests := []struct {
+		responseValue string
+		wantTier      string
+	}{
+		{"default", ""}, // "default" maps to standard (no override)
+		{"", ""},        // absent maps to standard
+		{"flex", "flex"},
+		{"priority", "priority"},
+		{"batch", "batch"},
+	}
+	for _, tt := range tests {
+		body := []byte(`{"service_tier":"` + tt.responseValue + `","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+		u, err := c.Normalize(body, nil)
+		if err != nil {
+			t.Fatalf("responseValue=%q: unexpected error: %v", tt.responseValue, err)
+		}
+		if u.ServiceTier != tt.wantTier {
+			t.Errorf("responseValue=%q: got ServiceTier=%q, want %q", tt.responseValue, u.ServiceTier, tt.wantTier)
+		}
+	}
 }
 
 func TestOpenAICalculator_Cost_Basic(t *testing.T) {
@@ -1954,6 +1981,445 @@ func TestMergeCustomPricing_InvalidEntry(t *testing.T) {
 // selectCalculator routing
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// gpt-5.4 — above-272k context window tier
+// ---------------------------------------------------------------------------
+
+func TestOpenAICalculator_Cost_GPT54_Standard(t *testing.T) {
+	// gpt-5.4 standard: input=2.5e-6, output=1.5e-5
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{PromptTokens: 1000, CompletionTokens: 500, TotalTokens: 1500}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*2.5e-6 + 500*1.5e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_Above272k(t *testing.T) {
+	// gpt-5.4 above-272k: input=5e-6, output=2.25e-5
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{PromptTokens: 300_000, CompletionTokens: 5_000, TotalTokens: 305_000}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 300_000*5e-6 + 5_000*2.25e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_Below272k_UsesStandard(t *testing.T) {
+	// 272k boundary: exactly at 272k prompt tokens should still use standard rates
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{PromptTokens: 272_000, CompletionTokens: 1_000, TotalTokens: 273_000}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 272_000*2.5e-6 + 1_000*1.5e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_Batch(t *testing.T) {
+	// gpt-5.4 batch: input=1.25e-6, output=7.5e-6
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		ServiceTier:      "batch",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*1.25e-6 + 500*7.5e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_Flex(t *testing.T) {
+	// gpt-5.4 flex: input=1.25e-6, output=7.5e-6
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		ServiceTier:      "flex",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*1.25e-6 + 500*7.5e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_Priority(t *testing.T) {
+	// gpt-5.4 priority standard range: input=5e-6, output=2.25e-5
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*5e-6 + 500*2.25e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_Priority_Above272k(t *testing.T) {
+	// gpt-5.4 priority above-272k: input=1e-5, output=3.375e-5
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     300_000,
+		CompletionTokens: 5_000,
+		TotalTokens:      305_000,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 300_000*1e-5 + 5_000*3.375e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_CachedTokens(t *testing.T) {
+	// gpt-5.4 cache_read=2.5e-7
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		CachedReadTokens: 400,
+	}
+	cost := genericCalculateCost(usage, pricing)
+	// regular = 600 @ 2.5e-6, cached = 400 @ 2.5e-7, completion = 500 @ 1.5e-5
+	expected := 600*2.5e-6 + 400*2.5e-7 + 500*1.5e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_FlexCachedTokens(t *testing.T) {
+	// gpt-5.4 flex: cache_read uses _flex rate = 1.3e-7 (not standard 2.5e-7)
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		CachedReadTokens: 800,
+		ServiceTier:      "flex",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	// regular = 200 @ 1.25e-6, cached = 800 @ 1.3e-7 (flex rate), output = 500 @ 7.5e-6
+	expected := 200*1.25e-6 + 800*1.3e-7 + 500*7.5e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_PriorityCachedTokens(t *testing.T) {
+	// gpt-5.4 priority: cache_read uses _priority rate = 5e-7 (vs standard 2.5e-7)
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		CachedReadTokens: 800,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	// regular = 200 @ 5e-6, cached = 800 @ 5e-7 (priority rate), output = 500 @ 2.25e-5
+	expected := 200*5e-6 + 800*5e-7 + 500*2.25e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT41_PriorityCachedTokens(t *testing.T) {
+	// gpt-4.1 priority: cache_read uses _priority rate = 8.75e-7 (vs standard 5e-7)
+	pricing, ok := lookupPricing("gpt-4.1")
+	if !ok {
+		t.Skip("gpt-4.1 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		CachedReadTokens: 800,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	// regular = 200 @ 3.5e-6, cached = 800 @ 8.75e-7 (priority rate), output = 500 @ 1.4e-5
+	expected := 200*3.5e-6 + 800*8.75e-7 + 500*1.4e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54_BatchCachedTokens(t *testing.T) {
+	// gpt-5.4 batch: no batch-specific cache_read rate — uses standard cache_read = 2.5e-7
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Skip("gpt-5.4 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		CachedReadTokens: 800,
+		ServiceTier:      "batch",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	// regular = 200 @ batch input 1.25e-6, cached = 800 @ standard 2.5e-7, output = 500 @ batch 7.5e-6
+	expected := 200*1.25e-6 + 800*2.5e-7 + 500*7.5e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54Pro_Standard(t *testing.T) {
+	// gpt-5.4-pro standard: input=3e-5, output=1.8e-4
+	pricing, ok := lookupPricing("gpt-5.4-pro")
+	if !ok {
+		t.Skip("gpt-5.4-pro not in pricing map")
+	}
+	usage := Usage{PromptTokens: 1000, CompletionTokens: 500, TotalTokens: 1500}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*3e-5 + 500*1.8e-4
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_GPT54Pro_Flex(t *testing.T) {
+	// gpt-5.4-pro flex: input=1.5e-5, output=9e-5
+	pricing, ok := lookupPricing("gpt-5.4-pro")
+	if !ok {
+		t.Skip("gpt-5.4-pro not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		ServiceTier:      "flex",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*1.5e-5 + 500*9e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Service tier (batch/flex) — existing models
+// ---------------------------------------------------------------------------
+
+func TestOpenAICalculator_Cost_Batch_GPT41(t *testing.T) {
+	// gpt-4.1 batch: input=1e-6, output=4e-6
+	pricing, ok := lookupPricing("gpt-4.1")
+	if !ok {
+		t.Skip("gpt-4.1 not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		ServiceTier:      "batch",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*1e-6 + 500*4e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_Priority_GPT4o(t *testing.T) {
+	// gpt-4o priority: input=4.25e-6, output=1.7e-5
+	pricing, ok := lookupPricing("gpt-4o")
+	if !ok {
+		t.Skip("gpt-4o not in pricing map")
+	}
+	usage := Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+		ServiceTier:      "priority",
+	}
+	cost := genericCalculateCost(usage, pricing)
+	expected := 1000*4.25e-6 + 500*1.7e-5
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+func TestOpenAICalculator_Cost_StandardTier_IgnoresBatchRate(t *testing.T) {
+	// No service tier set — should use standard rates even though batch rates exist.
+	pricing, ok := lookupPricing("gpt-4.1")
+	if !ok {
+		t.Skip("gpt-4.1 not in pricing map")
+	}
+	usage := Usage{PromptTokens: 1000, CompletionTokens: 500, TotalTokens: 1500}
+	cost := genericCalculateCost(usage, pricing)
+	// standard: input=2e-6, output=8e-6
+	expected := 1000*2e-6 + 500*8e-6
+	if !almostEqual(cost, expected) {
+		t.Errorf("expected %.10f, got %.10f", expected, cost)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Pricing field verification — non-token models (TTS, Whisper, DALL-E, Sora)
+// ---------------------------------------------------------------------------
+
+func TestPricingFields_TTS1(t *testing.T) {
+	pricing, ok := lookupPricing("tts-1")
+	if !ok {
+		t.Fatal("tts-1 not in pricing map")
+	}
+	// $15/1M characters = 1.5e-5 per character
+	const want = 1.5e-5
+	if !almostEqual(pricing.InputCostPerCharacter, want) {
+		t.Errorf("tts-1 InputCostPerCharacter: expected %.2e, got %.2e", want, pricing.InputCostPerCharacter)
+	}
+}
+
+func TestPricingFields_TTS1HD(t *testing.T) {
+	pricing, ok := lookupPricing("tts-1-hd")
+	if !ok {
+		t.Fatal("tts-1-hd not in pricing map")
+	}
+	// $30/1M characters = 3e-5 per character
+	const want = 3e-5
+	if !almostEqual(pricing.InputCostPerCharacter, want) {
+		t.Errorf("tts-1-hd InputCostPerCharacter: expected %.2e, got %.2e", want, pricing.InputCostPerCharacter)
+	}
+}
+
+func TestPricingFields_Whisper1(t *testing.T) {
+	pricing, ok := lookupPricing("whisper-1")
+	if !ok {
+		t.Fatal("whisper-1 not in pricing map")
+	}
+	// $0.006/minute = $0.0001/second
+	const want = 1e-4
+	if !almostEqual(pricing.InputCostPerSecond, want) {
+		t.Errorf("whisper-1 InputCostPerSecond: expected %.2e, got %.2e", want, pricing.InputCostPerSecond)
+	}
+}
+
+func TestPricingFields_DallE2(t *testing.T) {
+	pricing, ok := lookupPricing("dall-e-2")
+	if !ok {
+		t.Fatal("dall-e-2 not in pricing map")
+	}
+	// $0.02 per 1024×1024 image
+	const want = 0.02
+	if !almostEqual(pricing.InputCostPerImage, want) {
+		t.Errorf("dall-e-2 InputCostPerImage: expected %.4f, got %.4f", want, pricing.InputCostPerImage)
+	}
+}
+
+func TestPricingFields_DallE3(t *testing.T) {
+	pricing, ok := lookupPricing("dall-e-3")
+	if !ok {
+		t.Fatal("dall-e-3 not in pricing map")
+	}
+	// $0.04 per standard 1024×1024 image
+	const want = 0.04
+	if !almostEqual(pricing.InputCostPerImage, want) {
+		t.Errorf("dall-e-3 InputCostPerImage: expected %.4f, got %.4f", want, pricing.InputCostPerImage)
+	}
+}
+
+func TestPricingFields_DallE3_HDVariant(t *testing.T) {
+	pricing, ok := lookupPricing("hd/1024-x-1024/dall-e-3")
+	if !ok {
+		t.Fatal("hd/1024-x-1024/dall-e-3 not in pricing map")
+	}
+	// Pixel-based: $0.08 / (1024*1024) ≈ 7.629e-8 per pixel
+	if pricing.InputCostPerPixel <= 0 {
+		t.Errorf("hd/1024-x-1024/dall-e-3 InputCostPerPixel should be > 0, got %v", pricing.InputCostPerPixel)
+	}
+}
+
+func TestPricingFields_GPTImage15_QualityVariant(t *testing.T) {
+	pricing, ok := lookupPricing("low/1024-x-1024/gpt-image-1.5")
+	if !ok {
+		t.Fatal("low/1024-x-1024/gpt-image-1.5 not in pricing map")
+	}
+	// $0.009 per image
+	const want = 0.009
+	if !almostEqual(pricing.InputCostPerImage, want) {
+		t.Errorf("low/1024-x-1024/gpt-image-1.5 InputCostPerImage: expected %.4f, got %.4f", want, pricing.InputCostPerImage)
+	}
+}
+
+func TestPricingFields_Sora2(t *testing.T) {
+	pricing, ok := lookupPricing("sora-2")
+	if !ok {
+		t.Fatal("sora-2 not in pricing map")
+	}
+	// $0.10 per second of video
+	const want = 0.1
+	if !almostEqual(pricing.OutputCostPerVideoPerSecond, want) {
+		t.Errorf("sora-2 OutputCostPerVideoPerSecond: expected %.2f, got %.2f", want, pricing.OutputCostPerVideoPerSecond)
+	}
+}
+
+func TestPricingFields_Sora2Pro(t *testing.T) {
+	pricing, ok := lookupPricing("sora-2-pro")
+	if !ok {
+		t.Fatal("sora-2-pro not in pricing map")
+	}
+	// $0.30 per second of video
+	const want = 0.3
+	if !almostEqual(pricing.OutputCostPerVideoPerSecond, want) {
+		t.Errorf("sora-2-pro OutputCostPerVideoPerSecond: expected %.2f, got %.2f", want, pricing.OutputCostPerVideoPerSecond)
+	}
+}
+
+func TestPricingFields_OpenAIContainer(t *testing.T) {
+	pricing, ok := lookupPricing("openai/container")
+	if !ok {
+		t.Fatal("openai/container not in pricing map")
+	}
+	// $0.03 per session (1 GB default)
+	const want = 0.03
+	if !almostEqual(pricing.CodeInterpreterCostPerSession, want) {
+		t.Errorf("openai/container CodeInterpreterCostPerSession: expected %.4f, got %.4f", want, pricing.CodeInterpreterCostPerSession)
+	}
+}
+
 func TestSelectCalculator_Routing(t *testing.T) {
 	cases := []struct {
 		provider string
@@ -1977,5 +2443,476 @@ func TestSelectCalculator_Routing(t *testing.T) {
 		if got != tc.wantType {
 			t.Errorf("provider=%q: expected %s, got %s", tc.provider, tc.wantType, got)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI web search tool cost tests
+// ---------------------------------------------------------------------------
+
+func TestOpenAICalculator_Normalize_WebSearch_UrlCitationDetected(t *testing.T) {
+	c := &OpenAICalculator{}
+	respBody := []byte(`{
+"usage": {"prompt_tokens": 500, "completion_tokens": 200, "total_tokens": 700},
+"choices": [{
+"message": {
+"role": "assistant",
+"content": "Paris is the capital of France.",
+"annotations": [
+{"type": "url_citation", "url_citation": {"url": "https://example.com", "title": "Example"}}
+]
+}
+}]
+}`)
+	reqBody := []byte(`{"model":"gpt-4o-2024-11-20","web_search_options":{"search_context_size":"medium"}}`)
+	u, err := c.Normalize(respBody, reqBody)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.WebSearchRequests != 1 {
+		t.Errorf("expected WebSearchRequests=1, got %d", u.WebSearchRequests)
+	}
+	if u.SearchContextSize != "medium" {
+		t.Errorf("expected SearchContextSize='medium', got %q", u.SearchContextSize)
+	}
+}
+
+func TestOpenAICalculator_Normalize_WebSearch_NoAnnotations(t *testing.T) {
+	c := &OpenAICalculator{}
+	respBody := []byte(`{
+"usage": {"prompt_tokens": 500, "completion_tokens": 200, "total_tokens": 700},
+"choices": [{"message": {"role": "assistant", "content": "Hello world."}}]
+}`)
+	u, err := c.Normalize(respBody, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.WebSearchRequests != 0 {
+		t.Errorf("expected WebSearchRequests=0, got %d", u.WebSearchRequests)
+	}
+}
+
+func TestOpenAICalculator_Normalize_WebSearch_NonUrlCitationAnnotation(t *testing.T) {
+	c := &OpenAICalculator{}
+	// file_citation annotation should NOT count as web search
+	respBody := []byte(`{
+"usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+"choices": [{"message": {"annotations": [{"type": "file_citation"}]}}]
+}`)
+	u, err := c.Normalize(respBody, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.WebSearchRequests != 0 {
+		t.Errorf("expected WebSearchRequests=0 for file_citation, got %d", u.WebSearchRequests)
+	}
+}
+
+func TestOpenAICalculator_Normalize_WebSearch_SearchContextSize_Default(t *testing.T) {
+	c := &OpenAICalculator{}
+	// No web_search_options in request — SearchContextSize should remain ""
+	respBody := []byte(`{
+"usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+"choices": [{"message": {"annotations": [{"type": "url_citation"}]}}]
+}`)
+	reqBody := []byte(`{"model":"gpt-4o-2024-11-20"}`)
+	u, err := c.Normalize(respBody, reqBody)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.WebSearchRequests != 1 {
+		t.Errorf("expected WebSearchRequests=1, got %d", u.WebSearchRequests)
+	}
+	if u.SearchContextSize != "" {
+		t.Errorf("expected SearchContextSize='', got %q", u.SearchContextSize)
+	}
+}
+
+// TestOpenAICalculator_Cost_WebSearch_FlatRate verifies the flat $10/1k billing
+// for standard OpenAI models using the web search tool.
+func TestOpenAICalculator_Cost_WebSearch_FlatRate(t *testing.T) {
+	// gpt-4o-2024-11-20: web_search_cost_per_request = 0.01
+	pricing, ok := lookupPricing("gpt-4o-2024-11-20")
+	if !ok {
+		t.Fatal("lookupPricing: gpt-4o-2024-11-20 not found")
+	}
+	if pricing.WebSearchCostPerRequest != 0.01 {
+		t.Fatalf("expected WebSearchCostPerRequest=0.01, got %f", pricing.WebSearchCostPerRequest)
+	}
+
+	// 100 input + 50 output tokens + 1 web search call
+	usage := Usage{
+		PromptTokens:      100,
+		CompletionTokens:  50,
+		TotalTokens:       150,
+		WebSearchRequests: 1,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// gpt-4o-2024-11-20: input=2.5e-6, output=1e-5
+	tokenCost := 100*2.5e-6 + 50*1e-5
+	wantCost := tokenCost + 0.01
+	if abs := cost - wantCost; abs < -1e-12 || abs > 1e-12 {
+		t.Errorf("cost=%.10f, want %.10f", cost, wantCost)
+	}
+}
+
+// TestOpenAICalculator_Cost_WebSearch_SearchPreviewModel verifies context-size-based
+// billing for search-preview models using search_context_cost_per_query.
+func TestOpenAICalculator_Cost_WebSearch_SearchPreviewModel(t *testing.T) {
+	// gpt-4o-search-preview has search_context_cost_per_query
+	pricing, ok := lookupPricing("gpt-4o-search-preview")
+	if !ok {
+		t.Fatal("lookupPricing: gpt-4o-search-preview not found")
+	}
+	if len(pricing.SearchContextCostPerQuery) == 0 {
+		t.Fatal("expected SearchContextCostPerQuery to be populated for gpt-4o-search-preview")
+	}
+
+	usage := Usage{
+		PromptTokens:      1000,
+		CompletionTokens:  500,
+		TotalTokens:       1500,
+		WebSearchRequests: 1,
+		SearchContextSize: "high",
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// search_context_size_high = 0.05 (from our JSON)
+	highRate := pricing.SearchContextCostPerQuery["search_context_size_high"]
+	if highRate <= 0 {
+		t.Fatal("search_context_size_high rate not found")
+	}
+	wantSearchCost := 1 * highRate
+	if cost <= 0 {
+		t.Errorf("expected cost > 0, got %f", cost)
+	}
+	// Verify the search cost component is present
+	tokenOnlyCost := genericCalculateCost(Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		TotalTokens:      1500,
+	}, pricing)
+	searchCostComponent := cost - tokenOnlyCost
+	if diff := searchCostComponent - wantSearchCost; diff < -1e-12 || diff > 1e-12 {
+		t.Errorf("search cost component=%.10f, want %.10f", searchCostComponent, wantSearchCost)
+	}
+}
+
+// TestOpenAICalculator_Cost_WebSearch_MultipleChoicesOnlyCountsOnce ensures that
+// multiple url_citation annotations in different choices still count as 1 call.
+func TestOpenAICalculator_Cost_WebSearch_MultipleChoicesOnlyCountsOnce(t *testing.T) {
+	c := &OpenAICalculator{}
+	respBody := []byte(`{
+"usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+"choices": [
+{"message": {"annotations": [{"type": "url_citation"}]}},
+{"message": {"annotations": [{"type": "url_citation"}]}}
+]
+}`)
+	u, err := c.Normalize(respBody, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.WebSearchRequests != 1 {
+		t.Errorf("expected WebSearchRequests=1 (one completion = one call), got %d", u.WebSearchRequests)
+	}
+}
+
+// TestOpenAICalculator_Cost_GPT54_WebSearch verifies flat web search billing
+// for gpt-5.4 alongside regular token costs.
+func TestOpenAICalculator_Cost_GPT54_WebSearch(t *testing.T) {
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Fatal("lookupPricing: gpt-5.4 not found")
+	}
+	if pricing.WebSearchCostPerRequest != 0.01 {
+		t.Fatalf("expected WebSearchCostPerRequest=0.01 for gpt-5.4, got %f", pricing.WebSearchCostPerRequest)
+	}
+
+	// 1000 input + 500 output + 1 web search
+	usage := Usage{
+		PromptTokens:      1000,
+		CompletionTokens:  500,
+		TotalTokens:       1500,
+		WebSearchRequests: 1,
+	}
+	cost := genericCalculateCost(usage, pricing)
+	tokenOnlyCost := genericCalculateCost(Usage{
+		PromptTokens: 1000, CompletionTokens: 500, TotalTokens: 1500,
+	}, pricing)
+	searchCost := cost - tokenOnlyCost
+	if diff := searchCost - 0.01; diff < -1e-10 || diff > 1e-10 {
+		t.Errorf("search cost component=%.10f, want 0.01", searchCost)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI coverage gap tests
+// ---------------------------------------------------------------------------
+
+// TestOpenAICalculator_Cost_ReasoningTokens verifies that reasoning_tokens are
+// billed at the standard output rate (there is no separate reasoning rate for
+// OpenAI models). completion_tokens already includes reasoning_tokens, so the
+// total cost is simply completion_tokens * output_rate.
+func TestOpenAICalculator_Cost_ReasoningTokens(t *testing.T) {
+	// o4-mini-2025-04-16: input=1.1e-6, output=4.4e-6, no separate reasoning rate
+	pricing, ok := lookupPricing("o4-mini-2025-04-16")
+	if !ok {
+		t.Fatal("o4-mini-2025-04-16 not in model_prices.json")
+	}
+	if pricing.OutputCostPerReasoningToken != 0 {
+		t.Fatalf("expected no separate reasoning rate for o4-mini, got %e",
+			pricing.OutputCostPerReasoningToken)
+	}
+
+	// 100 input + 80 completion (30 of which are reasoning tokens)
+	usage := Usage{
+		PromptTokens:     100,
+		CompletionTokens: 80,
+		TotalTokens:      180,
+		ReasoningTokens:  30,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// Reasoning tokens have no separate rate, so all 80 completion tokens
+	// bill at the standard output rate (4.4e-6).
+	wantCost := 100*1.1e-6 + 80*4.4e-6
+	if diff := cost - wantCost; diff < -1e-12 || diff > 1e-12 {
+		t.Errorf("cost=%.10f, want %.10f (reasoning tokens billed at output rate)", cost, wantCost)
+	}
+}
+
+// TestOpenAICalculator_Normalize_ReasoningTokens verifies Normalize() correctly
+// extracts reasoning_tokens from completion_tokens_details.
+func TestOpenAICalculator_Normalize_ReasoningTokens(t *testing.T) {
+	c := &OpenAICalculator{}
+	body := []byte(`{
+"usage": {
+"prompt_tokens": 100,
+"completion_tokens": 80,
+"total_tokens": 180,
+"completion_tokens_details": {"reasoning_tokens": 30}
+}
+}`)
+	u, err := c.Normalize(body, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.ReasoningTokens != 30 {
+		t.Errorf("expected ReasoningTokens=30, got %d", u.ReasoningTokens)
+	}
+	if u.CompletionTokens != 80 {
+		t.Errorf("expected CompletionTokens=80 (includes reasoning), got %d", u.CompletionTokens)
+	}
+}
+
+// TestOpenAICalculator_Cost_GPT54_Above272k_CachedTokens verifies that cached
+// tokens use the _above_272k_tokens cache_read rate when the prompt exceeds 272k.
+func TestOpenAICalculator_Cost_GPT54_Above272k_CachedTokens(t *testing.T) {
+	// gpt-5.4: standard cache_read=2.5e-7, above-272k cache_read=5e-7
+	pricing, ok := lookupPricing("gpt-5.4")
+	if !ok {
+		t.Fatal("gpt-5.4 not in model_prices.json")
+	}
+
+	// 300k prompt (50k cached) + 10k completion — triggers above-272k tier
+	usage := Usage{
+		PromptTokens:     300_000,
+		CompletionTokens: 10_000,
+		TotalTokens:      310_000,
+		CachedReadTokens: 50_000,
+	}
+	cost := genericCalculateCost(usage, pricing)
+
+	// above-272k rates: input=5e-6, output=2.25e-5, cache_read=5e-7
+	regularPrompt := int64(300_000 - 50_000)
+	wantCost := float64(regularPrompt)*5e-6 + float64(50_000)*5e-7 + float64(10_000)*2.25e-5
+	if diff := cost - wantCost; diff < -1e-6 || diff > 1e-6 {
+		t.Errorf("cost=%.6f, want %.6f (above-272k cached tokens)", cost, wantCost)
+	}
+
+	// Confirm it's different from the standard-tier cached cost
+	standardUsage := Usage{
+		PromptTokens:     100_000, // below 272k
+		CompletionTokens: 10_000,
+		TotalTokens:      110_000,
+		CachedReadTokens: 50_000,
+	}
+	standardCost := genericCalculateCost(standardUsage, pricing)
+	if cost == standardCost {
+		t.Error("above-272k cached cost should differ from standard-tier cached cost")
+	}
+}
+
+// TestGenericCalculateCost_WebSearch_UnknownContextSize_DefaultsToMedium verifies
+// that an unknown search_context_size falls back to the "medium" rate, matching
+// LiteLLM's get_default_cost_for_web_search behaviour.
+func TestGenericCalculateCost_WebSearch_UnknownContextSize_DefaultsToMedium(t *testing.T) {
+	pricing, ok := lookupPricing("gpt-4o-search-preview")
+	if !ok {
+		t.Fatal("gpt-4o-search-preview not in model_prices.json")
+	}
+
+	usageUnknown := Usage{
+		PromptTokens:      100,
+		CompletionTokens:  50,
+		TotalTokens:       150,
+		WebSearchRequests: 1,
+		SearchContextSize: "unknown", // not a valid size → should fall through
+	}
+	costUnknown := genericCalculateCost(usageUnknown, pricing)
+
+	usageMedium := Usage{
+		PromptTokens:      100,
+		CompletionTokens:  50,
+		TotalTokens:       150,
+		WebSearchRequests: 1,
+		SearchContextSize: "medium",
+	}
+	costMedium := genericCalculateCost(usageMedium, pricing)
+
+	usageEmpty := Usage{
+		PromptTokens:      100,
+		CompletionTokens:  50,
+		TotalTokens:       150,
+		WebSearchRequests: 1,
+		SearchContextSize: "", // empty → defaults to medium
+	}
+	costEmpty := genericCalculateCost(usageEmpty, pricing)
+
+	if costEmpty != costMedium {
+		t.Errorf("empty SearchContextSize cost=%.10f, want medium cost=%.10f", costEmpty, costMedium)
+	}
+	// "unknown" key is not in the map so the rate lookup returns 0,
+	// meaning no web search fee is added — this is the defined fallback for
+	// unrecognised sizes (caller should pass a valid size or leave it empty).
+	tokenOnlyCost := genericCalculateCost(Usage{
+		PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150,
+	}, pricing)
+	if costUnknown != tokenOnlyCost {
+		t.Errorf("unknown SearchContextSize should add no web search fee: cost=%.10f, tokenOnly=%.10f",
+			costUnknown, tokenOnlyCost)
+	}
+}
+
+// TestOpenAICalculator_Normalize_WebSearch_NilRequestBody verifies that passing
+// nil as the request body does not panic and leaves SearchContextSize empty.
+func TestOpenAICalculator_Normalize_WebSearch_NilRequestBody(t *testing.T) {
+	c := &OpenAICalculator{}
+	respBody := []byte(`{
+"usage": {"prompt_tokens": 50, "completion_tokens": 25, "total_tokens": 75},
+"choices": [{"message": {"annotations": [{"type": "url_citation"}]}}]
+}`)
+	u, err := c.Normalize(respBody, nil)
+	if err != nil {
+		t.Fatalf("unexpected error with nil requestBody: %v", err)
+	}
+	if u.WebSearchRequests != 1 {
+		t.Errorf("expected WebSearchRequests=1, got %d", u.WebSearchRequests)
+	}
+	if u.SearchContextSize != "" {
+		t.Errorf("expected SearchContextSize='' with nil requestBody, got %q", u.SearchContextSize)
+	}
+}
+
+// TestOpenAICalculator_Normalize_AudioTokens verifies that audio token counts
+// reported in prompt_tokens_details and completion_tokens_details are correctly
+// mapped to AudioInputTokens and AudioOutputTokens in the returned Usage.
+// Models: gpt-4o-audio-preview, gpt-4o-realtime-preview.
+func TestOpenAICalculator_Normalize_AudioTokens(t *testing.T) {
+	c := &OpenAICalculator{}
+	respBody := []byte(`{
+"usage": {
+  "prompt_tokens": 200,
+  "completion_tokens": 120,
+  "total_tokens": 320,
+  "prompt_tokens_details":     { "cached_tokens": 0, "audio_tokens": 80 },
+  "completion_tokens_details": { "reasoning_tokens": 0, "audio_tokens": 60 }
+}
+}`)
+	u, err := c.Normalize(respBody, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.AudioInputTokens != 80 {
+		t.Errorf("AudioInputTokens: want 80, got %d", u.AudioInputTokens)
+	}
+	if u.AudioOutputTokens != 60 {
+		t.Errorf("AudioOutputTokens: want 60, got %d", u.AudioOutputTokens)
+	}
+	if u.PromptTokens != 200 {
+		t.Errorf("PromptTokens: want 200, got %d", u.PromptTokens)
+	}
+	if u.CompletionTokens != 120 {
+		t.Errorf("CompletionTokens: want 120, got %d", u.CompletionTokens)
+	}
+}
+
+// TestOpenAICalculator_AudioTokenCost_GPT4oAudioPreview verifies the full cost
+// calculation path for gpt-4o-audio-preview with mixed text and audio tokens.
+//
+// gpt-4o-audio-preview pricing (per million tokens):
+//   - text input:  $2.50  → 2.5e-6 per token
+//   - audio input: $40.00 → 4e-5 per token
+//   - text output: $10.00 → 1e-5 per token
+//   - audio output:$80.00 → 8e-5 per token
+//
+// Test payload: 120 prompt tokens (80 text + 40 audio), 80 completion (50 text + 30 audio)
+//
+//	textInputCost  = 80  × 2.5e-6  = 0.000200
+//	audioInputCost = 40  × 4e-5   = 0.001600
+//	textOutputCost = 50  × 1e-5   = 0.000500
+//	audioOutputCost= 30  × 8e-5   = 0.002400
+//	total          =                 0.004700
+func TestOpenAICalculator_AudioTokenCost_GPT4oAudioPreview(t *testing.T) {
+	c := &OpenAICalculator{}
+	respBody := []byte(`{
+"usage": {
+  "prompt_tokens": 120,
+  "completion_tokens": 80,
+  "total_tokens": 200,
+  "prompt_tokens_details":     { "cached_tokens": 0, "audio_tokens": 40 },
+  "completion_tokens_details": { "reasoning_tokens": 0, "audio_tokens": 30 }
+}
+}`)
+	u, err := c.Normalize(respBody, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+
+	pricing, ok := lookupPricing("gpt-4o-audio-preview")
+	if !ok {
+		t.Fatal("pricing not found for gpt-4o-audio-preview")
+	}
+	cost := genericCalculateCost(u, pricing)
+
+	// Expected: 0.004700
+	const want = 0.004700
+	const tol = 1e-9
+	if diff := cost - want; diff > tol || diff < -tol {
+		t.Errorf("cost = %.10f, want %.10f (delta %.2e)", cost, want, diff)
+	}
+}
+
+// TestOpenAICalculator_AudioTokenCost_NoAudio ensures that a response with no
+// audio tokens gives the same result as a purely text-based calculation.
+func TestOpenAICalculator_AudioTokenCost_NoAudio(t *testing.T) {
+	c := &OpenAICalculator{}
+	respBody := []byte(`{
+"usage": {
+  "prompt_tokens": 100,
+  "completion_tokens": 50,
+  "total_tokens": 150,
+  "prompt_tokens_details":     { "cached_tokens": 0, "audio_tokens": 0 },
+  "completion_tokens_details": { "reasoning_tokens": 0, "audio_tokens": 0 }
+}
+}`)
+	u, err := c.Normalize(respBody, nil)
+	if err != nil {
+		t.Fatalf("Normalize error: %v", err)
+	}
+	if u.AudioInputTokens != 0 || u.AudioOutputTokens != 0 {
+		t.Errorf("expected zero audio tokens, got in=%d out=%d", u.AudioInputTokens, u.AudioOutputTokens)
 	}
 }

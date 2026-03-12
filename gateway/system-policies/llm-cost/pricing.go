@@ -104,7 +104,11 @@ type ModelPricing struct {
 	InputCostPerTokenAbove200k  float64 `json:"input_cost_per_token_above_200k_tokens"`
 	OutputCostPerTokenAbove200k float64 `json:"output_cost_per_token_above_200k_tokens"`
 
-	// ON_DEMAND_PRIORITY service tier rates (Vertex AI Gemini).
+	// Tiered rates — above 272k context window (gpt-5.4, gpt-5.4-pro with 1.05M context)
+	InputCostPerTokenAbove272k  float64 `json:"input_cost_per_token_above_272k_tokens"`
+	OutputCostPerTokenAbove272k float64 `json:"output_cost_per_token_above_272k_tokens"`
+
+	// ON_DEMAND_PRIORITY service tier rates (Vertex AI Gemini, OpenAI priority).
 	// When usageMetadata.trafficType == "ON_DEMAND_PRIORITY" the _priority variants
 	// are billed instead of the standard rates. Mirrors LiteLLM's service_tier="priority" path.
 	InputCostPerTokenPriority                float64 `json:"input_cost_per_token_priority"`
@@ -114,6 +118,14 @@ type ModelPricing struct {
 	OutputCostPerTokenAbove200kPriority      float64 `json:"output_cost_per_token_above_200k_tokens_priority"`
 	CacheReadInputTokenCostAbove200kPriority float64 `json:"cache_read_input_token_cost_above_200k_tokens_priority"`
 	InputCostPerAudioTokenPriority           float64 `json:"input_cost_per_audio_token_priority"`
+	InputCostPerTokenAbove272kPriority       float64 `json:"input_cost_per_token_above_272k_tokens_priority"`
+	OutputCostPerTokenAbove272kPriority      float64 `json:"output_cost_per_token_above_272k_tokens_priority"`
+	CacheReadInputTokenCostAbove272kPriority float64 `json:"cache_read_input_token_cost_above_272k_tokens_priority"`
+
+	// Flex service tier rates (OpenAI flex processing — lower price, higher latency).
+	InputCostPerTokenFlex       float64 `json:"input_cost_per_token_flex"`
+	OutputCostPerTokenFlex      float64 `json:"output_cost_per_token_flex"`
+	CacheReadInputTokenCostFlex float64 `json:"cache_read_input_token_cost_flex"`
 
 	// Prompt caching
 	CacheReadInputTokenCost              float64 `json:"cache_read_input_token_cost"`
@@ -121,6 +133,7 @@ type ModelPricing struct {
 	CacheCreationInputTokenCostAbove1hr  float64 `json:"cache_creation_input_token_cost_above_1hr"`
 	CacheReadInputTokenCostAbove200k     float64 `json:"cache_read_input_token_cost_above_200k_tokens"`
 	CacheCreationInputTokenCostAbove200k float64 `json:"cache_creation_input_token_cost_above_200k_tokens"`
+	CacheReadInputTokenCostAbove272k     float64 `json:"cache_read_input_token_cost_above_272k_tokens"`
 
 	// Cached audio token read rate (Gemini models with separate audio caching cost).
 	// When set, cached audio input tokens are billed at this rate instead of
@@ -145,6 +158,18 @@ type ModelPricing struct {
 	// includes a prompt_audio_seconds field; cost = seconds × this rate.
 	// Maps to the existing input_cost_per_audio_per_second JSON field.
 	InputCostPerAudioPerSecond float64 `json:"input_cost_per_audio_per_second"`
+
+	// Non-token pricing units for specialised model types.
+	// These are stored for reference and future billing support; current calculators
+	// handle them via provider-specific paths rather than generic_calculate_cost.
+	InputCostPerCharacter         float64 `json:"input_cost_per_character"`          // TTS models ($/character)
+	InputCostPerSecond            float64 `json:"input_cost_per_second"`             // Whisper transcription ($/second)
+	OutputCostPerSecond           float64 `json:"output_cost_per_second"`            // Whisper output ($/second)
+	InputCostPerImage             float64 `json:"input_cost_per_image"`              // Image generation ($/image)
+	InputCostPerPixel             float64 `json:"input_cost_per_pixel"`              // DALL-E pixel-based pricing
+	OutputCostPerPixel            float64 `json:"output_cost_per_pixel"`             // DALL-E pixel-based output pricing
+	OutputCostPerVideoPerSecond   float64 `json:"output_cost_per_video_per_second"`  // Video generation ($/second)
+	CodeInterpreterCostPerSession float64 `json:"code_interpreter_cost_per_session"` // Container/code interpreter ($/session)
 
 	// Built-in web search tool cost (Anthropic, OpenAI).
 	// The JSON value is an object keyed by search_context_size: low / medium / high.
@@ -384,12 +409,14 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	}
 
 	switch {
+	case tierTokens > 272_000 && pricing.InputCostPerTokenAbove272k > 0:
+		inputRate = pricing.InputCostPerTokenAbove272k
+		outputRate = pricing.OutputCostPerTokenAbove272k
+		cacheReadRate = pricing.CacheReadInputTokenCostAbove272k
 	case tierTokens > 200_000 && pricing.InputCostPerTokenAbove200k > 0:
 		inputRate = pricing.InputCostPerTokenAbove200k
 		outputRate = pricing.OutputCostPerTokenAbove200k
-		{
-			cacheReadRate = pricing.CacheReadInputTokenCostAbove200k
-		}
+		cacheReadRate = pricing.CacheReadInputTokenCostAbove200k
 		if pricing.CacheCreationInputTokenCostAbove200k > 0 {
 			cacheWrite5mRate = pricing.CacheCreationInputTokenCostAbove200k
 			// TODO: if Anthropic ever defines cache_creation_input_token_cost_above_1hr_above_200k_tokens,
@@ -401,11 +428,21 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 		outputRate = pricing.OutputCostPerTokenAbove128k
 	}
 
-	// Service tier override: Gemini ON_DEMAND_PRIORITY requests are billed at _priority
-	// rates. Priority variants exist per-tier; we check >200k first, then standard.
+	// Service tier override: priority and flex requests use their respective rate variants.
+	// Priority tiers are checked from the narrowest threshold downward so that a >272k
+	// prompt on a priority tier gets the right compounding rate.
 	// Matches LiteLLM's _get_service_tier_cost_key("...", service_tier) logic.
-	if usage.ServiceTier == "priority" {
+	switch usage.ServiceTier {
+	case "priority":
 		switch {
+		case tierTokens > 272_000 && pricing.InputCostPerTokenAbove272kPriority > 0:
+			inputRate = pricing.InputCostPerTokenAbove272kPriority
+			if pricing.OutputCostPerTokenAbove272kPriority > 0 {
+				outputRate = pricing.OutputCostPerTokenAbove272kPriority
+			}
+			if pricing.CacheReadInputTokenCostAbove272kPriority > 0 {
+				cacheReadRate = pricing.CacheReadInputTokenCostAbove272kPriority
+			}
 		case tierTokens > 200_000 && pricing.InputCostPerTokenAbove200kPriority > 0:
 			inputRate = pricing.InputCostPerTokenAbove200kPriority
 			if pricing.OutputCostPerTokenAbove200kPriority > 0 {
@@ -423,8 +460,23 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 				cacheReadRate = pricing.CacheReadInputTokenCostPriority
 			}
 		}
-		// Flex/batch rates: no Gemini models currently define _flex variants.
-		// Add a "flex" case here when they do.
+	case "flex":
+		if pricing.InputCostPerTokenFlex > 0 {
+			inputRate = pricing.InputCostPerTokenFlex
+			if pricing.OutputCostPerTokenFlex > 0 {
+				outputRate = pricing.OutputCostPerTokenFlex
+			}
+			if pricing.CacheReadInputTokenCostFlex > 0 {
+				cacheReadRate = pricing.CacheReadInputTokenCostFlex
+			}
+		}
+	case "batch":
+		if pricing.InputCostPerTokenBatches > 0 {
+			inputRate = pricing.InputCostPerTokenBatches
+			if pricing.OutputCostPerTokenBatches > 0 {
+				outputRate = pricing.OutputCostPerTokenBatches
+			}
+		}
 	}
 
 	// Regular (non-cached, non-reasoning) prompt tokens (audio tokens also excluded
@@ -493,14 +545,23 @@ func genericCalculateCost(usage Usage, pricing ModelPricing) float64 {
 	// when no size was specified in the request, matching LiteLLM's behaviour.
 	// The JSON keys use the format "search_context_size_<tier>" (e.g. "search_context_size_medium").
 	var webSearchCost float64
-	if usage.WebSearchRequests > 0 && len(pricing.SearchContextCostPerQuery) > 0 {
-		size := usage.SearchContextSize
-		if size == "" {
-			size = "medium"
-		}
-		jsonKey := "search_context_size_" + size
-		if rate, ok := pricing.SearchContextCostPerQuery[jsonKey]; ok {
-			webSearchCost = float64(usage.WebSearchRequests) * rate
+	if usage.WebSearchRequests > 0 {
+		if len(pricing.SearchContextCostPerQuery) > 0 {
+			// Variable pricing by context size (e.g. OpenAI search-preview models,
+			// Anthropic). Default to "medium" when no size was requested, matching
+			// LiteLLM's behaviour.
+			size := usage.SearchContextSize
+			if size == "" {
+				size = "medium"
+			}
+			jsonKey := "search_context_size_" + size
+			if rate, ok := pricing.SearchContextCostPerQuery[jsonKey]; ok {
+				webSearchCost = float64(usage.WebSearchRequests) * rate
+			}
+		} else if pricing.WebSearchCostPerRequest > 0 {
+			// Flat per-call pricing (e.g. standard OpenAI models using the
+			// web_search_preview tool at $10/1k calls = $0.01/call).
+			webSearchCost = float64(usage.WebSearchRequests) * pricing.WebSearchCostPerRequest
 		}
 	}
 
