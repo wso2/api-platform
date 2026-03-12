@@ -75,8 +75,9 @@ func NewMCPDeploymentService(
 }
 
 // DeployMCPConfiguration handles the complete MCP configuration deployment process
-func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams,
-	apiConfig *api.RestAPI, mcpConfig *api.MCPProxyConfiguration) (*APIDeploymentResult, error) {
+func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams) (*APIDeploymentResult, error) {
+	var existingConfig *models.StoredConfig
+	var isUpdate bool
 
 	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
 	if err != nil {
