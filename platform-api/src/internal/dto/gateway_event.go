@@ -139,3 +139,42 @@ type GatewayConfigEventDTO struct {
 	// Action specifies the configuration change action
 	Action string `json:"action"`
 }
+
+// MCPProxyDeploymentEventDTO is the wire format for MCP proxy deployment notifications.
+type MCPProxyDeploymentEventDTO struct {
+	// ProxyId identifies the deployed MCP proxy (handle)
+	ProxyId string `json:"proxyId"`
+
+	// DeploymentID identifies the specific deployment artifact
+	DeploymentID string `json:"deploymentId"`
+
+	// Vhost specifies the virtual host
+	Vhost string `json:"vhost"`
+
+	// Environment specifies the deployment environment
+	Environment string `json:"environment"`
+}
+
+// MCPProxyUndeploymentEventDTO is the wire format for MCP proxy undeployment notifications.
+type MCPProxyUndeploymentEventDTO struct {
+	// ProxyId identifies the undeployed MCP proxy (handle)
+	ProxyId string `json:"proxyId"`
+
+	// Vhost specifies the virtual host
+	Vhost string `json:"vhost"`
+
+	// Environment specifies the deployment environment
+	Environment string `json:"environment"`
+}
+
+// MCPProxyDeletionEventDTO is the wire format for MCP proxy deletion notifications.
+type MCPProxyDeletionEventDTO struct {
+	// ProxyId identifies the deleted MCP proxy
+	ProxyId string `json:"proxyId"`
+
+	// Vhost specifies the virtual host
+	Vhost string `json:"vhost"`
+
+	// Environment specifies the deployment environment
+	Environment string `json:"environment"`
+}

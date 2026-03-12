@@ -149,6 +149,16 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 
 	deploymentId := params.DeploymentId
 	gatewayId := params.GatewayId
+	if deploymentId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"deploymentId is required"))
+		return
+	}
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"gatewayId is required"))
+		return
+	}
 	if deploymentId == "00000000-0000-0000-0000-000000000000" || gatewayId == "00000000-0000-0000-0000-000000000000" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"deploymentId/gatewayId cannot be zero-value UUID"))

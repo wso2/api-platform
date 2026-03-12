@@ -1096,7 +1096,7 @@ func (s *APIService) convertToAPIDevPortalResponse(dpd *model.APIDevPortalWithDe
 
 	// Add publication details if published
 	if dpd.IsPublished && dpd.PublishedAt != nil {
-		status := api.Published
+		status := api.RESTAPIPublicationDetailsStatusPublished
 		if dpd.PublicationStatus != nil && *dpd.PublicationStatus != "" {
 			status = api.RESTAPIPublicationDetailsStatus(*dpd.PublicationStatus)
 		}

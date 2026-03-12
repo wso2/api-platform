@@ -71,6 +71,7 @@ const (
 	WebSubApi   = "WebSubApi"
 	LLMProvider = "LlmProvider"
 	LLMProxy    = "LlmProxy"
+	MCPProxy    = "Mcp"
 )
 
 // API Type Constants
@@ -125,6 +126,8 @@ const (
 	// MaxLLMProxiesPerOrganization is the maximum number of LLM proxies allowed per organization.
 	MaxLLMProxiesPerOrganization = 5
 )
+
+const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 
 // Metadata key constants for deployment metadata
 const (

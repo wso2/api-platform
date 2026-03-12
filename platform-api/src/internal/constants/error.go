@@ -40,6 +40,7 @@ var (
 	ErrInvalidProjectName                    = errors.New("invalid project name")
 	ErrOrganizationMustHAveAtLeastOneProject = errors.New("organization must have at least one project")
 	ErrProjectHasAssociatedAPIs              = errors.New("project has associated APIs")
+	ErrProjectHasAssociatedMCPProxies        = errors.New("project has associated MCP proxies")
 	ErrorInvalidProjectUUID                  = errors.New("invalid project UUID")
 )
 
@@ -140,6 +141,12 @@ var (
 )
 
 var (
+	ErrMCPProxyExists       = errors.New("mcp proxy already exists")
+	ErrMCPProxyNotFound     = errors.New("mcp proxy not found")
+	ErrMCPProxyLimitReached = errors.New("mcp proxy limit reached for organization")
+)
+
+var (
 	// API Key errors
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyAlreadyExists = errors.New("api key already exists")
@@ -150,6 +157,10 @@ var (
 )
 
 var (
+	ErrInvalidURL = errors.New("invalid URL")
+)
+
+var (
 	// Subscription errors (application-level subscriptions for REST APIs)
 	ErrSubscriptionNotFound      = errors.New("subscription not found")
 	ErrSubscriptionAlreadyExists = errors.New("application is already subscribed to this API")
@@ -157,7 +168,7 @@ var (
 
 var (
 	// Subscription plan errors
-	ErrSubscriptionPlanNotFound          = errors.New("subscription plan not found")
+	ErrSubscriptionPlanNotFound           = errors.New("subscription plan not found")
 	ErrSubscriptionPlanNotFoundOrInactive = errors.New("subscription plan not found or not active")
-	ErrSubscriptionPlanAlreadyExists     = errors.New("subscription plan with this name already exists for the organization")
+	ErrSubscriptionPlanAlreadyExists      = errors.New("subscription plan with this name already exists for the organization")
 )
