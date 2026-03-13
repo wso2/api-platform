@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -93,7 +94,7 @@ spec:
 		require.NotNil(t, result)
 
 		// Read back from DB
-		cfg, err := db.GetConfigByHandle("no-vhosts")
+		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "no-vhosts")
 		require.NoError(t, err)
 
 		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
@@ -123,7 +124,7 @@ spec:
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		cfg, err := db.GetConfigByHandle("sentinel-vhosts")
+		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "sentinel-vhosts")
 		require.NoError(t, err)
 
 		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
@@ -153,7 +154,7 @@ spec:
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		cfg, err := db.GetConfigByHandle("explicit-vhosts")
+		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "explicit-vhosts")
 		require.NoError(t, err)
 
 		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
@@ -185,7 +186,7 @@ spec:
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		cfg, err := db.GetConfigByHandle("no-sandbox-default")
+		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "no-sandbox-default")
 		require.NoError(t, err)
 
 		srcCfg, ok := cfg.SourceConfiguration.(api.RestAPI)
