@@ -37,11 +37,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// vhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
-// and persist the current gateway default vhosts, ensuring deployments are immune to future
-// gateway config changes.
-const vhostGatewayDefault = "_gateway_default_"
-
 // vhostLabelRe matches a single valid DNS label per RFC 1035.
 var vhostLabelRe = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
 
@@ -170,9 +165,9 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 
 	if req.Base == "current" {
 		// Fresh deployment: default to sentinel so the gateway resolves and persists its defaults.
-		vhostMain = vhostGatewayDefault
+		vhostMain = constants.VhostGatewayDefault
 		if apiModel.Configuration.Upstream.Sandbox != nil {
-			sandboxSentinel := vhostGatewayDefault
+			sandboxSentinel := constants.VhostGatewayDefault
 			vhostSandbox = &sandboxSentinel
 		}
 	} else {
@@ -478,7 +473,7 @@ func validateEndpointURL(endpointURL string) error {
 
 // isValidVHostOrSentinel returns true if vhost is the gateway-default sentinel or a valid RFC 1035 hostname.
 func isValidVHostOrSentinel(vhost string) bool {
-	if vhost == vhostGatewayDefault {
+	if vhost == constants.VhostGatewayDefault {
 		return true
 	}
 	if vhost == "" {

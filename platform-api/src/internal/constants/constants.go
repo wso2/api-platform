@@ -135,4 +135,8 @@ const (
 	MetadataKeyVhostMain = "vhost_main"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
 	MetadataKeyVhostSandbox = "vhost_sandbox"
+	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
+	// and persist the current gateway default vhosts, ensuring deployments are immune to future
+	// gateway config changes.
+	VhostGatewayDefault = "_gateway_default_"
 )
