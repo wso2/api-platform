@@ -60,6 +60,7 @@ type ApplicationRepository interface {
 	CreateApplication(app *model.Application) error
 	GetApplicationByUUID(appID string) (*model.Application, error)
 	GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error)
+	GetArtifactByUUID(artifactUUID, orgID string) (*model.Artifact, error)
 	GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error)
 	GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error)
 	GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error)
@@ -68,6 +69,7 @@ type ApplicationRepository interface {
 	DeleteApplication(appID string) error
 
 	GetAPIKeyByID(keyID, orgID string) (*model.ApplicationAPIKey, error)
+	GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgID string) ([]string, error)
 	ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error)
 	ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
 	AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error

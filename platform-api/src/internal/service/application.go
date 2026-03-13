@@ -18,6 +18,8 @@
 package service
 
 import (
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"platform-api/src/internal/constants"
@@ -30,20 +32,29 @@ import (
 )
 
 type ApplicationService struct {
-	appRepo     repository.ApplicationRepository
-	projectRepo repository.ProjectRepository
-	orgRepo     repository.OrganizationRepository
+	appRepo              repository.ApplicationRepository
+	projectRepo          repository.ProjectRepository
+	orgRepo              repository.OrganizationRepository
+	apiRepo              repository.APIRepository
+	gatewayEventsService *GatewayEventsService
+	slogger              *slog.Logger
 }
 
 func NewApplicationService(
 	appRepo repository.ApplicationRepository,
 	projectRepo repository.ProjectRepository,
 	orgRepo repository.OrganizationRepository,
+	apiRepo repository.APIRepository,
+	gatewayEventsService *GatewayEventsService,
+	slogger *slog.Logger,
 ) *ApplicationService {
 	return &ApplicationService{
-		appRepo:     appRepo,
-		projectRepo: projectRepo,
-		orgRepo:     orgRepo,
+		appRepo:              appRepo,
+		projectRepo:          projectRepo,
+		orgRepo:              orgRepo,
+		apiRepo:              apiRepo,
+		gatewayEventsService: gatewayEventsService,
+		slogger:              slogger,
 	}
 }
 
@@ -176,7 +187,7 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 	return response, nil
 }
 
-func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *dto.UpdateApplicationRequest, orgID string) (*dto.ApplicationResponse, error) {
+func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *dto.UpdateApplicationRequest, orgID, userID string) (*dto.ApplicationResponse, error) {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -218,6 +229,15 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *dto.Up
 		return nil, err
 	}
 
+	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil {
+		return nil, err
+	}
+
 	return s.modelToApplicationResponse(app), nil
 }
 
@@ -238,11 +258,22 @@ func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string) (*dt
 	if err != nil {
 		return nil, err
 	}
-	return s.buildMappedAPIKeyList(app.UUID)
+
+	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	if err != nil {
+		return nil, err
+	}
+
+	return keys, nil
 }
 
-func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto.ReplaceApplicationAPIKeysRequest, orgID string) (*dto.MappedAPIKeyListResponse, error) {
+func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto.ReplaceApplicationAPIKeysRequest, orgID, userID string) (*dto.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	previousKeys, err := s.buildMappedAPIKeyList(app.UUID)
 	if err != nil {
 		return nil, err
 	}
@@ -256,10 +287,19 @@ func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto
 		return nil, err
 	}
 
-	return s.buildMappedAPIKeyList(app.UUID)
+	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, collectArtifactIDsFromMappedKeys(previousKeys)); err != nil {
+		return nil, err
+	}
+
+	return keys, nil
 }
 
-func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.AddApplicationAPIKeysRequest, orgID string) (*dto.MappedAPIKeyListResponse, error) {
+func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.AddApplicationAPIKeysRequest, orgID, userID string) (*dto.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -274,10 +314,19 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.Add
 		return nil, err
 	}
 
-	return s.buildMappedAPIKeyList(app.UUID)
+	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil {
+		return nil, err
+	}
+
+	return keys, nil
 }
 
-func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, orgID string) error {
+func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, orgID, userID string) error {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return err
@@ -291,7 +340,16 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, orgID stri
 		return constants.ErrAPIKeyNotFound
 	}
 
-	return s.appRepo.RemoveApplicationAPIKey(app.UUID, key.ID)
+	if err := s.appRepo.RemoveApplicationAPIKey(app.UUID, key.ID); err != nil {
+		return err
+	}
+
+	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	if err != nil {
+		return err
+	}
+
+	return s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, []string{key.ArtifactID})
 }
 
 func (s *ApplicationService) HandleExistsCheck(orgID string) func(string) bool {
@@ -324,10 +382,6 @@ func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID string) ([]str
 		if keyID == "" {
 			return nil, constants.ErrInvalidAPIKey
 		}
-		if _, ok := seen[keyID]; ok {
-			continue
-		}
-
 		key, err := s.appRepo.GetAPIKeyByID(keyID, orgID)
 		if err != nil {
 			return nil, err
@@ -336,8 +390,12 @@ func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID string) ([]str
 			return nil, constants.ErrAPIKeyNotFound
 		}
 
-		seen[keyID] = struct{}{}
-		result = append(result, keyID)
+		if _, ok := seen[key.ID]; ok {
+			continue
+		}
+
+		seen[key.ID] = struct{}{}
+		result = append(result, key.ID)
 	}
 
 	return result, nil
@@ -389,11 +447,15 @@ func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationA
 	}
 
 	return &dto.MappedAPIKeyResponse{
-		Id:         key.ID,
-		Name:       key.Name,
+		KeyId: key.Name,
+		AssociatedEntity: dto.AssociatedEntityResponse{
+			Handle: key.ArtifactHandle,
+			Kind:   key.ArtifactKind,
+		},
+		ApiKeyUuid: key.APIKeyUUID,
 		ArtifactId: key.ArtifactID,
 		Status:     utils.StringPtrIfNotEmpty(key.Status),
-		CreatedBy:  utils.StringPtrIfNotEmpty(key.CreatedBy),
+		UserId:     utils.StringPtrIfNotEmpty(key.CreatedBy),
 		CreatedAt:  utils.TimePtrIfNotZero(key.CreatedAt),
 		UpdatedAt:  utils.TimePtrIfNotZero(key.UpdatedAt),
 		ExpiresAt:  key.ExpiresAt,
@@ -416,4 +478,145 @@ func normalizeApplicationType(appType string) (string, error) {
 		return "genai", nil
 	}
 	return "", constants.ErrUnsupportedApplicationType
+}
+
+func (s *ApplicationService) broadcastApplicationMappingUpdate(app *model.Application, userID string, keys *dto.MappedAPIKeyListResponse) error {
+	return s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, nil)
+}
+
+func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(app *model.Application, userID string, keys *dto.MappedAPIKeyListResponse, artifactHints []string) error {
+	if s.appRepo == nil || s.gatewayEventsService == nil {
+		return nil
+	}
+
+	entryByKey := make(map[string]model.ApplicationKeyMapping)
+	affectedArtifactIDs := make(map[string]struct{})
+	gatewayIDs := make(map[string]struct{})
+
+	for _, key := range keys.List {
+		if key == nil {
+			continue
+		}
+
+		if key.ApiKeyUuid == "" {
+			return fmt.Errorf("mapped API key is missing UUID for artifact id %s", key.ArtifactId)
+		}
+		if strings.TrimSpace(key.ArtifactId) == "" {
+			continue
+		}
+
+		entry := model.ApplicationKeyMapping{ApiKeyUuid: key.ApiKeyUuid}
+		entryByKey[entry.ApiKeyUuid] = entry
+		affectedArtifactIDs[key.ArtifactId] = struct{}{}
+	}
+
+	for _, artifactID := range artifactHints {
+		trimmed := strings.TrimSpace(artifactID)
+		if trimmed == "" {
+			continue
+		}
+		affectedArtifactIDs[trimmed] = struct{}{}
+	}
+
+	for artifactID := range affectedArtifactIDs {
+		artifact, err := s.appRepo.GetArtifactByUUID(artifactID, app.OrganizationUUID)
+		if err != nil {
+			return fmt.Errorf("failed to resolve mapped artifact by artifact id %s: %w", artifactID, err)
+		}
+		if artifact == nil {
+			continue
+		}
+
+		switch artifact.Kind {
+		case constants.LLMProvider, constants.LLMProxy:
+			// Supported artifact kinds for gateway association lookups.
+		default:
+			if s.slogger != nil {
+				s.slogger.Warn("Skipping unsupported artifact kind for application mapping broadcast",
+					"applicationId", app.Handle,
+					"artifactId", artifactID,
+					"artifactKind", artifact.Kind,
+				)
+			}
+			continue
+		}
+
+		gatewayIDsForArtifact, err := s.appRepo.GetDeployedGatewayIDsByArtifactUUID(artifact.UUID, app.OrganizationUUID)
+		if err != nil {
+			return fmt.Errorf("failed to resolve deployed gateways for artifact %s (%s): %w", artifact.Handle, artifact.Kind, err)
+		}
+		for _, gatewayID := range gatewayIDsForArtifact {
+			gatewayIDs[gatewayID] = struct{}{}
+		}
+	}
+
+	mappings := make([]model.ApplicationKeyMapping, 0, len(entryByKey))
+	for _, mapping := range entryByKey {
+		mappings = append(mappings, mapping)
+	}
+
+	event := &model.ApplicationUpdatedEvent{
+		ApplicationId:   app.Handle,
+		ApplicationName: app.Name,
+		ApplicationUuid: app.UUID,
+		Mappings:        mappings,
+	}
+
+	if len(gatewayIDs) == 0 {
+		if s.slogger != nil {
+			s.slogger.Debug("No target gateways found for application mapping broadcast", "applicationId", app.Handle)
+		}
+		return nil
+	}
+
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for gatewayID := range gatewayIDs {
+		err := s.gatewayEventsService.BroadcastApplicationUpdatedEvent(gatewayID, userID, event)
+		if err != nil {
+			failureCount++
+			lastError = err
+			if s.slogger != nil {
+				s.slogger.Error("Failed to broadcast application mapping update event", "applicationId", app.Handle, "gatewayId", gatewayID, "error", err)
+			}
+			continue
+		}
+		successCount++
+	}
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver application mapping update event to any gateway: %w", lastError)
+	}
+	if failureCount > 0 && s.slogger != nil {
+		s.slogger.Warn("Partial delivery of application mapping update event", "applicationId", app.Handle, "success", successCount, "failed", failureCount)
+	}
+
+	return nil
+}
+
+func collectArtifactIDsFromMappedKeys(keys *dto.MappedAPIKeyListResponse) []string {
+	if keys == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	artifactIDs := make([]string, 0, len(keys.List))
+	for _, key := range keys.List {
+		if key == nil {
+			continue
+		}
+		artifactID := strings.TrimSpace(key.ArtifactId)
+		if artifactID == "" {
+			continue
+		}
+		if _, exists := seen[artifactID]; exists {
+			continue
+		}
+		seen[artifactID] = struct{}{}
+		artifactIDs = append(artifactIDs, artifactID)
+	}
+
+	return artifactIDs
 }

@@ -4607,34 +4607,41 @@ components:
             type: string
             format: uuid
 
+    AssociatedEntity:
+      type: object
+      required:
+        - handle
+        - kind
+      properties:
+        handle:
+          type: string
+          description: Handle of the associated entity
+          example: pizza-api
+        kind:
+          type: string
+          description: Type of the associated entity
+          example: RestApi
+
     MappedAPIKey:
       type: object
       required:
-        - id
-        - name
-        - artifactId
+        - keyId
+        - associated_entity
       properties:
-        id:
-          type: string
-          format: uuid
-          description: UUID of the API key
-          example: "d2612fbe-b297-4f3c-9d2d-cc821b4dc8d2"
-        name:
+        keyId:
           type: string
           description: Name of the API key
           example: "client-key-1"
-        artifactId:
-          type: string
-          description: UUID of the mapped artifact
-          example: "ad18bb95-245c-4be3-a5f7-f69ce50c0dc9"
+        associated_entity:
+          $ref: '#/components/schemas/AssociatedEntity'
         status:
           type: string
           description: Status of the API key
           example: "ACTIVE"
-        createdBy:
+        userId:
           type: string
-          description: Creator identifier
-          example: "admin"
+          description: User id of the key creator
+          example: "user-123"
         createdAt:
           type: string
           format: date-time

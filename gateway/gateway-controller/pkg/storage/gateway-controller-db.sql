@@ -220,4 +220,18 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(app
 CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
 
+-- Application to API key mappings
+CREATE TABLE IF NOT EXISTS application_api_keys (
+    application_id TEXT NOT NULL,
+    application_name TEXT NOT NULL,
+    api_key_id TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_id, api_key_id),
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_api_keys_application ON application_api_keys(application_id);
+CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(api_key_id);
+
 PRAGMA user_version = 1;

@@ -215,6 +215,18 @@ func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	return nil, errors.New("API key not found")
 }
 
+func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, apiKey := range m.apiKeys {
+		if apiKey.APIKeyUUID != nil && *apiKey.APIKeyUUID == uuid {
+			return apiKey, nil
+		}
+	}
+	return nil, errors.New("API key not found")
+}
+
 func (m *MockStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
@@ -546,6 +558,10 @@ func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string)
 		if _, keep := idsSet[id]; !keep {
 			delete(m.subscriptions, id)
 		}
+	}
+func (m *MockStorage) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+	if m.updateErr != nil {
+		return m.updateErr
 	}
 	return nil
 }

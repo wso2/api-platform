@@ -19,6 +19,7 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -33,10 +34,11 @@ import (
 
 type ApplicationHandler struct {
 	applicationService *service.ApplicationService
+	slogger            *slog.Logger
 }
 
-func NewApplicationHandler(applicationService *service.ApplicationService) *ApplicationHandler {
-	return &ApplicationHandler{applicationService: applicationService}
+func NewApplicationHandler(applicationService *service.ApplicationService, slogger *slog.Logger) *ApplicationHandler {
+	return &ApplicationHandler{applicationService: applicationService, slogger: slogger}
 }
 
 func (h *ApplicationHandler) CreateApplication(c *gin.Context) {
@@ -125,6 +127,7 @@ func (h *ApplicationHandler) UpdateApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
 	}
+	userID := h.resolveRequesterUserID(c)
 
 	var req dto.UpdateApplicationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -132,7 +135,7 @@ func (h *ApplicationHandler) UpdateApplication(c *gin.Context) {
 		return
 	}
 
-	app, err := h.applicationService.UpdateApplication(appID, &req, orgID)
+	app, err := h.applicationService.UpdateApplication(appID, &req, orgID, userID)
 	if err != nil {
 		h.writeApplicationError(c, err, "Failed to update application")
 		return
@@ -192,6 +195,7 @@ func (h *ApplicationHandler) ReplaceApplicationAPIKeys(c *gin.Context) {
 	}
 
 	appID := c.Param("appId")
+	userID := h.resolveRequesterUserID(c)
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -203,7 +207,7 @@ func (h *ApplicationHandler) ReplaceApplicationAPIKeys(c *gin.Context) {
 		return
 	}
 
-	keys, err := h.applicationService.ReplaceMappedAPIKeys(appID, &req, orgID)
+	keys, err := h.applicationService.ReplaceMappedAPIKeys(appID, &req, orgID, userID)
 	if err != nil {
 		h.writeApplicationError(c, err, "Failed to replace mapped API keys")
 		return
@@ -220,6 +224,7 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
 	}
 
 	appID := c.Param("appId")
+	userID := h.resolveRequesterUserID(c)
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -235,7 +240,7 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
 		return
 	}
 
-	keys, err := h.applicationService.AddMappedAPIKeys(appID, &req, orgID)
+	keys, err := h.applicationService.AddMappedAPIKeys(appID, &req, orgID, userID)
 	if err != nil {
 		h.writeApplicationError(c, err, "Failed to add mapped API keys")
 		return
@@ -253,6 +258,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(c *gin.Context) {
 
 	appID := c.Param("appId")
 	keyID := c.Param("keyId")
+	userID := h.resolveRequesterUserID(c)
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
 		return
@@ -262,7 +268,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(c *gin.Context) {
 		return
 	}
 
-	if err := h.applicationService.RemoveMappedAPIKey(appID, keyID, orgID); err != nil {
+	if err := h.applicationService.RemoveMappedAPIKey(appID, keyID, orgID, userID); err != nil {
 		h.writeApplicationError(c, err, "Failed to remove mapped API key")
 		return
 	}
@@ -286,7 +292,29 @@ func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
+func (h *ApplicationHandler) resolveRequesterUserID(c *gin.Context) string {
+	userID := strings.TrimSpace(c.GetHeader("x-user-id"))
+	if userID != "" {
+		return userID
+	}
+
+	if ctxUserID, ok := middleware.GetUserIDFromContext(c); ok {
+		return strings.TrimSpace(ctxUserID)
+	}
+
+	return ""
+}
+
 func (h *ApplicationHandler) writeApplicationError(c *gin.Context, err error, fallback string) {
+	if h.slogger != nil {
+		h.slogger.Error(fallback,
+			"error", err,
+			"path", c.FullPath(),
+			"method", c.Request.Method,
+			"appId", c.Param("appId"),
+		)
+	}
+
 	switch {
 	case errors.Is(err, constants.ErrApplicationNotFound):
 		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Application not found"))

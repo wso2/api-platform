@@ -85,6 +85,34 @@ func (r *ApplicationRepo) GetApplicationByIDOrHandle(appIDOrHandle, orgID string
 	return app, err
 }
 
+func (r *ApplicationRepo) GetArtifactByUUID(artifactUUID, orgID string) (*model.Artifact, error) {
+	row := r.db.QueryRow(r.db.Rebind(`
+		SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at
+		FROM artifacts
+		WHERE uuid = ? AND organization_uuid = ?
+	`), artifactUUID, orgID)
+
+	artifact := &model.Artifact{}
+	err := row.Scan(
+		&artifact.UUID,
+		&artifact.Handle,
+		&artifact.Name,
+		&artifact.Version,
+		&artifact.Kind,
+		&artifact.OrganizationUUID,
+		&artifact.CreatedAt,
+		&artifact.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return artifact, nil
+}
+
 func (r *ApplicationRepo) GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
 		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
@@ -160,10 +188,10 @@ func (r *ApplicationRepo) DeleteApplication(appID string) error {
 
 func (r *ApplicationRepo) GetAPIKeyByID(keyID, orgID string) (*model.ApplicationAPIKey, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT ak.id, ak.name, ak.artifact_uuid, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
+		SELECT ak.uuid, ak.name, ak.artifact_uuid, art.handle, art.kind, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
 		FROM api_keys ak
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
-		WHERE art.organization_uuid = ? AND ak.id = ?
+		WHERE art.organization_uuid = ? AND ak.name = ?
 	`), orgID, keyID)
 
 	key, err := scanApplicationAPIKey(row)
@@ -173,13 +201,37 @@ func (r *ApplicationRepo) GetAPIKeyByID(keyID, orgID string) (*model.Application
 	return key, err
 }
 
+func (r *ApplicationRepo) GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgID string) ([]string, error) {
+	rows, err := r.db.Query(r.db.Rebind(`
+		SELECT gateway_uuid
+		FROM deployment_status
+		WHERE artifact_uuid = ? AND organization_uuid = ? AND status = ?
+	`), artifactUUID, orgID, string(model.DeploymentStatusDeployed))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]string, 0)
+	for rows.Next() {
+		var gatewayID string
+		if err := rows.Scan(&gatewayID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, gatewayID)
+	}
+
+	return ids, rows.Err()
+}
+
 func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT ak.id, ak.name, ak.artifact_uuid, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
+		SELECT ak.uuid, ak.uuid, ak.name, ak.artifact_uuid, art.handle, art.kind, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
 		FROM application_api_keys aak
-		INNER JOIN api_keys ak ON ak.id = aak.api_key_id
+		INNER JOIN api_keys ak ON ak.uuid = aak.api_key_id
+		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
 		WHERE aak.application_uuid = ?
-		ORDER BY aak.created_at DESC, ak.name ASC, ak.id ASC
+		ORDER BY aak.created_at DESC, ak.name ASC, ak.uuid ASC
 	`), applicationUUID)
 	if err != nil {
 		return nil, err
@@ -330,8 +382,11 @@ func scanApplicationAPIKey(scanner rowScanner) (*model.ApplicationAPIKey, error)
 
 	err := scanner.Scan(
 		&key.ID,
+		&key.APIKeyUUID,
 		&key.Name,
 		&key.ArtifactID,
+		&key.ArtifactHandle,
+		&key.ArtifactKind,
 		&status,
 		&createdBy,
 		&key.CreatedAt,
