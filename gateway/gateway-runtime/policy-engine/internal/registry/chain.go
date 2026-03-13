@@ -30,15 +30,35 @@ type PolicyChain struct {
 	// Policy specifications (aligned with Policies)
 	PolicySpecs []policy.PolicySpec
 
-	// Computed flag: true if any policy requires request body access
-	// Determines whether ext_proc uses SKIP or BUFFERED mode for request body
+	// Computed flag: true if any policy requires request body access.
+	// Determines whether ext_proc uses SKIP or BUFFERED mode for request body.
 	RequiresRequestBody bool
 
-	// Computed flag: true if any policy requires response body access
-	// Determines whether ext_proc uses SKIP or BUFFERED mode for response body
+	// Computed flag: true if any policy requires response body access.
+	// Determines whether ext_proc uses SKIP or BUFFERED mode for response body.
 	RequiresResponseBody bool
 
-	// Computed flag: true if any policy has a CEL execution condition
-	// When false, CEL evaluation is skipped entirely during execution
+	// Computed flag: true if any policy requires request header access.
+	// Determines whether ext_proc uses SKIP or BUFFERED mode for request header.
+	RequiresRequestHeader bool
+
+	// Computed flag: true if any policy requires response header access.
+	// Determines whether ext_proc uses SKIP or BUFFERED mode for response header.
+	RequiresResponseHeader bool
+
+	// Computed flag: true when every request policy also implements
+	// StreamingRequestPolicy. When false, the kernel forces BUFFERED mode
+	// for request body even if some policies support streaming.
+	SupportsRequestStreaming bool
+
+	// Computed flag: true when every response policy also implements
+	// StreamingResponsePolicy. When true and the upstream response signals
+	// streaming (Transfer-Encoding: chunked or Content-Type: text/event-stream),
+	// the kernel upgrades Envoy to FULL_DUPLEX_STREAMED mode for the response body.
+	// Any buffered-only policy in the chain forces this to false.
+	SupportsResponseStreaming bool
+
+	// Computed flag: true if any policy has a CEL execution condition.
+	// When false, CEL evaluation is skipped entirely during execution.
 	HasExecutionConditions bool
 }

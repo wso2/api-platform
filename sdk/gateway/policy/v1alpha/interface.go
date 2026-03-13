@@ -1,7 +1,21 @@
 package policyv1alpha
 
-// PolicyMetadata contains metadata passed to GetPolicy for instance creation
-// This will be passed to the GetPolicy factory function to provide context about policy
+// Policy is the marker interface that all policies must implement.
+// Capabilities are declared by implementing phase-specific sub-interfaces.
+// The kernel discovers capabilities at chain-build time using type assertions —
+// once, at startup, with zero per-request overhead.
+//
+// Mode selection rules (evaluated at chain-build time):
+//   - If ALL response-body policies implement StreamingResponsePolicy →
+//     kernel upgrades Envoy to FULL_DUPLEX_STREAMED at response-headers phase
+//     when streaming indicators are detected in the upstream response.
+//   - If ANY response-body policy implements only ResponsePolicy →
+//     entire chain is forced to BUFFERED mode, preserving the ability to
+//     return ImmediateResponse before the client sees any bytes.
+type Policy interface{}
+
+// PolicyMetadata contains metadata passed to GetPolicy for instance creation.
+// This will be passed to the GetPolicy factory function to provide context about the policy.
 type PolicyMetadata struct {
 	// RouteName is the unique identifier for the route this policy is attached to
 	RouteName string
@@ -19,27 +33,7 @@ type PolicyMetadata struct {
 	AttachedTo Level
 }
 
-// Policy is the base interface that all policies must implement
-type Policy interface {
-
-	// Mode returns the policy's processing mode for each phase
-	// Used by the kernel to optimize execution (e.g., skip body buffering if not needed)
-	Mode() ProcessingMode
-
-	// OnRequest executes the policy during request phase
-	// Called with request context including headers and body (if body mode is BUFFER)
-	// Returns RequestAction with modifications or immediate response
-	// Returns nil if policy has no action (pass-through)
-	OnRequest(ctx *RequestContext, params map[string]interface{}) RequestAction
-
-	// OnResponse executes the policy during response phase
-	// Called with response context including headers and body (if body mode is BUFFER)
-	// Returns ResponseAction with modifications
-	// Returns nil if policy has no action (pass-through)
-	OnResponse(ctx *ResponseContext, params map[string]interface{}) ResponseAction
-}
-
-// PolicyFactory is the function signature for creating policy instances
+// PolicyFactory is the function signature for creating policy instances.
 // Policy implementations must export a GetPolicy function with this signature:
 //
 //	func GetPolicy(
@@ -62,48 +56,56 @@ type Policy interface {
 // and setting up any required state.
 type PolicyFactory func(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)
 
-// ProcessingMode declares a policy's processing requirements for each phase
-// Used by the kernel to optimize execution (skip unnecessary phases, buffer strategically)
-type ProcessingMode struct {
-	// RequestHeaderMode specifies if/how the policy processes request headers
-	RequestHeaderMode HeaderProcessingMode
+// ─── Sub-interfaces ──────────────────────────────────────────────────────────
+// Policies implement whichever combination they need. The kernel infers the
+// required Envoy processing mode from the set of sub-interfaces implemented.
 
-	// RequestBodyMode specifies if/how the policy processes request body
-	RequestBodyMode BodyProcessingMode
-
-	// ResponseHeaderMode specifies if/how the policy processes response headers
-	ResponseHeaderMode HeaderProcessingMode
-
-	// ResponseBodyMode specifies if/how the policy processes response body
-	ResponseBodyMode BodyProcessingMode
+// RequestHeaderPolicy processes request headers.
+type RequestHeaderPolicy interface {
+	OnRequestHeaders(ctx *RequestHeaderContext) RequestHeaderAction
 }
 
-// HeaderProcessingMode defines how a policy processes headers
-type HeaderProcessingMode string
+// ResponseHeaderPolicy processes response headers.
+type ResponseHeaderPolicy interface {
+	OnResponseHeaders(ctx *ResponseHeaderContext) ResponseHeaderAction
+}
 
-const (
-	// HeaderModeSkip - Don't process headers, skip method invocation
-	HeaderModeSkip HeaderProcessingMode = "SKIP"
+// RequestPolicy processes the complete buffered request body.
+// If any policy in the chain implements this interface the request body is
+// forced to BUFFERED mode.
+type RequestPolicy interface {
+	OnRequestBody(ctx *RequestContext) RequestAction
+}
 
-	// HeaderModeProcess - Process headers (headers are always available)
-	HeaderModeProcess HeaderProcessingMode = "PROCESS"
-)
+// ResponsePolicy processes the complete buffered response body.
+// If any policy in the chain implements only ResponsePolicy (not
+// StreamingResponsePolicy), the entire chain is forced to BUFFERED mode.
+type ResponsePolicy interface {
+	OnResponseBody(ctx *ResponseContext) ResponseAction
+}
 
-// BodyProcessingMode defines how a policy processes body content
-type BodyProcessingMode string
+// StreamingRequestPolicy processes the request body chunk-by-chunk.
+// It must also implement RequestPolicy as a buffered fallback for when the
+// chain is forced to BUFFERED mode.
+// NeedsMoreRequestData is called after each chunk; when it returns true the chunk is
+// held and OnRequestBodyChunk is NOT called until NeedsMoreRequestData returns false
+// (or end-of-stream is reached). Return false to process each chunk independently.
+type StreamingRequestPolicy interface {
+	RequestPolicy
+	OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody) RequestChunkAction
+	NeedsMoreRequestData(accumulated []byte) bool
+}
 
-const (
-	// BodyModeSkip - Don't process body, skip method invocation
-	BodyModeSkip BodyProcessingMode = "SKIP"
-
-	// BodyModeBuffer - Process body with full buffering
-	// The kernel buffers complete body before invoking OnRequestBody/OnResponseBody
-	BodyModeBuffer BodyProcessingMode = "BUFFER"
-
-	// BodyModeStream - Process body in streaming chunks
-	// The kernel invokes streaming methods for each chunk (requires StreamingPolicy interface)
-	BodyModeStream BodyProcessingMode = "STREAM"
-)
+// StreamingResponsePolicy processes the response body chunk-by-chunk.
+// It must also implement ResponsePolicy as a buffered fallback.
+// The kernel upgrades Envoy to FULL_DUPLEX_STREAMED only when every
+// response policy in the chain implements this interface.
+// NeedsMoreResponseData works symmetrically to the request-side method.
+type StreamingResponsePolicy interface {
+	ResponsePolicy
+	OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction
+	NeedsMoreResponseData(accumulated []byte) bool
+}
 
 // Level defines the attachment level of a policy
 type Level string

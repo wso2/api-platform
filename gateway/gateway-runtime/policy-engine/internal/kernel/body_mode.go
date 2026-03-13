@@ -29,25 +29,41 @@ import (
 type BodyMode int
 
 const (
-	// BodyModeSkip - skip body processing (headers only)
+	// BodyModeSkip skips body processing entirely — only headers are exchanged with ext_proc.
 	BodyModeSkip BodyMode = iota
-	// BodyModeBuffered - buffer entire body for processing
+
+	// BodyModeBuffered accumulates the entire body in memory before invoking policies.
+	// Required when any policy in the chain needs the complete payload at once.
 	BodyModeBuffered
+
+	// BodyModeStreamed delivers the body as individual chunks via FULL_DUPLEX_STREAMED mode.
+	// Used only when every body-processing policy in the chain implements the
+	// corresponding streaming interface (StreamingRequestPolicy or StreamingResponsePolicy).
+	BodyModeStreamed
 )
 
-// BuildPolicyChain creates a PolicyChain from PolicySpecs with body requirement computation
-// T055: BuildPolicyChain with body requirement computation
-// apiMetadata is optional and can contain API-level information for policies that need it
+// BuildPolicyChain creates a PolicyChain from PolicySpecs with body requirement computation.
+// Capabilities are discovered at chain-build time using type assertions — once, at startup,
+// with zero per-request overhead.
 func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySpec, reg *registry.PolicyRegistry, apiMetadata policy.PolicyMetadata) (*registry.PolicyChain, error) {
 	chain := &registry.PolicyChain{
 		Policies:             make([]policy.Policy, 0),
 		PolicySpecs:          make([]policy.PolicySpec, 0),
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
-		HasExecutionConditions:     false,
+		HasExecutionConditions: false,
+		// Optimistically assume full streaming support; flipped to false if any
+		// body-processing policy does not implement the streaming interface.
+		SupportsRequestStreaming:  true,
+		SupportsResponseStreaming: true,
 	}
 
-	// Build policy list and compute body requirements
+	// Track whether any policy actually needs body access, to avoid incorrectly
+	// setting SupportsXStreaming when no body policies exist at all.
+	hasRequestPolicy := false
+	hasResponsePolicy := false
+
+	// Build policy list and compute body requirements via type assertions
 	for _, spec := range policySpecs {
 		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{
@@ -57,15 +73,15 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 			APIVersion: apiMetadata.APIVersion,
 		}
 
-		// Create instance using factory with metadata and params
-		// CreateInstance returns the policy and merged params (initParams + runtime params)
+		// Create instance using factory with metadata and params.
+		// CreateInstance returns the policy and merged params (initParams + runtime params).
 		impl, mergedParams, err := reg.CreateInstance(spec.Name, spec.Version, metadata, spec.Parameters.Raw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
 				spec.Name, spec.Version, routeKey, err)
 		}
 
-		// Update spec with merged params so OnRequest/OnResponse receive merged values
+		// Update spec with merged params (stored for potential kernel-internal use)
 		spec.Parameters.Raw = mergedParams
 
 		// Check if policy has CEL execution condition
@@ -77,39 +93,78 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		chain.Policies = append(chain.Policies, impl)
 		chain.PolicySpecs = append(chain.PolicySpecs, spec)
 
-		// Get policy mode and update body requirements
-		mode := impl.Mode()
+		// Discover capabilities via type assertions (zero per-request overhead).
+		// StreamingXBodyPolicy embeds XBodyPolicy, so a streaming policy satisfies both.
+		_, hasReqBody := impl.(policy.RequestPolicy)
+		_, hasStreamingReqBody := impl.(policy.StreamingRequestPolicy)
+		_, hasRespBody := impl.(policy.ResponsePolicy)
+		_, hasStreamingRespBody := impl.(policy.StreamingResponsePolicy)
+		_, hasReqHeader := impl.(policy.RequestHeaderPolicy)
+		_, hasRespHeader := impl.(policy.ResponseHeaderPolicy)
 
-		// Update request body requirement (if any policy needs buffering)
-		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
+		// Request body: any body-accessing policy requires delivery
+		if hasReqBody || hasStreamingReqBody {
 			chain.RequiresRequestBody = true
+			hasRequestPolicy = true
+			// A buffered-only policy forces the entire chain to BUFFERED mode
+			if !hasStreamingReqBody {
+				chain.SupportsRequestStreaming = false
+			}
 		}
 
-		// Update response body requirement (if any policy needs buffering)
-		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
+		// Response body: any body-accessing policy requires delivery
+		if hasRespBody || hasStreamingRespBody {
 			chain.RequiresResponseBody = true
+			hasResponsePolicy = true
+			// A buffered-only policy forces the entire chain to BUFFERED mode,
+			// preserving the ability to return ImmediateResponse before the client
+			// sees any bytes.
+			if !hasStreamingRespBody {
+				chain.SupportsResponseStreaming = false
+			}
 		}
+
+		if hasReqHeader {
+			chain.RequiresRequestHeader = true
+		}
+		if hasRespHeader {
+			chain.RequiresResponseHeader = true
+		}
+	}
+
+	// Clear streaming flags when no body policies exist — there is nothing to stream
+	if !hasRequestPolicy {
+		chain.SupportsRequestStreaming = false
+	}
+	if !hasResponsePolicy {
+		chain.SupportsResponseStreaming = false
 	}
 
 	return chain, nil
 }
 
-// determineRequestBodyMode determines the body mode for request phase
-// T056: Request body mode determination helper
+// determineRequestBodyMode determines the body mode for request phase.
 func determineRequestBodyMode(chain *registry.PolicyChain) BodyMode {
-	if chain.RequiresRequestBody {
-		return BodyModeBuffered
+	if !chain.RequiresRequestBody {
+		return BodyModeSkip
 	}
-	return BodyModeSkip
+	if chain.SupportsRequestStreaming {
+		return BodyModeStreamed
+	}
+	return BodyModeBuffered
 }
 
-// determineResponseBodyMode determines the body mode for response phase
-// T057: Response body mode determination helper
+// determineResponseBodyMode determines the body mode for response phase.
+// Returns BodyModeStreamed only when all response-body policies support streaming;
+// falls back to BodyModeBuffered if any policy requires the full payload.
 func determineResponseBodyMode(chain *registry.PolicyChain) BodyMode {
-	if chain.RequiresResponseBody {
-		return BodyModeBuffered
+	if !chain.RequiresResponseBody {
+		return BodyModeSkip
 	}
-	return BodyModeSkip
+	if chain.SupportsResponseStreaming {
+		return BodyModeStreamed
+	}
+	return BodyModeBuffered
 }
 
 // GetRequestBodyMode returns the body mode for request phase

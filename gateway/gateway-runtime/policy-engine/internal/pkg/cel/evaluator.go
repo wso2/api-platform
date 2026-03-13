@@ -27,15 +27,14 @@ import (
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
-// CELEvaluator provides CEL expression evaluation for RequestContext and ResponseContext
+// CELEvaluator provides CEL expression evaluation for each processing phase context
 type CELEvaluator interface {
-	// EvaluateRequestCondition evaluates a CEL expression against RequestContext
-	// Returns true if condition passes, false if it fails
-	EvaluateRequestCondition(expression string, ctx *policy.RequestContext) (bool, error)
-
-	// EvaluateResponseCondition evaluates a CEL expression against ResponseContext
-	// Returns true if condition passes, false if it fails
-	EvaluateResponseCondition(expression string, ctx *policy.ResponseContext) (bool, error)
+	EvaluateRequestHeaderCondition(expression string, ctx *policy.RequestHeaderContext) (bool, error)
+	EvaluateRequestBodyCondition(expression string, ctx *policy.RequestContext) (bool, error)
+	EvaluateResponseHeaderCondition(expression string, ctx *policy.ResponseHeaderContext) (bool, error)
+	EvaluateResponseBodyCondition(expression string, ctx *policy.ResponseContext) (bool, error)
+	EvaluateStreamingRequestCondition(expression string, ctx *policy.RequestStreamContext) (bool, error)
+	EvaluateStreamingResponseCondition(expression string, ctx *policy.ResponseStreamContext) (bool, error)
 }
 
 // celEvaluator implements CELEvaluator with caching
@@ -64,18 +63,18 @@ func NewCELEvaluator() (CELEvaluator, error) {
 	}, nil
 }
 
-// createCELEnv creates a unified CEL environment supporting both request and response contexts
-// This environment is used for both request and response phase evaluations, allowing
-// policies that execute in both phases to use the same executionCondition expression
+// createCELEnv creates a unified CEL environment supporting both request and response contexts.
+// This environment is used for all phase evaluations, allowing policies to use the same
+// executionCondition expression regardless of which phase they execute in.
 func createCELEnv() (*cel.Env, error) {
 	return cel.NewEnv(
-		// Processing phase indicator - enables phase-specific logic in CEL expressions
-		// Values: "request", "response" (future: "request_headers", "request_body", "response_headers", "response_body")
+		// Processing phase indicator — enables phase-specific logic in CEL expressions
+		// Values: "request_headers", "request_body", "response_headers", "response_body"
 		cel.Variable("processing.phase", cel.StringType),
 		// RequestContext variables
 		cel.Variable("request", cel.ObjectType("RequestContext")),
 		cel.Variable("request.Headers", cel.MapType(cel.StringType, cel.ListType(cel.StringType))),
-		cel.Variable("request.Body", cel.MapType(cel.StringType, cel.DynType)), // Body struct with Content, EndOfStream, Present
+		cel.Variable("request.Body", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("request.Path", cel.StringType),
 		cel.Variable("request.Method", cel.StringType),
 		cel.Variable("request.RequestID", cel.StringType),
@@ -94,48 +93,99 @@ func createCELEnv() (*cel.Env, error) {
 	)
 }
 
-// EvaluateRequestCondition evaluates a CEL expression against RequestContext
-func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policy.RequestContext) (bool, error) {
-	// Get or compile program
+// EvaluateRequestHeaderCondition evaluates a CEL expression against a RequestHeaderContext
+func (e *celEvaluator) EvaluateRequestHeaderCondition(expression string, ctx *policy.RequestHeaderContext) (bool, error) {
 	program, err := e.getOrCompileProgram(expression)
 	if err != nil {
 		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
 	}
 
-	// Build body representation for CEL
-	var bodyForCEL interface{}
-	if ctx.Body != nil && ctx.Body.Present {
-		bodyForCEL = map[string]interface{}{
-			"Content":     ctx.Body.Content,
-			"EndOfStream": ctx.Body.EndOfStream,
-			"Present":     ctx.Body.Present,
-		}
-	} else {
-		bodyForCEL = nil
-	}
+	evalCtx := buildRequestHeaderEvalCtx(ctx, "request_headers")
+	return e.eval(program, evalCtx)
+}
 
-	// Build evaluation context - flatten to match CEL variable declarations
-	evalCtx := map[string]interface{}{
-		// Processing phase indicator
-		"processing.phase": "request",
+// EvaluateRequestBodyCondition evaluates a CEL expression against a RequestBodyContext
+func (e *celEvaluator) EvaluateRequestBodyCondition(expression string, ctx *policy.RequestContext) (bool, error) {
+	program, err := e.getOrCompileProgram(expression)
+	if err != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
+	}
+	return e.eval(program, buildRequestBodyEvalCtx(ctx, "request_body"))
+}
+
+// EvaluateResponseHeaderCondition evaluates a CEL expression against a ResponseHeaderContext
+func (e *celEvaluator) EvaluateResponseHeaderCondition(expression string, ctx *policy.ResponseHeaderContext) (bool, error) {
+	program, err := e.getOrCompileProgram(expression)
+	if err != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
+	}
+	return e.eval(program, buildResponseHeaderEvalCtx(ctx, "response_headers"))
+}
+
+// EvaluateResponseBodyCondition evaluates a CEL expression against a ResponseBodyContext
+func (e *celEvaluator) EvaluateResponseBodyCondition(expression string, ctx *policy.ResponseContext) (bool, error) {
+	program, err := e.getOrCompileProgram(expression)
+	if err != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
+	}
+	return e.eval(program, buildResponseBodyEvalCtx(ctx, "response_body"))
+}
+
+// EvaluateStreamingRequestCondition evaluates a CEL expression against a RequestStreamContext.
+// The phase is set to "request_body" so conditions are consistent with buffered request body processing.
+func (e *celEvaluator) EvaluateStreamingRequestCondition(expression string, ctx *policy.RequestStreamContext) (bool, error) {
+	program, err := e.getOrCompileProgram(expression)
+	if err != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
+	}
+	return e.eval(program, buildStreamingRequestEvalCtx(ctx))
+}
+
+// EvaluateStreamingResponseCondition evaluates a CEL expression against a ResponseStreamContext.
+// The phase is set to "response_body" so conditions are consistent with buffered response body processing.
+func (e *celEvaluator) EvaluateStreamingResponseCondition(expression string, ctx *policy.ResponseStreamContext) (bool, error) {
+	program, err := e.getOrCompileProgram(expression)
+	if err != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
+	}
+	return e.eval(program, buildStreamingResponseEvalCtx(ctx))
+}
+
+// bodyToCEL converts a *policy.Body to the map representation expected by CEL.
+// Returns nil when the body is absent or not yet present.
+func bodyToCEL(body *policy.Body) interface{} {
+	if body == nil || !body.Present {
+		return nil
+	}
+	return map[string]interface{}{
+		"Content":     body.Content,
+		"EndOfStream": body.EndOfStream,
+		"Present":     body.Present,
+	}
+}
+
+// buildRequestHeaderEvalCtx builds a CEL evaluation context from a RequestHeaderContext
+func buildRequestHeaderEvalCtx(ctx *policy.RequestHeaderContext, phase string) map[string]interface{} {
+	headers := ctx.Headers.GetAll()
+	return map[string]interface{}{
+		"processing.phase": phase,
 		"request": map[string]interface{}{
-			"Headers":   ctx.Headers.GetAll(),
-			"Body":      bodyForCEL,
+			"Headers":   headers,
+			"Body":      nil,
 			"Path":      ctx.Path,
 			"Method":    ctx.Method,
 			"RequestID": ctx.RequestID,
 			"Metadata":  ctx.Metadata,
 		},
-		"request.Headers":   ctx.Headers.GetAll(),
-		"request.Body":      bodyForCEL,
+		"request.Headers":   headers,
+		"request.Body":      nil,
 		"request.Path":      ctx.Path,
 		"request.Method":    ctx.Method,
 		"request.RequestID": ctx.RequestID,
 		"request.Metadata":  ctx.Metadata,
-		// Response variables (empty during request phase, for dual-phase policies)
 		"response": map[string]interface{}{
-			"RequestHeaders":  ctx.Headers.GetAll(),
-			"RequestBody":     bodyForCEL,
+			"RequestHeaders":  headers,
+			"RequestBody":     nil,
 			"RequestPath":     ctx.Path,
 			"RequestMethod":   ctx.Method,
 			"ResponseHeaders": map[string][]string{},
@@ -144,8 +194,8 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policy.R
 			"RequestID":       ctx.RequestID,
 			"Metadata":        ctx.Metadata,
 		},
-		"response.RequestHeaders":  ctx.Headers.GetAll(),
-		"response.RequestBody":     bodyForCEL,
+		"response.RequestHeaders":  headers,
+		"response.RequestBody":     nil,
 		"response.RequestPath":     ctx.Path,
 		"response.RequestMethod":   ctx.Method,
 		"response.ResponseHeaders": map[string][]string{},
@@ -154,95 +204,230 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policy.R
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
 	}
-
-	// Evaluate
-	result, _, err := program.Eval(evalCtx)
-	if err != nil {
-		return false, fmt.Errorf("CEL evaluation failed: %w", err)
-	}
-
-	// Convert to boolean
-	boolResult, ok := result.Value().(bool)
-	if !ok {
-		return false, fmt.Errorf("CEL expression must return boolean, got %T", result.Value())
-	}
-
-	return boolResult, nil
 }
 
-// EvaluateResponseCondition evaluates a CEL expression against ResponseContext
-func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policy.ResponseContext) (bool, error) {
-	// Get or compile program
-	program, err := e.getOrCompileProgram(expression)
-	if err != nil {
-		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
-	}
-
-	// Build body representations for CEL
-	var requestBodyForCEL interface{}
-	if ctx.RequestBody != nil && ctx.RequestBody.Present {
-		requestBodyForCEL = map[string]interface{}{
-			"Content":     ctx.RequestBody.Content,
-			"EndOfStream": ctx.RequestBody.EndOfStream,
-			"Present":     ctx.RequestBody.Present,
-		}
-	} else {
-		requestBodyForCEL = nil
-	}
-
-	var responseBodyForCEL interface{}
-	if ctx.ResponseBody != nil && ctx.ResponseBody.Present {
-		responseBodyForCEL = map[string]interface{}{
-			"Content":     ctx.ResponseBody.Content,
-			"EndOfStream": ctx.ResponseBody.EndOfStream,
-			"Present":     ctx.ResponseBody.Present,
-		}
-	} else {
-		responseBodyForCEL = nil
-	}
-
-	// Build evaluation context - flatten to match CEL variable declarations
-	evalCtx := map[string]interface{}{
-		// Processing phase indicator
-		"processing.phase": "response",
+// buildRequestBodyEvalCtx builds a CEL evaluation context from a RequestContext
+func buildRequestBodyEvalCtx(ctx *policy.RequestContext, phase string) map[string]interface{} {
+	headers := ctx.Headers.GetAll()
+	body := bodyToCEL(ctx.Body)
+	return map[string]interface{}{
+		"processing.phase": phase,
+		"request": map[string]interface{}{
+			"Headers":   headers,
+			"Body":      body,
+			"Path":      ctx.Path,
+			"Method":    ctx.Method,
+			"RequestID": ctx.RequestID,
+			"Metadata":  ctx.Metadata,
+		},
+		"request.Headers":   headers,
+		"request.Body":      body,
+		"request.Path":      ctx.Path,
+		"request.Method":    ctx.Method,
+		"request.RequestID": ctx.RequestID,
+		"request.Metadata":  ctx.Metadata,
 		"response": map[string]interface{}{
-			"RequestHeaders":  ctx.RequestHeaders.GetAll(),
-			"RequestBody":     requestBodyForCEL,
-			"RequestPath":     ctx.RequestPath,
-			"RequestMethod":   ctx.RequestMethod,
-			"ResponseHeaders": ctx.ResponseHeaders.GetAll(),
-			"ResponseBody":    responseBodyForCEL,
-			"ResponseStatus":  ctx.ResponseStatus,
+			"RequestHeaders":  headers,
+			"RequestBody":     body,
+			"RequestPath":     ctx.Path,
+			"RequestMethod":   ctx.Method,
+			"ResponseHeaders": map[string][]string{},
+			"ResponseBody":    nil,
+			"ResponseStatus":  0,
 			"RequestID":       ctx.RequestID,
 			"Metadata":        ctx.Metadata,
 		},
-		"response.RequestHeaders":  ctx.RequestHeaders.GetAll(),
-		"response.RequestBody":     requestBodyForCEL,
-		"response.RequestPath":     ctx.RequestPath,
-		"response.RequestMethod":   ctx.RequestMethod,
-		"response.ResponseHeaders": ctx.ResponseHeaders.GetAll(),
-		"response.ResponseBody":    responseBodyForCEL,
-		"response.ResponseStatus":  ctx.ResponseStatus,
+		"response.RequestHeaders":  headers,
+		"response.RequestBody":     body,
+		"response.RequestPath":     ctx.Path,
+		"response.RequestMethod":   ctx.Method,
+		"response.ResponseHeaders": map[string][]string{},
+		"response.ResponseBody":    nil,
+		"response.ResponseStatus":  0,
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
-		// Request variables (aliases to request data for consistency across phases)
+	}
+}
+
+// buildResponseHeaderEvalCtx builds a CEL evaluation context from a ResponseHeaderContext
+func buildResponseHeaderEvalCtx(ctx *policy.ResponseHeaderContext, phase string) map[string]interface{} {
+	requestHeaders := ctx.RequestHeaders.GetAll()
+	requestBody := bodyToCEL(ctx.RequestBody)
+	responseHeaders := ctx.ResponseHeaders.GetAll()
+	return map[string]interface{}{
+		"processing.phase": phase,
 		"request": map[string]interface{}{
-			"Headers":   ctx.RequestHeaders.GetAll(),
-			"Body":      requestBodyForCEL,
+			"Headers":   requestHeaders,
+			"Body":      requestBody,
 			"Path":      ctx.RequestPath,
 			"Method":    ctx.RequestMethod,
 			"RequestID": ctx.RequestID,
 			"Metadata":  ctx.Metadata,
 		},
-		"request.Headers":   ctx.RequestHeaders.GetAll(),
-		"request.Body":      requestBodyForCEL,
+		"request.Headers":   requestHeaders,
+		"request.Body":      requestBody,
 		"request.Path":      ctx.RequestPath,
 		"request.Method":    ctx.RequestMethod,
 		"request.RequestID": ctx.RequestID,
 		"request.Metadata":  ctx.Metadata,
+		"response": map[string]interface{}{
+			"RequestHeaders":  requestHeaders,
+			"RequestBody":     requestBody,
+			"RequestPath":     ctx.RequestPath,
+			"RequestMethod":   ctx.RequestMethod,
+			"ResponseHeaders": responseHeaders,
+			"ResponseBody":    nil,
+			"ResponseStatus":  ctx.ResponseStatus,
+			"RequestID":       ctx.RequestID,
+			"Metadata":        ctx.Metadata,
+		},
+		"response.RequestHeaders":  requestHeaders,
+		"response.RequestBody":     requestBody,
+		"response.RequestPath":     ctx.RequestPath,
+		"response.RequestMethod":   ctx.RequestMethod,
+		"response.ResponseHeaders": responseHeaders,
+		"response.ResponseBody":    nil,
+		"response.ResponseStatus":  ctx.ResponseStatus,
+		"response.RequestID":       ctx.RequestID,
+		"response.Metadata":        ctx.Metadata,
 	}
+}
 
-	// Evaluate
+// buildResponseBodyEvalCtx builds a CEL evaluation context from a ResponseContext
+func buildResponseBodyEvalCtx(ctx *policy.ResponseContext, phase string) map[string]interface{} {
+	requestHeaders := ctx.RequestHeaders.GetAll()
+	requestBody := bodyToCEL(ctx.RequestBody)
+	responseHeaders := ctx.ResponseHeaders.GetAll()
+	responseBody := bodyToCEL(ctx.ResponseBody)
+	return map[string]interface{}{
+		"processing.phase": phase,
+		"request": map[string]interface{}{
+			"Headers":   requestHeaders,
+			"Body":      requestBody,
+			"Path":      ctx.RequestPath,
+			"Method":    ctx.RequestMethod,
+			"RequestID": ctx.RequestID,
+			"Metadata":  ctx.Metadata,
+		},
+		"request.Headers":   requestHeaders,
+		"request.Body":      requestBody,
+		"request.Path":      ctx.RequestPath,
+		"request.Method":    ctx.RequestMethod,
+		"request.RequestID": ctx.RequestID,
+		"request.Metadata":  ctx.Metadata,
+		"response": map[string]interface{}{
+			"RequestHeaders":  requestHeaders,
+			"RequestBody":     requestBody,
+			"RequestPath":     ctx.RequestPath,
+			"RequestMethod":   ctx.RequestMethod,
+			"ResponseHeaders": responseHeaders,
+			"ResponseBody":    responseBody,
+			"ResponseStatus":  ctx.ResponseStatus,
+			"RequestID":       ctx.RequestID,
+			"Metadata":        ctx.Metadata,
+		},
+		"response.RequestHeaders":  requestHeaders,
+		"response.RequestBody":     requestBody,
+		"response.RequestPath":     ctx.RequestPath,
+		"response.RequestMethod":   ctx.RequestMethod,
+		"response.ResponseHeaders": responseHeaders,
+		"response.ResponseBody":    responseBody,
+		"response.ResponseStatus":  ctx.ResponseStatus,
+		"response.RequestID":       ctx.RequestID,
+		"response.Metadata":        ctx.Metadata,
+	}
+}
+
+// buildStreamingRequestEvalCtx builds a CEL evaluation context from a RequestStreamContext.
+// Uses phase "request_body" — consistent with buffered request body processing.
+func buildStreamingRequestEvalCtx(ctx *policy.RequestStreamContext) map[string]interface{} {
+	headers := ctx.Headers.GetAll()
+	return map[string]interface{}{
+		"processing.phase": "request_body",
+		"request": map[string]interface{}{
+			"Headers":   headers,
+			"Body":      nil,
+			"Path":      ctx.Path,
+			"Method":    ctx.Method,
+			"RequestID": ctx.RequestID,
+			"Metadata":  ctx.Metadata,
+		},
+		"request.Headers":   headers,
+		"request.Body":      nil,
+		"request.Path":      ctx.Path,
+		"request.Method":    ctx.Method,
+		"request.RequestID": ctx.RequestID,
+		"request.Metadata":  ctx.Metadata,
+		"response": map[string]interface{}{
+			"RequestHeaders":  headers,
+			"RequestBody":     nil,
+			"RequestPath":     ctx.Path,
+			"RequestMethod":   ctx.Method,
+			"ResponseHeaders": map[string][]string{},
+			"ResponseBody":    nil,
+			"ResponseStatus":  0,
+			"RequestID":       ctx.RequestID,
+			"Metadata":        ctx.Metadata,
+		},
+		"response.RequestHeaders":  headers,
+		"response.RequestBody":     nil,
+		"response.RequestPath":     ctx.Path,
+		"response.RequestMethod":   ctx.Method,
+		"response.ResponseHeaders": map[string][]string{},
+		"response.ResponseBody":    nil,
+		"response.ResponseStatus":  0,
+		"response.RequestID":       ctx.RequestID,
+		"response.Metadata":        ctx.Metadata,
+	}
+}
+
+// buildStreamingResponseEvalCtx builds a CEL evaluation context from a ResponseStreamContext.
+// Uses phase "response_body" — consistent with buffered response body processing.
+func buildStreamingResponseEvalCtx(ctx *policy.ResponseStreamContext) map[string]interface{} {
+	requestHeaders := ctx.RequestHeaders.GetAll()
+	requestBody := bodyToCEL(ctx.RequestBody)
+	responseHeaders := ctx.ResponseHeaders.GetAll()
+	return map[string]interface{}{
+		"processing.phase": "response_body",
+		"request": map[string]interface{}{
+			"Headers":   requestHeaders,
+			"Body":      requestBody,
+			"Path":      ctx.RequestPath,
+			"Method":    ctx.RequestMethod,
+			"RequestID": ctx.RequestID,
+			"Metadata":  ctx.Metadata,
+		},
+		"request.Headers":   requestHeaders,
+		"request.Body":      requestBody,
+		"request.Path":      ctx.RequestPath,
+		"request.Method":    ctx.RequestMethod,
+		"request.RequestID": ctx.RequestID,
+		"request.Metadata":  ctx.Metadata,
+		"response": map[string]interface{}{
+			"RequestHeaders":  requestHeaders,
+			"RequestBody":     requestBody,
+			"RequestPath":     ctx.RequestPath,
+			"RequestMethod":   ctx.RequestMethod,
+			"ResponseHeaders": responseHeaders,
+			"ResponseBody":    nil,
+			"ResponseStatus":  ctx.ResponseStatus,
+			"RequestID":       ctx.RequestID,
+			"Metadata":        ctx.Metadata,
+		},
+		"response.RequestHeaders":  requestHeaders,
+		"response.RequestBody":     requestBody,
+		"response.RequestPath":     ctx.RequestPath,
+		"response.RequestMethod":   ctx.RequestMethod,
+		"response.ResponseHeaders": responseHeaders,
+		"response.ResponseBody":    nil,
+		"response.ResponseStatus":  ctx.ResponseStatus,
+		"response.RequestID":       ctx.RequestID,
+		"response.Metadata":        ctx.Metadata,
+	}
+}
+
+// eval evaluates a compiled program against an evaluation context
+func (e *celEvaluator) eval(program cel.Program, evalCtx map[string]interface{}) (bool, error) {
 	result, _, err := program.Eval(evalCtx)
 	if err != nil {
 		return false, fmt.Errorf("CEL evaluation failed: %w", err)
@@ -268,28 +453,23 @@ func (e *celEvaluator) getOrCompileProgram(expression string) (cel.Program, erro
 	}
 	e.mu.RUnlock()
 
-	// Compile (write lock)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Double-check after acquiring write lock
 	if program, ok := e.programCache[expression]; ok {
 		return program, nil
 	}
 
-	// Compile expression
 	ast, issues := e.env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("CEL compilation failed: %w", issues.Err())
 	}
 
-	// Create program
 	program, err := e.env.Program(ast)
 	if err != nil {
 		return nil, fmt.Errorf("CEL program creation failed: %w", err)
 	}
 
-	// Cache and return
 	e.programCache[expression] = program
 	return program, nil
 }

@@ -10,82 +10,76 @@ import (
 )
 
 // CountLettersPolicy counts occurrences of specified letters in the response body
-type CountLettersPolicy struct{}
-
-var ins = &CountLettersPolicy{}
+type CountLettersPolicy struct {
+	letters       []string
+	caseSensitive bool
+	outputFormat  string
+}
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	slog.Debug("[Count Letters]: GetPolicy called")
-	return ins, nil
-}
 
-// Mode returns the processing mode for this policy
-func (p *CountLettersPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeSkip, // Don't need request headers
-		RequestBodyMode:    policy.BodyModeSkip,   // Don't need request body
-		ResponseHeaderMode: policy.HeaderModeSkip, // Don't process response headers
-		ResponseBodyMode:   policy.BodyModeBuffer, // Need full buffered response body
+	lettersRaw, ok := params["letters"].([]interface{})
+	if !ok || len(lettersRaw) == 0 {
+		return nil, fmt.Errorf("letters parameter is required and must be a non-empty array")
 	}
-}
-
-// OnRequest is not used by this policy (only processes response body)
-func (p *CountLettersPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	return nil // No request processing needed
-}
-
-// OnResponse counts letters in the response body and replaces it with the count
-func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	slog.Debug("[Count Letters]: OnResponse called", "hasBody", ctx.ResponseBody != nil && ctx.ResponseBody.Present)
-
-	// Check if response body is present
-	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present {
-		slog.Info("[Count Letters]: No response body present, returning empty count")
-		// No body to process, return empty count
-		return p.generateEmptyResponse(params)
-	}
-
-	// Get configuration parameters
-	lettersRaw := params["letters"].([]interface{})
 	letters := make([]string, len(lettersRaw))
 	for i, letterRaw := range lettersRaw {
-		letters[i] = letterRaw.(string)
+		s, ok := letterRaw.(string)
+		if !ok {
+			return nil, fmt.Errorf("letters must be an array of strings")
+		}
+		if s == "" {
+			return nil, fmt.Errorf("letters must be a non-empty array of strings")
+		}
+		letters[i] = s
 	}
 
 	caseSensitive := false
-	if caseSensitiveRaw, ok := params["caseSensitive"]; ok {
-		caseSensitive = caseSensitiveRaw.(bool)
+	if v, ok := params["caseSensitive"].(bool); ok {
+		caseSensitive = v
 	}
 
 	outputFormat := "json"
-	if outputFormatRaw, ok := params["outputFormat"]; ok {
-		outputFormat = strings.ToLower(outputFormatRaw.(string))
+	if v, ok := params["outputFormat"].(string); ok {
+		outputFormat = strings.ToLower(v)
+	}
+
+	return &CountLettersPolicy{
+		letters:       letters,
+		caseSensitive: caseSensitive,
+		outputFormat:  outputFormat,
+	}, nil
+}
+
+// OnResponseBody counts letters in the response body and replaces it with the count
+func (p *CountLettersPolicy) OnResponseBody(ctx *policy.ResponseContext) policy.ResponseAction {
+	slog.Debug("[Count Letters]: OnResponseBody called", "hasBody", ctx.ResponseBody != nil && ctx.ResponseBody.Present)
+
+	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present {
+		slog.Info("[Count Letters]: No response body present, returning empty count")
+		return p.generateEmptyResponse()
 	}
 
 	slog.Info("[Count Letters]: Processing response body",
-		"letters", letters,
-		"caseSensitive", caseSensitive,
-		"outputFormat", outputFormat,
+		"letters", p.letters,
+		"caseSensitive", p.caseSensitive,
+		"outputFormat", p.outputFormat,
 		"bodySize", len(ctx.ResponseBody.Content))
 
-	// Count letters in the response body
 	bodyText := string(ctx.ResponseBody.Content)
-	counts := p.countLetters(bodyText, letters, caseSensitive)
-
+	counts := p.countLetters(bodyText)
 	slog.Info("[Count Letters]: Letter counts calculated", "counts", counts)
 
-	// Generate output based on format
 	var outputBody []byte
 	var err error
-
-	if outputFormat == "json" {
+	if p.outputFormat == "json" {
 		outputBody, err = p.generateJSONOutput(counts)
 		if err != nil {
 			slog.Error("[Count Letters]: Failed to generate JSON output, falling back to text", "error", err)
-			// Fallback to text output on JSON error
 			outputBody = p.generateTextOutput(counts)
 		} else {
 			slog.Debug("[Count Letters]: Generated JSON output", "size", len(outputBody))
@@ -95,59 +89,41 @@ func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 		slog.Debug("[Count Letters]: Generated text output", "size", len(outputBody))
 	}
 
-	return policy.UpstreamResponseModifications{
-		Body: outputBody,
-	}
+	return policy.DownstreamResponseModifications{Body: outputBody}
 }
 
 // countLetters counts occurrences of each letter in the text
-func (p *CountLettersPolicy) countLetters(text string, letters []string, caseSensitive bool) map[string]int {
-	slog.Debug("[Count Letters]: Counting letters in text",
-		"textLength", len(text),
-		"letters", letters,
-		"caseSensitive", caseSensitive)
-
+func (p *CountLettersPolicy) countLetters(text string) map[string]int {
 	counts := make(map[string]int)
-
-	// Initialize counts for all requested letters
-	for _, letter := range letters {
+	for _, letter := range p.letters {
 		key := letter
-		if !caseSensitive {
+		if !p.caseSensitive {
 			key = strings.ToLower(letter)
 		}
 		counts[key] = 0
 	}
 
-	// Convert text to lowercase if case-insensitive
 	searchText := text
-	if !caseSensitive {
+	if !p.caseSensitive {
 		searchText = strings.ToLower(text)
 	}
 
-	// Count each letter
-	for _, letter := range letters {
+	for _, letter := range p.letters {
 		searchLetter := letter
-		if !caseSensitive {
+		if !p.caseSensitive {
 			searchLetter = strings.ToLower(letter)
 		}
-
-		count := strings.Count(searchText, searchLetter)
-		counts[searchLetter] = count
-		slog.Debug("[Count Letters]: Letter counted", "letter", searchLetter, "count", count)
+		counts[searchLetter] = strings.Count(searchText, searchLetter)
 	}
 
 	return counts
 }
 
-// generateJSONOutput creates JSON output from counts
 func (p *CountLettersPolicy) generateJSONOutput(counts map[string]int) ([]byte, error) {
-	result := map[string]interface{}{
-		"letterCounts": counts,
-	}
+	result := map[string]interface{}{"letterCounts": counts}
 	return json.MarshalIndent(result, "", "  ")
 }
 
-// generateTextOutput creates plain text output from counts
 func (p *CountLettersPolicy) generateTextOutput(counts map[string]int) []byte {
 	var output strings.Builder
 	output.WriteString("Letter Counts:\n")
@@ -157,23 +133,12 @@ func (p *CountLettersPolicy) generateTextOutput(counts map[string]int) []byte {
 	return []byte(output.String())
 }
 
-// generateEmptyResponse generates a response when no body is present
-func (p *CountLettersPolicy) generateEmptyResponse(params map[string]interface{}) policy.ResponseAction {
-	outputFormat := "json"
-	if outputFormatRaw, ok := params["outputFormat"]; ok {
-		outputFormat = strings.ToLower(outputFormatRaw.(string))
-	}
-
-	slog.Debug("[Count Letters]: Generating empty response", "outputFormat", outputFormat)
-
+func (p *CountLettersPolicy) generateEmptyResponse() policy.ResponseAction {
 	var outputBody []byte
-	if outputFormat == "json" {
+	if p.outputFormat == "json" {
 		outputBody = []byte(`{"letterCounts": {}}`)
 	} else {
 		outputBody = []byte("Letter Counts:\n(no response body)")
 	}
-
-	return policy.UpstreamResponseModifications{
-		Body: outputBody,
-	}
+	return policy.DownstreamResponseModifications{Body: outputBody}
 }

@@ -28,9 +28,8 @@ import (
 // Helper Functions
 // =============================================================================
 
-// buildBenchRequestContext creates a RequestContext for CEL benchmarks.
-func buildBenchRequestContext() *policy.RequestContext {
-	return &policy.RequestContext{
+func buildBenchRequestHeaderContext() *policy.RequestHeaderContext {
+	return &policy.RequestHeaderContext{
 		SharedContext: &policy.SharedContext{
 			RequestID:     "bench-id",
 			APIName:       "PetStore",
@@ -47,22 +46,15 @@ func buildBenchRequestContext() *policy.RequestContext {
 	}
 }
 
-// buildBenchResponseContext creates a ResponseContext for CEL benchmarks.
-func buildBenchResponseContext() *policy.ResponseContext {
-	reqCtx := buildBenchRequestContext()
-	return &policy.ResponseContext{
+func buildBenchResponseHeaderContext() *policy.ResponseHeaderContext {
+	reqCtx := buildBenchRequestHeaderContext()
+	return &policy.ResponseHeaderContext{
 		SharedContext:   reqCtx.SharedContext,
 		RequestHeaders:  reqCtx.Headers,
-		RequestBody:     reqCtx.Body,
 		RequestPath:     reqCtx.Path,
 		RequestMethod:   reqCtx.Method,
 		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}, "x-custom": {"value"}}),
 		ResponseStatus:  200,
-		ResponseBody: &policy.Body{
-			Content:     []byte(`{"data": "test"}`),
-			EndOfStream: true,
-			Present:     true,
-		},
 	}
 }
 
@@ -70,8 +62,6 @@ func buildBenchResponseContext() *policy.ResponseContext {
 // CEL Evaluator Creation Benchmark
 // =============================================================================
 
-// BenchmarkNewCELEvaluator benchmarks CEL evaluator creation.
-// This measures the one-time cost of setting up the CEL environment.
 func BenchmarkNewCELEvaluator(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -84,23 +74,22 @@ func BenchmarkNewCELEvaluator(b *testing.B) {
 }
 
 // =============================================================================
-// Request Condition Evaluation Benchmarks
+// Request Header Condition Evaluation Benchmarks
 // =============================================================================
 
-// BenchmarkCELEvaluateRequestCondition benchmarks request condition evaluation.
-func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
+func BenchmarkCELEvaluateRequestHeaderCondition(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	reqCtx := buildBenchRequestContext()
+	reqCtx := buildBenchRequestHeaderContext()
 
 	b.Run("SimpleMethodCheck", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(`request.Method == "GET"`, reqCtx)
 		}
 	})
 
@@ -108,7 +97,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`request.Path.startsWith("/petstore")`, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(`request.Path.startsWith("/petstore")`, reqCtx)
 		}
 	})
 
@@ -116,7 +105,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`"authorization" in request.Headers`, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(`"authorization" in request.Headers`, reqCtx)
 		}
 	})
 
@@ -124,7 +113,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(
+			_, _ = evaluator.EvaluateRequestHeaderCondition(
 				`request.Method == "GET" && request.Path.startsWith("/petstore") && request.Scheme == "https"`,
 				reqCtx)
 		}
@@ -134,7 +123,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`"custom_key" in request.Metadata`, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(`"custom_key" in request.Metadata`, reqCtx)
 		}
 	})
 
@@ -143,62 +132,58 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 }
 
-// BenchmarkCELEvaluateRequestCondition_CacheHit benchmarks cached program execution.
-func BenchmarkCELEvaluateRequestCondition_CacheHit(b *testing.B) {
+func BenchmarkCELEvaluateRequestHeaderCondition_CacheHit(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	reqCtx := buildBenchRequestContext()
+	reqCtx := buildBenchRequestHeaderContext()
 	expr := `request.Method == "GET"`
 
 	// Warm up cache
-	_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+	_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 	}
 }
 
-// BenchmarkCELEvaluateRequestCondition_CacheMiss benchmarks compilation + execution.
-func BenchmarkCELEvaluateRequestCondition_CacheMiss(b *testing.B) {
-	reqCtx := buildBenchRequestContext()
+func BenchmarkCELEvaluateRequestHeaderCondition_CacheMiss(b *testing.B) {
+	reqCtx := buildBenchRequestHeaderContext()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Create fresh evaluator each iteration to force cache miss
 		evaluator, _ := NewCELEvaluator()
-		_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, reqCtx)
+		_, _ = evaluator.EvaluateRequestHeaderCondition(`request.Method == "GET"`, reqCtx)
 	}
 }
 
 // =============================================================================
-// Response Condition Evaluation Benchmarks
+// Response Header Condition Evaluation Benchmarks
 // =============================================================================
 
-// BenchmarkCELEvaluateResponseCondition benchmarks response condition evaluation.
-func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
+func BenchmarkCELEvaluateResponseHeaderCondition(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	respCtx := buildBenchResponseContext()
+	respCtx := buildBenchResponseHeaderContext()
 
 	b.Run("SimpleStatusCheck", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(`response.ResponseStatus == 200`, respCtx)
+			_, _ = evaluator.EvaluateResponseHeaderCondition(`response.ResponseStatus == 200`, respCtx)
 		}
 	})
 
@@ -206,7 +191,7 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(
+			_, _ = evaluator.EvaluateResponseHeaderCondition(
 				`response.ResponseStatus >= 200 && response.ResponseStatus < 300`,
 				respCtx)
 		}
@@ -216,16 +201,15 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(`"content-type" in response.ResponseHeaders`, respCtx)
+			_, _ = evaluator.EvaluateResponseHeaderCondition(`"content-type" in response.ResponseHeaders`, respCtx)
 		}
 	})
 
 	b.Run("CrossPhaseAccess", func(b *testing.B) {
-		// Access request data during response phase
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(
+			_, _ = evaluator.EvaluateResponseHeaderCondition(
 				`response.RequestMethod == "GET" && response.ResponseStatus == 200`,
 				respCtx)
 		}
@@ -236,7 +220,7 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(expr, respCtx)
+			_, _ = evaluator.EvaluateResponseHeaderCondition(expr, respCtx)
 		}
 	})
 }
@@ -245,31 +229,26 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 // Parallel Execution Benchmarks
 // =============================================================================
 
-// BenchmarkCELEvaluateRequestCondition_Parallel benchmarks concurrent evaluation.
-func BenchmarkCELEvaluateRequestCondition_Parallel(b *testing.B) {
+func BenchmarkCELEvaluateRequestHeaderCondition_Parallel(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	// Warm up cache
-	reqCtx := buildBenchRequestContext()
-	_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, reqCtx)
+	reqCtx := buildBenchRequestHeaderContext()
+	_, _ = evaluator.EvaluateRequestHeaderCondition(`request.Method == "GET"`, reqCtx)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		// Each goroutine uses its own context to avoid data races
-		ctx := buildBenchRequestContext()
+		ctx := buildBenchRequestHeaderContext()
 		for pb.Next() {
-			_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, ctx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(`request.Method == "GET"`, ctx)
 		}
 	})
 }
 
-// BenchmarkCELEvaluateRequestCondition_ParallelDifferentExprs benchmarks concurrent
-// evaluation with different expressions to measure cache contention.
-func BenchmarkCELEvaluateRequestCondition_ParallelDifferentExprs(b *testing.B) {
+func BenchmarkCELEvaluateRequestHeaderCondition_ParallelDifferentExprs(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {
 		b.Fatal(err)
@@ -283,20 +262,19 @@ func BenchmarkCELEvaluateRequestCondition_ParallelDifferentExprs(b *testing.B) {
 		`"authorization" in request.Headers`,
 	}
 
-	// Warm up cache
-	reqCtx := buildBenchRequestContext()
+	reqCtx := buildBenchRequestHeaderContext()
 	for _, expr := range expressions {
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		ctx := buildBenchRequestContext()
+		ctx := buildBenchRequestHeaderContext()
 		i := 0
 		for pb.Next() {
 			expr := expressions[i%len(expressions)]
-			_, _ = evaluator.EvaluateRequestCondition(expr, ctx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, ctx)
 			i++
 		}
 	})
@@ -306,72 +284,71 @@ func BenchmarkCELEvaluateRequestCondition_ParallelDifferentExprs(b *testing.B) {
 // Expression Complexity Benchmarks
 // =============================================================================
 
-// BenchmarkCELExpressionComplexity measures impact of expression complexity.
 func BenchmarkCELExpressionComplexity(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	reqCtx := buildBenchRequestContext()
+	reqCtx := buildBenchRequestHeaderContext()
 
 	b.Run("Trivial", func(b *testing.B) {
 		expr := `true`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("SingleField", func(b *testing.B) {
 		expr := `request.Method == "GET"`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("TwoConditionsAnd", func(b *testing.B) {
 		expr := `request.Method == "GET" && request.Scheme == "https"`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("ThreeConditionsAnd", func(b *testing.B) {
 		expr := `request.Method == "GET" && request.Scheme == "https" && request.Path.startsWith("/petstore")`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("FiveConditionsOr", func(b *testing.B) {
 		expr := `request.Method == "GET" || request.Method == "POST" || request.Method == "PUT" || request.Method == "DELETE" || request.Method == "PATCH"`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("NestedLogic", func(b *testing.B) {
 		expr := `(request.Method == "GET" || request.Method == "HEAD") && (request.Scheme == "https" || request.Scheme == "http") && request.Path.startsWith("/petstore")`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 }
@@ -380,71 +357,69 @@ func BenchmarkCELExpressionComplexity(b *testing.B) {
 // Real-World Expression Benchmarks
 // =============================================================================
 
-// BenchmarkCELRealWorldExpressions benchmarks expressions typical in production.
 func BenchmarkCELRealWorldExpressions(b *testing.B) {
 	evaluator, err := NewCELEvaluator()
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	reqCtx := buildBenchRequestContext()
-	respCtx := buildBenchResponseContext()
+	reqCtx := buildBenchRequestHeaderContext()
+	respCtx := buildBenchResponseHeaderContext()
 
 	b.Run("AuthHeaderRequired", func(b *testing.B) {
 		expr := `"authorization" in request.Headers`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("MethodAndPath", func(b *testing.B) {
 		expr := `request.Method == "POST" && request.Path.startsWith("/api/v1/")`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("ErrorResponseOnly", func(b *testing.B) {
 		expr := `response.ResponseStatus >= 400`
-		_, _ = evaluator.EvaluateResponseCondition(expr, respCtx) // warm cache
+		_, _ = evaluator.EvaluateResponseHeaderCondition(expr, respCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(expr, respCtx)
+			_, _ = evaluator.EvaluateResponseHeaderCondition(expr, respCtx)
 		}
 	})
 
 	b.Run("SuccessResponseOnly", func(b *testing.B) {
 		expr := `response.ResponseStatus >= 200 && response.ResponseStatus < 300`
-		_, _ = evaluator.EvaluateResponseCondition(expr, respCtx) // warm cache
+		_, _ = evaluator.EvaluateResponseHeaderCondition(expr, respCtx)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(expr, respCtx)
+			_, _ = evaluator.EvaluateResponseHeaderCondition(expr, respCtx)
 		}
 	})
 
 	b.Run("DualPhaseExpression", func(b *testing.B) {
-		// Expression that works in both phases using processing.phase
 		reqExpr := `processing.phase == "request" && request.Method == "GET"`
 		respExpr := `processing.phase == "response" && response.ResponseStatus == 200`
 
-		_, _ = evaluator.EvaluateRequestCondition(reqExpr, reqCtx)    // warm cache
-		_, _ = evaluator.EvaluateResponseCondition(respExpr, respCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestHeaderCondition(reqExpr, reqCtx)
+		_, _ = evaluator.EvaluateResponseHeaderCondition(respExpr, respCtx)
 
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			if i%2 == 0 {
-				_, _ = evaluator.EvaluateRequestCondition(reqExpr, reqCtx)
+				_, _ = evaluator.EvaluateRequestHeaderCondition(reqExpr, reqCtx)
 			} else {
-				_, _ = evaluator.EvaluateResponseCondition(respExpr, respCtx)
+				_, _ = evaluator.EvaluateResponseHeaderCondition(respExpr, respCtx)
 			}
 		}
 	})

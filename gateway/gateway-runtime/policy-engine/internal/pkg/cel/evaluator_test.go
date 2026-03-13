@@ -39,14 +39,14 @@ func TestNewCELEvaluator(t *testing.T) {
 }
 
 // =============================================================================
-// EvaluateRequestCondition Tests
+// EvaluateRequestHeaderCondition Tests
 // =============================================================================
 
-func TestEvaluateRequestCondition_SimpleExpressions(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_SimpleExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 
 	tests := []struct {
 		name       string
@@ -84,13 +84,13 @@ func TestEvaluateRequestCondition_SimpleExpressions(t *testing.T) {
 			expected:   false,
 		},
 		{
-			name:       "Processing phase is request",
-			expression: `processing.phase == "request"`,
+			name:       "Processing phase is request_headers",
+			expression: `processing.phase == "request_headers"`,
 			expected:   true,
 		},
 		{
-			name:       "Processing phase is not response",
-			expression: `processing.phase == "response"`,
+			name:       "Processing phase is not response_headers",
+			expression: `processing.phase == "response_headers"`,
 			expected:   false,
 		},
 		{
@@ -107,18 +107,18 @@ func TestEvaluateRequestCondition_SimpleExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, reqCtx)
+			result, err := evaluator.EvaluateRequestHeaderCondition(tt.expression, reqCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateRequestCondition_ComplexExpressions(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_ComplexExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 
 	tests := []struct {
 		name       string
@@ -157,7 +157,7 @@ func TestEvaluateRequestCondition_ComplexExpressions(t *testing.T) {
 		},
 		{
 			name:       "Three conditions with AND",
-			expression: `request.Method == "GET" && request.Path.startsWith("/api") && processing.phase == "request"`,
+			expression: `request.Method == "GET" && request.Path.startsWith("/api") && processing.phase == "request_headers"`,
 			expected:   true,
 		},
 		{
@@ -169,18 +169,18 @@ func TestEvaluateRequestCondition_ComplexExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, reqCtx)
+			result, err := evaluator.EvaluateRequestHeaderCondition(tt.expression, reqCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateRequestCondition_InvalidExpression(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_InvalidExpression(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 
 	tests := []struct {
 		name       string
@@ -198,33 +198,33 @@ func TestEvaluateRequestCondition_InvalidExpression(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := evaluator.EvaluateRequestCondition(tt.expression, reqCtx)
+			_, err := evaluator.EvaluateRequestHeaderCondition(tt.expression, reqCtx)
 			assert.Error(t, err)
 		})
 	}
 }
 
-func TestEvaluateRequestCondition_NonBooleanResult(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_NonBooleanResult(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 
 	// Expression that returns string instead of boolean
-	_, err = evaluator.EvaluateRequestCondition(`request.Method`, reqCtx)
+	_, err = evaluator.EvaluateRequestHeaderCondition(`request.Method`, reqCtx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must return boolean")
 }
 
 // =============================================================================
-// EvaluateResponseCondition Tests
+// EvaluateResponseHeaderCondition Tests
 // =============================================================================
 
-func TestEvaluateResponseCondition_SimpleExpressions(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_SimpleExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := testutils.NewTestResponseContext()
+	respCtx := testutils.NewTestResponseHeaderContext()
 
 	tests := []struct {
 		name       string
@@ -262,31 +262,31 @@ func TestEvaluateResponseCondition_SimpleExpressions(t *testing.T) {
 			expected:   false,
 		},
 		{
-			name:       "Processing phase is response",
-			expression: `processing.phase == "response"`,
+			name:       "Processing phase is response_headers",
+			expression: `processing.phase == "response_headers"`,
 			expected:   true,
 		},
 		{
-			name:       "Processing phase is not request",
-			expression: `processing.phase == "request"`,
+			name:       "Processing phase is not request_headers",
+			expression: `processing.phase == "request_headers"`,
 			expected:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, respCtx)
+			result, err := evaluator.EvaluateResponseHeaderCondition(tt.expression, respCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateResponseCondition_CrossPhaseAccess(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_CrossPhaseAccess(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := testutils.NewTestResponseContext()
+	respCtx := testutils.NewTestResponseHeaderContext()
 
 	tests := []struct {
 		name       string
@@ -312,14 +312,14 @@ func TestEvaluateResponseCondition_CrossPhaseAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, respCtx)
+			result, err := evaluator.EvaluateResponseHeaderCondition(tt.expression, respCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateResponseCondition_StatusRanges(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_StatusRanges(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
@@ -381,32 +381,32 @@ func TestEvaluateResponseCondition_StatusRanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			respCtx := testutils.NewTestResponseContext()
+			respCtx := testutils.NewTestResponseHeaderContext()
 			respCtx.ResponseStatus = tt.status
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, respCtx)
+			result, err := evaluator.EvaluateResponseHeaderCondition(tt.expression, respCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateResponseCondition_InvalidExpression(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_InvalidExpression(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := testutils.NewTestResponseContext()
+	respCtx := testutils.NewTestResponseHeaderContext()
 
-	_, err = evaluator.EvaluateResponseCondition(`response.ResponseStatus ==`, respCtx)
+	_, err = evaluator.EvaluateResponseHeaderCondition(`response.ResponseStatus ==`, respCtx)
 	assert.Error(t, err)
 }
 
-func TestEvaluateResponseCondition_NonBooleanResult(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_NonBooleanResult(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := testutils.NewTestResponseContext()
+	respCtx := testutils.NewTestResponseHeaderContext()
 
-	_, err = evaluator.EvaluateResponseCondition(`response.ResponseStatus`, respCtx)
+	_, err = evaluator.EvaluateResponseHeaderCondition(`response.ResponseStatus`, respCtx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must return boolean")
 }
@@ -419,16 +419,16 @@ func TestCELEvaluator_ProgramCaching(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 	expression := `request.Method == "GET"`
 
 	// First evaluation - compiles the program
-	result1, err := evaluator.EvaluateRequestCondition(expression, reqCtx)
+	result1, err := evaluator.EvaluateRequestHeaderCondition(expression, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result1)
 
 	// Second evaluation - should use cached program
-	result2, err := evaluator.EvaluateRequestCondition(expression, reqCtx)
+	result2, err := evaluator.EvaluateRequestHeaderCondition(expression, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result2)
 
@@ -440,18 +440,18 @@ func TestCELEvaluator_DifferentExpressions(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 
 	expressions := []string{
 		`request.Method == "GET"`,
 		`request.Method == "POST"`,
 		`request.Path.startsWith("/api")`,
-		`processing.phase == "request"`,
+		`processing.phase == "request_headers"`,
 	}
 
 	// Evaluate each expression
 	for _, expr := range expressions {
-		_, err := evaluator.EvaluateRequestCondition(expr, reqCtx)
+		_, err := evaluator.EvaluateRequestHeaderCondition(expr, reqCtx)
 		require.NoError(t, err, "Expression should evaluate without error: %s", expr)
 	}
 }
@@ -465,7 +465,7 @@ func TestCELEvaluator_ConcurrentAccess(t *testing.T) {
 		`request.Method == "GET"`,
 		`request.Method == "POST"`,
 		`request.Path.startsWith("/api")`,
-		`processing.phase == "request"`,
+		`processing.phase == "request_headers"`,
 	}
 
 	var wg sync.WaitGroup
@@ -476,8 +476,8 @@ func TestCELEvaluator_ConcurrentAccess(t *testing.T) {
 			wg.Add(1)
 			go func(e string) {
 				defer wg.Done()
-				ctx := testutils.NewTestRequestContext()
-				_, err := evaluator.EvaluateRequestCondition(e, ctx)
+				ctx := testutils.NewTestRequestHeaderContext()
+				_, err := evaluator.EvaluateRequestHeaderCondition(e, ctx)
 				if err != nil {
 					errors <- err
 				}
@@ -497,53 +497,53 @@ func TestCELEvaluator_ConcurrentAccess(t *testing.T) {
 // Edge Cases
 // =============================================================================
 
-func TestEvaluateResponseCondition_ZeroStatus(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_ZeroStatus(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	respCtx := testutils.NewTestResponseContext()
+	respCtx := testutils.NewTestResponseHeaderContext()
 	respCtx.ResponseStatus = 0
 
-	result, err := evaluator.EvaluateResponseCondition(`response.ResponseStatus == 0`, respCtx)
+	result, err := evaluator.EvaluateResponseHeaderCondition(`response.ResponseStatus == 0`, respCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
 
-func TestEvaluateRequestCondition_EmptyPath(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_EmptyPath(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 	reqCtx.Path = ""
 
-	result, err := evaluator.EvaluateRequestCondition(`request.Path == ""`, reqCtx)
+	result, err := evaluator.EvaluateRequestHeaderCondition(`request.Path == ""`, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
 
-func TestEvaluateRequestCondition_PathEndsWith(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_PathEndsWith(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 
-	result, err := evaluator.EvaluateRequestCondition(`request.Path.endsWith("123")`, reqCtx)
+	result, err := evaluator.EvaluateRequestHeaderCondition(`request.Path.endsWith("123")`, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
 
-func TestEvaluateRequestCondition_PathSize(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_PathSize(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	reqCtx := testutils.NewTestRequestContext()
+	reqCtx := testutils.NewTestRequestHeaderContext()
 
-	result, err := evaluator.EvaluateRequestCondition(`size(request.Path) > 0`, reqCtx)
+	result, err := evaluator.EvaluateRequestHeaderCondition(`size(request.Path) > 0`, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
 
-func TestEvaluateRequestCondition_MethodComparison(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_MethodComparison(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
@@ -551,10 +551,10 @@ func TestEvaluateRequestCondition_MethodComparison(t *testing.T) {
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
-			reqCtx := testutils.NewTestRequestContext()
+			reqCtx := testutils.NewTestRequestHeaderContext()
 			reqCtx.Method = method
 
-			result, err := evaluator.EvaluateRequestCondition(`request.Method == "`+method+`"`, reqCtx)
+			result, err := evaluator.EvaluateRequestHeaderCondition(`request.Method == "`+method+`"`, reqCtx)
 			require.NoError(t, err)
 			assert.True(t, result)
 		})
@@ -565,12 +565,12 @@ func TestEvaluateRequestCondition_MethodComparison(t *testing.T) {
 // Header Operation Tests
 // =============================================================================
 
-func TestEvaluateRequestCondition_HeaderOperations(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_HeaderOperations(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
 	// Create context with headers
-	ctx := testutils.NewTestRequestContextWithHeaders(map[string][]string{
+	ctx := testutils.NewTestRequestHeaderContextWithHeaders(map[string][]string{
 		"authorization": {"Bearer token123"},
 		"content-type":  {"application/json"},
 		"x-api-key":     {"sk-test-key"},
@@ -648,19 +648,19 @@ func TestEvaluateRequestCondition_HeaderOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateRequestHeaderCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateRequestCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
+func TestEvaluateRequestHeaderCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
 	// Create context with no headers
-	ctx := testutils.NewTestRequestContextWithHeaders(map[string][]string{})
+	ctx := testutils.NewTestRequestHeaderContextWithHeaders(map[string][]string{})
 	ctx.Method = "GET"
 	ctx.Path = "/api/test"
 
@@ -683,19 +683,19 @@ func TestEvaluateRequestCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateRequestHeaderCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateResponseCondition_HeaderOperations(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_HeaderOperations(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
 	// Create response context with request and response headers
-	ctx := testutils.NewTestResponseContext()
+	ctx := testutils.NewTestResponseHeaderContext()
 	ctx.RequestHeaders = policy.NewHeaders(map[string][]string{
 		"authorization": {"Bearer token123"},
 		"content-type":  {"application/json"},
@@ -762,19 +762,19 @@ func TestEvaluateResponseCondition_HeaderOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateResponseHeaderCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestEvaluateResponseCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
+func TestEvaluateResponseHeaderCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
 	// Create response context with empty headers
-	ctx := testutils.NewTestResponseContext()
+	ctx := testutils.NewTestResponseHeaderContext()
 	ctx.RequestHeaders = policy.NewHeaders(map[string][]string{})
 	ctx.ResponseHeaders = policy.NewHeaders(map[string][]string{})
 	ctx.ResponseStatus = 200
@@ -798,7 +798,7 @@ func TestEvaluateResponseCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateResponseHeaderCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -815,16 +815,16 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		setupReq   func() *policy.RequestContext
-		setupResp  func() *policy.ResponseContext
+		setupReq   func() *policy.RequestHeaderContext
+		setupResp  func() *policy.ResponseHeaderContext
 		expression string
 		phase      string // "request" or "response"
 		expected   bool
 	}{
 		{
 			name: "Skip POST requests",
-			setupReq: func() *policy.RequestContext {
-				ctx := testutils.NewTestRequestContext()
+			setupReq: func() *policy.RequestHeaderContext {
+				ctx := testutils.NewTestRequestHeaderContext()
 				ctx.Method = "GET"
 				return ctx
 			},
@@ -834,8 +834,8 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		},
 		{
 			name: "Only POST requests",
-			setupReq: func() *policy.RequestContext {
-				ctx := testutils.NewTestRequestContext()
+			setupReq: func() *policy.RequestHeaderContext {
+				ctx := testutils.NewTestRequestHeaderContext()
 				ctx.Method = "POST"
 				return ctx
 			},
@@ -845,8 +845,8 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		},
 		{
 			name: "Error response only",
-			setupResp: func() *policy.ResponseContext {
-				ctx := testutils.NewTestResponseContext()
+			setupResp: func() *policy.ResponseHeaderContext {
+				ctx := testutils.NewTestResponseHeaderContext()
 				ctx.ResponseStatus = 500
 				return ctx
 			},
@@ -856,8 +856,8 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		},
 		{
 			name: "Success response only",
-			setupResp: func() *policy.ResponseContext {
-				ctx := testutils.NewTestResponseContext()
+			setupResp: func() *policy.ResponseHeaderContext {
+				ctx := testutils.NewTestResponseHeaderContext()
 				ctx.ResponseStatus = 200
 				return ctx
 			},
@@ -867,8 +867,8 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 		},
 		{
 			name: "Specific path prefix",
-			setupReq: func() *policy.RequestContext {
-				ctx := testutils.NewTestRequestContext()
+			setupReq: func() *policy.RequestHeaderContext {
+				ctx := testutils.NewTestRequestHeaderContext()
 				ctx.Path = "/admin/users"
 				return ctx
 			},
@@ -884,9 +884,9 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 			var err error
 
 			if tt.phase == "request" {
-				result, err = evaluator.EvaluateRequestCondition(tt.expression, tt.setupReq())
+				result, err = evaluator.EvaluateRequestHeaderCondition(tt.expression, tt.setupReq())
 			} else {
-				result, err = evaluator.EvaluateResponseCondition(tt.expression, tt.setupResp())
+				result, err = evaluator.EvaluateResponseHeaderCondition(tt.expression, tt.setupResp())
 			}
 
 			require.NoError(t, err)

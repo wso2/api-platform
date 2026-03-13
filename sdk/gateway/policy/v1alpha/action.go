@@ -1,72 +1,188 @@
 package policyv1alpha
 
-// RequestAction marker interface (oneof pattern)
-type RequestAction interface {
-	isRequestAction()    // private marker method
-	StopExecution() bool // returns true if execution should stop
-}
-
-// ResponseAction marker interface (oneof pattern)
-type ResponseAction interface {
-	isResponseAction()   // private marker method
-	StopExecution() bool // returns true if execution should stop
-}
-
-// Holds the action and headers list to drop or allow from analytics event
+// DropHeaderAction controls which headers appear in the analytics event.
 type DropHeaderAction struct {
-	Action  string   // Type of the action -> "allow" or "deny"
-	Headers []string // Headers list to drop or allow
+	Action  string   // "allow" (allowlist) or "deny" (denylist)
+	Headers []string // Header name list to drop or allow
 }
 
-// UpstreamRequestModifications - continue request to upstream with modifications
-type UpstreamRequestModifications struct {
-	SetHeaders               map[string]string         // Set or replace headers
-	RemoveHeaders            []string                  // Headers to remove
-	AppendHeaders            map[string][]string       // Headers to append
-	AddQueryParameters       map[string][]string       // Query parameters to add
-	RemoveQueryParameters    []string                  // Query parameters to remove
-	Body                     []byte                    // nil = no change, []byte{} = clear
-	Path                     *string                   // nil = no change
-	Method                   *string                   // nil = no change
-	UpstreamName             *string                   // Name of upstreamDefinition to route to (nil = no change)
-	AnalyticsMetadata        map[string]any            // Custom analytics metadata (key-value pairs)
-	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
-	DropHeadersFromAnalytics DropHeaderAction          // Request headers to exclude from analytics event
-}
+// ─── Short-circuit ────────────────────────────────────────────────────────────
 
-func (u UpstreamRequestModifications) isRequestAction() {}
-func (u UpstreamRequestModifications) StopExecution() bool {
-	return false // Continue to next policy
-}
-
-// ImmediateResponse - short-circuit and return response immediately
+// ImmediateResponse terminates the policy chain and returns a response to the
+// downstream client immediately. Embed as a pointer in HeaderAction or
+// RequestBodyAction/ResponseBodyAction; a non-nil pointer short-circuits the chain.
 type ImmediateResponse struct {
 	StatusCode               int
 	Headers                  map[string]string
 	Body                     []byte
-	AnalyticsMetadata        map[string]any            // Custom analytics metadata (key-value pairs)
+	AnalyticsMetadata        map[string]any            // Custom analytics metadata
 	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
-	DropHeadersFromAnalytics DropHeaderAction          // Headers to be excluded from analytics event
+	AnalyticsHeaderFilter DropHeaderAction          // Headers to exclude from analytics
 }
 
-func (i ImmediateResponse) isRequestAction() {}
-func (i ImmediateResponse) StopExecution() bool {
-	return true // Stop chain, return response immediately
+// ─── Header phase actions (sealed oneof) ─────────────────────────────────────
+//
+// RequestHeaderAction and ResponseHeaderAction are sealed interfaces.
+// Each has two concrete implementations — one for header mutations, one for
+// short-circuiting. The kernel uses a type switch to dispatch.
+
+// RequestHeaderAction is a sealed oneof returned by OnRequestHeaders.
+// Implement either UpstreamRequestHeaderModifications or return ImmediateResponse.
+type RequestHeaderAction interface {
+	isRequestHeaderAction()
 }
 
-// UpstreamResponseModifications - modify response from upstream
-type UpstreamResponseModifications struct {
-	SetHeaders               map[string]string         // Set or replace headers
-	RemoveHeaders            []string                  // Headers to remove
-	AppendHeaders            map[string][]string       // Headers to append
-	Body                     []byte                    // nil = no change, []byte{} = clear
-	StatusCode               *int                      // nil = no change
-	AnalyticsMetadata        map[string]any            // Custom analytics metadata (key-value pairs)
-	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
-	DropHeadersFromAnalytics DropHeaderAction          // Response headers to exclude from analytics event
+// UpstreamRequestHeaderModifications continues the request to upstream with the
+// specified header modifications. Returned when no short-circuit is needed.
+type UpstreamRequestHeaderModifications struct {
+	Set    map[string]string   // overwrite header (last write wins)
+	Remove []string            // remove by name (case-insensitive)
+	Append map[string][]string // append values alongside existing
+
+	AnalyticsMetadata     map[string]any            // custom analytics metadata
+	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
+	AnalyticsHeaderFilter DropHeaderAction          // headers to exclude from analytics
 }
 
-func (u UpstreamResponseModifications) isResponseAction() {}
-func (u UpstreamResponseModifications) StopExecution() bool {
-	return false // Continue to next policy
+func (UpstreamRequestHeaderModifications) isRequestHeaderAction() {}
+
+// ImmediateResponse also implements RequestHeaderAction — returning it short-circuits
+// the chain and sends the response directly to the downstream client.
+func (ImmediateResponse) isRequestHeaderAction() {}
+
+// ResponseHeaderAction is a sealed oneof returned by OnResponseHeaders.
+// Implement either DownstreamResponseHeaderModifications or return ImmediateResponse.
+type ResponseHeaderAction interface {
+	isResponseHeaderAction()
+}
+
+// DownstreamResponseHeaderModifications continues with the specified response header
+// modifications applied before the response is forwarded to the client.
+type DownstreamResponseHeaderModifications struct {
+	Set    map[string]string   // overwrite header (last write wins)
+	Remove []string            // remove by name (case-insensitive)
+	Append map[string][]string // append values alongside existing
+
+	AnalyticsMetadata     map[string]any            // custom analytics metadata
+	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
+	AnalyticsHeaderFilter DropHeaderAction          // headers to exclude from analytics
+}
+
+func (DownstreamResponseHeaderModifications) isResponseHeaderAction() {}
+
+// ImmediateResponse also implements ResponseHeaderAction — returning it short-circuits
+// the chain and sends the response directly to the downstream client.
+func (ImmediateResponse) isResponseHeaderAction() {}
+
+// ─── Buffered body actions (sealed oneof) ────────────────────────────────────
+//
+// RequestAction and ResponseAction are sealed interfaces. Each has two concrete
+// implementations — one for mutations (continue to upstream/client), one for
+// short-circuiting (ImmediateResponse). StopExecution() lets callers branch
+// without a type assertion; a type switch is still needed to access fields.
+
+// RequestAction is a sealed oneof returned by RequestPolicy.OnRequestBody.
+// Implement either UpstreamRequestModifications or return ImmediateResponse.
+type RequestAction interface {
+	isRequestAction()
+	// StopExecution returns true when the chain should be short-circuited and
+	// the response returned directly to the downstream client.
+	StopExecution() bool
+}
+
+// UpstreamRequestModifications forwards the request to upstream with the
+// specified mutations. Returned when processing should continue normally.
+// Because the request body is fully buffered, header and routing mutations
+// applied here are still effective.
+type UpstreamRequestModifications struct {
+	Body []byte // nil = passthrough; []byte{} = clear body
+
+	// Header mutations — valid because the request has not left yet.
+	Header *UpstreamRequestHeaderModifications
+
+	// Routing mutations (also valid before the request is forwarded).
+	Path                    *string
+	Method                  *string
+	QueryParametersToAdd    map[string][]string
+	QueryParametersToRemove []string
+	UpstreamName            *string // route to a named upstream definition (nil = no change)
+
+	AnalyticsMetadata     map[string]any
+	DynamicMetadata       map[string]map[string]any
+	AnalyticsHeaderFilter DropHeaderAction
+}
+
+func (UpstreamRequestModifications) isRequestAction()       {}
+func (UpstreamRequestModifications) StopExecution() bool    { return false }
+
+// ImmediateResponse also implements RequestAction — returning it short-circuits
+// the chain and sends the response directly to the downstream client.
+func (ImmediateResponse) isRequestAction()    {}
+func (ImmediateResponse) StopExecution() bool { return true }
+
+// ResponseAction is a sealed oneof returned by ResponsePolicy.OnResponseBody.
+// Implement either DownstreamResponseModifications or return ImmediateResponse.
+type ResponseAction interface {
+	isResponseAction()
+	// StopExecution returns true when the entire response should be replaced by
+	// this ImmediateResponse rather than forwarding the upstream response body.
+	StopExecution() bool
+}
+
+// DownstreamResponseModifications forwards the response to the client with the
+// specified mutations. The request headers are already committed to upstream,
+// but status, body, and response headers can still be changed.
+type DownstreamResponseModifications struct {
+	Body       []byte // nil = passthrough; []byte{} = clear body
+	StatusCode *int   // nil = no change
+
+	// Header mutations applied to the response — valid because the response has
+	// not yet been forwarded to the downstream client.
+	Header *DownstreamResponseHeaderModifications
+
+	AnalyticsMetadata     map[string]any
+	DynamicMetadata       map[string]map[string]any
+	AnalyticsHeaderFilter DropHeaderAction
+}
+
+func (DownstreamResponseModifications) isResponseAction()    {}
+func (DownstreamResponseModifications) StopExecution() bool  { return false }
+
+// ImmediateResponse also implements ResponseAction — returning it replaces the
+// entire upstream response with the specified status, headers, and body.
+func (ImmediateResponse) isResponseAction()    {}
+// Note: StopExecution() bool is already defined above for RequestAction.
+
+// ─── Streaming body actions ───────────────────────────────────────────────────
+//
+// Streaming hooks receive one chunk at a time. By the time chunks arrive, both
+// request headers (sent upstream) and response headers (sent downstream) are
+// already committed. Only the chunk content can be changed.
+//
+// ImmediateResponse is NOT available in streaming chunk actions:
+//   - For request chunks: the upstream connection is already open; use
+//     RequestHeaderPolicy or RequestPolicy to reject before the body starts.
+//   - For response chunks: the client has already received the response headers
+//     and status; injecting a new response mid-stream is physically impossible.
+
+// RequestChunkAction is returned by StreamingRequestPolicy.OnRequestBodyChunk.
+// Only the chunk payload can be modified. Request headers, path, method, and
+// query parameters are all committed — mutations to those fields are ignored.
+type RequestChunkAction struct {
+	Body []byte // nil = passthrough; non-nil bytes replace the chunk
+
+	// Analytics — accumulates incremental data across chunks (e.g. token counts).
+	AnalyticsMetadata map[string]any
+	DynamicMetadata   map[string]map[string]any
+}
+
+// ResponseChunkAction is returned by StreamingResponsePolicy.OnResponseBodyChunk.
+// Only the chunk payload can be modified. Response status and headers are already
+// committed to the downstream client — mutations to those fields are ignored.
+type ResponseChunkAction struct {
+	Body []byte // nil = passthrough; non-nil bytes replace the chunk
+
+	// Analytics — accumulates incremental data across chunks (e.g. per-SSE-event token counts).
+	AnalyticsMetadata map[string]any
+	DynamicMetadata   map[string]map[string]any
 }

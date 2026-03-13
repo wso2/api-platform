@@ -126,26 +126,21 @@ func CreatePolicySourceFile(t *testing.T, policyDir, packageName string) {
 	content := fmt.Sprintf(`package %s
 
 import (
-	"context"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 type TestPolicy struct{}
 
-func (p *TestPolicy) OnRequest(ctx context.Context, reqCtx *policy.RequestContext, params policy.PolicyParameters) policy.RequestAction {
-	return &policy.UpstreamRequestModifications{}
+func (p *TestPolicy) OnRequestBody(ctx *policy.RequestContext) policy.RequestAction {
+	return policy.UpstreamRequestModifications{}
 }
 
-func (p *TestPolicy) OnResponse(ctx context.Context, respCtx *policy.ResponseContext, params policy.PolicyParameters) policy.ResponseAction {
-	return &policy.DownstreamResponseModifications{}
+func (p *TestPolicy) OnResponseBody(ctx *policy.ResponseContext) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{}
 }
 
-func (p *TestPolicy) Mode() policy.PolicyMode {
-	return policy.PolicyMode{}
-}
-
-func Factory(metadata policy.PolicyMetadata, initParams map[string]interface{}) (policy.Policy, map[string]interface{}, error) {
-	return &TestPolicy{}, initParams, nil
+func GetPolicy(metadata policy.PolicyMetadata, params map[string]interface{}) (policy.Policy, error) {
+	return &TestPolicy{}, nil
 }
 `, safeName)
 	CreateSourceFile(t, policyDir, safeName+".go", content)
@@ -175,15 +170,25 @@ func CreateValidPolicyDir(t *testing.T, baseDir, name, version string) string {
 	// Sanitize name for valid Go package name
 	pkgName := SanitizePackageName(name)
 
-	// Create valid policy.go with all required methods
+	// Create valid policy.go with correct signatures matching the SDK interfaces.
+	// Types are unresolved identifiers (no imports) — AST parsing is syntax-only,
+	// so this is valid for validation purposes without requiring the SDK at test time.
+	// Pointer receivers (*RequestContext, *ResponseContext) match the SDK interface exactly.
 	goContent := fmt.Sprintf(`package %s
 
 type Policy struct{}
 
-func GetPolicy() *Policy { return &Policy{} }
-func (p *Policy) Mode() int { return 0 }
-func (p *Policy) OnRequest() {}
-func (p *Policy) OnResponse() {}
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) {
+	return &Policy{}, nil
+}
+
+func (p *Policy) OnRequestBody(ctx *RequestContext) RequestAction {
+	return RequestAction{}
+}
+
+func (p *Policy) OnResponseBody(ctx *ResponseContext) ResponseAction {
+	return ResponseAction{}
+}
 `, pkgName)
 	WriteFile(t, filepath.Join(policyDir, "policy.go"), goContent)
 

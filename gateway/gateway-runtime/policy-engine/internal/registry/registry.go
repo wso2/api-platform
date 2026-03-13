@@ -82,15 +82,15 @@ func mergeParams(initParams, params map[string]interface{}) map[string]interface
 // This method is called during BuildPolicyChain for each route-policy combination
 // Returns the policy instance and the merged parameters (initParams + params)
 func (r *PolicyRegistry) CreateInstance(
-	name, version string,
+	name, ver string,
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, map[string]interface{}, error) {
-	key := compositeKey(name, version)
+	key := compositeKey(name, version.MajorVersion(ver))
 
 	entry, ok := r.Policies[key]
 	if !ok {
-		return nil, nil, fmt.Errorf("policy not found: %s", key)
+		return nil, nil, fmt.Errorf("policy not found: %s:%s", name, ver)
 	}
 
 	// Extract initParams from PolicyDefinition
@@ -123,10 +123,10 @@ func (r *PolicyRegistry) CreateInstance(
 
 // PolicyExists checks if a policy with the given name and version is registered
 // (both definition and factory must exist)
-func (r *PolicyRegistry) PolicyExists(name, version string) error {
-	key := compositeKey(name, version)
+func (r *PolicyRegistry) PolicyExists(name, ver string) error {
+	key := compositeKey(name, version.MajorVersion(ver))
 	if _, ok := r.Policies[key]; !ok {
-		return fmt.Errorf("policy not found: %s", key)
+		return fmt.Errorf("policy not found: %s:%s", name, ver)
 	}
 	return nil
 }

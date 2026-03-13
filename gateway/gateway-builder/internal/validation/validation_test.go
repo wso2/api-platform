@@ -435,7 +435,7 @@ type TestPolicy struct{}
 
 	errors := ValidateGoInterface(policy)
 
-	assert.Len(t, errors, 4) // Missing Mode, OnRequest, OnResponse, GetPolicy
+	assert.Len(t, errors, 2) // Missing sub-interface method and GetPolicy
 }
 
 func TestValidateGoInterface_MissingGetPolicy(t *testing.T) {
@@ -443,14 +443,12 @@ func TestValidateGoInterface_MissingGetPolicy(t *testing.T) {
 	policyDir := filepath.Join(tmpDir, "test-policy")
 	testutils.CreateDir(t, policyDir)
 
-	// Has methods but no GetPolicy factory
+	// Has sub-interface method with correct signature but no GetPolicy factory.
 	goCode := `package test
 
 type TestPolicy struct{}
 
-func (p *TestPolicy) Mode() int { return 0 }
-func (p *TestPolicy) OnRequest() {}
-func (p *TestPolicy) OnResponse() {}
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
 `
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
 
@@ -465,6 +463,203 @@ func (p *TestPolicy) OnResponse() {}
 
 	assert.Len(t, errors, 1)
 	assert.Contains(t, errors[0].Message, "missing required GetPolicy() factory function")
+}
+
+func TestValidateGoInterface_GetPolicyWrongArity(t *testing.T) {
+	tmpDir := t.TempDir()
+	policyDir := filepath.Join(tmpDir, "test-policy")
+	testutils.CreateDir(t, policyDir)
+
+	// GetPolicy with wrong signature (no params, wrong return count).
+	goCode := `package test
+
+type TestPolicy struct{}
+
+func GetPolicy() *TestPolicy { return &TestPolicy{} }
+
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
+
+	policy := &types.DiscoveredPolicy{
+		Name:        "test-policy",
+		Version:     "v1.0.0",
+		Path:        policyDir,
+		SourceFiles: []string{filepath.Join(policyDir, "policy.go")},
+	}
+
+	errors := ValidateGoInterface(policy)
+
+	// Expect 2 errors: wrong param count + wrong return count
+	assert.Len(t, errors, 2)
+	assert.Contains(t, errors[0].Message, "wrong parameter count")
+	assert.Contains(t, errors[1].Message, "wrong return count")
+}
+
+func TestValidateGoInterface_StreamingResponseMissingCompanions(t *testing.T) {
+	tmpDir := t.TempDir()
+	policyDir := filepath.Join(tmpDir, "test-policy")
+	testutils.CreateDir(t, policyDir)
+
+	// Has OnResponseBodyChunk but is missing OnResponseBody and NeedsMoreResponseData.
+	goCode := `package test
+
+type TestPolicy struct{}
+
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
+
+func (p *TestPolicy) OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction {
+	return ResponseChunkAction{}
+}
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
+
+	policy := &types.DiscoveredPolicy{
+		Name:        "test-policy",
+		Version:     "v1.0.0",
+		Path:        policyDir,
+		SourceFiles: []string{filepath.Join(policyDir, "policy.go")},
+	}
+
+	errors := ValidateGoInterface(policy)
+
+	// Expect 2 errors: missing OnResponseBody + missing NeedsMoreResponseData
+	assert.Len(t, errors, 2)
+	msgs := errors[0].Message + " " + errors[1].Message
+	assert.Contains(t, msgs, "OnResponseBody")
+	assert.Contains(t, msgs, "NeedsMoreResponseData")
+}
+
+func TestValidateGoInterface_StreamingResponseMissingNeedsMoreData(t *testing.T) {
+	tmpDir := t.TempDir()
+	policyDir := filepath.Join(tmpDir, "test-policy")
+	testutils.CreateDir(t, policyDir)
+
+	// Has OnResponseBodyChunk + OnResponseBody but missing NeedsMoreResponseData.
+	goCode := `package test
+
+type TestPolicy struct{}
+
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
+
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
+
+func (p *TestPolicy) OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction {
+	return ResponseChunkAction{}
+}
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
+
+	policy := &types.DiscoveredPolicy{
+		Name:        "test-policy",
+		Version:     "v1.0.0",
+		Path:        policyDir,
+		SourceFiles: []string{filepath.Join(policyDir, "policy.go")},
+	}
+
+	errors := ValidateGoInterface(policy)
+
+	assert.Len(t, errors, 1)
+	assert.Contains(t, errors[0].Message, "NeedsMoreResponseData")
+}
+
+func TestValidateGoInterface_StreamingResponseFullImplementation(t *testing.T) {
+	tmpDir := t.TempDir()
+	policyDir := filepath.Join(tmpDir, "test-policy")
+	testutils.CreateDir(t, policyDir)
+
+	// Has all three StreamingResponsePolicy methods with correct signatures.
+	goCode := `package test
+
+type TestPolicy struct{}
+
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
+
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
+
+func (p *TestPolicy) OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction {
+	return ResponseChunkAction{}
+}
+
+func (p *TestPolicy) NeedsMoreResponseData(accumulated []byte) bool { return false }
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
+
+	policy := &types.DiscoveredPolicy{
+		Name:        "test-policy",
+		Version:     "v1.0.0",
+		Path:        policyDir,
+		SourceFiles: []string{filepath.Join(policyDir, "policy.go")},
+	}
+
+	errors := ValidateGoInterface(policy)
+
+	assert.Empty(t, errors)
+}
+
+func TestValidateGoInterface_StreamingRequestMissingCompanions(t *testing.T) {
+	tmpDir := t.TempDir()
+	policyDir := filepath.Join(tmpDir, "test-policy")
+	testutils.CreateDir(t, policyDir)
+
+	// Has OnRequestBodyChunk but is missing OnRequestBody and NeedsMoreRequestData.
+	goCode := `package test
+
+type TestPolicy struct{}
+
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
+
+func (p *TestPolicy) OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody) RequestChunkAction {
+	return RequestChunkAction{}
+}
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
+
+	policy := &types.DiscoveredPolicy{
+		Name:        "test-policy",
+		Version:     "v1.0.0",
+		Path:        policyDir,
+		SourceFiles: []string{filepath.Join(policyDir, "policy.go")},
+	}
+
+	errors := ValidateGoInterface(policy)
+
+	// Expect 2 errors: missing OnRequestBody + missing NeedsMoreRequestData
+	assert.Len(t, errors, 2)
+	msgs := errors[0].Message + " " + errors[1].Message
+	assert.Contains(t, msgs, "OnRequestBody")
+	assert.Contains(t, msgs, "NeedsMoreRequestData")
+}
+
+func TestValidateGoInterface_MethodWrongArity(t *testing.T) {
+	tmpDir := t.TempDir()
+	policyDir := filepath.Join(tmpDir, "test-policy")
+	testutils.CreateDir(t, policyDir)
+
+	// OnResponseBody with wrong signature (0 params, 0 results instead of 1 param, 1 result).
+	goCode := `package test
+
+type TestPolicy struct{}
+
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
+
+func (p *TestPolicy) OnResponseBody() {}
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
+
+	policy := &types.DiscoveredPolicy{
+		Name:        "test-policy",
+		Version:     "v1.0.0",
+		Path:        policyDir,
+		SourceFiles: []string{filepath.Join(policyDir, "policy.go")},
+	}
+
+	errors := ValidateGoInterface(policy)
+
+	// Expect 2 errors: wrong param count + wrong return count for OnResponseBody
+	assert.Len(t, errors, 2)
+	assert.Contains(t, errors[0].Message, "wrong parameter count")
+	assert.Contains(t, errors[1].Message, "wrong return count")
 }
 
 // ==== ValidateGoMod tests ====

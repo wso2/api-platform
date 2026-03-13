@@ -169,11 +169,7 @@ func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
 
-	mockPol := &testutils.ConfigurableMockPolicy{
-		MockMode: policy.ProcessingMode{
-			ResponseHeaderMode: policy.HeaderModeProcess,
-		},
-	}
+	mockPol := &testutils.ConfigurableMockPolicy{}
 
 	chain := &registry.PolicyChain{
 		Policies: []policy.Policy{mockPol},
@@ -218,19 +214,19 @@ func TestBuildRequestContext_BasicHeaders(t *testing.T) {
 		Vhost:      "api.example.com",
 	}
 
-	execCtx.buildRequestContext(headers, routeMetadata)
+	execCtx.buildRequestContexts(headers, routeMetadata)
 
-	require.NotNil(t, execCtx.requestContext)
-	assert.Equal(t, "/api/pets", execCtx.requestContext.Path)
-	assert.Equal(t, "POST", execCtx.requestContext.Method)
-	assert.Equal(t, "api.example.com", execCtx.requestContext.Authority)
-	assert.Equal(t, "https", execCtx.requestContext.Scheme)
-	assert.Equal(t, "api.example.com", execCtx.requestContext.Vhost)
+	require.NotNil(t, execCtx.requestHeaderCtx)
+	assert.Equal(t, "/api/pets", execCtx.requestHeaderCtx.Path)
+	assert.Equal(t, "POST", execCtx.requestHeaderCtx.Method)
+	assert.Equal(t, "api.example.com", execCtx.requestHeaderCtx.Authority)
+	assert.Equal(t, "https", execCtx.requestHeaderCtx.Scheme)
+	assert.Equal(t, "api.example.com", execCtx.requestHeaderCtx.Vhost)
 
 	// Check SharedContext
-	require.NotNil(t, execCtx.requestContext.SharedContext)
-	assert.Equal(t, "PetStore", execCtx.requestContext.SharedContext.APIName)
-	assert.Equal(t, "v1.0", execCtx.requestContext.SharedContext.APIVersion)
+	require.NotNil(t, execCtx.requestHeaderCtx.SharedContext)
+	assert.Equal(t, "PetStore", execCtx.requestHeaderCtx.SharedContext.APIName)
+	assert.Equal(t, "v1.0", execCtx.requestHeaderCtx.SharedContext.APIVersion)
 
 	// Request ID should be generated
 	assert.NotEmpty(t, execCtx.requestID)
@@ -254,11 +250,11 @@ func TestBuildRequestContext_WithRequestID(t *testing.T) {
 		},
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	// Should use existing request ID
 	assert.Equal(t, "custom-request-id", execCtx.requestID)
-	assert.Equal(t, "custom-request-id", execCtx.requestContext.SharedContext.RequestID)
+	assert.Equal(t, "custom-request-id", execCtx.requestHeaderCtx.SharedContext.RequestID)
 }
 
 func TestBuildRequestContext_EndOfStream(t *testing.T) {
@@ -278,13 +274,13 @@ func TestBuildRequestContext_EndOfStream(t *testing.T) {
 		EndOfStream: true,
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	// Body should be marked as end of stream with no content
-	require.NotNil(t, execCtx.requestContext.Body)
-	assert.True(t, execCtx.requestContext.Body.EndOfStream)
-	assert.False(t, execCtx.requestContext.Body.Present)
-	assert.Nil(t, execCtx.requestContext.Body.Content)
+	require.NotNil(t, execCtx.requestBodyCtx.Body)
+	assert.True(t, execCtx.requestBodyCtx.Body.EndOfStream)
+	assert.False(t, execCtx.requestBodyCtx.Body.Present)
+	assert.Nil(t, execCtx.requestBodyCtx.Body.Content)
 }
 
 func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
@@ -310,13 +306,13 @@ func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
 		ProjectID:      "proj-123",
 	}
 
-	execCtx.buildRequestContext(headers, routeMetadata)
+	execCtx.buildRequestContexts(headers, routeMetadata)
 
 	// Check SharedContext metadata
-	require.NotNil(t, execCtx.requestContext.SharedContext.Metadata)
-	assert.Equal(t, "gpt-4", execCtx.requestContext.SharedContext.Metadata["template_handle"])
-	assert.Equal(t, "openai", execCtx.requestContext.SharedContext.Metadata["provider_name"])
-	assert.Equal(t, "proj-123", execCtx.requestContext.SharedContext.ProjectID)
+	require.NotNil(t, execCtx.requestHeaderCtx.SharedContext.Metadata)
+	assert.Equal(t, "gpt-4", execCtx.requestHeaderCtx.SharedContext.Metadata["template_handle"])
+	assert.Equal(t, "openai", execCtx.requestHeaderCtx.SharedContext.Metadata["provider_name"])
+	assert.Equal(t, "proj-123", execCtx.requestHeaderCtx.SharedContext.ProjectID)
 }
 
 func TestBuildRequestContext_MultipleHeaderValues(t *testing.T) {
@@ -337,10 +333,10 @@ func TestBuildRequestContext_MultipleHeaderValues(t *testing.T) {
 		},
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	// Should have both accept values
-	acceptValues := execCtx.requestContext.Headers.GetAll()["accept"]
+	acceptValues := execCtx.requestHeaderCtx.Headers.GetAll()["accept"]
 	assert.Len(t, acceptValues, 2)
 	assert.Contains(t, acceptValues, "application/json")
 	assert.Contains(t, acceptValues, "text/plain")
@@ -367,7 +363,7 @@ func TestBuildResponseContext_BasicHeaders(t *testing.T) {
 			},
 		},
 	}
-	execCtx.buildRequestContext(reqHeaders, RouteMetadata{})
+	execCtx.buildRequestContexts(reqHeaders, RouteMetadata{})
 
 	// Now build response context
 	respHeaders := &extprocv3.HttpHeaders{
@@ -380,17 +376,17 @@ func TestBuildResponseContext_BasicHeaders(t *testing.T) {
 		EndOfStream: false,
 	}
 
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
-	require.NotNil(t, execCtx.responseContext)
-	assert.Equal(t, 200, execCtx.responseContext.ResponseStatus)
+	require.NotNil(t, execCtx.responseHeaderCtx)
+	assert.Equal(t, 200, execCtx.responseHeaderCtx.ResponseStatus)
 
 	// Should have same SharedContext as request
-	assert.Equal(t, execCtx.requestContext.SharedContext, execCtx.responseContext.SharedContext)
+	assert.Equal(t, execCtx.requestHeaderCtx.SharedContext, execCtx.responseHeaderCtx.SharedContext)
 
 	// Should have request data
-	assert.Equal(t, "/api/pets", execCtx.responseContext.RequestPath)
-	assert.Equal(t, "GET", execCtx.responseContext.RequestMethod)
+	assert.Equal(t, "/api/pets", execCtx.responseHeaderCtx.RequestPath)
+	assert.Equal(t, "GET", execCtx.responseHeaderCtx.RequestMethod)
 }
 
 func TestBuildResponseContext_EndOfStream(t *testing.T) {
@@ -405,7 +401,7 @@ func TestBuildResponseContext_EndOfStream(t *testing.T) {
 	reqHeaders := &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{},
 	}
-	execCtx.buildRequestContext(reqHeaders, RouteMetadata{})
+	execCtx.buildRequestContexts(reqHeaders, RouteMetadata{})
 
 	// Build response context with end of stream
 	respHeaders := &extprocv3.HttpHeaders{
@@ -417,11 +413,11 @@ func TestBuildResponseContext_EndOfStream(t *testing.T) {
 		EndOfStream: true,
 	}
 
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
-	require.NotNil(t, execCtx.responseContext.ResponseBody)
-	assert.True(t, execCtx.responseContext.ResponseBody.EndOfStream)
-	assert.False(t, execCtx.responseContext.ResponseBody.Present)
+	require.NotNil(t, execCtx.responseBodyCtx.ResponseBody)
+	assert.True(t, execCtx.responseBodyCtx.ResponseBody.EndOfStream)
+	assert.False(t, execCtx.responseBodyCtx.ResponseBody.Present)
 }
 
 func TestBuildResponseContext_InvalidStatus(t *testing.T) {
@@ -436,7 +432,7 @@ func TestBuildResponseContext_InvalidStatus(t *testing.T) {
 	reqHeaders := &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{},
 	}
-	execCtx.buildRequestContext(reqHeaders, RouteMetadata{})
+	execCtx.buildRequestContexts(reqHeaders, RouteMetadata{})
 
 	// Build response context with invalid status
 	respHeaders := &extprocv3.HttpHeaders{
@@ -448,7 +444,75 @@ func TestBuildResponseContext_InvalidStatus(t *testing.T) {
 	}
 
 	// Should not panic, status will be 0
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
-	assert.Equal(t, 0, execCtx.responseContext.ResponseStatus)
+	assert.Equal(t, 0, execCtx.responseHeaderCtx.ResponseStatus)
+}
+
+// =============================================================================
+// isStreamingUpstreamResponse Tests
+// =============================================================================
+
+func TestIsStreamingUpstreamResponse_ChunkedTransferEncoding(t *testing.T) {
+	headers := policy.NewHeaders(map[string][]string{
+		"transfer-encoding": {"chunked"},
+	})
+	assert.True(t, isStreamingUpstreamResponse(headers))
+}
+
+func TestIsStreamingUpstreamResponse_SSEContentType(t *testing.T) {
+	headers := policy.NewHeaders(map[string][]string{
+		"content-type": {"text/event-stream"},
+	})
+	assert.True(t, isStreamingUpstreamResponse(headers))
+}
+
+func TestIsStreamingUpstreamResponse_SSEWithParams(t *testing.T) {
+	// Content-Type with parameters must still match
+	headers := policy.NewHeaders(map[string][]string{
+		"content-type": {"text/event-stream; charset=utf-8"},
+	})
+	assert.True(t, isStreamingUpstreamResponse(headers))
+}
+
+func TestIsStreamingUpstreamResponse_MixedCaseChunked(t *testing.T) {
+	headers := policy.NewHeaders(map[string][]string{
+		"transfer-encoding": {"Chunked"},
+	})
+	assert.True(t, isStreamingUpstreamResponse(headers))
+}
+
+func TestIsStreamingUpstreamResponse_NotStreaming(t *testing.T) {
+	headers := policy.NewHeaders(map[string][]string{
+		"content-type":   {"application/json"},
+		"content-length": {"1024"},
+	})
+	assert.False(t, isStreamingUpstreamResponse(headers))
+}
+
+func TestIsStreamingUpstreamResponse_EmptyHeaders(t *testing.T) {
+	headers := policy.NewHeaders(map[string][]string{})
+	assert.False(t, isStreamingUpstreamResponse(headers))
+}
+
+// =============================================================================
+// getModeOverride streaming Tests
+// =============================================================================
+
+func TestGetModeOverride_RequestStreamingSupported(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{
+		RequiresRequestBody:      true,
+		SupportsRequestStreaming: true,
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	// Mark that we have a streaming request (e.g., client sent chunked encoding)
+	execCtx.isStreamingRequest = true
+
+	mode := execCtx.getModeOverride()
+
+	assert.Equal(t, extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED, mode.RequestBodyMode)
 }

@@ -557,16 +557,14 @@ func TestBuildAnalyticsStruct_MultipleTypes(t *testing.T) {
 func TestBuildAnalyticsStruct_WithExecutionContext(t *testing.T) {
 	// Create a mock execution context with SharedContext
 	execCtx := &PolicyExecutionContext{
-		requestContext: &policy.RequestContext{
-			SharedContext: &policy.SharedContext{
-				APIId:         "api-123",
-				APIName:       "PetStore",
-				APIVersion:    "v1.0.0",
-				APIContext:    "/petstore",
-				OperationPath: "/pets/{id}",
-				APIKind:       "REST",
-				ProjectID:     "proj-456",
-			},
+		sharedCtx: &policy.SharedContext{
+			APIId:         "api-123",
+			APIName:       "PetStore",
+			APIVersion:    "v1.0.0",
+			APIContext:    "/petstore",
+			OperationPath: "/pets/{id}",
+			APIKind:       "REST",
+			ProjectID:     "proj-456",
 		},
 	}
 
@@ -595,12 +593,10 @@ func TestBuildAnalyticsStruct_WithExecutionContext(t *testing.T) {
 func TestBuildAnalyticsStruct_WithPartialSharedContext(t *testing.T) {
 	// Create execution context with only some fields populated
 	execCtx := &PolicyExecutionContext{
-		requestContext: &policy.RequestContext{
-			SharedContext: &policy.SharedContext{
-				APIName:    "TestAPI",
-				APIVersion: "v2.0",
-				// Other fields empty
-			},
+		sharedCtx: &policy.SharedContext{
+			APIName:    "TestAPI",
+			APIVersion: "v2.0",
+			// Other fields empty
 		},
 	}
 
@@ -622,9 +618,7 @@ func TestBuildAnalyticsStruct_WithPartialSharedContext(t *testing.T) {
 
 func TestBuildAnalyticsStruct_WithNilSharedContext(t *testing.T) {
 	execCtx := &PolicyExecutionContext{
-		requestContext: &policy.RequestContext{
-			SharedContext: nil,
-		},
+		sharedCtx: nil,
 	}
 
 	data := map[string]any{
@@ -641,7 +635,7 @@ func TestBuildAnalyticsStruct_WithNilSharedContext(t *testing.T) {
 
 func TestBuildAnalyticsStruct_WithNilRequestContext(t *testing.T) {
 	execCtx := &PolicyExecutionContext{
-		requestContext: nil,
+		sharedCtx: nil,
 	}
 
 	data := map[string]any{
@@ -939,4 +933,172 @@ func TestLoadFromFile_ValidationError_PolicyNotRegistered(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "policy not found")
+}
+
+// =============================================================================
+// determineRequestBodyMode / determineResponseBodyMode — streaming mode
+// =============================================================================
+
+func TestDetermineRequestBodyMode_StreamingSupported(t *testing.T) {
+	chain := &registry.PolicyChain{
+		RequiresRequestBody:     true,
+		SupportsRequestStreaming: true,
+	}
+	assert.Equal(t, BodyModeStreamed, determineRequestBodyMode(chain))
+}
+
+func TestDetermineResponseBodyMode_StreamingSupported(t *testing.T) {
+	chain := &registry.PolicyChain{
+		RequiresResponseBody:     true,
+		SupportsResponseStreaming: true,
+	}
+	assert.Equal(t, BodyModeStreamed, determineResponseBodyMode(chain))
+}
+
+// =============================================================================
+// BuildPolicyChain streaming flag computation
+// =============================================================================
+
+// streamingRequestPol implements StreamingRequestPolicy (+ RequestPolicy as required).
+type streamingRequestPol struct{}
+
+func (p *streamingRequestPol) OnRequestBody(_ *policy.RequestContext) policy.RequestAction {
+	return policy.UpstreamRequestModifications{}
+}
+func (p *streamingRequestPol) OnRequestBodyChunk(_ *policy.RequestStreamContext, _ *policy.StreamBody) policy.RequestChunkAction {
+	return policy.RequestChunkAction{}
+}
+func (p *streamingRequestPol) NeedsMoreRequestData(_ []byte) bool { return false }
+
+// bufferedRequestPol implements RequestPolicy only (no streaming).
+type bufferedRequestPol struct{}
+
+func (p *bufferedRequestPol) OnRequestBody(_ *policy.RequestContext) policy.RequestAction {
+	return policy.UpstreamRequestModifications{}
+}
+
+// streamingResponsePol implements StreamingResponsePolicy (+ ResponsePolicy).
+type streamingResponsePol struct{}
+
+func (p *streamingResponsePol) OnResponseBody(_ *policy.ResponseContext) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{}
+}
+func (p *streamingResponsePol) OnResponseBodyChunk(_ *policy.ResponseStreamContext, _ *policy.StreamBody) policy.ResponseChunkAction {
+	return policy.ResponseChunkAction{}
+}
+func (p *streamingResponsePol) NeedsMoreResponseData(_ []byte) bool { return false }
+
+// bufferedResponsePol implements ResponsePolicy only.
+type bufferedResponsePol struct{}
+
+func (p *bufferedResponsePol) OnResponseBody(_ *policy.ResponseContext) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{}
+}
+
+func newTestRegistry(t *testing.T, name string, factory policy.PolicyFactory) *registry.PolicyRegistry {
+	t.Helper()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+	require.NoError(t, reg.SetConfig(map[string]interface{}{}))
+	err := reg.Register(&policy.PolicyDefinition{Name: name, Version: "v1.0.0"}, factory)
+	require.NoError(t, err)
+	return reg
+}
+
+func TestBuildPolicyChain_StreamingFlags_AllStreamingRequest(t *testing.T) {
+	reg := newTestRegistry(t, "streaming-req", func(_ policy.PolicyMetadata, _ map[string]interface{}) (policy.Policy, error) {
+		return &streamingRequestPol{}, nil
+	})
+	kernel := NewKernel()
+	specs := []policy.PolicySpec{{Name: "streaming-req", Version: "v1.0.0", Enabled: true, Parameters: policy.PolicyParameters{Raw: map[string]interface{}{}}}}
+
+	chain, err := kernel.BuildPolicyChain("route", specs, reg, policy.PolicyMetadata{})
+
+	require.NoError(t, err)
+	assert.True(t, chain.RequiresRequestBody)
+	assert.True(t, chain.SupportsRequestStreaming)
+}
+
+func TestBuildPolicyChain_StreamingFlags_BufferedRequestForcesNoStreaming(t *testing.T) {
+	reg := newTestRegistry(t, "buffered-req", func(_ policy.PolicyMetadata, _ map[string]interface{}) (policy.Policy, error) {
+		return &bufferedRequestPol{}, nil
+	})
+	kernel := NewKernel()
+	specs := []policy.PolicySpec{{Name: "buffered-req", Version: "v1.0.0", Enabled: true, Parameters: policy.PolicyParameters{Raw: map[string]interface{}{}}}}
+
+	chain, err := kernel.BuildPolicyChain("route", specs, reg, policy.PolicyMetadata{})
+
+	require.NoError(t, err)
+	assert.True(t, chain.RequiresRequestBody)
+	assert.False(t, chain.SupportsRequestStreaming)
+}
+
+func TestBuildPolicyChain_StreamingFlags_MixedRequestChain(t *testing.T) {
+	// One streaming + one buffered → streaming disabled for the whole chain
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+	require.NoError(t, reg.SetConfig(map[string]interface{}{}))
+	require.NoError(t, reg.Register(&policy.PolicyDefinition{Name: "s", Version: "v1.0.0"}, func(_ policy.PolicyMetadata, _ map[string]interface{}) (policy.Policy, error) {
+		return &streamingRequestPol{}, nil
+	}))
+	require.NoError(t, reg.Register(&policy.PolicyDefinition{Name: "b", Version: "v1.0.0"}, func(_ policy.PolicyMetadata, _ map[string]interface{}) (policy.Policy, error) {
+		return &bufferedRequestPol{}, nil
+	}))
+	specs := []policy.PolicySpec{
+		{Name: "s", Version: "v1.0.0", Enabled: true, Parameters: policy.PolicyParameters{Raw: map[string]interface{}{}}},
+		{Name: "b", Version: "v1.0.0", Enabled: true, Parameters: policy.PolicyParameters{Raw: map[string]interface{}{}}},
+	}
+
+	chain, err := NewKernel().BuildPolicyChain("route", specs, reg, policy.PolicyMetadata{})
+
+	require.NoError(t, err)
+	assert.True(t, chain.RequiresRequestBody)
+	assert.False(t, chain.SupportsRequestStreaming)
+}
+
+func TestBuildPolicyChain_StreamingFlags_NoBodyPolicies(t *testing.T) {
+	// Header-only policy — no body at all, streaming flags must be false
+	reg := newTestRegistry(t, "hdr", func(_ policy.PolicyMetadata, _ map[string]interface{}) (policy.Policy, error) {
+		return &testHeaderOnlyPol{}, nil
+	})
+	specs := []policy.PolicySpec{{Name: "hdr", Version: "v1.0.0", Enabled: true, Parameters: policy.PolicyParameters{Raw: map[string]interface{}{}}}}
+
+	chain, err := NewKernel().BuildPolicyChain("route", specs, reg, policy.PolicyMetadata{})
+
+	require.NoError(t, err)
+	assert.False(t, chain.RequiresRequestBody)
+	assert.False(t, chain.SupportsRequestStreaming)
+	assert.False(t, chain.RequiresResponseBody)
+	assert.False(t, chain.SupportsResponseStreaming)
+}
+
+func TestBuildPolicyChain_StreamingFlags_AllStreamingResponse(t *testing.T) {
+	reg := newTestRegistry(t, "streaming-resp", func(_ policy.PolicyMetadata, _ map[string]interface{}) (policy.Policy, error) {
+		return &streamingResponsePol{}, nil
+	})
+	specs := []policy.PolicySpec{{Name: "streaming-resp", Version: "v1.0.0", Enabled: true, Parameters: policy.PolicyParameters{Raw: map[string]interface{}{}}}}
+
+	chain, err := NewKernel().BuildPolicyChain("route", specs, reg, policy.PolicyMetadata{})
+
+	require.NoError(t, err)
+	assert.True(t, chain.RequiresResponseBody)
+	assert.True(t, chain.SupportsResponseStreaming)
+}
+
+func TestBuildPolicyChain_StreamingFlags_BufferedResponseForcesNoStreaming(t *testing.T) {
+	reg := newTestRegistry(t, "buffered-resp", func(_ policy.PolicyMetadata, _ map[string]interface{}) (policy.Policy, error) {
+		return &bufferedResponsePol{}, nil
+	})
+	specs := []policy.PolicySpec{{Name: "buffered-resp", Version: "v1.0.0", Enabled: true, Parameters: policy.PolicyParameters{Raw: map[string]interface{}{}}}}
+
+	chain, err := NewKernel().BuildPolicyChain("route", specs, reg, policy.PolicyMetadata{})
+
+	require.NoError(t, err)
+	assert.True(t, chain.RequiresResponseBody)
+	assert.False(t, chain.SupportsResponseStreaming)
+}
+
+// testHeaderOnlyPol implements RequestHeaderPolicy with no body access.
+type testHeaderOnlyPol struct{}
+
+func (p *testHeaderOnlyPol) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
+	return policy.UpstreamRequestHeaderModifications{}
 }

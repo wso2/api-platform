@@ -81,7 +81,7 @@ static_resources:
                                 my-route-meta: foo
                           match:
                             safe_regex:
-                              regex: "^/pets/([^/]+)/history"
+                              regex: "^/pets/([^/]+)/history.*"
                             headers:
                               - name: ":method"
                                 string_match:
@@ -96,7 +96,7 @@ static_resources:
                                 my-route-meta: foo
                           match:
                             safe_regex:
-                              regex: "^/openai/v1/with-ext-proc"
+                              regex: "^/openai/v1/with-ext-proc.*"
                             headers:
                               - name: ":method"
                                 string_match:
@@ -160,18 +160,20 @@ static_resources:
                         - xds.route_name
                       processing_mode:
                         request_header_mode: SEND
-                        # response_header_mode: SEND
-                        # request_trailer_mode: SEND
-                        # response_trailer_mode: SEND
+                        response_header_mode: SEND
+                        request_trailer_mode: SKIP
+                        response_trailer_mode: SKIP
                         # # https://www.envoyproxy.io/docs/envoy/v1.33.0/api-v3/extensions/filters/http/ext_proc/v3/processing_mode.proto#envoy-v3-api-enum-extensions-filters-http-ext-proc-v3-processingmode-bodysendmode
-                        # request_body_mode: FULL_DUPLEX_STREAMED
-                        # response_body_mode: FULL_DUPLEX_STREAMED
+                        request_body_mode: BUFFERED
+                        response_body_mode: BUFFERED
                       message_timeout:
                         seconds: 600
                         nanos: 250000000 # 250ms
                   - name: lua_filter_with_custom_name_1
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      inline_code: |
+                        -- no-op placeholder
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
