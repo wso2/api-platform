@@ -31,6 +31,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -569,10 +570,6 @@ func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpCl
 	return fmt.Errorf("WebSubHub request failed after %d retries; last status: %d", maxRetries, lastStatus)
 }
 
-// vhostGatewayDefault is the sentinel value written by platform-api to indicate that the
-// gateway-controller should resolve and persist its current configured default vhost values.
-const vhostGatewayDefault = "_gateway_default_"
-
 // resolveVhostSentinels replaces the gateway-default sentinel in a RestAPI or WebSubAPI's vhosts
 // with the actual default values from the router config. This ensures that the stored value is
 // always a concrete hostname, making deployments immune to future gateway config changes.
@@ -600,10 +597,10 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 			*cfg = c
 			return nil
 		}
-		if c.Spec.Vhosts.Main == vhostGatewayDefault {
+		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
 			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
 		}
-		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == vhostGatewayDefault {
+		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
 			resolved := routerCfg.VHosts.Sandbox.Default
 			if resolved != "" {
 				c.Spec.Vhosts.Sandbox = &resolved
@@ -627,10 +624,10 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 			*cfg = c
 			return nil
 		}
-		if c.Spec.Vhosts.Main == vhostGatewayDefault {
+		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
 			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
 		}
-		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == vhostGatewayDefault {
+		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
 			resolved := routerCfg.VHosts.Sandbox.Default
 			if resolved != "" {
 				c.Spec.Vhosts.Sandbox = &resolved

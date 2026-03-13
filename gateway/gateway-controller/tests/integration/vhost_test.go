@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -112,10 +113,10 @@ spec:
 		svc, db := setupService(t, routerCfg)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-		vhostBlock := `  vhosts:
-    main: "_gateway_default_"
-    sandbox: "_gateway_default_"
-`
+		vhostBlock := fmt.Sprintf(`  vhosts:
+    main: %q
+    sandbox: %q
+`, constants.VHostGatewayDefault, constants.VHostGatewayDefault)
 		result, err := svc.DeployAPIConfiguration(utils.APIDeploymentParams{
 			Data:        makeYAML("sentinel-vhosts", vhostBlock),
 			ContentType: "application/yaml",

@@ -33,6 +33,7 @@ import (
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -834,7 +835,7 @@ func TestRegisterAndUnregisterTopicWithHub(t *testing.T) {
 }
 
 func TestResolveVhostSentinels_RestApi(t *testing.T) {
-	sandbox := vhostGatewayDefault
+	sandbox := constants.VHostGatewayDefault
 	routerCfg := &config.RouterConfig{
 		VHosts: config.VHostsConfig{
 			Main:    config.VHostEntry{Default: "*.wso2.com"},
@@ -842,7 +843,7 @@ func TestResolveVhostSentinels_RestApi(t *testing.T) {
 		},
 	}
 
-	main := vhostGatewayDefault
+	main := constants.VHostGatewayDefault
 	var cfg any = api.RestAPI{
 		Kind: api.RestApi,
 		Spec: api.APIConfigData{
@@ -961,7 +962,7 @@ func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T
 }
 
 func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
-	sandbox := vhostGatewayDefault
+	sandbox := constants.VHostGatewayDefault
 	routerCfg := &config.RouterConfig{
 		VHosts: config.VHostsConfig{
 			Main:    config.VHostEntry{Default: "*.wso2.com"},
@@ -976,7 +977,7 @@ func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
 				Main    string  `json:"main" yaml:"main"`
 				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 			}{
-				Main:    vhostGatewayDefault,
+				Main:    constants.VHostGatewayDefault,
 				Sandbox: &sandbox,
 			},
 		},
