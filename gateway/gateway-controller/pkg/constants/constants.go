@@ -151,9 +151,10 @@ const (
 	APIKeyPrefix = "apip_"
 	APIKeyLen    = 32 // Length of the random part of the API key in bytes
 
-	// API Key length constants
+	// API Key length constants.
+	// Max is 2048 to support external JWT keys (e.g. from WSO2 APIM internal keys) which exceed 128 chars.
 	DefaultMinAPIKeyLength = 36
-	DefaultMaxAPIKeyLength = 128
+	DefaultMaxAPIKeyLength = 2048
 
 	// API Key name and display name length constants
 	APIKeyNameMinLength  = 3

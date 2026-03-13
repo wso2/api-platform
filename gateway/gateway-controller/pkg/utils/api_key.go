@@ -172,13 +172,23 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 		operationType = "register"
 	}
 
-	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
-		logger.Error("API configuration not found for API Key generation",
+	// Validate that API exists. Look up by UUID first (e.g. apikey.created event sends apiId;
+	// deployed APIs are stored with UUID = apiId). Fall back to handle (REST uses handle).
+	config, err := s.db.GetConfig(params.Handle)
+	if err != nil && !storage.IsNotFoundError(err) {
+		logger.Error("API configuration lookup by ID failed",
 			slog.String("operation", operationType+"_key"),
 			slog.Any("error", err))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		return nil, fmt.Errorf("API configuration lookup failed: %w", err)
+	}
+	if config == nil || err != nil {
+		config, err = s.store.GetByHandle(params.Handle)
+		if err != nil {
+			logger.Error("API configuration not found for API Key generation",
+				slog.String("operation", operationType+"_key"),
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
 	}
 
 	// Check API key limit enforcement
@@ -211,10 +221,26 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 			if errors.Is(err, storage.ErrConflict) {
 				// Handle collision - only retry for locally generated keys
 				if isExternalKeyInjection {
-					// For external keys, collision means the key already exists
-					logger.Error("External API key already exists in the system",
-						slog.String("operation", operationType+"_key"))
-					return nil, fmt.Errorf("%w: provided API key already exists", storage.ErrConflict)
+					// For external keys (e.g. from apikey.created), same name = update existing key with new value (e.g. regenerated JWT)
+					logger.Info("External API key name already exists, updating with new value",
+						slog.String("operation", operationType+"_key"),
+						slog.String("name", apiKey.Name))
+					updateParams := APIKeyUpdateParams{
+						Handle:        config.Handle,
+						APIKeyName:    apiKey.Name,
+						Request:       params.Request,
+						User:          params.User,
+						Logger:        logger,
+						CorrelationID: params.CorrelationID,
+					}
+					updateResult, updateErr := s.UpdateAPIKey(updateParams)
+					if updateErr != nil {
+						logger.Error("Failed to update existing external API key after conflict",
+							slog.String("operation", operationType+"_key"),
+							slog.Any("error", updateErr))
+						return nil, fmt.Errorf("failed to update existing API key: %w", updateErr)
+					}
+					return &APIKeyCreationResult{Response: updateResult.Response}, nil
 				}
 
 				// For local keys, retry with a new generated key
@@ -1200,7 +1226,7 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 		return nil, fmt.Errorf("invalid API key value: %w", err)
 	}
 
-	// Handle displayName - optional during update
+	// Handle displayName - optional during update (e.g. apikey.created event may not send it)
 	// If not provided or empty, keep the existing displayName
 	var displayName string
 	if request.DisplayName != nil && strings.TrimSpace(*request.DisplayName) != "" {
@@ -1211,7 +1237,7 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 			return nil, fmt.Errorf("invalid display name: %w", err)
 		}
 	} else {
-		return nil, fmt.Errorf("display name is required for update")
+		displayName = existingKey.DisplayName
 	}
 
 	operations := "[\"*\"]" // Default to all operations
