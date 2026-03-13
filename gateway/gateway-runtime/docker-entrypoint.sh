@@ -69,10 +69,18 @@ while [[ $# -gt 0 ]]; do
             fi
             ;;
         --py.*)
-            PY_ARGS+=("--${1#--py.}")
+            py_arg="$1"
+            PY_ARGS+=("--${py_arg#--py.}")
+            # Keep Go-side socket checks and Python executor CLI override in sync.
+            if [[ "$py_arg" == --py.socket=* ]]; then
+                export PYTHON_EXECUTOR_SOCKET="${py_arg#--py.socket=}"
+            fi
             shift
             if [[ $# -gt 0 && "$1" != --* ]]; then
                 PY_ARGS+=("$1")
+                if [[ "$py_arg" == "--py.socket" ]]; then
+                    export PYTHON_EXECUTOR_SOCKET="$1"
+                fi
                 shift
             fi
             ;;

@@ -24,6 +24,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -57,6 +58,7 @@ type StreamManager struct {
 	pendingReqs  map[string]chan *proto.ExecutionResponse // request_id → response channel
 	connected    bool
 	connectMu    sync.Mutex
+	connID       atomic.Uint64 // Monotonically increasing connection ID for stale goroutine detection
 }
 
 // NewStreamManager creates a new StreamManager for the given UDS socket path.
@@ -127,8 +129,11 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 	sm.streamCancel = streamCancel
 	sm.connected = true
 
-	// Start receive loop
-	go sm.receiveLoop()
+	// Increment connection ID and capture for this connection's receive loop
+	connID := sm.connID.Add(1)
+
+	// Start receive loop with captured stream and connection ID for stale goroutine detection.
+	go sm.receiveLoop(stream, conn, connID)
 
 	slogger.InfoContext(ctx, "Connected to Python Executor")
 	return nil
@@ -136,15 +141,17 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 
 // receiveLoop continuously receives responses from the stream and dispatches them
 // to waiting request channels.
-func (sm *StreamManager) receiveLoop() {
-	slogger := slog.With("component", "pythonbridge", "phase", "receiveLoop")
+// The connID parameter identifies the specific connection this loop is handling,
+// preventing stale goroutines from closing newer connections.
+func (sm *StreamManager) receiveLoop(stream proto.PythonExecutorService_ExecuteStreamClient, conn *grpc.ClientConn, connID uint64) {
+	slogger := slog.With("component", "pythonbridge", "phase", "receiveLoop", "conn_id", connID)
 	defer slogger.Info("Receive loop exited")
 
 	for {
-		resp, err := sm.stream.Recv()
+		resp, err := stream.Recv()
 		if err != nil {
 			slogger.Error("Error receiving from stream", "error", err)
-			sm.handleDisconnect()
+			sm.handleDisconnect(connID, conn)
 			return
 		}
 
@@ -168,9 +175,20 @@ func (sm *StreamManager) receiveLoop() {
 }
 
 // handleDisconnect marks the connection as disconnected and cleans up pending requests.
-func (sm *StreamManager) handleDisconnect() {
+// The connID parameter identifies the connection that disconnected; if it doesn't match
+// the current connection ID, this is a stale goroutine and should not close the new connection.
+func (sm *StreamManager) handleDisconnect(connID uint64, conn *grpc.ClientConn) {
 	sm.connectMu.Lock()
 	defer sm.connectMu.Unlock()
+
+	// Check if this is a stale goroutine trying to close a newer connection
+	if sm.connID.Load() != connID || sm.conn != conn {
+		slog.Info("Stale receiveLoop detected, skipping disconnect handling",
+			"component", "pythonbridge",
+			"conn_id", connID,
+			"current_conn_id", sm.connID.Load())
+		return
+	}
 
 	sm.connected = false
 	if sm.streamCancel != nil {
@@ -235,9 +253,19 @@ func (sm *StreamManager) Execute(ctx context.Context, req *proto.ExecutionReques
 		sm.pendingMu.Unlock()
 	}()
 
+	// Capture stream under connectMu to avoid TOCTOU race with handleDisconnect
+	sm.connectMu.Lock()
+	stream := sm.stream
+	connected := sm.connected
+	sm.connectMu.Unlock()
+
+	if !connected || stream == nil {
+		return nil, fmt.Errorf("python executor stream is not connected")
+	}
+
 	// Send request (protected by send mutex)
 	sm.sendMu.Lock()
-	err := sm.stream.Send(req)
+	err := stream.Send(req)
 	sm.sendMu.Unlock()
 
 	if err != nil {

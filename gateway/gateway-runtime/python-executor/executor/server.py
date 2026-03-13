@@ -394,7 +394,15 @@ class PythonExecutorServer:
         """Shutdown: close all live policy instances, then stop server."""
         logger.info("Shutting down Python Executor...")
 
-        # Close all live instances
+        # 1. Stop accepting new requests and allow in-flight RPCs to finish
+        if self.server:
+            await self.server.stop(grace=5)
+
+        # 2. Stop accepting new thread pool tasks from the servicer
+        if self._servicer:
+            self._servicer.close()
+
+        # 3. Clean up policy instances now that no requests are touching them
         instances = self._store.clear()
         for instance in instances:
             try:
@@ -402,12 +410,7 @@ class PythonExecutorServer:
             except Exception as e:
                 logger.warning(f"Error closing policy instance during shutdown: {e}")
 
-        if self._servicer:
-            self._servicer.close()
-
-        if self.server:
-            await self.server.stop(grace=5)
-            
+        # 4. Shut down the core IO/server thread pool last
         if self._aio_worker_executor:
             self._aio_worker_executor.shutdown(wait=True)
 

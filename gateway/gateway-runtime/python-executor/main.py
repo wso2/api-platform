@@ -43,6 +43,28 @@ def positive_int(value):
 def _parse_args():
     """Parse CLI flags. Environment variables are used as defaults so that
     docker-entrypoint.sh can pass --py.* overrides that take precedence."""
+
+    def _flag_was_provided(flag_name: str) -> bool:
+        return any(
+            arg == flag_name or arg.startswith(f"{flag_name}=")
+            for arg in sys.argv[1:]
+        )
+
+    def _resolve_positive_int(
+        flag_name: str,
+        value: str | None,
+        fallback: int,
+    ) -> int:
+        if value is None:
+            return fallback
+        try:
+            return positive_int(value)
+        except argparse.ArgumentTypeError as e:
+            if _flag_was_provided(flag_name):
+                parser.error(f"{flag_name}: {e}")
+            # Invalid env-derived default should not block startup or valid CLI overrides.
+            return fallback
+
     parser = argparse.ArgumentParser(description="Python Executor gRPC server")
     parser.add_argument(
         "--socket",
@@ -51,14 +73,12 @@ def _parse_args():
     )
     parser.add_argument(
         "--workers",
-        type=positive_int,
-        default=positive_int(os.environ.get("PYTHON_POLICY_WORKERS", "4")),
+        default=os.environ.get("PYTHON_POLICY_WORKERS"),
         help="Number of gRPC server workers (env: PYTHON_POLICY_WORKERS)",
     )
     parser.add_argument(
         "--max-concurrent",
-        type=positive_int,
-        default=positive_int(os.environ.get("PYTHON_POLICY_MAX_CONCURRENT", "100")),
+        default=os.environ.get("PYTHON_POLICY_MAX_CONCURRENT"),
         help="Max concurrent policy executions (env: PYTHON_POLICY_MAX_CONCURRENT)",
     )
     parser.add_argument(
@@ -66,15 +86,16 @@ def _parse_args():
         default=os.environ.get("LOG_LEVEL", "info"),
         help="Log level (env: LOG_LEVEL)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.workers = _resolve_positive_int("--workers", args.workers, 4)
+    args.max_concurrent = _resolve_positive_int(
+        "--max-concurrent",
+        args.max_concurrent,
+        100,
+    )
+    return args
 
 
-SOCKET_PATH = os.environ.get(
-    "PYTHON_EXECUTOR_SOCKET",
-    "/var/run/api-platform/python-executor.sock"
-)
-WORKER_COUNT = positive_int(os.environ.get("PYTHON_POLICY_WORKERS", "4"))
-MAX_CONCURRENT = positive_int(os.environ.get("PYTHON_POLICY_MAX_CONCURRENT", "100"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info").upper()
 
 
