@@ -142,6 +142,9 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 
 	// Collect endpoint URL override from metadata
 	var endpointURL *string
+	var needsOverride bool
+	var vhostMainOverridden bool
+	var vhostSandboxOverridden bool
 	if req.Metadata != nil {
 		if v, exists := metadata["endpointUrl"]; exists {
 			eu, ok := v.(string)
@@ -153,6 +156,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 					return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
 				}
 				endpointURL = &eu
+				needsOverride = true
 			}
 		}
 	}
@@ -193,17 +197,20 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				return nil, fmt.Errorf("invalid vhost.main value: %s", *req.Vhost.Main)
 			}
 			vhostMain = *req.Vhost.Main
+			vhostMainOverridden = true
+			needsOverride = true
 		}
 		if req.Vhost.Sandbox != nil && *req.Vhost.Sandbox != "" {
 			if !isValidVHostOrSentinel(*req.Vhost.Sandbox) {
 				return nil, fmt.Errorf("invalid vhost.sandbox value: %s", *req.Vhost.Sandbox)
 			}
 			vhostSandbox = req.Vhost.Sandbox
+			vhostSandboxOverridden = true
+			needsOverride = true
 		}
 	}
 
 	// Build content bytes with minimal marshal/unmarshal
-	needsOverride := endpointURL != nil || req.Base == "current" || req.Vhost != nil
 	if req.Base == "current" {
 		// Build struct directly, apply overrides on struct, marshal once
 		apiDeployment, err := s.apiUtil.BuildAPIDeploymentYAML(apiModel)
@@ -218,17 +225,29 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		if endpointURL != nil {
 			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
+		if vhostMainOverridden {
+			s.slogger.Debug("Vhost main overridden", "vhostMain", vhostMain, "deploymentID", deploymentID)
+		}
+		if vhostSandboxOverridden {
+			s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
+		}
 	} else {
 		// Start from base deployment bytes
 		contentBytes = baseDeployment.Content
 		if needsOverride {
 			// Single unmarshal -> apply overrides -> single marshal
-			contentBytes, err = applyDeploymentOverrides(contentBytes, endpointURL, &vhostMain, vhostSandbox)
+			contentBytes, err = applyDeploymentOverrides(contentBytes, endpointURL, &vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
 			if err != nil {
 				return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
 			}
 			if endpointURL != nil {
 				s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+			}
+			if vhostMainOverridden {
+				s.slogger.Debug("Vhost main overridden", "vhostMain", vhostMain, "deploymentID", deploymentID)
+			}
+			if vhostSandboxOverridden {
+				s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
 			}
 		}
 	}
@@ -469,8 +488,6 @@ func validateEndpointURL(endpointURL string) error {
 	return nil
 }
 
-
-
 // isValidVHostOrSentinel returns true if vhost is the gateway-default sentinel or a valid RFC 1035 hostname.
 func isValidVHostOrSentinel(vhost string) bool {
 	if vhost == constants.VhostGatewayDefault {
@@ -488,18 +505,25 @@ func isValidVHostOrSentinel(vhost string) bool {
 	return true
 }
 
-// applyStructOverrides mutates the deployment YAML struct directly — sets upstream URL and/or vhosts.
-func applyStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vhostMain *string, vhostSandbox *string) {
-	if endpointURL != nil {
-		if d.Spec.Upstream == nil {
-			d.Spec.Upstream = &dto.UpstreamYAML{}
-		}
-		if d.Spec.Upstream.Main == nil {
-			d.Spec.Upstream.Main = &dto.UpstreamTarget{}
-		}
-		d.Spec.Upstream.Main.URL = *endpointURL
-		d.Spec.Upstream.Main.Ref = "" // Clear ref if URL is set
+// applyEndpointOverride mutates upstream URL in deployment YAML and clears ref if URL is set.
+func applyEndpointOverride(d *dto.APIDeploymentYAML, endpointURL *string) {
+	if endpointURL == nil {
+		return
 	}
+	if d.Spec.Upstream == nil {
+		d.Spec.Upstream = &dto.UpstreamYAML{}
+	}
+	if d.Spec.Upstream.Main == nil {
+		d.Spec.Upstream.Main = &dto.UpstreamTarget{}
+	}
+	d.Spec.Upstream.Main.URL = *endpointURL
+	d.Spec.Upstream.Main.Ref = "" // Clear ref if URL is set
+}
+
+// applyStructOverrides mutates the deployment YAML struct directly for "current" flow.
+// It applies endpoint override and sets the full vhosts object when vhostMain is provided.
+func applyStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vhostMain *string, vhostSandbox *string) {
+	applyEndpointOverride(d, endpointURL)
 	if vhostMain != nil {
 		d.Spec.Vhosts = &dto.Vhosts{
 			Main:    *vhostMain,
@@ -508,14 +532,38 @@ func applyStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vhostMa
 	}
 }
 
+// applyBaseStructOverrides mutates the deployment YAML struct for base-deployment flow.
+// It applies endpoint override and selectively updates only overridden vhost fields.
+func applyBaseStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vhostMain *string, vhostSandbox *string, vhostMainOverridden bool, vhostSandboxOverridden bool) {
+	applyEndpointOverride(d, endpointURL)
+
+	if !vhostMainOverridden && !vhostSandboxOverridden {
+		return
+	}
+
+	if d.Spec.Vhosts == nil {
+		d.Spec.Vhosts = &dto.Vhosts{}
+		if vhostMain != nil {
+			d.Spec.Vhosts.Main = *vhostMain
+		}
+	}
+
+	if vhostMainOverridden && vhostMain != nil {
+		d.Spec.Vhosts.Main = *vhostMain
+	}
+	if vhostSandboxOverridden {
+		d.Spec.Vhosts.Sandbox = vhostSandbox
+	}
+}
+
 // applyDeploymentOverrides unmarshals deployment YAML bytes, applies endpoint URL and/or vhost
 // overrides, and marshals back. Used for the base-deployment path when overrides are needed.
-func applyDeploymentOverrides(contentBytes []byte, endpointURL *string, vhostMain *string, vhostSandbox *string) ([]byte, error) {
+func applyDeploymentOverrides(contentBytes []byte, endpointURL *string, vhostMain *string, vhostSandbox *string, vhostMainOverridden bool, vhostSandboxOverridden bool) ([]byte, error) {
 	var apiDeployment dto.APIDeploymentYAML
 	if err := yaml.Unmarshal(contentBytes, &apiDeployment); err != nil {
 		return nil, fmt.Errorf("failed to parse deployment YAML: %w", err)
 	}
-	applyStructOverrides(&apiDeployment, endpointURL, vhostMain, vhostSandbox)
+	applyBaseStructOverrides(&apiDeployment, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
 	modifiedBytes, err := yaml.Marshal(&apiDeployment)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal modified deployment YAML: %w", err)

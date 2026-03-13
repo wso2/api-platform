@@ -132,9 +132,9 @@ const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 // Metadata key constants for deployment metadata
 const (
 	// MetadataKeyVhostMain is the metadata key for the per-deployment main vhost value.
-	MetadataKeyVhostMain = "vhost_main"
+	MetadataKeyVhostMain = "vhostMain"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
-	MetadataKeyVhostSandbox = "vhost_sandbox"
+	MetadataKeyVhostSandbox = "vhostSandbox"
 	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
 	// and persist the current gateway default vhosts, ensuring deployments are immune to future
 	// gateway config changes.
