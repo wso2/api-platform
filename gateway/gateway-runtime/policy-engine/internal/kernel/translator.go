@@ -76,7 +76,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		}
 		collectHeaderOps(headerOps, mods.Set, mods.Remove, mods.Append)
 
-		mergeAnalytics(analyticsData, execCtx, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter, execCtx.requestHeaderCtx.Headers.GetAll())
+		mergeAnalytics(analyticsData, execCtx, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter, execCtx.requestHeaderCtx.Headers.GetAll(), "request_headers")
 		mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
 		mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 	}
@@ -170,7 +170,7 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 			targetUpstreamName = a.UpstreamName
 		}
 
-		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.requestBodyCtx.Headers.GetAll())
+		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.requestBodyCtx.Headers.GetAll(), "request_headers")
 		mergeDynamicMetadata(dynamicMetadata, a.DynamicMetadata)
 		mergeDynamicMetadata(execCtx.dynamicMetadata, a.DynamicMetadata)
 	}
@@ -207,7 +207,7 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, pathMutation, dynamicMetadata)
 
 	return response, nil
 }
@@ -239,7 +239,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 		}
 		collectHeaderOps(headerOps, mods.Set, mods.Remove, mods.Append)
 
-		mergeAnalytics(analyticsData, execCtx, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter, execCtx.responseHeaderCtx.ResponseHeaders.GetAll())
+		mergeAnalytics(analyticsData, execCtx, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter, execCtx.responseHeaderCtx.ResponseHeaders.GetAll(), "response_headers")
 		mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
 		mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 	}
@@ -322,7 +322,7 @@ func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, 
 			collectHeaderOps(headerOps, a.Header.Set, a.Header.Remove, a.Header.Append)
 		}
 
-		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.responseBodyCtx.ResponseHeaders.GetAll())
+		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.responseBodyCtx.ResponseHeaders.GetAll(), "response_headers")
 		mergeDynamicMetadata(dynamicMetadata, a.DynamicMetadata)
 		mergeDynamicMetadata(execCtx.dynamicMetadata, a.DynamicMetadata)
 	}
@@ -371,8 +371,8 @@ func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, 
 func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	var outputBody []byte
 
-	if result.FinalAction != nil && result.FinalAction.Body != nil {
-		outputBody = result.FinalAction.Body
+	if result.FinalChunk != nil {
+		outputBody = result.FinalChunk.Chunk
 	} else {
 		outputBody = originalChunk.Chunk
 	}
@@ -435,8 +435,8 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	var outputBody []byte
 
-	if result.FinalAction != nil && result.FinalAction.Body != nil {
-		outputBody = result.FinalAction.Body
+	if result.FinalChunk != nil {
+		outputBody = result.FinalChunk.Chunk
 	} else {
 		outputBody = originalChunk.Chunk
 	}
@@ -540,6 +540,7 @@ func mergeAnalytics(
 	metadata map[string]any,
 	dropAction policy.DropHeaderAction,
 	originalHeaders map[string][]string,
+	headerKey string,
 ) {
 	for key, value := range metadata {
 		analyticsData[key] = value
@@ -550,8 +551,8 @@ func mergeAnalytics(
 			"action", dropAction.Action,
 			"headers", dropAction.Headers)
 		finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-		analyticsData["request_headers"] = finalizedHeaders
-		execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
+		analyticsData[headerKey] = finalizedHeaders
+		execCtx.analyticsMetadata[headerKey] = finalizedHeaders
 	}
 }
 
@@ -603,9 +604,13 @@ func handleUpstreamRouting(
 					"targetUpstreamPath", targetUpstreamPath)
 
 				if _, hasTargetPath := dynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
-					dynamicMetadata[extProcNS]["request_transformation.target_path"] = currentPath
-					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = currentPath
-					slog.Info("UpstreamName: set target_path", "path", currentPath)
+					targetPath := currentPath
+					if pathMutation != nil {
+						targetPath = *pathMutation
+					}
+					dynamicMetadata[extProcNS]["request_transformation.target_path"] = targetPath
+					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = targetPath
+					slog.Info("UpstreamName: set target_path", "path", targetPath)
 				} else {
 					slog.Info("UpstreamName: target_path already set by policy")
 				}

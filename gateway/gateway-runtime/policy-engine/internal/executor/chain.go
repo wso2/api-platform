@@ -334,6 +334,8 @@ type ResponseHeaderPolicyResult struct {
 // ResponseHeaderExecutionResult aggregates per-policy results for the response-headers phase
 type ResponseHeaderExecutionResult struct {
 	Results            []ResponseHeaderPolicyResult
+	ShortCircuited     bool                        // true if chain stopped early due to ImmediateResponse
+	FinalAction        policy.ResponseHeaderAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
@@ -427,6 +429,19 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 			Action:        action,
 			ExecutionTime: executionTime,
 		})
+
+		if _, ok := action.(policy.ImmediateResponse); ok {
+			if span.IsRecording() {
+				span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
+			}
+			metrics.ShortCircuitsTotal.WithLabelValues("", spec.Name).Inc()
+			result.ShortCircuited = true
+			result.FinalAction = action
+			span.End()
+			break
+		}
+
+		result.FinalAction = action
 		span.End()
 	}
 
@@ -592,6 +607,7 @@ type StreamingRequestPolicyResult struct {
 type StreamingRequestExecutionResult struct {
 	Results            []StreamingRequestPolicyResult
 	FinalAction        *policy.RequestChunkAction
+	FinalChunk         *policy.StreamBody // final chunk state after all policies have run
 	TotalExecutionTime time.Duration
 }
 
@@ -703,6 +719,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		span.End()
 	}
 
+	result.FinalChunk = currentChunk
 	result.TotalExecutionTime = time.Since(startTime)
 	return result, nil
 }
@@ -724,6 +741,7 @@ type StreamingResponsePolicyResult struct {
 type StreamingResponseExecutionResult struct {
 	Results            []StreamingResponsePolicyResult
 	FinalAction        *policy.ResponseChunkAction
+	FinalChunk         *policy.StreamBody // final chunk state after all policies have run
 	TotalExecutionTime time.Duration
 }
 
@@ -840,6 +858,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		span.End()
 	}
 
+	result.FinalChunk = currentChunk
 	result.TotalExecutionTime = time.Since(startTime)
 	return result, nil
 }
@@ -870,4 +889,9 @@ func NewChainExecutor(reg *registry.PolicyRegistry, celEvaluator CELEvaluator, t
 		celEvaluator: celEvaluator,
 		tracer:       tracer,
 	}
+}
+
+// GetCELEvaluator returns the CEL evaluator used for condition evaluation.
+func (c *ChainExecutor) GetCELEvaluator() CELEvaluator {
+	return c.celEvaluator
 }

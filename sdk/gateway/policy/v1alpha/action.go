@@ -70,6 +70,10 @@ type DownstreamResponseHeaderModifications struct {
 
 func (DownstreamResponseHeaderModifications) isResponseHeaderAction() {}
 
+// ImmediateResponse also implements ResponseHeaderAction — returning it short-circuits
+// the chain and sends the response directly to the downstream client.
+func (ImmediateResponse) isResponseHeaderAction() {}
+
 // ─── Buffered body actions (sealed oneof) ────────────────────────────────────
 //
 // RequestAction and ResponseAction are sealed interfaces. Each has two concrete

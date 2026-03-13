@@ -585,7 +585,10 @@ func TestTranslateStreamingResponseChunkAction_WithMutation(t *testing.T) {
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
 	action := policy.ResponseChunkAction{Body: []byte("mutated")}
-	result := &executor.StreamingResponseExecutionResult{FinalAction: &action}
+	result := &executor.StreamingResponseExecutionResult{
+		FinalAction: &action,
+		FinalChunk:  &policy.StreamBody{Chunk: []byte("mutated")},
+	}
 	original := &policy.StreamBody{Chunk: []byte("original")}
 
 	resp, err := TranslateStreamingResponseChunkAction(result, original, execCtx)
@@ -662,7 +665,10 @@ func TestTranslateStreamingRequestChunkAction_WithMutation(t *testing.T) {
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
 	action := policy.RequestChunkAction{Body: []byte("mutated")}
-	result := &executor.StreamingRequestExecutionResult{FinalAction: &action}
+	result := &executor.StreamingRequestExecutionResult{
+		FinalAction: &action,
+		FinalChunk:  &policy.StreamBody{Chunk: []byte("mutated")},
+	}
 	original := &policy.StreamBody{Chunk: []byte("original")}
 
 	resp, err := TranslateStreamingRequestChunkAction(result, original, execCtx)

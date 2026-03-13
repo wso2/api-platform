@@ -451,6 +451,12 @@ func (p *AnalyticsPolicy) OnResponseBodyChunk(ctx *policy.ResponseStreamContext,
 			}
 		}
 	case KindMCP:
+		if ctx.ResponseHeaders != nil {
+			sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")
+			if len(sessionIDs) > 0 {
+				analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+			}
+		}
 		if len(accumulated) > 0 {
 			responseContent := accumulated
 			if jsonData, err := parseSSEResponse(accumulated); err == nil {

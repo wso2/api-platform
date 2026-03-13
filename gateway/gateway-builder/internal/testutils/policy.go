@@ -173,6 +173,7 @@ func CreateValidPolicyDir(t *testing.T, baseDir, name, version string) string {
 	// Create valid policy.go with correct signatures matching the SDK interfaces.
 	// Types are unresolved identifiers (no imports) — AST parsing is syntax-only,
 	// so this is valid for validation purposes without requiring the SDK at test time.
+	// Pointer receivers (*RequestContext, *ResponseContext) match the SDK interface exactly.
 	goContent := fmt.Sprintf(`package %s
 
 type Policy struct{}
@@ -181,11 +182,11 @@ func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, 
 	return &Policy{}, nil
 }
 
-func (p *Policy) OnRequestBody(ctx RequestContext) RequestAction {
+func (p *Policy) OnRequestBody(ctx *RequestContext) RequestAction {
 	return RequestAction{}
 }
 
-func (p *Policy) OnResponseBody(ctx ResponseContext) ResponseAction {
+func (p *Policy) OnResponseBody(ctx *ResponseContext) ResponseAction {
 	return ResponseAction{}
 }
 `, pkgName)

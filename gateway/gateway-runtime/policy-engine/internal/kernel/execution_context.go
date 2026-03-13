@@ -262,6 +262,7 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	// policies (OnRequestBody / OnRequestBodyChunk) observe the post-mutation headers.
 	if !execResult.ShortCircuited {
 		applyRequestHeaderMutations(ec.requestHeaderCtx.Headers, execResult.Results)
+		ec.syncRequestPseudoHeaders()
 	}
 
 	return TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
@@ -538,6 +539,19 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	)
 	ec.requestStreamAccumulator = nil
 
+	// Populate ec.requestBodyCtx.Body on the EOS flush so that buildResponseContexts
+	// (called during processResponseHeaders) exposes the accumulated request payload
+	// to response-phase policies via ResponseHeaderContext/ResponseContext/ResponseStreamContext.
+	// In non-streaming mode processRequestBody always sets this field; the streaming
+	// path must do the same so response phases never see a nil RequestBody.
+	if flushChunk.EndOfStream {
+		ec.requestBodyCtx.Body = &policy.Body{
+			Content:     flushChunk.Chunk,
+			EndOfStream: true,
+			Present:     true,
+		}
+	}
+
 	execResult, err := ec.server.executor.ExecuteStreamingRequestPolicies(
 		ctx,
 		ec.policyChain.Policies,
@@ -555,10 +569,25 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	return TranslateStreamingRequestChunkAction(execResult, flushChunk, ec)
 }
 
-// anyPolicyNeedsMoreRequestData returns true if any StreamingRequestPolicy in the chain
-// is not yet ready to process the accumulated bytes.
+// anyPolicyNeedsMoreRequestData returns true if any StreamingRequestPolicy that would
+// actually execute (enabled and condition met) is not yet ready to process the accumulated bytes.
 func (ec *PolicyExecutionContext) anyPolicyNeedsMoreRequestData(accumulated []byte) bool {
-	for _, pol := range ec.policyChain.Policies {
+	specs := ec.policyChain.PolicySpecs
+	celEval := ec.server.executor.GetCELEvaluator()
+	for i, pol := range ec.policyChain.Policies {
+		spec := specs[i]
+		if !spec.Enabled {
+			continue
+		}
+		if ec.policyChain.HasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+			if celEval != nil {
+				conditionMet, err := celEval.EvaluateStreamingRequestCondition(*spec.ExecutionCondition, ec.requestStreamContext)
+				if err == nil && !conditionMet {
+					continue
+				}
+				// On error: fall through and treat as condition met (conservative)
+			}
+		}
 		if streamPol, ok := pol.(policy.StreamingRequestPolicy); ok {
 			if streamPol.NeedsMoreRequestData(accumulated) {
 				return true
@@ -568,10 +597,25 @@ func (ec *PolicyExecutionContext) anyPolicyNeedsMoreRequestData(accumulated []by
 	return false
 }
 
-// anyPolicyNeedsMoreData returns true if any StreamingResponsePolicy in the chain
-// is not yet ready to process the accumulated bytes.
+// anyPolicyNeedsMoreData returns true if any StreamingResponsePolicy that would
+// actually execute (enabled and condition met) is not yet ready to process the accumulated bytes.
 func (ec *PolicyExecutionContext) anyPolicyNeedsMoreData(accumulated []byte) bool {
-	for _, pol := range ec.policyChain.Policies {
+	specs := ec.policyChain.PolicySpecs
+	celEval := ec.server.executor.GetCELEvaluator()
+	for i, pol := range ec.policyChain.Policies {
+		spec := specs[i]
+		if !spec.Enabled {
+			continue
+		}
+		if ec.policyChain.HasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+			if celEval != nil {
+				conditionMet, err := celEval.EvaluateStreamingResponseCondition(*spec.ExecutionCondition, ec.responseStreamContext)
+				if err == nil && !conditionMet {
+					continue
+				}
+				// On error: fall through and treat as condition met (conservative)
+			}
+		}
 		if streamPol, ok := pol.(policy.StreamingResponsePolicy); ok {
 			if streamPol.NeedsMoreResponseData(accumulated) {
 				return true
@@ -776,6 +820,36 @@ func applyRequestHeaderMutations(headers *policy.Headers, results []executor.Req
 			lk := strings.ToLower(k)
 			values[lk] = append(values[lk], vs...)
 		}
+	}
+}
+
+// syncRequestPseudoHeaders reads :path, :method, :authority, and :scheme from the
+// shared request Headers (which may have been mutated by header-phase policies) and
+// writes the updated values back into the explicit fields of requestHeaderCtx,
+// requestBodyCtx, and requestStreamContext. This keeps the separate struct fields
+// in sync with the Headers map so that body/stream-phase policies observe a
+// consistent view of the request.
+func (ec *PolicyExecutionContext) syncRequestPseudoHeaders() {
+	values := ec.requestHeaderCtx.Headers.UnsafeInternalValues()
+	if v := values[":path"]; len(v) > 0 {
+		ec.requestHeaderCtx.Path = v[0]
+		ec.requestBodyCtx.Path = v[0]
+		ec.requestStreamContext.Path = v[0]
+	}
+	if v := values[":method"]; len(v) > 0 {
+		ec.requestHeaderCtx.Method = v[0]
+		ec.requestBodyCtx.Method = v[0]
+		ec.requestStreamContext.Method = v[0]
+	}
+	if v := values[":authority"]; len(v) > 0 {
+		ec.requestHeaderCtx.Authority = v[0]
+		ec.requestBodyCtx.Authority = v[0]
+		ec.requestStreamContext.Authority = v[0]
+	}
+	if v := values[":scheme"]; len(v) > 0 {
+		ec.requestHeaderCtx.Scheme = v[0]
+		ec.requestBodyCtx.Scheme = v[0]
+		ec.requestStreamContext.Scheme = v[0]
 	}
 }
 

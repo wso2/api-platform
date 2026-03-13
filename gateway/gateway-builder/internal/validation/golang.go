@@ -30,36 +30,42 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
-// methodSig holds the parameter and result counts for a function extracted from AST.
+// methodSig holds the canonical parameter and result type strings for a function
+// extracted from AST. Type strings are normalized: package qualifiers are stripped
+// (e.g. *policy.RequestContext → *RequestContext) so qualified and local names
+// compare equal. The keyword 'any' is normalized to 'interface{}'.
 type methodSig struct {
-	params  int
-	results int
+	paramTypes  []string
+	resultTypes []string
 }
 
-// expectedMethodArity defines the required parameter and result counts for every
+// expectedMethodSig defines the required parameter and result types for every
 // known policy interface method. Validation fails if a method is present but has
-// the wrong arity — this catches signature drift early, before Docker build.
+// wrong types — this catches signature drift early, before Docker build.
 //
-// Counts follow the SDK interfaces in sdk/gateway/policy/v1alpha/interface.go:
+// Type strings follow the SDK interfaces in sdk/gateway/policy/v1alpha/:
+//   - Package qualifiers are stripped (both policy.RequestContext and RequestContext match).
+//   - Pointer annotations are preserved (*RequestContext ≠ RequestContext).
 //
-//	GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) → 2 params, 2 results
-//	OnRequestHeaders(ctx *RequestHeaderContext) RequestHeaderAction                   → 1 param,  1 result
-//	OnResponseHeaders(ctx *ResponseHeaderContext) ResponseHeaderAction                → 1 param,  1 result
-//	OnRequestBody(ctx *RequestContext) RequestAction                                  → 1 param,  1 result
-//	OnResponseBody(ctx *ResponseContext) ResponseAction                               → 1 param,  1 result
-//	OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody) RequestChunkAction  → 2 params, 1 result
-//	OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction → 2 params, 1 result
-//	NeedsMoreRequestData(accumulated []byte) bool                                     → 1 param,  1 result
-//	NeedsMoreResponseData(accumulated []byte) bool                                    → 1 param,  1 result
-var expectedMethodArity = map[string]methodSig{
-	"OnRequestHeaders":      {params: 1, results: 1},
-	"OnResponseHeaders":     {params: 1, results: 1},
-	"OnRequestBody":         {params: 1, results: 1},
-	"OnResponseBody":        {params: 1, results: 1},
-	"OnRequestBodyChunk":    {params: 2, results: 1},
-	"OnResponseBodyChunk":   {params: 2, results: 1},
-	"NeedsMoreRequestData":  {params: 1, results: 1},
-	"NeedsMoreResponseData": {params: 1, results: 1},
+// SDK interface signatures:
+//
+//	OnRequestHeaders(ctx *RequestHeaderContext) RequestHeaderAction
+//	OnResponseHeaders(ctx *ResponseHeaderContext) ResponseHeaderAction
+//	OnRequestBody(ctx *RequestContext) RequestAction
+//	OnResponseBody(ctx *ResponseContext) ResponseAction
+//	OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody) RequestChunkAction
+//	OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction
+//	NeedsMoreRequestData(accumulated []byte) bool
+//	NeedsMoreResponseData(accumulated []byte) bool
+var expectedMethodSig = map[string]methodSig{
+	"OnRequestHeaders":      {paramTypes: []string{"*RequestHeaderContext"}, resultTypes: []string{"RequestHeaderAction"}},
+	"OnResponseHeaders":     {paramTypes: []string{"*ResponseHeaderContext"}, resultTypes: []string{"ResponseHeaderAction"}},
+	"OnRequestBody":         {paramTypes: []string{"*RequestContext"}, resultTypes: []string{"RequestAction"}},
+	"OnResponseBody":        {paramTypes: []string{"*ResponseContext"}, resultTypes: []string{"ResponseAction"}},
+	"OnRequestBodyChunk":    {paramTypes: []string{"*RequestStreamContext", "*StreamBody"}, resultTypes: []string{"RequestChunkAction"}},
+	"OnResponseBodyChunk":   {paramTypes: []string{"*ResponseStreamContext", "*StreamBody"}, resultTypes: []string{"ResponseChunkAction"}},
+	"NeedsMoreRequestData":  {paramTypes: []string{"[]byte"}, resultTypes: []string{"bool"}},
+	"NeedsMoreResponseData": {paramTypes: []string{"[]byte"}, resultTypes: []string{"bool"}},
 }
 
 // subInterfaceMethods is the set of method names that count as a sub-interface
@@ -78,12 +84,15 @@ var subInterfaceMethods = map[string]bool{
 // validates:
 //
 //  1. GetPolicy factory function exists with the correct arity (2 params, 2 results).
-//  2. At least one sub-interface method is implemented on a receiver type.
+//  2. At least one sub-interface method is implemented on the concrete type returned
+//     by GetPolicy. Checks are bound to that type; falls back to all types when the
+//     declared return type is an external interface (not defined in this package).
 //  3. Streaming interface coherence — all three methods of a streaming interface
 //     must be implemented on the same receiver type:
 //     - StreamingResponsePolicy: OnResponseBodyChunk + OnResponseBody + NeedsMoreResponseData
 //     - StreamingRequestPolicy:  OnRequestBodyChunk  + OnRequestBody  + NeedsMoreRequestData
-//  4. Method signature arity matches the SDK interface for all known methods.
+//  4. Method signature types match the SDK interface for all known methods found
+//     on the policy type (both parameter and result types are checked).
 func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError {
 	slog.Debug("Validating Go interface implementation",
 		"policy", policy.Name,
@@ -127,10 +136,13 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 	}
 
 	// Scan all declarations:
-	//   - top-level functions → look for GetPolicy
-	//   - methods (with receiver) → group by receiver type name
+	//   - top-level functions → look for GetPolicy; record full param/result type strings
+	//   - methods (with receiver) → group by receiver type name with full type info
 	var getPolicySig *methodSig
-	// typeMethods: receiver type name → method name → signature
+	// getPolicyReturnType is the base type name from GetPolicy's first result.
+	// Used to identify the concrete policy type in typeMethods.
+	var getPolicyReturnType string
+	// typeMethods: receiver type name → method name → signature (with type strings)
 	typeMethods := make(map[string]map[string]methodSig)
 
 	for _, file := range files {
@@ -141,17 +153,23 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 			}
 
 			sig := methodSig{
-				params:  countFields(funcDecl.Type.Params),
-				results: countFields(funcDecl.Type.Results),
+				paramTypes:  extractFieldTypes(funcDecl.Type.Params),
+				resultTypes: extractFieldTypes(funcDecl.Type.Results),
 			}
 
 			if funcDecl.Recv == nil || len(funcDecl.Recv.List) == 0 {
 				// Top-level function.
 				if funcDecl.Name.Name == "GetPolicy" {
 					getPolicySig = &sig
+					// Capture the base type name of the first result as the concrete policy type
+					// so that sub-interface and type checks can be bound to it.
+					if funcDecl.Type.Results != nil && len(funcDecl.Type.Results.List) > 0 {
+						getPolicyReturnType = extractTypeName(funcDecl.Type.Results.List[0].Type)
+					}
 					slog.Debug("Found GetPolicy factory function",
-						"params", sig.params,
-						"results", sig.results,
+						"params", len(sig.paramTypes),
+						"results", len(sig.resultTypes),
+						"returnType", getPolicyReturnType,
 						"phase", "validation")
 				}
 				continue
@@ -167,8 +185,8 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 			slog.Debug("Found method",
 				"type", recvTypeName,
 				"method", funcDecl.Name.Name,
-				"params", sig.params,
-				"results", sig.results,
+				"params", len(sig.paramTypes),
+				"results", len(sig.resultTypes),
 				"phase", "validation")
 		}
 	}
@@ -182,32 +200,45 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 			Message:       "missing required GetPolicy() factory function: must have signature GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)",
 		})
 	} else {
-		if getPolicySig.params != 2 {
+		if len(getPolicySig.paramTypes) != 2 {
 			errors = append(errors, types.ValidationError{
 				PolicyName:    policy.Name,
 				PolicyVersion: policy.Version,
 				FilePath:      policy.Path,
 				Message: fmt.Sprintf(
 					"GetPolicy has wrong parameter count: expected 2 (metadata PolicyMetadata, params map[string]interface{}), got %d",
-					getPolicySig.params),
+					len(getPolicySig.paramTypes)),
 			})
 		}
-		if getPolicySig.results != 2 {
+		if len(getPolicySig.resultTypes) != 2 {
 			errors = append(errors, types.ValidationError{
 				PolicyName:    policy.Name,
 				PolicyVersion: policy.Version,
 				FilePath:      policy.Path,
 				Message: fmt.Sprintf(
 					"GetPolicy has wrong return count: expected 2 (Policy, error), got %d",
-					getPolicySig.results),
+					len(getPolicySig.resultTypes)),
 			})
 		}
 	}
 
-	// ── 2 & 3 & 4. Per-type checks ───────────────────────────────────────────
+	// Determine which receiver types to run policy checks on.
+	// Prefer the concrete type returned by GetPolicy if it has receiver methods in
+	// this package; fall back to all types when the return type is an external
+	// interface (e.g. policy.Policy from the SDK, not defined in user code).
+	checkTypes := typeMethods
+	if getPolicyReturnType != "" {
+		if policyMethods, found := typeMethods[getPolicyReturnType]; found && len(policyMethods) > 0 {
+			checkTypes = map[string]map[string]methodSig{
+				getPolicyReturnType: policyMethods,
+			}
+		}
+	}
+
+	// ── 2, 3, 4. Per-type checks ─────────────────────────────────────────────
 	hasSubInterfaceMethod := false
 
-	for typeName, methods := range typeMethods {
+	for typeName, methods := range checkTypes {
 		// 2. Sub-interface method presence.
 		for name := range methods {
 			if subInterfaceMethods[name] {
@@ -274,31 +305,65 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 			}
 		}
 
-		// 4. Method arity checks for all known methods found on this type.
-		for methodName, expected := range expectedMethodArity {
+		// 4. Method signature type checks for all known methods found on this type.
+		// Count mismatches are reported as count errors; when counts match, individual
+		// type strings are compared (package qualifiers stripped, pointers preserved).
+		for methodName, expected := range expectedMethodSig {
 			sig, found := methods[methodName]
 			if !found {
 				continue
 			}
-			if sig.params != expected.params {
+			if len(sig.paramTypes) != len(expected.paramTypes) {
 				errors = append(errors, types.ValidationError{
 					PolicyName:    policy.Name,
 					PolicyVersion: policy.Version,
 					FilePath:      policy.Path,
 					Message: fmt.Sprintf(
 						"method %s on type %s has wrong parameter count: expected %d, got %d",
-						methodName, typeName, expected.params, sig.params),
+						methodName, typeName, len(expected.paramTypes), len(sig.paramTypes)),
 				})
+			} else {
+				for i, wantType := range expected.paramTypes {
+					if sig.paramTypes[i] != wantType {
+						errors = append(errors, types.ValidationError{
+							PolicyName:    policy.Name,
+							PolicyVersion: policy.Version,
+							FilePath:      policy.Path,
+							Message: fmt.Sprintf(
+								"method %s on type %s has wrong parameter types: expected (%s), got (%s)",
+								methodName, typeName,
+								strings.Join(expected.paramTypes, ", "),
+								strings.Join(sig.paramTypes, ", ")),
+						})
+						break // one error per method is enough
+					}
+				}
 			}
-			if sig.results != expected.results {
+			if len(sig.resultTypes) != len(expected.resultTypes) {
 				errors = append(errors, types.ValidationError{
 					PolicyName:    policy.Name,
 					PolicyVersion: policy.Version,
 					FilePath:      policy.Path,
 					Message: fmt.Sprintf(
 						"method %s on type %s has wrong return count: expected %d, got %d",
-						methodName, typeName, expected.results, sig.results),
+						methodName, typeName, len(expected.resultTypes), len(sig.resultTypes)),
 				})
+			} else {
+				for i, wantType := range expected.resultTypes {
+					if sig.resultTypes[i] != wantType {
+						errors = append(errors, types.ValidationError{
+							PolicyName:    policy.Name,
+							PolicyVersion: policy.Version,
+							FilePath:      policy.Path,
+							Message: fmt.Sprintf(
+								"method %s on type %s has wrong return types: expected (%s), got (%s)",
+								methodName, typeName,
+								strings.Join(expected.resultTypes, ", "),
+								strings.Join(sig.resultTypes, ", ")),
+						})
+						break
+					}
+				}
 			}
 		}
 	}
@@ -318,6 +383,7 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 		"policy", policy.Name,
 		"hasSubInterfaceMethod", hasSubInterfaceMethod,
 		"hasGetPolicy", getPolicySig != nil,
+		"policyReturnType", getPolicyReturnType,
 		"typeCount", len(typeMethods),
 		"errorCount", len(errors),
 		"phase", "validation")
@@ -348,21 +414,59 @@ func ValidateGoMod(policy *types.DiscoveredPolicy) []types.ValidationError {
 	return errors
 }
 
-// countFields returns the total number of parameters or results in a field list.
-// Handles both named fields (e.g. "a, b int" → 2) and unnamed fields (e.g. "int" → 1).
-func countFields(fieldList *ast.FieldList) int {
-	if fieldList == nil {
-		return 0
+// canonicalTypeString converts an AST type expression to a normalized string for
+// comparison. Package qualifiers are stripped from selector expressions so both
+// qualified (policy.RequestContext) and local (RequestContext) names compare equal.
+// The keyword 'any' is normalized to 'interface{}' since they are aliases in Go 1.18+.
+func canonicalTypeString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.StarExpr:
+		return "*" + canonicalTypeString(t.X)
+	case *ast.Ident:
+		if t.Name == "any" {
+			return "interface{}"
+		}
+		return t.Name
+	case *ast.SelectorExpr:
+		// Strip package qualifier: pkg.T → T
+		return t.Sel.Name
+	case *ast.ArrayType:
+		if t.Len == nil {
+			return "[]" + canonicalTypeString(t.Elt)
+		}
+		return "[...]" + canonicalTypeString(t.Elt)
+	case *ast.MapType:
+		return "map[" + canonicalTypeString(t.Key) + "]" + canonicalTypeString(t.Value)
+	case *ast.InterfaceType:
+		return "interface{}"
+	case *ast.Ellipsis:
+		return "..." + canonicalTypeString(t.Elt)
+	default:
+		return "unknown"
 	}
-	count := 0
+}
+
+// extractFieldTypes returns the canonical type string for each parameter or result
+// in a field list, expanding named fields that share a single type declaration.
+// For example, "a, b int" expands to ["int", "int"].
+func extractFieldTypes(fieldList *ast.FieldList) []string {
+	if fieldList == nil {
+		return nil
+	}
+	var result []string
 	for _, field := range fieldList.List {
+		typeStr := canonicalTypeString(field.Type)
 		if len(field.Names) == 0 {
-			count++ // unnamed / embedded
+			// Unnamed / embedded — single entry.
+			result = append(result, typeStr)
 		} else {
-			count += len(field.Names)
+			// Named fields — one entry per name.
+			for range field.Names {
+				result = append(result, typeStr)
+			}
 		}
 	}
-	return count
+	return result
 }
 
 // extractTypeName returns the base type name from a receiver type expression,

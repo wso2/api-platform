@@ -443,12 +443,12 @@ func TestValidateGoInterface_MissingGetPolicy(t *testing.T) {
 	policyDir := filepath.Join(tmpDir, "test-policy")
 	testutils.CreateDir(t, policyDir)
 
-	// Has sub-interface method with correct arity but no GetPolicy factory.
+	// Has sub-interface method with correct signature but no GetPolicy factory.
 	goCode := `package test
 
 type TestPolicy struct{}
 
-func (p *TestPolicy) OnResponseBody(ctx ResponseContext) ResponseAction { return ResponseAction{} }
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
 `
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
 
@@ -477,7 +477,7 @@ type TestPolicy struct{}
 
 func GetPolicy() *TestPolicy { return &TestPolicy{} }
 
-func (p *TestPolicy) OnResponseBody(ctx ResponseContext) ResponseAction { return ResponseAction{} }
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
 `
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
 
@@ -508,7 +508,7 @@ type TestPolicy struct{}
 
 func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
 
-func (p *TestPolicy) OnResponseBodyChunk(ctx ResponseStreamContext, chunk StreamBody) ResponseChunkAction {
+func (p *TestPolicy) OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction {
 	return ResponseChunkAction{}
 }
 `
@@ -542,9 +542,9 @@ type TestPolicy struct{}
 
 func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
 
-func (p *TestPolicy) OnResponseBody(ctx ResponseContext) ResponseAction { return ResponseAction{} }
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
 
-func (p *TestPolicy) OnResponseBodyChunk(ctx ResponseStreamContext, chunk StreamBody) ResponseChunkAction {
+func (p *TestPolicy) OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction {
 	return ResponseChunkAction{}
 }
 `
@@ -568,16 +568,16 @@ func TestValidateGoInterface_StreamingResponseFullImplementation(t *testing.T) {
 	policyDir := filepath.Join(tmpDir, "test-policy")
 	testutils.CreateDir(t, policyDir)
 
-	// Has all three StreamingResponsePolicy methods with correct arities.
+	// Has all three StreamingResponsePolicy methods with correct signatures.
 	goCode := `package test
 
 type TestPolicy struct{}
 
 func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
 
-func (p *TestPolicy) OnResponseBody(ctx ResponseContext) ResponseAction { return ResponseAction{} }
+func (p *TestPolicy) OnResponseBody(ctx *ResponseContext) ResponseAction { return ResponseAction{} }
 
-func (p *TestPolicy) OnResponseBodyChunk(ctx ResponseStreamContext, chunk StreamBody) ResponseChunkAction {
+func (p *TestPolicy) OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody) ResponseChunkAction {
 	return ResponseChunkAction{}
 }
 
@@ -609,7 +609,7 @@ type TestPolicy struct{}
 
 func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) { return nil, nil }
 
-func (p *TestPolicy) OnRequestBodyChunk(ctx RequestStreamContext, chunk StreamBody) RequestChunkAction {
+func (p *TestPolicy) OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody) RequestChunkAction {
 	return RequestChunkAction{}
 }
 `

@@ -32,6 +32,9 @@ func GetPolicy(
 		if !ok {
 			return nil, fmt.Errorf("letters must be an array of strings")
 		}
+		if s == "" {
+			return nil, fmt.Errorf("letters must be a non-empty array of strings")
+		}
 		letters[i] = s
 	}
 
