@@ -1,55 +1,67 @@
 name: log-message
-version: v0.1.0
+version: v0.2.1
 description: |
-  This policy provides the capability to log the payload and headers of a request/response.
-  It supports separate configuration for request and response flows.
+  Log request and response payloads and headers for observability without changing traffic.
 
 parameters:
   type: object
   additionalProperties: false
   properties:
-    logRequestPayload:
-      type: boolean
-      default: false
-      description: |
-        Enables logging of request payloads.
-        When set to true, the request bodies will be logged.
-        When set to false, request payloads will not be logged.
-    logRequestHeaders:
-      type: boolean
-      default: false
-      description: |
-        Enables logging of request headers.
-        When set to true, the request headers will be logged.
-        When set to false, request headers will not be logged.
-    excludedRequestHeaders:
-      type: string
-      description: |
-        A comma-separated list of header names to exclude from request logging when logRequestHeaders is enabled.
-        Example: "Authorization,X-API-Key" will exclude these headers from being logged.
-        This parameter is optional and only applies when logRequestHeaders is true.
-    logResponsePayload:
-      type: boolean
-      default: false
-      description: |
-        Enables logging of response payloads.
-        When set to true, the response bodies will be logged.
-        When set to false, response payloads will not be logged.
-    logResponseHeaders:
-      type: boolean
-      default: false
-      description: |
-        Enables logging of response headers.
-        When set to true, the response headers will be logged.
-        When set to false, response headers will not be logged.
-    excludedResponseHeaders:
-      type: string
-      description: |
-        A comma-separated list of header names to exclude from response logging when logResponseHeaders is enabled.
-        Example: "Authorization,X-API-Key" will exclude these headers from being logged.
-        This parameter is optional and only applies when logResponseHeaders is true.
-
-  required: []
+    request:
+      type: object
+      x-wso2-policy-advanced-param: false
+      additionalProperties: false
+      description: Log request data.
+      properties:
+        payload:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          default: false
+          description: Log request payload.
+        headers:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          default: false
+          description: Log request headers.
+        excludeHeaders:
+          type: array
+          x-wso2-policy-advanced-param: true
+          description: Exclude request headers from logs.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 256
+          uniqueItems: true
+          default: []
+    response:
+      type: object
+      x-wso2-policy-advanced-param: false
+      additionalProperties: false
+      description: Log response data.
+      properties:
+        payload:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          default: false
+          description: Log response payload.
+        headers:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          default: false
+          description: Log response headers.
+        excludeHeaders:
+          type: array
+          x-wso2-policy-advanced-param: true
+          description: Exclude response headers from logs.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 256
+          uniqueItems: true
+          default: []
+  anyOf:
+    - required: [ request ]
+    - required: [ response ]
 
 systemParameters:
   type: object
