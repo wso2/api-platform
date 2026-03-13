@@ -149,12 +149,13 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	// Determine vhost values.
 	// For "current" base: default to sentinel so the gateway resolves and persists its defaults.
 	// For an existing deployment base: start from the base's stored vhosts, then apply any overrides.
-	var vhostMain string
+	var vhostMain *string
 	var vhostSandbox *string
 
 	if req.Base == "current" {
 		// Fresh deployment: default to sentinel so the gateway resolves and persists its defaults.
-		vhostMain = constants.VhostGatewayDefault
+		mainSentinel := constants.VhostGatewayDefault
+		vhostMain = &mainSentinel
 		if apiModel.Configuration.Upstream.Sandbox != nil {
 			sandboxSentinel := constants.VhostGatewayDefault
 			vhostSandbox = &sandboxSentinel
@@ -163,13 +164,15 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		// Base deployment: start from the base's stored vhosts.
 		if baseDeployment != nil && baseDeployment.Metadata != nil {
 			if m, ok := baseDeployment.Metadata[constants.MetadataKeyVhostMain]; ok {
-				if ms, ok := m.(string); ok {
-					vhostMain = ms
+				if ms, ok := m.(string); ok && ms != "" {
+					val := ms
+					vhostMain = &val
 				}
 			}
 			if m, ok := baseDeployment.Metadata[constants.MetadataKeyVhostSandbox]; ok {
-				if ms, ok := m.(string); ok {
-					vhostSandbox = &ms
+				if ms, ok := m.(string); ok && ms != "" {
+					val := ms
+					vhostSandbox = &val
 				}
 			}
 		}
@@ -200,7 +203,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				if !isValidVHostOrSentinel(vm) {
 					return nil, fmt.Errorf("invalid vhostMain in metadata: %s", vm)
 				}
-				vhostMain = vm
+				val := vm
+				vhostMain = &val
 				vhostMainOverridden = true
 				needsOverride = true
 			}
@@ -215,7 +219,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				if !isValidVHostOrSentinel(vs) {
 					return nil, fmt.Errorf("invalid vhostSandbox in metadata: %s", vs)
 				}
-				vhostSandbox = &vs
+				val := vs
+				vhostSandbox = &val
 				vhostSandboxOverridden = true
 				needsOverride = true
 			}
@@ -229,7 +234,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		if err != nil {
 			return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
 		}
-		applyStructOverrides(apiDeployment, endpointURL, &vhostMain, vhostSandbox)
+		applyStructOverrides(apiDeployment, endpointURL, vhostMain, vhostSandbox)
 		contentBytes, err = yaml.Marshal(apiDeployment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
@@ -238,7 +243,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
 		if vhostMainOverridden {
-			s.slogger.Debug("Vhost main overridden", "vhostMain", vhostMain, "deploymentID", deploymentID)
+			s.slogger.Debug("Vhost main overridden", "vhostMain", *vhostMain, "deploymentID", deploymentID)
 		}
 		if vhostSandboxOverridden {
 			s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
@@ -248,7 +253,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		contentBytes = baseDeployment.Content
 		if needsOverride {
 			// Single unmarshal -> apply overrides -> single marshal
-			contentBytes, err = applyDeploymentOverrides(contentBytes, endpointURL, &vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
+			contentBytes, err = applyDeploymentOverrides(contentBytes, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
 			if err != nil {
 				return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
 			}
@@ -256,7 +261,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 			}
 			if vhostMainOverridden {
-				s.slogger.Debug("Vhost main overridden", "vhostMain", vhostMain, "deploymentID", deploymentID)
+				s.slogger.Debug("Vhost main overridden", "vhostMain", *vhostMain, "deploymentID", deploymentID)
 			}
 			if vhostSandboxOverridden {
 				s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
@@ -266,8 +271,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	// If base: <deploymentId> and no overrides, contentBytes passes through unchanged.
 
 	// Store vhost in metadata so it is returned in the deployment response.
-	if vhostMain != "" {
-		metadata[constants.MetadataKeyVhostMain] = vhostMain
+	if vhostMain != nil {
+		metadata[constants.MetadataKeyVhostMain] = *vhostMain
 	}
 	if vhostSandbox != nil {
 		metadata[constants.MetadataKeyVhostSandbox] = *vhostSandbox
