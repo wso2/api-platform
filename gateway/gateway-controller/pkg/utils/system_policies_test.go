@@ -120,7 +120,7 @@ func TestInjectSystemPolicies_NilConfig(t *testing.T) {
 		{Name: "existing", Version: "v1.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, nil, nil, "RestApi")
+	result := InjectSystemPolicies(policies, nil, nil)
 	assert.Equal(t, policies, result)
 }
 
@@ -134,7 +134,7 @@ func TestInjectSystemPolicies_AnalyticsDisabled(t *testing.T) {
 		{Name: "existing", Version: "v1.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, cfg, nil, "RestApi")
+	result := InjectSystemPolicies(policies, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, "existing", result[0].Name)
 }
@@ -150,7 +150,7 @@ func TestInjectSystemPolicies_AnalyticsEnabled(t *testing.T) {
 		{Name: "existing", Version: "v1.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, cfg, nil, "RestApi")
+	result := InjectSystemPolicies(policies, cfg, nil)
 	assert.Len(t, result, 2)
 	// System policy should be first
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
@@ -168,7 +168,7 @@ func TestInjectSystemPolicies_AllowPayloadsTrue(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, nil, "RestApi")
+	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
 	assert.Equal(t, true, result[0].Parameters["allow_payloads"])
@@ -182,7 +182,7 @@ func TestInjectSystemPolicies_AllowPayloadsFalse(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, nil, "RestApi")
+	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, false, result[0].Parameters["allow_payloads"])
 }
@@ -199,7 +199,7 @@ func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, additionalProps, "RestApi")
+	result := InjectSystemPolicies(nil, cfg, additionalProps)
 	assert.Len(t, result, 1)
 	assert.Equal(t, "custom_value", result[0].Parameters["custom_param"])
 }
@@ -216,7 +216,7 @@ func TestInjectSystemPolicies_WithSharedParams(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies(nil, cfg, additionalProps, "RestApi")
+	result := InjectSystemPolicies(nil, cfg, additionalProps)
 	assert.Len(t, result, 1)
 	assert.Equal(t, "shared_value", result[0].Parameters["shared_param"])
 }
@@ -228,7 +228,7 @@ func TestInjectSystemPolicies_EmptyPolicies(t *testing.T) {
 		},
 	}
 
-	result := InjectSystemPolicies([]policyenginev1.PolicyInstance{}, cfg, nil, "RestApi")
+	result := InjectSystemPolicies([]policyenginev1.PolicyInstance{}, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
 }
@@ -244,7 +244,7 @@ func TestInjectSystemPolicies_PreservesExistingPolicies(t *testing.T) {
 		{Name: "policy2", Version: "v2.0.0"},
 	}
 
-	result := InjectSystemPolicies(policies, cfg, nil, "RestApi")
+	result := InjectSystemPolicies(policies, cfg, nil)
 	assert.Len(t, result, 3)
 	// System policies come first
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)

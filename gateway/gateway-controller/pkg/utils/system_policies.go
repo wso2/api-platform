@@ -45,9 +45,6 @@ type systemPolicyConfig struct {
 	Parameters map[string]interface{}
 	// ExecutionCondition contains the execution condition for the policy
 	ExecutionCondition *string
-	// AllowedKinds restricts injection to specific API kinds (e.g. "LlmProxy").
-	// An empty slice means the policy is injected for all API kinds.
-	AllowedKinds []string
 }
 
 // defaultSystemPolicies lists the built-in system policies that can be injected into
@@ -162,25 +159,8 @@ func mergeParameters(
 	return result
 }
 
-// kindAllowed returns true if allowedKinds is empty (policy applies to all API kinds)
-// or if apiKind is present in allowedKinds.
-func kindAllowed(allowedKinds []string, apiKind string) bool {
-	if len(allowedKinds) == 0 {
-		return true
-	}
-	for _, k := range allowedKinds {
-		if k == apiKind {
-			return true
-		}
-	}
-	return false
-}
-
 // InjectSystemPolicies injects system policies into a policy chain based on configuration.
 // System policies are prepended to the chain (executed first).
-//
-// apiKind identifies the type of API (e.g. "RestApi", "LlmProxy", "WebSubApi").
-// Policies with AllowedKinds set are only injected when apiKind matches one of the allowed values.
 //
 // Parameter merging strategy (highest to lowest precedence):
 // 1. Policy-specific: additionalProps[policyName] (e.g., additionalProps["wso2_apip_sys_analytics"])
@@ -188,16 +168,16 @@ func kindAllowed(allowedKinds []string, apiKind string) bool {
 // 3. Default: systemPolicyConfig.Parameters (defined in defaultSystemPolicies)
 //
 // Returns the modified chain with system policies injected.
-func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.Config, additionalProps map[string]any, apiKind string) []policyenginev1.PolicyInstance {
+func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.Config, additionalProps map[string]any) []policyenginev1.PolicyInstance {
 	if cfg == nil {
 		slog.Error("Configuration is nil, cannot inject system policies")
 		return policies
 	}
 
-	// Fast path: count enabled + kind-matching policies
+	// Fast path: no enabled policies, return early
 	enabledCount := 0
 	for _, sysPol := range defaultSystemPolicies {
-		if sysPol.Enabled(cfg) && kindAllowed(sysPol.AllowedKinds, apiKind) {
+		if sysPol.Enabled(cfg) {
 			enabledCount++
 		}
 	}
@@ -210,7 +190,7 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 
 	// Collect enabled system policies with merged parameters
 	for _, sysPol := range defaultSystemPolicies {
-		if !sysPol.Enabled(cfg) || !kindAllowed(sysPol.AllowedKinds, apiKind) {
+		if !sysPol.Enabled(cfg) {
 			continue
 		}
 
