@@ -190,29 +190,28 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 
 	// Collect enabled system policies with merged parameters
 	for _, sysPol := range defaultSystemPolicies {
-		if !sysPol.Enabled(cfg) {
-			continue
-		}
+		if sysPol.Enabled(cfg) {
+			// Build effective default parameters, allowing runtime config to control allow_payloads.
+			effectiveDefaults := make(map[string]interface{}, len(sysPol.Parameters)+1)
+			for k, v := range sysPol.Parameters {
+				effectiveDefaults[k] = v
+			}
+			// For the analytics system policy, propagate the allow_payloads flag from runtime config.
+			if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
+				effectiveDefaults["allow_payloads"] = cfg.Analytics.AllowPayloads
+			}
 
-		// Build effective default parameters, allowing runtime config to control allow_payloads.
-		effectiveDefaults := make(map[string]interface{}, len(sysPol.Parameters)+1)
-		for k, v := range sysPol.Parameters {
-			effectiveDefaults[k] = v
-		}
-		// For the analytics system policy, propagate the allow_payloads flag from runtime config.
-		if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
-			effectiveDefaults["allow_payloads"] = cfg.Analytics.AllowPayloads
-		}
-		// Merge parameters efficiently
-		mergedParams := mergeParameters(effectiveDefaults, additionalProps, sysPol.Name)
+			// Merge parameters efficiently
+			mergedParams := mergeParameters(effectiveDefaults, additionalProps, sysPol.Name)
 
-		systemPolicies = append(systemPolicies, policyenginev1.PolicyInstance{
-			Name:               sysPol.Name,
-			Version:            sysPol.Version,
-			Enabled:            true,
-			ExecutionCondition: sysPol.ExecutionCondition,
-			Parameters:         mergedParams,
-		})
+			systemPolicies = append(systemPolicies, policyenginev1.PolicyInstance{
+				Name:               sysPol.Name,
+				Version:            sysPol.Version,
+				Enabled:            true,
+				ExecutionCondition: sysPol.ExecutionCondition,
+				Parameters:         mergedParams,
+			})
+		}
 	}
 
 	// Prepend system policies to the chain (they execute first)

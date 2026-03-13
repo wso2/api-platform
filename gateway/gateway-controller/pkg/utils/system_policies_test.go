@@ -252,7 +252,3 @@ func TestInjectSystemPolicies_PreservesExistingPolicies(t *testing.T) {
 	assert.Equal(t, "policy1", result[1].Name)
 	assert.Equal(t, "policy2", result[2].Name)
 }
-
-// ---------------------------------------------------------------------------
-// Kind filtering tests
-// ---------------------------------------------------------------------------
