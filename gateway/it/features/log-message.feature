@@ -22,10 +22,10 @@ Feature: Log Message Policy Integration Tests
         context: /log-req/$version
         upstream:
           main:
-            url: http://sample-backend:9080
+            url: http://sample-backend:9080/echo
         operations:
           - method: POST
-            path: /echo
+            path: /test
             policies:
               - name: log-message
                 version: v0
@@ -33,10 +33,12 @@ Feature: Log Message Policy Integration Tests
                   request:
                     payload: true
                     headers: true
+          - method: GET
+            path: /health
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/log-req/v1.0.0/echo" to be ready
-    When I send a POST request to "http://localhost:8080/log-req/v1.0.0/echo" with body:
+    And I wait for the endpoint "http://localhost:8080/log-req/v1.0.0/health" to be ready
+    When I send a POST request to "http://localhost:8080/log-req/v1.0.0/test" with body:
       """
       {"message": "hello world"}
       """
@@ -87,10 +89,10 @@ Feature: Log Message Policy Integration Tests
         context: /log-both/$version
         upstream:
           main:
-            url: http://sample-backend:9080
+            url: http://sample-backend:9080/echo
         operations:
           - method: POST
-            path: /echo
+            path: /test
             policies:
               - name: log-message
                 version: v0
@@ -101,10 +103,12 @@ Feature: Log Message Policy Integration Tests
                   response:
                     payload: true
                     headers: true
+          - method: GET
+            path: /health
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/log-both/v1.0.0/echo" to be ready
-    When I send a POST request to "http://localhost:8080/log-both/v1.0.0/echo" with body:
+    And I wait for the endpoint "http://localhost:8080/log-both/v1.0.0/health" to be ready
+    When I send a POST request to "http://localhost:8080/log-both/v1.0.0/test" with body:
       """
       {"test": "data", "count": 42}
       """
@@ -193,10 +197,10 @@ Feature: Log Message Policy Integration Tests
         context: /log-req-payload/$version
         upstream:
           main:
-            url: http://sample-backend:9080
+            url: http://sample-backend:9080/echo
         operations:
           - method: POST
-            path: /echo
+            path: /test
             policies:
               - name: log-message
                 version: v0
@@ -204,10 +208,12 @@ Feature: Log Message Policy Integration Tests
                   request:
                     payload: true
                     headers: false
+          - method: GET
+            path: /health
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/log-req-payload/v1.0.0/echo" to be ready
-    When I send a POST request to "http://localhost:8080/log-req-payload/v1.0.0/echo" with body:
+    And I wait for the endpoint "http://localhost:8080/log-req-payload/v1.0.0/health" to be ready
+    When I send a POST request to "http://localhost:8080/log-req-payload/v1.0.0/test" with body:
       """
       {"payload": "test"}
       """
@@ -447,10 +453,10 @@ Feature: Log Message Policy Integration Tests
         context: /log-large/$version
         upstream:
           main:
-            url: http://sample-backend:9080
+            url: http://sample-backend:9080/echo
         operations:
           - method: POST
-            path: /echo
+            path: /test
             policies:
               - name: log-message
                 version: v0
@@ -459,10 +465,12 @@ Feature: Log Message Policy Integration Tests
                     payload: true
                   response:
                     payload: true
+          - method: GET
+            path: /health
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/log-large/v1.0.0/echo" to be ready
-    When I send a POST request to "http://localhost:8080/log-large/v1.0.0/echo" with body:
+    And I wait for the endpoint "http://localhost:8080/log-large/v1.0.0/health" to be ready
+    When I send a POST request to "http://localhost:8080/log-large/v1.0.0/test" with body:
       """
       {
         "data": "This is a larger payload to test logging capabilities",
