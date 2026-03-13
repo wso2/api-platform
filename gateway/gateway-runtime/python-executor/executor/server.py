@@ -182,6 +182,7 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         concurrency_limit = asyncio.Semaphore(self._max_concurrent)
 
         async def process_request(request: proto.ExecutionRequest) -> None:
+            response: Optional[proto.ExecutionResponse] = None
             try:
                 loop = asyncio.get_event_loop()
                 response = await loop.run_in_executor(
@@ -196,13 +197,18 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                 response = self._error_response(
                     request.request_id, e, request.policy_name, request.policy_version
                 )
-            
+
             async with response_ready:
-                response_deque.append(response)
-                response_ready.notify()
-            
-            # Remove from in_flight and release semaphore
-            in_flight.discard(asyncio.current_task())
+                try:
+                    if response is not None:
+                        response_deque.append(response)
+                finally:
+                    # Keep in-flight updates under the same condition lock so
+                    # writers observe deque/in_flight state changes atomically.
+                    in_flight.discard(asyncio.current_task())
+                    response_ready.notify()
+
+            # Release capacity after notifying waiters to re-check in_flight.
             concurrency_limit.release()
 
         async def reader() -> None:
@@ -216,9 +222,11 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
             except Exception:
                 logger.exception("Reader encountered error")
             finally:
-                reader_done.set()
                 async with response_ready:
-                    response_ready.notify()
+                    try:
+                        reader_done.set()
+                    finally:
+                        response_ready.notify()
 
         reader_task = asyncio.create_task(reader())
 
