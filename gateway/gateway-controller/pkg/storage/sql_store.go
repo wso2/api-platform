@@ -463,18 +463,18 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	return &cfg, nil
 }
 
-// GetConfigByHandle retrieves a deployment configuration by handle (metadata.name)
-func (s *sqlStore) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+// GetConfigByKindAndHandle retrieves a deployment configuration by kind and handle (metadata.name)
+func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
 		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
 		FROM artifacts
-		WHERE handle = ? AND gateway_id = ?
+		WHERE kind = ? AND handle = ? AND gateway_id = ?
 	`
 
 	var cfg models.StoredConfig
 	var deployedAt sql.NullTime
 
-	err := s.queryRow(artifactQuery, handle, s.gatewayId).Scan(
+	err := s.queryRow(artifactQuery, kind, handle, s.gatewayId).Scan(
 		&cfg.UUID,
 		&cfg.Kind,
 		&cfg.Handle,

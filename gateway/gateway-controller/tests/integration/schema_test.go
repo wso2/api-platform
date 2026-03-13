@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -282,7 +283,7 @@ func TestSchemaInitializationIdempotent(t *testing.T) {
 	defer db2.Close()
 
 	// Verify configuration still exists
-	retrieved, err := db2.GetConfigByHandle("IdempotentAPI-v1.0")
+	retrieved, err := db2.GetConfigByKindAndHandle(models.KindRestApi,"IdempotentAPI-v1.0")
 	assert.NoError(t, err)
 	assert.NotNil(t, retrieved)
 	assert.Equal(t, cfg.UUID, retrieved.UUID)

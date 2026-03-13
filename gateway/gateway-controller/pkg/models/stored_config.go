@@ -25,6 +25,19 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
 
+// ArtifactKind identifies the type of configuration stored in the database.
+// These constants are decoupled from the OpenAPI-generated kind enums so that
+// renaming a field in the spec does not silently break DB queries.
+type ArtifactKind = string
+
+const (
+	KindRestApi    ArtifactKind = "RestApi"
+	KindWebSubApi  ArtifactKind = "WebSubApi"
+	KindMcp        ArtifactKind = "Mcp"
+	KindLlmProxy   ArtifactKind = "LlmProxy"
+	KindLlmProvider ArtifactKind = "LlmProvider"
+)
+
 // ConfigStatus represents the lifecycle state of an API configuration
 type ConfigStatus string
 
