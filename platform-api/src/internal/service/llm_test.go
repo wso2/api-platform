@@ -7,6 +7,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
+	"platform-api/src/internal/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -40,8 +41,8 @@ func TestMapUpstreamAuthAPIToModel_NormalizesApiKeyType(t *testing.T) {
 	authType := api.UpstreamAuthType("apiKey")
 	in := &api.UpstreamAuth{
 		Type:   &authType,
-		Header: stringPtrIfNotEmpty("Authorization"),
-		Value:  stringPtrIfNotEmpty("secret"),
+		Header: utils.StringPtrIfNotEmpty("Authorization"),
+		Value:  utils.StringPtrIfNotEmpty("secret"),
 	}
 
 	out := mapUpstreamAuthAPIToModel(in)

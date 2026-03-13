@@ -53,18 +53,23 @@ type ResourceHandler struct {
 	configLoader        *kernel.ConfigLoader
 	apiKeyHandler       *APIKeyOperationHandler
 	lazyResourceHandler *LazyResourceHandler
+	subscriptionStore   *policyenginev1.SubscriptionStore
+	subscriptionHandler *SubscriptionStateHandler
 }
 
 // NewResourceHandler creates a new ResourceHandler
 func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *ResourceHandler {
 	apiKeyStore := apikey.GetAPIkeyStoreInstance()
 	lazyResourceStore := policy.GetLazyResourceStoreInstance()
+	subStore := policyenginev1.GetSubscriptionStoreInstance()
 	return &ResourceHandler{
 		kernel:              k,
 		registry:            reg,
 		configLoader:        kernel.NewConfigLoader(k, reg),
 		apiKeyHandler:       NewAPIKeyOperationHandler(apiKeyStore, slog.Default()),
 		lazyResourceHandler: NewLazyResourceHandler(lazyResourceStore, slog.Default()),
+		subscriptionStore:   subStore,
+		subscriptionHandler: NewSubscriptionStateHandler(subStore, slog.Default()),
 	}
 }
 

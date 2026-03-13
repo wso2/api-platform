@@ -20,24 +20,6 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// Defines values for APIConfigurationApiVersion.
-const (
-	APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 APIConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
-)
-
-// Defines values for APIConfigurationKind.
-const (
-	RestApi   APIConfigurationKind = "RestApi"
-	WebSubApi APIConfigurationKind = "WebSubApi"
-)
-
-// Defines values for APIDetailResponseApiMetadataStatus.
-const (
-	APIDetailResponseApiMetadataStatusDeployed APIDetailResponseApiMetadataStatus = "deployed"
-	APIDetailResponseApiMetadataStatusFailed   APIDetailResponseApiMetadataStatus = "failed"
-	APIDetailResponseApiMetadataStatusPending  APIDetailResponseApiMetadataStatus = "pending"
-)
-
 // Defines values for APIKeySource.
 const (
 	External APIKeySource = "external"
@@ -69,14 +51,6 @@ const (
 	APIKeyRegenerationRequestExpiresInUnitMonths  APIKeyRegenerationRequestExpiresInUnit = "months"
 	APIKeyRegenerationRequestExpiresInUnitSeconds APIKeyRegenerationRequestExpiresInUnit = "seconds"
 	APIKeyRegenerationRequestExpiresInUnitWeeks   APIKeyRegenerationRequestExpiresInUnit = "weeks"
-)
-
-// Defines values for APIListItemStatus.
-const (
-	APIListItemStatusDeployed   APIListItemStatus = "deployed"
-	APIListItemStatusFailed     APIListItemStatus = "failed"
-	APIListItemStatusPending    APIListItemStatus = "pending"
-	APIListItemStatusUndeployed APIListItemStatus = "undeployed"
 )
 
 // Defines values for CertificateResponseStatus.
@@ -210,7 +184,7 @@ const (
 
 // Defines values for MCPProxyConfigurationApiVersion.
 const (
-	GatewayApiPlatformWso2Comv1alpha1 MCPProxyConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+	MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 MCPProxyConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
 // Defines values for MCPProxyConfigurationKind.
@@ -236,6 +210,31 @@ const (
 	OperationMethodPUT     OperationMethod = "PUT"
 )
 
+// Defines values for RestAPIApiVersion.
+const (
+	RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 RestAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for RestAPIKind.
+const (
+	RestApi RestAPIKind = "RestApi"
+)
+
+// Defines values for RestAPIDetailResponseApiMetadataStatus.
+const (
+	RestAPIDetailResponseApiMetadataStatusDeployed RestAPIDetailResponseApiMetadataStatus = "deployed"
+	RestAPIDetailResponseApiMetadataStatusFailed   RestAPIDetailResponseApiMetadataStatus = "failed"
+	RestAPIDetailResponseApiMetadataStatusPending  RestAPIDetailResponseApiMetadataStatus = "pending"
+)
+
+// Defines values for RestAPIListItemStatus.
+const (
+	RestAPIListItemStatusDeployed   RestAPIListItemStatus = "deployed"
+	RestAPIListItemStatusFailed     RestAPIListItemStatus = "failed"
+	RestAPIListItemStatusPending    RestAPIListItemStatus = "pending"
+	RestAPIListItemStatusUndeployed RestAPIListItemStatus = "undeployed"
+)
+
 // Defines values for RouteExceptionMethods.
 const (
 	DELETE RouteExceptionMethods = "DELETE"
@@ -243,6 +242,61 @@ const (
 	PATCH  RouteExceptionMethods = "PATCH"
 	POST   RouteExceptionMethods = "POST"
 	PUT    RouteExceptionMethods = "PUT"
+)
+
+// Defines values for SubscriptionCreateRequestStatus.
+const (
+	SubscriptionCreateRequestStatusACTIVE   SubscriptionCreateRequestStatus = "ACTIVE"
+	SubscriptionCreateRequestStatusINACTIVE SubscriptionCreateRequestStatus = "INACTIVE"
+	SubscriptionCreateRequestStatusREVOKED  SubscriptionCreateRequestStatus = "REVOKED"
+)
+
+// Defines values for SubscriptionPlanCreateRequestStatus.
+const (
+	SubscriptionPlanCreateRequestStatusACTIVE   SubscriptionPlanCreateRequestStatus = "ACTIVE"
+	SubscriptionPlanCreateRequestStatusINACTIVE SubscriptionPlanCreateRequestStatus = "INACTIVE"
+)
+
+// Defines values for SubscriptionPlanCreateRequestThrottleLimitUnit.
+const (
+	SubscriptionPlanCreateRequestThrottleLimitUnitDay   SubscriptionPlanCreateRequestThrottleLimitUnit = "Day"
+	SubscriptionPlanCreateRequestThrottleLimitUnitHour  SubscriptionPlanCreateRequestThrottleLimitUnit = "Hour"
+	SubscriptionPlanCreateRequestThrottleLimitUnitMin   SubscriptionPlanCreateRequestThrottleLimitUnit = "Min"
+	SubscriptionPlanCreateRequestThrottleLimitUnitMonth SubscriptionPlanCreateRequestThrottleLimitUnit = "Month"
+)
+
+// Defines values for SubscriptionPlanResponseStatus.
+const (
+	SubscriptionPlanResponseStatusACTIVE   SubscriptionPlanResponseStatus = "ACTIVE"
+	SubscriptionPlanResponseStatusINACTIVE SubscriptionPlanResponseStatus = "INACTIVE"
+)
+
+// Defines values for SubscriptionPlanUpdateRequestStatus.
+const (
+	SubscriptionPlanUpdateRequestStatusACTIVE   SubscriptionPlanUpdateRequestStatus = "ACTIVE"
+	SubscriptionPlanUpdateRequestStatusINACTIVE SubscriptionPlanUpdateRequestStatus = "INACTIVE"
+)
+
+// Defines values for SubscriptionPlanUpdateRequestThrottleLimitUnit.
+const (
+	SubscriptionPlanUpdateRequestThrottleLimitUnitDay   SubscriptionPlanUpdateRequestThrottleLimitUnit = "Day"
+	SubscriptionPlanUpdateRequestThrottleLimitUnitHour  SubscriptionPlanUpdateRequestThrottleLimitUnit = "Hour"
+	SubscriptionPlanUpdateRequestThrottleLimitUnitMin   SubscriptionPlanUpdateRequestThrottleLimitUnit = "Min"
+	SubscriptionPlanUpdateRequestThrottleLimitUnitMonth SubscriptionPlanUpdateRequestThrottleLimitUnit = "Month"
+)
+
+// Defines values for SubscriptionResponseStatus.
+const (
+	SubscriptionResponseStatusACTIVE   SubscriptionResponseStatus = "ACTIVE"
+	SubscriptionResponseStatusINACTIVE SubscriptionResponseStatus = "INACTIVE"
+	SubscriptionResponseStatusREVOKED  SubscriptionResponseStatus = "REVOKED"
+)
+
+// Defines values for SubscriptionUpdateRequestStatus.
+const (
+	SubscriptionUpdateRequestStatusACTIVE   SubscriptionUpdateRequestStatus = "ACTIVE"
+	SubscriptionUpdateRequestStatusINACTIVE SubscriptionUpdateRequestStatus = "INACTIVE"
+	SubscriptionUpdateRequestStatusREVOKED  SubscriptionUpdateRequestStatus = "REVOKED"
 )
 
 // Defines values for UpstreamHostRewrite.
@@ -256,11 +310,29 @@ const (
 	UpstreamAuthAuthTypeApiKey UpstreamAuthAuthType = "api-key"
 )
 
-// Defines values for ListAPIsParamsStatus.
+// Defines values for WebSubAPIApiVersion.
 const (
-	ListAPIsParamsStatusDeployed ListAPIsParamsStatus = "deployed"
-	ListAPIsParamsStatusFailed   ListAPIsParamsStatus = "failed"
-	ListAPIsParamsStatusPending  ListAPIsParamsStatus = "pending"
+	WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 WebSubAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for WebSubAPIKind.
+const (
+	WebSubApi WebSubAPIKind = "WebSubApi"
+)
+
+// Defines values for WebSubAPIDetailResponseApiMetadataStatus.
+const (
+	WebSubAPIDetailResponseApiMetadataStatusDeployed WebSubAPIDetailResponseApiMetadataStatus = "deployed"
+	WebSubAPIDetailResponseApiMetadataStatusFailed   WebSubAPIDetailResponseApiMetadataStatus = "failed"
+	WebSubAPIDetailResponseApiMetadataStatusPending  WebSubAPIDetailResponseApiMetadataStatus = "pending"
+)
+
+// Defines values for WebSubAPIListItemStatus.
+const (
+	WebSubAPIListItemStatusDeployed   WebSubAPIListItemStatus = "deployed"
+	WebSubAPIListItemStatusFailed     WebSubAPIListItemStatus = "failed"
+	WebSubAPIListItemStatusPending    WebSubAPIListItemStatus = "pending"
+	WebSubAPIListItemStatusUndeployed WebSubAPIListItemStatus = "undeployed"
 )
 
 // Defines values for ListLLMProvidersParamsStatus.
@@ -284,6 +356,27 @@ const (
 	ListMCPProxiesParamsStatusPending  ListMCPProxiesParamsStatus = "pending"
 )
 
+// Defines values for ListRestAPIsParamsStatus.
+const (
+	ListRestAPIsParamsStatusDeployed ListRestAPIsParamsStatus = "deployed"
+	ListRestAPIsParamsStatusFailed   ListRestAPIsParamsStatus = "failed"
+	ListRestAPIsParamsStatusPending  ListRestAPIsParamsStatus = "pending"
+)
+
+// Defines values for ListSubscriptionsParamsStatus.
+const (
+	ACTIVE   ListSubscriptionsParamsStatus = "ACTIVE"
+	INACTIVE ListSubscriptionsParamsStatus = "INACTIVE"
+	REVOKED  ListSubscriptionsParamsStatus = "REVOKED"
+)
+
+// Defines values for ListWebSubAPIsParamsStatus.
+const (
+	Deployed ListWebSubAPIsParamsStatus = "deployed"
+	Failed   ListWebSubAPIsParamsStatus = "failed"
+	Pending  ListWebSubAPIsParamsStatus = "pending"
+)
+
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
 	// Context Base path for all API routes (must start with /, no trailing slash)
@@ -297,6 +390,9 @@ type APIConfigData struct {
 
 	// Policies List of API-level policies applied to all operations unless overridden
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names available for this API
+	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// Upstream API-level upstream configuration
 	Upstream struct {
@@ -322,60 +418,6 @@ type APIConfigData struct {
 		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 	} `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 }
-
-// APIConfiguration defines model for APIConfiguration.
-type APIConfiguration struct {
-	// ApiVersion API specification version
-	ApiVersion APIConfigurationApiVersion `json:"apiVersion" yaml:"apiVersion"`
-
-	// Kind API type
-	Kind     APIConfigurationKind `json:"kind" yaml:"kind"`
-	Metadata Metadata             `json:"metadata" yaml:"metadata"`
-
-	// Spec API configuration payload (REST or Async API variants)
-	Spec APIConfiguration_Spec `json:"spec" yaml:"spec"`
-}
-
-// APIConfigurationApiVersion API specification version
-type APIConfigurationApiVersion string
-
-// APIConfigurationKind API type
-type APIConfigurationKind string
-
-// APIConfiguration_Spec API configuration payload (REST or Async API variants)
-type APIConfiguration_Spec struct {
-	union json.RawMessage
-}
-
-// APICreateResponse defines model for APICreateResponse.
-type APICreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-	// Id Unique id for the created API configuration
-	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
-	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
-	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// APIDetailResponse defines model for APIDetailResponse.
-type APIDetailResponse struct {
-	Api *struct {
-		Configuration *APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-
-		// Id Unique id for the API configuration
-		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata *struct {
-			CreatedAt  *time.Time                          `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			DeployedAt *time.Time                          `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-			Status     *APIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                          `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// APIDetailResponseApiMetadataStatus defines model for APIDetailResponse.Api.Metadata.Status.
-type APIDetailResponseApiMetadataStatus string
 
 // APIKey Details of an API key
 type APIKey struct {
@@ -501,28 +543,6 @@ type APIKeyRevocationResponse struct {
 
 // APIKeyUpdateRequest defines model for APIKeyUpdateRequest.
 type APIKeyUpdateRequest = APIKeyCreationRequest
-
-// APIListItem defines model for APIListItem.
-type APIListItem struct {
-	Context     *string            `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt   *time.Time         `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string            `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string            `json:"id,omitempty" yaml:"id,omitempty"`
-	Status      *APIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt   *time.Time         `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version     *string            `json:"version,omitempty" yaml:"version,omitempty"`
-}
-
-// APIListItemStatus defines model for APIListItem.Status.
-type APIListItemStatus string
-
-// APIUpdateResponse defines model for APIUpdateResponse.
-type APIUpdateResponse struct {
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-}
 
 // CertificateListResponse defines model for CertificateListResponse.
 type CertificateListResponse struct {
@@ -937,7 +957,7 @@ type MCPDetailResponse struct {
 	Mcp *struct {
 		Configuration *MCPProxyConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
 
-		// Id Unique id for the MCP configuration
+		// Id Unique id for the MCPProxy
 		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata *struct {
 			CreatedAt  *time.Time                          `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
@@ -1058,7 +1078,7 @@ type MCPProxyConfigurationKind string
 type MCPProxyCreateResponse struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Id Unique handle (metadata.name) for the created MCP proxy configuration
+	// Id Unique handle (metadata.name) for the created MCPProxy
 	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
@@ -1081,7 +1101,7 @@ type MCPProxyListItemStatus string
 
 // MCPProxyUpdateResponse defines model for MCPProxyUpdateResponse.
 type MCPProxyUpdateResponse struct {
-	// Id Unique handle (metadata.name) for the created MCP proxy configuration
+	// Id Unique handle (metadata.name) for the created MCPProxy
 	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
 	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
 	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
@@ -1191,6 +1211,75 @@ type PolicyListResponse struct {
 	Status   *string             `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
+// RestAPI defines model for RestAPI.
+type RestAPI struct {
+	// ApiVersion API specification version
+	ApiVersion RestAPIApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind API type
+	Kind     RestAPIKind   `json:"kind" yaml:"kind"`
+	Metadata Metadata      `json:"metadata" yaml:"metadata"`
+	Spec     APIConfigData `json:"spec" yaml:"spec"`
+}
+
+// RestAPIApiVersion API specification version
+type RestAPIApiVersion string
+
+// RestAPIKind API type
+type RestAPIKind string
+
+// RestAPICreateResponse defines model for RestAPICreateResponse.
+type RestAPICreateResponse struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Unique id for the created RestAPI
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// RestAPIDetailResponse defines model for RestAPIDetailResponse.
+type RestAPIDetailResponse struct {
+	Api *struct {
+		Configuration *RestAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+
+		// Id Unique id for the RestAPI
+		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
+		Metadata *struct {
+			CreatedAt  *time.Time                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+			DeployedAt *time.Time                              `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
+			Status     *RestAPIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	} `json:"api,omitempty" yaml:"api,omitempty"`
+	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// RestAPIDetailResponseApiMetadataStatus defines model for RestAPIDetailResponse.Api.Metadata.Status.
+type RestAPIDetailResponseApiMetadataStatus string
+
+// RestAPIListItem defines model for RestAPIListItem.
+type RestAPIListItem struct {
+	Context     *string                `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time             `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName *string                `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Id          *string                `json:"id,omitempty" yaml:"id,omitempty"`
+	Status      *RestAPIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt   *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version     *string                `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// RestAPIListItemStatus defines model for RestAPIListItem.Status.
+type RestAPIListItemStatus string
+
+// RestAPIUpdateResponse defines model for RestAPIUpdateResponse.
+type RestAPIUpdateResponse struct {
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
 // RouteException defines model for RouteException.
 type RouteException struct {
 	// Methods HTTP methods
@@ -1202,6 +1291,114 @@ type RouteException struct {
 
 // RouteExceptionMethods defines model for RouteException.Methods.
 type RouteExceptionMethods string
+
+// SubscriptionCreateRequest defines model for SubscriptionCreateRequest.
+type SubscriptionCreateRequest struct {
+	// ApiId API identifier (deployment ID or handle)
+	ApiId string `json:"apiId" yaml:"apiId"`
+
+	// ApplicationId Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
+	ApplicationId *string                          `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	Status        *SubscriptionCreateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionPlanId Subscription plan UUID for rate limit and billing configuration.
+	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+}
+
+// SubscriptionCreateRequestStatus defines model for SubscriptionCreateRequest.Status.
+type SubscriptionCreateRequestStatus string
+
+// SubscriptionListResponse defines model for SubscriptionListResponse.
+type SubscriptionListResponse struct {
+	Count         *int                    `json:"count,omitempty" yaml:"count,omitempty"`
+	Subscriptions *[]SubscriptionResponse `json:"subscriptions,omitempty" yaml:"subscriptions,omitempty"`
+}
+
+// SubscriptionPlanCreateRequest defines model for SubscriptionPlanCreateRequest.
+type SubscriptionPlanCreateRequest struct {
+	BillingPlan        *string                                         `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	ExpiryTime         *time.Time                                      `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	PlanName           string                                          `json:"planName" yaml:"planName"`
+	Status             *SubscriptionPlanCreateRequestStatus            `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach   *bool                                           `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+	ThrottleLimitCount *int                                            `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  *SubscriptionPlanCreateRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+}
+
+// SubscriptionPlanCreateRequestStatus defines model for SubscriptionPlanCreateRequest.Status.
+type SubscriptionPlanCreateRequestStatus string
+
+// SubscriptionPlanCreateRequestThrottleLimitUnit defines model for SubscriptionPlanCreateRequest.ThrottleLimitUnit.
+type SubscriptionPlanCreateRequestThrottleLimitUnit string
+
+// SubscriptionPlanListResponse defines model for SubscriptionPlanListResponse.
+type SubscriptionPlanListResponse struct {
+	Count             *int                        `json:"count,omitempty" yaml:"count,omitempty"`
+	SubscriptionPlans *[]SubscriptionPlanResponse `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+}
+
+// SubscriptionPlanResponse defines model for SubscriptionPlanResponse.
+type SubscriptionPlanResponse struct {
+	BillingPlan        *string                         `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	CreatedAt          *time.Time                      `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	ExpiryTime         *time.Time                      `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	GatewayId          *string                         `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Id                 *string                         `json:"id,omitempty" yaml:"id,omitempty"`
+	PlanName           *string                         `json:"planName,omitempty" yaml:"planName,omitempty"`
+	Status             *SubscriptionPlanResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach   *bool                           `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+	ThrottleLimitCount *int                            `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  *string                         `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+	UpdatedAt          *time.Time                      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionPlanResponseStatus defines model for SubscriptionPlanResponse.Status.
+type SubscriptionPlanResponseStatus string
+
+// SubscriptionPlanUpdateRequest defines model for SubscriptionPlanUpdateRequest.
+type SubscriptionPlanUpdateRequest struct {
+	BillingPlan        *string                                         `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	ExpiryTime         *time.Time                                      `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	PlanName           *string                                         `json:"planName,omitempty" yaml:"planName,omitempty"`
+	Status             *SubscriptionPlanUpdateRequestStatus            `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach   *bool                                           `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+	ThrottleLimitCount *int                                            `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  *SubscriptionPlanUpdateRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+}
+
+// SubscriptionPlanUpdateRequestStatus defines model for SubscriptionPlanUpdateRequest.Status.
+type SubscriptionPlanUpdateRequestStatus string
+
+// SubscriptionPlanUpdateRequestThrottleLimitUnit defines model for SubscriptionPlanUpdateRequest.ThrottleLimitUnit.
+type SubscriptionPlanUpdateRequestThrottleLimitUnit string
+
+// SubscriptionResponse defines model for SubscriptionResponse.
+type SubscriptionResponse struct {
+	ApiId         *string                     `json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	ApplicationId *string                     `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	CreatedAt     *time.Time                  `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	GatewayId     *string                     `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Id            *string                     `json:"id,omitempty" yaml:"id,omitempty"`
+	Status        *SubscriptionResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionPlanId Subscription plan UUID
+	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+
+	// SubscriptionToken Opaque subscription token for API invocation
+	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionResponseStatus defines model for SubscriptionResponse.Status.
+type SubscriptionResponseStatus string
+
+// SubscriptionUpdateRequest defines model for SubscriptionUpdateRequest.
+type SubscriptionUpdateRequest struct {
+	Status *SubscriptionUpdateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// SubscriptionUpdateRequestStatus defines model for SubscriptionUpdateRequest.Status.
+type SubscriptionUpdateRequestStatus string
 
 // Upstream Upstream backend configuration (single target or reference)
 type Upstream struct {
@@ -1273,6 +1470,75 @@ type ValidationError struct {
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 }
 
+// WebSubAPI defines model for WebSubAPI.
+type WebSubAPI struct {
+	// ApiVersion API specification version
+	ApiVersion WebSubAPIApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind API type
+	Kind     WebSubAPIKind  `json:"kind" yaml:"kind"`
+	Metadata Metadata       `json:"metadata" yaml:"metadata"`
+	Spec     WebhookAPIData `json:"spec" yaml:"spec"`
+}
+
+// WebSubAPIApiVersion API specification version
+type WebSubAPIApiVersion string
+
+// WebSubAPIKind API type
+type WebSubAPIKind string
+
+// WebSubAPICreateResponse defines model for WebSubAPICreateResponse.
+type WebSubAPICreateResponse struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Unique id for the created WebSubAPI
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// WebSubAPIDetailResponse defines model for WebSubAPIDetailResponse.
+type WebSubAPIDetailResponse struct {
+	Api *struct {
+		Configuration *WebSubAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+
+		// Id Unique id for the WebSubAPI
+		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
+		Metadata *struct {
+			CreatedAt  *time.Time                                `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+			DeployedAt *time.Time                                `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
+			Status     *WebSubAPIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                                `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	} `json:"api,omitempty" yaml:"api,omitempty"`
+	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// WebSubAPIDetailResponseApiMetadataStatus defines model for WebSubAPIDetailResponse.Api.Metadata.Status.
+type WebSubAPIDetailResponseApiMetadataStatus string
+
+// WebSubAPIListItem defines model for WebSubAPIListItem.
+type WebSubAPIListItem struct {
+	Context     *string                  `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time               `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	DisplayName *string                  `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Id          *string                  `json:"id,omitempty" yaml:"id,omitempty"`
+	Status      *WebSubAPIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt   *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version     *string                  `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// WebSubAPIListItemStatus defines model for WebSubAPIListItem.Status.
+type WebSubAPIListItemStatus string
+
+// WebSubAPIUpdateResponse defines model for WebSubAPIUpdateResponse.
+type WebSubAPIUpdateResponse struct {
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
 // WebhookAPIData defines model for WebhookAPIData.
 type WebhookAPIData struct {
 	// Channels List of channels - Async operations(SUB) for WebSub APIs
@@ -1299,24 +1565,6 @@ type WebhookAPIData struct {
 		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 	} `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 }
-
-// ListAPIsParams defines parameters for ListAPIs.
-type ListAPIsParams struct {
-	// DisplayName Filter by API display name
-	DisplayName *string `form:"displayName,omitempty" json:"displayName,omitempty" yaml:"displayName,omitempty"`
-
-	// Version Filter by API version
-	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
-
-	// Context Filter by API context/path
-	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
-
-	// Status Filter by deployment status
-	Status *ListAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// ListAPIsParamsStatus defines parameters for ListAPIs.
-type ListAPIsParamsStatus string
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
@@ -1384,20 +1632,52 @@ type ListMCPProxiesParams struct {
 // ListMCPProxiesParamsStatus defines parameters for ListMCPProxies.
 type ListMCPProxiesParamsStatus string
 
-// CreateAPIJSONRequestBody defines body for CreateAPI for application/json ContentType.
-type CreateAPIJSONRequestBody = APIConfiguration
+// ListRestAPIsParams defines parameters for ListRestAPIs.
+type ListRestAPIsParams struct {
+	// DisplayName Filter by API display name
+	DisplayName *string `form:"displayName,omitempty" json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
-// UpdateAPIJSONRequestBody defines body for UpdateAPI for application/json ContentType.
-type UpdateAPIJSONRequestBody = APIConfiguration
+	// Version Filter by API version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 
-// CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
-type CreateAPIKeyJSONRequestBody = APIKeyCreationRequest
+	// Context Filter by API context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
 
-// UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
-type UpdateAPIKeyJSONRequestBody = APIKeyUpdateRequest
+	// Status Filter by deployment status
+	Status *ListRestAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
 
-// RegenerateAPIKeyJSONRequestBody defines body for RegenerateAPIKey for application/json ContentType.
-type RegenerateAPIKeyJSONRequestBody = APIKeyRegenerationRequest
+// ListRestAPIsParamsStatus defines parameters for ListRestAPIs.
+type ListRestAPIsParamsStatus string
+
+// ListSubscriptionsParams defines parameters for ListSubscriptions.
+type ListSubscriptionsParams struct {
+	// ApiId Filter by API ID (deployment ID or handle)
+	ApiId         *string                        `form:"apiId,omitempty" json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	ApplicationId *string                        `form:"applicationId,omitempty" json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	Status        *ListSubscriptionsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// ListSubscriptionsParamsStatus defines parameters for ListSubscriptions.
+type ListSubscriptionsParamsStatus string
+
+// ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
+type ListWebSubAPIsParams struct {
+	// DisplayName Filter by WebSub API display name
+	DisplayName *string `form:"displayName,omitempty" json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Version Filter by WebSub API version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Context Filter by WebSub API context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
+
+	// Status Filter by deployment status
+	Status *ListWebSubAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// ListWebSubAPIsParamsStatus defines parameters for ListWebSubAPIs.
+type ListWebSubAPIsParamsStatus string
 
 // UploadCertificateJSONRequestBody defines body for UploadCertificate for application/json ContentType.
 type UploadCertificateJSONRequestBody = CertificateUploadRequest
@@ -1426,67 +1706,38 @@ type CreateMCPProxyJSONRequestBody = MCPProxyConfiguration
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
 type UpdateMCPProxyJSONRequestBody = MCPProxyConfiguration
 
-// AsAPIConfigData returns the union data inside the APIConfiguration_Spec as a APIConfigData
-func (t APIConfiguration_Spec) AsAPIConfigData() (APIConfigData, error) {
-	var body APIConfigData
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
+// CreateRestAPIJSONRequestBody defines body for CreateRestAPI for application/json ContentType.
+type CreateRestAPIJSONRequestBody = RestAPI
 
-// FromAPIConfigData overwrites any union data inside the APIConfiguration_Spec as the provided APIConfigData
-func (t *APIConfiguration_Spec) FromAPIConfigData(v APIConfigData) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
+// UpdateRestAPIJSONRequestBody defines body for UpdateRestAPI for application/json ContentType.
+type UpdateRestAPIJSONRequestBody = RestAPI
 
-// MergeAPIConfigData performs a merge with any union data inside the APIConfiguration_Spec, using the provided APIConfigData
-func (t *APIConfiguration_Spec) MergeAPIConfigData(v APIConfigData) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
+// CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
+type CreateAPIKeyJSONRequestBody = APIKeyCreationRequest
 
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
+// UpdateAPIKeyJSONRequestBody defines body for UpdateAPIKey for application/json ContentType.
+type UpdateAPIKeyJSONRequestBody = APIKeyUpdateRequest
 
-// AsWebhookAPIData returns the union data inside the APIConfiguration_Spec as a WebhookAPIData
-func (t APIConfiguration_Spec) AsWebhookAPIData() (WebhookAPIData, error) {
-	var body WebhookAPIData
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
+// RegenerateAPIKeyJSONRequestBody defines body for RegenerateAPIKey for application/json ContentType.
+type RegenerateAPIKeyJSONRequestBody = APIKeyRegenerationRequest
 
-// FromWebhookAPIData overwrites any union data inside the APIConfiguration_Spec as the provided WebhookAPIData
-func (t *APIConfiguration_Spec) FromWebhookAPIData(v WebhookAPIData) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
+// CreateSubscriptionPlanJSONRequestBody defines body for CreateSubscriptionPlan for application/json ContentType.
+type CreateSubscriptionPlanJSONRequestBody = SubscriptionPlanCreateRequest
 
-// MergeWebhookAPIData performs a merge with any union data inside the APIConfiguration_Spec, using the provided WebhookAPIData
-func (t *APIConfiguration_Spec) MergeWebhookAPIData(v WebhookAPIData) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
+// UpdateSubscriptionPlanJSONRequestBody defines body for UpdateSubscriptionPlan for application/json ContentType.
+type UpdateSubscriptionPlanJSONRequestBody = SubscriptionPlanUpdateRequest
 
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
+// CreateSubscriptionJSONRequestBody defines body for CreateSubscription for application/json ContentType.
+type CreateSubscriptionJSONRequestBody = SubscriptionCreateRequest
 
-func (t APIConfiguration_Spec) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
+// UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
+type UpdateSubscriptionJSONRequestBody = SubscriptionUpdateRequest
 
-func (t *APIConfiguration_Spec) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
+// CreateWebSubAPIJSONRequestBody defines body for CreateWebSubAPI for application/json ContentType.
+type CreateWebSubAPIJSONRequestBody = WebSubAPI
+
+// UpdateWebSubAPIJSONRequestBody defines body for UpdateWebSubAPI for application/json ContentType.
+type UpdateWebSubAPIJSONRequestBody = WebSubAPI
 
 // AsLLMProviderConfigDataUpstream0 returns the union data inside the LLMProviderConfigData_Upstream as a LLMProviderConfigDataUpstream0
 func (t LLMProviderConfigData_Upstream) AsLLMProviderConfigDataUpstream0() (LLMProviderConfigDataUpstream0, error) {
@@ -1890,36 +2141,6 @@ func (t *Upstream) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// List all API configurations
-	// (GET /apis)
-	ListAPIs(c *gin.Context, params ListAPIsParams)
-	// Create a new API configuration
-	// (POST /apis)
-	CreateAPI(c *gin.Context)
-	// Delete an API configuration
-	// (DELETE /apis/{id})
-	DeleteAPI(c *gin.Context, id string)
-	// Get API configuration by id
-	// (GET /apis/{id})
-	GetAPIById(c *gin.Context, id string)
-	// Update an existing API configuration
-	// (PUT /apis/{id})
-	UpdateAPI(c *gin.Context, id string)
-	// Get the list of API keys for an API
-	// (GET /apis/{id}/api-keys)
-	ListAPIKeys(c *gin.Context, id string)
-	// Create a new API key for an API
-	// (POST /apis/{id}/api-keys)
-	CreateAPIKey(c *gin.Context, id string)
-	// Revoke an API key
-	// (DELETE /apis/{id}/api-keys/{apiKeyName})
-	RevokeAPIKey(c *gin.Context, id string, apiKeyName string)
-	// Update an API key with a new regenerated value
-	// (PUT /apis/{id}/api-keys/{apiKeyName})
-	UpdateAPIKey(c *gin.Context, id string, apiKeyName string)
-	// Regenerate API key for an API
-	// (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
-	RegenerateAPIKey(c *gin.Context, id string, apiKeyName string)
 	// List all custom certificates
 	// (GET /certificates)
 	ListCertificates(c *gin.Context)
@@ -1932,9 +2153,6 @@ type ServerInterface interface {
 	// Delete a certificate
 	// (DELETE /certificates/{id})
 	DeleteCertificate(c *gin.Context, id string)
-	// Health check endpoint
-	// (GET /health)
-	HealthCheck(c *gin.Context)
 	// List all LLM provider templates
 	// (GET /llm-provider-templates)
 	ListLLMProviderTemplates(c *gin.Context, params ListLLMProviderTemplatesParams)
@@ -1980,24 +2198,99 @@ type ServerInterface interface {
 	// Update an existing LLM proxy
 	// (PUT /llm-proxies/{id})
 	UpdateLLMProxy(c *gin.Context, id string)
-	// List all MCP Proxy configurations
+	// List all MCPProxies
 	// (GET /mcp-proxies)
 	ListMCPProxies(c *gin.Context, params ListMCPProxiesParams)
-	// Create a new MCP Proxy configuration
+	// Create a new MCPProxy
 	// (POST /mcp-proxies)
 	CreateMCPProxy(c *gin.Context)
-	// Delete an MCP Proxy configuration
+	// Delete a MCPProxy
 	// (DELETE /mcp-proxies/{id})
 	DeleteMCPProxy(c *gin.Context, id string)
-	// Get MCP Proxy configuration by id
+	// Get MCPProxy by id
 	// (GET /mcp-proxies/{id})
 	GetMCPProxyById(c *gin.Context, id string)
-	// Update an existing MCP Proxy configuration
+	// Update an existing MCPProxy
 	// (PUT /mcp-proxies/{id})
 	UpdateMCPProxy(c *gin.Context, id string)
 	// List all registered policy definitions
 	// (GET /policies)
 	ListPolicies(c *gin.Context)
+	// List all RestAPIs
+	// (GET /rest-apis)
+	ListRestAPIs(c *gin.Context, params ListRestAPIsParams)
+	// Create a new RestAPI
+	// (POST /rest-apis)
+	CreateRestAPI(c *gin.Context)
+	// Delete a RestAPI
+	// (DELETE /rest-apis/{id})
+	DeleteRestAPI(c *gin.Context, id string)
+	// Get RestAPI by id
+	// (GET /rest-apis/{id})
+	GetRestAPIById(c *gin.Context, id string)
+	// Update an existing RestAPI
+	// (PUT /rest-apis/{id})
+	UpdateRestAPI(c *gin.Context, id string)
+	// Get the list of API keys for an API
+	// (GET /rest-apis/{id}/api-keys)
+	ListAPIKeys(c *gin.Context, id string)
+	// Create a new API key for an API
+	// (POST /rest-apis/{id}/api-keys)
+	CreateAPIKey(c *gin.Context, id string)
+	// Revoke an API key
+	// (DELETE /rest-apis/{id}/api-keys/{apiKeyName})
+	RevokeAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Update an API key with a new regenerated value
+	// (PUT /rest-apis/{id}/api-keys/{apiKeyName})
+	UpdateAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Regenerate API key for an API
+	// (POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate)
+	RegenerateAPIKey(c *gin.Context, id string, apiKeyName string)
+	// List subscription plans
+	// (GET /subscription-plans)
+	ListSubscriptionPlans(c *gin.Context)
+	// Create a subscription plan
+	// (POST /subscription-plans)
+	CreateSubscriptionPlan(c *gin.Context)
+	// Delete a subscription plan
+	// (DELETE /subscription-plans/{planId})
+	DeleteSubscriptionPlan(c *gin.Context, planId string)
+	// Get a subscription plan by ID
+	// (GET /subscription-plans/{planId})
+	GetSubscriptionPlan(c *gin.Context, planId string)
+	// Update a subscription plan
+	// (PUT /subscription-plans/{planId})
+	UpdateSubscriptionPlan(c *gin.Context, planId string)
+	// List subscriptions
+	// (GET /subscriptions)
+	ListSubscriptions(c *gin.Context, params ListSubscriptionsParams)
+	// Create a subscription
+	// (POST /subscriptions)
+	CreateSubscription(c *gin.Context)
+	// Delete a subscription
+	// (DELETE /subscriptions/{subscriptionId})
+	DeleteSubscription(c *gin.Context, subscriptionId string)
+	// Get a subscription by ID
+	// (GET /subscriptions/{subscriptionId})
+	GetSubscription(c *gin.Context, subscriptionId string)
+	// Update a subscription
+	// (PUT /subscriptions/{subscriptionId})
+	UpdateSubscription(c *gin.Context, subscriptionId string)
+	// List all WebSubAPIs
+	// (GET /websub-apis)
+	ListWebSubAPIs(c *gin.Context, params ListWebSubAPIsParams)
+	// Create a new WebSubAPI
+	// (POST /websub-apis)
+	CreateWebSubAPI(c *gin.Context)
+	// Delete a WebSubAPI
+	// (DELETE /websub-apis/{id})
+	DeleteWebSubAPI(c *gin.Context, id string)
+	// Get WebSubAPI by id
+	// (GET /websub-apis/{id})
+	GetWebSubAPIById(c *gin.Context, id string)
+	// Update an existing WebSubAPI
+	// (PUT /websub-apis/{id})
+	UpdateWebSubAPI(c *gin.Context, id string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -2008,288 +2301,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
-
-// ListAPIs operation middleware
-func (siw *ServerInterfaceWrapper) ListAPIs(c *gin.Context) {
-
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListAPIsParams
-
-	// ------------- Optional query parameter "displayName" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "displayName", c.Request.URL.Query(), &params.DisplayName)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter displayName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "version" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "context" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "status" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListAPIs(c, params)
-}
-
-// CreateAPI operation middleware
-func (siw *ServerInterfaceWrapper) CreateAPI(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateAPI(c)
-}
-
-// DeleteAPI operation middleware
-func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteAPI(c, id)
-}
-
-// GetAPIById operation middleware
-func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetAPIById(c, id)
-}
-
-// UpdateAPI operation middleware
-func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.UpdateAPI(c, id)
-}
-
-// ListAPIKeys operation middleware
-func (siw *ServerInterfaceWrapper) ListAPIKeys(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListAPIKeys(c, id)
-}
-
-// CreateAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) CreateAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateAPIKey(c, id)
-}
-
-// RevokeAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) RevokeAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "apiKeyName" -------------
-	var apiKeyName string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.RevokeAPIKey(c, id, apiKeyName)
-}
-
-// UpdateAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) UpdateAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "apiKeyName" -------------
-	var apiKeyName string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.UpdateAPIKey(c, id, apiKeyName)
-}
-
-// RegenerateAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) RegenerateAPIKey(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "apiKeyName" -------------
-	var apiKeyName string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.RegenerateAPIKey(c, id, apiKeyName)
-}
 
 // ListCertificates operation middleware
 func (siw *ServerInterfaceWrapper) ListCertificates(c *gin.Context) {
@@ -2352,19 +2363,6 @@ func (siw *ServerInterfaceWrapper) DeleteCertificate(c *gin.Context) {
 	}
 
 	siw.Handler.DeleteCertificate(c, id)
-}
-
-// HealthCheck operation middleware
-func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.HealthCheck(c)
 }
 
 // ListLLMProviderTemplates operation middleware
@@ -2912,6 +2910,648 @@ func (siw *ServerInterfaceWrapper) ListPolicies(c *gin.Context) {
 	siw.Handler.ListPolicies(c)
 }
 
+// ListRestAPIs operation middleware
+func (siw *ServerInterfaceWrapper) ListRestAPIs(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRestAPIsParams
+
+	// ------------- Optional query parameter "displayName" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "displayName", c.Request.URL.Query(), &params.DisplayName)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter displayName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListRestAPIs(c, params)
+}
+
+// CreateRestAPI operation middleware
+func (siw *ServerInterfaceWrapper) CreateRestAPI(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateRestAPI(c)
+}
+
+// DeleteRestAPI operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRestAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteRestAPI(c, id)
+}
+
+// GetRestAPIById operation middleware
+func (siw *ServerInterfaceWrapper) GetRestAPIById(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetRestAPIById(c, id)
+}
+
+// UpdateRestAPI operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRestAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateRestAPI(c, id)
+}
+
+// ListAPIKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListAPIKeys(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListAPIKeys(c, id)
+}
+
+// CreateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateAPIKey(c, id)
+}
+
+// RevokeAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RevokeAPIKey(c, id, apiKeyName)
+}
+
+// UpdateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateAPIKey(c, id, apiKeyName)
+}
+
+// RegenerateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RegenerateAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RegenerateAPIKey(c, id, apiKeyName)
+}
+
+// ListSubscriptionPlans operation middleware
+func (siw *ServerInterfaceWrapper) ListSubscriptionPlans(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSubscriptionPlans(c)
+}
+
+// CreateSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) CreateSubscriptionPlan(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateSubscriptionPlan(c)
+}
+
+// DeleteSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSubscriptionPlan(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "planId" -------------
+	var planId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planId", c.Param("planId"), &planId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter planId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSubscriptionPlan(c, planId)
+}
+
+// GetSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) GetSubscriptionPlan(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "planId" -------------
+	var planId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planId", c.Param("planId"), &planId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter planId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSubscriptionPlan(c, planId)
+}
+
+// UpdateSubscriptionPlan operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSubscriptionPlan(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "planId" -------------
+	var planId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planId", c.Param("planId"), &planId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter planId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateSubscriptionPlan(c, planId)
+}
+
+// ListSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) ListSubscriptions(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSubscriptionsParams
+
+	// ------------- Optional query parameter "apiId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "apiId", c.Request.URL.Query(), &params.ApiId)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "applicationId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "applicationId", c.Request.URL.Query(), &params.ApplicationId)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter applicationId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSubscriptions(c, params)
+}
+
+// CreateSubscription operation middleware
+func (siw *ServerInterfaceWrapper) CreateSubscription(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateSubscription(c)
+}
+
+// DeleteSubscription operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSubscription(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "subscriptionId" -------------
+	var subscriptionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscriptionId", c.Param("subscriptionId"), &subscriptionId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter subscriptionId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSubscription(c, subscriptionId)
+}
+
+// GetSubscription operation middleware
+func (siw *ServerInterfaceWrapper) GetSubscription(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "subscriptionId" -------------
+	var subscriptionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscriptionId", c.Param("subscriptionId"), &subscriptionId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter subscriptionId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSubscription(c, subscriptionId)
+}
+
+// UpdateSubscription operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSubscription(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "subscriptionId" -------------
+	var subscriptionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscriptionId", c.Param("subscriptionId"), &subscriptionId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter subscriptionId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateSubscription(c, subscriptionId)
+}
+
+// ListWebSubAPIs operation middleware
+func (siw *ServerInterfaceWrapper) ListWebSubAPIs(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWebSubAPIsParams
+
+	// ------------- Optional query parameter "displayName" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "displayName", c.Request.URL.Query(), &params.DisplayName)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter displayName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListWebSubAPIs(c, params)
+}
+
+// CreateWebSubAPI operation middleware
+func (siw *ServerInterfaceWrapper) CreateWebSubAPI(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateWebSubAPI(c)
+}
+
+// DeleteWebSubAPI operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWebSubAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteWebSubAPI(c, id)
+}
+
+// GetWebSubAPIById operation middleware
+func (siw *ServerInterfaceWrapper) GetWebSubAPIById(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWebSubAPIById(c, id)
+}
+
+// UpdateWebSubAPI operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWebSubAPI(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateWebSubAPI(c, id)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -2939,21 +3579,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.GET(options.BaseURL+"/apis", wrapper.ListAPIs)
-	router.POST(options.BaseURL+"/apis", wrapper.CreateAPI)
-	router.DELETE(options.BaseURL+"/apis/:id", wrapper.DeleteAPI)
-	router.GET(options.BaseURL+"/apis/:id", wrapper.GetAPIById)
-	router.PUT(options.BaseURL+"/apis/:id", wrapper.UpdateAPI)
-	router.GET(options.BaseURL+"/apis/:id/api-keys", wrapper.ListAPIKeys)
-	router.POST(options.BaseURL+"/apis/:id/api-keys", wrapper.CreateAPIKey)
-	router.DELETE(options.BaseURL+"/apis/:id/api-keys/:apiKeyName", wrapper.RevokeAPIKey)
-	router.PUT(options.BaseURL+"/apis/:id/api-keys/:apiKeyName", wrapper.UpdateAPIKey)
-	router.POST(options.BaseURL+"/apis/:id/api-keys/:apiKeyName/regenerate", wrapper.RegenerateAPIKey)
 	router.GET(options.BaseURL+"/certificates", wrapper.ListCertificates)
 	router.POST(options.BaseURL+"/certificates", wrapper.UploadCertificate)
 	router.POST(options.BaseURL+"/certificates/reload", wrapper.ReloadCertificates)
 	router.DELETE(options.BaseURL+"/certificates/:id", wrapper.DeleteCertificate)
-	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
 	router.GET(options.BaseURL+"/llm-provider-templates", wrapper.ListLLMProviderTemplates)
 	router.POST(options.BaseURL+"/llm-provider-templates", wrapper.CreateLLMProviderTemplate)
 	router.DELETE(options.BaseURL+"/llm-provider-templates/:id", wrapper.DeleteLLMProviderTemplate)
@@ -2975,198 +3604,240 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/mcp-proxies/:id", wrapper.GetMCPProxyById)
 	router.PUT(options.BaseURL+"/mcp-proxies/:id", wrapper.UpdateMCPProxy)
 	router.GET(options.BaseURL+"/policies", wrapper.ListPolicies)
+	router.GET(options.BaseURL+"/rest-apis", wrapper.ListRestAPIs)
+	router.POST(options.BaseURL+"/rest-apis", wrapper.CreateRestAPI)
+	router.DELETE(options.BaseURL+"/rest-apis/:id", wrapper.DeleteRestAPI)
+	router.GET(options.BaseURL+"/rest-apis/:id", wrapper.GetRestAPIById)
+	router.PUT(options.BaseURL+"/rest-apis/:id", wrapper.UpdateRestAPI)
+	router.GET(options.BaseURL+"/rest-apis/:id/api-keys", wrapper.ListAPIKeys)
+	router.POST(options.BaseURL+"/rest-apis/:id/api-keys", wrapper.CreateAPIKey)
+	router.DELETE(options.BaseURL+"/rest-apis/:id/api-keys/:apiKeyName", wrapper.RevokeAPIKey)
+	router.PUT(options.BaseURL+"/rest-apis/:id/api-keys/:apiKeyName", wrapper.UpdateAPIKey)
+	router.POST(options.BaseURL+"/rest-apis/:id/api-keys/:apiKeyName/regenerate", wrapper.RegenerateAPIKey)
+	router.GET(options.BaseURL+"/subscription-plans", wrapper.ListSubscriptionPlans)
+	router.POST(options.BaseURL+"/subscription-plans", wrapper.CreateSubscriptionPlan)
+	router.DELETE(options.BaseURL+"/subscription-plans/:planId", wrapper.DeleteSubscriptionPlan)
+	router.GET(options.BaseURL+"/subscription-plans/:planId", wrapper.GetSubscriptionPlan)
+	router.PUT(options.BaseURL+"/subscription-plans/:planId", wrapper.UpdateSubscriptionPlan)
+	router.GET(options.BaseURL+"/subscriptions", wrapper.ListSubscriptions)
+	router.POST(options.BaseURL+"/subscriptions", wrapper.CreateSubscription)
+	router.DELETE(options.BaseURL+"/subscriptions/:subscriptionId", wrapper.DeleteSubscription)
+	router.GET(options.BaseURL+"/subscriptions/:subscriptionId", wrapper.GetSubscription)
+	router.PUT(options.BaseURL+"/subscriptions/:subscriptionId", wrapper.UpdateSubscription)
+	router.GET(options.BaseURL+"/websub-apis", wrapper.ListWebSubAPIs)
+	router.POST(options.BaseURL+"/websub-apis", wrapper.CreateWebSubAPI)
+	router.DELETE(options.BaseURL+"/websub-apis/:id", wrapper.DeleteWebSubAPI)
+	router.GET(options.BaseURL+"/websub-apis/:id", wrapper.GetWebSubAPIById)
+	router.PUT(options.BaseURL+"/websub-apis/:id", wrapper.UpdateWebSubAPI)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"//RZF2d5NwEA",
+	"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",
+	"1+Hd4/8LAAD//32wDeO3eAEA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -107,12 +107,6 @@ type LLMRateLimitingConfig struct {
 	ConsumerLevel *RateLimitingScopeConfig `json:"consumerLevel,omitempty" db:"-"`
 }
 
-type UpstreamAuth struct {
-	Type   string `json:"type" db:"-"`
-	Header string `json:"header,omitempty" db:"-"`
-	Value  string `json:"value,omitempty" db:"-"`
-}
-
 type LLMProviderTemplateAuth struct {
 	Type        string `json:"type,omitempty" db:"-"`
 	Header      string `json:"header,omitempty" db:"-"`

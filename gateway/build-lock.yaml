@@ -33,6 +33,9 @@ policies:
     - name: cors
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/cors@v0
+    - name: dynamic-endpoint
+      version: v0.1.0
+      gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
     - name: json-schema-guardrail
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
@@ -82,7 +85,7 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/remove-headers@v0
     - name: request-rewrite
-      version: v0.2.0
+      version: v0.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/request-rewrite@v0
     - name: respond
       version: v0.2.0
@@ -108,3 +111,6 @@ policies:
     - name: xml-to-json
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0
+    - name: subscription-validation
+      version: v0.1.0
+      gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0

@@ -177,7 +177,7 @@ func (cm *ComposeManager) WaitForHealthy(ctx context.Context) error {
 		name     string
 		endpoint string
 	}{
-		{"gateway-controller", fmt.Sprintf("http://localhost:%s/health", GatewayControllerPort)},
+		{"gateway-controller", fmt.Sprintf("http://localhost:%s/health", GatewayControllerAdminPort)},
 		{"router", fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)},
 	}
 

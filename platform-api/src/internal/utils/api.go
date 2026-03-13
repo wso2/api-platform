@@ -95,12 +95,13 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 		Transport:       transport,
 		Channels:        u.ChannelsAPIToModel(restAPI.Channels),
 		Configuration: model.RestAPIConfig{
-			Name:       restAPI.Name,
-			Version:    restAPI.Version,
-			Context:    &restAPI.Context,
-			Upstream:   *u.UpstreamConfigAPIToModel(&restAPI.Upstream),
-			Policies:   u.PoliciesAPIToModel(restAPI.Policies),
-			Operations: u.OperationsAPIToModel(restAPI.Operations),
+			Name:              restAPI.Name,
+			Version:           restAPI.Version,
+			Context:           &restAPI.Context,
+			Upstream:          *u.UpstreamConfigAPIToModel(&restAPI.Upstream),
+			Policies:          u.PoliciesAPIToModel(restAPI.Policies),
+			Operations:        u.OperationsAPIToModel(restAPI.Operations),
+			SubscriptionPlans: stringSliceValue(restAPI.SubscriptionPlans),
 		},
 	}
 
@@ -133,22 +134,23 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API) (*api.RESTAPI, error) {
 	}
 
 	return &api.RESTAPI{
-		Channels:        u.ChannelsModelToAPI(modelAPI.Channels),
-		Context:         defaultStringPtr(modelAPI.Configuration.Context),
-		CreatedAt:       TimePtrIfNotZero(modelAPI.CreatedAt),
-		CreatedBy:       StringPtrIfNotEmpty(modelAPI.CreatedBy),
-		Description:     StringPtrIfNotEmpty(modelAPI.Description),
-		Id:              StringPtrIfNotEmpty(modelAPI.Handle),
-		Kind:            StringPtrIfNotEmpty(modelAPI.Kind),
-		LifeCycleStatus: status,
-		Name:            modelAPI.Name,
-		Operations:      u.OperationsModelToAPI(modelAPI.Configuration.Operations),
-		Policies:        u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
-		ProjectId:       *projectID,
-		Transport:       stringSlicePtr(modelAPI.Transport),
-		UpdatedAt:       TimePtrIfNotZero(modelAPI.UpdatedAt),
-		Upstream:        u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
-		Version:         modelAPI.Version,
+		Channels:          u.ChannelsModelToAPI(modelAPI.Channels),
+		Context:           defaultStringPtr(modelAPI.Configuration.Context),
+		CreatedAt:         TimePtrIfNotZero(modelAPI.CreatedAt),
+		CreatedBy:         StringPtrIfNotEmpty(modelAPI.CreatedBy),
+		Description:       StringPtrIfNotEmpty(modelAPI.Description),
+		Id:                StringPtrIfNotEmpty(modelAPI.Handle),
+		Kind:              StringPtrIfNotEmpty(modelAPI.Kind),
+		LifeCycleStatus:   status,
+		Name:              modelAPI.Name,
+		Operations:        u.OperationsModelToAPI(modelAPI.Configuration.Operations),
+		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
+		ProjectId:         *projectID,
+		SubscriptionPlans: stringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
+		Transport:         stringSlicePtr(modelAPI.Transport),
+		UpdatedAt:         TimePtrIfNotZero(modelAPI.UpdatedAt),
+		Upstream:          u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
+		Version:           modelAPI.Version,
 	}, nil
 }
 
@@ -524,6 +526,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error)
 	apiYAMLData.Version = apiModel.Version
 	apiYAMLData.Context = defaultStringPtr(apiModel.Configuration.Context)
 	apiYAMLData.Policies = u.PoliciesModelToDTO(apiModel.Configuration.Policies)
+	apiYAMLData.SubscriptionPlans = apiModel.Configuration.SubscriptionPlans
 
 	// Only set upstream and operations for HTTP APIs
 	switch apiModel.Kind {

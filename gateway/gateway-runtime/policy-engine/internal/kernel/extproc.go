@@ -379,7 +379,7 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 	}
 
 	// Build dynamic metadata structure
-	dynamicMetadata := buildDynamicMetadata(analyticsStruct, nil, nil)
+	dynamicMetadata := buildDynamicMetadata(analyticsStruct, nil, nil, nil)
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{

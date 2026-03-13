@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package api
+package restapi
 
 import (
 	"encoding/json"
@@ -32,8 +32,8 @@ import (
 
 const (
 	ListCmdLiteral = "list"
-	ListCmdExample = `# List all APIs
-ap gateway api list`
+	ListCmdExample = `# List all REST APIs
+ap gateway rest-api list`
 )
 
 var listCmd = &cobra.Command{

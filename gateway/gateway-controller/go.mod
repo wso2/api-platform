@@ -105,3 +105,5 @@ require (
 replace github.com/envoyproxy/go-control-plane v0.13.5-0.20251024222203-75eaa193e329 => github.com/envoyproxy/go-control-plane v0.13.4
 
 replace github.com/wso2/api-platform/common => ../../common
+
+replace github.com/wso2/api-platform/sdk => ../../sdk

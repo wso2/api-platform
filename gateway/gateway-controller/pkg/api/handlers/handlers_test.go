@@ -51,23 +51,27 @@ func init() {
 
 // MockStorage implements the storage.Storage interface for testing
 type MockStorage struct {
-	configs     map[string]*models.StoredConfig
-	templates   map[string]*models.StoredLLMProviderTemplate
-	apiKeys     map[string]*models.APIKey
-	certs       []*models.StoredCertificate
-	saveErr     error
-	getErr      error
-	updateErr   error
-	deleteErr   error
-	unavailable bool
+	configs          map[string]*models.StoredConfig
+	templates        map[string]*models.StoredLLMProviderTemplate
+	apiKeys          map[string]*models.APIKey
+	certs            []*models.StoredCertificate
+	subscriptions    map[string]*models.Subscription
+	subscriptionPlans map[string]*models.SubscriptionPlan
+	saveErr          error
+	getErr           error
+	updateErr        error
+	deleteErr        error
+	unavailable      bool
 }
 
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
-		configs:   make(map[string]*models.StoredConfig),
-		templates: make(map[string]*models.StoredLLMProviderTemplate),
-		apiKeys:   make(map[string]*models.APIKey),
-		certs:     make([]*models.StoredCertificate, 0),
+		configs:          make(map[string]*models.StoredConfig),
+		templates:        make(map[string]*models.StoredLLMProviderTemplate),
+		apiKeys:          make(map[string]*models.APIKey),
+		certs:            make([]*models.StoredCertificate, 0),
+		subscriptions:    make(map[string]*models.Subscription),
+		subscriptionPlans: make(map[string]*models.SubscriptionPlan),
 	}
 }
 
@@ -106,7 +110,7 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 }
 
 
-func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	if m.unavailable {
 		return nil, storage.ErrDatabaseUnavailable
 	}
@@ -114,7 +118,7 @@ func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, er
 		return nil, m.getErr
 	}
 	for _, cfg := range m.configs {
-		if cfg.Handle == handle {
+		if cfg.Kind == kind && cfg.Handle == handle {
 			return cfg, nil
 		}
 	}
@@ -315,6 +319,234 @@ func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int,
 	return count, nil
 }
 
+// Subscription methods
+
+func (m *MockStorage) SaveSubscription(sub *models.Subscription) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *MockStorage) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if sub, ok := m.subscriptions[id]; ok {
+		// Enforce gateway scoping when both sides provide a gateway ID.
+		if gatewayID != "" && sub.GatewayID != "" && sub.GatewayID != gatewayID {
+			return nil, storage.ErrNotFound
+		}
+		return sub, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) ListActiveSubscriptions() ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if sub == nil || sub.Status != models.SubscriptionStatusActive {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *MockStorage) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if apiID != "" && sub.APIID != apiID {
+			continue
+		}
+		if gatewayID != "" && sub.GatewayID != "" && sub.GatewayID != gatewayID {
+			continue
+		}
+		if applicationID != nil && *applicationID != "" && (sub.ApplicationID == nil || *sub.ApplicationID != *applicationID) {
+			continue
+		}
+		if status != nil && *status != "" && string(sub.Status) != *status {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *MockStorage) UpdateSubscription(sub *models.Subscription) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if m.subscriptions == nil {
+		return storage.ErrNotFound
+	}
+	if _, ok := m.subscriptions[sub.ID]; !ok {
+		return storage.ErrNotFound
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *MockStorage) DeleteSubscription(id, gatewayID string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if m.subscriptions == nil {
+		return storage.ErrNotFound
+	}
+	sub, ok := m.subscriptions[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	// Enforce gateway scoping when both sides provide a gateway ID.
+	if gatewayID != "" && sub.GatewayID != "" && sub.GatewayID != gatewayID {
+		return storage.ErrNotFound
+	}
+	delete(m.subscriptions, id)
+	return nil
+}
+
+// Subscription Plan methods
+
+func (m *MockStorage) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	if m.unavailable {
+		return storage.ErrDatabaseUnavailable
+	}
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	if plan == nil {
+		return nil
+	}
+	m.subscriptionPlans[plan.ID] = plan
+	return nil
+}
+
+func (m *MockStorage) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
+	if m.unavailable {
+		return nil, storage.ErrDatabaseUnavailable
+	}
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	plan, ok := m.subscriptionPlans[id]
+	if !ok || plan == nil {
+		return nil, storage.ErrNotFound
+	}
+	if gatewayID != "" && plan.GatewayID != gatewayID {
+		return nil, storage.ErrNotFound
+	}
+	return plan, nil
+}
+
+func (m *MockStorage) ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error) {
+	if m.unavailable {
+		return nil, storage.ErrDatabaseUnavailable
+	}
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.SubscriptionPlan, 0, len(m.subscriptionPlans))
+	for _, plan := range m.subscriptionPlans {
+		if plan == nil {
+			continue
+		}
+		if gatewayID == "" || plan.GatewayID == gatewayID {
+			result = append(result, plan)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockStorage) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	if m.unavailable {
+		return storage.ErrDatabaseUnavailable
+	}
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if plan == nil {
+		return nil
+	}
+	if _, ok := m.subscriptionPlans[plan.ID]; !ok {
+		return storage.ErrNotFound
+	}
+	m.subscriptionPlans[plan.ID] = plan
+	return nil
+}
+
+func (m *MockStorage) DeleteSubscriptionPlan(id, gatewayID string) error {
+	if m.unavailable {
+		return storage.ErrDatabaseUnavailable
+	}
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	plan, ok := m.subscriptionPlans[id]
+	if !ok || plan == nil {
+		return storage.ErrNotFound
+	}
+	if gatewayID != "" && plan.GatewayID != gatewayID {
+		return storage.ErrNotFound
+	}
+	delete(m.subscriptionPlans, id)
+	return nil
+}
+
+func (m *MockStorage) DeleteSubscriptionPlansNotIn(ids []string) error {
+	if m.unavailable {
+		return storage.ErrDatabaseUnavailable
+	}
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	idsSet := make(map[string]bool)
+	for _, id := range ids {
+		idsSet[id] = true
+	}
+	for id := range m.subscriptionPlans {
+		if !idsSet[id] {
+			delete(m.subscriptionPlans, id)
+		}
+	}
+	return nil
+}
+
+func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	if m.unavailable {
+		return storage.ErrDatabaseUnavailable
+	}
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if m.subscriptions == nil {
+		return nil
+	}
+	idsSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		idsSet[id] = struct{}{}
+	}
+	for id, sub := range m.subscriptions {
+		if sub == nil || sub.APIID != apiID {
+			continue
+		}
+		if _, keep := idsSet[id]; !keep {
+			delete(m.subscriptions, id)
+		}
+	}
+	return nil
+}
+
 func (m *MockStorage) SaveCertificate(cert *models.StoredCertificate) error {
 	if m.saveErr != nil {
 		return m.saveErr
@@ -465,34 +697,31 @@ func createTestContextWithHeader(method, path string, body []byte, headers map[s
 
 // createTestStoredConfig creates a test stored config
 func createTestStoredConfig(id, name, version, context string) *models.StoredConfig {
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: name,
-		Version:     version,
-		Context:     context,
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://backend.example.com"),
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
-	apiConfig := api.APIConfiguration{
-		ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
+	apiConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
 		Kind:       api.RestApi,
 		Metadata: api.Metadata{
 			Name: id,
 		},
-		Spec: specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: name,
+			Version:     version,
+			Context:     context,
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.example.com"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
 	}
 	return &models.StoredConfig{
 		UUID:                id,
@@ -508,24 +737,8 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 	}
 }
 
-// TestHealthCheck tests the health check endpoint
-func TestHealthCheck(t *testing.T) {
-	server := createTestAPIServer()
-	c, w := createTestContext("GET", "/health", nil)
-
-	server.HealthCheck(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "healthy", response["status"])
-	assert.Contains(t, response, "timestamp")
-}
-
 // TestListAPIs tests listing all APIs
-func TestListAPIs(t *testing.T) {
+func TestListRestAPIs(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test configs to store
@@ -534,8 +747,8 @@ func TestListAPIs(t *testing.T) {
 	_ = server.store.Add(cfg1)
 	_ = server.store.Add(cfg2)
 
-	c, w := createTestContext("GET", "/apis", nil)
-	server.ListAPIs(c, api.ListAPIsParams{})
+	c, w := createTestContext("GET", "/rest-apis", nil)
+	server.ListRestAPIs(c, api.ListRestAPIsParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -547,7 +760,7 @@ func TestListAPIs(t *testing.T) {
 }
 
 // TestListAPIsWithFilters tests listing APIs with filters
-func TestListAPIsWithFilters(t *testing.T) {
+func TestListRestAPIsWithFilters(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test configs to store
@@ -557,10 +770,10 @@ func TestListAPIsWithFilters(t *testing.T) {
 	_ = server.store.Add(cfg2)
 
 	// Test with displayName filter
-	c, w := createTestContext("GET", "/apis?displayName=test-api-1", nil)
+	c, w := createTestContext("GET", "/rest-apis?displayName=test-api-1", nil)
 	c.Request.URL.RawQuery = "displayName=test-api-1"
 	displayName := "0000-test-api-1-0000-000000000000"
-	server.ListAPIs(c, api.ListAPIsParams{DisplayName: &displayName})
+	server.ListRestAPIs(c, api.ListRestAPIsParams{DisplayName: &displayName})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -571,11 +784,11 @@ func TestListAPIsWithFilters(t *testing.T) {
 }
 
 // TestListAPIsEmpty tests listing APIs when none exist
-func TestListAPIsEmpty(t *testing.T) {
+func TestListRestAPIsEmpty(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/apis", nil)
-	server.ListAPIs(c, api.ListAPIsParams{})
+	c, w := createTestContext("GET", "/rest-apis", nil)
+	server.ListRestAPIs(c, api.ListRestAPIsParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -593,7 +806,7 @@ func TestGetAPIByNameVersion(t *testing.T) {
 	cfg := createTestStoredConfig("test-id-1", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
-	c, w := createTestContext("GET", "/apis/test-api/v1.0.0", nil)
+	c, w := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
 	c.Params = gin.Params{
 		{Key: "name", Value: "0000-test-api-0000-000000000000"},
 		{Key: "version", Value: "v1.0.0"},
@@ -612,7 +825,7 @@ func TestGetAPIByNameVersion(t *testing.T) {
 func TestGetAPIByNameVersionNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/apis/nonexistent/v1.0.0", nil)
+	c, w := createTestContext("GET", "/rest-apis/nonexistent/v1.0.0", nil)
 	server.GetAPIByNameVersion(c, "nonexistent", "v1.0.0")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -624,16 +837,16 @@ func TestGetAPIByNameVersionNotFound(t *testing.T) {
 }
 
 // TestGetAPIById tests getting an API by ID
-func TestGetAPIById(t *testing.T) {
+func TestGetRestAPIById(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
 	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
-	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
+	cfg.GetMetadata().Name = "0000-test-handle-0000-000000000000"
 	mockDB.SaveConfig(cfg)
 
-	c, w := createTestContext("GET", "/apis/test-handle", nil)
-	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
+	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
+	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -644,11 +857,11 @@ func TestGetAPIById(t *testing.T) {
 }
 
 // TestGetAPIByIdNotFound tests getting an API by ID that doesn't exist
-func TestGetAPIByIdNotFound(t *testing.T) {
+func TestGetRestAPIByIdNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/apis/nonexistent", nil)
-	server.GetAPIById(c, "nonexistent")
+	c, w := createTestContext("GET", "/rest-apis/nonexistent", nil)
+	server.GetRestAPIById(c, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
@@ -659,30 +872,30 @@ func TestGetAPIByIdNotFound(t *testing.T) {
 }
 
 // TestGetAPIByIdNoDB tests getting an API when DB is not available
-func TestGetAPIByIdNoDB(t *testing.T) {
+func TestGetRestAPIByIdNoDB(t *testing.T) {
 	server := createTestAPIServer()
 	server.db = nil // Simulate no DB
 
-	c, w := createTestContext("GET", "/apis/test-id", nil)
-	server.GetAPIById(c, "0000-test-id-0000-000000000000")
+	c, w := createTestContext("GET", "/rest-apis/test-id", nil)
+	server.GetRestAPIById(c, "0000-test-id-0000-000000000000")
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
 // TestGetAPIByIdWrongKind tests getting an API with wrong kind
-func TestGetAPIByIdWrongKind(t *testing.T) {
+func TestGetRestAPIByIdWrongKind(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
 	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	cfg.Kind = string(api.Mcp) // Wrong kind
-	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
+	cfg.GetMetadata().Name = "0000-test-handle-0000-000000000000"
 	mockDB.SaveConfig(cfg)
 
-	c, w := createTestContext("GET", "/apis/test-handle", nil)
-	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
+	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
+	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // TestSearchDeploymentsWithNilStore tests SearchDeployments with nil store
@@ -690,7 +903,7 @@ func TestSearchDeploymentsWithNilStore(t *testing.T) {
 	server := createTestAPIServer()
 	server.store = nil
 
-	c, w := createTestContext("GET", "/apis?displayName=test", nil)
+	c, w := createTestContext("GET", "/rest-apis?displayName=test", nil)
 	c.Request.URL.RawQuery = "displayName=test"
 	server.SearchDeployments(c, string(api.RestApi))
 
@@ -920,21 +1133,21 @@ func TestHandleStatusUpdateNotFound(t *testing.T) {
 	server.handleStatusUpdate("nonexistent", true, 1, "")
 }
 
-// TestCreateAPIInvalidBody tests CreateAPI with invalid request body
+// TestCreateRestAPIInvalidBody tests CreateRestAPI with invalid request body
 // Note: This test requires a full deployment service setup, so we skip it
-func TestCreateAPIInvalidBody(t *testing.T) {
+func TestCreateRestAPIInvalidBody(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestUpdateAPIInvalidBody tests UpdateAPI with invalid request body
+// TestUpdateRestAPIInvalidBody tests UpdateRestAPI with invalid request body
 // Note: This test requires the validator to return errors but the parser
 // fails first due to nil pointer issues, so we skip it
-func TestUpdateAPIInvalidBody(t *testing.T) {
+func TestUpdateRestAPIInvalidBody(t *testing.T) {
 	t.Skip("Skipping test that requires full parser/validator setup")
 }
 
-// TestUpdateAPINotFound tests UpdateAPI for non-existent API
-func TestUpdateAPINotFound(t *testing.T) {
+// TestUpdateRestAPINotFound tests UpdateRestAPI for non-existent API
+func TestUpdateRestAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{
@@ -949,16 +1162,16 @@ func TestUpdateAPINotFound(t *testing.T) {
 			"operations": [{"method": "GET", "path": "/"}]
 		}
 	}`)
-	c, w := createTestContextWithHeader("PUT", "/apis/nonexistent", body, map[string]string{
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/nonexistent", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.UpdateAPI(c, "nonexistent")
+	server.UpdateRestAPI(c, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// TestUpdateAPINoDB tests UpdateAPI when DB is not available
-func TestUpdateAPINoDB(t *testing.T) {
+// TestUpdateRestAPINoDB tests UpdateRestAPI when DB is not available
+func TestUpdateRestAPINoDB(t *testing.T) {
 	server := createTestAPIServer()
 	server.db = nil
 
@@ -974,32 +1187,32 @@ func TestUpdateAPINoDB(t *testing.T) {
 			"operations": [{"method": "GET", "path": "/"}]
 		}
 	}`)
-	c, w := createTestContextWithHeader("PUT", "/apis/test", body, map[string]string{
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.UpdateAPI(c, "test")
+	server.UpdateRestAPI(c, "test")
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-// TestUpdateAPIHandleMismatch tests UpdateAPI with handle mismatch
+// TestUpdateRestAPIHandleMismatch tests UpdateRestAPI with handle mismatch
 // Note: This test requires full parser/validator setup
-func TestUpdateAPIHandleMismatch(t *testing.T) {
+func TestUpdateRestAPIHandleMismatch(t *testing.T) {
 	t.Skip("Skipping test that requires full parser/validator setup")
 }
 
-// TestDeleteAPINoDB tests DeleteAPI when DB is not available
+// TestDeleteRestAPINoDB tests DeleteRestAPI when DB is not available
 // Note: This test requires full deployment service setup
-func TestDeleteAPINoDB(t *testing.T) {
+func TestDeleteRestAPINoDB(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestDeleteAPINotFound tests DeleteAPI for non-existent API
-func TestDeleteAPINotFound(t *testing.T) {
+// TestDeleteRestAPINotFound tests DeleteRestAPI for non-existent API
+func TestDeleteRestAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("DELETE", "/apis/nonexistent", nil)
-	server.DeleteAPI(c, "nonexistent")
+	c, w := createTestContext("DELETE", "/rest-apis/nonexistent", nil)
+	server.DeleteRestAPI(c, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -1135,7 +1348,7 @@ func TestGenerateAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"name": "test-key"}`)
-	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys", body, map[string]string{
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 	server.CreateAPIKey(c, "0000-test-handle-0000-000000000000")
@@ -1148,7 +1361,7 @@ func TestGenerateAPIKeyInvalidAuthContext(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"name": "test-key"}`)
-	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys", body, map[string]string{
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, "invalid-context") // Wrong type
@@ -1161,7 +1374,7 @@ func TestGenerateAPIKeyInvalidAuthContext(t *testing.T) {
 func TestGenerateAPIKeyInvalidBody(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys", []byte("invalid json {{{"), map[string]string{
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", []byte("invalid json {{{"), map[string]string{
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
@@ -1177,7 +1390,7 @@ func TestGenerateAPIKeyInvalidBody(t *testing.T) {
 func TestRevokeAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("DELETE", "/apis/test-handle/api-keys/test-key", nil)
+	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
 	server.RevokeAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -1188,7 +1401,7 @@ func TestRegenerateAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{}`)
-	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys/test-key/regenerate", body, map[string]string{
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys/test-key/regenerate", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 	server.RegenerateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
@@ -1200,7 +1413,7 @@ func TestRegenerateAPIKeyNoAuth(t *testing.T) {
 func TestRegenerateAPIKeyInvalidBody(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys/test-key/regenerate", []byte("invalid {{{"), map[string]string{
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys/test-key/regenerate", []byte("invalid {{{"), map[string]string{
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
@@ -1216,7 +1429,7 @@ func TestRegenerateAPIKeyInvalidBody(t *testing.T) {
 func TestListAPIKeysNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("GET", "/apis/test-handle/api-keys", nil)
+	c, w := createTestContext("GET", "/rest-apis/test-handle/api-keys", nil)
 	server.ListAPIKeys(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -1280,30 +1493,27 @@ func TestConvertAPIPolicyNoParams(t *testing.T) {
 func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 	server := createTestAPIServer()
 
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "0000-test-api-0000-000000000000",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://backend.example.com"),
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
-		Spec: specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "0000-test-api-0000-000000000000",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.example.com"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
@@ -1490,7 +1700,7 @@ func TestSearchDeploymentsFilters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, w := createTestContext("GET", "/apis?"+tc.query, nil)
+			c, w := createTestContext("GET", "/rest-apis?"+tc.query, nil)
 			c.Request.URL.RawQuery = tc.query
 			server.SearchDeployments(c, string(api.RestApi))
 
@@ -1504,19 +1714,19 @@ func TestSearchDeploymentsFilters(t *testing.T) {
 	}
 }
 
-// TestGetAPIByIdWithDeployedAt tests GetAPIById with deployedAt in response
-func TestGetAPIByIdWithDeployedAt(t *testing.T) {
+// TestGetRestAPIByIdWithDeployedAt tests GetRestAPIById with deployedAt in response
+func TestGetRestAPIByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
 	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
-	cfg.Configuration.Metadata.Name = "0000-test-handle-0000-000000000000"
+	cfg.GetMetadata().Name = "0000-test-handle-0000-000000000000"
 	deployedAt := time.Now()
 	cfg.DeployedAt = &deployedAt
 	mockDB.SaveConfig(cfg)
 
-	c, w := createTestContext("GET", "/apis/test-handle", nil)
-	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
+	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
+	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1538,7 +1748,7 @@ func TestGetAPIByNameVersionWithDeployedAt(t *testing.T) {
 	cfg.DeployedAt = &deployedAt
 	_ = server.store.Add(cfg)
 
-	c, w := createTestContext("GET", "/apis/test-api/v1.0.0", nil)
+	c, w := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
 	server.GetAPIByNameVersion(c, "0000-test-api-0000-000000000000", "v1.0.0")
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -1618,8 +1828,8 @@ func TestHandleStatusUpdateDBError(t *testing.T) {
 func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 	server := createTestAPIServer()
 
-	apiConfig := api.APIConfiguration{
-		Kind: api.APIConfigurationKind("InvalidKind"),
+	apiConfig := api.RestAPI{
+		Kind: api.RestAPIKind("InvalidKind"),
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
@@ -1671,7 +1881,7 @@ func TestSearchDeploymentsAPIKind(t *testing.T) {
 	_ = server.store.Add(cfg1)
 	_ = server.store.Add(cfg2)
 
-	c, w := createTestContext("GET", "/apis?displayName=api-one&version=v1.0.0", nil)
+	c, w := createTestContext("GET", "/rest-apis?displayName=api-one&version=v1.0.0", nil)
 	c.Request.URL.RawQuery = "displayName=api-one&version=v1.0.0"
 	server.SearchDeployments(c, string(api.RestApi))
 
@@ -1684,9 +1894,9 @@ func TestSearchDeploymentsAPIKind(t *testing.T) {
 	assert.Contains(t, response, "apis")
 }
 
-// TestValidationErrorsInUpdateAPI tests UpdateAPI with validation errors
+// TestValidationErrorsInUpdateRestAPI tests UpdateRestAPI with validation errors
 // Note: This test requires full parser/validator setup
-func TestValidationErrorsInUpdateAPI(t *testing.T) {
+func TestValidationErrorsInUpdateRestAPI(t *testing.T) {
 	t.Skip("Skipping test that requires full parser/validator setup")
 }
 
@@ -1694,32 +1904,21 @@ func TestValidationErrorsInUpdateAPI(t *testing.T) {
 func TestGetLLMProviderByIdFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	// Create a stored config for LLM provider - use RestApi kind for Configuration
-	// since LlmProvider is not an APIConfigurationKind, but store.Kind is string
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-llm",
-		Version:     "v1.0",
-		Context:     "/llm",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://llm-backend.com"),
-			},
-		},
-		Operations: []api.Operation{
-			{Method: "POST", Path: "/generate"},
-		},
-	})
-
-	apiConfig := api.APIConfiguration{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	providerConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
 		},
-		Spec: specUnion,
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "test-llm",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("http://llm-backend.com"),
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-id-0000-000000000000",
@@ -1727,8 +1926,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 		Handle:              "test-llm-provider",
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
+		SourceConfiguration: providerConfig,
 		Status:              models.StatusDeployed,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
@@ -1745,31 +1943,19 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 func TestGetLLMProxyByIdFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	// Create a stored config for LLM proxy
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-llm-proxy",
-		Version:     "v1.0",
-		Context:     "/llm-proxy",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://llm-backend.com"),
-			},
-		},
-		Operations: []api.Operation{
-			{Method: "POST", Path: "/generate"},
-		},
-	})
-
-	apiConfig2 := api.APIConfiguration{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	proxyConfig := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
 		},
-		Spec: specUnion,
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "test-llm-proxy",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "test-llm-provider",
+			},
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-proxy-id-0000-000000000000",
@@ -1777,8 +1963,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 		Handle:              "test-llm-proxy-handle",
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
-		Configuration:       apiConfig2,
-		SourceConfiguration: apiConfig2,
+		SourceConfiguration: proxyConfig,
 		Status:              models.StatusDeployed,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
@@ -1795,31 +1980,22 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-llm",
-		Version:     "v1.0",
-		Context:     "/llm",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://llm-backend.com"),
-			},
-		},
-		Operations: []api.Operation{
-			{Method: "POST", Path: "/generate"},
-		},
-	})
-
 	deployedAt := time.Now()
-	apiConfig := api.APIConfiguration{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	providerConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
 		},
-		Spec: specUnion,
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "test-llm",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("http://llm-backend.com"),
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-id-0000-000000000000",
@@ -1827,8 +2003,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 		Handle:              "test-llm-provider",
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
+		SourceConfiguration: providerConfig,
 		Status:              models.StatusDeployed,
 		DeployedAt:          &deployedAt,
 		CreatedAt:           time.Now(),
@@ -1853,31 +2028,20 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-llm-proxy",
-		Version:     "v1.0",
-		Context:     "/llm-proxy",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://llm-backend.com"),
-			},
-		},
-		Operations: []api.Operation{
-			{Method: "POST", Path: "/generate"},
-		},
-	})
-
 	deployedAt := time.Now()
-	apiConfig2 := api.APIConfiguration{
-		Kind: api.RestApi, // Use RestApi kind for the Configuration type
+	proxyConfig := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
 		},
-		Spec: specUnion,
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "test-llm-proxy",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "test-llm-provider",
+			},
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-proxy-id-0000-000000000000",
@@ -1885,8 +2049,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 		Handle:              "test-llm-proxy-handle",
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
-		Configuration:       apiConfig2,
-		SourceConfiguration: apiConfig2,
+		SourceConfiguration: proxyConfig,
 		Status:              models.StatusDeployed,
 		DeployedAt:          &deployedAt,
 		CreatedAt:           time.Now(),
@@ -1920,9 +2083,9 @@ func TestHandleStatusUpdateStoreError(t *testing.T) {
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 }
 
-// TestCreateAPIMissingContentType tests CreateAPI with missing content type
+// TestCreateRestAPIMissingContentType tests CreateRestAPI with missing content type
 // Note: This test requires full deployment service setup
-func TestCreateAPIMissingContentType(t *testing.T) {
+func TestCreateRestAPIMissingContentType(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
@@ -1944,18 +2107,8 @@ func TestMCPProxyKindMismatch(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// BenchmarkHealthCheck benchmarks the health check endpoint
-func BenchmarkHealthCheck(b *testing.B) {
-	server := createTestAPIServer()
-
-	for i := 0; i < b.N; i++ {
-		c, _ := createTestContext("GET", "/health", nil)
-		server.HealthCheck(c)
-	}
-}
-
 // BenchmarkListAPIs benchmarks the list APIs endpoint
-func BenchmarkListAPIs(b *testing.B) {
+func BenchmarkListRestAPIs(b *testing.B) {
 	server := createTestAPIServer()
 
 	// Add some test configs
@@ -1972,8 +2125,8 @@ func BenchmarkListAPIs(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		c, _ := createTestContext("GET", "/apis", nil)
-		server.ListAPIs(c, api.ListAPIsParams{})
+		c, _ := createTestContext("GET", "/rest-apis", nil)
+		server.ListRestAPIs(c, api.ListRestAPIsParams{})
 	}
 }
 
@@ -1983,7 +2136,7 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 
 	// Note: WebSubApi requires different data structure than RestApi
 	// The function will return nil if parsing fails
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.WebSubAPI{
 		Kind: api.WebSubApi,
 	}
 	cfg := &models.StoredConfig{
@@ -2031,26 +2184,23 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Create config with empty handle
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test",
-		Version:     "v1",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://backend.com"),
-			},
-		},
-		Operations: []api.Operation{{Method: "GET", Path: "/"}},
-	})
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind:     api.RestApi,
 		Metadata: api.Metadata{Name: ""}, // Empty handle
-		Spec:     specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "test",
+			Version:     "v1",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.com"),
+				},
+			},
+			Operations: []api.Operation{{Method: "GET", Path: "/"}},
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
@@ -2077,8 +2227,8 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 		UUID:                "0000-mcp-id-0000-000000000000",
 		Kind:                string(api.Mcp),
 		SourceConfiguration: make(chan int), // Invalid - can't be marshaled to JSON
-		Configuration: api.APIConfiguration{
-			Kind: api.RestApi, // Use RestApi for APIConfiguration type
+		Configuration: api.RestAPI{
+			Kind: api.RestApi, // Use RestApi for RestAPI type
 			Metadata: api.Metadata{
 				Name: "test-mcp",
 			},
@@ -2108,41 +2258,38 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 
 	sandboxUrl := "http://sandbox.example.com"
 	sandboxVhost := "sandbox.localhost"
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "0000-test-api-0000-000000000000",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://backend.example.com"),
-			},
-			Sandbox: &api.Upstream{
-				Url: &sandboxUrl,
-			},
-		},
-		Vhosts: &struct {
-			Main    string  `json:"main" yaml:"main"`
-			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main:    "custom.localhost",
-			Sandbox: &sandboxVhost,
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-		Policies: &policies,
-	})
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
-		Spec: specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "0000-test-api-0000-000000000000",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.example.com"),
+				},
+				Sandbox: &api.Upstream{
+					Url: &sandboxUrl,
+				},
+			},
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    "custom.localhost",
+				Sandbox: &sandboxVhost,
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+			Policies: &policies,
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
@@ -2171,32 +2318,29 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 		{Name: "op-policy", Version: "v1"},
 	}
 
-	specUnion := api.APIConfiguration_Spec{}
-	_ = specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "0000-test-api-0000-000000000000",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: stringPtr("http://backend.example.com"),
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method:   "GET",
-				Path:     "/resource",
-				Policies: &opPolicies,
-			},
-		},
-		Policies: &apiPolicies,
-	})
-
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.RestAPI{
 		Kind: api.RestApi,
-		Spec: specUnion,
+		Spec: api.APIConfigData{
+			DisplayName: "0000-test-api-0000-000000000000",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.example.com"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method:   "GET",
+					Path:     "/resource",
+					Policies: &opPolicies,
+				},
+			},
+			Policies: &apiPolicies,
+		},
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
@@ -2238,7 +2382,7 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 	}
 
 	body := []byte(`{"name": "test-key"}`)
-	c, w := createTestContextWithHeader("POST", "/apis/test-handle/api-keys", body, map[string]string{
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, authCtx)
@@ -2264,7 +2408,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 
 	// WebSubApi requires specific data structure that's complex to mock
 	// Testing that the function handles WebSubApi kind without panicking
-	apiConfig := api.APIConfiguration{
+	apiConfig := api.WebSubAPI{
 		Kind: api.WebSubApi,
 	}
 	cfg := &models.StoredConfig{
@@ -2295,7 +2439,7 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 				Version:     "v1.0",
 			},
 		},
-		Configuration: api.APIConfiguration{
+		Configuration: api.RestAPI{
 			Kind:     api.RestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
 		},
@@ -2329,7 +2473,7 @@ func TestConvertHandleToUUIDInvalid(t *testing.T) {
 
 // TestDeleteAPIWithAPIKeys tests deleting an API that has API keys
 // Note: This test requires full deployment service setup
-func TestDeleteAPIWithAPIKeys(t *testing.T) {
+func TestDeleteRestAPIWithAPIKeys(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
@@ -2361,15 +2505,15 @@ func TestGetMCPProxyByIdWithDeployedAt(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestDeleteAPIDBError tests DeleteAPI with database delete error
+// TestDeleteRestAPIDBError tests DeleteRestAPI with database delete error
 // Note: This test requires full deployment service setup
-func TestDeleteAPIDBError(t *testing.T) {
+func TestDeleteRestAPIDBError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestUpdateAPIDBError tests UpdateAPI with database update error
+// TestUpdateRestAPIDBError tests UpdateRestAPI with database update error
 // Note: This test requires full deployment service setup
-func TestUpdateAPIDBError(t *testing.T) {
+func TestUpdateRestAPIDBError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
@@ -2418,7 +2562,7 @@ func TestUpdateAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"apiKey": "new-key-value"}`)
-	c, w := createTestContextWithHeader("PUT", "/apis/test-handle/api-keys/test-key", body, map[string]string{
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 	server.UpdateAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
@@ -2430,7 +2574,7 @@ func TestUpdateAPIKeyNoAuth(t *testing.T) {
 func TestUpdateAPIKeyInvalidBody(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContextWithHeader("PUT", "/apis/test-handle/api-keys/test-key", []byte("invalid json {{{"), map[string]string{
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", []byte("invalid json {{{"), map[string]string{
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
@@ -2453,7 +2597,7 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{"description": "test"}`)
-	c, w := createTestContextWithHeader("PUT", "/apis/test-handle/api-keys/test-key", body, map[string]string{
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
 		"Content-Type": "application/json",
 	})
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
@@ -2475,7 +2619,7 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 func TestRevokeAPIKeyNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
-	c, w := createTestContext("DELETE", "/apis/test-handle/api-keys/nonexistent", nil)
+	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/nonexistent", nil)
 	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
 		UserID: "test-user",
 		Roles:  []string{"admin"},

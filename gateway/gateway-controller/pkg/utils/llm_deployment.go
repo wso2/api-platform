@@ -95,7 +95,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 // DeployLLMProviderConfiguration parses, validates, transforms and persists the provider, then triggers xDS
 func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	var providerConfig api.LLMProviderConfiguration
-	var apiConfig api.APIConfiguration
+	var apiConfig api.RestAPI
 
 	// Parse configuration
 	if err := s.parser.Parse(params.Data, params.ContentType, &providerConfig); err != nil {
@@ -219,7 +219,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 // DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
 func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	var proxyConfig api.LLMProxyConfiguration
-	var apiConfig api.APIConfiguration
+	var apiConfig api.RestAPI
 
 	// Parse configuration
 	if err := s.parser.Parse(params.Data, params.ContentType, &proxyConfig); err != nil {
@@ -826,10 +826,11 @@ func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParam
 
 // matchesFilters checks if a config matches all provided filter criteria
 func matchesFilters(config *models.StoredConfig, params any) bool {
-	apiCfg, err := config.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
+	restCfg, ok := config.Configuration.(api.RestAPI)
+	if !ok {
 		return false
 	}
+	apiCfg := restCfg.Spec
 
 	var name, version, cnt, vhost, status *string
 

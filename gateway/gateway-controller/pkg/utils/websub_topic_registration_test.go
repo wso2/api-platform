@@ -39,7 +39,7 @@ spec:
 `
 
 	// Build a StoredAPIConfig from the YAML
-	var apiCfg api.APIConfiguration
+	var apiCfg api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlConfig), "application/yaml", &apiCfg); err != nil {
 		t.Fatalf("failed to parse inline yaml: %v", err)
@@ -92,7 +92,7 @@ spec:
 `
 
 	// Build a StoredAPIConfig from the YAML
-	var apiCfg api.APIConfiguration
+	var apiCfg api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlConfig), "application/yaml", &apiCfg); err != nil {
 		t.Fatalf("failed to parse inline yaml: %v", err)
@@ -197,7 +197,7 @@ spec:
     - name: /topic4
       method: SUB`
 
-	var apiCfgA, apiCfgB api.APIConfiguration
+	var apiCfgA, apiCfgB api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlA), "application/yaml", &apiCfgA); err != nil {
 		t.Fatalf("failed to parse yamlA: %v", err)
@@ -294,7 +294,7 @@ spec:
       method: SUB`
 
 	// Build a StoredAPIConfig from the YAML
-	var apiCfg api.APIConfiguration
+	var apiCfg api.WebSubAPI
 	parser := config.NewParser()
 	if err := parser.Parse([]byte(yamlConfig), "application/yaml", &apiCfg); err != nil {
 		t.Fatalf("failed to parse inline yaml: %v", err)

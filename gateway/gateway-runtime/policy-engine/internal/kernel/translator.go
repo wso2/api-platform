@@ -100,7 +100,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, pathMutation, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, pathMutation, nil, dynamicMetadata)
 
 	return response, nil
 }
@@ -207,7 +207,7 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, pathMutation, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, pathMutation, methodMutation, dynamicMetadata)
 
 	return response, nil
 }
@@ -260,7 +260,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
 
 	return response, nil
 }
@@ -351,11 +351,11 @@ func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 		}
-		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
 		return response, nil
 	}
 	if len(dynamicMetadata) > 0 {
-		response.DynamicMetadata = buildDynamicMetadata(nil, nil, dynamicMetadata)
+		response.DynamicMetadata = buildDynamicMetadata(nil, nil, nil, dynamicMetadata)
 	}
 
 	return response, nil
@@ -415,11 +415,11 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		if err != nil {
 			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 		}
-		resp.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+		resp.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
 		return resp, nil
 	}
 	if len(dynamicMetadata) > 0 {
-		resp.DynamicMetadata = buildDynamicMetadata(nil, nil, dynamicMetadata)
+		resp.DynamicMetadata = buildDynamicMetadata(nil, nil, nil, dynamicMetadata)
 	}
 
 	return resp, nil
@@ -479,11 +479,11 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 		if err != nil {
 			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 		}
-		resp.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
+		resp.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
 		return resp, nil
 	}
 	if len(dynamicMetadata) > 0 {
-		resp.DynamicMetadata = buildDynamicMetadata(nil, nil, dynamicMetadata)
+		resp.DynamicMetadata = buildDynamicMetadata(nil, nil, nil, dynamicMetadata)
 	}
 
 	return resp, nil
@@ -509,7 +509,7 @@ func buildImmediateResponse(immResp *policy.ImmediateResponse, execCtx *PolicyEx
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, immResp.DynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, immResp.DynamicMetadata)
 	return response, nil
 }
 
@@ -670,7 +670,7 @@ func finalizeAnalyticsHeaders(dropAction policy.DropHeaderAction, originalHeader
 }
 
 // buildDynamicMetadata creates the dynamic metadata structure for analytics and path rewrite
-func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, extra map[string]map[string]interface{}) *structpb.Struct {
+func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, method *string, extra map[string]map[string]interface{}) *structpb.Struct {
 	namespaces := make(map[string]*structpb.Struct)
 
 	baseFields := make(map[string]*structpb.Value)
@@ -679,6 +679,9 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, extra 
 	}
 	if path != nil {
 		baseFields["path"] = structpb.NewStringValue(*path)
+	}
+	if method != nil {
+		baseFields["method"] = structpb.NewStringValue(*method)
 	}
 	if len(baseFields) > 0 {
 		namespaces[constants.ExtProcFilterName] = &structpb.Struct{Fields: baseFields}
@@ -696,6 +699,7 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, extra 
 		if namespace == constants.ExtProcFilterName {
 			delete(metaStruct.Fields, "analytics_data")
 			delete(metaStruct.Fields, "path")
+			delete(metaStruct.Fields, "method")
 		}
 		if existing, ok := namespaces[namespace]; ok {
 			for key, value := range metaStruct.Fields {

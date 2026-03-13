@@ -347,7 +347,7 @@ func TestBuildDynamicMetadata_WithoutPath(t *testing.T) {
 		"key": "value",
 	})
 
-	result := buildDynamicMetadata(analyticsStruct, nil, nil)
+	result := buildDynamicMetadata(analyticsStruct, nil, nil, nil)
 
 	require.NotNil(t, result)
 	require.NotNil(t, result.Fields)
@@ -361,7 +361,7 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 	})
 	path := "/new/path"
 
-	result := buildDynamicMetadata(analyticsStruct, &path, nil)
+	result := buildDynamicMetadata(analyticsStruct, &path, nil, nil)
 
 	require.NotNil(t, result)
 	// Should include path in metadata

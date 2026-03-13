@@ -206,7 +206,7 @@ func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 			// Configuration will be marshaled in the HTTP request body
-			Configuration: api.APIConfiguration{},
+			Configuration: api.RestAPI{},
 		}
 	}
 

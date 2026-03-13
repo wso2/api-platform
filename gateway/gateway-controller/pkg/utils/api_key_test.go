@@ -600,9 +600,9 @@ func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 	apiConfig := &models.StoredConfig{
 		UUID:   "0000-test-api-0000-000000000000",
 		Kind: "Api",
-		Configuration: api.APIConfiguration{
+		Configuration: api.RestAPI{
 			Metadata: api.Metadata{Name: "0000-test-api-0000-000000000000"},
-			Spec:     api.APIConfiguration_Spec{},
+			Spec:     api.APIConfigData{},
 		},
 	}
 

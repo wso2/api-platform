@@ -280,6 +280,300 @@ paths:
                     code: 500
                     message: "Internal Server Error"
                     description: "Failed to get API"
+  
+  /api/internal/v1/llm-providers/{providerId}:
+    get:
+      summary: Get specific LLM Provider by ID
+      description: |
+        Retrieves a specific LLM Provider configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested LLM Provider.
+      operationId: getLLMProviderById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the LLM Provider
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved LLM Provider
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing LLM Provider YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="llm-provider-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid LLM Provider ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid UUID for providerId"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: LLM Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "LLM Provider not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_llm_provider_failed:
+                  summary: Failed to retrieve LLM Provider
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get LLM Provider"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create LLM Provider package"
+
+  /api/internal/v1/llm-proxies/{proxyId}:
+    get:
+      summary: Get specific LLM Proxy by ID
+      description: |
+        Retrieves a specific LLM Proxy configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested LLM Proxy.
+      operationId: getLLMProxyById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: proxyId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the LLM Proxy
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved LLM Proxy
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing LLM Proxy YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="llm-proxy-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid LLM Proxy ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid UUID for proxyId"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: LLM Proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "LLM Proxy not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_llm_proxy_failed:
+                  summary: Failed to retrieve LLM Proxy
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get LLM Proxy"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create LLM Proxy package"
+
+  /api/internal/v1/mcp-proxies/{proxyId}:
+    get:
+      summary: Get specific MCP Proxy by ID
+      description: |
+        Retrieves a specific MCP Proxy configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested MCP Proxy.
+      operationId: getMCPProxyById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: proxyId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the MCP Proxy
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved MCP Proxy
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing MCP Proxy YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="mcp-proxy-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid MCP Proxy ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid UUID for proxyId"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: MCP Proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "MCP Proxy not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_mcp_proxy_failed:
+                  summary: Failed to retrieve MCP Proxy
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get MCP Proxy"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create MCP Proxy package"
 
 components:
   securitySchemes:

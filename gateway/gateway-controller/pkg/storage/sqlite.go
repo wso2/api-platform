@@ -39,6 +39,7 @@ const (
 	sqliteUniqueTemplatesHandle      = "UNIQUE constraint failed: llm_provider_templates.handle, llm_provider_templates.gateway_id"
 	sqliteUniqueAPIKeysKey           = "UNIQUE constraint failed: api_keys.api_key"
 	sqliteUniqueAPIKeysUUID          = "UNIQUE constraint failed: api_keys.uuid"
+	sqliteUniqueSubscriptionPlans    = "UNIQUE constraint failed: subscription_plans.gateway_id, subscription_plans.plan_name"
 )
 
 // SQLiteStorage implements the Storage interface using SQLite
@@ -123,4 +124,15 @@ func isAPIKeyUniqueConstraintError(err error) bool {
 	return err != nil &&
 		(err.Error() == sqliteUniqueAPIKeysKey ||
 			err.Error() == sqliteUniqueAPIKeysUUID)
+}
+
+// SQLite UNIQUE constraint message for subscriptions (api_id, subscription_token_hash, gateway_id)
+const sqliteUniqueSubscriptions = "UNIQUE constraint failed: subscriptions.api_id, subscriptions.subscription_token_hash, subscriptions.gateway_id"
+
+func isSubscriptionUniqueConstraintError(err error) bool {
+	return err != nil && err.Error() == sqliteUniqueSubscriptions
+}
+
+func isSubscriptionPlanUniqueConstraintError(err error) bool {
+	return err != nil && err.Error() == sqliteUniqueSubscriptionPlans
 }

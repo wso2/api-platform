@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package api
+package restapi
 
 import (
 	"encoding/json"
@@ -32,8 +32,8 @@ import (
 
 const (
 	DeleteCmdLiteral = "delete"
-	DeleteCmdExample = `# Delete an API by ID
-ap gateway api delete --id sample-1`
+	DeleteCmdExample = `# Delete a REST API by ID
+ap gateway rest-api delete --id sample-1`
 )
 
 var (
