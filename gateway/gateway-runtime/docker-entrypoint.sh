@@ -156,7 +156,9 @@ shutdown() {
     done
 
     # Wait for processes to exit
+    set +e
     wait
+    set -e
 
     # Cleanup sockets
     rm -f "${POLICY_ENGINE_SOCKET}" "${PYTHON_EXECUTOR_SOCKET}"
@@ -252,12 +254,14 @@ log "  - Policy Engine (PID $PE_PID)"
 log "  - Envoy (PID $ENVOY_PID)"
 
 # Monitor all processes - exit if any dies
+set +e
 if [ -n "$PY_PID" ]; then
     wait -n "$PY_PID" "$PE_PID" "$ENVOY_PID"
 else
     wait -n "$PE_PID" "$ENVOY_PID"
 fi
 EXIT_CODE=$?
+set -e
 
 # Determine which process exited and clean up the others
 for pid_var in PY_PID PE_PID ENVOY_PID; do

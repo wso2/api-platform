@@ -19,6 +19,7 @@ import collections
 import logging
 import os
 import signal
+import stat
 import uuid
 from concurrent import futures
 from typing import AsyncIterator, Optional
@@ -371,7 +372,15 @@ class PythonExecutorServer:
         proto_grpc.add_PythonExecutorServiceServicer_to_server(self._servicer, self.server)
 
         if os.path.exists(self.socket_path):
-            os.remove(self.socket_path)
+            try:
+                st = os.stat(self.socket_path)
+                if stat.S_ISSOCK(st.st_mode):
+                    os.remove(self.socket_path)
+                else:
+                    raise RuntimeError(f"Path exists but is not a socket: {self.socket_path}")
+            except OSError as e:
+                logger.error(f"Error checking or removing socket path at {self.socket_path}: {e}")
+                raise
 
         self.server.add_insecure_port(f"unix:{self.socket_path}")
         await self.server.start()
