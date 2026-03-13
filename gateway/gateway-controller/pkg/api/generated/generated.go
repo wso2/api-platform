@@ -356,11 +356,11 @@ const (
 	ListMCPProxiesParamsStatusPending  ListMCPProxiesParamsStatus = "pending"
 )
 
-// Defines values for ListAPIsParamsStatus.
+// Defines values for ListRestAPIsParamsStatus.
 const (
-	ListAPIsParamsStatusDeployed ListAPIsParamsStatus = "deployed"
-	ListAPIsParamsStatusFailed   ListAPIsParamsStatus = "failed"
-	ListAPIsParamsStatusPending  ListAPIsParamsStatus = "pending"
+	ListRestAPIsParamsStatusDeployed ListRestAPIsParamsStatus = "deployed"
+	ListRestAPIsParamsStatusFailed   ListRestAPIsParamsStatus = "failed"
+	ListRestAPIsParamsStatusPending  ListRestAPIsParamsStatus = "pending"
 )
 
 // Defines values for ListSubscriptionsParamsStatus.
@@ -964,7 +964,7 @@ type MCPDetailResponse struct {
 	Mcp *struct {
 		Configuration *MCPProxyConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
 
-		// Id Unique id for the MCP configuration
+		// Id Unique id for the MCPProxy
 		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata *struct {
 			CreatedAt  *time.Time                          `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
@@ -1085,7 +1085,7 @@ type MCPProxyConfigurationKind string
 type MCPProxyCreateResponse struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Id Unique handle (metadata.name) for the created MCP proxy configuration
+	// Id Unique handle (metadata.name) for the created MCPProxy
 	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
@@ -1108,7 +1108,7 @@ type MCPProxyListItemStatus string
 
 // MCPProxyUpdateResponse defines model for MCPProxyUpdateResponse.
 type MCPProxyUpdateResponse struct {
-	// Id Unique handle (metadata.name) for the created MCP proxy configuration
+	// Id Unique handle (metadata.name) for the created MCPProxy
 	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
 	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
 	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
@@ -1239,7 +1239,7 @@ type RestAPIKind string
 type RestAPICreateResponse struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Id Unique id for the created API configuration
+	// Id Unique id for the created RestAPI
 	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
@@ -1250,7 +1250,7 @@ type RestAPIDetailResponse struct {
 	Api *struct {
 		Configuration *RestAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
 
-		// Id Unique id for the API configuration
+		// Id Unique id for the RestAPI
 		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata *struct {
 			CreatedAt  *time.Time                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
@@ -1498,7 +1498,7 @@ type WebSubAPIKind string
 type WebSubAPICreateResponse struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Id Unique id for the created WebSub API configuration
+	// Id Unique id for the created WebSubAPI
 	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
@@ -1509,7 +1509,7 @@ type WebSubAPIDetailResponse struct {
 	Api *struct {
 		Configuration *WebSubAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
 
-		// Id Unique id for the WebSub API configuration
+		// Id Unique id for the WebSubAPI
 		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata *struct {
 			CreatedAt  *time.Time                                `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
@@ -1639,8 +1639,8 @@ type ListMCPProxiesParams struct {
 // ListMCPProxiesParamsStatus defines parameters for ListMCPProxies.
 type ListMCPProxiesParamsStatus string
 
-// ListAPIsParams defines parameters for ListAPIs.
-type ListAPIsParams struct {
+// ListRestAPIsParams defines parameters for ListRestAPIs.
+type ListRestAPIsParams struct {
 	// DisplayName Filter by API display name
 	DisplayName *string `form:"displayName,omitempty" json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
@@ -1651,11 +1651,11 @@ type ListAPIsParams struct {
 	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
 
 	// Status Filter by deployment status
-	Status *ListAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+	Status *ListRestAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
-// ListAPIsParamsStatus defines parameters for ListAPIs.
-type ListAPIsParamsStatus string
+// ListRestAPIsParamsStatus defines parameters for ListRestAPIs.
+type ListRestAPIsParamsStatus string
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
 type ListSubscriptionsParams struct {
@@ -1713,11 +1713,11 @@ type CreateMCPProxyJSONRequestBody = MCPProxyConfiguration
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
 type UpdateMCPProxyJSONRequestBody = MCPProxyConfiguration
 
-// CreateAPIJSONRequestBody defines body for CreateAPI for application/json ContentType.
-type CreateAPIJSONRequestBody = RestAPI
+// CreateRestAPIJSONRequestBody defines body for CreateRestAPI for application/json ContentType.
+type CreateRestAPIJSONRequestBody = RestAPI
 
-// UpdateAPIJSONRequestBody defines body for UpdateAPI for application/json ContentType.
-type UpdateAPIJSONRequestBody = RestAPI
+// UpdateRestAPIJSONRequestBody defines body for UpdateRestAPI for application/json ContentType.
+type UpdateRestAPIJSONRequestBody = RestAPI
 
 // CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
 type CreateAPIKeyJSONRequestBody = APIKeyCreationRequest
@@ -2205,39 +2205,39 @@ type ServerInterface interface {
 	// Update an existing LLM proxy
 	// (PUT /llm-proxies/{id})
 	UpdateLLMProxy(c *gin.Context, id string)
-	// List all MCP Proxy configurations
+	// List all MCPProxies
 	// (GET /mcp-proxies)
 	ListMCPProxies(c *gin.Context, params ListMCPProxiesParams)
-	// Create a new MCP Proxy configuration
+	// Create a new MCPProxy
 	// (POST /mcp-proxies)
 	CreateMCPProxy(c *gin.Context)
-	// Delete an MCP Proxy configuration
+	// Delete a MCPProxy
 	// (DELETE /mcp-proxies/{id})
 	DeleteMCPProxy(c *gin.Context, id string)
-	// Get MCP Proxy configuration by id
+	// Get MCPProxy by id
 	// (GET /mcp-proxies/{id})
 	GetMCPProxyById(c *gin.Context, id string)
-	// Update an existing MCP Proxy configuration
+	// Update an existing MCPProxy
 	// (PUT /mcp-proxies/{id})
 	UpdateMCPProxy(c *gin.Context, id string)
 	// List all registered policy definitions
 	// (GET /policies)
 	ListPolicies(c *gin.Context)
-	// List all API configurations
+	// List all RestAPIs
 	// (GET /rest-apis)
-	ListAPIs(c *gin.Context, params ListAPIsParams)
-	// Create a new API configuration
+	ListRestAPIs(c *gin.Context, params ListRestAPIsParams)
+	// Create a new RestAPI
 	// (POST /rest-apis)
-	CreateAPI(c *gin.Context)
-	// Delete an API configuration
+	CreateRestAPI(c *gin.Context)
+	// Delete a RestAPI
 	// (DELETE /rest-apis/{id})
-	DeleteAPI(c *gin.Context, id string)
-	// Get API configuration by id
+	DeleteRestAPI(c *gin.Context, id string)
+	// Get RestAPI by id
 	// (GET /rest-apis/{id})
-	GetAPIById(c *gin.Context, id string)
-	// Update an existing API configuration
+	GetRestAPIById(c *gin.Context, id string)
+	// Update an existing RestAPI
 	// (PUT /rest-apis/{id})
-	UpdateAPI(c *gin.Context, id string)
+	UpdateRestAPI(c *gin.Context, id string)
 	// Get the list of API keys for an API
 	// (GET /rest-apis/{id}/api-keys)
 	ListAPIKeys(c *gin.Context, id string)
@@ -2283,19 +2283,19 @@ type ServerInterface interface {
 	// Update a subscription
 	// (PUT /subscriptions/{subscriptionId})
 	UpdateSubscription(c *gin.Context, subscriptionId string)
-	// List all WebSub API configurations
+	// List all WebSubAPIs
 	// (GET /websub-apis)
 	ListWebSubAPIs(c *gin.Context, params ListWebSubAPIsParams)
-	// Create a new WebSub API configuration
+	// Create a new WebSubAPI
 	// (POST /websub-apis)
 	CreateWebSubAPI(c *gin.Context)
-	// Delete a WebSub API configuration
+	// Delete a WebSubAPI
 	// (DELETE /websub-apis/{id})
 	DeleteWebSubAPI(c *gin.Context, id string)
-	// Get WebSub API configuration by id
+	// Get WebSubAPI by id
 	// (GET /websub-apis/{id})
 	GetWebSubAPIById(c *gin.Context, id string)
-	// Update an existing WebSub API configuration
+	// Update an existing WebSubAPI
 	// (PUT /websub-apis/{id})
 	UpdateWebSubAPI(c *gin.Context, id string)
 }
@@ -2917,13 +2917,13 @@ func (siw *ServerInterfaceWrapper) ListPolicies(c *gin.Context) {
 	siw.Handler.ListPolicies(c)
 }
 
-// ListAPIs operation middleware
-func (siw *ServerInterfaceWrapper) ListAPIs(c *gin.Context) {
+// ListRestAPIs operation middleware
+func (siw *ServerInterfaceWrapper) ListRestAPIs(c *gin.Context) {
 
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params ListAPIsParams
+	var params ListRestAPIsParams
 
 	// ------------- Optional query parameter "displayName" -------------
 
@@ -2964,11 +2964,11 @@ func (siw *ServerInterfaceWrapper) ListAPIs(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListAPIs(c, params)
+	siw.Handler.ListRestAPIs(c, params)
 }
 
-// CreateAPI operation middleware
-func (siw *ServerInterfaceWrapper) CreateAPI(c *gin.Context) {
+// CreateRestAPI operation middleware
+func (siw *ServerInterfaceWrapper) CreateRestAPI(c *gin.Context) {
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -2977,11 +2977,11 @@ func (siw *ServerInterfaceWrapper) CreateAPI(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.CreateAPI(c)
+	siw.Handler.CreateRestAPI(c)
 }
 
-// DeleteAPI operation middleware
-func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
+// DeleteRestAPI operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRestAPI(c *gin.Context) {
 
 	var err error
 
@@ -3001,11 +3001,11 @@ func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteAPI(c, id)
+	siw.Handler.DeleteRestAPI(c, id)
 }
 
-// GetAPIById operation middleware
-func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
+// GetRestAPIById operation middleware
+func (siw *ServerInterfaceWrapper) GetRestAPIById(c *gin.Context) {
 
 	var err error
 
@@ -3025,11 +3025,11 @@ func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetAPIById(c, id)
+	siw.Handler.GetRestAPIById(c, id)
 }
 
-// UpdateAPI operation middleware
-func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
+// UpdateRestAPI operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRestAPI(c *gin.Context) {
 
 	var err error
 
@@ -3049,7 +3049,7 @@ func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateAPI(c, id)
+	siw.Handler.UpdateRestAPI(c, id)
 }
 
 // ListAPIKeys operation middleware
@@ -3611,11 +3611,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/mcp-proxies/:id", wrapper.GetMCPProxyById)
 	router.PUT(options.BaseURL+"/mcp-proxies/:id", wrapper.UpdateMCPProxy)
 	router.GET(options.BaseURL+"/policies", wrapper.ListPolicies)
-	router.GET(options.BaseURL+"/rest-apis", wrapper.ListAPIs)
-	router.POST(options.BaseURL+"/rest-apis", wrapper.CreateAPI)
-	router.DELETE(options.BaseURL+"/rest-apis/:id", wrapper.DeleteAPI)
-	router.GET(options.BaseURL+"/rest-apis/:id", wrapper.GetAPIById)
-	router.PUT(options.BaseURL+"/rest-apis/:id", wrapper.UpdateAPI)
+	router.GET(options.BaseURL+"/rest-apis", wrapper.ListRestAPIs)
+	router.POST(options.BaseURL+"/rest-apis", wrapper.CreateRestAPI)
+	router.DELETE(options.BaseURL+"/rest-apis/:id", wrapper.DeleteRestAPI)
+	router.GET(options.BaseURL+"/rest-apis/:id", wrapper.GetRestAPIById)
+	router.PUT(options.BaseURL+"/rest-apis/:id", wrapper.UpdateRestAPI)
 	router.GET(options.BaseURL+"/rest-apis/:id/api-keys", wrapper.ListAPIKeys)
 	router.POST(options.BaseURL+"/rest-apis/:id/api-keys", wrapper.CreateAPIKey)
 	router.DELETE(options.BaseURL+"/rest-apis/:id/api-keys/:apiKeyName", wrapper.RevokeAPIKey)
