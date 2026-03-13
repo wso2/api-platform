@@ -73,22 +73,6 @@ CREATE TABLE IF NOT EXISTS artifacts (
     UNIQUE(uuid, organization_uuid)
 );
 
--- API Keys table
-CREATE TABLE IF NOT EXISTS api_keys (
-    id VARCHAR(40) PRIMARY KEY,
-    artifact_uuid VARCHAR(40) NOT NULL,
-    name VARCHAR(63) NOT NULL,
-    masked_api_key VARCHAR(8) NOT NULL,
-    api_key_hashes TEXT NOT NULL DEFAULT '{}',
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(255),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP,
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE(artifact_uuid, name)
-);
-
 -- Application API Key mappings table
 CREATE TABLE IF NOT EXISTS application_api_keys (
     application_uuid VARCHAR(40) NOT NULL,
