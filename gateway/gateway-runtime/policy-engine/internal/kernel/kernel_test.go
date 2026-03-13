@@ -963,7 +963,7 @@ func TestDetermineResponseBodyMode_StreamingSupported(t *testing.T) {
 type streamingRequestPol struct{}
 
 func (p *streamingRequestPol) OnRequestBody(_ *policy.RequestContext) policy.RequestAction {
-	return policy.RequestAction{}
+	return policy.UpstreamRequestModifications{}
 }
 func (p *streamingRequestPol) OnRequestBodyChunk(_ *policy.RequestStreamContext, _ *policy.StreamBody) policy.RequestChunkAction {
 	return policy.RequestChunkAction{}
@@ -974,14 +974,14 @@ func (p *streamingRequestPol) NeedsMoreRequestData(_ []byte) bool { return false
 type bufferedRequestPol struct{}
 
 func (p *bufferedRequestPol) OnRequestBody(_ *policy.RequestContext) policy.RequestAction {
-	return policy.RequestAction{}
+	return policy.UpstreamRequestModifications{}
 }
 
 // streamingResponsePol implements StreamingResponsePolicy (+ ResponsePolicy).
 type streamingResponsePol struct{}
 
 func (p *streamingResponsePol) OnResponseBody(_ *policy.ResponseContext) policy.ResponseAction {
-	return policy.ResponseAction{}
+	return policy.DownstreamResponseModifications{}
 }
 func (p *streamingResponsePol) OnResponseBodyChunk(_ *policy.ResponseStreamContext, _ *policy.StreamBody) policy.ResponseChunkAction {
 	return policy.ResponseChunkAction{}
@@ -992,7 +992,7 @@ func (p *streamingResponsePol) NeedsMoreResponseData(_ []byte) bool { return fal
 type bufferedResponsePol struct{}
 
 func (p *bufferedResponsePol) OnResponseBody(_ *policy.ResponseContext) policy.ResponseAction {
-	return policy.ResponseAction{}
+	return policy.DownstreamResponseModifications{}
 }
 
 func newTestRegistry(t *testing.T, name string, factory policy.PolicyFactory) *registry.PolicyRegistry {
@@ -1100,5 +1100,5 @@ func TestBuildPolicyChain_StreamingFlags_BufferedResponseForcesNoStreaming(t *te
 type testHeaderOnlyPol struct{}
 
 func (p *testHeaderOnlyPol) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{}
+	return policy.UpstreamRequestHeaderModifications{}
 }

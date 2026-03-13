@@ -762,14 +762,17 @@ func applyRequestHeaderMutations(headers *policy.Headers, results []executor.Req
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		a := pr.Action
-		for k, v := range a.Set {
+		mods, ok := pr.Action.(policy.UpstreamRequestHeaderModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.Set {
 			values[strings.ToLower(k)] = []string{v}
 		}
-		for _, k := range a.Remove {
+		for _, k := range mods.Remove {
 			delete(values, strings.ToLower(k))
 		}
-		for k, vs := range a.Append {
+		for k, vs := range mods.Append {
 			lk := strings.ToLower(k)
 			values[lk] = append(values[lk], vs...)
 		}
@@ -788,14 +791,17 @@ func applyResponseHeaderMutations(headers *policy.Headers, results []executor.Re
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		a := pr.Action
-		for k, v := range a.Set {
+		mods, ok := pr.Action.(policy.DownstreamResponseHeaderModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.Set {
 			values[strings.ToLower(k)] = []string{v}
 		}
-		for _, k := range a.Remove {
+		for _, k := range mods.Remove {
 			delete(values, strings.ToLower(k))
 		}
-		for k, vs := range a.Append {
+		for k, vs := range mods.Append {
 			lk := strings.ToLower(k)
 			values[lk] = append(values[lk], vs...)
 		}

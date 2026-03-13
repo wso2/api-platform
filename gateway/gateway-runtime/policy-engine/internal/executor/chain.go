@@ -38,7 +38,7 @@ import (
 type RequestHeaderPolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policy.RequestHeaderAction
+	Action        policy.RequestHeaderAction
 	ExecutionTime time.Duration
 	Skipped       bool // true if condition evaluated to false
 }
@@ -46,8 +46,8 @@ type RequestHeaderPolicyResult struct {
 // RequestHeaderExecutionResult aggregates per-policy results for the request-headers phase
 type RequestHeaderExecutionResult struct {
 	Results            []RequestHeaderPolicyResult
-	ShortCircuited     bool                        // true if chain stopped early due to ImmediateResponse
-	FinalAction        *policy.RequestHeaderAction // Final action to apply
+	ShortCircuited     bool                       // true if chain stopped early due to ImmediateResponse
+	FinalAction        policy.RequestHeaderAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
@@ -149,22 +149,22 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 		result.Results = append(result.Results, RequestHeaderPolicyResult{
 			PolicyName:    spec.Name,
 			PolicyVersion: spec.Version,
-			Action:        &action,
+			Action:        action,
 			ExecutionTime: executionTime,
 		})
 
-		if action.ImmediateResponse != nil {
+		if _, ok := action.(policy.ImmediateResponse); ok {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
 			}
 			metrics.ShortCircuitsTotal.WithLabelValues("", spec.Name).Inc()
 			result.ShortCircuited = true
-			result.FinalAction = &action
+			result.FinalAction = action
 			span.End()
 			break
 		}
 
-		result.FinalAction = &action
+		result.FinalAction = action
 		span.End()
 	}
 
@@ -174,25 +174,25 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 
 // ─── Request body phase ───────────────────────────────────────────────────────
 
-// RequestBodyPolicyResult is the result of executing a single RequestBodyPolicy
-type RequestBodyPolicyResult struct {
+// RequestPolicyResult is the result of executing a single RequestPolicy
+type RequestPolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policy.RequestAction
+	Action        policy.RequestAction
 	ExecutionTime time.Duration
 	Skipped       bool
 }
 
 // RequestBodyExecutionResult aggregates per-policy results for the request-body phase
 type RequestBodyExecutionResult struct {
-	Results            []RequestBodyPolicyResult
+	Results            []RequestPolicyResult
 	ShortCircuited     bool
-	FinalAction        *policy.RequestAction
+	FinalAction        policy.RequestAction
 	TotalExecutionTime time.Duration
 }
 
-// ExecuteRequestBodyPolicies invokes each RequestBodyPolicy in the chain.
-// Policies that do not implement RequestBodyPolicy are skipped silently.
+// ExecuteRequestBodyPolicies invokes each RequestPolicy in the chain.
+// Policies that do not implement RequestPolicy are skipped silently.
 func (c *ChainExecutor) ExecuteRequestBodyPolicies(
 	traceCtx context.Context,
 	policyList []policy.Policy,
@@ -203,7 +203,7 @@ func (c *ChainExecutor) ExecuteRequestBodyPolicies(
 ) (*RequestBodyExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestBodyExecutionResult{
-		Results:        make([]RequestBodyPolicyResult, 0, len(policyList)),
+		Results:        make([]RequestPolicyResult, 0, len(policyList)),
 		ShortCircuited: false,
 	}
 
@@ -227,7 +227,7 @@ func (c *ChainExecutor) ExecuteRequestBodyPolicies(
 			}
 			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
 			span.End()
-			result.Results = append(result.Results, RequestBodyPolicyResult{
+			result.Results = append(result.Results, RequestPolicyResult{
 				PolicyName:    spec.Name,
 				PolicyVersion: spec.Version,
 				Skipped:       true,
@@ -250,7 +250,7 @@ func (c *ChainExecutor) ExecuteRequestBodyPolicies(
 					}
 					metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "condition_not_met").Inc()
 					span.End()
-					result.Results = append(result.Results, RequestBodyPolicyResult{
+					result.Results = append(result.Results, RequestPolicyResult{
 						PolicyName:    spec.Name,
 						PolicyVersion: spec.Version,
 						Skipped:       true,
@@ -277,40 +277,42 @@ func (c *ChainExecutor) ExecuteRequestBodyPolicies(
 			span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, executionTime.Nanoseconds()))
 		}
 
-		result.Results = append(result.Results, RequestBodyPolicyResult{
+		result.Results = append(result.Results, RequestPolicyResult{
 			PolicyName:    spec.Name,
 			PolicyVersion: spec.Version,
-			Action:        &action,
+			Action:        action,
 			ExecutionTime: executionTime,
 		})
 
-		if action.ImmediateResponse != nil {
+		if action.StopExecution() {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
 			}
 			metrics.ShortCircuitsTotal.WithLabelValues("", spec.Name).Inc()
 			result.ShortCircuited = true
-			result.FinalAction = &action
+			result.FinalAction = action
 			span.End()
 			break
 		}
 
 		// Apply body modifications so the next policy sees the updated context
-		if action.BodyMutation != nil {
-			ctx.Body = &policy.Body{
-				Content:     action.BodyMutation,
-				EndOfStream: true,
-				Present:     true,
+		if mods, ok := action.(policy.UpstreamRequestModifications); ok {
+			if mods.Body != nil {
+				ctx.Body = &policy.Body{
+					Content:     mods.Body,
+					EndOfStream: true,
+					Present:     true,
+				}
+			}
+			if mods.Path != nil {
+				ctx.Path = *mods.Path
+			}
+			if mods.Method != nil {
+				ctx.Method = *mods.Method
 			}
 		}
-		if action.PathMutation != nil {
-			ctx.Path = *action.PathMutation
-		}
-		if action.MethodMutation != nil {
-			ctx.Method = *action.MethodMutation
-		}
 
-		result.FinalAction = &action
+		result.FinalAction = action
 		span.End()
 	}
 
@@ -324,7 +326,7 @@ func (c *ChainExecutor) ExecuteRequestBodyPolicies(
 type ResponseHeaderPolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policy.ResponseHeaderAction
+	Action        policy.ResponseHeaderAction
 	ExecutionTime time.Duration
 	Skipped       bool
 }
@@ -422,7 +424,7 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 		result.Results = append(result.Results, ResponseHeaderPolicyResult{
 			PolicyName:    spec.Name,
 			PolicyVersion: spec.Version,
-			Action:        &action,
+			Action:        action,
 			ExecutionTime: executionTime,
 		})
 		span.End()
@@ -434,25 +436,25 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 
 // ─── Response body phase ──────────────────────────────────────────────────────
 
-// ResponseBodyPolicyResult is the result of executing a single ResponseBodyPolicy
-type ResponseBodyPolicyResult struct {
+// ResponsePolicyResult is the result of executing a single ResponsePolicy
+type ResponsePolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policy.ResponseAction
+	Action        policy.ResponseAction
 	ExecutionTime time.Duration
 	Skipped       bool
 }
 
 // ResponseBodyExecutionResult aggregates per-policy results for the response-body phase
 type ResponseBodyExecutionResult struct {
-	Results            []ResponseBodyPolicyResult
+	Results            []ResponsePolicyResult
 	ShortCircuited     bool
-	FinalAction        *policy.ResponseAction
+	FinalAction        policy.ResponseAction
 	TotalExecutionTime time.Duration
 }
 
-// ExecuteResponseBodyPolicies invokes each ResponseBodyPolicy in the chain (reverse order).
-// Policies that do not implement ResponseBodyPolicy are skipped silently.
+// ExecuteResponseBodyPolicies invokes each ResponsePolicy in the chain (reverse order).
+// Policies that do not implement ResponsePolicy are skipped silently.
 func (c *ChainExecutor) ExecuteResponseBodyPolicies(
 	traceCtx context.Context,
 	policyList []policy.Policy,
@@ -463,7 +465,7 @@ func (c *ChainExecutor) ExecuteResponseBodyPolicies(
 ) (*ResponseBodyExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseBodyExecutionResult{
-		Results: make([]ResponseBodyPolicyResult, 0, len(policyList)),
+		Results: make([]ResponsePolicyResult, 0, len(policyList)),
 	}
 
 	for i := len(policyList) - 1; i >= 0; i-- {
@@ -487,7 +489,7 @@ func (c *ChainExecutor) ExecuteResponseBodyPolicies(
 			}
 			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
 			span.End()
-			result.Results = append(result.Results, ResponseBodyPolicyResult{
+			result.Results = append(result.Results, ResponsePolicyResult{
 				PolicyName: spec.Name, PolicyVersion: spec.Version,
 				Skipped: true, ExecutionTime: time.Since(policyStartTime),
 			})
@@ -509,7 +511,7 @@ func (c *ChainExecutor) ExecuteResponseBodyPolicies(
 					}
 					metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "condition_not_met").Inc()
 					span.End()
-					result.Results = append(result.Results, ResponseBodyPolicyResult{
+					result.Results = append(result.Results, ResponsePolicyResult{
 						PolicyName:    spec.Name,
 						PolicyVersion: spec.Version,
 						Skipped:       true,
@@ -536,34 +538,36 @@ func (c *ChainExecutor) ExecuteResponseBodyPolicies(
 			span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, executionTime.Nanoseconds()))
 		}
 
-		result.Results = append(result.Results, ResponseBodyPolicyResult{
+		result.Results = append(result.Results, ResponsePolicyResult{
 			PolicyName:    spec.Name,
 			PolicyVersion: spec.Version,
-			Action:        &action,
+			Action:        action,
 			ExecutionTime: executionTime,
 		})
 
-		if action.ImmediateResponse != nil {
+		if action.StopExecution() {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
 			}
 			metrics.ShortCircuitsTotal.WithLabelValues("", spec.Name).Inc()
 			result.ShortCircuited = true
-			result.FinalAction = &action
+			result.FinalAction = action
 			span.End()
 			break
 		}
 
 		// Propagate body modification to the next policy in the chain
-		if action.BodyMutation != nil {
-			ctx.ResponseBody = &policy.Body{
-				Content:     action.BodyMutation,
-				EndOfStream: true,
-				Present:     true,
+		if mods, ok := action.(policy.DownstreamResponseModifications); ok {
+			if mods.Body != nil {
+				ctx.ResponseBody = &policy.Body{
+					Content:     mods.Body,
+					EndOfStream: true,
+					Present:     true,
+				}
 			}
 		}
 
-		result.FinalAction = &action
+		result.FinalAction = action
 		span.End()
 	}
 
@@ -688,9 +692,9 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		})
 
 		// Chain the chunk: if a policy mutates the body, downstream policies see the mutated bytes.
-		if action.BodyMutation != nil {
+		if action.Body != nil {
 			currentChunk = &policy.StreamBody{
-				Chunk:       action.BodyMutation,
+				Chunk:       action.Body,
 				EndOfStream: currentChunk.EndOfStream,
 			}
 		}
@@ -706,7 +710,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 // ─── Streaming response body phase ───────────────────────────────────────────
 
 // StreamingResponsePolicyResult holds the outcome of invoking a single
-// StreamingResponseBodyPolicy on one chunk.
+// StreamingResponsePolicy on one chunk.
 type StreamingResponsePolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
@@ -723,9 +727,9 @@ type StreamingResponseExecutionResult struct {
 	TotalExecutionTime time.Duration
 }
 
-// ExecuteStreamingResponsePolicies invokes each StreamingResponseBodyPolicy in the
+// ExecuteStreamingResponsePolicies invokes each StreamingResponsePolicy in the
 // chain (reverse order) for a single body chunk. Policies that do not implement
-// StreamingResponseBodyPolicy are skipped silently — chain compatibility is enforced
+// StreamingResponsePolicy are skipped silently — chain compatibility is enforced
 // at chain-build time.
 func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 	traceCtx context.Context,
@@ -825,9 +829,9 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		})
 
 		// Propagate modified bytes to the next policy in the chain
-		if action.BodyMutation != nil {
+		if action.Body != nil {
 			currentChunk = &policy.StreamBody{
-				Chunk:       action.BodyMutation,
+				Chunk:       action.Body,
 				EndOfStream: chunk.EndOfStream,
 			}
 		}

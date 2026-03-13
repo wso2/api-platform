@@ -77,14 +77,14 @@ func (m *mockCELEvaluator) EvaluateStreamingResponseCondition(_ string, _ *polic
 type noopRequestHeaderPolicy struct{}
 
 func (p *noopRequestHeaderPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{}
+	return policy.UpstreamRequestHeaderModifications{}
 }
 
 // noopResponseHeaderPolicy implements ResponseHeaderPolicy with no side effects.
 type noopResponseHeaderPolicy struct{}
 
 func (p *noopResponseHeaderPolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
-	return policy.ResponseHeaderAction{}
+	return policy.DownstreamResponseHeaderModifications{}
 }
 
 // trackingPolicyImpl implements ResponseHeaderPolicy and records execution order.
@@ -95,7 +95,7 @@ type trackingPolicyImpl struct {
 
 func (p *trackingPolicyImpl) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
 	*p.executionOrder = append(*p.executionOrder, p.name)
-	return policy.ResponseHeaderAction{}
+	return policy.DownstreamResponseHeaderModifications{}
 }
 
 // =============================================================================
@@ -256,7 +256,8 @@ func TestExecuteRequestHeaderPolicies_ShortCircuit(t *testing.T) {
 	assert.True(t, result.ShortCircuited)
 	assert.Len(t, result.Results, 1) // Only the first policy executed
 	assert.NotNil(t, result.FinalAction)
-	assert.NotNil(t, result.FinalAction.ImmediateResponse)
+	_, ok := result.FinalAction.(policy.ImmediateResponse)
+	assert.True(t, ok, "FinalAction should be an ImmediateResponse")
 }
 
 func TestExecuteRequestHeaderPolicies_HeaderModification(t *testing.T) {
@@ -276,7 +277,9 @@ func TestExecuteRequestHeaderPolicies_HeaderModification(t *testing.T) {
 	assert.Len(t, result.Results, 1)
 	assert.False(t, result.ShortCircuited)
 	require.NotNil(t, result.FinalAction)
-	assert.Equal(t, "test-value", result.FinalAction.Set["x-custom-header"])
+	mods, ok := result.FinalAction.(policy.UpstreamRequestHeaderModifications)
+	require.True(t, ok)
+	assert.Equal(t, "test-value", mods.Set["x-custom-header"])
 }
 
 func TestExecuteRequestHeaderPolicies_MultiplePolicies(t *testing.T) {
@@ -303,8 +306,12 @@ func TestExecuteRequestHeaderPolicies_MultiplePolicies(t *testing.T) {
 	assert.False(t, result.ShortCircuited)
 
 	// Verify actions were produced for each policy
-	assert.Equal(t, "value-1", result.Results[0].Action.Set["x-header-1"])
-	assert.Equal(t, "value-2", result.Results[1].Action.Set["x-header-2"])
+	mods0, ok0 := result.Results[0].Action.(policy.UpstreamRequestHeaderModifications)
+	mods1, ok1 := result.Results[1].Action.(policy.UpstreamRequestHeaderModifications)
+	require.True(t, ok0)
+	require.True(t, ok1)
+	assert.Equal(t, "value-1", mods0.Set["x-header-1"])
+	assert.Equal(t, "value-2", mods1.Set["x-header-2"])
 }
 
 // =============================================================================
@@ -410,7 +417,9 @@ func TestExecuteResponseHeaderPolicies_HeaderModification(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, result.Results, 1)
 	require.NotNil(t, result.Results[0].Action)
-	assert.Equal(t, "response-value", result.Results[0].Action.Set["x-response-header"])
+	mods, ok := result.Results[0].Action.(policy.DownstreamResponseHeaderModifications)
+	require.True(t, ok)
+	assert.Equal(t, "response-value", mods.Set["x-response-header"])
 }
 
 func TestExecuteResponseHeaderPolicies_ReverseOrder(t *testing.T) {
@@ -502,7 +511,7 @@ func TestResponseHeaderExecutionResult(t *testing.T) {
 type noopStreamingRequestPolicy struct{}
 
 func (p *noopStreamingRequestPolicy) OnRequestBody(_ *policy.RequestContext) policy.RequestAction {
-	return policy.RequestAction{}
+	return policy.UpstreamRequestModifications{}
 }
 func (p *noopStreamingRequestPolicy) OnRequestBodyChunk(_ *policy.RequestStreamContext, _ *policy.StreamBody) policy.RequestChunkAction {
 	return policy.RequestChunkAction{}
@@ -513,10 +522,10 @@ func (p *noopStreamingRequestPolicy) NeedsMoreRequestData(_ []byte) bool { retur
 type mutatingStreamingRequestPolicy struct{ out []byte }
 
 func (p *mutatingStreamingRequestPolicy) OnRequestBody(_ *policy.RequestContext) policy.RequestAction {
-	return policy.RequestAction{}
+	return policy.UpstreamRequestModifications{}
 }
 func (p *mutatingStreamingRequestPolicy) OnRequestBodyChunk(_ *policy.RequestStreamContext, _ *policy.StreamBody) policy.RequestChunkAction {
-	return policy.RequestChunkAction{BodyMutation: p.out}
+	return policy.RequestChunkAction{Body: p.out}
 }
 func (p *mutatingStreamingRequestPolicy) NeedsMoreRequestData(_ []byte) bool { return false }
 
@@ -524,7 +533,7 @@ func (p *mutatingStreamingRequestPolicy) NeedsMoreRequestData(_ []byte) bool { r
 type noopStreamingResponsePolicy struct{}
 
 func (p *noopStreamingResponsePolicy) OnResponseBody(_ *policy.ResponseContext) policy.ResponseAction {
-	return policy.ResponseAction{}
+	return policy.DownstreamResponseModifications{}
 }
 func (p *noopStreamingResponsePolicy) OnResponseBodyChunk(_ *policy.ResponseStreamContext, _ *policy.StreamBody) policy.ResponseChunkAction {
 	return policy.ResponseChunkAction{}
@@ -535,10 +544,10 @@ func (p *noopStreamingResponsePolicy) NeedsMoreResponseData(_ []byte) bool { ret
 type mutatingStreamingResponsePolicy struct{ out []byte }
 
 func (p *mutatingStreamingResponsePolicy) OnResponseBody(_ *policy.ResponseContext) policy.ResponseAction {
-	return policy.ResponseAction{}
+	return policy.DownstreamResponseModifications{}
 }
 func (p *mutatingStreamingResponsePolicy) OnResponseBodyChunk(_ *policy.ResponseStreamContext, _ *policy.StreamBody) policy.ResponseChunkAction {
-	return policy.ResponseChunkAction{BodyMutation: p.out}
+	return policy.ResponseChunkAction{Body: p.out}
 }
 func (p *mutatingStreamingResponsePolicy) NeedsMoreResponseData(_ []byte) bool { return false }
 
@@ -549,7 +558,7 @@ type trackingStreamingResponsePolicy struct {
 }
 
 func (p *trackingStreamingResponsePolicy) OnResponseBody(_ *policy.ResponseContext) policy.ResponseAction {
-	return policy.ResponseAction{}
+	return policy.DownstreamResponseModifications{}
 }
 func (p *trackingStreamingResponsePolicy) OnResponseBodyChunk(_ *policy.ResponseStreamContext, _ *policy.StreamBody) policy.ResponseChunkAction {
 	*p.executionOrder = append(*p.executionOrder, p.name)
@@ -647,7 +656,7 @@ func TestExecuteStreamingRequestPolicies_Passthrough_FinalActionSet(t *testing.T
 	require.NoError(t, err)
 	require.Len(t, result.Results, 1)
 	require.NotNil(t, result.FinalAction)
-	assert.Nil(t, result.FinalAction.BodyMutation) // passthrough — translator falls back to original
+	assert.Nil(t, result.FinalAction.Body) // passthrough — translator falls back to original
 }
 
 func TestExecuteStreamingRequestPolicies_Mutation_FinalActionHasBytes(t *testing.T) {
@@ -661,7 +670,7 @@ func TestExecuteStreamingRequestPolicies_Mutation_FinalActionHasBytes(t *testing
 
 	require.NoError(t, err)
 	require.NotNil(t, result.FinalAction)
-	assert.Equal(t, []byte("replaced"), result.FinalAction.BodyMutation)
+	assert.Equal(t, []byte("replaced"), result.FinalAction.Body)
 }
 
 func TestExecuteStreamingRequestPolicies_ChainedMutations(t *testing.T) {
@@ -679,9 +688,9 @@ func TestExecuteStreamingRequestPolicies_ChainedMutations(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, result.Results, 2)
-	assert.Equal(t, []byte("after-pol1"), result.Results[0].Action.BodyMutation)
+	assert.Equal(t, []byte("after-pol1"), result.Results[0].Action.Body)
 	// FinalAction is pol2's (last executed), which has no mutation
-	assert.Nil(t, result.FinalAction.BodyMutation)
+	assert.Nil(t, result.FinalAction.Body)
 }
 
 // =============================================================================
@@ -758,7 +767,7 @@ func TestExecuteStreamingResponsePolicies_Passthrough_FinalActionSet(t *testing.
 	require.NoError(t, err)
 	require.Len(t, result.Results, 1)
 	require.NotNil(t, result.FinalAction)
-	assert.Nil(t, result.FinalAction.BodyMutation)
+	assert.Nil(t, result.FinalAction.Body)
 }
 
 func TestExecuteStreamingResponsePolicies_Mutation_FinalActionHasBytes(t *testing.T) {
@@ -772,7 +781,7 @@ func TestExecuteStreamingResponsePolicies_Mutation_FinalActionHasBytes(t *testin
 
 	require.NoError(t, err)
 	require.NotNil(t, result.FinalAction)
-	assert.Equal(t, []byte("replaced"), result.FinalAction.BodyMutation)
+	assert.Equal(t, []byte("replaced"), result.FinalAction.Body)
 }
 
 func TestExecuteStreamingResponsePolicies_ReverseOrder(t *testing.T) {

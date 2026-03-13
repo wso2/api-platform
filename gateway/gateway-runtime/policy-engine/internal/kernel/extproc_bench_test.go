@@ -108,24 +108,24 @@ func (m *mockProcessStream) RecvMsg(interface{}) error    { return nil }
 type passthroughPolicy struct{}
 
 func (p *passthroughPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{}
+	return policy.UpstreamRequestHeaderModifications{}
 }
 
 func (p *passthroughPolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
-	return policy.ResponseHeaderAction{}
+	return policy.DownstreamResponseHeaderModifications{}
 }
 
 // headerModifyPolicy adds headers to measure modification overhead.
 type headerModifyPolicy struct{}
 
 func (p *headerModifyPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{
+	return policy.UpstreamRequestHeaderModifications{
 		Set: map[string]string{"x-bench-header": "bench-value"},
 	}
 }
 
 func (p *headerModifyPolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
-	return policy.ResponseHeaderAction{
+	return policy.DownstreamResponseHeaderModifications{
 		Set: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
@@ -134,12 +134,10 @@ func (p *headerModifyPolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) 
 type shortCircuitPolicy struct{}
 
 func (p *shortCircuitPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{
-		ImmediateResponse: &policy.ImmediateResponse{
-			StatusCode: 401,
-			Headers:    map[string]string{"content-type": "application/json"},
-			Body:       []byte(`{"error":"unauthorized"}`),
-		},
+	return policy.ImmediateResponse{
+		StatusCode: 401,
+		Headers:    map[string]string{"content-type": "application/json"},
+		Body:       []byte(`{"error":"unauthorized"}`),
 	}
 }
 
@@ -507,7 +505,7 @@ func BenchmarkTranslateRequestHeaderActions(b *testing.B) {
 		{
 			"WithHeaderMods",
 			[]executor.RequestHeaderPolicyResult{
-				{PolicyName: "p1", PolicyVersion: "v1.0", Action: &policy.RequestHeaderAction{
+				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestHeaderModifications{
 					Set:    map[string]string{"x-added": "val1", "x-added2": "val2"},
 					Remove: []string{"x-remove-me"},
 				}, Skipped: false},
@@ -516,10 +514,10 @@ func BenchmarkTranslateRequestHeaderActions(b *testing.B) {
 		{
 			"MultiplePolicesWithMods",
 			[]executor.RequestHeaderPolicyResult{
-				{PolicyName: "p1", PolicyVersion: "v1.0", Action: &policy.RequestHeaderAction{
+				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestHeaderModifications{
 					Set: map[string]string{"x-p1": "v1"},
 				}, Skipped: false},
-				{PolicyName: "p2", PolicyVersion: "v1.0", Action: &policy.RequestHeaderAction{
+				{PolicyName: "p2", PolicyVersion: "v1.0", Action: policy.UpstreamRequestHeaderModifications{
 					Set:    map[string]string{"x-p2": "v2"},
 					Remove: []string{"x-p1"},
 				}, Skipped: false},

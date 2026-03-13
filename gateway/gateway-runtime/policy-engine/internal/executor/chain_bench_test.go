@@ -116,21 +116,21 @@ func (e *sometimesFalseCELEvaluator) EvaluateStreamingResponseCondition(_ string
 type passthroughRequestPolicy struct{}
 
 func (p *passthroughRequestPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{}
+	return policy.UpstreamRequestHeaderModifications{}
 }
 
 // passthroughResponsePolicy implements ResponseHeaderPolicy with no modifications.
 type passthroughResponsePolicy struct{}
 
 func (p *passthroughResponsePolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
-	return policy.ResponseHeaderAction{}
+	return policy.DownstreamResponseHeaderModifications{}
 }
 
 // headerModifyRequestPolicy adds headers to the request.
 type headerModifyRequestPolicy struct{}
 
 func (p *headerModifyRequestPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{
+	return policy.UpstreamRequestHeaderModifications{
 		Set:    map[string]string{"x-bench-header": "bench-value"},
 		Append: map[string][]string{"x-multi": {"v1", "v2"}},
 	}
@@ -140,7 +140,7 @@ func (p *headerModifyRequestPolicy) OnRequestHeaders(_ *policy.RequestHeaderCont
 type headerModifyResponsePolicy struct{}
 
 func (p *headerModifyResponsePolicy) OnResponseHeaders(_ *policy.ResponseHeaderContext) policy.ResponseHeaderAction {
-	return policy.ResponseHeaderAction{
+	return policy.DownstreamResponseHeaderModifications{
 		Set: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
@@ -149,12 +149,10 @@ func (p *headerModifyResponsePolicy) OnResponseHeaders(_ *policy.ResponseHeaderC
 type shortCircuitRequestPolicy struct{}
 
 func (p *shortCircuitRequestPolicy) OnRequestHeaders(_ *policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{
-		ImmediateResponse: &policy.ImmediateResponse{
-			StatusCode: 401,
-			Headers:    map[string]string{"content-type": "application/json"},
-			Body:       []byte(`{"error":"unauthorized"}`),
-		},
+	return policy.ImmediateResponse{
+		StatusCode: 401,
+		Headers:    map[string]string{"content-type": "application/json"},
+		Body:       []byte(`{"error":"unauthorized"}`),
 	}
 }
 

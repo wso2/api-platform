@@ -38,7 +38,7 @@ const (
 
 	// BodyModeStreamed delivers the body as individual chunks via FULL_DUPLEX_STREAMED mode.
 	// Used only when every body-processing policy in the chain implements the
-	// corresponding streaming interface (StreamingRequestBodyPolicy or StreamingResponseBodyPolicy).
+	// corresponding streaming interface (StreamingRequestPolicy or StreamingResponsePolicy).
 	BodyModeStreamed
 )
 
@@ -60,8 +60,8 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 	// Track whether any policy actually needs body access, to avoid incorrectly
 	// setting SupportsXStreaming when no body policies exist at all.
-	hasRequestBodyPolicy := false
-	hasResponseBodyPolicy := false
+	hasRequestPolicy := false
+	hasResponsePolicy := false
 
 	// Build policy list and compute body requirements via type assertions
 	for _, spec := range policySpecs {
@@ -103,7 +103,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		// Request body: any body-accessing policy requires delivery
 		if hasReqBody || hasStreamingReqBody {
 			chain.RequiresRequestBody = true
-			hasRequestBodyPolicy = true
+			hasRequestPolicy = true
 			// A buffered-only policy forces the entire chain to BUFFERED mode
 			if !hasStreamingReqBody {
 				chain.SupportsRequestStreaming = false
@@ -113,7 +113,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		// Response body: any body-accessing policy requires delivery
 		if hasRespBody || hasStreamingRespBody {
 			chain.RequiresResponseBody = true
-			hasResponseBodyPolicy = true
+			hasResponsePolicy = true
 			// A buffered-only policy forces the entire chain to BUFFERED mode,
 			// preserving the ability to return ImmediateResponse before the client
 			// sees any bytes.
@@ -124,10 +124,10 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 	}
 
 	// Clear streaming flags when no body policies exist — there is nothing to stream
-	if !hasRequestBodyPolicy {
+	if !hasRequestPolicy {
 		chain.SupportsRequestStreaming = false
 	}
-	if !hasResponseBodyPolicy {
+	if !hasResponsePolicy {
 		chain.SupportsResponseStreaming = false
 	}
 

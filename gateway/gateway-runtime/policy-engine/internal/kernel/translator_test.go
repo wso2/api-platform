@@ -416,7 +416,7 @@ func TestTranslateRequestHeaderActions_WithSetHeaders(t *testing.T) {
 		Results: []executor.RequestHeaderPolicyResult{
 			{
 				Skipped: false,
-				Action: &policy.RequestHeaderAction{
+				Action: policy.UpstreamRequestHeaderModifications{
 					Set: map[string]string{"x-custom": "value"},
 				},
 			},
@@ -453,11 +453,11 @@ func TestTranslateRequestBodyActions_WithBodyModification(t *testing.T) {
 	}
 
 	result := &executor.RequestBodyExecutionResult{
-		Results: []executor.RequestBodyPolicyResult{
+		Results: []executor.RequestPolicyResult{
 			{
 				Skipped: false,
-				Action: &policy.RequestAction{
-					BodyMutation: []byte("modified body"),
+				Action: policy.UpstreamRequestModifications{
+					Body: []byte("modified body"),
 				},
 			},
 		},
@@ -499,14 +499,12 @@ func TestTranslateRequestHeaderActions_ShortCircuit(t *testing.T) {
 
 	result := &executor.RequestHeaderExecutionResult{
 		ShortCircuited: true,
-		FinalAction: &policy.RequestHeaderAction{
-			ImmediateResponse: &policy.ImmediateResponse{
-				StatusCode: 403,
-				Headers: map[string]string{
-					"content-type": "application/json",
-				},
-				Body: []byte(`{"error":"forbidden"}`),
+		FinalAction: policy.ImmediateResponse{
+			StatusCode: 403,
+			Headers: map[string]string{
+				"content-type": "application/json",
 			},
+			Body: []byte(`{"error":"forbidden"}`),
 		},
 	}
 
@@ -536,7 +534,7 @@ func TestTranslateRequestHeaderActions_SkippedPolicy(t *testing.T) {
 		Results: []executor.RequestHeaderPolicyResult{
 			{
 				Skipped: true,
-				Action: &policy.RequestHeaderAction{
+				Action: policy.UpstreamRequestHeaderModifications{
 					Set: map[string]string{"should-not-appear": "value"},
 				},
 			},
@@ -586,7 +584,7 @@ func TestTranslateStreamingResponseChunkAction_WithMutation(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	action := policy.ResponseChunkAction{BodyMutation: []byte("mutated")}
+	action := policy.ResponseChunkAction{Body: []byte("mutated")}
 	result := &executor.StreamingResponseExecutionResult{FinalAction: &action}
 	original := &policy.StreamBody{Chunk: []byte("original")}
 
@@ -605,7 +603,7 @@ func TestTranslateStreamingResponseChunkAction_FinalActionNilMutation_UsesOrigin
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	action := policy.ResponseChunkAction{BodyMutation: nil}
+	action := policy.ResponseChunkAction{Body: nil}
 	result := &executor.StreamingResponseExecutionResult{FinalAction: &action}
 	original := &policy.StreamBody{Chunk: []byte("original")}
 
@@ -663,7 +661,7 @@ func TestTranslateStreamingRequestChunkAction_WithMutation(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	action := policy.RequestChunkAction{BodyMutation: []byte("mutated")}
+	action := policy.RequestChunkAction{Body: []byte("mutated")}
 	result := &executor.StreamingRequestExecutionResult{FinalAction: &action}
 	original := &policy.StreamBody{Chunk: []byte("original")}
 
@@ -681,7 +679,7 @@ func TestTranslateStreamingRequestChunkAction_FinalActionNilMutation_UsesOrigina
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	action := policy.RequestChunkAction{BodyMutation: nil}
+	action := policy.RequestChunkAction{Body: nil}
 	result := &executor.StreamingRequestExecutionResult{FinalAction: &action}
 	original := &policy.StreamBody{Chunk: []byte("original")}
 

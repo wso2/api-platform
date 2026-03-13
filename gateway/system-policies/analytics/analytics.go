@@ -13,6 +13,11 @@ import (
 )
 
 const (
+	// analyticsStreamAccumulatorKey is the ctx.Metadata key used to accumulate raw
+	// response bytes across streaming chunks. Prefixed with "_" to signal it is
+	// internal and must not be forwarded to analytics publishers.
+	analyticsStreamAccumulatorKey = "analytics:_stream_accumulator"
+
 	// API Kinds
 	KindAsyncsse       = "async/sse"
 	KindAsyncwebsocket = "async/websocket"
@@ -53,7 +58,9 @@ var (
 )
 
 // AnalyticsPolicy implements the default analytics data collection process.
-type AnalyticsPolicy struct{}
+type AnalyticsPolicy struct {
+	allowPayloads bool
+}
 
 type McpRequestAnalyticsProperties struct {
 	JsonRpcMethod  string         `json:"jsonRpcMethod,omitempty"`
@@ -96,35 +103,23 @@ type LLMProviderAnalyticsInfo struct {
 	ResponseModel       *string // Model name from response
 }
 
-var ins = &AnalyticsPolicy{}
-
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return ins, nil
+	return &AnalyticsPolicy{
+		allowPayloads: getAllowPayloadsFlag(params),
+	}, nil
 }
 
-// Mode returns the processing mode for this policy
-func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
-	// For now analytics will go through all the headers and body to collect the analytics data.
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeBuffer,
-		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeBuffer,
-	}
-}
-
-// OnRequest performs Analytics collection process during the request phase
-func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	slog.Debug("Analytics system policy: OnRequest called")
-	allowPayloads := getAllowPayloadsFlag(params)
+// OnRequestBody performs Analytics collection process during the request phase
+func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext) policy.RequestAction {
+	slog.Debug("Analytics system policy: OnRequestBody called")
 	// Store tokenInfo in analytics metadata for publishing
 	analyticsMetadata := make(map[string]any)
 
 	// When allow_payloads is enabled, capture the raw request body into analytics metadata.
-	if allowPayloads && ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
+	if a.allowPayloads && ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
 		slog.Debug("Capturing request payload for analytics")
 		analyticsMetadata["request_payload"] = string(ctx.Body.Content)
 	}
@@ -204,7 +199,7 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 			AnalyticsMetadata: analyticsMetadata,
 		}
 	}
-	return nil
+	return policy.UpstreamRequestModifications{}
 }
 
 // getTemplateByHandle retrieves a template from the lazy resource cache by its handle
@@ -237,10 +232,9 @@ func getTemplateByHandle(templateHandle string) (map[string]interface{}, error) 
 	return resource.Resource, nil
 }
 
-// OnRequest performs Analytics collection process during the response phase
-func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	slog.Debug("Analytics system policy: OnResponse called")
-	allowPayloads := getAllowPayloadsFlag(params)
+// OnResponseBody performs Analytics collection process during the response phase
+func (p *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext) policy.ResponseAction {
+	slog.Debug("Analytics system policy: OnResponseBody called")
 
 	// Store tokenInfo in analytics metadata for publishing
 	analyticsMetadata := make(map[string]any)
@@ -291,30 +285,7 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 						"providerName", tokenInfo.ProviderName,
 						"providerDisplayName", tokenInfo.ProviderDisplayName,
 					)
-
-					// Token-related metadata
-					if tokenInfo.PromptTokens != nil {
-						analyticsMetadata[PromptTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.PromptTokens, 10)
-					}
-					if tokenInfo.CompletionTokens != nil {
-						analyticsMetadata[CompletionTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.CompletionTokens, 10)
-					}
-					if tokenInfo.TotalTokens != nil {
-						analyticsMetadata[TotalTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.TotalTokens, 10)
-					}
-					if tokenInfo.ResponseModel != nil {
-						analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.ResponseModel
-					} else if tokenInfo.RequestModel != nil {
-						// Fallback to request model if response model is not available
-						analyticsMetadata[ModelIDMetadataKey] = *tokenInfo.RequestModel
-					}
-					if tokenInfo.ProviderName != nil {
-						analyticsMetadata[AIProviderNameMetadataKey] = *tokenInfo.ProviderName
-					}
-					if tokenInfo.ProviderDisplayName != nil {
-						analyticsMetadata[AIProviderDisplayNameMetadataKey] = *tokenInfo.ProviderDisplayName
-					}
-
+					applyTokenInfoToMetadata(tokenInfo, analyticsMetadata)
 				}
 			}
 		}
@@ -393,7 +364,7 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 	}
 
 	// Optionally capture request and response payloads when enabled.
-	if allowPayloads {
+	if p.allowPayloads {
 		if ctx != nil && ctx.ResponseBody != nil && len(ctx.ResponseBody.Content) > 0 {
 			slog.Debug("Capturing response payload for analytics")
 			analyticsMetadata["response_payload"] = string(ctx.ResponseBody.Content)
@@ -402,12 +373,118 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 
 	// Return modifications with analytics metadata (including headers if available)
 	if len(analyticsMetadata) > 0 {
-		return policy.UpstreamResponseModifications{
+		return policy.DownstreamResponseModifications{
 			AnalyticsMetadata: analyticsMetadata,
 		}
 	}
 
-	return nil
+	return policy.DownstreamResponseModifications{}
+}
+
+// NeedsMoreResponseData always returns false so analytics never delays other policies
+// (e.g. pii-masking) from processing their chunks. Accumulation happens internally
+// inside OnResponseBodyChunk via ctx.Metadata.
+func (p *AnalyticsPolicy) NeedsMoreResponseData(_ []byte) bool {
+	return false
+}
+
+// OnResponseBodyChunk accumulates streaming response chunks and emits analytics
+// metadata on the final chunk (EndOfStream). The body content is never mutated.
+func (p *AnalyticsPolicy) OnResponseBodyChunk(ctx *policy.ResponseStreamContext, chunk *policy.StreamBody) policy.ResponseChunkAction {
+	if chunk == nil {
+		return policy.ResponseChunkAction{}
+	}
+
+	// Append incoming bytes to the in-flight accumulator stored in shared metadata.
+	if len(chunk.Chunk) > 0 {
+		existing, _ := ctx.Metadata[analyticsStreamAccumulatorKey].([]byte)
+		ctx.Metadata[analyticsStreamAccumulatorKey] = append(existing, chunk.Chunk...)
+	}
+
+	if !chunk.EndOfStream {
+		return policy.ResponseChunkAction{}
+	}
+
+	// Final chunk: extract analytics from the fully accumulated response.
+	accumulated, _ := ctx.Metadata[analyticsStreamAccumulatorKey].([]byte)
+	delete(ctx.Metadata, analyticsStreamAccumulatorKey)
+
+	analyticsMetadata := make(map[string]any)
+
+	// User ID from auth context (same logic as buffered path).
+	for authCtx := ctx.SharedContext.AuthContext; authCtx != nil; authCtx = authCtx.Previous {
+		if authCtx.Authenticated && authCtx.Subject != "" {
+			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
+			break
+		}
+	}
+
+	switch ctx.SharedContext.APIKind {
+	case KindLlmProvider, KindLlmProxy:
+		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
+		if ok && templateHandle != "" {
+			template, err := getTemplateByHandle(templateHandle)
+			if err != nil {
+				slog.Warn("Analytics: streaming: failed to get template",
+					"templateHandle", templateHandle, "error", err)
+			} else {
+				// For SSE streams find the JSON chunk that carries token usage.
+				responseJSON := extractResponseJSONFromSSE(accumulated)
+				var reqBody []byte
+				if ctx.RequestBody != nil {
+					reqBody = ctx.RequestBody.Content
+				}
+				tokenInfo, err := extractLLMProviderAnalyticsInfoFromBodies(
+					template, responseJSON, reqBody, ctx.RequestHeaders, ctx.ResponseHeaders,
+				)
+				if err != nil {
+					slog.Warn("Analytics: streaming: failed to extract LLM token info", "error", err)
+				} else if tokenInfo != nil {
+					slog.Debug("Analytics: streaming: extracted LLM token info",
+						"promptTokens", tokenInfo.PromptTokens,
+						"completionTokens", tokenInfo.CompletionTokens,
+						"totalTokens", tokenInfo.TotalTokens,
+						"responseModel", tokenInfo.ResponseModel,
+					)
+					applyTokenInfoToMetadata(tokenInfo, analyticsMetadata)
+				}
+			}
+		}
+	case KindMCP:
+		if len(accumulated) > 0 {
+			responseContent := accumulated
+			if jsonData, err := parseSSEResponse(accumulated); err == nil {
+				responseContent = jsonData
+			}
+			var mcpResponsePayload map[string]interface{}
+			if err := json.Unmarshal(responseContent, &mcpResponsePayload); err == nil {
+				serverInfoDetails := McpServerInfoDetails{
+					Name:    extractStringFromJsonpath(mcpResponsePayload, ServerInfoNameJsonPath),
+					Version: extractStringFromJsonpath(mcpResponsePayload, ServerInfoVersionJsonPath),
+				}
+				serverInfo := McpServerInfo{
+					ProtocolVersion: extractStringFromJsonpath(mcpResponsePayload, ServerProtocolVersionJsonPath),
+				}
+				if serverInfoDetails.Name != "" || serverInfoDetails.Version != "" {
+					serverInfo.ServerInfo = &serverInfoDetails
+				}
+				if serverInfo.ProtocolVersion != "" || serverInfo.ServerInfo != nil {
+					if data, err := json.Marshal(serverInfo); err == nil {
+						analyticsMetadata["mcp_server_info"] = string(data)
+					}
+				}
+			}
+		}
+	}
+
+	if p.allowPayloads && len(accumulated) > 0 {
+		analyticsMetadata["response_payload"] = string(accumulated)
+	}
+
+	if len(analyticsMetadata) == 0 {
+		return policy.ResponseChunkAction{}
+	}
+	return policy.ResponseChunkAction{AnalyticsMetadata: analyticsMetadata}
 }
 
 // parseSSEResponse parses Server-Sent Events format and extracts the JSON from the data field
@@ -423,9 +500,26 @@ func parseSSEResponse(sseContent []byte) ([]byte, error) {
 	return nil, fmt.Errorf("no data field found in SSE response")
 }
 
-// extractLLMTokenInfo extracts the LLM token information from the response and request bodies
-// template is expected to be a map[string]interface{} from the lazy resource cache
+// extractLLMProviderAnalyticsInfo extracts LLM analytics info from a buffered ResponseContext.
 func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *policy.ResponseContext) (*LLMProviderAnalyticsInfo, error) {
+	var respBody, reqBody []byte
+	if ctx.ResponseBody != nil {
+		respBody = ctx.ResponseBody.Content
+	}
+	if ctx.RequestBody != nil {
+		reqBody = ctx.RequestBody.Content
+	}
+	return extractLLMProviderAnalyticsInfoFromBodies(template, respBody, reqBody, ctx.RequestHeaders, ctx.ResponseHeaders)
+}
+
+// extractLLMProviderAnalyticsInfoFromBodies is the core extraction logic operating on
+// raw byte slices. Used by both the buffered (OnResponseBody) and streaming
+// (OnResponseBodyChunk) paths so the logic is never duplicated.
+func extractLLMProviderAnalyticsInfoFromBodies(
+	template map[string]interface{},
+	responseBody, requestBody []byte,
+	requestHeaders, responseHeaders *policy.Headers,
+) (*LLMProviderAnalyticsInfo, error) {
 	if template == nil {
 		return nil, fmt.Errorf("template is nil")
 	}
@@ -435,20 +529,18 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 		return nil, fmt.Errorf("template spec is not a map")
 	}
 
-	// Parse the response and request bodies
 	var responseJSON map[string]interface{}
-	if ctx.ResponseBody != nil && ctx.ResponseBody.Content != nil {
-		_ = json.Unmarshal(ctx.ResponseBody.Content, &responseJSON)
+	if responseBody != nil {
+		_ = json.Unmarshal(responseBody, &responseJSON)
 	}
 
 	var requestJSON map[string]interface{}
-	if ctx.RequestBody != nil && ctx.RequestBody.Content != nil {
-		_ = json.Unmarshal(ctx.RequestBody.Content, &requestJSON)
+	if requestBody != nil {
+		_ = json.Unmarshal(requestBody, &requestJSON)
 	}
 
 	info := &LLMProviderAnalyticsInfo{}
 
-	// Helper closure
 	extract := func(field string, fromRequest bool) (interface{}, error) {
 		fieldCfg, ok := spec[field].(map[string]interface{})
 		if !ok {
@@ -475,17 +567,17 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 			return utils.ExtractValueFromJsonpath(src, identifier)
 		case "header":
 			if fromRequest {
-				if ctx.RequestHeaders == nil {
+				if requestHeaders == nil {
 					return nil, fmt.Errorf("request headers missing")
 				}
-				if v := ctx.RequestHeaders.Get(identifier); len(v) > 0 {
+				if v := requestHeaders.Get(identifier); len(v) > 0 {
 					return v[0], nil
 				}
 			} else {
-				if ctx.ResponseHeaders == nil {
+				if responseHeaders == nil {
 					return nil, fmt.Errorf("response headers missing")
 				}
-				if v := ctx.ResponseHeaders.Get(identifier); len(v) > 0 {
+				if v := responseHeaders.Get(identifier); len(v) > 0 {
 					return v[0], nil
 				}
 			}
@@ -495,7 +587,6 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 		}
 	}
 
-	// Extract numeric fields
 	if v, err := extract("promptTokens", false); err == nil {
 		if i, err := convertToInt64(v); err == nil {
 			info.PromptTokens = &i
@@ -516,7 +607,6 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 			info.RemainingTokens = &i
 		}
 	}
-	// Extract model fields
 	if v, err := extract("requestModel", true); err == nil {
 		if s, ok := v.(string); ok {
 			info.RequestModel = &s
@@ -533,17 +623,66 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 			info.ProviderName = &nameVal
 		}
 	}
-
 	if displayName, ok := spec["displayName"].(string); ok && strings.TrimSpace(displayName) != "" {
-		// If ai:providername not set yet, fall back to displayName
 		if info.ProviderName == nil {
 			info.ProviderName = &displayName
 		}
-		// Also expose display name separately for potential consumers
 		info.ProviderDisplayName = &displayName
 	}
 
 	return info, nil
+}
+
+// applyTokenInfoToMetadata writes LLMProviderAnalyticsInfo fields into an analytics
+// metadata map. Shared by both the buffered and streaming response paths.
+func applyTokenInfoToMetadata(tokenInfo *LLMProviderAnalyticsInfo, metadata map[string]any) {
+	if tokenInfo.PromptTokens != nil {
+		metadata[PromptTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.PromptTokens, 10)
+	}
+	if tokenInfo.CompletionTokens != nil {
+		metadata[CompletionTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.CompletionTokens, 10)
+	}
+	if tokenInfo.TotalTokens != nil {
+		metadata[TotalTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.TotalTokens, 10)
+	}
+	if tokenInfo.ResponseModel != nil {
+		metadata[ModelIDMetadataKey] = *tokenInfo.ResponseModel
+	} else if tokenInfo.RequestModel != nil {
+		metadata[ModelIDMetadataKey] = *tokenInfo.RequestModel
+	}
+	if tokenInfo.ProviderName != nil {
+		metadata[AIProviderNameMetadataKey] = *tokenInfo.ProviderName
+	}
+	if tokenInfo.ProviderDisplayName != nil {
+		metadata[AIProviderDisplayNameMetadataKey] = *tokenInfo.ProviderDisplayName
+	}
+}
+
+// extractResponseJSONFromSSE scans all SSE data lines in accumulated bytes and returns
+// the raw JSON of the last line that carries a non-null "usage" field.
+// Falls back to the last valid JSON chunk when no usage-bearing line is found
+// (still useful for model-ID extraction from the first chunk).
+func extractResponseJSONFromSSE(accumulated []byte) []byte {
+	var lastJSON []byte
+	for _, line := range strings.Split(string(accumulated), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			continue
+		}
+		var obj map[string]interface{}
+		if json.Unmarshal([]byte(data), &obj) != nil {
+			continue
+		}
+		if usage, ok := obj["usage"]; ok && usage != nil {
+			return []byte(data) // prefer the chunk that carries token counts
+		}
+		lastJSON = []byte(data)
+	}
+	return lastJSON
 }
 
 // convertToInt64 converts various numeric types to int64

@@ -42,14 +42,14 @@ type HeaderModifyingPolicy struct {
 
 // OnRequestHeaders returns modifications to set the configured header.
 func (p *HeaderModifyingPolicy) OnRequestHeaders(*policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{
+	return policy.UpstreamRequestHeaderModifications{
 		Set: map[string]string{p.Key: p.Value},
 	}
 }
 
 // OnResponseHeaders returns modifications to set the configured header.
 func (p *HeaderModifyingPolicy) OnResponseHeaders(*policy.ResponseHeaderContext) policy.ResponseHeaderAction {
-	return policy.ResponseHeaderAction{
+	return policy.DownstreamResponseHeaderModifications{
 		Set: map[string]string{p.Key: p.Value},
 	}
 }
@@ -67,11 +67,9 @@ type ShortCircuitingPolicy struct {
 
 // OnRequestHeaders returns an ImmediateResponse to short-circuit the request.
 func (p *ShortCircuitingPolicy) OnRequestHeaders(*policy.RequestHeaderContext) policy.RequestHeaderAction {
-	return policy.RequestHeaderAction{
-		ImmediateResponse: &policy.ImmediateResponse{
-			StatusCode: p.StatusCode,
-			Body:       p.Body,
-		},
+	return policy.ImmediateResponse{
+		StatusCode: p.StatusCode,
+		Body:       p.Body,
 	}
 }
 
@@ -92,7 +90,7 @@ func (m *ConfigurableMockPolicy) OnRequestHeaders(ctx *policy.RequestHeaderConte
 	if m.OnReqFn != nil {
 		return m.OnReqFn(ctx)
 	}
-	return policy.RequestHeaderAction{}
+	return policy.UpstreamRequestHeaderModifications{}
 }
 
 // OnResponseHeaders calls the configured callback or returns an empty action.
@@ -100,7 +98,7 @@ func (m *ConfigurableMockPolicy) OnResponseHeaders(ctx *policy.ResponseHeaderCon
 	if m.OnRespFn != nil {
 		return m.OnRespFn(ctx)
 	}
-	return policy.ResponseHeaderAction{}
+	return policy.DownstreamResponseHeaderModifications{}
 }
 
 // =============================================================================

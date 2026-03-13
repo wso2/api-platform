@@ -48,10 +48,10 @@ type StoredPolicyConfig struct {
 
 // ResourceHandler handles xDS resource updates
 type ResourceHandler struct {
-	kernel             *kernel.Kernel
-	registry           *registry.PolicyRegistry
-	configLoader       *kernel.ConfigLoader
-	apiKeyHandler      *APIKeyOperationHandler
+	kernel              *kernel.Kernel
+	registry            *registry.PolicyRegistry
+	configLoader        *kernel.ConfigLoader
+	apiKeyHandler       *APIKeyOperationHandler
 	lazyResourceHandler *LazyResourceHandler
 }
 
@@ -246,6 +246,12 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 	supportsResponseStreaming := true
 	hasExecutionConditions := false
 
+	slog.Debug("[chain-build] building policy chain",
+		"route", routeKey,
+		"api_name", apiMetadata.APIName,
+		"policy_count", len(config.Policies),
+	)
+
 	for _, policyConfig := range config.Policies {
 		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{
@@ -320,15 +326,15 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 	}
 
 	chain := &registry.PolicyChain{
-		Policies:             policyList,
-		PolicySpecs:          policySpecs,
-		RequiresRequestBody:  requiresRequestBody,
-		RequiresResponseBody: requiresResponseBody,
-		RequiresRequestHeader: requiresRequestHeader,
-		RequiresResponseHeader: requiresResponseHeader,
-		HasExecutionConditions:     hasExecutionConditions,
-		SupportsRequestStreaming:   supportsRequestStreaming,
-		SupportsResponseStreaming:  supportsResponseStreaming,
+		Policies:                  policyList,
+		PolicySpecs:               policySpecs,
+		RequiresRequestBody:       requiresRequestBody,
+		RequiresResponseBody:      requiresResponseBody,
+		RequiresRequestHeader:     requiresRequestHeader,
+		RequiresResponseHeader:    requiresResponseHeader,
+		HasExecutionConditions:    hasExecutionConditions,
+		SupportsRequestStreaming:  supportsRequestStreaming,
+		SupportsResponseStreaming: supportsResponseStreaming,
 	}
 
 	return chain, nil

@@ -53,8 +53,10 @@ type Mutations struct {
 // TranslateRequestHeaderActions converts a request-headers execution result to an ext_proc response.
 func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	// Short-circuit: ImmediateResponse from any policy
-	if result.ShortCircuited && result.FinalAction != nil && result.FinalAction.ImmediateResponse != nil {
-		return buildImmediateResponse(result.FinalAction.ImmediateResponse, execCtx)
+	if result.ShortCircuited {
+		if imm, ok := result.FinalAction.(policy.ImmediateResponse); ok {
+			return buildImmediateResponse(&imm, execCtx)
+		}
 	}
 
 	headerOps := make(map[string][]*headerOp)
@@ -68,12 +70,15 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		a := pr.Action
-		collectHeaderOps(headerOps, a.Set, a.Remove, a.Append)
+		mods, ok := pr.Action.(policy.UpstreamRequestHeaderModifications)
+		if !ok {
+			continue
+		}
+		collectHeaderOps(headerOps, mods.Set, mods.Remove, mods.Append)
 
-		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.requestHeaderCtx.Headers.GetAll())
-		mergeDynamicMetadata(dynamicMetadata, a.DynamicMetadata)
-		mergeDynamicMetadata(execCtx.dynamicMetadata, a.DynamicMetadata)
+		mergeAnalytics(analyticsData, execCtx, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter, execCtx.requestHeaderCtx.Headers.GetAll())
+		mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
+		mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 	}
 
 	handleUpstreamRouting(headerOps, targetUpstreamName, pathMutation, dynamicMetadata, execCtx)
@@ -104,8 +109,10 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 
 // TranslateRequestBodyActions converts a request-body execution result to an ext_proc response.
 func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	if result.ShortCircuited && result.FinalAction != nil && result.FinalAction.ImmediateResponse != nil {
-		return buildImmediateResponse(result.FinalAction.ImmediateResponse, execCtx)
+	if result.ShortCircuited {
+		if imm, ok := result.FinalAction.(policy.ImmediateResponse); ok {
+			return buildImmediateResponse(&imm, execCtx)
+		}
 	}
 
 	headerOps := make(map[string][]*headerOp)
@@ -125,24 +132,27 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		a := pr.Action
+		a, ok := pr.Action.(policy.UpstreamRequestModifications)
+		if !ok {
+			continue
+		}
 
-		if a.BodyMutation != nil {
+		if a.Body != nil {
 			bodyMutation = &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{Body: a.BodyMutation},
+				Mutation: &extprocv3.BodyMutation_Body{Body: a.Body},
 			}
-			finalBodyLength = len(a.BodyMutation)
+			finalBodyLength = len(a.Body)
 			bodyModified = true
 		}
 
 		// Header mutations from body phase
-		if a.HeaderMutation != nil {
-			collectHeaderOps(headerOps, a.HeaderMutation.Set, a.HeaderMutation.Remove, a.HeaderMutation.Append)
+		if a.Header != nil {
+			collectHeaderOps(headerOps, a.Header.Set, a.Header.Remove, a.Header.Append)
 		}
 
-		if a.PathMutation != nil {
-			pathMutation = a.PathMutation
-			path = *a.PathMutation
+		if a.Path != nil {
+			pathMutation = a.Path
+			path = *a.Path
 		}
 		if a.QueryParametersToAdd != nil {
 			path = utils.AddQueryParametersToPath(path, a.QueryParametersToAdd)
@@ -152,9 +162,9 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 			path = utils.RemoveQueryParametersFromPath(path, a.QueryParametersToRemove)
 			pathMutation = &path
 		}
-		if a.MethodMutation != nil {
-			methodMutation = a.MethodMutation
-			headerOps[":method"] = append(headerOps[":method"], &headerOp{opType: "set", value: *a.MethodMutation})
+		if a.Method != nil {
+			methodMutation = a.Method
+			headerOps[":method"] = append(headerOps[":method"], &headerOp{opType: "set", value: *a.Method})
 		}
 		if a.UpstreamName != nil && *a.UpstreamName != "" {
 			targetUpstreamName = a.UpstreamName
@@ -223,12 +233,15 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		a := pr.Action
-		collectHeaderOps(headerOps, a.Set, a.Remove, a.Append)
+		mods, ok := pr.Action.(policy.DownstreamResponseHeaderModifications)
+		if !ok {
+			continue
+		}
+		collectHeaderOps(headerOps, mods.Set, mods.Remove, mods.Append)
 
-		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.responseHeaderCtx.ResponseHeaders.GetAll())
-		mergeDynamicMetadata(dynamicMetadata, a.DynamicMetadata)
-		mergeDynamicMetadata(execCtx.dynamicMetadata, a.DynamicMetadata)
+		mergeAnalytics(analyticsData, execCtx, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter, execCtx.responseHeaderCtx.ResponseHeaders.GetAll())
+		mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
+		mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 	}
 
 	mergeHeaderMutations(headerMutation, headerOps)
@@ -256,8 +269,10 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 
 // TranslateResponseBodyActions converts a response-body execution result to an ext_proc response.
 func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	if result.ShortCircuited && result.FinalAction != nil && result.FinalAction.ImmediateResponse != nil {
-		return buildImmediateResponse(result.FinalAction.ImmediateResponse, execCtx)
+	if result.ShortCircuited {
+		if imm, ok := result.FinalAction.(policy.ImmediateResponse); ok {
+			return buildImmediateResponse(&imm, execCtx)
+		}
 	}
 
 	headerOps := make(map[string][]*headerOp)
@@ -280,13 +295,16 @@ func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, 
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		a := pr.Action
+		a, ok := pr.Action.(policy.DownstreamResponseModifications)
+		if !ok {
+			continue
+		}
 
-		if a.BodyMutation != nil {
+		if a.Body != nil {
 			bodyMutation = &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{Body: a.BodyMutation},
+				Mutation: &extprocv3.BodyMutation_Body{Body: a.Body},
 			}
-			finalBodyLength = len(a.BodyMutation)
+			finalBodyLength = len(a.Body)
 			bodyModified = true
 		}
 
@@ -300,8 +318,8 @@ func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, 
 		}
 
 		// Header mutations from body phase
-		if a.HeaderMutation != nil {
-			collectHeaderOps(headerOps, a.HeaderMutation.Set, a.HeaderMutation.Remove, a.HeaderMutation.Append)
+		if a.Header != nil {
+			collectHeaderOps(headerOps, a.Header.Set, a.Header.Remove, a.Header.Append)
 		}
 
 		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.responseBodyCtx.ResponseHeaders.GetAll())
@@ -353,8 +371,8 @@ func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, 
 func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	var outputBody []byte
 
-	if result.FinalAction != nil && result.FinalAction.BodyMutation != nil {
-		outputBody = result.FinalAction.BodyMutation
+	if result.FinalAction != nil && result.FinalAction.Body != nil {
+		outputBody = result.FinalAction.Body
 	} else {
 		outputBody = originalChunk.Chunk
 	}
@@ -417,8 +435,8 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecutionResult, originalChunk *policy.StreamBody, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	var outputBody []byte
 
-	if result.FinalAction != nil && result.FinalAction.BodyMutation != nil {
-		outputBody = result.FinalAction.BodyMutation
+	if result.FinalAction != nil && result.FinalAction.Body != nil {
+		outputBody = result.FinalAction.Body
 	} else {
 		outputBody = originalChunk.Chunk
 	}

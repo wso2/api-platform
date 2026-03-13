@@ -130,6 +130,11 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 	supportsRequestStreaming := true
 	supportsResponseStreaming := true
 
+	slog.Debug("[chain-build] building policy chain (file mode)",
+		"route", routeKey,
+		"policy_count", len(config.Policies),
+	)
+
 	for _, policyConfig := range config.Policies {
 		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{

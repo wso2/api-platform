@@ -6,10 +6,10 @@ package policyv1alpha
 // once, at startup, with zero per-request overhead.
 //
 // Mode selection rules (evaluated at chain-build time):
-//   - If ALL response-body policies implement StreamingResponseBodyPolicy →
+//   - If ALL response-body policies implement StreamingResponsePolicy →
 //     kernel upgrades Envoy to FULL_DUPLEX_STREAMED at response-headers phase
 //     when streaming indicators are detected in the upstream response.
-//   - If ANY response-body policy implements only ResponseBodyPolicy →
+//   - If ANY response-body policy implements only ResponsePolicy →
 //     entire chain is forced to BUFFERED mode, preserving the ability to
 //     return ImmediateResponse before the client sees any bytes.
 type Policy interface{}
