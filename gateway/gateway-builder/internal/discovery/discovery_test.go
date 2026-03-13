@@ -907,8 +907,6 @@ func TestParsePipPackageRef_EmptyPackageName(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid pipPackage format")
 }
 
-// ==== Fingerprint-based discovery tests ====
-
 func TestParsePipPackageRef_WithCredentialedIndex(t *testing.T) {
 	pkg, version, indexURL, err := ParsePipPackageRef("my-policy==1.0.0@https://user:token@pypi.private.com/simple")
 
@@ -919,7 +917,6 @@ func TestParsePipPackageRef_WithCredentialedIndex(t *testing.T) {
 }
 
 // ==== Fingerprint-based discovery tests ====
-
 func TestDiscoverPoliciesFromBuildFile_PythonAutoDetect(t *testing.T) {
 	tmpDir := t.TempDir()
 
