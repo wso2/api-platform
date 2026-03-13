@@ -140,26 +140,11 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
 	}
 
-	// Collect endpoint URL override from metadata
+	// Declare override variables
 	var endpointURL *string
 	var needsOverride bool
 	var vhostMainOverridden bool
 	var vhostSandboxOverridden bool
-	if req.Metadata != nil {
-		if v, exists := metadata["endpointUrl"]; exists {
-			eu, ok := v.(string)
-			if !ok {
-				return nil, fmt.Errorf("invalid endpoint URL in metadata: expected string, got %T", v)
-			}
-			if eu != "" {
-				if err := validateEndpointURL(eu); err != nil {
-					return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
-				}
-				endpointURL = &eu
-				needsOverride = true
-			}
-		}
-	}
 
 	// Determine vhost values.
 	// For "current" base: default to sentinel so the gateway resolves and persists its defaults.
@@ -190,23 +175,50 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		}
 	}
 
-	if req.Vhost != nil {
-		// Apply only the fields explicitly provided; leave others at their current value.
-		if req.Vhost.Main != nil && *req.Vhost.Main != "" {
-			if !isValidVHostOrSentinel(*req.Vhost.Main) {
-				return nil, fmt.Errorf("invalid vhost.main value: %s", *req.Vhost.Main)
+	// Apply overrides from metadata (endpointUrl, vhostMain, vhostSandbox)
+	if req.Metadata != nil {
+		if v, exists := metadata["endpointUrl"]; exists {
+			eu, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid endpoint URL in metadata: expected string, got %T", v)
 			}
-			vhostMain = *req.Vhost.Main
-			vhostMainOverridden = true
-			needsOverride = true
+			if eu != "" {
+				if err := validateEndpointURL(eu); err != nil {
+					return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
+				}
+				endpointURL = &eu
+				needsOverride = true
+			}
 		}
-		if req.Vhost.Sandbox != nil && *req.Vhost.Sandbox != "" {
-			if !isValidVHostOrSentinel(*req.Vhost.Sandbox) {
-				return nil, fmt.Errorf("invalid vhost.sandbox value: %s", *req.Vhost.Sandbox)
+
+		if v, exists := metadata["vhostMain"]; exists {
+			vm, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid vhostMain in metadata: expected string, got %T", v)
 			}
-			vhostSandbox = req.Vhost.Sandbox
-			vhostSandboxOverridden = true
-			needsOverride = true
+			if vm != "" {
+				if !isValidVHostOrSentinel(vm) {
+					return nil, fmt.Errorf("invalid vhostMain in metadata: %s", vm)
+				}
+				vhostMain = vm
+				vhostMainOverridden = true
+				needsOverride = true
+			}
+		}
+
+		if v, exists := metadata["vhostSandbox"]; exists {
+			vs, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid vhostSandbox in metadata: expected string, got %T", v)
+			}
+			if vs != "" {
+				if !isValidVHostOrSentinel(vs) {
+					return nil, fmt.Errorf("invalid vhostSandbox in metadata: %s", vs)
+				}
+				vhostSandbox = &vs
+				vhostSandboxOverridden = true
+				needsOverride = true
+			}
 		}
 	}
 
@@ -819,23 +831,6 @@ func toAPIDeploymentResponse(
 	gatewayUUID := utils.ParseOpenAPIUUIDOrZero(gatewayID)
 	baseUUID := utils.ParseOptionalOpenAPIUUID(baseDeploymentID)
 
-	// Extract vhost from metadata and populate the response field.
-	var vhost *api.APIVhost
-	if vhostMainRaw, ok := metadata[constants.MetadataKeyVhostMain]; ok {
-		if vhostMainStr, ok := vhostMainRaw.(string); ok {
-			vhost = &api.APIVhost{Main: &vhostMainStr}
-			if vhostSandboxRaw, ok := metadata[constants.MetadataKeyVhostSandbox]; ok {
-				if vhostSandboxStr, ok := vhostSandboxRaw.(string); ok {
-					vhost.Sandbox = &vhostSandboxStr
-				} else {
-					slog.Warn("unexpected type for vhost_sandbox metadata", "type", fmt.Sprintf("%T", vhostSandboxRaw))
-				}
-			}
-		} else {
-			slog.Warn("unexpected type for vhost_main metadata", "type", fmt.Sprintf("%T", vhostMainRaw))
-		}
-	}
-
 	return &api.DeploymentResponse{
 		BaseDeploymentId: baseUUID,
 		CreatedAt:        createdAt,
@@ -845,6 +840,5 @@ func toAPIDeploymentResponse(
 		Name:             name,
 		Status:           api.DeploymentResponseStatus(status),
 		UpdatedAt:        updatedAt,
-		Vhost:            vhost,
 	}, nil
 }

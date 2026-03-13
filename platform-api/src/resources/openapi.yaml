@@ -3922,25 +3922,6 @@ components:
           readOnly: true
           example: "2023-10-12T10:30:00Z"
 
-    APIVhost:
-      title: API Virtual Host
-      description: >
-        Per-deployment virtual host override. Omit or use '_gateway_default_' to have the gateway
-        resolve and persist its current defaults. Values are always persisted so gateway restarts
-        do not affect existing deployments.
-      type: object
-      properties:
-        main:
-          type: string
-          description: Virtual host for production (main) traffic, or '_gateway_default_' to use the gateway's configured default
-          pattern: '^(_gateway_default_|[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*)$'
-          example: api.example.com
-        sandbox:
-          type: string
-          description: Virtual host for sandbox traffic, or '_gateway_default_' to use the gateway's configured default
-          pattern: '^(_gateway_default_|[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*)$'
-          example: sandbox-api.example.com
-
     RESTAPI:
       title: API object
       required:
@@ -5843,9 +5824,7 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional metadata for the deployment (e.g., endpointUrl overrides)
-        vhost:
-          $ref: '#/components/schemas/APIVhost'
+          description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 
     DeploymentResponse:
       type: object
@@ -5897,8 +5876,6 @@ components:
           format: date-time
           nullable: true
           description: Timestamp when the deployment status last changed (null for ARCHIVED deployments)
-        vhost:
-          $ref: '#/components/schemas/APIVhost'
 
     DeploymentListResponse:
       type: object
