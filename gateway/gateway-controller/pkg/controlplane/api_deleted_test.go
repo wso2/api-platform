@@ -103,9 +103,9 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
-func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+func (m *mockStorageForDeletion) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
-		if config.Handle == handle {
+		if config.Kind == kind && config.Handle == handle {
 			return config, nil
 		}
 	}
