@@ -589,9 +589,10 @@ paths:
         The gateway is identified from the API key token validation.
         
         Results are ordered by artifact kind to ensure dependencies are processed correctly:
-        1. RestAPI (no dependencies)
-        2. LLMProvider (no dependencies)
-        3. LLMProxy (depends on LLMProvider)
+        1. RestApi (no dependencies)
+        2. LlmProvider (no dependencies)
+        3. LlmProxy (depends on LlmProvider)
+        4. Mcp (no dependencies)
         
         **Authentication**: Requires `api-key` header with a valid gateway token.
       operationId: GetGatewayDeployments
@@ -773,6 +774,16 @@ paths:
                 code: 404
                 message: "Not Found"
                 description: "Gateway not found"
+        '406':
+          description: Not Acceptable - Accept header must be application/x-tar+gzip
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 406
+                message: "Not Acceptable"
+                description: "This endpoint only supports Accept: application/x-tar+gzip"
         '500':
           description: Internal server error
           content:
@@ -843,10 +854,11 @@ components:
           type: string
           description: Artifact type
           enum:
-            - RestAPI
-            - LLMProvider
-            - LLMProxy
-          example: "RestAPI"
+            - RestApi
+            - LlmProvider
+            - LlmProxy
+            - Mcp
+          example: "RestApi"
         state:
           type: string
           description: Deployment state
@@ -868,7 +880,7 @@ components:
       properties:
         deployments:
           type: array
-          description: List of deployments ordered by kind (RestAPI -> LLMProvider -> LLMProxy)
+          description: List of deployments ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp)
           items:
             $ref: '#/components/schemas/GatewayDeploymentInfo'
 

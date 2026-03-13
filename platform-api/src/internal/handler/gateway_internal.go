@@ -373,6 +373,13 @@ func (h *GatewayInternalAPIHandler) BatchFetchDeployments(c *gin.Context) {
 		return
 	}
 
+	// Enforce Accept header - only application/x-tar+gzip is supported
+	if accept := c.GetHeader("Accept"); accept != "application/x-tar+gzip" {
+		c.JSON(http.StatusNotAcceptable, utils.NewErrorResponse(406, "Not Acceptable",
+			"This endpoint only supports Accept: application/x-tar+gzip"))
+		return
+	}
+
 	// Parse request body
 	var req dto.BatchDeploymentsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
