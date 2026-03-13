@@ -474,35 +474,7 @@ func validateEndpointURL(endpointURL string) error {
 	return nil
 }
 
-// overrideEndpointURL parses the deployment YAML, overrides the upstream URL, and returns modified bytes
-func overrideEndpointURL(contentBytes []byte, newURL string) ([]byte, error) {
-	var apiDeployment dto.APIDeploymentYAML
 
-	// Parse existing YAML
-	if err := yaml.Unmarshal(contentBytes, &apiDeployment); err != nil {
-		return nil, fmt.Errorf("failed to parse deployment YAML: %w", err)
-	}
-
-	// Ensure upstream section exists
-	if apiDeployment.Spec.Upstream == nil {
-		apiDeployment.Spec.Upstream = &dto.UpstreamYAML{}
-	}
-
-	// Override main upstream URL (production endpoint)
-	if apiDeployment.Spec.Upstream.Main == nil {
-		apiDeployment.Spec.Upstream.Main = &dto.UpstreamTarget{}
-	}
-	apiDeployment.Spec.Upstream.Main.URL = newURL
-	apiDeployment.Spec.Upstream.Main.Ref = "" // Clear ref if URL is set
-
-	// Serialize back to YAML
-	modifiedBytes, err := yaml.Marshal(&apiDeployment)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal modified YAML: %w", err)
-	}
-
-	return modifiedBytes, nil
-}
 
 // isValidVHostOrSentinel returns true if vhost is the gateway-default sentinel or a valid RFC 1035 hostname.
 func isValidVHostOrSentinel(vhost string) bool {

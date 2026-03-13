@@ -99,7 +99,8 @@ type InitializeResult struct {
 
 type MCPUtils struct{}
 
-func (u *MCPUtils) GenerateMCPDeploymentYAML(proxy *model.MCPProxy) (string, error) {
+// BuildMCPDeploymentYAML builds the deployment YAML struct without marshalling.
+func (u *MCPUtils) BuildMCPDeploymentYAML(proxy *model.MCPProxy) (*model.MCPProxyDeploymentYAML, error) {
 
 	contextValue := "/"
 	if proxy.Configuration.Context != nil && *proxy.Configuration.Context != "" {
@@ -143,14 +144,20 @@ func (u *MCPUtils) GenerateMCPDeploymentYAML(proxy *model.MCPProxy) (string, err
 		}
 	}
 
-	// Convert to YAML
-	yamlBytes, err := yaml.Marshal(mcpDeploymentYaml)
+	return &mcpDeploymentYaml, nil
+}
+
+// GenerateMCPDeploymentYAML creates the deployment YAML string.
+func (u *MCPUtils) GenerateMCPDeploymentYAML(proxy *model.MCPProxy) (string, error) {
+	d, err := u.BuildMCPDeploymentYAML(proxy)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal API to YAML: %w", err)
+		return "", err
 	}
-
+	yamlBytes, err := yaml.Marshal(d)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal MCP proxy to YAML: %w", err)
+	}
 	return string(yamlBytes), nil
-
 }
 
 // FetchMCPServerInfo fetches server information from an MCP backend including tools, prompts, resources, and server info
