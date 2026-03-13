@@ -219,7 +219,15 @@ def get_policy(metadata: PolicyMetadata, params: Dict[str, Any]) -> Policy:
         )
         separator = "-"
 
-    max_length = int(params.get("maxLength", 0))
+    try:
+        max_length = int(params.get("maxLength", 0))
+    except (ValueError, TypeError):
+        logger.warning(
+            "get_policy: maxLength %r is invalid, treating as unlimited", 
+            params.get("maxLength")
+        )
+        max_length = 0
+
     if max_length < 0:
         logger.warning(
             "get_policy: maxLength %d is negative, treating as unlimited", max_length

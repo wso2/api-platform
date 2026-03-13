@@ -98,6 +98,7 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
+	defer os.RemoveAll(downloadDir)
 
 	pipSpec := fmt.Sprintf("%s==%s", pkgName, version)
 	args := []string{"download", "--no-deps", pipSpec, "-d", downloadDir}
@@ -115,7 +116,6 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 
 	pipExe, prefixArgs := resolvePipExecutable()
 	if pipExe == "" {
-		os.RemoveAll(downloadDir)
 		return nil, fmt.Errorf("no pip executable found (tried pip3, pip, python3 -m pip): ensure pip or python3 is installed")
 	}
 
@@ -126,7 +126,6 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		os.RemoveAll(downloadDir)
 		sanitizedStderr := stderr.String()
 		if indexURL != "" {
 			sanitizedStderr = strings.ReplaceAll(sanitizedStderr, indexURL, sanitizedIndexURL)
@@ -139,19 +138,16 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 
 	whlPath, err := findWheelFile(downloadDir)
 	if err != nil {
-		os.RemoveAll(downloadDir)
 		return nil, fmt.Errorf("failed to find wheel for %s: %w", pipSpec, err)
 	}
 
 	topLevelModule, err := readTopLevelFromWheel(whlPath)
 	if err != nil {
-		os.RemoveAll(downloadDir)
 		return nil, fmt.Errorf("failed to read top_level.txt from wheel for %s: %w", pipSpec, err)
 	}
 
 	extractDir, err := extractModuleFromWheel(whlPath, topLevelModule)
 	if err != nil {
-		os.RemoveAll(downloadDir)
 		return nil, fmt.Errorf("failed to extract policy source from wheel for %s: %w", pipSpec, err)
 	}
 

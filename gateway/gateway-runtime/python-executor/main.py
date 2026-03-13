@@ -29,6 +29,17 @@ import sys
 from executor.server import PythonExecutorServer
 
 
+def positive_int(value):
+    """Validate that the value is a positive integer."""
+    try:
+        ivalue = int(value)
+        if ivalue <= 0:
+            raise ValueError
+        return ivalue
+    except (ValueError, TypeError):
+        raise argparse.ArgumentTypeError(f"'{value}' is not a positive integer")
+
+
 def _parse_args():
     """Parse CLI flags. Environment variables are used as defaults so that
     docker-entrypoint.sh can pass --py.* overrides that take precedence."""
@@ -40,14 +51,14 @@ def _parse_args():
     )
     parser.add_argument(
         "--workers",
-        type=int,
-        default=int(os.environ.get("PYTHON_POLICY_WORKERS", "4")),
+        type=positive_int,
+        default=positive_int(os.environ.get("PYTHON_POLICY_WORKERS", "4")),
         help="Number of gRPC server workers (env: PYTHON_POLICY_WORKERS)",
     )
     parser.add_argument(
         "--max-concurrent",
-        type=int,
-        default=int(os.environ.get("PYTHON_POLICY_MAX_CONCURRENT", "100")),
+        type=positive_int,
+        default=positive_int(os.environ.get("PYTHON_POLICY_MAX_CONCURRENT", "100")),
         help="Max concurrent policy executions (env: PYTHON_POLICY_MAX_CONCURRENT)",
     )
     parser.add_argument(
@@ -62,8 +73,8 @@ SOCKET_PATH = os.environ.get(
     "PYTHON_EXECUTOR_SOCKET",
     "/var/run/api-platform/python-executor.sock"
 )
-WORKER_COUNT = int(os.environ.get("PYTHON_POLICY_WORKERS", "4"))
-MAX_CONCURRENT = int(os.environ.get("PYTHON_POLICY_MAX_CONCURRENT", "100"))
+WORKER_COUNT = positive_int(os.environ.get("PYTHON_POLICY_WORKERS", "4"))
+MAX_CONCURRENT = positive_int(os.environ.get("PYTHON_POLICY_MAX_CONCURRENT", "100"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info").upper()
 
 
@@ -111,10 +122,21 @@ async def main():
 
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_event_loop()
+    shutdown_task = None
 
     def signal_handler():
-        logger.info("Received shutdown signal")
-        asyncio.create_task(server.shutdown())
+        nonlocal shutdown_task
+        if shutdown_task is None or shutdown_task.done():
+            logger.info("Received shutdown signal")
+            shutdown_task = asyncio.create_task(server.shutdown())
+            
+            def on_shutdown_done(task):
+                try:
+                    task.result()
+                except Exception as e:
+                    logger.error(f"Error during shutdown: {e}")
+                    
+            shutdown_task.add_done_callback(on_shutdown_done)
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
@@ -125,7 +147,10 @@ async def main():
     except asyncio.CancelledError:
         logger.info("Server cancelled")
     finally:
-        await server.shutdown()
+        if shutdown_task is not None:
+            await shutdown_task
+        else:
+            await server.shutdown()
 
 
 if __name__ == "__main__":

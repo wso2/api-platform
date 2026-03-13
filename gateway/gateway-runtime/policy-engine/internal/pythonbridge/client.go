@@ -97,13 +97,12 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 		var d net.Dialer
 		return d.DialContext(ctx, "unix", addr)
 	}
-
-	conn, err := grpc.Dial(
+	conn, err := grpc.DialContext(
+		ctx,
 		sm.socketPath,
 		grpc.WithContextDialer(dialer),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
-		grpc.WithTimeout(10*time.Second),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to dial Python Executor: %w", err)
@@ -186,8 +185,17 @@ func (sm *StreamManager) handleDisconnect() {
 
 	// Signal error to all pending requests
 	sm.pendingMu.Lock()
+	pendingCopied := make(map[string]chan *proto.ExecutionResponse, len(sm.pendingReqs))
 	for reqID, ch := range sm.pendingReqs {
-		ch <- &proto.ExecutionResponse{
+		pendingCopied[reqID] = ch
+	}
+	// Clear the original map
+	clear(sm.pendingReqs)
+	sm.pendingMu.Unlock()
+
+	for reqID, ch := range pendingCopied {
+		select {
+		case ch <- &proto.ExecutionResponse{
 			RequestId: reqID,
 			Result: &proto.ExecutionResponse_Error{
 				Error: &proto.ExecutionError{
@@ -196,10 +204,10 @@ func (sm *StreamManager) handleDisconnect() {
 					PolicyName: "unknown",
 				},
 			},
+		}:
+		default:
 		}
-		delete(sm.pendingReqs, reqID)
 	}
-	sm.pendingMu.Unlock()
 }
 
 // Execute sends a request to the Python Executor and waits for the response.
@@ -225,7 +233,6 @@ func (sm *StreamManager) Execute(ctx context.Context, req *proto.ExecutionReques
 		sm.pendingMu.Lock()
 		delete(sm.pendingReqs, req.RequestId)
 		sm.pendingMu.Unlock()
-		close(respCh)
 	}()
 
 	// Send request (protected by send mutex)

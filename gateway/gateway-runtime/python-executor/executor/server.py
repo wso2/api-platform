@@ -55,6 +55,10 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
             f"max_concurrent={max_concurrent}"
         )
 
+    def close(self):
+        """Shutdown the thread pool executor."""
+        self._executor.shutdown(wait=True)
+
     # ------------------------------------------------------------------ #
     #  InitPolicy — called once per route during chain building           #
     # ------------------------------------------------------------------ #
@@ -178,13 +182,12 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
 
         async def process_request(request: proto.ExecutionRequest) -> None:
             try:
-                async with concurrency_limit:
-                    loop = asyncio.get_event_loop()
-                    response = await loop.run_in_executor(
-                        self._executor,
-                        self._execute_policy,
-                        request,
-                    )
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    self._executor,
+                    self._execute_policy,
+                    request,
+                )
             except Exception as e:
                 logger.exception(
                     f"Error executing policy {request.policy_name}:{request.policy_version}"
@@ -192,14 +195,19 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                 response = self._error_response(
                     request.request_id, e, request.policy_name, request.policy_version
                 )
+            
             async with response_ready:
                 response_deque.append(response)
-                in_flight.discard(asyncio.current_task())
                 response_ready.notify()
+            
+            # Remove from in_flight and release semaphore
+            in_flight.discard(asyncio.current_task())
+            concurrency_limit.release()
 
         async def reader() -> None:
             try:
                 async for request in request_iterator:
+                    await concurrency_limit.acquire()
                     task = asyncio.create_task(process_request(request))
                     in_flight.add(task)
             except asyncio.CancelledError:
@@ -338,6 +346,8 @@ class PythonExecutorServer:
         self.server: Optional[aio.Server] = None
         self._loader = PolicyLoader()
         self._store = PolicyInstanceStore()
+        self._servicer: Optional[PythonExecutorServicer] = None
+        self._aio_worker_executor: Optional[futures.ThreadPoolExecutor] = None
 
     async def start(self):
         """Start the server."""
@@ -346,18 +356,19 @@ class PythonExecutorServer:
         loaded_count = self._loader.load_policies()
         logger.info(f"Loaded {loaded_count} policy factories")
 
+        self._aio_worker_executor = futures.ThreadPoolExecutor(max_workers=self.worker_count)
         self.server = aio.server(
-            migration_thread_pool=futures.ThreadPoolExecutor(max_workers=self.worker_count),
+            migration_thread_pool=self._aio_worker_executor,
             options=[
                 ('grpc.max_send_message_length', 50 * 1024 * 1024),
                 ('grpc.max_receive_message_length', 50 * 1024 * 1024),
             ],
         )
 
-        servicer = PythonExecutorServicer(
+        self._servicer = PythonExecutorServicer(
             self._loader, self._store, self.worker_count, self.max_concurrent
         )
-        proto_grpc.add_PythonExecutorServiceServicer_to_server(servicer, self.server)
+        proto_grpc.add_PythonExecutorServiceServicer_to_server(self._servicer, self.server)
 
         if os.path.exists(self.socket_path):
             os.remove(self.socket_path)
@@ -382,6 +393,13 @@ class PythonExecutorServer:
             except Exception as e:
                 logger.warning(f"Error closing policy instance during shutdown: {e}")
 
+        if self._servicer:
+            self._servicer.close()
+
         if self.server:
             await self.server.stop(grace=5)
+            
+        if self._aio_worker_executor:
+            self._aio_worker_executor.shutdown(wait=True)
+
         logger.info("Python Executor shutdown complete")
