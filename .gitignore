@@ -127,3 +127,4 @@ platform-api/src/resources/openapi_with_binding.yaml
 
 # Gateway
 gateway/gateway-runtime/target
+scripts/verify-llm-cost.py
