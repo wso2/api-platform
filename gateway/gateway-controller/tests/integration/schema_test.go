@@ -283,7 +283,7 @@ func TestSchemaInitializationIdempotent(t *testing.T) {
 	defer db2.Close()
 
 	// Verify configuration still exists
-	retrieved, err := db2.GetConfigByKindAndHandle(models.KindRestApi,"IdempotentAPI-v1.0")
+	retrieved, err := db2.GetConfigByKindAndHandle(models.KindRestApi, "IdempotentAPI-v1.0")
 	assert.NoError(t, err)
 	assert.NotNil(t, retrieved)
 	assert.Equal(t, cfg.UUID, retrieved.UUID)

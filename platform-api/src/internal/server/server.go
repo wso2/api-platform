@@ -164,7 +164,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, llmTemplateSeeder, cfg, slogger)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
-	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo)
+	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, devPortalRepo, publicationRepo,
 		subscriptionPlanRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, slogger)
@@ -220,6 +220,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
 	appHandler := handler.NewApplicationHandler(appService)
+	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)

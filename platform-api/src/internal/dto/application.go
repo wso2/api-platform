@@ -59,15 +59,21 @@ type AddApplicationAPIKeysRequest struct {
 	ApiKeyIds []string `json:"apiKeyIds"`
 }
 
+type AssociatedEntityResponse struct {
+	Handle string `json:"handle"`
+	Kind   string `json:"kind"`
+}
+
 type MappedAPIKeyResponse struct {
-	Id         string     `json:"id"`
-	Name       string     `json:"name"`
-	ArtifactId string     `json:"artifactId"`
-	Status     *string    `json:"status,omitempty"`
-	CreatedBy  *string    `json:"createdBy,omitempty"`
-	CreatedAt  *time.Time `json:"createdAt,omitempty"`
-	UpdatedAt  *time.Time `json:"updatedAt,omitempty"`
-	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
+	KeyId            string                   `json:"keyId"`
+	AssociatedEntity AssociatedEntityResponse `json:"associated_entity"`
+	ApiKeyUuid       string                   `json:"-"`
+	ArtifactId       string                   `json:"-"`
+	Status           *string                  `json:"status,omitempty"`
+	UserId           *string                  `json:"userId,omitempty"`
+	CreatedAt        *time.Time               `json:"createdAt,omitempty"`
+	UpdatedAt        *time.Time               `json:"updatedAt,omitempty"`
+	ExpiresAt        *time.Time               `json:"expiresAt,omitempty"`
 }
 
 type MappedAPIKeyListResponse struct {

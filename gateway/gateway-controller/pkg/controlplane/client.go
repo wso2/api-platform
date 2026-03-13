@@ -798,6 +798,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleMCPProxyUndeploymentEvent(event)
 	case "mcpproxy.deleted":
 		c.handleMCPProxyDeletedEvent(event)
+	case "application.updated":
+		c.handleApplicationUpdatedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -2259,6 +2261,83 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		return
 	}
 	logger.Info("Successfully processed API key updated event")
+}
+
+// handleApplicationUpdatedEvent handles application mapping update events from platform-api.
+func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		baseLogger.Error("Failed to marshal application updated event for parsing",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var evt ApplicationUpdatedEvent
+	if err := json.Unmarshal(eventBytes, &evt); err != nil {
+		baseLogger.Error("Failed to parse application updated event",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	if evt.Payload.ApplicationId == "" {
+		baseLogger.Error("Application updated event missing required application_id",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+	if evt.Payload.ApplicationName == "" {
+		baseLogger.Error("Application updated event missing required application_name",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	logger := baseLogger.With(
+		slog.String("correlation_id", evt.CorrelationID),
+		slog.String("application_id", evt.Payload.ApplicationId),
+	)
+
+	resolvedMappings := make([]*models.ApplicationAPIKeyMapping, 0, len(evt.Payload.Mappings))
+
+	for _, mapping := range evt.Payload.Mappings {
+		if mapping.ApiKeyUuid == "" {
+			logger.Error("Invalid application mapping entry in event",
+				slog.String("api_key_uuid", mapping.ApiKeyUuid),
+			)
+			return
+		}
+
+		apiKey, err := c.db.GetAPIKeyByUUID(mapping.ApiKeyUuid)
+		if err != nil {
+			logger.Error("Failed to resolve API key for application mapping",
+				slog.String("api_key_uuid", mapping.ApiKeyUuid),
+				slog.Any("error", err),
+			)
+			return
+		}
+
+		resolvedMappings = append(resolvedMappings, &models.ApplicationAPIKeyMapping{
+			ApplicationID:   evt.Payload.ApplicationId,
+			ApplicationName: evt.Payload.ApplicationName,
+			APIKeyID:        apiKey.ID,
+		})
+	}
+
+	if err := c.db.ReplaceApplicationAPIKeyMappings(evt.Payload.ApplicationId, resolvedMappings); err != nil {
+		logger.Error("Failed to persist application key mappings", slog.Any("error", err))
+		return
+	}
+
+	logger.Info("Successfully processed application updated event", slog.Int("mapping_count", len(resolvedMappings)))
 }
 
 // calculateNextRetryDelay calculates the next retry delay with exponential backoff and jitter

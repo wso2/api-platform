@@ -1271,6 +1271,60 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	return &apiKey, nil
 }
 
+// GetAPIKeyByUUID retrieves an API key by its platform UUID
+func (s *sqlStore) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	query := `
+		SELECT id, api_key_uuid, name, api_key, masked_api_key, apiId, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
+		       provisioned_by, allowed_targets
+		FROM api_keys
+		WHERE api_key_uuid = ? AND gateway_id = ?
+		LIMIT 1
+	`
+
+	var apiKey models.APIKey
+	var expiresAt sql.NullTime
+	var externalRefId sql.NullString
+	var provisionedBy sql.NullString
+
+	err := s.queryRow(query, uuid, s.gatewayId).Scan(
+		&apiKey.ID,
+		&apiKey.APIKeyUUID,
+		&apiKey.Name,
+		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
+		&apiKey.APIId,
+		&apiKey.Status,
+		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
+		&apiKey.UpdatedAt,
+		&expiresAt,
+		&apiKey.Source,
+		&externalRefId,
+		&provisionedBy,
+		&apiKey.AllowedTargets,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: key not found", ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed to query API key by UUID: %w", err)
+	}
+
+	if expiresAt.Valid {
+		apiKey.ExpiresAt = &expiresAt.Time
+	}
+	if externalRefId.Valid {
+		apiKey.ExternalRefId = &externalRefId.String
+	}
+	if provisionedBy.Valid {
+		apiKey.ProvisionedBy = &provisionedBy.String
+	}
+
+	return &apiKey, nil
+}
+
 // GetAPIKeyByKey retrieves an API key by its key value
 func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `
@@ -1515,6 +1569,64 @@ func (s *sqlStore) RemoveAPIKeyAPIAndName(apiId, name string) error {
 	s.logger.Info("API key removed successfully",
 		slog.String("artifact_uuid", apiId),
 		slog.String("name", name))
+
+	return nil
+}
+
+// ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
+func (s *sqlStore) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		}
+	}()
+
+	if _, err = tx.ExecQ(`
+		DELETE FROM application_api_keys
+		WHERE application_id = ?
+	`, applicationID); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed to clear application mappings: %w", err)
+	}
+
+	seen := make(map[string]struct{})
+	now := time.Now()
+
+	for _, mapping := range mappings {
+		if mapping == nil {
+			continue
+		}
+		if mapping.ApplicationID == "" || mapping.ApplicationName == "" || mapping.APIKeyID == "" {
+			_ = tx.Rollback()
+			return fmt.Errorf("invalid application mapping payload")
+		}
+
+		composite := mapping.ApplicationID + ":" + mapping.APIKeyID
+		if _, exists := seen[composite]; exists {
+			continue
+		}
+		seen[composite] = struct{}{}
+
+		if _, err = tx.ExecQ(`
+			INSERT INTO application_api_keys (
+				application_id, application_name, api_key_id, created_at, updated_at
+			)
+			VALUES (?, ?, ?, ?, ?)
+		`, mapping.ApplicationID, mapping.ApplicationName, mapping.APIKeyID, now, now); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("failed to insert application mapping: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit application mapping transaction: %w", err)
+	}
 
 	return nil
 }
