@@ -11,7 +11,6 @@ use (
 	./gateway/sample-policies/count-letters
 	./gateway/sample-policies/uppercase-body
 	./gateway/system-policies/analytics
-	./gateway/system-policies/llm-cost
 	./platform-api/src
 	./samples/sample-service
 	./sdk
