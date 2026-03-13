@@ -1785,8 +1785,8 @@ func TestApplyStructOverrides(t *testing.T) {
 		if d.Spec.Vhosts == nil {
 			t.Fatal("expected vhosts to be set")
 		}
-		if d.Spec.Vhosts.Main != "api.example.com" {
-			t.Errorf("main = %q, want %q", d.Spec.Vhosts.Main, "api.example.com")
+		if d.Spec.Vhosts.Main == nil || *d.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("main = %v, want %q", d.Spec.Vhosts.Main, "api.example.com")
 		}
 		if d.Spec.Vhosts.Sandbox == nil || *d.Spec.Vhosts.Sandbox != "sandbox.example.com" {
 			t.Errorf("sandbox = %v, want %q", d.Spec.Vhosts.Sandbox, "sandbox.example.com")
@@ -1799,7 +1799,7 @@ func TestApplyStructOverrides(t *testing.T) {
 		}
 		main := "_gateway_default_"
 		applyStructOverrides(d, nil, &main, nil)
-		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main != "_gateway_default_" {
+		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main == nil || *d.Spec.Vhosts.Main != "_gateway_default_" {
 			t.Errorf("expected sentinel, got %v", d.Spec.Vhosts)
 		}
 		if d.Spec.Vhosts.Sandbox != nil {
@@ -1821,7 +1821,7 @@ func TestApplyStructOverrides(t *testing.T) {
 		if d.Spec.Upstream.Main.URL != "https://new.example.com/api" {
 			t.Errorf("URL = %q, want %q", d.Spec.Upstream.Main.URL, "https://new.example.com/api")
 		}
-		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main != "api.example.com" {
+		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main == nil || *d.Spec.Vhosts.Main != "api.example.com" {
 			t.Errorf("expected vhost main, got %v", d.Spec.Vhosts)
 		}
 	})
@@ -1877,8 +1877,8 @@ spec:
 		if parsed.Spec.Vhosts == nil {
 			t.Fatal("expected vhosts to remain set")
 		}
-		if parsed.Spec.Vhosts.Main != "old-main.example.com" {
-			t.Errorf("main = %q, want %q", parsed.Spec.Vhosts.Main, "old-main.example.com")
+		if parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
+			t.Errorf("main = %v, want %q", parsed.Spec.Vhosts.Main, "old-main.example.com")
 		}
 		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
 			t.Errorf("sandbox = %v, want %q", parsed.Spec.Vhosts.Sandbox, "old-sandbox.example.com")
@@ -1895,7 +1895,7 @@ spec:
 		if err := yaml.Unmarshal(result, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
-		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main != "api.example.com" {
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "api.example.com" {
 			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
 		}
 		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
@@ -1919,8 +1919,8 @@ spec:
 		if parsed.Spec.Vhosts == nil {
 			t.Fatal("expected vhosts to remain set")
 		}
-		if parsed.Spec.Vhosts.Main != "old-main.example.com" {
-			t.Errorf("main should be preserved, got %q", parsed.Spec.Vhosts.Main)
+		if parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
+			t.Errorf("main should be preserved, got %v", parsed.Spec.Vhosts.Main)
 		}
 		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
 			t.Errorf("expected sandbox override, got %v", parsed.Spec.Vhosts.Sandbox)
@@ -1942,7 +1942,7 @@ spec:
 		if parsed.Spec.Upstream.Main.URL != "https://new.example.com/api" {
 			t.Errorf("URL = %q, want %q", parsed.Spec.Upstream.Main.URL, "https://new.example.com/api")
 		}
-		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main != "api.example.com" {
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "api.example.com" {
 			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
 		}
 		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
@@ -1962,7 +1962,7 @@ spec:
 		if parsed.Spec.Upstream.Main.URL != "http://backend:8080" {
 			t.Errorf("upstream URL should be unchanged, got %q", parsed.Spec.Upstream.Main.URL)
 		}
-		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main != "old-main.example.com" {
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
 			t.Errorf("vhost main should remain unchanged, got %v", parsed.Spec.Vhosts)
 		}
 		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {

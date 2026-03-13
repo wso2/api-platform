@@ -124,7 +124,7 @@ type DeploymentMetadata struct {
 
 // Vhosts represents per-API virtual host overrides in the deployment YAML
 type Vhosts struct {
-	Main    string  `yaml:"main"`
+	Main    *string `yaml:"main,omitempty"`
 	Sandbox *string `yaml:"sandbox,omitempty"`
 }
 

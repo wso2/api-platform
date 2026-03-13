@@ -538,13 +538,18 @@ func applyEndpointOverride(d *dto.APIDeploymentYAML, endpointURL *string) {
 }
 
 // applyStructOverrides mutates the deployment YAML struct directly for "current" flow.
-// It applies endpoint override and sets the full vhosts object when vhostMain is provided.
+// It applies endpoint override and selectively updates vhost fields when values are provided.
 func applyStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vhostMain *string, vhostSandbox *string) {
 	applyEndpointOverride(d, endpointURL)
-	if vhostMain != nil {
-		d.Spec.Vhosts = &dto.Vhosts{
-			Main:    *vhostMain,
-			Sandbox: vhostSandbox,
+	if (vhostMain != nil && *vhostMain != "") || (vhostSandbox != nil && *vhostSandbox != "") {
+		if d.Spec.Vhosts == nil {
+			d.Spec.Vhosts = &dto.Vhosts{}
+		}
+		if vhostMain != nil && *vhostMain != "" {
+			d.Spec.Vhosts.Main = vhostMain
+		}
+		if vhostSandbox != nil && *vhostSandbox != "" {
+			d.Spec.Vhosts.Sandbox = vhostSandbox
 		}
 	}
 }
@@ -561,12 +566,12 @@ func applyBaseStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vho
 	if d.Spec.Vhosts == nil {
 		d.Spec.Vhosts = &dto.Vhosts{}
 		if vhostMain != nil {
-			d.Spec.Vhosts.Main = *vhostMain
+			d.Spec.Vhosts.Main = vhostMain
 		}
 	}
 
 	if vhostMainOverridden && vhostMain != nil {
-		d.Spec.Vhosts.Main = *vhostMain
+		d.Spec.Vhosts.Main = vhostMain
 	}
 	if vhostSandboxOverridden {
 		d.Spec.Vhosts.Sandbox = vhostSandbox

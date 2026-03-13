@@ -41,7 +41,7 @@ type API struct {
 }
 
 type VhostsConfig struct {
-	Main    string  `json:"main"`
+	Main    *string `json:"main,omitempty"`
 	Sandbox *string `json:"sandbox,omitempty"`
 }
 
