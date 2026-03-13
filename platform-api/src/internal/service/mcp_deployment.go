@@ -202,7 +202,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		}
 		if endpointURL != nil {
 			d.Spec.Upstream.URL = *endpointURL
-			s.slogger.Info("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {
@@ -231,7 +231,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal modified MCP deployment YAML: %w", err)
 			}
-			s.slogger.Info("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
 	}
 

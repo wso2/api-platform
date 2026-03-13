@@ -216,7 +216,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
 		}
 		if endpointURL != nil {
-			s.slogger.Info("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
 	} else {
 		// Start from base deployment bytes
@@ -228,7 +228,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
 			}
 			if endpointURL != nil {
-				s.slogger.Info("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+				s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 			}
 		}
 	}
