@@ -575,6 +575,226 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create MCP Proxy package"
 
+  # ==========================================
+  # Gateway Deployment Sync Endpoints
+  # ==========================================
+
+  /api/internal/v1/deployments:
+    get:
+      summary: List deployments for a gateway
+      description: |
+        Returns the list of deployments that should be active on a gateway.
+        Used by gateways to compare local state with platform-api state during startup sync.
+        
+        The gateway is identified from the API key token validation.
+        
+        Results are ordered by artifact kind to ensure dependencies are processed correctly:
+        1. RestApi (no dependencies)
+        2. LlmProvider (no dependencies)
+        3. LlmProxy (depends on LlmProvider)
+        4. Mcp (no dependencies)
+        
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: GetGatewayDeployments
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: |
+            ISO 8601 timestamp. When provided, returns only deployments updated after this timestamp.
+            Used for incremental sync to avoid fetching all deployments on every request.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-03-04T10:00:00Z"
+      responses:
+        '200':
+          description: List of deployments for the gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayDeploymentsResponse'
+        '400':
+          description: Bad request - Invalid since parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid 'since' parameter. Expected ISO 8601 format."
+        '401':
+          description: Unauthorized - Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "Gateway not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get deployments"
+
+  /api/internal/v1/deployments/batch:
+    post:
+      summary: Batch fetch deployment content
+      description: |
+        Fetches multiple deployment artifacts in a single request.
+        Returns a TAR.GZ archive containing deployment content organized by deployment ID.
+        
+        The gateway is identified from the API key token validation.
+        
+        **Archive Structure:**
+        ```
+        batch.tar.gz
+        ├── {deploymentId-1}/
+        │   └── api-{artifactId}.yaml           # RestApi
+        ├── {deploymentId-2}/
+        │   └── llm-provider-{artifactId}.yaml  # LlmProvider
+        ├── {deploymentId-3}/
+        │   └── llm-proxy-{artifactId}.yaml     # LlmProxy
+        └── {deploymentId-N}/
+            └── mcp-proxy-{artifactId}.yaml     # Mcp
+        ```
+        
+        The filename prefix is determined by the artifact kind:
+        - `api-{artifactId}.yaml` for `RestApi`
+        - `llm-provider-{artifactId}.yaml` for `LlmProvider`
+        - `llm-proxy-{artifactId}.yaml` for `LlmProxy`
+        - `mcp-proxy-{artifactId}.yaml` for `Mcp`
+        
+        This endpoint is used by gateways to efficiently fetch
+        multiple deployment artifacts that need to be updated locally.
+        
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: BatchFetchDeployments
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: Accept
+          in: header
+          required: true
+          description: Must be `application/x-tar+gzip`
+          schema:
+            type: string
+            enum:
+              - application/x-tar+gzip
+      requestBody:
+        description: List of deployment IDs to fetch
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchDeploymentsRequest'
+      responses:
+        '200':
+          description: TAR.GZ archive containing deployment content
+          content:
+            application/x-tar+gzip:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the TAR.GZ archive
+              schema:
+                type: string
+                example: 'attachment; filename="deployments-batch.tar.gz"'
+            Content-Length:
+              description: Size of the TAR.GZ archive in bytes
+              schema:
+                type: integer
+        '400':
+          description: Bad request - Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid request body"
+        '401':
+          description: Unauthorized - Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "Gateway not found"
+        '406':
+          description: Not Acceptable - Accept header must be application/x-tar+gzip
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 406
+                message: "Not Acceptable"
+                description: "This endpoint only supports Accept: application/x-tar+gzip"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to fetch deployment content"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -608,6 +828,79 @@ components:
         example: crer4354-jui52345-245vd-93fvk-137063
 
   schemas:
+    # ==========================================
+    # Gateway Deployment Sync Schemas
+    # ==========================================
+
+    GatewayDeploymentInfo:
+      type: object
+      description: Information about a single deployment for a gateway
+      required:
+        - artifactId
+        - deploymentId
+        - kind
+        - state
+        - deployedAt
+      properties:
+        artifactId:
+          type: string
+          description: Artifact identifier (REST API, LLM Provider, or LLM Proxy handle)
+          example: "weather-api"
+        deploymentId:
+          type: string
+          description: Unique deployment artifact ID
+          example: "dep-789"
+        kind:
+          type: string
+          description: Artifact type
+          enum:
+            - RestApi
+            - LlmProvider
+            - LlmProxy
+            - Mcp
+          example: "RestApi"
+        state:
+          type: string
+          description: Deployment state
+          enum:
+            - DEPLOYED
+            - UNDEPLOYED
+          example: "DEPLOYED"
+        deployedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the deployment action was performed
+          example: "2026-03-04T10:30:00Z"
+
+    GatewayDeploymentsResponse:
+      type: object
+      description: Response containing list of deployments for a gateway
+      required:
+        - deployments
+      properties:
+        deployments:
+          type: array
+          description: List of deployments ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp)
+          items:
+            $ref: '#/components/schemas/GatewayDeploymentInfo'
+
+    BatchDeploymentsRequest:
+      type: object
+      description: Request body for batch fetching deployment content
+      required:
+        - deploymentIds
+      properties:
+        deploymentIds:
+          type: array
+          description: List of deployment IDs to fetch content for
+          items:
+            type: string
+          example: ["dep-789", "dep-456", "dep-111"]
+
+    # ==========================================
+    # API Deployment Notification Schemas
+    # ==========================================
+
     APIDeploymentNotification:
       title: API deployment object
       required:
