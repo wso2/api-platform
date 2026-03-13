@@ -138,10 +138,10 @@ func generatePythonExecutorBase(srcDir string, outputDir string) error {
 
 // GeneratePythonArtifacts generates Python-specific build artifacts.
 // This includes:
-//   1. Copy each policy's Python source into output/python-policies/<name>/
-//   2. Generate python_policy_registry.py
-//   3. Merge requirements.txt files
-// This is called in addition to generatePythonExecutorBase when Python policies exist.
+//  1. Copy each local policy's Python source into output/python-executor/policies/<name>/
+//     (pip policies are skipped — they are installed by pip in the python-deps Docker stage)
+//  2. Generate python_policy_registry.py
+//  3. Merge requirements.txt files
 func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPolicy, outputDir string) error {
 	slog.Info("Generating Python artifacts",
 		"policyCount", len(pythonPolicies),
@@ -150,18 +150,32 @@ func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPo
 
 	pythonOutputDir := filepath.Join(outputDir, "python-executor")
 
-	// 1. Copy each policy's Python source
-	policiesDir := filepath.Join(pythonOutputDir, "policies")
-	if err := os.MkdirAll(policiesDir, 0755); err != nil {
-		return fmt.Errorf("failed to create policies directory: %w", err)
+	// 1. Copy local (filePath) policies only — pip policies are installed on the correct
+	//    platform by pip in the python-deps Docker stage.
+	hasLocalPolicies := false
+	for _, p := range pythonPolicies {
+		if !p.IsPipPackage {
+			hasLocalPolicies = true
+			break
+		}
 	}
 
-	for _, p := range pythonPolicies {
-		policyDestDir := filepath.Join(policiesDir, sanitizeModuleName(p.Name))
-		if err := copyDir(p.PythonSourceDir, policyDestDir); err != nil {
-			return fmt.Errorf("failed to copy Python policy %s: %w", p.Name, err)
+	if hasLocalPolicies {
+		policiesDir := filepath.Join(pythonOutputDir, "policies")
+		if err := os.MkdirAll(policiesDir, 0755); err != nil {
+			return fmt.Errorf("failed to create policies directory: %w", err)
 		}
-		slog.Debug("Copied Python policy", "name", p.Name, "dest", policyDestDir)
+
+		for _, p := range pythonPolicies {
+			if p.IsPipPackage {
+				continue
+			}
+			policyDestDir := filepath.Join(policiesDir, sanitizeModuleName(p.Name))
+			if err := copyDir(p.PythonSourceDir, policyDestDir); err != nil {
+				return fmt.Errorf("failed to copy Python policy %s: %w", p.Name, err)
+			}
+			slog.Debug("Copied local Python policy", "name", p.Name, "dest", policyDestDir)
+		}
 	}
 
 	// 2. Generate python_policy_registry.py
@@ -196,7 +210,9 @@ func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPo
 	return nil
 }
 
-// generatePythonRegistry generates the python_policy_registry.py file
+// generatePythonRegistry generates the python_policy_registry.py file.
+// For local (filePath) policies, the module path is "policies.<sanitized_name>.policy".
+// For pip policies, the module path uses the real top-level module name: "<top_level>.policy".
 func generatePythonRegistry(policies []*types.DiscoveredPolicy) string {
 	var sb strings.Builder
 
@@ -219,10 +235,17 @@ func generatePythonRegistry(policies []*types.DiscoveredPolicy) string {
 	sb.WriteString("PYTHON_POLICIES = {\n")
 
 	for _, p := range policies {
-		moduleName := sanitizeModuleName(p.Name)
 		majorVersion := strings.Split(p.Version, ".")[0]
 		key := fmt.Sprintf("%s:%s", p.Name, majorVersion)
-		modulePath := fmt.Sprintf("policies.%s.policy", moduleName)
+
+		var modulePath string
+		if p.IsPipPackage {
+			modulePath = fmt.Sprintf("%s.policy", p.PythonTopLevelModule)
+		} else {
+			moduleName := sanitizeModuleName(p.Name)
+			modulePath = fmt.Sprintf("policies.%s.policy", moduleName)
+		}
+
 		sb.WriteString(fmt.Sprintf("    \"%s\": \"%s\",\n", key, modulePath))
 	}
 
@@ -231,10 +254,14 @@ func generatePythonRegistry(policies []*types.DiscoveredPolicy) string {
 	return sb.String()
 }
 
-// mergeRequirements merges all policy requirements.txt files with base requirements
+// mergeRequirements merges all policy requirements with base requirements.
+// For local (filePath) policies, it reads requirements.txt from the source directory.
+// For pip policies, it adds the pip spec directly (pip handles transitive deps).
 func mergeRequirements(policies []*types.DiscoveredPolicy, baseRequirements string) (string, error) {
 	var allRequirements []string
 	seen := make(map[string]bool)
+	var extraIndexURLs []string
+	seenIndexURLs := make(map[string]bool)
 
 	// First add base requirements
 	if baseRequirements != "" {
@@ -251,19 +278,31 @@ func mergeRequirements(policies []*types.DiscoveredPolicy, baseRequirements stri
 		}
 	}
 
-	// Then add policy-specific requirements
 	for _, p := range policies {
+		if p.IsPipPackage {
+			// For pip packages, add the pip spec directly.
+			// pip will resolve all transitive dependencies from the package metadata.
+			if !seen[p.PipSpec] {
+				seen[p.PipSpec] = true
+				allRequirements = append(allRequirements, p.PipSpec)
+			}
+			if p.PipIndexURL != "" && !seenIndexURLs[p.PipIndexURL] {
+				seenIndexURLs[p.PipIndexURL] = true
+				extraIndexURLs = append(extraIndexURLs, p.PipIndexURL)
+			}
+			continue
+		}
+
+		// For local policies, read requirements.txt from the source directory
 		reqPath := filepath.Join(p.PythonSourceDir, "requirements.txt")
 		data, err := os.ReadFile(reqPath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				// Policy has no requirements.txt, skip
 				continue
 			}
 			return "", fmt.Errorf("failed to read requirements.txt for %s: %w", p.Name, err)
 		}
 
-		// Parse and deduplicate lines
 		lines := strings.Split(string(data), "\n")
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
@@ -277,7 +316,14 @@ func mergeRequirements(policies []*types.DiscoveredPolicy, baseRequirements stri
 		}
 	}
 
-	return strings.Join(allRequirements, "\n"), nil
+	// Prepend any extra index URLs so pip can find packages from private registries
+	var result []string
+	for _, url := range extraIndexURLs {
+		result = append(result, fmt.Sprintf("--extra-index-url %s", url))
+	}
+	result = append(result, allRequirements...)
+
+	return strings.Join(result, "\n"), nil
 }
 
 // sanitizeModuleName converts a policy name to a valid Python module name

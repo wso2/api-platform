@@ -19,9 +19,11 @@
 package discovery
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -32,39 +34,33 @@ import (
 
 // resolvePipExecutable returns the pip executable name and any required prefix
 // arguments. It probes the PATH in order: pip3 → pip → python3 -m pip.
-//
-// This is needed because different environments expose pip differently:
-//   - Debian/Ubuntu (and their Docker images): pip3 only
-//   - macOS system Python: pip3 only (pip is an alias that may differ)
-//   - PyPI-installed Python: both pip and pip3 available
-//   - Minimal containers: only python3 with -m pip
 func resolvePipExecutable() (exe string, prefixArgs []string) {
 	for _, candidate := range []string{"pip3", "pip"} {
 		if _, err := exec.LookPath(candidate); err == nil {
 			return candidate, nil
 		}
 	}
-	// Fallback: python3 -m pip
 	return "python3", []string{"-m", "pip"}
 }
 
 // PipPackageInfo contains resolved pip package information
 type PipPackageInfo struct {
-	Package  string // PyPI package name (e.g., "my-gateway-policy")
-	Version  string // Version (e.g., "1.0.0")
-	IndexURL string // Optional custom index URL
-	Dir      string // Local directory where the package was installed
+	Package        string // PyPI package name (e.g., "my-gateway-policy")
+	Version        string // Version (e.g., "1.0.0")
+	IndexURL       string // Optional custom index URL
+	PipSpec        string // Full pip specifier (e.g., "my-gateway-policy==1.0.0")
+	TopLevelModule string // Python module name from top_level.txt (e.g., "prompt_compression_policy")
+	Dir            string // Temp directory with extracted policy source (for build-time validation)
 }
 
-// FetchPipPackage downloads a Python policy package using pip.
+// FetchPipPackage downloads a Python policy wheel and extracts metadata.
 //
 // Format: "<package>==<version>[@<index-url>]"
 //
-// Examples:
-//   - "my-gateway-policy==1.0.0"
-//   - "my-org-auth-policy==2.3.0@https://pypi.my-company.com/simple"
-//
-// The package is installed into an isolated directory using pip install --target.
+// It uses "pip download --no-deps" to fetch only the wheel file, then reads
+// the top-level module name and policy source directly from the wheel (ZIP).
+// No compilation or dependency installation happens here — that is deferred
+// to the python-deps Docker stage where the target platform is correct.
 func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	slog.Info("Fetching pip package", "reference", pipPackage, "phase", "discovery")
 
@@ -73,30 +69,26 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 		return nil, err
 	}
 
-	// Create isolated install directory
-	installDir, err := os.MkdirTemp("", "pip-policy-*")
+	downloadDir, err := os.MkdirTemp("", "pip-download-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	// Build pip install command
 	pipSpec := fmt.Sprintf("%s==%s", pkgName, version)
-	args := []string{"install", pipSpec, "--target", installDir}
+	args := []string{"download", "--no-deps", pipSpec, "-d", downloadDir}
 	if indexURL != "" {
 		args = append(args, "--index-url", indexURL)
 	}
 
-	slog.Debug("Running pip install",
+	slog.Debug("Running pip download",
 		"package", pipSpec,
-		"target", installDir,
-		"indexURL", indexURL,
+		"target", downloadDir,
 		"phase", "discovery")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	pipExe, prefixArgs := resolvePipExecutable()
-	slog.Debug("Using pip executable", "exe", pipExe, "prefixArgs", prefixArgs, "phase", "discovery")
 	fullArgs := append(prefixArgs, args...)
 
 	cmd := exec.CommandContext(ctx, pipExe, fullArgs...)
@@ -104,51 +96,60 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		os.RemoveAll(installDir)
+		os.RemoveAll(downloadDir)
 		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("pip install timed out for %s", pipSpec)
+			return nil, fmt.Errorf("pip download timed out for %s", pipSpec)
 		}
-		return nil, fmt.Errorf("pip install failed for %s: %w; stderr: %s", pipSpec, err, stderr.String())
+		return nil, fmt.Errorf("pip download failed for %s: %w; stderr: %s", pipSpec, err, stderr.String())
 	}
 
-	// Find the policy directory inside the installed package.
-	// pip installs the package as a Python module — we look for the directory
-	// containing policy-definition.yaml.
-	policyDir, err := findPolicyDir(installDir)
+	whlPath, err := findWheelFile(downloadDir)
 	if err != nil {
-		os.RemoveAll(installDir)
-		return nil, fmt.Errorf("failed to locate policy in installed package %s: %w", pipSpec, err)
+		os.RemoveAll(downloadDir)
+		return nil, fmt.Errorf("failed to find wheel for %s: %w", pipSpec, err)
+	}
+
+	topLevelModule, err := readTopLevelFromWheel(whlPath)
+	if err != nil {
+		os.RemoveAll(downloadDir)
+		return nil, fmt.Errorf("failed to read top_level.txt from wheel for %s: %w", pipSpec, err)
+	}
+
+	extractDir, err := extractModuleFromWheel(whlPath, topLevelModule)
+	if err != nil {
+		os.RemoveAll(downloadDir)
+		return nil, fmt.Errorf("failed to extract policy source from wheel for %s: %w", pipSpec, err)
 	}
 
 	slog.Info("Successfully fetched pip package",
 		"package", pkgName,
 		"version", version,
-		"path", policyDir,
+		"topLevelModule", topLevelModule,
+		"extractDir", extractDir,
 		"phase", "discovery")
 
 	return &PipPackageInfo{
-		Package:  pkgName,
-		Version:  version,
-		IndexURL: indexURL,
-		Dir:      policyDir,
+		Package:        pkgName,
+		Version:        version,
+		IndexURL:       indexURL,
+		PipSpec:        pipSpec,
+		TopLevelModule: topLevelModule,
+		Dir:            extractDir,
 	}, nil
 }
 
 // ParsePipPackageRef parses a pip package reference.
 // Format: "<package>==<version>[@<index-url>]"
 func ParsePipPackageRef(ref string) (pkgName, version, indexURL string, err error) {
-	// Split off optional @<index-url> suffix
 	mainPart := ref
 	if idx := strings.LastIndex(ref, "@"); idx > 0 {
 		candidate := ref[idx+1:]
-		// Only treat as index URL if it looks like a URL (contains "://")
 		if strings.Contains(candidate, "://") {
 			indexURL = candidate
 			mainPart = ref[:idx]
 		}
 	}
 
-	// Split "package==version"
 	parts := strings.SplitN(mainPart, "==", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", "", fmt.Errorf("invalid pipPackage format, expected '<package>==<version>': %s", ref)
@@ -160,25 +161,129 @@ func ParsePipPackageRef(ref string) (pkgName, version, indexURL string, err erro
 	return pkgName, version, indexURL, nil
 }
 
-// findPolicyDir searches for a directory containing policy-definition.yaml
-// within the pip install target directory.
-func findPolicyDir(installDir string) (string, error) {
-	var found string
-	err := filepath.Walk(installDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && info.Name() == "policy-definition.yaml" {
-			found = filepath.Dir(path)
-			return filepath.SkipAll
-		}
-		return nil
-	})
+// findWheelFile finds the .whl file in the download directory.
+func findWheelFile(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read download directory: %w", err)
 	}
-	if found == "" {
-		return "", fmt.Errorf("no policy-definition.yaml found in installed package")
+
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".whl") {
+			return filepath.Join(dir, e.Name()), nil
+		}
 	}
-	return found, nil
+
+	return "", fmt.Errorf("no .whl file found in %s", dir)
+}
+
+// readTopLevelFromWheel reads the top-level module name from top_level.txt inside a wheel.
+func readTopLevelFromWheel(whlPath string) (string, error) {
+	r, err := zip.OpenReader(whlPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open wheel: %w", err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		if strings.HasSuffix(f.Name, ".dist-info/top_level.txt") {
+			rc, err := f.Open()
+			if err != nil {
+				return "", fmt.Errorf("failed to open top_level.txt: %w", err)
+			}
+			defer rc.Close()
+
+			data, err := io.ReadAll(rc)
+			if err != nil {
+				return "", fmt.Errorf("failed to read top_level.txt: %w", err)
+			}
+
+			module := strings.TrimSpace(string(data))
+			if module == "" {
+				return "", fmt.Errorf("top_level.txt is empty")
+			}
+			// Take only the first line (some packages list multiple modules)
+			if idx := strings.IndexByte(module, '\n'); idx >= 0 {
+				module = strings.TrimSpace(module[:idx])
+			}
+			return module, nil
+		}
+	}
+
+	return "", fmt.Errorf("top_level.txt not found in wheel")
+}
+
+// extractModuleFromWheel extracts the policy module directory from a wheel into a temp directory.
+// Returns the path to the extracted module directory (for build-time validation).
+func extractModuleFromWheel(whlPath string, topLevelModule string) (string, error) {
+	r, err := zip.OpenReader(whlPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open wheel: %w", err)
+	}
+	defer r.Close()
+
+	extractDir, err := os.MkdirTemp("", "pip-policy-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create extraction directory: %w", err)
+	}
+
+	prefix := topLevelModule + "/"
+	extracted := false
+
+	for _, f := range r.File {
+		if !strings.HasPrefix(f.Name, prefix) {
+			continue
+		}
+
+		destPath := filepath.Join(extractDir, f.Name)
+
+		// Validate against zip-slip
+		if !strings.HasPrefix(filepath.Clean(destPath), filepath.Clean(extractDir)+string(os.PathSeparator)) {
+			continue
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(destPath, 0755); err != nil {
+				os.RemoveAll(extractDir)
+				return "", fmt.Errorf("failed to create directory: %w", err)
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			os.RemoveAll(extractDir)
+			return "", fmt.Errorf("failed to create parent directory: %w", err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			os.RemoveAll(extractDir)
+			return "", fmt.Errorf("failed to open file in wheel: %w", err)
+		}
+
+		outFile, err := os.Create(destPath)
+		if err != nil {
+			rc.Close()
+			os.RemoveAll(extractDir)
+			return "", fmt.Errorf("failed to create extracted file: %w", err)
+		}
+
+		if _, err := io.Copy(outFile, rc); err != nil {
+			outFile.Close()
+			rc.Close()
+			os.RemoveAll(extractDir)
+			return "", fmt.Errorf("failed to write extracted file: %w", err)
+		}
+
+		outFile.Close()
+		rc.Close()
+		extracted = true
+	}
+
+	if !extracted {
+		os.RemoveAll(extractDir)
+		return "", fmt.Errorf("no files found for module %s in wheel", topLevelModule)
+	}
+
+	return filepath.Join(extractDir, topLevelModule), nil
 }

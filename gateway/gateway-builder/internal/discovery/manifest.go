@@ -256,7 +256,10 @@ func DetectRuntime(policyDir string) string {
 	return "go"
 }
 
-// discoverPipPolicy discovers a Python policy from a pip package reference
+// discoverPipPolicy discovers a Python policy from a pip package reference.
+// It downloads the wheel (without deps), extracts metadata and source for
+// build-time validation, and records the pip spec so the python-deps Docker
+// stage can do the real install on the correct platform.
 func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) {
 	pkgInfo, err := FetchPipPackage(entry.PipPackage)
 	if err != nil {
@@ -269,9 +272,22 @@ func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) 
 	slog.Info("Resolved Python policy entry via pip",
 		"name", entry.Name,
 		"pipPackage", entry.PipPackage,
+		"topLevelModule", pkgInfo.TopLevelModule,
 		"resolvedPath", pkgInfo.Dir)
 
-	return buildPythonDiscoveredPolicy(entry, pkgInfo.Dir, "pipPackage")
+	// Validate extracted source and parse definition
+	discovered, err := buildPythonDiscoveredPolicy(entry, pkgInfo.Dir, "pipPackage")
+	if err != nil {
+		return nil, err
+	}
+
+	// Set pip-specific fields
+	discovered.IsPipPackage = true
+	discovered.PipSpec = pkgInfo.PipSpec
+	discovered.PipIndexURL = pkgInfo.IndexURL
+	discovered.PythonTopLevelModule = pkgInfo.TopLevelModule
+
+	return discovered, nil
 }
 
 // discoverLocalPythonPolicy discovers a Python policy from a local filePath entry
