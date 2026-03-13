@@ -1,0 +1,33 @@
+name: llm-cost
+version: v0.1.0
+description: |
+  Calculates the monetary cost of LLM API calls at response time and injects the
+  result as an x-llm-cost response header (value: USD float, e.g. "0.0000423100").
+
+  The policy reads the model name from $.model in the response body (or $.modelVersion
+  for Gemini native format), looks it up in the pricing database, normalises
+  the usage object using a provider-specific calculator, and computes the cost.
+
+  Supported providers: OpenAI, Anthropic, Gemini (Google AI Studio + Vertex AI), Mistral.
+
+  Notes:
+  - This policy runs in the response phase only.
+  - If the model name is not found in the pricing database, x-llm-cost is set
+    to 0.0000000000 and a warning is logged. The request is not blocked.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties: {}
+  required: []
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties:
+    pricing_file:
+      type: string
+      description: >
+        Path to the model pricing JSON file shipped with the gateway image.
+        Can be overridden by the gateway admin via config.toml.
+      "wso2/defaultValue": "${config.policy_configurations.llm_cost_v0.pricing_file}"
