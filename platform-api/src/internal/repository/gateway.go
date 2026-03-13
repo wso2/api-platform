@@ -58,12 +58,12 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 
 	query := `
 		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical,
-		                      gateway_functionality_type, is_active, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                      gateway_functionality_type, is_active, version, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query), gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
 		gateway.Description, propertiesJSON, gateway.Vhost, gateway.IsCritical, gateway.FunctionalityType, gateway.IsActive,
-		gateway.CreatedAt, gateway.UpdatedAt)
+		gateway.Version, gateway.CreatedAt, gateway.UpdatedAt)
 	return err
 }
 
@@ -73,13 +73,13 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	var propertiesJSON string
 	query := `
 		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, is_active,
-		       created_at, updated_at
+		       version, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), gatewayId).Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.Version, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -101,7 +101,7 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
 		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, is_active,
-		       created_at, updated_at
+		       version, created_at, updated_at
 		FROM gateways
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -118,7 +118,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 		var propertiesJSON string
 		err := rows.Scan(
 			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.Version, &gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -141,13 +141,13 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 	var propertiesJSON string
 	query := `
 		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, is_active,
-		       created_at, updated_at
+		       version, created_at, updated_at
 		FROM gateways
 		WHERE name = ? AND organization_uuid = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), name, orgID).Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.Version, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -169,7 +169,7 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
 		SELECT uuid, organization_uuid, name, display_name, description, properties, vhost, is_critical, gateway_functionality_type, is_active,
-		       created_at, updated_at
+		       version, created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
 	`
@@ -185,7 +185,7 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 		var propertiesJSON string
 		err := rows.Scan(
 			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &propertiesJSON, &gateway.Vhost,
-			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
+			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.Version, &gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -256,10 +256,11 @@ func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
 
 	query := `
 		UPDATE gateways
-		SET display_name = ?, description = ?, is_critical = ?, properties = ?, updated_at = ?
+		SET display_name = ?, description = ?, is_critical = ?, properties = ?, version = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), gateway.DisplayName, gateway.Description, gateway.IsCritical, propertiesJSON, gateway.UpdatedAt, gateway.ID)
+	_, err := r.db.Exec(r.db.Rebind(query), gateway.DisplayName, gateway.Description, gateway.IsCritical, propertiesJSON, gateway.Version,
+		gateway.UpdatedAt, gateway.ID)
 	return err
 }
 

@@ -33,6 +33,7 @@ func TestValidateGatewayInput(t *testing.T) {
 		displayName       string
 		vhost             string
 		functionalityType string
+		version           string
 		wantErr           bool
 		errContains       string
 	}{
@@ -43,6 +44,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           false,
 		},
 		{
@@ -52,6 +54,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "organization ID is required",
 		},
@@ -62,6 +65,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "invalid organization ID format",
 		},
@@ -72,6 +76,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "gateway name is required",
 		},
@@ -82,6 +87,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "at least 3 characters",
 		},
@@ -92,6 +98,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "must not exceed 64 characters",
 		},
@@ -102,6 +109,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "lowercase letters, numbers, and hyphens",
 		},
@@ -112,6 +120,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "lowercase letters, numbers, and hyphens",
 		},
@@ -122,6 +131,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "cannot start or end with a hyphen",
 		},
@@ -132,6 +142,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "cannot start or end with a hyphen",
 		},
@@ -142,6 +153,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "display name is required",
 		},
@@ -152,6 +164,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "This is a very long display name that exceeds the maximum allowed length of 128 characters which should trigger a validation error in the system",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "must not exceed 128 characters",
 		},
@@ -162,8 +175,20 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "vhost is required",
+		},
+		{
+			name:              "empty version",
+			orgID:             "123e4567-e89b-12d3-a456-426614174000",
+			gatewayName:       "prod-gateway-01",
+			displayName:       "Production Gateway 01",
+			vhost:             "api.example.com",
+			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "",
+			wantErr:           true,
+			errContains:       "version is required",
 		},
 		{
 			name:              "display name with spaces (valid)",
@@ -172,6 +197,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01 - Main",
 			vhost:             "api.example.com",
 			functionalityType: constants.GatewayFunctionalityTypeRegular,
+			version:           "1.0.0",
 			wantErr:           false,
 		},
 		{
@@ -181,6 +207,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: "",
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "functionality type is required",
 		},
@@ -191,6 +218,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: "   ",
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "functionality type is required",
 		},
@@ -201,6 +229,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Production Gateway 01",
 			vhost:             "api.example.com",
 			functionalityType: "invalid-type",
+			version:           "1.0.0",
 			wantErr:           true,
 			errContains:       "gateway type must be one of: regular, ai, event",
 		},
@@ -211,6 +240,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "AI Gateway 01",
 			vhost:             "ai.example.com",
 			functionalityType: "ai",
+			version:           "1.0.0",
 			wantErr:           false,
 		},
 		{
@@ -220,13 +250,14 @@ func TestValidateGatewayInput(t *testing.T) {
 			displayName:       "Event Gateway 01",
 			vhost:             "events.example.com",
 			functionalityType: "event",
+			version:           "1.0.0",
 			wantErr:           false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.validateGatewayInput(tt.orgID, tt.gatewayName, tt.displayName, tt.vhost, tt.functionalityType)
+			err := service.validateGatewayInput(tt.orgID, tt.gatewayName, tt.displayName, tt.vhost, tt.functionalityType, tt.version)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateGatewayInput() error = %v, wantErr %v", err, tt.wantErr)
 				return

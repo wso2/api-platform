@@ -102,6 +102,7 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		true,
 		constants.GatewayFunctionalityTypeRegular,
 		properties,
+		"0.9.0",
 	)
 	if err != nil {
 		t.Fatalf("RegisterGateway() error = %v", err)
@@ -114,6 +115,9 @@ func TestRegisterGatewayProperties(t *testing.T) {
 	if response.Properties == nil || !reflect.DeepEqual(*response.Properties, properties) {
 		t.Errorf("RegisterGateway() response properties = %v, want %v", response.Properties, properties)
 	}
+	if response.Version == nil || *response.Version != "0.9.0" {
+		t.Errorf("RegisterGateway() response version = %v, want %v", response.Version, "0.9.0")
+	}
 
 	if mockGatewayRepo.createdGateway == nil {
 		t.Fatalf("Create() was not called")
@@ -121,6 +125,9 @@ func TestRegisterGatewayProperties(t *testing.T) {
 
 	if !reflect.DeepEqual(mockGatewayRepo.createdGateway.Properties, properties) {
 		t.Errorf("Create() gateway properties = %v, want %v", mockGatewayRepo.createdGateway.Properties, properties)
+	}
+	if mockGatewayRepo.createdGateway.Version != "0.9.0" {
+		t.Errorf("Create() gateway version = %v, want %v", mockGatewayRepo.createdGateway.Version, "0.9.0")
 	}
 }
 
@@ -133,6 +140,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		OrganizationID: orgID,
 		DisplayName:    "Old Gateway",
 		Description:    "Old description",
+		Version:        "1.0.0",
 		Properties: map[string]interface{}{
 			"region": "us-east",
 			"tier":   "free",
@@ -149,7 +157,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		}
 
 		newDescription := "New description"
-		response, err := service.UpdateGateway(gatewayID, orgID, &newDescription, nil, nil, nil)
+		response, err := service.UpdateGateway(gatewayID, orgID, &newDescription, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}
@@ -164,6 +172,9 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 		if !reflect.DeepEqual(mockGatewayRepo.updatedGateway.Properties, baseGateway.Properties) {
 			t.Errorf("UpdateGateway() stored properties = %v, want %v", mockGatewayRepo.updatedGateway.Properties, baseGateway.Properties)
+		}
+		if mockGatewayRepo.updatedGateway.Version != baseGateway.Version {
+			t.Errorf("UpdateGateway() stored version = %v, want %v", mockGatewayRepo.updatedGateway.Version, baseGateway.Version)
 		}
 	})
 
@@ -187,7 +198,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			"tier":   "premium",
 		}
 
-		response, err := service.UpdateGateway(gatewayID, orgID, nil, nil, nil, &newProperties)
+		response, err := service.UpdateGateway(gatewayID, orgID, nil, nil, nil, &newProperties, nil)
 		if err != nil {
 			t.Fatalf("UpdateGateway() error = %v", err)
 		}
@@ -202,6 +213,36 @@ func TestUpdateGatewayProperties(t *testing.T) {
 
 		if !reflect.DeepEqual(mockGatewayRepo.updatedGateway.Properties, newProperties) {
 			t.Errorf("UpdateGateway() stored properties = %v, want %v", mockGatewayRepo.updatedGateway.Properties, newProperties)
+		}
+		if mockGatewayRepo.updatedGateway.Version != baseGateway.Version {
+			t.Errorf("UpdateGateway() stored version = %v, want %v", mockGatewayRepo.updatedGateway.Version, baseGateway.Version)
+		}
+	})
+
+	t.Run("updates version only when provided", func(t *testing.T) {
+		freshGateway := *baseGateway
+		mockGatewayRepo := &mockGatewayRepository{
+			getByUUIDResult: &freshGateway,
+		}
+
+		service := &GatewayService{
+			gatewayRepo: mockGatewayRepo,
+		}
+
+		newVersion := "1.2.0-beta"
+		response, err := service.UpdateGateway(gatewayID, orgID, nil, nil, nil, nil, &newVersion)
+		if err != nil {
+			t.Fatalf("UpdateGateway() error = %v", err)
+		}
+
+		if response.Version == nil || *response.Version != newVersion {
+			t.Errorf("UpdateGateway() response version = %v, want %v", response.Version, newVersion)
+		}
+		if mockGatewayRepo.updatedGateway == nil {
+			t.Fatalf("UpdateGateway() did not call UpdateGateway repository method")
+		}
+		if mockGatewayRepo.updatedGateway.Version != newVersion {
+			t.Errorf("UpdateGateway() stored version = %v, want %v", mockGatewayRepo.updatedGateway.Version, newVersion)
 		}
 	})
 }

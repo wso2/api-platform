@@ -4303,6 +4303,10 @@ components:
           description: Type of gateway functionality
           default: regular
           example: "regular"
+        version:
+          type: string
+          description: Gateway runtime version
+          example: "0.9.0"
         properties:
           type: object
           additionalProperties: true
@@ -4352,6 +4356,10 @@ components:
           enum: [regular, ai, event]
           description: Type of gateway functionality
           example: "regular"
+        version:
+          type: string
+          description: Gateway runtime version
+          example: "0.9.0"
         isActive:
           type: boolean
           description: Indicates if the gateway is currently connected to the platform via WebSocket
@@ -4389,6 +4397,10 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
+        version:
+          type: string
+          description: Gateway runtime version
+          example: "1.0.0-beta"
 
     Pagination:
       type: object
