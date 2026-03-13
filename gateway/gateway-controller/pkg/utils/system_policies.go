@@ -21,7 +21,6 @@ package utils
 import (
 	"log/slog"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	config "github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
@@ -95,23 +94,6 @@ var defaultSystemPolicies = []systemPolicyConfig{
 		Parameters: map[string]interface{}{
 			"allow_payloads": false,
 		},
-		ExecutionCondition: nil,
-	},
-	{
-		// LLM Cost system policy: calculates $ cost of LLM calls and sets x-llm-cost header.
-		// Injected for LlmProvider and LlmProxy APIs — not for generic REST APIs.
-		Name:    constants.LLM_COST_SYSTEM_POLICY_NAME,
-		Version: constants.LLM_COST_SYSTEM_POLICY_VERSION,
-		Enabled: func(cfg *config.Config) bool {
-			if cfg == nil {
-				return false
-			}
-			return cfg.LLMCost.Enabled
-		},
-		Parameters: map[string]interface{}{
-			"pricing_file": "",
-		},
-		AllowedKinds:       []string{string(api.LlmProvider), string(api.LlmProxy)},
 		ExecutionCondition: nil,
 	},
 }
@@ -241,11 +223,6 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 		if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
 			effectiveDefaults["allow_payloads"] = cfg.Analytics.AllowPayloads
 		}
-		// For the llm-cost system policy, propagate the pricing_file path from runtime config.
-		if sysPol.Name == constants.LLM_COST_SYSTEM_POLICY_NAME {
-			effectiveDefaults["pricing_file"] = cfg.LLMCost.PricingFile
-		}
-
 		// Merge parameters efficiently
 		mergedParams := mergeParameters(effectiveDefaults, additionalProps, sysPol.Name)
 

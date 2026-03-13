@@ -14,9 +14,9 @@
 # --------------------------------------------------------------------
 
 @llm-cost
-Feature: LLM Cost System Policy
-  As a gateway operator
-  I want the llm-cost system policy to automatically calculate the monetary cost of LLM calls
+Feature: LLM Cost User Policy
+  As an API developer
+  I want to attach the llm-cost user policy to my LLM API to calculate the monetary cost of LLM calls
   So that downstream policies (e.g. budget rate limiting) can enforce spending limits
 
   Background:
@@ -55,6 +55,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-openai/openai/v1/chat/completions" to be ready with method "POST" and body '{"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -103,6 +106,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic/anthropic/v1/messages" to be ready with method "POST" and body '{"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
@@ -155,6 +161,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-geo-speed/anthropic/v1/messages-geo-speed" to be ready with method "POST" and body '{"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100, "speed": "fast"}'
@@ -206,6 +215,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-cache1hr/anthropic/v1/messages-cache-1hr" to be ready with method "POST" and body '{"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
@@ -255,6 +267,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-websearch/anthropic/v1/messages-web-search" to be ready with method "POST" and body '{"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Search the web"}], "max_tokens": 100}'
@@ -303,6 +318,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-gemini/gemini/v1/models/gemini-1.5-flash-002:generateContent" to be ready with method "POST" and body '{"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}'
@@ -350,6 +368,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-unknown/unknown-llm/v1/chat" to be ready with method "POST" and body '{"model": "my-unknown-model-xyz", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -399,6 +420,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-custom-new/custom-llm/v1/chat" to be ready with method "POST" and body '{"model": "my-enterprise-llm-v1", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -451,6 +475,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-custom-override/custom-llm/v1/gpt35" to be ready with method "POST" and body '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -501,6 +528,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-gemini-cached/gemini/v1/cached/gemini-2.0-flash:generateContent" to be ready with method "POST" and body '{"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}'
@@ -552,6 +582,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-gemini-thinking/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" to be ready with method "POST" and body '{"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}'
@@ -603,6 +636,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-anthropic-cache-read/anthropic/v1/messages-cache-read" to be ready with method "POST" and body '{"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
@@ -653,6 +689,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-openai-cached/openai/v1/chat-cached" to be ready with method "POST" and body '{"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -702,6 +741,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-openai-flex/openai/v1/chat-flex" to be ready with method "POST" and body '{"model": "gpt-5.4", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -751,6 +793,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-openai-priority/openai/v1/chat-priority" to be ready with method "POST" and body '{"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -800,6 +845,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-openai-batch/openai/v1/chat-batch" to be ready with method "POST" and body '{"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -850,6 +898,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-openai-reasoning/openai/v1/chat-reasoning" to be ready with method "POST" and body '{"model": "o4-mini-2025-04-16", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -899,6 +950,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-openai-web-search/openai/v1/chat-web-search" to be ready with method "POST" and body '{"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}'
@@ -949,6 +1003,9 @@ Feature: LLM Cost System Policy
             value: test-key
         accessControl:
           mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
       """
     Then the response status code should be 201
     And I wait for the endpoint "http://localhost:8080/llm-cost-mistral/mistral/v1/chat/completions" to be ready with method "POST" and body '{"model": "mistral-small-latest", "messages": [{"role": "user", "content": "Hello"}]}'

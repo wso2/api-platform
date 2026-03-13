@@ -255,12 +255,7 @@ als_plain_text = true
 max_message_size = 1000000000
 max_header_limit = 8192
 
-# =============================================================================
-# LLM COST CONFIGURATION
-# =============================================================================
-
-[llm_cost]
-enabled = true
+[policy_configurations.llm_cost_v0]
 pricing_file = "/etc/policy-engine/test-custom-pricing.json"
 
 # =============================================================================

@@ -27,7 +27,7 @@ from typing import List, Optional, Tuple
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRICES_PATH = os.path.join(
-    REPO_ROOT, "gateway", "system-policies", "llm-cost", "pricing", "model_prices.json"
+    REPO_ROOT, "gateway", "configs", "llm-pricing", "model_prices.json"
 )
 
 TOLERANCE = 1e-9
@@ -1094,6 +1094,100 @@ class MistralProvider(Provider):
         return token_cost, None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Provider: Azure OpenAI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AzureOpenAIProvider(Provider):
+    """Azure OpenAI Chat Completions — standard deployment pricing (Tuesday release scope).
+
+    Test case model keys use the full Azure pricing key ("azure/<model>") since
+    that is what the llm-cost policy resolves to after applying the model_prefix
+    fix. This validates that our per-token rates match LiteLLM for Azure.
+
+    Limitations (known, deferred to GA):
+    - Only standard pricing; Global/EU deployment types are separate entries.
+    - Responses API (deployment-name in response.model) not yet handled.
+    """
+
+    @property
+    def name(self) -> str:
+        return "Azure OpenAI"
+
+    def test_cases(self) -> List[dict]:
+        def tc(name, model="azure/gpt-4o-mini-2024-07-18", **kw):
+            defaults = dict(prompt_tokens=0, completion_tokens=0, cached_tokens=0)
+            return {"name": name, "model": model, **defaults, **kw}
+
+        return [
+            # gpt-4o-mini (standard)
+            tc("mini_basic",     prompt_tokens=100,   completion_tokens=50),
+            tc("mini_large",     prompt_tokens=5_000, completion_tokens=1_000),
+            tc("mini_cached",    prompt_tokens=1_000, completion_tokens=100, cached_tokens=800),
+            tc("zero_tokens"),
+
+            # gpt-4o (standard)
+            tc("gpt4o_basic", model="azure/gpt-4o-2024-11-20",
+               prompt_tokens=100,   completion_tokens=50),
+            tc("gpt4o_large", model="azure/gpt-4o-2024-11-20",
+               prompt_tokens=5_000, completion_tokens=1_000),
+            tc("gpt4o_cached", model="azure/gpt-4o-2024-11-20",
+               prompt_tokens=1_000, completion_tokens=100, cached_tokens=800),
+
+            # gpt-4o 2024-08-06 (standard)
+            tc("gpt4o_aug_basic", model="azure/gpt-4o-2024-08-06",
+               prompt_tokens=100,   completion_tokens=50),
+
+            # gpt-4-turbo (standard, no cache rate)
+            tc("gpt4_turbo_basic", model="azure/gpt-4-turbo-2024-04-09",
+               prompt_tokens=100,   completion_tokens=50),
+            tc("gpt4_turbo_cached", model="azure/gpt-4-turbo-2024-04-09",
+               prompt_tokens=1_000, completion_tokens=100, cached_tokens=800),
+        ]
+
+    def our_cost(self, tc: dict, prices: dict) -> Tuple[Optional[float], Optional[str]]:
+        p = prices.get(tc["model"])
+        if p is None:
+            return None, f"model '{tc['model']}' not in model_prices.json"
+
+        cost, err = generic_calculate_cost(
+            prompt_tokens=tc["prompt_tokens"],
+            completion_tokens=tc["completion_tokens"],
+            cache_write_5m=0,
+            cache_write_1hr=0,
+            cache_read=tc["cached_tokens"],
+            input_tokens_for_tiering=tc["prompt_tokens"],
+            tiering_threshold=200_000,
+            prices=p,
+        )
+        return cost, err
+
+    def litellm_cost(self, tc: dict) -> Tuple[Optional[float], Optional[str]]:
+        try:
+            from litellm.litellm_core_utils.llm_cost_calc.utils import generic_cost_per_token
+            from litellm.types.utils import PromptTokensDetailsWrapper, Usage
+        except ImportError as e:
+            return None, f"litellm import error: {e}"
+
+        # Strip the "azure/" prefix — LiteLLM resolves it via custom_llm_provider="azure".
+        bare_model = tc["model"].removeprefix("azure/")
+
+        ptd = PromptTokensDetailsWrapper(cached_tokens=tc["cached_tokens"])
+        usage = Usage(
+            prompt_tokens=tc["prompt_tokens"],
+            completion_tokens=tc["completion_tokens"],
+            total_tokens=tc["prompt_tokens"] + tc["completion_tokens"],
+            prompt_tokens_details=ptd,
+        )
+        try:
+            prompt_cost, completion_cost = generic_cost_per_token(
+                model=bare_model, usage=usage, custom_llm_provider="azure",
+            )
+            return prompt_cost + completion_cost, None
+        except Exception as e:
+            return None, str(e)
+
+
 # ── Registered providers ──────────────────────────────────────────────────────
 # Add new providers here. Each entry is instantiated once at startup.
 
@@ -1102,6 +1196,7 @@ PROVIDERS: List[Provider] = [
     OpenAIProvider(),
     GeminiProvider(),
     MistralProvider(),
+    AzureOpenAIProvider(),
 ]
 
 

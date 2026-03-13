@@ -169,8 +169,6 @@ const (
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
 	ANALYTICS_SYSTEM_POLICY_VERSION = "v0"
-	LLM_COST_SYSTEM_POLICY_NAME     = "wso2_apip_sys_llm_cost"
-	LLM_COST_SYSTEM_POLICY_VERSION  = "v0"
 )
 
 var WILDCARD_HTTP_METHODS = []string{
