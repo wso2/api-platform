@@ -126,16 +126,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	var baseDeployment *model.Deployment
 
 	// Determine the source: "current" or existing deployment
-	if req.Base == "current" {
-		// Generate API deployment YAML for storage using the model directly
-		apiYaml, err := s.apiUtil.GenerateAPIDeploymentYAML(apiModel)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate API deployment YAML: %w", err)
-		}
-
-		// Create immutable deployment artifact content (store as YAML bytes)
-		contentBytes = []byte(apiYaml)
-	} else {
+	if req.Base != "current" {
 		// Use existing deployment as base
 		var err error
 		baseDeployment, err = s.deploymentRepo.GetWithContent(req.Base, apiUUID, orgUUID)
@@ -145,9 +136,6 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
-
-		// Deployment content is already stored as YAML, reuse it directly
-		contentBytes = baseDeployment.Content
 		baseDeploymentID = &req.Base
 	}
 
@@ -157,26 +145,19 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
 	}
 
-	// Handle endpoint URL override from metadata (Phase 5)
+	// Collect endpoint URL override from metadata
+	var endpointURL *string
 	if req.Metadata != nil {
 		if v, exists := metadata["endpointUrl"]; exists {
-			endpointURL, ok := v.(string)
+			eu, ok := v.(string)
 			if !ok {
 				return nil, fmt.Errorf("invalid endpoint URL in metadata: expected string, got %T", v)
 			}
-			if endpointURL != "" {
-				// Validate endpoint URL format
-				if err := validateEndpointURL(endpointURL); err != nil {
+			if eu != "" {
+				if err := validateEndpointURL(eu); err != nil {
 					return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
 				}
-
-				// Override endpoint URL in deployment content
-				modifiedContent, err := overrideEndpointURL(contentBytes, endpointURL)
-				if err != nil {
-					return nil, fmt.Errorf("failed to override endpoint URL: %w", err)
-				}
-				contentBytes = modifiedContent
-				s.slogger.Info("Endpoint URL overridden", "endpointURL", endpointURL, "deploymentID", deploymentID)
+				endpointURL = &eu
 			}
 		}
 	}
@@ -226,14 +207,37 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		}
 	}
 
-	if req.Base == "current" || req.Vhost != nil {
-		// Inject vhost into the deployment YAML so it is persisted in the gateway.
-		contentBytes, err = overrideVhost(contentBytes, vhostMain, vhostSandbox)
+	// Build content bytes with minimal marshal/unmarshal
+	needsOverride := endpointURL != nil || req.Base == "current" || req.Vhost != nil
+	if req.Base == "current" {
+		// Build struct directly, apply overrides on struct, marshal once
+		apiDeployment, err := s.apiUtil.BuildAPIDeploymentYAML(apiModel)
 		if err != nil {
-			return nil, fmt.Errorf("failed to inject vhost into deployment YAML: %w", err)
+			return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
+		}
+		applyStructOverrides(apiDeployment, endpointURL, &vhostMain, vhostSandbox)
+		contentBytes, err = yaml.Marshal(apiDeployment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
+		}
+		if endpointURL != nil {
+			s.slogger.Info("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+		}
+	} else {
+		// Start from base deployment bytes
+		contentBytes = baseDeployment.Content
+		if needsOverride {
+			// Single unmarshal -> apply overrides -> single marshal
+			contentBytes, err = applyDeploymentOverrides(contentBytes, endpointURL, &vhostMain, vhostSandbox)
+			if err != nil {
+				return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
+			}
+			if endpointURL != nil {
+				s.slogger.Info("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+			}
 		}
 	}
-	// If base: <deploymentId> and no vhost override, contentBytes already has the base's vhosts.
+	// If base: <deploymentId> and no overrides, contentBytes passes through unchanged.
 
 	// Store vhost in metadata so it is returned in the deployment response.
 	if vhostMain != "" {
@@ -517,19 +521,37 @@ func isValidVHostOrSentinel(vhost string) bool {
 	return true
 }
 
-// overrideVhost injects the given vhost values into a deployment YAML's spec.vhosts section.
-func overrideVhost(contentBytes []byte, main string, sandbox *string) ([]byte, error) {
+// applyStructOverrides mutates the deployment YAML struct directly — sets upstream URL and/or vhosts.
+func applyStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vhostMain *string, vhostSandbox *string) {
+	if endpointURL != nil {
+		if d.Spec.Upstream == nil {
+			d.Spec.Upstream = &dto.UpstreamYAML{}
+		}
+		if d.Spec.Upstream.Main == nil {
+			d.Spec.Upstream.Main = &dto.UpstreamTarget{}
+		}
+		d.Spec.Upstream.Main.URL = *endpointURL
+		d.Spec.Upstream.Main.Ref = "" // Clear ref if URL is set
+	}
+	if vhostMain != nil {
+		d.Spec.Vhosts = &dto.Vhosts{
+			Main:    *vhostMain,
+			Sandbox: vhostSandbox,
+		}
+	}
+}
+
+// applyDeploymentOverrides unmarshals deployment YAML bytes, applies endpoint URL and/or vhost
+// overrides, and marshals back. Used for the base-deployment path when overrides are needed.
+func applyDeploymentOverrides(contentBytes []byte, endpointURL *string, vhostMain *string, vhostSandbox *string) ([]byte, error) {
 	var apiDeployment dto.APIDeploymentYAML
 	if err := yaml.Unmarshal(contentBytes, &apiDeployment); err != nil {
 		return nil, fmt.Errorf("failed to parse deployment YAML: %w", err)
 	}
-	apiDeployment.Spec.Vhosts = &dto.Vhosts{
-		Main:    main,
-		Sandbox: sandbox,
-	}
+	applyStructOverrides(&apiDeployment, endpointURL, vhostMain, vhostSandbox)
 	modifiedBytes, err := yaml.Marshal(&apiDeployment)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal deployment YAML with vhost: %w", err)
+		return nil, fmt.Errorf("failed to marshal modified deployment YAML: %w", err)
 	}
 	return modifiedBytes, nil
 }

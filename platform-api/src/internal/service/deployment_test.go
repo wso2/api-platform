@@ -1960,7 +1960,109 @@ func TestIsValidVHostOrSentinel(t *testing.T) {
 	}
 }
 
-func TestOverrideVhost(t *testing.T) {
+func TestApplyStructOverrides(t *testing.T) {
+	t.Run("endpoint URL sets upstream and clears ref", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{
+				Upstream: &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{Ref: "my-endpoint-ref"},
+				},
+			},
+		}
+		eu := "https://new.example.com/api"
+		applyStructOverrides(d, &eu, nil, nil)
+		if d.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", d.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+		if d.Spec.Upstream.Main.Ref != "" {
+			t.Errorf("Ref should be cleared, got %q", d.Spec.Upstream.Main.Ref)
+		}
+	})
+
+	t.Run("endpoint URL creates upstream when nil", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{},
+		}
+		eu := "https://new.example.com/api"
+		applyStructOverrides(d, &eu, nil, nil)
+		if d.Spec.Upstream == nil || d.Spec.Upstream.Main == nil {
+			t.Fatal("expected upstream.main to be created")
+		}
+		if d.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", d.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+	})
+
+	t.Run("vhost sets main and sandbox", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{},
+		}
+		main := "api.example.com"
+		sandbox := "sandbox.example.com"
+		applyStructOverrides(d, nil, &main, &sandbox)
+		if d.Spec.Vhosts == nil {
+			t.Fatal("expected vhosts to be set")
+		}
+		if d.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("main = %q, want %q", d.Spec.Vhosts.Main, "api.example.com")
+		}
+		if d.Spec.Vhosts.Sandbox == nil || *d.Spec.Vhosts.Sandbox != "sandbox.example.com" {
+			t.Errorf("sandbox = %v, want %q", d.Spec.Vhosts.Sandbox, "sandbox.example.com")
+		}
+	})
+
+	t.Run("vhost main only without sandbox", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{},
+		}
+		main := "_gateway_default_"
+		applyStructOverrides(d, nil, &main, nil)
+		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main != "_gateway_default_" {
+			t.Errorf("expected sentinel, got %v", d.Spec.Vhosts)
+		}
+		if d.Spec.Vhosts.Sandbox != nil {
+			t.Errorf("sandbox should be nil, got %q", *d.Spec.Vhosts.Sandbox)
+		}
+	})
+
+	t.Run("both endpoint and vhost", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{
+				Upstream: &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{URL: "http://old.example.com"},
+				},
+			},
+		}
+		eu := "https://new.example.com/api"
+		main := "api.example.com"
+		applyStructOverrides(d, &eu, &main, nil)
+		if d.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", d.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("expected vhost main, got %v", d.Spec.Vhosts)
+		}
+	})
+
+	t.Run("no-op with nil pointers", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{
+				Upstream: &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{URL: "http://original.example.com"},
+				},
+			},
+		}
+		applyStructOverrides(d, nil, nil, nil)
+		if d.Spec.Upstream.Main.URL != "http://original.example.com" {
+			t.Errorf("URL should be unchanged, got %q", d.Spec.Upstream.Main.URL)
+		}
+		if d.Spec.Vhosts != nil {
+			t.Errorf("vhosts should remain nil, got %v", d.Spec.Vhosts)
+		}
+	})
+}
+
+func TestApplyDeploymentOverrides(t *testing.T) {
 	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: RestApi
 metadata:
@@ -1974,8 +2076,9 @@ spec:
       url: http://backend:8080
 `
 
-	t.Run("sets main only", func(t *testing.T) {
-		result, err := overrideVhost([]byte(baseYAML), "api.example.com", nil)
+	t.Run("endpoint only", func(t *testing.T) {
+		eu := "https://new.example.com/api"
+		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1983,20 +2086,17 @@ spec:
 		if err := yaml.Unmarshal(result, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
-		if parsed.Spec.Vhosts == nil {
-			t.Fatal("expected vhosts to be set")
+		if parsed.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", parsed.Spec.Upstream.Main.URL, "https://new.example.com/api")
 		}
-		if parsed.Spec.Vhosts.Main != "api.example.com" {
-			t.Errorf("main = %q, want %q", parsed.Spec.Vhosts.Main, "api.example.com")
-		}
-		if parsed.Spec.Vhosts.Sandbox != nil {
-			t.Errorf("sandbox should be nil, got %q", *parsed.Spec.Vhosts.Sandbox)
+		if parsed.Spec.Vhosts != nil {
+			t.Errorf("vhosts should be nil, got %v", parsed.Spec.Vhosts)
 		}
 	})
 
-	t.Run("sets main and sandbox", func(t *testing.T) {
-		sandbox := "sandbox.example.com"
-		result, err := overrideVhost([]byte(baseYAML), "api.example.com", &sandbox)
+	t.Run("vhost only", func(t *testing.T) {
+		main := "api.example.com"
+		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, &main, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2004,21 +2104,40 @@ spec:
 		if err := yaml.Unmarshal(result, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
-		if parsed.Spec.Vhosts == nil {
-			t.Fatal("expected vhosts to be set")
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
 		}
-		if parsed.Spec.Vhosts.Main != "api.example.com" {
-			t.Errorf("main = %q, want %q", parsed.Spec.Vhosts.Main, "api.example.com")
+		// Upstream should be unchanged
+		if parsed.Spec.Upstream.Main.URL != "http://backend:8080" {
+			t.Errorf("upstream URL should be unchanged, got %q", parsed.Spec.Upstream.Main.URL)
+		}
+	})
+
+	t.Run("both endpoint and vhost", func(t *testing.T) {
+		eu := "https://new.example.com/api"
+		main := "api.example.com"
+		sandbox := "sandbox.example.com"
+		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, &main, &sandbox)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", parsed.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
 		}
 		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
-			t.Errorf("sandbox = %v, want %q", parsed.Spec.Vhosts.Sandbox, "sandbox.example.com")
+			t.Errorf("expected sandbox vhost, got %v", parsed.Spec.Vhosts.Sandbox)
 		}
 	})
 
-	t.Run("overwrites existing vhosts", func(t *testing.T) {
-		yamlWithVhosts := baseYAML + "  vhosts:\n    main: old.example.com\n    sandbox: old-sandbox.example.com\n"
-		sandbox := "new-sandbox.example.com"
-		result, err := overrideVhost([]byte(yamlWithVhosts), "new.example.com", &sandbox)
+	t.Run("neither override is no-op", func(t *testing.T) {
+		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2026,30 +2145,17 @@ spec:
 		if err := yaml.Unmarshal(result, &parsed); err != nil {
 			t.Fatalf("failed to parse result: %v", err)
 		}
-		if parsed.Spec.Vhosts.Main != "new.example.com" {
-			t.Errorf("main = %q, want %q", parsed.Spec.Vhosts.Main, "new.example.com")
+		if parsed.Spec.Upstream.Main.URL != "http://backend:8080" {
+			t.Errorf("upstream URL should be unchanged, got %q", parsed.Spec.Upstream.Main.URL)
 		}
-		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "new-sandbox.example.com" {
-			t.Errorf("sandbox = %v, want %q", parsed.Spec.Vhosts.Sandbox, "new-sandbox.example.com")
-		}
-	})
-
-	t.Run("accepts sentinel value", func(t *testing.T) {
-		result, err := overrideVhost([]byte(baseYAML), "_gateway_default_", nil)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		var parsed dto.APIDeploymentYAML
-		if err := yaml.Unmarshal(result, &parsed); err != nil {
-			t.Fatalf("failed to parse result: %v", err)
-		}
-		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main != "_gateway_default_" {
-			t.Errorf("expected sentinel, got %v", parsed.Spec.Vhosts)
+		if parsed.Spec.Vhosts != nil {
+			t.Errorf("vhosts should remain nil, got %v", parsed.Spec.Vhosts)
 		}
 	})
 
-	t.Run("invalid yaml returns error", func(t *testing.T) {
-		_, err := overrideVhost([]byte("not: valid: yaml: :::"), "api.example.com", nil)
+	t.Run("invalid YAML returns error", func(t *testing.T) {
+		eu := "https://new.example.com/api"
+		_, err := applyDeploymentOverrides([]byte("not: valid: yaml: :::"), &eu, nil, nil)
 		if err == nil {
 			t.Fatal("expected error for invalid YAML")
 		}
