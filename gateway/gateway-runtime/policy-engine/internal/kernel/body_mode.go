@@ -93,12 +93,14 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		chain.Policies = append(chain.Policies, impl)
 		chain.PolicySpecs = append(chain.PolicySpecs, spec)
 
-		// Discover body capabilities via type assertions (zero per-request overhead).
+		// Discover capabilities via type assertions (zero per-request overhead).
 		// StreamingXBodyPolicy embeds XBodyPolicy, so a streaming policy satisfies both.
 		_, hasReqBody := impl.(policy.RequestPolicy)
 		_, hasStreamingReqBody := impl.(policy.StreamingRequestPolicy)
 		_, hasRespBody := impl.(policy.ResponsePolicy)
 		_, hasStreamingRespBody := impl.(policy.StreamingResponsePolicy)
+		_, hasReqHeader := impl.(policy.RequestHeaderPolicy)
+		_, hasRespHeader := impl.(policy.ResponseHeaderPolicy)
 
 		// Request body: any body-accessing policy requires delivery
 		if hasReqBody || hasStreamingReqBody {
@@ -120,6 +122,13 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 			if !hasStreamingRespBody {
 				chain.SupportsResponseStreaming = false
 			}
+		}
+
+		if hasReqHeader {
+			chain.RequiresRequestHeader = true
+		}
+		if hasRespHeader {
+			chain.RequiresResponseHeader = true
 		}
 	}
 
