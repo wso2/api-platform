@@ -119,7 +119,7 @@ class SlugifyBodyPolicy(Policy):
                 body=b"slugify-body: request body must be valid UTF-8 text",
             )
 
-        logger.debug("on_request: decoded body — %d chars: %r", len(text), text[:80])
+        logger.debug("on_request: decoded body — %d chars", len(text))
 
         # ── 3. Validate ──────────────────────────────────────────────────────
         if not text.strip():
@@ -140,9 +140,9 @@ class SlugifyBodyPolicy(Policy):
             max_length=self._max_length,
         )
         logger.info(
-            "on_request: slugified body — %r → %r",
-            text[:60],
-            slug[:60],
+            "on_request: slugified body — input %d chars, output %d chars",
+            len(text),
+            len(slug),
         )
 
         # ── 5. Respond ───────────────────────────────────────────────────────

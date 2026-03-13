@@ -103,7 +103,7 @@ export APIP_GW_POLICY_ENGINE_METRICS_ENABLED="${APIP_GW_POLICY_ENGINE_METRICS_EN
 
 # Python Executor configuration
 export PYTHON_POLICY_WORKERS="${PYTHON_POLICY_WORKERS:-4}"
-export PYTHON_POLICY_TIMEOUT="${PYTHON_POLICY_TIMEOUT:-30s}"
+export PYTHON_POLICY_MAX_CONCURRENT="${PYTHON_POLICY_MAX_CONCURRENT:-100}"
 export PYTHON_EXECUTOR_SOCKET="${PYTHON_EXECUTOR_SOCKET:-/var/run/api-platform/python-executor.sock}"
 
 # Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
@@ -125,7 +125,7 @@ log "  GOMAXPROCS: ${GOMAXPROCS}"
 log "  Router Concurrency: ${ROUTER_CONCURRENCY}"
 log "  Policy Engine Metrics: ${APIP_GW_POLICY_ENGINE_METRICS_ENABLED}"
 log "  Python Workers: ${PYTHON_POLICY_WORKERS}"
-log "  Python Timeout: ${PYTHON_POLICY_TIMEOUT}"
+log "  Python Max Concurrent: ${PYTHON_POLICY_MAX_CONCURRENT}"
 [[ ${#ROUTER_ARGS[@]} -gt 0 ]] && log "  Router extra args: ${ROUTER_ARGS[*]}"
 [[ ${#PE_ARGS[@]} -gt 0 ]] && log "  Policy Engine extra args: ${PE_ARGS[*]}"
 [[ ${#PY_ARGS[@]} -gt 0 ]] && log "  Python Executor extra args: ${PY_ARGS[*]}"

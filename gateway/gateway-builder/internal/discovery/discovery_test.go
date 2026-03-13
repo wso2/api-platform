@@ -909,6 +909,17 @@ func TestParsePipPackageRef_EmptyPackageName(t *testing.T) {
 
 // ==== Fingerprint-based discovery tests ====
 
+func TestParsePipPackageRef_WithCredentialedIndex(t *testing.T) {
+	pkg, version, indexURL, err := ParsePipPackageRef("my-policy==1.0.0@https://user:token@pypi.private.com/simple")
+
+	require.NoError(t, err)
+	assert.Equal(t, "my-policy", pkg)
+	assert.Equal(t, "1.0.0", version)
+	assert.Equal(t, "https://user:token@pypi.private.com/simple", indexURL)
+}
+
+// ==== Fingerprint-based discovery tests ====
+
 func TestDiscoverPoliciesFromBuildFile_PythonAutoDetect(t *testing.T) {
 	tmpDir := t.TempDir()
 

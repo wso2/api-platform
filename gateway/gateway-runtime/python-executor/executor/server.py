@@ -383,5 +383,5 @@ class PythonExecutorServer:
                 logger.warning(f"Error closing policy instance during shutdown: {e}")
 
         if self.server:
-            await self.server.stop(grace_period=5)
+            await self.server.stop(grace=5)
         logger.info("Python Executor shutdown complete")

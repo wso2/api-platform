@@ -80,6 +80,18 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 	slogger := slog.With("component", "pythonbridge", "socket", sm.socketPath)
 	slogger.InfoContext(ctx, "Connecting to Python Executor")
 
+	// Cancel and clear any previous stream/connection before creating new ones,
+	// so the old context is terminated and resources are released first.
+	if sm.streamCancel != nil {
+		sm.streamCancel()
+		sm.streamCancel = nil
+	}
+	if sm.conn != nil {
+		sm.conn.Close()
+		sm.conn = nil
+	}
+	sm.stream = nil
+
 	// Dial with UDS
 	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
 		var d net.Dialer
@@ -108,11 +120,6 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 		streamCancel()
 		conn.Close()
 		return fmt.Errorf("failed to start ExecuteStream: %w", err)
-	}
-
-	// Cancel any previous stream context before replacing it.
-	if sm.streamCancel != nil {
-		sm.streamCancel()
 	}
 
 	sm.conn = conn

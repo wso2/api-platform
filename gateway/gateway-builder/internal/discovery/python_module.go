@@ -55,7 +55,10 @@ func resolvePipExecutable() (exe string, prefixArgs []string) {
 			return candidate, nil
 		}
 	}
-	return "python3", []string{"-m", "pip"}
+	if _, err := exec.LookPath("python3"); err == nil {
+		return "python3", []string{"-m", "pip"}
+	}
+	return "", nil
 }
 
 // PipPackageInfo contains resolved pip package information
@@ -76,6 +79,8 @@ type PipPackageInfo struct {
 // the top-level module name and policy source directly from the wheel (ZIP).
 // No compilation or dependency installation happens here — that is deferred
 // to the python-deps Docker stage where the target platform is correct.
+// The returned PipPackageInfo.Dir is a temporary directory created by this
+// function. Callers are responsible for removing it when done (os.RemoveAll).
 func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	pkgName, version, indexURL, err := ParsePipPackageRef(pipPackage)
 	if err != nil {
@@ -109,6 +114,11 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	defer cancel()
 
 	pipExe, prefixArgs := resolvePipExecutable()
+	if pipExe == "" {
+		os.RemoveAll(downloadDir)
+		return nil, fmt.Errorf("no pip executable found (tried pip3, pip, python3 -m pip): ensure pip or python3 is installed")
+	}
+
 	fullArgs := append(prefixArgs, args...)
 
 	cmd := exec.CommandContext(ctx, pipExe, fullArgs...)

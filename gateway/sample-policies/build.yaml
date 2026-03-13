@@ -12,4 +12,4 @@ policies:
     filePath: ./count-letters
   # Slugify Body Policy (Python — sample implementation)
   - name: slugify-body-python
-    filePath: ./slugify-body
+    filePath: ./slugify-body-python

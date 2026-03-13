@@ -19,6 +19,7 @@ Starts the gRPC server on UDS, loads all registered Python policies,
 and serves ExecuteStream RPCs from the Go Policy Engine.
 """
 
+import argparse
 import asyncio
 import logging
 import os
@@ -26,6 +27,36 @@ import signal
 import sys
 
 from executor.server import PythonExecutorServer
+
+
+def _parse_args():
+    """Parse CLI flags. Environment variables are used as defaults so that
+    docker-entrypoint.sh can pass --py.* overrides that take precedence."""
+    parser = argparse.ArgumentParser(description="Python Executor gRPC server")
+    parser.add_argument(
+        "--socket",
+        default=os.environ.get("PYTHON_EXECUTOR_SOCKET", "/var/run/api-platform/python-executor.sock"),
+        help="Path to the UDS socket (env: PYTHON_EXECUTOR_SOCKET)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=int(os.environ.get("PYTHON_POLICY_WORKERS", "4")),
+        help="Number of gRPC server workers (env: PYTHON_POLICY_WORKERS)",
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=int(os.environ.get("PYTHON_POLICY_MAX_CONCURRENT", "100")),
+        help="Max concurrent policy executions (env: PYTHON_POLICY_MAX_CONCURRENT)",
+    )
+    parser.add_argument(
+        "--log-level",
+        default=os.environ.get("LOG_LEVEL", "info"),
+        help="Log level (env: LOG_LEVEL)",
+    )
+    return parser.parse_args()
+
 
 SOCKET_PATH = os.environ.get(
     "PYTHON_EXECUTOR_SOCKET",
@@ -62,12 +93,21 @@ def setup_logging():
 
 async def main():
     """Main entry point."""
+    args = _parse_args()
+
+    global LOG_LEVEL
+    LOG_LEVEL = args.log_level.upper()
+
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    logger.info(f"Python Executor starting (workers={WORKER_COUNT}, max_concurrent={MAX_CONCURRENT}, log_level={LOG_LEVEL})")
+    socket_path = args.socket
+    worker_count = args.workers
+    max_concurrent = args.max_concurrent
 
-    server = PythonExecutorServer(SOCKET_PATH, WORKER_COUNT, MAX_CONCURRENT)
+    logger.info(f"Python Executor starting (workers={worker_count}, max_concurrent={max_concurrent}, log_level={LOG_LEVEL})")
+
+    server = PythonExecutorServer(socket_path, worker_count, max_concurrent)
 
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_event_loop()
