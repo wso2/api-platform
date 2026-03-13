@@ -32,6 +32,21 @@ import (
 	"time"
 )
 
+// sanitizeURL removes credentials from a URL string for safe logging.
+func sanitizeURL(u string) string {
+	if u == "" {
+		return u
+	}
+	if idx := strings.Index(u, "://"); idx > 0 {
+		scheme := u[:idx+3]
+		rest := u[idx+3:]
+		if at := strings.LastIndex(rest, "@"); at > 0 {
+			return scheme + "<redacted-credentials>@" + rest[at+1:]
+		}
+	}
+	return u
+}
+
 // resolvePipExecutable returns the pip executable name and any required prefix
 // arguments. It probes the PATH in order: pip3 → pip → python3 -m pip.
 func resolvePipExecutable() (exe string, prefixArgs []string) {
@@ -62,12 +77,17 @@ type PipPackageInfo struct {
 // No compilation or dependency installation happens here — that is deferred
 // to the python-deps Docker stage where the target platform is correct.
 func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
-	slog.Info("Fetching pip package", "reference", pipPackage, "phase", "discovery")
-
 	pkgName, version, indexURL, err := ParsePipPackageRef(pipPackage)
 	if err != nil {
 		return nil, err
 	}
+	sanitizedIndexURL := sanitizeURL(indexURL)
+
+	slog.Info("Fetching pip package",
+		"package", pkgName,
+		"version", version,
+		"indexURL", sanitizedIndexURL,
+		"phase", "discovery")
 
 	downloadDir, err := os.MkdirTemp("", "pip-download-*")
 	if err != nil {
@@ -97,10 +117,14 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 
 	if err := cmd.Run(); err != nil {
 		os.RemoveAll(downloadDir)
+		sanitizedStderr := stderr.String()
+		if indexURL != "" {
+			sanitizedStderr = strings.ReplaceAll(sanitizedStderr, indexURL, sanitizedIndexURL)
+		}
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("pip download timed out for %s", pipSpec)
 		}
-		return nil, fmt.Errorf("pip download failed for %s: %w; stderr: %s", pipSpec, err, stderr.String())
+		return nil, fmt.Errorf("pip download failed for %s: %w; stderr: %s", pipSpec, err, sanitizedStderr)
 	}
 
 	whlPath, err := findWheelFile(downloadDir)
@@ -131,7 +155,7 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	return &PipPackageInfo{
 		Package:        pkgName,
 		Version:        version,
-		IndexURL:       indexURL,
+		IndexURL:       sanitizedIndexURL,
 		PipSpec:        pipSpec,
 		TopLevelModule: topLevelModule,
 		Dir:            extractDir,
@@ -141,22 +165,28 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 // ParsePipPackageRef parses a pip package reference.
 // Format: "<package>==<version>[@<index-url>]"
 func ParsePipPackageRef(ref string) (pkgName, version, indexURL string, err error) {
-	mainPart := ref
-	if idx := strings.LastIndex(ref, "@"); idx > 0 {
-		candidate := ref[idx+1:]
+	parts := strings.SplitN(ref, "==", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", "", fmt.Errorf("invalid pipPackage format, expected '<package>==<version>'")
+	}
+
+	pkgName = parts[0]
+	versionPart := parts[1]
+
+	if idx := strings.Index(versionPart, "@"); idx > 0 {
+		candidate := versionPart[idx+1:]
 		if strings.Contains(candidate, "://") {
 			indexURL = candidate
-			mainPart = ref[:idx]
+			versionPart = versionPart[:idx]
 		}
 	}
 
-	parts := strings.SplitN(mainPart, "==", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", "", fmt.Errorf("invalid pipPackage format, expected '<package>==<version>': %s", ref)
-	}
+	pkgName = strings.TrimSpace(pkgName)
+	version = strings.TrimSpace(versionPart)
 
-	pkgName = strings.TrimSpace(parts[0])
-	version = strings.TrimSpace(parts[1])
+	if pkgName == "" || version == "" {
+		return "", "", "", fmt.Errorf("invalid pipPackage format, expected '<package>==<version>'")
+	}
 
 	return pkgName, version, indexURL, nil
 }
