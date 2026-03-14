@@ -57,9 +57,9 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 			APIVersion: apiMetadata.APIVersion,
 		}
 
-		// Create instance using factory with metadata and params
-		// CreateInstance returns the policy and merged params (initParams + runtime params)
-		impl, mergedParams, err := reg.CreateInstance(spec.Name, spec.Version, metadata, spec.Parameters.Raw)
+		// Get instance using factory with metadata and params
+		// GetInstance returns the policy and merged params (initParams + runtime params)
+		impl, mergedParams, err := reg.GetInstance(spec.Name, spec.Version, metadata, spec.Parameters.Raw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
 				spec.Name, spec.Version, routeKey, err)
