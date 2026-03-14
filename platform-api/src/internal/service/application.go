@@ -557,7 +557,6 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 
 	event := &model.ApplicationUpdatedEvent{
 		ApplicationId:   app.Handle,
-		ApplicationName: app.Name,
 		ApplicationUuid: app.UUID,
 		Mappings:        mappings,
 	}

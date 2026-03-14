@@ -26,7 +26,6 @@ type ApplicationKeyMapping struct {
 // This event is sent when application API key mappings are changed.
 type ApplicationUpdatedEvent struct {
 	ApplicationId   string                  `json:"applicationId"`
-	ApplicationName string                  `json:"applicationName"`
 	ApplicationUuid string                  `json:"applicationUuid"`
 	Mappings        []ApplicationKeyMapping `json:"mappings"`
 }

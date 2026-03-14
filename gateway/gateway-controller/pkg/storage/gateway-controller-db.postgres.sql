@@ -161,7 +161,6 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription
 -- Application to API key mappings
 CREATE TABLE IF NOT EXISTS application_api_keys (
     application_id TEXT NOT NULL,
-    application_name TEXT NOT NULL,
     api_key_id TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

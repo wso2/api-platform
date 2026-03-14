@@ -347,6 +347,8 @@ type SubscriptionPlanDeletedEvent struct {
 	Payload       SubscriptionPlanDeletedEventPayload `json:"payload"`
 	Timestamp     string                              `json:"timestamp"`
 	CorrelationID string                              `json:"correlationId"`
+}
+
 // ApplicationKeyMappingPayload represents a single application to API key mapping entry.
 type ApplicationKeyMappingPayload struct {
 	ApiKeyUuid string `json:"apiKeyUuid"`
@@ -355,7 +357,6 @@ type ApplicationKeyMappingPayload struct {
 // ApplicationUpdatedEventPayload represents the payload for application mapping updates.
 type ApplicationUpdatedEventPayload struct {
 	ApplicationId   string                         `json:"applicationId"`
-	ApplicationName string                         `json:"applicationName"`
 	ApplicationUuid string                         `json:"applicationUuid"`
 	Mappings        []ApplicationKeyMappingPayload `json:"mappings"`
 }
