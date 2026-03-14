@@ -75,7 +75,7 @@ issuer = ""
 [api_key]
 api_keys_per_user_per_api = 10
 algorithm = "sha256"
-provisioned_by = "bijira-devportal"
+issuer = "bijira-devportal"
 
 [controller.logging]
 level = "info"

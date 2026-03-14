@@ -35,8 +35,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -1994,24 +1993,15 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
-	var apiKeyUUID *string
+	var keyUUID *string
 	if payload.UUID != "" {
-		apiKeyUUID = &payload.UUID
+		keyUUID = &payload.UUID
 	}
-	// allowedTargets defaults to constants.APIKeyAllowedTargetsAll if not provided in the event
-	allowedTargets := constants.APIKeyAllowedTargetsAll
-	if payload.AllowedTargets != nil && *payload.AllowedTargets != "" {
-		allowedTargets = *payload.AllowedTargets
-	}
-
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKeyHashes:   &payload.ApiKeyHashes,
-		MaskedApiKey:   &payload.MaskedApiKey,
-		Name:           &payload.Name,
-		ExternalRefId:  payload.ExternalRefId,
-		CpKeyUuid:      apiKeyUUID,
-		ProvisionedBy:  payload.ProvisionedBy,
-		AllowedTargets: &allowedTargets,
+		MaskedApiKey:  &payload.MaskedApiKey,
+		Name:          &payload.Name,
+		ExternalRefId: payload.ExternalRefId,
+		Issuer:        payload.Issuer,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
@@ -2061,6 +2051,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		payload.ApiId,
 		keyCreatedEvent.UserId,
 		&apiKeyCreationRequest,
+		keyUUID,
+		&payload.ApiKeyHashes,
 		keyCreatedEvent.CorrelationID,
 		logger,
 	)
@@ -2203,19 +2195,11 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
-	// allowedTargets defaults to constants.APIKeyAllowedTargetsAll if not provided in the event
-	allowedTargets := constants.APIKeyAllowedTargetsAll
-	if payload.AllowedTargets != nil && *payload.AllowedTargets != "" {
-		allowedTargets = *payload.AllowedTargets
-	}
-
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKeyHashes:   &payload.ApiKeyHashes,
-		MaskedApiKey:   &payload.MaskedApiKey,
-		ExternalRefId:  &payload.ExternalRefId,
-		Name:           &payload.KeyName,
-		ProvisionedBy:  payload.ProvisionedBy,
-		AllowedTargets: &allowedTargets,
+		MaskedApiKey:  &payload.MaskedApiKey,
+		ExternalRefId: payload.ExternalRefId,
+		Name:          &payload.KeyName,
+		Issuer:        payload.Issuer,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
@@ -2265,6 +2249,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		payload.ApiId,
 		payload.KeyName,
 		&apiKeyCreationRequest,
+		&payload.ApiKeyHashes,
 		evt.UserId,
 		evt.CorrelationID,
 		logger,

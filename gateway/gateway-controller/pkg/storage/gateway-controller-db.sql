@@ -127,11 +127,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
-    -- Primary identifier (UUID)
-    uuid TEXT PRIMARY KEY,
-
-    -- UUID from control plane (platform API) for cross-system correlation (schema version 10)
-    cp_key_uuid TEXT NULL,
+    -- UUID v7 from platform API, or locally generated if not provided
+    uuid TEXT NOT NULL,
 
     -- Gateway identifier
     gateway_id TEXT NOT NULL,
@@ -140,7 +137,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     name TEXT NOT NULL,
 
     -- The generated API key (hashed)
-    api_key TEXT NOT NULL UNIQUE,
+    api_key TEXT NOT NULL,
 
     -- Masked version of the API key for display purposes
     masked_api_key TEXT NOT NULL,
@@ -164,15 +161,17 @@ CREATE TABLE IF NOT EXISTS api_keys (
     source TEXT NOT NULL DEFAULT 'local',  -- 'local' or 'external'
     external_ref_id TEXT NULL,  -- external reference
 
-    -- Portal and target tracking (added in schema version 10)
-    provisioned_by TEXT NULL DEFAULT NULL,      -- developer portal identifier; NULL means not specified
-    allowed_targets TEXT NOT NULL DEFAULT 'ALL', -- comma-separated LLM providers/proxies; 'ALL' means all
+    -- Portal and target tracking
+    issuer TEXT NULL DEFAULT NULL,               -- developer portal identifier; NULL means not specified
 
     -- Foreign key relationship to artifacts
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
 
     -- Composite unique constraint (artifact + api key name must be unique)
-    UNIQUE (artifact_uuid, name, gateway_id)
+    UNIQUE (artifact_uuid, name, gateway_id),
+
+    -- Composite primary key
+    PRIMARY KEY (api_key, gateway_id)
 );
 
 -- Indexes for API key lookups

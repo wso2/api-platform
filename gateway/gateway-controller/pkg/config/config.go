@@ -398,9 +398,9 @@ type APIKeyConfig struct {
 	Algorithm            string `koanf:"algorithm"`                 // Hashing algorithm to use
 	MinKeyLength         int    `koanf:"min_key_length"`            // Minimum length for external API key values
 	MaxKeyLength         int    `koanf:"max_key_length"`            // Maximum length for external API key values
-	// ProvisionedBy identifies this gateway's portal; when non-empty, only API keys whose
-	// provisioned_by field matches (or is null) will be accepted by the api-key-auth policy.
-	ProvisionedBy string `koanf:"provisioned_by"`
+	// Issuer identifies this gateway's portal; when non-empty, only API keys whose
+	// issuer field matches (or is null) will be accepted by the api-key-auth policy.
+	Issuer string `koanf:"issuer"`
 }
 
 // LoadConfig loads configuration from file, environment variables, and defaults

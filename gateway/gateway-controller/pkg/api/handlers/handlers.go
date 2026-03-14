@@ -3003,11 +3003,11 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		return
 	}
 
-	// If API key hashes are not provided, return an error
-	if request.ApiKeyHashes == nil {
+	// If plain-text API key is not provided, return an error
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "API key hashes are required",
+			Message: "apiKey is required",
 		})
 		return
 	}

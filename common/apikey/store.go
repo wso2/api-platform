@@ -53,8 +53,8 @@ type APIKey struct {
 	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
 	// Source tracking for external key support ("local" | "external")
 	Source string `json:"source" yaml:"source"`
-	// ProvisionedBy identifies the portal that created this key; nil means no restriction
-	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
+	// Issuer identifies the portal that created this key; nil means no restriction
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 	// AllowedTargets is a comma-separated list of allowed gateways; "ALL" or "" means unrestricted
 	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
 }
@@ -169,17 +169,10 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	return nil
 }
 
-// ValidationOptions provides optional parameters for ValidateAPIKey.
-type ValidationOptions struct {
-	// ProvisionedByFilter, when non-empty, is matched against the key's ProvisionedBy field.
-	// The check is skipped when this field is empty or the key carries no portal label.
-	ProvisionedByFilter string
-}
-
 // ValidateAPIKey validates the provided API key against the internal APIkey store.
 // Supports both local and external keys using unified hash-based lookup.
-// An optional ValidationOptions value may be passed to enforce portal and target restrictions.
-func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string, opts ...ValidationOptions) (bool, error) {
+// issuer, when non-empty, restricts validation to keys from a specific portal.
+func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string, issuer ...string) (bool, error) {
 	aks.mu.RLock()
 	defer aks.mu.RUnlock()
 
@@ -206,14 +199,10 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		return false, nil
 	}
 
-	if len(opts) > 0 {
-		o := opts[0]
-
-		// provisioned_by check: only enforce when the key carries a portal label
-		if targetAPIKey.ProvisionedBy != nil && *targetAPIKey.ProvisionedBy != "" {
-			if o.ProvisionedByFilter == "" || *targetAPIKey.ProvisionedBy != o.ProvisionedByFilter {
-				return false, nil
-			}
+	// issuer check: only enforce when issuer is provided and non-empty
+	if len(issuer) > 0 && issuer[0] != "" {
+		if targetAPIKey.Issuer == nil || *targetAPIKey.Issuer != issuer[0] {
+			return false, nil
 		}
 	}
 

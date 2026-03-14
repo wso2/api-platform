@@ -49,6 +49,12 @@ type APIKeyCreationParams struct {
 	User          *commonmodels.AuthContext // User who initiated the request
 	CorrelationID string                    // Correlation ID for tracking
 	Logger        *slog.Logger              // Logger instance
+	// UUID is the pre-assigned key UUID from the platform API event path.
+	// Nil in the REST API path (a new UUID is generated instead).
+	UUID *string
+	// ApiKeyHashes contains pre-computed hashes from the platform API event path.
+	// Nil in the REST API path (which provides a plain-text key instead).
+	ApiKeyHashes *string
 }
 
 // APIKeyCreationResult contains the result of API key creation.
@@ -96,6 +102,9 @@ type APIKeyUpdateParams struct {
 	User          *commonmodels.AuthContext // User who initiated the request
 	CorrelationID string                    // Correlation ID for tracking
 	Logger        *slog.Logger              // Logger instance
+	// ApiKeyHashes contains pre-computed hashes from the platform API event path.
+	// Nil in the REST API path (which provides a plain-text key instead).
+	ApiKeyHashes *string
 }
 
 // APIKeyUpdateResult contains the result of API key update
@@ -166,7 +175,10 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	)
 
 	// Determine operation type for context-aware messaging
-	isExternalKeyInjection := params.Request.ApiKeyHashes != nil && strings.TrimSpace(*params.Request.ApiKeyHashes) != ""
+	// External key injection occurs when either pre-computed hashes (from platform API event)
+	// or a plain-text API key (from REST API) is provided.
+	isExternalKeyInjection := (params.ApiKeyHashes != nil && strings.TrimSpace(*params.ApiKeyHashes) != "") ||
+		(params.Request.ApiKey != nil && strings.TrimSpace(*params.Request.ApiKey) != "")
 	operationType := "generate"
 	if isExternalKeyInjection {
 		operationType = "register"
@@ -196,7 +208,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 
 	// Create the API key from request (generate new or register external)
 	// For local keys, retry once if duplicate is detected during generation
-	apiKey, err := s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
+	apiKey, err := s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes)
 	if err != nil {
 		logger.Error("Failed to generate API key",
 			slog.Any("error", err),
@@ -222,7 +234,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 					slog.String("operation", operationType+"_key"))
 
 				// Generate a new key
-				apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
+				apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes)
 				if err != nil {
 					logger.Error("Failed to generate API key after collision",
 						slog.String("operation", operationType+"_key"),
@@ -500,7 +512,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	if err != nil {
 		// Only create a new API key if it's a "not found" error
 		// For other errors (DB connection, etc.), return the error
-		if storage.IsNotFoundError(err) && params.Request.ApiKeyHashes != nil && strings.TrimSpace(*params.Request.ApiKeyHashes) != "" {
+		if storage.IsNotFoundError(err) && params.ApiKeyHashes != nil && strings.TrimSpace(*params.ApiKeyHashes) != "" {
 			logger.Info("API key not found for update, creating new API key",
 				slog.String("handle", params.Handle),
 				slog.String("api_key_name", params.APIKeyName),
@@ -516,6 +528,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 				User:          user,
 				CorrelationID: params.CorrelationID,
 				Logger:        logger,
+				ApiKeyHashes:  params.ApiKeyHashes,
 			}
 
 			creationResult, err := s.CreateAPIKey(creationParams)
@@ -566,7 +579,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("not authorized to update API key '%s'", params.APIKeyName)
 	}
 
-	updatedKey, err := s.updateAPIKeyFromRequest(existingKey, params.Request, user.UserID, logger)
+	updatedKey, err := s.updateAPIKeyFromRequest(existingKey, params.Request, user.UserID, logger, params.ApiKeyHashes)
 	if err != nil {
 		logger.Error("Failed to update API key from request",
 			slog.Any("error", err))
@@ -935,7 +948,7 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 // Handles both local key generation (creates new random key) and external key injection
 // (uses provided key from external platforms).
 func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIKeyCreationRequest, user string,
-	config *models.StoredConfig) (*models.APIKey, error) {
+	config *models.StoredConfig, uuid *string, apiKeyHashes *string) (*models.APIKey, error) {
 
 	// Generate short unique ID (22 characters, URL-safe) for the internal DB primary key
 	id, err := s.generateShortUniqueID()
@@ -943,12 +956,12 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		return nil, fmt.Errorf("failed to generate unique ID: %w", err)
 	}
 
-	// Resolve cp_key_uuid: use the one from the request if provided, otherwise generate locally
-	var apiKeyUUID string
-	if request.CpKeyUuid != nil && strings.TrimSpace(*request.CpKeyUuid) != "" {
-		apiKeyUUID = strings.TrimSpace(*request.CpKeyUuid)
+	// Resolve keyUUID: use the one from the platform API event if provided, otherwise generate locally
+	var keyUUID string
+	if uuid != nil && strings.TrimSpace(*uuid) != "" {
+		keyUUID = strings.TrimSpace(*uuid)
 	} else {
-		apiKeyUUID, err = GenerateUUID()
+		keyUUID, err = GenerateUUID()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate api key UUID: %w", err)
 		}
@@ -961,9 +974,19 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	var source string
 	var isExternalKey bool
 
-	if request.ApiKeyHashes != nil && strings.TrimSpace(*request.ApiKeyHashes) != "" {
-		// External key injection: hashes provided by platform API, store directly without rehashing
-		hash, err := extractSHA256Hash(strings.TrimSpace(*request.ApiKeyHashes))
+	if request.ApiKey != nil && strings.TrimSpace(*request.ApiKey) != "" {
+		// External key injection via REST API: plain-text key provided, hash it before storage
+		plainAPIKeyValue = strings.TrimSpace(*request.ApiKey)
+		hashedAPIKeyValue, err = s.hashAPIKey(plainAPIKeyValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash API key: %w", err)
+		}
+		maskedAPIKeyValue = s.maskAPIKey(plainAPIKeyValue)
+		source = "external"
+		isExternalKey = true
+	} else if apiKeyHashes != nil && strings.TrimSpace(*apiKeyHashes) != "" {
+		// External key injection via platform API event: pre-computed hashes provided, store directly
+		hash, err := extractSHA256Hash(strings.TrimSpace(*apiKeyHashes))
 		if err != nil {
 			return nil, fmt.Errorf("invalid apiKeyHashes: %w", err)
 		}
@@ -1047,9 +1070,8 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	}
 
 	apiKey := &models.APIKey{
-		UUID:           id,
-		CPKeyUUID:    &apiKeyUUID,
-		Name:         name,
+		UUID: keyUUID,
+		Name: name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
 		ArtifactUUID:        config.UUID,
@@ -1068,16 +1090,11 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		apiKey.ExternalRefId = &externalRefId
 	}
 
-	// Set provisionedBy (nil if not provided) and allowedTargets (defaults to ALL)
-	if request.ProvisionedBy != nil && strings.TrimSpace(*request.ProvisionedBy) != "" {
-		v := strings.TrimSpace(*request.ProvisionedBy)
-		apiKey.ProvisionedBy = &v
+	// Set issuer (nil if not provided) and allowedTargets (defaults to ALL)
+	if request.Issuer != nil && strings.TrimSpace(*request.Issuer) != "" {
+		v := strings.TrimSpace(*request.Issuer)
+		apiKey.Issuer = &v
 	}
-	apiKey.AllowedTargets = constants.APIKeyAllowedTargetsAll
-	if request.AllowedTargets != nil && strings.TrimSpace(*request.AllowedTargets) != "" {
-		apiKey.AllowedTargets = strings.TrimSpace(*request.AllowedTargets)
-	}
-
 	// Temporarily store the plain key for response generation
 	// This field is not persisted and only used for returning to user
 	// For external keys, we do NOT store the plain key (caller already has it)
@@ -1149,22 +1166,35 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string, p
 // Only mutable fields (displayName, api_key value, expiration) can be updated
 // Immutable fields (name, source, createdAt, createdBy) are preserved from existing key
 func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, request api.APIKeyCreationRequest,
-	user string, logger *slog.Logger) (*models.APIKey, error) {
+	user string, logger *slog.Logger, apiKeyHashes *string) (*models.APIKey, error) {
 
-	// Validate required field: apiKeyHashes
-	if request.ApiKeyHashes == nil || strings.TrimSpace(*request.ApiKeyHashes) == "" {
-		return nil, fmt.Errorf("apiKeyHashes is required for update")
+	// Validate that either a plain-text key (REST API) or pre-computed hashes (platform API event) is provided
+	if (request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "") &&
+		(apiKeyHashes == nil || strings.TrimSpace(*apiKeyHashes) == "") {
+		return nil, fmt.Errorf("apiKey or apiKeyHashes is required for update")
 	}
 
-	hashedAPIKeyValue, err := extractSHA256Hash(strings.TrimSpace(*request.ApiKeyHashes))
-	if err != nil {
-		return nil, fmt.Errorf("invalid apiKeyHashes: %w", err)
-	}
-
-	// Use the masked key sent by the platform API
+	var hashedAPIKeyValue string
 	var maskedAPIKeyValue string
-	if request.MaskedApiKey != nil {
-		maskedAPIKeyValue = strings.TrimSpace(*request.MaskedApiKey)
+	var err error
+
+	if request.ApiKey != nil && strings.TrimSpace(*request.ApiKey) != "" {
+		// Plain-text key from REST API: hash it before storage
+		plainKey := strings.TrimSpace(*request.ApiKey)
+		hashedAPIKeyValue, err = s.hashAPIKey(plainKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash API key: %w", err)
+		}
+		maskedAPIKeyValue = s.maskAPIKey(plainKey)
+	} else {
+		// Pre-computed hashes from platform API event: store directly
+		hashedAPIKeyValue, err = extractSHA256Hash(strings.TrimSpace(*apiKeyHashes))
+		if err != nil {
+			return nil, fmt.Errorf("invalid apiKeyHashes: %w", err)
+		}
+		if request.MaskedApiKey != nil {
+			maskedAPIKeyValue = strings.TrimSpace(*request.MaskedApiKey)
+		}
 	}
 
 	now := time.Now()
@@ -1212,11 +1242,11 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 	}
 
 	updatedKey := &models.APIKey{
-		UUID:           existingKey.UUID,
+		UUID:         existingKey.UUID,
 		Name:         existingKey.Name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        existingKey.ArtifactUUID,
+		ArtifactUUID: existingKey.ArtifactUUID,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
 		CreatedBy:    existingKey.CreatedBy,
@@ -1723,6 +1753,8 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 	handle string,
 	user string,
 	request *api.APIKeyCreationRequest,
+	uuid *string,
+	apiKeyHashes *string,
 	correlationID string,
 	logger *slog.Logger,
 ) (*APIKeyCreationResult, error) {
@@ -1747,6 +1779,8 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 		},
 		Logger:        logger,
 		CorrelationID: correlationID,
+		UUID:          uuid,
+		ApiKeyHashes:  apiKeyHashes,
 	}
 
 	result, err := s.CreateAPIKey(params)
@@ -1794,6 +1828,7 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 	handle string,
 	apiKeyName string,
 	request *api.APIKeyCreationRequest,
+	apiKeyHashes *string,
 	user string,
 	correlationID string,
 	logger *slog.Logger,
@@ -1807,9 +1842,10 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 	}
 
 	apiKeyUpdateParams := APIKeyUpdateParams{
-		Handle:     handle,
-		APIKeyName: apiKeyName,
-		Request:    *request,
+		Handle:       handle,
+		APIKeyName:   apiKeyName,
+		Request:      *request,
+		ApiKeyHashes: apiKeyHashes,
 		User: &commonmodels.AuthContext{
 			UserID: user,
 		},

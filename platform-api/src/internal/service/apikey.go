@@ -328,11 +328,11 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		return fmt.Errorf("failed to generate API key UUID: %w", err)
 	}
 
-	// Apply defaults for provisionedBy and allowedTargets
-	var provisionedBy *string
-	if req.ProvisionedBy != nil && strings.TrimSpace(*req.ProvisionedBy) != "" {
-		v := strings.TrimSpace(*req.ProvisionedBy)
-		provisionedBy = &v
+	// Apply defaults for issuer and allowedTargets
+	var issuer *string
+	if req.Issuer != nil && strings.TrimSpace(*req.Issuer) != "" {
+		v := strings.TrimSpace(*req.Issuer)
+		issuer = &v
 	}
 	allowedTargets := constants.APIKeyAllowedTargetsAll
 
@@ -345,7 +345,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		Status:         "active",
 		CreatedBy:      userId,
 		ExpiresAt:      expiresAt,
-		ProvisionedBy:  provisionedBy,
+		Issuer:         issuer,
 		AllowedTargets: allowedTargets,
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
@@ -355,14 +355,13 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyCreatedEvent{
-		UUID:           apiKeyUUID,
-		ApiId:          apiHandle,
-		Name:           keyName,
-		ApiKeyHashes:   apiKeyHashesJSON,
-		MaskedApiKey:   maskedAPIKey,
-		ExternalRefId:  req.ExternalRefId,
-		ProvisionedBy:  provisionedBy, 
-		AllowedTargets: allowedTargets,
+		UUID:          apiKeyUUID,
+		ApiId:         apiHandle,
+		Name:          keyName,
+		ApiKeyHashes:  apiKeyHashesJSON,
+		MaskedApiKey:  maskedAPIKey,
+		ExternalRefId: req.ExternalRefId,
+		Issuer:        issuer,
 	}
 	if expiresAt != nil {
 		expiresAtStr := expiresAt.Format(time.RFC3339)
@@ -464,6 +463,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		APIKeyHashes: apiKeyHashesJSON,
 		Status:       "active",
 		ExpiresAt:    expiresAt,
+		Issuer:       req.Issuer,
 	}
 	if err := s.apiKeyRepo.Update(dbKey); err != nil {
 		s.slogger.Error("Failed to update API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
@@ -476,6 +476,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		KeyName:      keyName,
 		ApiKeyHashes: apiKeyHashesJSON,
 		MaskedApiKey: maskedAPIKey,
+		Issuer:       req.Issuer,
 	}
 	if req.ExternalRefId != nil {
 		event.ExternalRefId = req.ExternalRefId

@@ -140,7 +140,7 @@ func (h *APIKeyOperationHandler) handleStoreOperation(operation policyenginev1.A
 		UpdatedAt:      operation.APIKey.UpdatedAt,
 		ExpiresAt:      operation.APIKey.ExpiresAt,
 		Source:         operation.APIKey.Source,
-		ProvisionedBy:  operation.APIKey.ProvisionedBy,
+		Issuer:         operation.APIKey.Issuer,
 		AllowedTargets: operation.APIKey.AllowedTargets,
 	}
 
@@ -220,7 +220,7 @@ func (h *APIKeyOperationHandler) replaceAllAPIKeys(apiKeyDataList []APIKeyData) 
 			UpdatedAt:      apiKeyData.UpdatedAt,
 			ExpiresAt:      apiKeyData.ExpiresAt,
 			Source:         apiKeyData.Source,
-			ProvisionedBy:  apiKeyData.ProvisionedBy,
+			Issuer:         apiKeyData.Issuer,
 			AllowedTargets: apiKeyData.AllowedTargets,
 		}
 
@@ -261,6 +261,6 @@ type APIKeyData struct {
 	UpdatedAt      time.Time  `json:"updatedAt"`
 	ExpiresAt      *time.Time `json:"expiresAt"`
 	Source         string     `json:"source"` // "local" | "external"
-	ProvisionedBy  *string    `json:"provisionedBy,omitempty"`
+	Issuer         *string    `json:"issuer,omitempty"`
 	AllowedTargets string     `json:"allowedTargets"`
 }

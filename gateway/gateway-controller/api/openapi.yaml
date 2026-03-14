@@ -2940,13 +2940,16 @@ components:
           minLength: 3
           maxLength: 63
           example: my-production-key
-        apiKeyHashes:
+        apiKey:
           type: string
+          minLength: 36
           description: |
-            Pre-computed hash(es) of the API key provided by the platform API.
-            When provided, this hash is stored directly without re-hashing.
-            Use this for injecting externally hashed API keys from the platform.
-          example: "sha256:abc123..."
+            Optional plain-text API key value for external key injection.
+            If provided, this key will be used instead of generating a new one.
+            The key will be hashed before storage. The key can be in any format
+            (minimum 36 characters). Use this for injecting externally generated
+            API keys.
+          example: "cloud-apim-key-abc123xyz789"
         maskedApiKey:
           type: string
           description: |
@@ -2987,23 +2990,12 @@ components:
             This field is optional and used for tracing purposes only.
             The gateway generates its own internal ID for tracking.
           example: "cloud-apim-key-98765"
-        cpKeyUuid:
-          type: string
-          description: |
-            UUID v7 of the API key from the control plane (platform API), used for cross-system correlation.
-            If not provided, the gateway generates one locally.
-          example: "01942f3e-7a1b-7c3d-8e4f-9a0b1c2d3e4f"
-        provisionedBy:
+        issuer:
           type: string
           description: |
             Identifies the portal that created this key. If provided, only api keys generated from
             the same portal will be accepted. If not provided, there is no portal restriction.
-          example: "choreo-portal"
-        allowedTargets:
-          type: string
-          description: |
-            Comma-separated list of allowed gateway targets. Use "ALL" or leave empty for no restriction.
-          example: "dev_gateway,test_gateway"
+          example: "bijira-devportal"
     APIKeyCreationResponse:
       type: object
       properties:
@@ -3123,7 +3115,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/APIKeyCreationRequest"
       required:
-        - apiKeyHashes
+        - apiKey
     APIKeyRevocationResponse:
       type: object
       properties:

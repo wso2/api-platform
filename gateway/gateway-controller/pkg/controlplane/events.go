@@ -148,8 +148,7 @@ type APIKeyCreatedEventPayload struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	ProvisionedBy  *string `json:"provisionedBy,omitempty"`  // nil if not provided by the platform API
-	AllowedTargets *string `json:"allowedTargets,omitempty"` // nil means use default 'ALL'
+	Issuer         *string `json:"issuer,omitempty"` // nil if not provided by the platform API
 }
 
 // APIKeyCreatedEvent represents the complete API key created event
@@ -166,14 +165,13 @@ type APIKeyUpdatedEventPayload struct {
 	KeyName       string  `json:"keyName"`
 	ApiKeyHashes  string  `json:"apiKeyHashes"`  // JSON string of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
 	MaskedApiKey  string  `json:"maskedApiKey"`  // Masked representation of the API key for display
-	ExternalRefId string  `json:"externalRefId"`
+	ExternalRefId *string  `json:"externalRefId"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
 	ExpiresIn     *struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	ProvisionedBy  *string `json:"provisionedBy,omitempty"`  // nil if not provided by the platform API
-	AllowedTargets *string `json:"allowedTargets,omitempty"` // nil means use default 'ALL'
+	Issuer         *string `json:"issuer,omitempty"` // nil if not provided by the platform API
 }
 
 // APIKeyUpdatedEvent represents the complete API key updated event

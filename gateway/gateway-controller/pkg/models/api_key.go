@@ -49,15 +49,9 @@ type APIKey struct {
 	Source        string  `json:"source" db:"source"`                 // "local" | "external"
 	ExternalRefId *string `json:"externalRefId" db:"external_ref_id"` // Cloud APIM key ID or other external reference
 
-	// CPKeyUUID is the UUID v7 from the control plane (platform API), used to correlate keys across systems.
-	// Populated from the apikey.created event; generated locally if not provided.
-	CPKeyUUID *string `json:"cpKeyUuid" db:"cp_key_uuid"`
+	// Issuer identifies the developer portal that provisioned this key; nil if not provided
+	Issuer *string `json:"issuer,omitempty" db:"issuer"`
 
-	// ProvisionedBy identifies the developer portal that provisioned this key; nil if not provided
-	ProvisionedBy *string `json:"provisionedBy,omitempty" db:"provisioned_by"`
-
-	// AllowedTargets is a comma-separated list of allowed gateways; defaults to 'ALL'
-	AllowedTargets string `json:"allowedTargets" db:"allowed_targets"`
 }
 
 // IsValid checks if the API key is valid (active and not expired)

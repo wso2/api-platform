@@ -588,7 +588,7 @@ func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 				Unit:     api.APIKeyCreationRequestExpiresInUnitSeconds,
 			},
 		}
-		key, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		key, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig, nil, nil)
 		assert.NoError(t, err)
 		assert.NotNil(t, key.ExpiresAt)
 	})
@@ -600,7 +600,7 @@ func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 			Name:      &name,
 			ExpiresAt: &past,
 		}
-		_, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		_, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig, nil, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "must be in the future")
 	})

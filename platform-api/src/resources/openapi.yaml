@@ -3184,8 +3184,7 @@ paths:
     delete:
       summary: Delete an API key for an LLM provider
       description: |
-        Broadcasts a revoke event to all gateways to remove the key from their policy engine,
-        then deletes the key from the database.
+        Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
       operationId: deleteLLMProviderAPIKey
       tags:
         - LLM Providers
@@ -3465,8 +3464,7 @@ paths:
     delete:
       summary: Delete an API key for an LLM proxy
       description: |
-        Broadcasts a revoke event to all gateways to remove the key from their policy engine,
-        then deletes the key from the database.
+        Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
       operationId: deleteLLMProxyAPIKey
       tags:
         - LLM Proxies
@@ -3506,24 +3504,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-api-keys/{username}:
+  /user/llm-api-keys:
     get:
-      summary: List LLM API keys for a user
+      summary: List LLM API keys for the current user
       description: |
-        Returns all API keys for LLM providers and LLM proxies created by the specified user
-        within the organization. Access is restricted to the key owner or an admin.
-        The plain key value is never returned.
+        Returns all API keys for LLM providers and LLM proxies created by the caller
+        within the organization. The plain key value is never returned.
       operationId: listUserLLMAPIKeys
       tags:
         - API Keys
-      parameters:
-        - name: username
-          in: path
-          required: true
-          description: The username to list LLM API keys for
-          schema:
-            type: string
-          example: user@example.com
       responses:
         '200':
           description: List of LLM API keys retrieved successfully
@@ -3533,12 +3522,6 @@ paths:
                 $ref: '#/components/schemas/UserAPIKeyListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Forbidden - caller is not the key owner or an admin
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4014,7 +3997,7 @@ components:
         status:
           type: string
           description: Current status of the key
-          enum: [active, revoked]
+          enum: [active, revoked, expired]
         createdAt:
           type: string
           format: date-time
@@ -4030,7 +4013,7 @@ components:
           type: string
           format: date-time
           description: Optional expiration timestamp
-        provisionedBy:
+        issuer:
           type: string
           description: Optional identifier of the developer portal that provisioned this key
         allowedTargets:
@@ -5072,7 +5055,7 @@ components:
         expiresIn:
           $ref: '#/components/schemas/ExpirationDuration'
           description: Optional expiration duration
-        provisionedBy:
+        issuer:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
           nullable: true
@@ -5130,6 +5113,10 @@ components:
         expiresIn:
           $ref: '#/components/schemas/ExpirationDuration'
           description: Optional expiration duration
+        issuer:
+          type: string
+          description: Identifies the portal that created this key
+          example: "bijira-devportal"
 
     UpdateAPIKeyResponse:
       type: object
@@ -7009,7 +6996,7 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
-        provisionedBy:
+        issuer:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
           nullable: true
@@ -7064,7 +7051,7 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
-        provisionedBy:
+        issuer:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
           nullable: true

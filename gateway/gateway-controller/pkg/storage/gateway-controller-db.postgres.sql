@@ -91,11 +91,10 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
-    uuid TEXT PRIMARY KEY,
-    cp_key_uuid TEXT NULL,
+    uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     name TEXT NOT NULL,
-    api_key TEXT NOT NULL UNIQUE,
+    api_key TEXT NOT NULL,
     masked_api_key TEXT NOT NULL,
     artifact_uuid TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
@@ -105,10 +104,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
     expires_at TIMESTAMPTZ NULL,
     source TEXT NOT NULL DEFAULT 'local',
     external_ref_id TEXT NULL,
-    provisioned_by TEXT NULL DEFAULT NULL,
-    allowed_targets TEXT NOT NULL DEFAULT 'ALL',
+    issuer TEXT NULL DEFAULT NULL,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE (artifact_uuid, name, gateway_id)
+    UNIQUE (artifact_uuid, name, gateway_id),
+    PRIMARY KEY (api_key, gateway_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);

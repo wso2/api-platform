@@ -21,11 +21,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
-
 
 	"github.com/gin-gonic/gin"
 )
@@ -44,9 +42,8 @@ func NewLLMAPIKeyUserHandler(apiKeyUserService *service.LLMAPIKeyUserService, sl
 	}
 }
 
-// ListAPIKeysByUser handles GET /api/v1/llm-api-keys/:username
-// Access is restricted to the key owner or an admin.
-func (h *LLMAPIKeyUserHandler) ListAPIKeysByUser(c *gin.Context) {
+// ListUserLLMAPIKeys handles GET /api/v1/user/llm-api-keys
+func (h *LLMAPIKeyUserHandler) ListUserLLMAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
@@ -54,24 +51,11 @@ func (h *LLMAPIKeyUserHandler) ListAPIKeysByUser(c *gin.Context) {
 		return
 	}
 
-	username := c.Param("username")
-	if username == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Username is required"))
-		return
-	}
-
-	// Admins can list any user's keys; non-admins can only list their own.
 	callerUserID := c.GetHeader("x-user-id")
-	if callerUserID != constants.AdminUserID && callerUserID != username {
-		c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
-			"Access denied: you can only view your own API keys"))
-		return
-	}
 
-	response, err := h.apiKeyUserService.ListLLMAPIKeysByUser(c.Request.Context(), orgID, username)
+	response, err := h.apiKeyUserService.ListLLMAPIKeysByUser(c.Request.Context(), orgID, callerUserID)
 	if err != nil {
-		h.slogger.Error("Failed to list LLM API keys for user", "username", username, "orgId", orgID, "error", err)
+		h.slogger.Error("Failed to list LLM API keys for user", "orgId", orgID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to list API keys"))
 		return
@@ -82,5 +66,5 @@ func (h *LLMAPIKeyUserHandler) ListAPIKeysByUser(c *gin.Context) {
 
 // RegisterRoutes registers the user LLM API key routes.
 func (h *LLMAPIKeyUserHandler) RegisterRoutes(r *gin.Engine) {
-	r.GET("/api/v1/llm-api-keys/:username", h.ListAPIKeysByUser)
+	r.GET("/api/v1/user/llm-api-keys", h.ListUserLLMAPIKeys)
 }

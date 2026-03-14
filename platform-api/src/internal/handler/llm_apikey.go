@@ -100,9 +100,9 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetHeader("x-user-id")
-
-	err := h.apiKeyService.DeleteLLMProviderAPIKey(c.Request.Context(), providerID, orgID, userID, keyName)
+	callerUserID := c.GetHeader("x-user-id")
+	
+	err := h.apiKeyService.DeleteLLMProviderAPIKey(c.Request.Context(), providerID, orgID, callerUserID, keyName)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -114,9 +114,9 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
 				"API key not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"No gateway connections available"))
+		if errors.Is(err, constants.ErrAPIKeyForbidden) {
+			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+				"Only the key creator can delete this API key"))
 			return
 		}
 		h.slogger.Error("Failed to delete LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID, "error", err)

@@ -88,7 +88,7 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 			CreatedBy:      k.CreatedBy,
 			UpdatedAt:      k.UpdatedAt,
 			ExpiresAt:      k.ExpiresAt,
-			ProvisionedBy:  k.ProvisionedBy,
+			Issuer:         k.Issuer,
 			AllowedTargets: k.AllowedTargets,
 		}
 		items = append(items, item)
@@ -100,7 +100,7 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	}, nil
 }
 
-// DeleteLLMProxyAPIKey broadcasts a revoke event to gateways and deletes the API key from the database.
+// DeleteLLMProxyAPIKey deletes the API key from the database and broadcasts a revoke event to gateways.
 func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 	ctx context.Context,
 	proxyID, orgID, userID, keyName string,
@@ -124,38 +124,9 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return constants.ErrAPIKeyNotFound
 	}
 
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
-	if err != nil {
-		s.slogger.Error("Failed to get gateways for API key deletion broadcast", "proxyId", proxyID, "error", err)
-		return fmt.Errorf("failed to get gateways: %w", err)
-	}
-	if len(gateways) == 0 {
-		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return constants.ErrGatewayUnavailable
-	}
-
-	event := &model.APIKeyRevokedEvent{
-		ApiId:   proxyID,
-		KeyName: keyName,
-	}
-
-	targetGateways := filterGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets)
-	successCount := 0
-	var lastError error
-	for _, gateway := range targetGateways {
-		gatewayID := gateway.ID
-		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
-			lastError = err
-			s.slogger.Error("Failed to broadcast LLM proxy API key revoked event", "proxyId", proxyID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
-		} else {
-			successCount++
-			s.slogger.Info("Successfully broadcast LLM proxy API key revoked event", "proxyId", proxyID, "gatewayId", gatewayID, "keyName", keyName)
-		}
-	}
-
-	if successCount == 0 {
-		s.slogger.Error("Failed to deliver LLM proxy API key revoke event to any gateway", "proxyId", proxyID, "keyName", keyName)
-		return fmt.Errorf("failed to deliver API key revoke event to any gateway: %w", lastError)
+	// Non-admin callers (userID != "") must be the key creator.
+	if userID != "" && existingKey.CreatedBy != userID {
+		return constants.ErrAPIKeyForbidden
 	}
 
 	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName); err != nil {
@@ -164,6 +135,32 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 	}
 
 	s.slogger.Info("Successfully deleted LLM proxy API key", "proxyId", proxyID, "keyName", keyName)
+
+	// Broadcast revoke event to gateways.
+	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get gateways for API key revoke broadcast", "proxyId", proxyID, "keyName", keyName, "error", err)
+		return nil
+	}
+	if len(gateways) == 0 {
+		s.slogger.Warn("No gateways found for organization; skipping revoke broadcast", "organizationId", orgID)
+		return nil
+	}
+
+	event := &model.APIKeyRevokedEvent{
+		ApiId:   proxyID,
+		KeyName: keyName,
+	}
+
+	for _, gateway := range filterGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
+		gatewayID := gateway.ID
+		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
+			s.slogger.Error("Failed to broadcast LLM proxy API key revoked event", "proxyId", proxyID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
+		} else {
+			s.slogger.Info("Successfully broadcast LLM proxy API key revoked event", "proxyId", proxyID, "gatewayId", gatewayID, "keyName", keyName)
+		}
+	}
+
 	return nil
 }
 
@@ -229,11 +226,11 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		return nil, fmt.Errorf("failed to generate API key UUID: %w", err)
 	}
 
-	// Apply defaults for provisionedBy and allowedTargets
-	var provisionedBy *string
-	if req.ProvisionedBy != nil && strings.TrimSpace(*req.ProvisionedBy) != "" {
-		v := strings.TrimSpace(*req.ProvisionedBy)
-		provisionedBy = &v
+	// Apply defaults for issuer and allowedTargets
+	var issuer *string
+	if req.Issuer != nil && strings.TrimSpace(*req.Issuer) != "" {
+		v := strings.TrimSpace(*req.Issuer)
+		issuer = &v
 	}
 	allowedTargets := constants.APIKeyAllowedTargetsAll
 	if req.AllowedTargets != nil && strings.TrimSpace(*req.AllowedTargets) != "" {
@@ -250,7 +247,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		Status:         "active",
 		CreatedBy:      userID,
 		ExpiresAt:      req.ExpiresAt,
-		ProvisionedBy:  provisionedBy,
+		Issuer:         issuer,
 		AllowedTargets: allowedTargets,
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
@@ -265,14 +262,13 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	}
 
 	event := &model.APIKeyCreatedEvent{
-		UUID:           apiKeyUUID,
-		ApiId:          proxyID,
-		Name:           name,
-		ApiKeyHashes:   apiKeyHashesJSON,
-		MaskedApiKey:   maskedAPIKey,
-		ExpiresAt:      expiresAt,
-		ProvisionedBy:  provisionedBy,
-		AllowedTargets: allowedTargets,
+		UUID:         apiKeyUUID,
+		ApiId:        proxyID,
+		Name:         name,
+		ApiKeyHashes: apiKeyHashesJSON,
+		MaskedApiKey: maskedAPIKey,
+		ExpiresAt:    expiresAt,
+		Issuer:       issuer,
 	}
 
 	targetGateways := filterGatewaysByAllowedTargets(gateways, allowedTargets)

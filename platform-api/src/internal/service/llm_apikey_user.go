@@ -71,7 +71,7 @@ func (s *LLMAPIKeyUserService) ListLLMAPIKeysByUser(
 				CreatedBy:      k.CreatedBy,
 				UpdatedAt:      k.UpdatedAt,
 				ExpiresAt:      k.ExpiresAt,
-				ProvisionedBy:  k.ProvisionedBy,
+				Issuer:         k.Issuer,
 				AllowedTargets: k.AllowedTargets,
 			},
 			ArtifactId:   k.ArtifactHandle,

@@ -74,9 +74,6 @@ const (
 	MCPProxy    = "Mcp"
 )
 
-// Admin user identifier used in x-user-id header
-const AdminUserID = "admin"
-
 // API Type Constants
 const (
 	APITypeHTTP       = "HTTP"
@@ -121,6 +118,9 @@ const (
 
 // API Key allowed targets constants
 const APIKeyAllowedTargetsAll = "ALL"
+
+// AdminRole is the role name that grants administrative privileges
+const AdminRole = "admin"
 
 // Deployment limit constants
 const (

@@ -93,8 +93,8 @@ type APIKeyData struct {
 	// IndexKey Pre-computed hash for O(1) lookup (external plain text keys only)
 	IndexKey string `json:"indexKey" yaml:"indexKey"`
 
-	// ProvisionedBy identifies the portal that created this key; nil means no restriction
-	ProvisionedBy *string `json:"provisionedBy,omitempty" yaml:"provisionedBy,omitempty"`
+	// Issuer identifies the portal that created this key; nil means no restriction
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 
 	// AllowedTargets is a comma-separated list of allowed gateways; "ALL" or "" means unrestricted
 	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`

@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     created_by VARCHAR(255),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     expires_at DATETIME,
-    provisioned_by TEXT NULL DEFAULT NULL,
+    issuer TEXT NULL DEFAULT NULL,
     allowed_targets TEXT NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     UNIQUE(artifact_uuid, name)
