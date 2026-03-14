@@ -19,9 +19,7 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -34,7 +32,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"log/slog"
@@ -47,10 +44,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -60,6 +57,8 @@ import (
 
 // APIServer implements the generated ServerInterface
 type APIServer struct {
+	*RestAPIHandler // embedded — promotes CreateRestAPI, ListRestAPIs, GetRestAPIById, UpdateRestAPI, DeleteRestAPI
+
 	store                *storage.ConfigStore
 	db                   storage.Storage
 	snapshotManager      *xds.SnapshotManager
@@ -98,27 +97,41 @@ func NewAPIServer(
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
+	parser := config.NewParser()
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	routerConfig := &systemConfig.Router
+
 	server := &APIServer{
 		store:                store,
 		db:                   db,
 		snapshotManager:      snapshotManager,
 		policyManager:        policyManager,
 		policyDefinitions:    policyDefinitions,
-		parser:               config.NewParser(),
+		parser:               parser,
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
-			deploymentService, &systemConfig.Router, policyVersionResolver, policyValidator),
+			deploymentService, routerConfig, policyVersionResolver, policyValidator),
 		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
 			&systemConfig.APIKey),
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
-		routerConfig:       &systemConfig.Router,
-		httpClient:         &http.Client{Timeout: 10 * time.Second},
+		routerConfig:       routerConfig,
+		httpClient:         httpClient,
 		systemConfig:       systemConfig,
 	}
+
+	// Create RestAPI service and handler
+	restAPIService := restapi.NewRestAPIService(
+		store, db, snapshotManager, policyManager,
+		policyDefinitions, &server.policyDefMu,
+		deploymentService, apiKeyXDSManager,
+		controlPlaneClient, routerConfig, systemConfig,
+		httpClient, parser, validator, logger,
+	)
+	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
@@ -190,156 +203,6 @@ func (s *APIServer) GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse {
 		Timestamp:          &timestamp,
 		PolicyChainVersion: &policyChainVersion,
 	}
-}
-
-// CreateRestAPI implements ServerInterface.CreateRestAPI
-// (POST /rest-apis)
-func (s *APIServer) CreateRestAPI(c *gin.Context) {
-	startTime := time.Now()
-	operation := "create"
-
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-
-	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Error("Failed to read request body", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to read request body",
-		})
-		return
-	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Deploy API configuration using the utility service
-	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
-		Data:          body,
-		ContentType:   c.GetHeader("Content-Type"),
-		Kind:          "RestApi",
-		APIID:         "", // Empty to generate new UUID
-		CorrelationID: correlationID,
-		Logger:        log,
-	})
-
-	if err != nil {
-		log.Error("Failed to deploy API configuration", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		} else if validationErr := new(utils.ValidationErrorListError); errors.As(err, &validationErr) {
-			errors := make([]api.ValidationError, len(validationErr.Errors))
-			for i, e := range validationErr.Errors {
-				errors[i] = api.ValidationError{
-					Field:   stringPtr(e.Field),
-					Message: stringPtr(e.Message),
-				}
-			}
-
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: "Configuration validation failed",
-				Errors:  &errors,
-			})
-		} else {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		}
-		return
-	}
-
-	// Record successful operation metrics
-	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
-	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
-	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
-
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(result.StoredConfig.UUID, correlationID, log)
-	}
-
-	// Return success response (id is the handle)
-	c.JSON(http.StatusCreated, api.RestAPICreateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("RestAPI created successfully"),
-		Id:        stringPtr(result.StoredConfig.Handle),
-		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
-	})
-
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else if result.IsUpdate {
-			// API was updated and no longer has policies, remove the existing policy configuration
-			policyID := result.StoredConfig.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Only treat "policy not found" as non-error (API may never have had policies)
-				// Other errors (storage failures, snapshot update failures) should be logged as errors
-				if storage.IsPolicyNotFoundError(err) {
-					log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-				} else {
-					log.Error("Failed to remove policy configuration",
-						slog.Any("error", err),
-						slog.String("policy_id", policyID))
-				}
-			} else {
-				log.Info("Derived policy configuration removed (API no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
-}
-
-// ListRestAPIs implements ServerInterface.ListRestAPIs
-// (GET /rest-apis)
-func (s *APIServer) ListRestAPIs(c *gin.Context, params api.ListRestAPIsParams) {
-	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
-		s.SearchDeployments(c, string(api.RestApi))
-		return
-	}
-	configs := s.store.GetAllByKind(string(api.RestApi))
-
-	items := make([]api.RestAPIListItem, 0, len(configs))
-	for _, cfg := range configs {
-		cfgContext, err := cfg.GetContext()
-		if err != nil {
-			s.logger.Error("Failed to get context for API config", slog.Any("error", err), slog.String("uuid", cfg.UUID))
-			continue
-		}
-		status := string(cfg.Status)
-		items = append(items, api.RestAPIListItem{
-			Id:          stringPtr(cfg.Handle),
-			DisplayName: stringPtr(cfg.DisplayName),
-			Version:     stringPtr(cfg.Version),
-			Context:     stringPtr(cfgContext),
-			Status:      (*api.RestAPIListItemStatus)(&status),
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"count":  len(items),
-		"apis":   items,
-	})
 }
 
 func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
@@ -541,441 +404,6 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 		"status": "success",
 		"api":    apiDetail,
 	})
-}
-
-// GetRestAPIById implements ServerInterface.GetRestAPIById
-// (GET /rest-apis/{id})
-func (s *APIServer) GetRestAPIById(c *gin.Context, id string) {
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-	handle := id
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	apiDetail := gin.H{
-		"id":            cfg.Handle,
-		"configuration": cfg.Configuration,
-		"metadata": gin.H{
-			"status":    string(cfg.Status),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
-	}
-
-	if cfg.DeployedAt != nil {
-		apiDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"api":    apiDetail,
-	})
-}
-
-// UpdateRestAPI implements ServerInterface.UpdateRestAPI
-// (PUT /rest-apis/{id})
-func (s *APIServer) UpdateRestAPI(c *gin.Context, id string) {
-	startTime := time.Now()
-	operation := "update"
-
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-	handle := id
-
-	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Error("Failed to read request body", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to read request body",
-		})
-		return
-	}
-
-	// Parse configuration
-	contentType := c.GetHeader("Content-Type")
-	var apiConfig api.RestAPI
-	err = s.parser.Parse(body, contentType, &apiConfig)
-	if err != nil {
-		log.Error("Failed to parse configuration", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse configuration: %v", err),
-		})
-		return
-	}
-
-	// Validate that the handle in the YAML matches the path parameter
-	if apiConfig.Metadata.Name != "" {
-		if apiConfig.Metadata.Name != handle {
-			log.Warn("Handle mismatch between path and YAML metadata",
-				slog.String("path_handle", handle),
-				slog.String("yaml_handle", apiConfig.Metadata.Name))
-			metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-			metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
-			})
-			return
-		}
-	}
-
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		log.Warn("Configuration validation failed",
-			slog.String("handle", handle),
-			slog.Int("num_errors", len(validationErrors)))
-
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErrors)))
-
-		errors := make([]api.ValidationError, len(validationErrors))
-		for i, e := range validationErrors {
-			errors[i] = api.ValidationError{
-				Field:   stringPtr(e.Field),
-				Message: stringPtr(e.Message),
-			}
-		}
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Configuration validation failed",
-			Errors:  &errors,
-		})
-		return
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	existing, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	// Update stored configuration
-	now := time.Now()
-	existing.Configuration = apiConfig
-	existing.SourceConfiguration = apiConfig
-	existing.Status = models.StatusPending
-	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
-
-	// Atomic dual-write: database + in-memory
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			log.Error("Failed to update config in database", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to persist configuration update",
-			})
-			return
-		}
-	}
-
-	if err := s.store.Update(existing); err != nil {
-		// Log conflict errors at info level, other errors at error level
-		if storage.IsConflictError(err) {
-			log.Info("API configuration handle already exists",
-				slog.String("id", existing.UUID),
-				slog.String("handle", handle))
-			c.JSON(http.StatusConflict, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		} else {
-			log.Error("Failed to update config in memory store", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to update configuration in memory store",
-			})
-		}
-		return
-	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	log.Info("API configuration updated",
-		slog.String("id", existing.UUID),
-		slog.String("handle", handle))
-
-	// Record successful operation metrics
-	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
-	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
-
-	// Return success response (id is the handle)
-	c.JSON(http.StatusOK, api.RestAPIUpdateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("RestAPI updated successfully"),
-		Id:        stringPtr(existing.Handle),
-		UpdatedAt: timePtr(existing.UpdatedAt),
-	})
-
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(existing)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// API no longer has policies, remove the existing policy configuration
-			policyID := existing.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if API never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (API no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
-}
-
-// DeleteRestAPI implements ServerInterface.DeleteRestAPI
-// (DELETE /rest-apis/{id})
-func (s *APIServer) DeleteRestAPI(c *gin.Context, id string) {
-	startTime := time.Now()
-	operation := "delete"
-
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-
-	handle := id
-
-	if s.db == nil {
-		log.Error("Database storage not available")
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("RestAPI with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	// Delete from database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-			log.Error("Failed to delete config from database", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to delete configuration",
-			})
-			return
-		}
-
-		// Delete associated API keys from database
-		err := s.db.RemoveAPIKeysAPI(cfg.UUID)
-		if err != nil {
-			log.Warn("Failed to remove API keys from database",
-				slog.String("handle", handle),
-				slog.Any("error", err))
-		}
-	}
-
-	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil {
-		log.Warn("Failed to remove API keys from ConfigStore",
-			slog.String("handle", handle),
-			slog.Any("error", err))
-	}
-
-	// Remove API keys from policy engine via xDS
-	if s.apiKeyXDSManager != nil {
-		// Extract API name and version from the config
-		if restCfg, ok := cfg.Configuration.(api.RestAPI); ok {
-			apiId := cfg.UUID
-			apiName := restCfg.Spec.DisplayName
-			apiVersion := restCfg.Spec.Version
-			correlationID := middleware.GetCorrelationID(c)
-
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID),
-					slog.Any("error", err))
-			} else {
-				log.Info("Successfully removed API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID))
-			}
-		} else {
-			log.Warn("Failed to extract API config data for API key removal",
-				slog.String("handle", handle))
-		}
-	}
-
-	if cfg.Kind == "WebSubApi" {
-		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
-
-		var deregErrs int32
-		var wg sync.WaitGroup
-
-		if len(topicsToUnregister) > 0 {
-			wg.Add(1)
-			go func(list []string) {
-				defer wg.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.UUID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", cfg.UUID))
-							atomic.AddInt32(&deregErrs, 1)
-						} else {
-							log.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", cfg.UUID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-
-		wg.Wait()
-
-		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", cfg.UUID),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Topic lifecycle operations failed",
-			})
-			return
-		}
-	}
-
-	// Delete from in-memory store
-	if err := s.store.Delete(cfg.UUID); err != nil {
-		log.Error("Failed to delete config from memory store", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to delete configuration",
-		})
-		return
-	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	log.Info("API configuration deleted",
-		slog.String("id", cfg.UUID),
-		slog.String("handle", handle))
-
-	// Record successful operation metrics
-	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
-	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
-	metrics.APIsTotal.WithLabelValues("rest_api", "active").Dec()
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
-		"message": "RestAPI deleted successfully",
-		"id":      handle,
-	})
-
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
 }
 
 // CreateWebSubAPI implements ServerInterface.CreateWebSubAPI
