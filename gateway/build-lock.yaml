@@ -25,7 +25,7 @@ policies:
       version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v0
     - name: basic-ratelimit
-      version: v0.8.2
+      version: v0.8.3
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0
     - name: content-length-guardrail
       version: v0.2.0
@@ -73,10 +73,10 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0
     - name: prompt-decorator
-      version: v0.8.0
+      version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-decorator@v0
     - name: prompt-template
-      version: v0.8.0
+      version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v0
     - name: regex-guardrail
       version: v0.2.0

@@ -131,6 +131,8 @@ const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 
 // Metadata key constants for deployment metadata
 const (
+	// MetadataKeyEndpointUrl is the metadata key for the per-deployment endpoint URL override.
+	MetadataKeyEndpointUrl = "endpointUrl"
 	// MetadataKeyVhostMain is the metadata key for the per-deployment main vhost value.
 	MetadataKeyVhostMain = "vhostMain"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.

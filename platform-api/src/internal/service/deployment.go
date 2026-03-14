@@ -180,7 +180,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 
 	// Apply overrides from metadata (endpointUrl, vhostMain, vhostSandbox)
 	if req.Metadata != nil {
-		if v, exists := metadata["endpointUrl"]; exists {
+		if v, exists := metadata[constants.MetadataKeyEndpointUrl]; exists {
 			eu, ok := v.(string)
 			if !ok {
 				return nil, fmt.Errorf("invalid endpoint URL in metadata: expected string, got %T", v)
@@ -194,7 +194,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			}
 		}
 
-		if v, exists := metadata["vhostMain"]; exists {
+		if v, exists := metadata[constants.MetadataKeyVhostMain]; exists {
 			vm, ok := v.(string)
 			if !ok {
 				return nil, fmt.Errorf("invalid vhostMain in metadata: expected string, got %T", v)
@@ -210,7 +210,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			}
 		}
 
-		if v, exists := metadata["vhostSandbox"]; exists {
+		if v, exists := metadata[constants.MetadataKeyVhostSandbox]; exists {
 			vs, ok := v.(string)
 			if !ok {
 				return nil, fmt.Errorf("invalid vhostSandbox in metadata: expected string, got %T", v)
