@@ -50,11 +50,11 @@ type sqlStore struct {
 
 	rebindQuery func(string) string
 
-	isConfigUniqueViolation          func(error) bool
-	isCertificateUniqueViolation    func(error) bool
-	isTemplateUniqueViolation       func(error) bool
-	isAPIKeyUniqueViolation         func(error) bool
-	isSubscriptionUniqueViolation   func(error) bool
+	isConfigUniqueViolation           func(error) bool
+	isCertificateUniqueViolation      func(error) bool
+	isTemplateUniqueViolation         func(error) bool
+	isAPIKeyUniqueViolation           func(error) bool
+	isSubscriptionUniqueViolation     func(error) bool
 	isSubscriptionPlanUniqueViolation func(error) bool
 
 	backendName string
@@ -64,18 +64,18 @@ type sqlStore struct {
 
 func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string, subscriptionTokenEncryptionKey string) *sqlStore {
 	return &sqlStore{
-		db:          db,
-		logger:      logger,
-		gatewayId:   gatewayId,
-		backendName: backendName,
+		db:                             db,
+		logger:                         logger,
+		gatewayId:                      gatewayId,
+		backendName:                    backendName,
 		subscriptionTokenEncryptionKey: subscriptionTokenEncryptionKey,
 		// Defaults are identity/false; backends can override.
-		rebindQuery:                     func(query string) string { return query },
-		isConfigUniqueViolation:         func(error) bool { return false },
-		isCertificateUniqueViolation:    func(error) bool { return false },
-		isTemplateUniqueViolation:       func(error) bool { return false },
-		isAPIKeyUniqueViolation:         func(error) bool { return false },
-		isSubscriptionUniqueViolation:   func(error) bool { return false },
+		rebindQuery:                       func(query string) string { return query },
+		isConfigUniqueViolation:           func(error) bool { return false },
+		isCertificateUniqueViolation:      func(error) bool { return false },
+		isTemplateUniqueViolation:         func(error) bool { return false },
+		isAPIKeyUniqueViolation:           func(error) bool { return false },
+		isSubscriptionUniqueViolation:     func(error) bool { return false },
 		isSubscriptionPlanUniqueViolation: func(error) bool { return false },
 	}
 }
@@ -1274,26 +1274,25 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 // GetAPIKeyByUUID retrieves an API key by its platform UUID
 func (s *sqlStore) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 	query := `
-		SELECT id, api_key_uuid, name, api_key, masked_api_key, apiId, status,
+		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
 		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
-		       provisioned_by, allowed_targets
+		       issuer
 		FROM api_keys
-		WHERE api_key_uuid = ? AND gateway_id = ?
+		WHERE uuid = ? AND gateway_id = ?
 		LIMIT 1
 	`
 
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
-	var provisionedBy sql.NullString
+	var issuer sql.NullString
 
 	err := s.queryRow(query, uuid, s.gatewayId).Scan(
-		&apiKey.ID,
-		&apiKey.APIKeyUUID,
+		&apiKey.UUID,
 		&apiKey.Name,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
-		&apiKey.APIId,
+		&apiKey.ArtifactUUID,
 		&apiKey.Status,
 		&apiKey.CreatedAt,
 		&apiKey.CreatedBy,
@@ -1301,8 +1300,7 @@ func (s *sqlStore) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 		&expiresAt,
 		&apiKey.Source,
 		&externalRefId,
-		&provisionedBy,
-		&apiKey.AllowedTargets,
+		&issuer,
 	)
 
 	if err != nil {
@@ -1318,8 +1316,8 @@ func (s *sqlStore) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 	if externalRefId.Valid {
 		apiKey.ExternalRefId = &externalRefId.String
 	}
-	if provisionedBy.Valid {
-		apiKey.ProvisionedBy = &provisionedBy.String
+	if issuer.Valid {
+		apiKey.Issuer = &issuer.String
 	}
 
 	return &apiKey, nil
