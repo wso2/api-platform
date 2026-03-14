@@ -112,7 +112,6 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	return nil, errors.New("config not found")
 }
 
-
 func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	if m.unavailable {
 		return nil, storage.ErrDatabaseUnavailable
@@ -220,7 +219,7 @@ func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 		return nil, m.getErr
 	}
 	for _, apiKey := range m.apiKeys {
-		if apiKey.APIKeyUUID != nil && *apiKey.APIKeyUUID == uuid {
+		if apiKey.UUID == uuid {
 			return apiKey, nil
 		}
 	}
@@ -559,6 +558,9 @@ func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string)
 			delete(m.subscriptions, id)
 		}
 	}
+	return nil
+}
+
 func (m *MockStorage) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
 	if m.updateErr != nil {
 		return m.updateErr
