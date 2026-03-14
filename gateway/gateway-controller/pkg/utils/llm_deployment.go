@@ -116,7 +116,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("provider validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
 
-	// Transform to APIConfiguration
+	// Transform to RestAPI configuration
 	_, err := s.transformer.Transform(&providerConfig, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM provider to API configuration: %w", err)
@@ -240,7 +240,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, fmt.Errorf("proxy validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
 
-	// Transform to APIConfiguration
+	// Transform to RestAPI configuration
 	_, err := s.transformer.Transform(&proxyConfig, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM proxy to API configuration: %w", err)
