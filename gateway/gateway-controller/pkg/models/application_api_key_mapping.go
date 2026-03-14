@@ -22,9 +22,8 @@ import "time"
 
 // ApplicationAPIKeyMapping represents a gateway-side application to API key mapping.
 type ApplicationAPIKeyMapping struct {
-	ApplicationID   string    `json:"applicationId" db:"application_id"`
-	ApplicationName string    `json:"applicationName" db:"application_name"`
-	APIKeyID        string    `json:"apiKeyId" db:"api_key_id"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+	ApplicationID string    `json:"applicationId" db:"application_id"`
+	APIKeyID      string    `json:"apiKeyId" db:"api_key_id"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" db:"updated_at"`
 }

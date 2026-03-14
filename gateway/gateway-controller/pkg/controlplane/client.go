@@ -2294,12 +2294,6 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		)
 		return
 	}
-	if evt.Payload.ApplicationName == "" {
-		baseLogger.Error("Application updated event missing required application_name",
-			slog.Any("correlation_id", event["correlationId"]),
-		)
-		return
-	}
 
 	logger := baseLogger.With(
 		slog.String("correlation_id", evt.CorrelationID),
@@ -2326,9 +2320,8 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		}
 
 		resolvedMappings = append(resolvedMappings, &models.ApplicationAPIKeyMapping{
-			ApplicationID:   evt.Payload.ApplicationId,
-			ApplicationName: evt.Payload.ApplicationName,
-			APIKeyID:        apiKey.ID,
+			ApplicationID: evt.Payload.ApplicationId,
+			APIKeyID:      apiKey.UUID,
 		})
 	}
 

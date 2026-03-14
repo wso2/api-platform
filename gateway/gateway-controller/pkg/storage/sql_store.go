@@ -1600,7 +1600,7 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(applicationID string, mappin
 		if mapping == nil {
 			continue
 		}
-		if mapping.ApplicationID == "" || mapping.ApplicationName == "" || mapping.APIKeyID == "" {
+		if mapping.ApplicationID == "" || mapping.APIKeyID == "" {
 			_ = tx.Rollback()
 			return fmt.Errorf("invalid application mapping payload")
 		}
@@ -1613,10 +1613,10 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(applicationID string, mappin
 
 		if _, err = tx.ExecQ(`
 			INSERT INTO application_api_keys (
-				application_id, application_name, api_key_id, created_at, updated_at
+				application_id, api_key_id, created_at, updated_at
 			)
-			VALUES (?, ?, ?, ?, ?)
-		`, mapping.ApplicationID, mapping.ApplicationName, mapping.APIKeyID, now, now); err != nil {
+			VALUES (?, ?, ?, ?)
+		`, mapping.ApplicationID, mapping.APIKeyID, now, now); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("failed to insert application mapping: %w", err)
 		}
