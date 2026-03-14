@@ -175,7 +175,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		existingConfig, _ = s.store.Get(apiID)
 		isUpdate = existingConfig != nil
 
-		if conflicting, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {
+		if conflicting, _ := s.store.GetByKindNameAndVersion(kind, apiName, apiVersion); conflicting != nil {
 			if !isUpdate || conflicting.UUID != apiID {
 				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, apiName, apiVersion)
 			}

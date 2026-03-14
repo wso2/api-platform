@@ -374,8 +374,8 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByNameVersion(name, version)
-	if err != nil {
+	cfg, err := s.store.GetByKindNameAndVersion(models.KindRestApi, name, version)
+	if err != nil || cfg == nil {
 		log.Warn("API configuration not found",
 			slog.String("name", name),
 			slog.String("version", version))
