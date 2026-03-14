@@ -131,7 +131,8 @@ func getFeaturePaths() []string {
 		"features/token-based-ratelimit.feature",
 		"features/sandbox-routing.feature",
 		"features/subscription-validation.feature",
-		// These tests require different gateway configurations and are not included in the default suite run.
+		"features/log-message.feature",
+    // These tests require different gateway configurations and are not included in the default suite run.
 		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
 		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
 	}

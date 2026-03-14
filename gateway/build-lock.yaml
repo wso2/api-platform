@@ -39,9 +39,6 @@ policies:
     - name: json-schema-guardrail
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
-    - name: json-to-xml
-      version: v0.2.0
-      gomodule: github.com/wso2/gateway-controllers/policies/json-to-xml@v0
     - name: jwt-auth
       version: v0.8.2
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0
@@ -108,9 +105,9 @@ policies:
     - name: word-count-guardrail
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
-    - name: xml-to-json
-      version: v0.2.0
-      gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0
+    - name: json-xml-mediator
+      version: v0.8.0
+      gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v0
     - name: subscription-validation
       version: v0.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0
