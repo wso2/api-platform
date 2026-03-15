@@ -339,6 +339,11 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 					slog.String("operation", operationType+"_key"))
 				result.Response = s.buildAPIKeyResponse(apiKey, params.Handle, apiKey.APIKey, isExternalKeyInjection)
 				return result, nil
+			} else if lookupErr != nil {
+				logger.Error("Failed to check existing API key for external key injection after limit enforcement",
+					slog.String("operation", operationType+"_key"),
+					slog.Any("error", lookupErr))
+				return nil, fmt.Errorf("failed to verify existing API key for external key injection: %w", lookupErr)
 			}
 		}
 		logger.Warn("API key generation limit exceeded",
