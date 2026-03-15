@@ -72,6 +72,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0001180000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-openai-provider"
     Then the response status code should be 200
@@ -127,6 +128,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0001400000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-anthropic-provider"
     Then the response status code should be 200
@@ -186,6 +188,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0023100000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-anthropic-geo-speed-provider"
     Then the response status code should be 200
@@ -244,6 +247,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0058000000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-anthropic-cache1hr-provider"
     Then the response status code should be 200
@@ -300,6 +304,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0201400000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-anthropic-websearch-provider"
     Then the response status code should be 200
@@ -355,6 +360,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0000375000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-gemini-provider"
     Then the response status code should be 200
@@ -409,73 +415,12 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0000000000"
+    And the response header "x-llm-cost-status" should be "not_calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-unknown-provider"
     Then the response status code should be 200
     When I delete the LLM provider template "llm-cost-unknown-template"
     Then the response status code should be 200
-
-  # TODO: enable when custom pricing file support is needed
-  # Scenario: Custom pricing — new model added via pricing file is calculated correctly
-  #   # Model: my-enterprise-llm-v1 — not in embedded DB, only in custom pricing file
-  #   # Custom price: input=1e-5/token, output=2e-5/token
-  #   # Usage: 80 prompt + 40 completion = (80*1e-5) + (40*2e-5) = 8e-4 + 8e-4 = 0.0016000000
-
-  # TODO: enable when custom pricing file override support is implemented
-  # Scenario: Custom pricing — existing model price overridden via pricing file
-  #   # Model: gpt-3.5-turbo — overridden with a negotiated lower rate
-  #   # Embedded price: input=5e-7/token, output=1.5e-6/token
-  #   # Custom override: input=2e-7/token, output=5e-7/token (~60% discount)
-  #   # Usage: 100 prompt + 50 completion
-  #   # WITH override: (100*2e-7) + (50*5e-7) = 2e-5 + 2.5e-5 = 0.0000450000
-  #   # WITHOUT override: (100*5e-7) + (50*1.5e-6) = 5e-5 + 7.5e-5 = 0.0001250000
-  #   When I create this LLM provider template:
-  #     """
-  #     apiVersion: gateway.api-platform.wso2.com/v1alpha1
-  #     kind: LlmProviderTemplate
-  #     metadata:
-  #       name: llm-cost-custom-override-template
-  #     spec:
-  #       displayName: LLM Cost Custom Override Template
-  #     """
-  #   Then the response status code should be 201
-  #   When I create this LLM provider:
-  #     """
-  #     apiVersion: gateway.api-platform.wso2.com/v1alpha1
-  #     kind: LlmProvider
-  #     metadata:
-  #       name: llm-cost-custom-override-provider
-  #     spec:
-  #       displayName: LLM Cost Custom Override Provider
-  #       version: v1.0
-  #       context: /llm-cost-custom-override
-  #       template: llm-cost-custom-override-template
-  #       upstream:
-  #         url: http://mock-openapi:4010
-  #         auth:
-  #           type: api-key
-  #           header: Authorization
-  #           value: test-key
-  #       accessControl:
-  #         mode: allow_all
-  #       policies:
-  #         - name: llm-cost
-  #           version: v0
-  #     """
-  #   Then the response status code should be 201
-  #   And I wait for the endpoint "http://localhost:8080/llm-cost-custom-override/custom-llm/v1/gpt35" to be ready with method "POST" and body '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Hello"}]}'
-  #   Given I set header "Content-Type" to "application/json"
-  #   When I send a POST request to "http://localhost:8080/llm-cost-custom-override/custom-llm/v1/gpt35" with body:
-  #     """ json
-  #     {"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Hello"}]}
-  #     """
-  #   Then the response status code should be 200
-  #   And the response header "x-llm-cost" should be "0.0000450000"
-  #   Given I authenticate using basic auth as "admin"
-  #   When I delete the LLM provider "llm-cost-custom-override-provider"
-  #   Then the response status code should be 200
-  #   When I delete the LLM provider template "llm-cost-custom-override-template"
-  #   Then the response status code should be 200
 
   Scenario: Gemini context caching — cached tokens billed at reduced cache read rate
     # Model: gemini-2.0-flash — input=1e-7/token, output=4e-7/token, cache_read=2.5e-8/token
@@ -528,6 +473,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0000750000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-gemini-cached-provider"
     Then the response status code should be 200
@@ -586,6 +532,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0001500000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-gemini-thinking-provider"
     Then the response status code should be 200
@@ -644,6 +591,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0001560000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-anthropic-cache-read-provider"
     Then the response status code should be 200
@@ -701,6 +649,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0006500000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-openai-cached-provider"
     Then the response status code should be 200
@@ -757,6 +706,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0005000000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-openai-flex-provider"
     Then the response status code should be 200
@@ -813,6 +763,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0010500000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-openai-priority-provider"
     Then the response status code should be 200
@@ -869,6 +820,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0003000000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-openai-batch-provider"
     Then the response status code should be 200
@@ -926,6 +878,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0004620000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-openai-reasoning-provider"
     Then the response status code should be 200
@@ -982,6 +935,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0103000000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-openai-web-search-provider"
     Then the response status code should be 200
@@ -1039,6 +993,7 @@ Feature: LLM Cost User Policy
       """
     Then the response status code should be 200
     And the response header "x-llm-cost" should be "0.0000250000"
+    And the response header "x-llm-cost-status" should be "calculated"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-cost-mistral-provider"
     Then the response status code should be 200
