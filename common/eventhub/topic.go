@@ -1,0 +1,146 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package eventhub
+
+import (
+	"errors"
+	"sync"
+)
+
+// Sentinel errors for gateway operations.
+var (
+	ErrGatewayNotFound      = errors.New("gateway not found")
+	ErrGatewayAlreadyExists = errors.New("gateway already exists")
+	ErrSubscriberNotFound   = errors.New("subscriber not found")
+)
+
+// gateway tracks a gateway and its subscribers.
+type gateway struct {
+	id           string
+	subscribers  []chan Event
+	knownVersion string
+	lastPolled   int64
+}
+
+// gatewayRegistry manages gateway registrations and subscribers.
+type gatewayRegistry struct {
+	mu       sync.RWMutex
+	gateways map[string]*gateway
+}
+
+// newGatewayRegistry creates a new gateway registry.
+func newGatewayRegistry() *gatewayRegistry {
+	return &gatewayRegistry{
+		gateways: make(map[string]*gateway),
+	}
+}
+
+// register adds a new gateway to the registry.
+func (r *gatewayRegistry) register(gatewayID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.gateways[gatewayID]; exists {
+		return ErrGatewayAlreadyExists
+	}
+
+	r.gateways[gatewayID] = &gateway{
+		id:          gatewayID,
+		subscribers: make([]chan Event, 0),
+	}
+	return nil
+}
+
+// get returns the gateway for the given ID.
+func (r *gatewayRegistry) get(gatewayID string) (*gateway, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	gw, exists := r.gateways[gatewayID]
+	if !exists {
+		return nil, ErrGatewayNotFound
+	}
+	return gw, nil
+}
+
+// addSubscriber adds a subscriber channel for a gateway.
+func (r *gatewayRegistry) addSubscriber(gatewayID string, ch chan Event) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	gw, exists := r.gateways[gatewayID]
+	if !exists {
+		return ErrGatewayNotFound
+	}
+
+	gw.subscribers = append(gw.subscribers, ch)
+	return nil
+}
+
+// removeSubscriber removes a subscriber channel for a gateway.
+func (r *gatewayRegistry) removeSubscriber(gatewayID string, subscriber <-chan Event) (chan Event, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	gw, exists := r.gateways[gatewayID]
+	if !exists {
+		return nil, ErrGatewayNotFound
+	}
+
+	for i, ch := range gw.subscribers {
+		if (<-chan Event)(ch) != subscriber {
+			continue
+		}
+
+		last := len(gw.subscribers) - 1
+		gw.subscribers[i] = gw.subscribers[last]
+		gw.subscribers[last] = nil
+		gw.subscribers = gw.subscribers[:last]
+		return ch, nil
+	}
+
+	return nil, ErrSubscriberNotFound
+}
+
+// removeAllSubscribers removes and returns all subscriber channels for a gateway.
+func (r *gatewayRegistry) removeAllSubscribers(gatewayID string) ([]chan Event, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	gw, exists := r.gateways[gatewayID]
+	if !exists {
+		return nil, ErrGatewayNotFound
+	}
+
+	subscribers := gw.subscribers
+	gw.subscribers = nil
+	return subscribers, nil
+}
+
+// getAll returns all registered gateways.
+func (r *gatewayRegistry) getAll() []*gateway {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	gateways := make([]*gateway, 0, len(r.gateways))
+	for _, gw := range r.gateways {
+		gateways = append(gateways, gw)
+	}
+	return gateways
+}
