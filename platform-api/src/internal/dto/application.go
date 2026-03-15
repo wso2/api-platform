@@ -22,7 +22,7 @@ import "time"
 type CreateApplicationRequest struct {
 	Id          string  `json:"id,omitempty"`
 	Name        string  `json:"name"`
-	ProjectId   string  `json:"projectId"`
+	ProjectId   string  `json:"projectId,omitempty"`
 	Type        string  `json:"type"`
 	Description *string `json:"description,omitempty"`
 	CreatedBy   *string `json:"createdBy,omitempty"`
@@ -37,7 +37,7 @@ type UpdateApplicationRequest struct {
 type ApplicationResponse struct {
 	Id          string     `json:"id"`
 	Name        string     `json:"name"`
-	ProjectId   string     `json:"projectId"`
+	ProjectId   string     `json:"projectId,omitempty"`
 	Type        string     `json:"type"`
 	Description *string    `json:"description,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty"`

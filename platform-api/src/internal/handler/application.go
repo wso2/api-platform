@@ -58,10 +58,6 @@ func (h *ApplicationHandler) CreateApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
 		return
 	}
-	if strings.TrimSpace(req.ProjectId) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
-		return
-	}
 	if strings.TrimSpace(req.Type) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
 		return
@@ -328,6 +324,8 @@ func (h *ApplicationHandler) writeApplicationError(c *gin.Context, err error, fa
 		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Application handle already exists in organization"))
 	case errors.Is(err, constants.ErrAPIKeyNotFound):
 		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API key not found"))
+	case errors.Is(err, constants.ErrAPIKeyForbidden):
+		c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "Only the key creator can perform this action"))
 	case errors.Is(err, constants.ErrInvalidApplicationName):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
 	case errors.Is(err, constants.ErrInvalidApplicationType):
