@@ -191,6 +191,109 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 	return nil
 }
 
+// HandleRouteConfigUpdate processes RouteConfig resources from ADS response.
+// These contain metadata, resolver name, and upstream path info for each route.
+func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources []*anypb.Any, version string) error {
+	slog.InfoContext(ctx, "Handling route config update via ADS",
+		"version", version,
+		"num_resources", len(resources))
+
+	routeConfigs := make(map[string]*kernel.RouteConfig)
+
+	for i, resource := range resources {
+		if resource.TypeUrl != RouteConfigTypeURL {
+			slog.WarnContext(ctx, "Skipping resource with unexpected type",
+				"expected", RouteConfigTypeURL,
+				"actual", resource.TypeUrl,
+				"index", i)
+			continue
+		}
+
+		// Unmarshal google.protobuf.Struct from the Any
+		innerAny := &anypb.Any{}
+		if err := proto.Unmarshal(resource.Value, innerAny); err != nil {
+			return fmt.Errorf("failed to unmarshal inner Any from route config resource: %w", err)
+		}
+
+		routeStruct := &structpb.Struct{}
+		if err := proto.Unmarshal(innerAny.Value, routeStruct); err != nil {
+			return fmt.Errorf("failed to unmarshal route config struct from inner Any: %w", err)
+		}
+
+		// Convert Struct to JSON then to a map
+		jsonBytes, err := protojson.Marshal(routeStruct)
+		if err != nil {
+			return fmt.Errorf("failed to marshal route config struct to JSON: %w", err)
+		}
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(jsonBytes, &data); err != nil {
+			return fmt.Errorf("failed to unmarshal route config JSON: %w", err)
+		}
+
+		routeKey, _ := data["route_key"].(string)
+		if routeKey == "" {
+			slog.WarnContext(ctx, "Skipping route config with empty route_key", "index", i)
+			continue
+		}
+
+		rc := &kernel.RouteConfig{
+			ResolverName: getStringFromMap(data, "resolver_name"),
+			UpstreamBasePath: getStringFromMap(data, "upstream_base_path"),
+			DefaultUpstreamCluster: getStringFromMap(data, "default_upstream_cluster"),
+		}
+
+		// Parse metadata
+		if metaMap, ok := data["metadata"].(map[string]interface{}); ok {
+			rc.Metadata = kernel.RouteMetadata{
+				RouteName:      routeKey,
+				APIName:        getStringFromMap(metaMap, "name"),
+				APIVersion:     getStringFromMap(metaMap, "version"),
+				Context:        getStringFromMap(metaMap, "api_context"),
+				Vhost:          getStringFromMap(metaMap, "vhost"),
+				APIKind:        getStringFromMap(metaMap, "kind"),
+				TemplateHandle: getStringFromMap(metaMap, "template_handle"),
+				ProviderName:   getStringFromMap(metaMap, "provider_name"),
+				ProjectID:      getStringFromMap(metaMap, "project_id"),
+				OperationPath:  getStringFromMap(metaMap, "path"),
+				APIId:          getStringFromMap(metaMap, "handle"),
+			}
+		}
+
+		// Parse upstream definition paths
+		if pathsRaw, ok := data["upstream_definition_paths"].(map[string]interface{}); ok {
+			paths := make(map[string]string, len(pathsRaw))
+			for k, v := range pathsRaw {
+				if s, ok := v.(string); ok {
+					paths[k] = s
+				}
+			}
+			rc.UpstreamDefinitionPaths = paths
+		}
+
+		routeConfigs[routeKey] = rc
+	}
+
+	// Apply atomically
+	h.kernel.ApplyWholeRouteConfigs(routeConfigs)
+
+	slog.InfoContext(ctx, "Route config update completed successfully",
+		"version", version,
+		"total_routes", len(routeConfigs))
+
+	return nil
+}
+
+// getStringFromMap safely extracts a string value from a map.
+func getStringFromMap(m map[string]interface{}, key string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 // convertStoredConfigToPolicyChains extracts PolicyChain configurations from StoredPolicyConfig
 // With SDK types, the routes are already in the correct format
 func (h *ResourceHandler) convertStoredConfigToPolicyChains(stored *StoredPolicyConfig) []*policyenginev1.PolicyChain {

@@ -59,6 +59,7 @@ type Client struct {
 	apiKeyVersion            string
 	lazyResourceVersion      string
 	subscriptionStateVersion string
+	routeConfigVersion       string
 	currentNonce             string
 
 	// Lifecycle management
@@ -422,6 +423,25 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		return fmt.Errorf("failed to send subscription state request: %w", err)
 	}
 
+	// Send route config subscription
+	routeConfigReq := &discoveryv3.DiscoveryRequest{
+		TypeUrl:       RouteConfigTypeURL,
+		VersionInfo:   "", // Initial request
+		ResponseNonce: responseNonce,
+		Node: &corev3.Node{
+			Id:      constants.XDSNodeID,
+			Cluster: constants.XDSCluster,
+		},
+	}
+
+	slog.DebugContext(c.ctx, "Sending route config discovery request",
+		"type_url", routeConfigReq.TypeUrl,
+		"nonce", responseNonce)
+
+	if err := stream.Send(routeConfigReq); err != nil {
+		return fmt.Errorf("failed to send route config request: %w", err)
+	}
+
 	return nil
 }
 
@@ -457,6 +477,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 				currentVersion = c.lazyResourceVersion
 			case SubscriptionStateTypeURL:
 				currentVersion = c.subscriptionStateVersion
+			case RouteConfigTypeURL:
+				currentVersion = c.routeConfigVersion
 			}
 			c.mu.RUnlock()
 
@@ -480,6 +502,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			c.lazyResourceVersion = resp.VersionInfo
 		case SubscriptionStateTypeURL:
 			c.subscriptionStateVersion = resp.VersionInfo
+		case RouteConfigTypeURL:
+			c.routeConfigVersion = resp.VersionInfo
 		}
 		c.currentNonce = resp.Nonce
 		c.mu.Unlock()
@@ -592,6 +616,10 @@ func (c *Client) handleDiscoveryResponse(resp *discoveryv3.DiscoveryResponse) er
 			resourceMap[fmt.Sprintf("resource_%d", i)] = resource
 		}
 		return c.handler.subscriptionHandler.HandleSubscriptionState(c.ctx, resourceMap)
+
+	case RouteConfigTypeURL:
+		// Handle route config updates (metadata + resolver)
+		return c.handler.HandleRouteConfigUpdate(c.ctx, resp.Resources, resp.VersionInfo)
 
 	default:
 		return fmt.Errorf("unexpected type URL: %s", resp.TypeUrl)

@@ -28,36 +28,38 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
 )
 
-// CombinedCache combines policy, API key, and lazy resource caches to provide a unified xDS cache interface
+// CombinedCache combines policy, API key, lazy resource, subscription, and route config caches to provide a unified xDS cache interface
 // It implements cache.Cache interface by delegating to underlying caches
 type CombinedCache struct {
 	policyCache       cache.Cache
 	apiKeyCache       cache.Cache
 	lazyResourceCache cache.Cache
 	subscriptionCache cache.Cache
+	routeConfigCache  cache.Cache
 	logger            *slog.Logger
 	mu                sync.RWMutex
 	watchers          map[int64]*combinedWatcher
 	watcherID         int64
 }
 
-// combinedWatcher manages watchers for policy, API key, and lazy resource caches
+// combinedWatcher manages watchers for policy, API key, lazy resource, subscription, and route config caches
 type combinedWatcher struct {
-	id                 int64
-	request            *cache.Request
-	streamState        stream.StreamState
-	responseChan       chan cache.Response
-	policyCancel       func()
-	apiKeyCancel       func()
-	lazyResourceCancel func()
-	subscriptionCancel func()
-	combinedCache      *CombinedCache
-	done               chan struct{} // done channel to signal goroutine cancellation
+	id                  int64
+	request             *cache.Request
+	streamState         stream.StreamState
+	responseChan        chan cache.Response
+	policyCancel        func()
+	apiKeyCancel        func()
+	lazyResourceCancel  func()
+	subscriptionCancel  func()
+	routeConfigCancel   func()
+	combinedCache       *CombinedCache
+	done                chan struct{} // done channel to signal goroutine cancellation
 }
 
-// NewCombinedCache creates a new combined cache that merges policy, API key, and lazy resource caches
-// Returns a cache.Cache interface implementation
-func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyResourceCache cache.Cache, subscriptionCache cache.Cache, logger *slog.Logger) cache.Cache {
+// NewCombinedCache creates a new combined cache that merges policy, API key, lazy resource, subscription, and route config caches.
+// Returns a cache.Cache interface implementation.
+func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyResourceCache cache.Cache, subscriptionCache cache.Cache, routeConfigCache cache.Cache, logger *slog.Logger) cache.Cache {
 	if policyCache == nil || apiKeyCache == nil || lazyResourceCache == nil || subscriptionCache == nil {
 		panic("policyCache, apiKeyCache, lazyResourceCache, and subscriptionCache must not be nil")
 	}
@@ -69,6 +71,7 @@ func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyReso
 		apiKeyCache:       apiKeyCache,
 		lazyResourceCache: lazyResourceCache,
 		subscriptionCache: subscriptionCache,
+		routeConfigCache:  routeConfigCache,
 		logger:            logger,
 		watchers:          make(map[int64]*combinedWatcher),
 		watcherID:         0,
@@ -105,15 +108,19 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 	apiKeyResponseChan := make(chan cache.Response, 1)
 	lazyResourceResponseChan := make(chan cache.Response, 1)
 	subscriptionResponseChan := make(chan cache.Response, 1)
+	routeConfigResponseChan := make(chan cache.Response, 1)
 
 	// Create watches on all underlying caches with separate channels
 	watcher.policyCancel = c.policyCache.CreateWatch(request, streamState, policyResponseChan)
 	watcher.apiKeyCancel = c.apiKeyCache.CreateWatch(request, streamState, apiKeyResponseChan)
 	watcher.lazyResourceCancel = c.lazyResourceCache.CreateWatch(request, streamState, lazyResourceResponseChan)
 	watcher.subscriptionCancel = c.subscriptionCache.CreateWatch(request, streamState, subscriptionResponseChan)
+	if c.routeConfigCache != nil {
+		watcher.routeConfigCancel = c.routeConfigCache.CreateWatch(request, streamState, routeConfigResponseChan)
+	}
 
 	// Start a response multiplexer to handle responses from all caches
-	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, responseChan, watcher.done)
+	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, routeConfigResponseChan, responseChan, watcher.done)
 
 	// Return cancel function
 	return func() {
@@ -123,13 +130,13 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 
 // handleCombinedResponses multiplexes responses from all caches
 // This prevents recursion and handles response deduplication
-func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan chan cache.Response,
+func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, routeConfigResponseChan chan cache.Response,
 	mainResponseChan chan cache.Response, done chan struct{}) {
 	defer func() {
 		c.logger.Debug("Response handler goroutine exiting", slog.Int64("watcher_id", watcherID))
 	}()
 
-	var lastPolicyVersion, lastApiKeyVersion, lastLazyResourceVersion, lastSubscriptionVersion string
+	var lastPolicyVersion, lastApiKeyVersion, lastLazyResourceVersion, lastSubscriptionVersion, lastRouteConfigVersion string
 
 	for {
 		select {
@@ -292,6 +299,42 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 					slog.Int64("watcher_id", watcherID),
 					slog.String("version", version))
 			}
+
+		case response, ok := <-routeConfigResponseChan:
+			if !ok {
+				c.logger.Debug("Route config response channel closed", slog.Int64("watcher_id", watcherID))
+				return
+			}
+
+			if response == nil {
+				c.logger.Debug("Route config cache has no data, skipping nil response",
+					slog.Int64("watcher_id", watcherID))
+				continue
+			}
+
+			version, err := response.GetVersion()
+			if err != nil {
+				version = "unknown"
+			}
+
+			if version != lastRouteConfigVersion {
+				lastRouteConfigVersion = version
+				c.logger.Debug("Forwarding route config cache response",
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
+
+				select {
+				case mainResponseChan <- response:
+				case <-time.After(100 * time.Millisecond):
+					c.logger.Warn("Timeout sending route config response, client may be slow",
+						slog.Int64("watcher_id", watcherID),
+						slog.String("version", version))
+				}
+			} else {
+				c.logger.Debug("Skipping duplicate route config response",
+					slog.Int64("watcher_id", watcherID),
+					slog.String("version", version))
+			}
 		}
 
 		// Check if watcher still exists
@@ -363,9 +406,20 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		c.logger.Debug("Subscription cache does not support delta watch, skipping", slog.Int64("watcher_id", watcherID))
 	}
 
+	// Try to create delta watch on route config cache if it supports it
+	var routeConfigCancel func()
+	if c.routeConfigCache != nil {
+		if deltaWatcher, ok := c.routeConfigCache.(interface {
+			CreateDeltaWatch(*cache.DeltaRequest, stream.StreamState, chan cache.DeltaResponse) func()
+		}); ok {
+			routeConfigCancel = deltaWatcher.CreateDeltaWatch(request, streamState, c.createDeltaResponseHandler(watcherID, "routeconfig", responseChan))
+			c.logger.Debug("Route config cache supports delta watch", slog.Int64("watcher_id", watcherID))
+		}
+	}
+
 	// If no cache supports delta watch, we could fall back to regular watch
 	// but for now we'll just return a no-op cancel function
-	if policyCancel == nil && apiKeyCancel == nil && lazyResourceCancel == nil && subscriptionCancel == nil {
+	if policyCancel == nil && apiKeyCancel == nil && lazyResourceCancel == nil && subscriptionCancel == nil && routeConfigCancel == nil {
 		c.logger.Warn("No underlying cache supports delta watch",
 			slog.Int64("watcher_id", watcherID),
 			slog.String("type_url", request.TypeUrl))
@@ -387,6 +441,9 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, streamStat
 		}
 		if subscriptionCancel != nil {
 			subscriptionCancel()
+		}
+		if routeConfigCancel != nil {
+			routeConfigCancel()
 		}
 
 		c.logger.Debug("Canceled combined delta watch", slog.Int64("watcher_id", watcherID))
@@ -442,6 +499,19 @@ func (c *CombinedCache) Fetch(ctx context.Context, request *cache.Request) (cach
 				version = "unknown"
 			}
 			c.logger.Debug("Fetched from subscription cache",
+				slog.String("version", version))
+			return response, nil
+		}
+	}
+
+	// If not found in subscription cache, try route config cache (if configured)
+	if c.routeConfigCache != nil {
+		if response, err := c.routeConfigCache.Fetch(ctx, request); err == nil && response != nil {
+			version, versionErr := response.GetVersion()
+			if versionErr != nil {
+				version = "unknown"
+			}
+			c.logger.Debug("Fetched from route config cache",
 				slog.String("version", version))
 			return response, nil
 		}
@@ -519,5 +589,8 @@ func (c *CombinedCache) cancelWatch(watcherID int64) {
 	}
 	if watcher.subscriptionCancel != nil {
 		watcher.subscriptionCancel()
+	}
+	if watcher.routeConfigCancel != nil {
+		watcher.routeConfigCancel()
 	}
 }
