@@ -1542,22 +1542,23 @@ func (s *APIService) upstreamFromYAML(upstream *dto.UpstreamYAML) api.Upstream {
 }
 
 func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct {
-	Channels        *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
-	Context         string                                                  `binding:"required" json:"context" yaml:"context"`
-	CreatedAt       *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy       *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description     string                                                  `json:"description" yaml:"description"`
-	Id              *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind            *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
-	LifeCycleStatus *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            string                                                  `binding:"required" json:"name" yaml:"name"`
-	Operations      []api.Operation                                         `json:"operations" yaml:"operations"`
-	Policies        *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
-	ProjectId       openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
-	Transport       *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt       *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream        api.Upstream                                            `json:"upstream" yaml:"upstream"`
-	Version         string                                                  `binding:"required" json:"version" yaml:"version"`
+	Channels          *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
+	Context           string                                                  `binding:"required" json:"context" yaml:"context"`
+	CreatedAt         *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy         *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description       string                                                  `json:"description" yaml:"description"`
+	Id                *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
+	Kind              *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
+	LifeCycleStatus   *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+	Name              string                                                  `binding:"required" json:"name" yaml:"name"`
+	Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
+	Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
+	SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
+	UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Upstream          api.Upstream                                            `json:"upstream" yaml:"upstream"`
+	Version           string                                                  `binding:"required" json:"version" yaml:"version"`
 } {
 	if restAPI == nil {
 		return nil
@@ -1580,59 +1581,62 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 	}
 
 	return &struct {
-		Channels        *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context         string                                                  `binding:"required" json:"context" yaml:"context"`
-		CreatedAt       *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-		CreatedBy       *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description     string                                                  `json:"description" yaml:"description"`
-		Id              *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
-		Kind            *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
-		LifeCycleStatus *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-		Name            string                                                  `binding:"required" json:"name" yaml:"name"`
-		Operations      []api.Operation                                         `json:"operations" yaml:"operations"`
-		Policies        *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
-		ProjectId       openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
-		Transport       *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
-		UpdatedAt       *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		Upstream        api.Upstream                                            `json:"upstream" yaml:"upstream"`
-		Version         string                                                  `binding:"required" json:"version" yaml:"version"`
+		Channels          *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
+		Context           string                                                  `binding:"required" json:"context" yaml:"context"`
+		CreatedAt         *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+		CreatedBy         *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+		Description       string                                                  `json:"description" yaml:"description"`
+		Id                *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
+		Kind              *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
+		LifeCycleStatus   *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+		Name              string                                                  `binding:"required" json:"name" yaml:"name"`
+		Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
+		Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
+		ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
+		SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+		Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
+		UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		Upstream          api.Upstream                                            `json:"upstream" yaml:"upstream"`
+		Version           string                                                  `binding:"required" json:"version" yaml:"version"`
 	}{
-		Channels:        restAPI.Channels,
-		Context:         restAPI.Context,
-		CreatedAt:       restAPI.CreatedAt,
-		CreatedBy:       restAPI.CreatedBy,
-		Description:     desc,
-		Id:              restAPI.Id,
-		Kind:            restAPI.Kind,
-		LifeCycleStatus: status,
-		Name:            restAPI.Name,
-		Operations:      operations,
-		Policies:        restAPI.Policies,
-		ProjectId:       openapi_types.UUID{},
-		Transport:       restAPI.Transport,
-		UpdatedAt:       restAPI.UpdatedAt,
-		Upstream:        restAPI.Upstream,
-		Version:         restAPI.Version,
+		Channels:          restAPI.Channels,
+		Context:           restAPI.Context,
+		CreatedAt:         restAPI.CreatedAt,
+		CreatedBy:         restAPI.CreatedBy,
+		Description:       desc,
+		Id:                restAPI.Id,
+		Kind:              restAPI.Kind,
+		LifeCycleStatus:   status,
+		Name:              restAPI.Name,
+		Operations:        operations,
+		Policies:          restAPI.Policies,
+		ProjectId:         openapi_types.UUID{},
+		SubscriptionPlans: restAPI.SubscriptionPlans,
+		Transport:         restAPI.Transport,
+		UpdatedAt:         restAPI.UpdatedAt,
+		Upstream:          restAPI.Upstream,
+		Version:           restAPI.Version,
 	}
 }
 
 func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct {
-	Channels        *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-	Context         string                                           `binding:"required" json:"context" yaml:"context"`
-	CreatedAt       *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy       *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description     *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-	Id              *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind            *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-	LifeCycleStatus *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            string                                           `binding:"required" json:"name" yaml:"name"`
-	Operations      []api.Operation                                  `json:"operations" yaml:"operations"`
-	Policies        *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-	ProjectId       openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-	Transport       *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt       *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream        api.Upstream                                     `json:"upstream" yaml:"upstream"`
-	Version         string                                           `binding:"required" json:"version" yaml:"version"`
+	Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
+	Context           string                                           `binding:"required" json:"context" yaml:"context"`
+	CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
+	Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
+	Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
+	LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+	Name              string                                           `binding:"required" json:"name" yaml:"name"`
+	Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
+	Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
+	SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
+	UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
+	Version           string                                           `binding:"required" json:"version" yaml:"version"`
 } {
 	if restAPI == nil {
 		return nil
@@ -1650,39 +1654,41 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 	}
 
 	return &struct {
-		Channels        *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context         string                                           `binding:"required" json:"context" yaml:"context"`
-		CreatedAt       *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-		CreatedBy       *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description     *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-		Id              *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-		Kind            *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-		LifeCycleStatus *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-		Name            string                                           `binding:"required" json:"name" yaml:"name"`
-		Operations      []api.Operation                                  `json:"operations" yaml:"operations"`
-		Policies        *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-		ProjectId       openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-		Transport       *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-		UpdatedAt       *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		Upstream        api.Upstream                                     `json:"upstream" yaml:"upstream"`
-		Version         string                                           `binding:"required" json:"version" yaml:"version"`
+		Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
+		Context           string                                           `binding:"required" json:"context" yaml:"context"`
+		CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+		CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+		Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
+		Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
+		Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
+		LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+		Name              string                                           `binding:"required" json:"name" yaml:"name"`
+		Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
+		Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
+		ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
+		SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+		Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
+		UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
+		Version           string                                           `binding:"required" json:"version" yaml:"version"`
 	}{
-		Channels:        restAPI.Channels,
-		Context:         restAPI.Context,
-		CreatedAt:       restAPI.CreatedAt,
-		CreatedBy:       restAPI.CreatedBy,
-		Description:     restAPI.Description,
-		Id:              restAPI.Id,
-		Kind:            restAPI.Kind,
-		LifeCycleStatus: status,
-		Name:            restAPI.Name,
-		Operations:      operations,
-		Policies:        restAPI.Policies,
-		ProjectId:       openapi_types.UUID{},
-		Transport:       restAPI.Transport,
-		UpdatedAt:       restAPI.UpdatedAt,
-		Upstream:        restAPI.Upstream,
-		Version:         restAPI.Version,
+		Channels:          restAPI.Channels,
+		Context:           restAPI.Context,
+		CreatedAt:         restAPI.CreatedAt,
+		CreatedBy:         restAPI.CreatedBy,
+		Description:       restAPI.Description,
+		Id:                restAPI.Id,
+		Kind:              restAPI.Kind,
+		LifeCycleStatus:   status,
+		Name:              restAPI.Name,
+		Operations:        operations,
+		Policies:          restAPI.Policies,
+		ProjectId:         openapi_types.UUID{},
+		SubscriptionPlans: restAPI.SubscriptionPlans,
+		Transport:         restAPI.Transport,
+		UpdatedAt:         restAPI.UpdatedAt,
+		Upstream:          restAPI.Upstream,
+		Version:           restAPI.Version,
 	}
 }
 

@@ -233,7 +233,10 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 		displayName = strings.TrimSpace(*req.DisplayName)
 	} else {
 		// Auto-generate: "<api-handle>-key-<short-id>"
-		shortID, _ := utils.GenerateUUID()
+		shortID, err := utils.GenerateUUID()
+		if err != nil {
+			return "", fmt.Errorf("failed to generate short ID: %w", err)
+		}
 		displayName = fmt.Sprintf("%s-key-%s", apiHandle, shortID[:8])
 	}
 

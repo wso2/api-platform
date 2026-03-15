@@ -63,19 +63,17 @@ func (s *LLMAPIKeyUserService) ListLLMAPIKeysByUser(
 			artifactType = "llm-proxy"
 		}
 		item := api.UserAPIKeyItem{
-			APIKeyItem: api.APIKeyItem{
-				Name:           k.Name,
-				MaskedApiKey:   k.MaskedAPIKey,
-				Status:         k.Status,
-				CreatedAt:      k.CreatedAt,
-				CreatedBy:      k.CreatedBy,
-				UpdatedAt:      k.UpdatedAt,
-				ExpiresAt:      k.ExpiresAt,
-				Issuer:         k.Issuer,
-				AllowedTargets: k.AllowedTargets,
-			},
-			ArtifactId:   k.ArtifactHandle,
-			ArtifactType: artifactType,
+			Name:           k.Name,
+			MaskedApiKey:   k.MaskedAPIKey,
+			Status:         api.UserAPIKeyItemStatus(k.Status),
+			CreatedAt:      k.CreatedAt,
+			CreatedBy:      k.CreatedBy,
+			UpdatedAt:      k.UpdatedAt,
+			ExpiresAt:      k.ExpiresAt,
+			Issuer:         k.Issuer,
+			AllowedTargets: k.AllowedTargets,
+			ArtifactId:     k.ArtifactHandle,
+			ArtifactType:   api.UserAPIKeyItemArtifactType(artifactType),
 		}
 		items = append(items, item)
 	}

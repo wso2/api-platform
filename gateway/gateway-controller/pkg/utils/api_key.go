@@ -1090,7 +1090,7 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		apiKey.ExternalRefId = &externalRefId
 	}
 
-	// Set issuer (nil if not provided) and allowedTargets (defaults to ALL)
+	// Set issuer (nil if not provided)
 	if request.Issuer != nil && strings.TrimSpace(*request.Issuer) != "" {
 		v := strings.TrimSpace(*request.Issuer)
 		apiKey.Issuer = &v

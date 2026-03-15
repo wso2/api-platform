@@ -16,6 +16,13 @@ const (
 	BearerAuthScopes = "BearerAuth.Scopes"
 )
 
+// Defines values for APIKeyItemStatus.
+const (
+	APIKeyItemStatusActive  APIKeyItemStatus = "active"
+	APIKeyItemStatusExpired APIKeyItemStatus = "expired"
+	APIKeyItemStatusRevoked APIKeyItemStatus = "revoked"
+)
+
 // Defines values for APIKeySecurityIn.
 const (
 	APIKeySecurityInHeader APIKeySecurityIn = "header"
@@ -54,6 +61,27 @@ const (
 	CreateRESTAPIRequestLifeCycleStatusPUBLISHED  CreateRESTAPIRequestLifeCycleStatus = "PUBLISHED"
 	CreateRESTAPIRequestLifeCycleStatusRETIRED    CreateRESTAPIRequestLifeCycleStatus = "RETIRED"
 	CreateRESTAPIRequestLifeCycleStatusSTAGED     CreateRESTAPIRequestLifeCycleStatus = "STAGED"
+)
+
+// Defines values for CreateSubscriptionPlanRequestStatus.
+const (
+	CreateSubscriptionPlanRequestStatusACTIVE   CreateSubscriptionPlanRequestStatus = "ACTIVE"
+	CreateSubscriptionPlanRequestStatusINACTIVE CreateSubscriptionPlanRequestStatus = "INACTIVE"
+)
+
+// Defines values for CreateSubscriptionPlanRequestThrottleLimitUnit.
+const (
+	CreateSubscriptionPlanRequestThrottleLimitUnitDay   CreateSubscriptionPlanRequestThrottleLimitUnit = "Day"
+	CreateSubscriptionPlanRequestThrottleLimitUnitHour  CreateSubscriptionPlanRequestThrottleLimitUnit = "Hour"
+	CreateSubscriptionPlanRequestThrottleLimitUnitMin   CreateSubscriptionPlanRequestThrottleLimitUnit = "Min"
+	CreateSubscriptionPlanRequestThrottleLimitUnitMonth CreateSubscriptionPlanRequestThrottleLimitUnit = "Month"
+)
+
+// Defines values for CreateSubscriptionRequestStatus.
+const (
+	CreateSubscriptionRequestStatusACTIVE   CreateSubscriptionRequestStatus = "ACTIVE"
+	CreateSubscriptionRequestStatusINACTIVE CreateSubscriptionRequestStatus = "INACTIVE"
+	CreateSubscriptionRequestStatusREVOKED  CreateSubscriptionRequestStatus = "REVOKED"
 )
 
 // Defines values for DeploymentResponseStatus.
@@ -260,11 +288,11 @@ const (
 
 // Defines values for RateLimitResetWindowUnit.
 const (
-	Day    RateLimitResetWindowUnit = "day"
-	Hour   RateLimitResetWindowUnit = "hour"
-	Minute RateLimitResetWindowUnit = "minute"
-	Month  RateLimitResetWindowUnit = "month"
-	Week   RateLimitResetWindowUnit = "week"
+	RateLimitResetWindowUnitDay    RateLimitResetWindowUnit = "day"
+	RateLimitResetWindowUnitHour   RateLimitResetWindowUnit = "hour"
+	RateLimitResetWindowUnitMinute RateLimitResetWindowUnit = "minute"
+	RateLimitResetWindowUnitMonth  RateLimitResetWindowUnit = "month"
+	RateLimitResetWindowUnitWeek   RateLimitResetWindowUnit = "week"
 )
 
 // Defines values for RouteExceptionMethods.
@@ -279,6 +307,19 @@ const (
 	PUT      RouteExceptionMethods = "PUT"
 )
 
+// Defines values for SubscriptionStatus.
+const (
+	SubscriptionStatusACTIVE   SubscriptionStatus = "ACTIVE"
+	SubscriptionStatusINACTIVE SubscriptionStatus = "INACTIVE"
+	SubscriptionStatusREVOKED  SubscriptionStatus = "REVOKED"
+)
+
+// Defines values for SubscriptionPlanStatus.
+const (
+	SubscriptionPlanStatusACTIVE   SubscriptionPlanStatus = "ACTIVE"
+	SubscriptionPlanStatusINACTIVE SubscriptionPlanStatus = "INACTIVE"
+)
+
 // Defines values for TimeUnit.
 const (
 	Days    TimeUnit = "days"
@@ -291,8 +332,8 @@ const (
 
 // Defines values for TokenInfoResponseStatus.
 const (
-	Active  TokenInfoResponseStatus = "active"
-	Revoked TokenInfoResponseStatus = "revoked"
+	TokenInfoResponseStatusActive  TokenInfoResponseStatus = "active"
+	TokenInfoResponseStatusRevoked TokenInfoResponseStatus = "revoked"
 )
 
 // Defines values for UpdateAPIKeyResponseStatus.
@@ -307,11 +348,45 @@ const (
 	Public  UpdateDevPortalRequestVisibility = "public"
 )
 
+// Defines values for UpdateSubscriptionPlanRequestStatus.
+const (
+	UpdateSubscriptionPlanRequestStatusACTIVE   UpdateSubscriptionPlanRequestStatus = "ACTIVE"
+	UpdateSubscriptionPlanRequestStatusINACTIVE UpdateSubscriptionPlanRequestStatus = "INACTIVE"
+)
+
+// Defines values for UpdateSubscriptionPlanRequestThrottleLimitUnit.
+const (
+	Day   UpdateSubscriptionPlanRequestThrottleLimitUnit = "Day"
+	Hour  UpdateSubscriptionPlanRequestThrottleLimitUnit = "Hour"
+	Min   UpdateSubscriptionPlanRequestThrottleLimitUnit = "Min"
+	Month UpdateSubscriptionPlanRequestThrottleLimitUnit = "Month"
+)
+
+// Defines values for UpdateSubscriptionRequestStatus.
+const (
+	UpdateSubscriptionRequestStatusACTIVE   UpdateSubscriptionRequestStatus = "ACTIVE"
+	UpdateSubscriptionRequestStatusINACTIVE UpdateSubscriptionRequestStatus = "INACTIVE"
+	UpdateSubscriptionRequestStatusREVOKED  UpdateSubscriptionRequestStatus = "REVOKED"
+)
+
 // Defines values for UpstreamAuthType.
 const (
 	ApiKey UpstreamAuthType = "api-key"
 	Basic  UpstreamAuthType = "basic"
 	Bearer UpstreamAuthType = "bearer"
+)
+
+// Defines values for UserAPIKeyItemArtifactType.
+const (
+	LlmProvider UserAPIKeyItemArtifactType = "llm-provider"
+	LlmProxy    UserAPIKeyItemArtifactType = "llm-proxy"
+)
+
+// Defines values for UserAPIKeyItemStatus.
+const (
+	Active  UserAPIKeyItemStatus = "active"
+	Expired UserAPIKeyItemStatus = "expired"
+	Revoked UserAPIKeyItemStatus = "revoked"
 )
 
 // Defines values for ValidateAPIProjectRequestProvider.
@@ -369,6 +444,46 @@ const (
 	GetDeploymentsParamsStatusDEPLOYED   GetDeploymentsParamsStatus = "DEPLOYED"
 	GetDeploymentsParamsStatusUNDEPLOYED GetDeploymentsParamsStatus = "UNDEPLOYED"
 )
+
+// Defines values for ListSubscriptionsParamsStatus.
+const (
+	ACTIVE   ListSubscriptionsParamsStatus = "ACTIVE"
+	INACTIVE ListSubscriptionsParamsStatus = "INACTIVE"
+	REVOKED  ListSubscriptionsParamsStatus = "REVOKED"
+)
+
+// APIKeyItem defines model for APIKeyItem.
+type APIKeyItem struct {
+	// AllowedTargets Comma-separated list of allowed gateways; 'ALL' means unrestricted
+	AllowedTargets string `binding:"required" json:"allowedTargets" yaml:"allowedTargets"`
+
+	// CreatedAt Timestamp when the key was created
+	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy User who created the key
+	CreatedBy string `binding:"required" json:"createdBy" yaml:"createdBy"`
+
+	// ExpiresAt Optional expiration timestamp
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+
+	// Issuer Optional identifier of the developer portal that provisioned this key
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
+
+	// MaskedApiKey Masked representation of the API key for display purposes
+	MaskedApiKey string `binding:"required" json:"maskedApiKey" yaml:"maskedApiKey"`
+
+	// Name URL-safe identifier of the API key
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Status Current status of the key
+	Status APIKeyItemStatus `binding:"required" json:"status" yaml:"status"`
+
+	// UpdatedAt Timestamp when the key was last updated
+	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
+}
+
+// APIKeyItemStatus Current status of the key
+type APIKeyItemStatus string
 
 // APIKeySecurity Configuration for API key based authentication
 type APIKeySecurity struct {
@@ -448,20 +563,18 @@ type CreateAPIKeyRequest struct {
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
 	// ExpiresAt Optional expiration time in ISO 8601 format
-	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
-
-	// ExpiresIn Optional expiration duration
+	ExpiresAt *time.Time          `json:"expiresAt" yaml:"expiresAt"`
 	ExpiresIn *ExpirationDuration `json:"expiresIn,omitempty" yaml:"expiresIn,omitempty"`
 
 	// ExternalRefId Optional reference ID for tracing purposes (from external platforms)
 	ExternalRefId *string `json:"externalRefId" yaml:"externalRefId"`
 
+	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
+	Issuer *string `json:"issuer" yaml:"issuer"`
+
 	// Name Unique identifier for this API key within the API (optional; if omitted,
 	// generated from displayName)
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Issuer Identifier of the developer portal that provisioned this API key. nil if not provided.
-	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 }
 
 // CreateAPIKeyResponse defines model for CreateAPIKeyResponse.
@@ -537,78 +650,11 @@ type CreateGatewayRequest struct {
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
 type CreateGatewayRequestFunctionalityType string
 
-// APIKeyItem defines a safe representation of an API key (no secret data)
-type APIKeyItem struct {
-	// Name URL-safe identifier of the API key
-	Name string `json:"name" yaml:"name"`
-
-	// MaskedApiKey Masked representation of the API key for display purposes
-	MaskedApiKey string `json:"maskedApiKey" yaml:"maskedApiKey"`
-
-	// Status Current status of the key (active, revoked)
-	Status string `json:"status" yaml:"status"`
-
-	// CreatedAt Timestamp when the key was created
-	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
-
-	// CreatedBy User who created the key
-	CreatedBy string `json:"createdBy" yaml:"createdBy"`
-
-	// UpdatedAt Timestamp when the key was last updated
-	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
-
-	// ExpiresAt Optional expiration timestamp
-	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
-
-	// Issuer Optional identifier of the developer portal that provisioned this key
-	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
-
-	// AllowedTargets Comma-separated list of allowed LLM providers/proxies; 'ALL' means unrestricted
-	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
-}
-
-// UserAPIKeyItem extends APIKeyItem with artifact context for cross-resource key listing.
-type UserAPIKeyItem struct {
-	APIKeyItem
-
-	// ArtifactId Handle (ID) of the LLM provider or proxy this key belongs to
-	ArtifactId string `json:"artifactId" yaml:"artifactId"`
-
-	// ArtifactType Type of the artifact: llm-provider or llm-proxy
-	ArtifactType string `json:"artifactType" yaml:"artifactType"`
-}
-
-// UserAPIKeyListResponse defines the response for listing LLM API keys for a user.
-type UserAPIKeyListResponse struct {
-	// Items List of API keys
-	Items []UserAPIKeyItem `json:"items" yaml:"items"`
-
-	// Count Total number of API keys
-	Count int `json:"count" yaml:"count"`
-}
-
-// LLMProviderAPIKeyListResponse defines the response for listing LLM provider API keys
-type LLMProviderAPIKeyListResponse struct {
-	// Items List of API keys
-	Items []APIKeyItem `json:"items" yaml:"items"`
-
-	// Count Total number of API keys
-	Count int `json:"count" yaml:"count"`
-}
-
-// LLMProxyAPIKeyListResponse defines the response for listing LLM proxy API keys
-type LLMProxyAPIKeyListResponse struct {
-	// Items List of API keys
-	Items []APIKeyItem `json:"items" yaml:"items"`
-
-	// Count Total number of API keys
-	Count int `json:"count" yaml:"count"`
-}
-
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
-	// AllowedTargets Comma-separated list of LLM provider or proxy names this key is valid for. Use 'ALL' to allow all targets (default).
-	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
+	// AllowedTargets Comma-separated list of gateways this key is valid for.
+	// Use 'ALL' to allow all targets (default).
+	AllowedTargets *string `json:"allowedTargets" yaml:"allowedTargets"`
 
 	// DisplayName User-friendly name for the API key
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
@@ -616,11 +662,11 @@ type CreateLLMProviderAPIKeyRequest struct {
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
 
+	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
+	Issuer *string `json:"issuer" yaml:"issuer"`
+
 	// Name Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Issuer Identifier of the developer portal that provisioned this API key. nil if not provided.
-	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 }
 
 // CreateLLMProviderAPIKeyResponse defines model for CreateLLMProviderAPIKeyResponse.
@@ -640,8 +686,9 @@ type CreateLLMProviderAPIKeyResponse struct {
 
 // CreateLLMProxyAPIKeyRequest defines model for CreateLLMProxyAPIKeyRequest.
 type CreateLLMProxyAPIKeyRequest struct {
-	// AllowedTargets Comma-separated list of LLM provider or proxy names this key is valid for. Use 'ALL' to allow all targets (default).
-	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
+	// AllowedTargets Comma-separated list of gateways this key is valid for.
+	// Use 'ALL' to allow all targets (default).
+	AllowedTargets *string `json:"allowedTargets" yaml:"allowedTargets"`
 
 	// DisplayName User-friendly name for the API key
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
@@ -649,11 +696,11 @@ type CreateLLMProxyAPIKeyRequest struct {
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
 
+	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
+	Issuer *string `json:"issuer" yaml:"issuer"`
+
 	// Name Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Issuer Identifier of the developer portal that provisioned this API key. nil if not provided.
-	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 }
 
 // CreateLLMProxyAPIKeyResponse defines model for CreateLLMProxyAPIKeyResponse.
@@ -718,7 +765,8 @@ type CreateRESTAPIRequest struct {
 	// ProjectId ID of the project this API belongs to
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
-	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver)
+	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
+	// When set, only these plans can be used when subscribing to the API.
 	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// Transport Supported transports for the API (http and/or https)
@@ -734,6 +782,52 @@ type CreateRESTAPIRequest struct {
 
 // CreateRESTAPIRequestLifeCycleStatus Current lifecycle status of the API
 type CreateRESTAPIRequestLifeCycleStatus string
+
+// CreateSubscriptionPlanRequest defines model for CreateSubscriptionPlanRequest.
+type CreateSubscriptionPlanRequest struct {
+	// BillingPlan Billing plan type (e.g. Free, Commercial)
+	BillingPlan *string `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+
+	// ExpiryTime Optional plan expiry time (RFC3339)
+	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+
+	// PlanName Name of the subscription plan
+	PlanName string                               `binding:"required" json:"planName" yaml:"planName"`
+	Status   *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// StopOnQuotaReach Whether to block requests when quota is exhausted
+	StopOnQuotaReach *bool `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+
+	// ThrottleLimitCount Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
+	ThrottleLimitCount *int `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+
+	// ThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
+	ThrottleLimitUnit *CreateSubscriptionPlanRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+}
+
+// CreateSubscriptionPlanRequestStatus defines model for CreateSubscriptionPlanRequest.Status.
+type CreateSubscriptionPlanRequestStatus string
+
+// CreateSubscriptionPlanRequestThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
+type CreateSubscriptionPlanRequestThrottleLimitUnit string
+
+// CreateSubscriptionRequest defines model for CreateSubscriptionRequest.
+type CreateSubscriptionRequest struct {
+	// ApiId API handle or UUID (REST API identifier)
+	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
+
+	// ApplicationId Application ID (from DevPortal/STS). Optional in token-based subscriptions.
+	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// Status Subscription status (default ACTIVE)
+	Status *CreateSubscriptionRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionPlanId Subscription plan UUID. Links the subscription to rate limit and billing configuration.
+	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+}
+
+// CreateSubscriptionRequestStatus Subscription status (default ACTIVE)
+type CreateSubscriptionRequestStatus string
 
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
@@ -1137,6 +1231,10 @@ type ImportAPIProjectRequest struct {
 		// ProjectId ID of the project this API belongs to
 		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
+		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
+		// When set, only these plans can be used when subscribing to the API.
+		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+
 		// Transport Supported transports for the API (http and/or https)
 		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
 
@@ -1300,6 +1398,15 @@ type LLMProvider struct {
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
+// LLMProviderAPIKeyListResponse defines model for LLMProviderAPIKeyListResponse.
+type LLMProviderAPIKeyListResponse struct {
+	// Count Total number of API keys returned
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// Items List of API keys
+	Items []APIKeyItem `binding:"required" json:"items" yaml:"items"`
+}
+
 // LLMProviderListItem defines model for LLMProviderListItem.
 type LLMProviderListItem struct {
 	CreatedAt   *time.Time                 `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
@@ -1436,6 +1543,15 @@ type LLMProxy struct {
 
 	// Vhost Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
+}
+
+// LLMProxyAPIKeyListResponse defines model for LLMProxyAPIKeyListResponse.
+type LLMProxyAPIKeyListResponse struct {
+	// Count Total number of API keys returned
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// Items List of API keys
+	Items []APIKeyItem `binding:"required" json:"items" yaml:"items"`
 }
 
 // LLMProxyListItem defines model for LLMProxyListItem.
@@ -1621,6 +1737,10 @@ type OpenAPIValidationResponse struct {
 
 		// ProjectId ID of the project this API belongs to
 		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
+
+		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
+		// When set, only these plans can be used when subscribing to the API.
+		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 		// Transport Supported transports for the API (http and/or https)
 		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
@@ -1841,7 +1961,8 @@ type RESTAPI struct {
 	// ProjectId ID of the project this API belongs to
 	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
-	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver)
+	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
+	// When set, only these plans can be used when subscribing to the API.
 	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// Transport Supported transports for the API (http and/or https)
@@ -2042,6 +2163,10 @@ type RESTAPIProjectValidationResponse struct {
 		// ProjectId ID of the project this API belongs to
 		ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
+		// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
+		// When set, only these plans can be used when subscribing to the API.
+		SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+
 		// Transport Supported transports for the API (http and/or https)
 		Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
 
@@ -2195,6 +2320,65 @@ type SecurityConfig struct {
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 }
 
+// Subscription defines model for Subscription.
+type Subscription struct {
+	// ApiId REST API UUID
+	ApiId *openapi_types.UUID `json:"apiId,omitempty" yaml:"apiId,omitempty"`
+
+	// ApplicationId Application ID (optional for token-based subscriptions)
+	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Subscription UUID
+	Id *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// OrganizationId Organization UUID
+	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	Status         *SubscriptionStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionPlanId Subscription plan UUID
+	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+
+	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
+	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionStatus defines model for Subscription.Status.
+type SubscriptionStatus string
+
+// SubscriptionListResponse defines model for SubscriptionListResponse.
+type SubscriptionListResponse struct {
+	// Count Number of subscriptions in current response
+	Count         int            `binding:"required" json:"count" yaml:"count"`
+	Pagination    Pagination     `json:"pagination" yaml:"pagination"`
+	Subscriptions []Subscription `binding:"required" json:"subscriptions" yaml:"subscriptions"`
+}
+
+// SubscriptionPlan defines model for SubscriptionPlan.
+type SubscriptionPlan struct {
+	BillingPlan        *string                 `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	CreatedAt          *time.Time              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	ExpiryTime         *time.Time              `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	Id                 *openapi_types.UUID     `json:"id,omitempty" yaml:"id,omitempty"`
+	OrganizationId     *openapi_types.UUID     `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+	PlanName           *string                 `json:"planName,omitempty" yaml:"planName,omitempty"`
+	Status             *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach   *bool                   `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+	ThrottleLimitCount *int                    `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  *string                 `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+	UpdatedAt          *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
+type SubscriptionPlanStatus string
+
+// SubscriptionPlanListResponse defines model for SubscriptionPlanListResponse.
+type SubscriptionPlanListResponse struct {
+	Count             *int                `json:"count,omitempty" yaml:"count,omitempty"`
+	SubscriptionPlans *[]SubscriptionPlan `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+}
+
 // TimeUnit Time unit for API key expiration duration
 type TimeUnit string
 
@@ -2338,6 +2522,36 @@ type UpdateProjectRequest struct {
 // UpdateRESTAPIRequest defines model for UpdateRESTAPIRequest.
 type UpdateRESTAPIRequest = RESTAPI
 
+// UpdateSubscriptionPlanRequest defines model for UpdateSubscriptionPlanRequest.
+type UpdateSubscriptionPlanRequest struct {
+	BillingPlan      *string                              `json:"billingPlan,omitempty" yaml:"billingPlan,omitempty"`
+	ExpiryTime       *time.Time                           `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	PlanName         *string                              `json:"planName,omitempty" yaml:"planName,omitempty"`
+	Status           *UpdateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	StopOnQuotaReach *bool                                `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+
+	// ThrottleLimitCount Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
+	ThrottleLimitCount *int `json:"throttleLimitCount,omitempty" yaml:"throttleLimitCount,omitempty"`
+
+	// ThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
+	ThrottleLimitUnit *UpdateSubscriptionPlanRequestThrottleLimitUnit `json:"throttleLimitUnit,omitempty" yaml:"throttleLimitUnit,omitempty"`
+}
+
+// UpdateSubscriptionPlanRequestStatus defines model for UpdateSubscriptionPlanRequest.Status.
+type UpdateSubscriptionPlanRequestStatus string
+
+// UpdateSubscriptionPlanRequestThrottleLimitUnit Throttle window unit (must be paired with throttleLimitCount)
+type UpdateSubscriptionPlanRequestThrottleLimitUnit string
+
+// UpdateSubscriptionRequest defines model for UpdateSubscriptionRequest.
+type UpdateSubscriptionRequest struct {
+	// Status New subscription status
+	Status *UpdateSubscriptionRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// UpdateSubscriptionRequestStatus New subscription status
+type UpdateSubscriptionRequestStatus string
+
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {
 	// Main Upstream endpoint configuration (single target or reference)
@@ -2380,6 +2594,57 @@ type UpstreamDefinition0 = interface{}
 
 // UpstreamDefinition1 defines model for .
 type UpstreamDefinition1 = interface{}
+
+// UserAPIKeyItem defines model for UserAPIKeyItem.
+type UserAPIKeyItem struct {
+	// AllowedTargets Comma-separated list of allowed gateways; 'ALL' means unrestricted
+	AllowedTargets string `binding:"required" json:"allowedTargets" yaml:"allowedTargets"`
+
+	// ArtifactId Handle (ID) of the LLM provider or proxy this key belongs to
+	ArtifactId string `json:"artifactId" yaml:"artifactId"`
+
+	// ArtifactType Type of the artifact this key belongs to
+	ArtifactType UserAPIKeyItemArtifactType `json:"artifactType" yaml:"artifactType"`
+
+	// CreatedAt Timestamp when the key was created
+	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy User who created the key
+	CreatedBy string `binding:"required" json:"createdBy" yaml:"createdBy"`
+
+	// ExpiresAt Optional expiration timestamp
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+
+	// Issuer Optional identifier of the developer portal that provisioned this key
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
+
+	// MaskedApiKey Masked representation of the API key for display purposes
+	MaskedApiKey string `binding:"required" json:"maskedApiKey" yaml:"maskedApiKey"`
+
+	// Name URL-safe identifier of the API key
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Status Current status of the key
+	Status UserAPIKeyItemStatus `binding:"required" json:"status" yaml:"status"`
+
+	// UpdatedAt Timestamp when the key was last updated
+	UpdatedAt time.Time `binding:"required" json:"updatedAt" yaml:"updatedAt"`
+}
+
+// UserAPIKeyItemArtifactType Type of the artifact this key belongs to
+type UserAPIKeyItemArtifactType string
+
+// UserAPIKeyItemStatus Current status of the key
+type UserAPIKeyItemStatus string
+
+// UserAPIKeyListResponse defines model for UserAPIKeyListResponse.
+type UserAPIKeyListResponse struct {
+	// Count Total number of API keys returned
+	Count int `binding:"required" json:"count" yaml:"count"`
+
+	// Items List of LLM API keys
+	Items []UserAPIKeyItem `binding:"required" json:"items" yaml:"items"`
+}
 
 // ValidateAPIProjectRequest defines model for ValidateAPIProjectRequest.
 type ValidateAPIProjectRequest struct {
@@ -2711,6 +2976,27 @@ type GetGatewayStatusParams struct {
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 }
 
+// ListSubscriptionsParams defines parameters for ListSubscriptions.
+type ListSubscriptionsParams struct {
+	// ApiId Filter by API ID (UUID or handle)
+	ApiId *string `form:"apiId,omitempty" json:"apiId,omitempty" yaml:"apiId,omitempty"`
+
+	// ApplicationId Filter by application ID
+	ApplicationId *string `form:"applicationId,omitempty" json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// Status Filter by status (ACTIVE, INACTIVE, REVOKED)
+	Status *ListSubscriptionsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of subscriptions to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Number of subscriptions to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListSubscriptionsParamsStatus defines parameters for ListSubscriptions.
+type ListSubscriptionsParamsStatus string
+
 // CreateDevPortalJSONRequestBody defines body for CreateDevPortal for application/json ContentType.
 type CreateDevPortalJSONRequestBody = CreateDevPortalRequest
 
@@ -2809,6 +3095,18 @@ type UnpublishRESTAPIFromDevPortalJSONRequestBody = UnpublishFromDevPortalReques
 
 // AddGatewaysToAPIJSONRequestBody defines body for AddGatewaysToAPI for application/json ContentType.
 type AddGatewaysToAPIJSONRequestBody = AddGatewaysToAPIJSONBody
+
+// CreateSubscriptionPlanJSONRequestBody defines body for CreateSubscriptionPlan for application/json ContentType.
+type CreateSubscriptionPlanJSONRequestBody = CreateSubscriptionPlanRequest
+
+// UpdateSubscriptionPlanJSONRequestBody defines body for UpdateSubscriptionPlan for application/json ContentType.
+type UpdateSubscriptionPlanJSONRequestBody = UpdateSubscriptionPlanRequest
+
+// CreateSubscriptionJSONRequestBody defines body for CreateSubscription for application/json ContentType.
+type CreateSubscriptionJSONRequestBody = CreateSubscriptionRequest
+
+// UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
+type UpdateSubscriptionJSONRequestBody = UpdateSubscriptionRequest
 
 // ValidateAPIProjectJSONRequestBody defines body for ValidateAPIProject for application/json ContentType.
 type ValidateAPIProjectJSONRequestBody = ValidateAPIProjectRequest

@@ -83,7 +83,7 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 		item := api.APIKeyItem{
 			Name:           k.Name,
 			MaskedApiKey:   k.MaskedAPIKey,
-			Status:         k.Status,
+			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
 			CreatedBy:      k.CreatedBy,
 			UpdatedAt:      k.UpdatedAt,
