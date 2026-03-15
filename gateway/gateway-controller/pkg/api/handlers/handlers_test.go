@@ -2612,7 +2612,7 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Equal(t, "error", response.Status)
-	assert.Equal(t, "API key value is required", response.Message)
+	assert.Equal(t, "apiKey is required", response.Message)
 }
 
 // TestRevokeAPIKeyNotFound tests revoking a non-existent API key

@@ -116,6 +116,12 @@ const (
 	AssociationTypeDevPortal = "dev_portal"
 )
 
+// API Key allowed targets constants
+const APIKeyAllowedTargetsAll = "ALL"
+
+// AdminRole is the role name that grants administrative privileges
+const AdminRole = "admin"
+
 // Deployment limit constants
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement

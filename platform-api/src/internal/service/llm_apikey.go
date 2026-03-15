@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -34,6 +35,7 @@ import (
 type LLMProviderAPIKeyService struct {
 	llmProviderRepo      repository.LLMProviderRepository
 	gatewayRepo          repository.GatewayRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 }
@@ -42,15 +44,123 @@ type LLMProviderAPIKeyService struct {
 func NewLLMProviderAPIKeyService(
 	llmProviderRepo repository.LLMProviderRepository,
 	gatewayRepo repository.GatewayRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 ) *LLMProviderAPIKeyService {
 	return &LLMProviderAPIKeyService{
 		llmProviderRepo:      llmProviderRepo,
 		gatewayRepo:          gatewayRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 	}
+}
+
+// ListLLMProviderAPIKeys returns all API keys for an LLM provider.
+func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
+	ctx context.Context,
+	providerID, orgID string,
+) (*api.LLMProviderAPIKeyListResponse, error) {
+
+	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get LLM provider for API key listing", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to get LLM provider: %w", err)
+	}
+	if provider == nil {
+		return nil, constants.ErrAPINotFound
+	}
+
+	keys, err := s.apiKeyRepo.ListByArtifact(provider.UUID)
+	if err != nil {
+		s.slogger.Error("Failed to list API keys for LLM provider", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to list API keys: %w", err)
+	}
+
+	items := make([]api.APIKeyItem, 0, len(keys))
+	for _, k := range keys {
+		item := api.APIKeyItem{
+			Name:           k.Name,
+			MaskedApiKey:   k.MaskedAPIKey,
+			Status:         api.APIKeyItemStatus(k.Status),
+			CreatedAt:      k.CreatedAt,
+			CreatedBy:      k.CreatedBy,
+			UpdatedAt:      k.UpdatedAt,
+			ExpiresAt:      k.ExpiresAt,
+			Issuer:         k.Issuer,
+			AllowedTargets: k.AllowedTargets,
+		}
+		items = append(items, item)
+	}
+
+	return &api.LLMProviderAPIKeyListResponse{
+		Items: items,
+		Count: len(items),
+	}, nil
+}
+
+// DeleteLLMProviderAPIKey deletes the API key from the database and broadcasts a revoke event to gateways.
+func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
+	ctx context.Context,
+	providerID, orgID, userID, keyName string,
+) error {
+
+	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get LLM provider for API key deletion", "providerId", providerID, "error", err)
+		return fmt.Errorf("failed to get LLM provider: %w", err)
+	}
+	if provider == nil {
+		return constants.ErrAPINotFound
+	}
+
+	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(provider.UUID, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for deletion", "providerId", providerID, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if existingKey == nil {
+		return constants.ErrAPIKeyNotFound
+	}
+
+	if userID != "" && existingKey.CreatedBy != userID {
+		return constants.ErrAPIKeyForbidden
+	}
+
+	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
+		s.slogger.Error("Failed to delete LLM provider API key from database", "providerId", providerID, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to delete API key: %w", err)
+	}
+
+	s.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName)
+
+	// Broadcast revoke event to gateways.
+	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		s.slogger.Error("Failed to get gateways for API key revoke broadcast", "providerId", providerID, "keyName", keyName, "error", err)
+		return nil
+	}
+	if len(gateways) == 0 {
+		s.slogger.Warn("No gateways found for organization; skipping revoke broadcast", "organizationId", orgID)
+		return nil
+	}
+
+	event := &model.APIKeyRevokedEvent{
+		ApiId:   providerID,
+		KeyName: keyName,
+	}
+
+	for _, gateway := range filterGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
+		gatewayID := gateway.ID
+		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
+			s.slogger.Error("Failed to broadcast LLM provider API key revoked event", "providerId", providerID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
+		} else {
+			s.slogger.Info("Successfully broadcast LLM provider API key revoked event", "providerId", providerID, "gatewayId", gatewayID, "keyName", keyName)
+		}
+	}
+
+	return nil
 }
 
 // CreateLLMProviderAPIKey generates an API key for an LLM provider and broadcasts it to all gateways.
@@ -122,22 +232,64 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		return nil, constants.ErrGatewayUnavailable
 	}
 
-	operations := "[\"*\"]"
+	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})
+	if err != nil {
+		s.slogger.Error("Failed to hash API key for LLM provider", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to hash API key: %w", err)
+	}
+	maskedAPIKey := maskAPIKey(apiKey)
 
-	event := &model.APIKeyCreatedEvent{
-		ApiId:       providerID,
-		Name:        name,
-		DisplayName: displayName,
-		ApiKey:      apiKey,
-		Operations:  operations,
-		ExpiresAt:   expiresAt,
+	apiKeyUUID, err := utils.GenerateUUID()
+	if err != nil {
+		s.slogger.Error("Failed to generate UUID for LLM provider API key", "providerId", providerID, "error", err)
+		return nil, fmt.Errorf("failed to generate API key UUID: %w", err)
 	}
 
+	// Apply defaults for issuer and allowedTargets
+	var issuer *string
+	if req.Issuer != nil && strings.TrimSpace(*req.Issuer) != "" {
+		v := strings.TrimSpace(*req.Issuer)
+		issuer = &v
+	}
+	allowedTargets := constants.APIKeyAllowedTargetsAll
+	if req.AllowedTargets != nil && strings.TrimSpace(*req.AllowedTargets) != "" {
+		allowedTargets = strings.TrimSpace(*req.AllowedTargets)
+	}
+
+	// Persist the API key to the database before broadcasting
+	dbKey := &model.APIKey{
+		UUID:           apiKeyUUID,
+		ArtifactUUID:   provider.UUID,
+		Name:           name,
+		MaskedAPIKey:   maskedAPIKey,
+		APIKeyHashes:   apiKeyHashesJSON,
+		Status:         "active",
+		CreatedBy:      userID,
+		ExpiresAt:      req.ExpiresAt,
+		Issuer:         issuer,
+		AllowedTargets: allowedTargets,
+	}
+	if err := s.apiKeyRepo.Create(dbKey); err != nil {
+		s.slogger.Error("Failed to persist LLM provider API key to database", "providerId", providerID, "keyName", name, "error", err)
+		return nil, fmt.Errorf("failed to persist API key: %w", err)
+	}
+
+	event := &model.APIKeyCreatedEvent{
+		UUID:         apiKeyUUID,
+		ApiId:        providerID,
+		Name:         name,
+		ApiKeyHashes: apiKeyHashesJSON,
+		MaskedApiKey: maskedAPIKey,
+		ExpiresAt:    expiresAt,
+		Issuer:       issuer,
+	}
+
+	targetGateways := filterGatewaysByAllowedTargets(gateways, allowedTargets)
 	successCount := 0
 	failureCount := 0
 	var lastError error
 
-	for _, gateway := range gateways {
+	for _, gateway := range targetGateways {
 		gatewayID := gateway.ID
 
 		s.slogger.Info("Broadcasting LLM provider API key created event", "providerId", providerID, "gatewayId", gatewayID, "keyName", name)
@@ -153,16 +305,15 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		}
 	}
 
-	s.slogger.Info("LLM provider API key creation broadcast summary", "providerId", providerID, "keyName", name, "total", len(gateways), "success", successCount, "failed", failureCount)
+	s.slogger.Info("LLM provider API key creation broadcast summary", "providerId", providerID, "keyName", name, "total", len(targetGateways), "success", successCount, "failed", failureCount)
 
 	if successCount == 0 {
-		s.slogger.Error("Failed to deliver LLM provider API key to any gateway", "providerId", providerID, "keyName", name)
-		return nil, fmt.Errorf("failed to deliver API key event to any gateway: %w", lastError)
+		s.slogger.Warn("Failed to deliver LLM provider API key to any gateway; key is saved to the database", "providerId", providerID, "keyName", name, "error", lastError)
 	}
 
 	return &api.CreateLLMProviderAPIKeyResponse{
 		Status:  "success",
-		Message: "API key created and broadcasted to gateways successfully",
+		Message: "API key created successfully",
 		KeyId:   name,
 		ApiKey:  apiKey,
 	}, nil

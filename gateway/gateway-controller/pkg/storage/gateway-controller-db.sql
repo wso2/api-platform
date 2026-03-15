@@ -127,8 +127,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
-    -- Primary identifier (UUID)
-    uuid TEXT PRIMARY KEY,
+    -- UUID v7 from platform API, or locally generated if not provided
+    uuid TEXT NOT NULL,
 
     -- Gateway identifier
     gateway_id TEXT NOT NULL,
@@ -137,16 +137,13 @@ CREATE TABLE IF NOT EXISTS api_keys (
     name TEXT NOT NULL,
 
     -- The generated API key (hashed)
-    api_key TEXT NOT NULL UNIQUE,
+    api_key TEXT NOT NULL,
 
     -- Masked version of the API key for display purposes
     masked_api_key TEXT NOT NULL,
 
     -- Artifact reference
     artifact_uuid TEXT NOT NULL,
-
-    -- Comma-separated list of operations the key will have access to
-    operations TEXT NOT NULL DEFAULT '*',
 
     -- Key status
     status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
@@ -160,22 +157,21 @@ CREATE TABLE IF NOT EXISTS api_keys (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL,  -- NULL means no expiration
 
-    -- Expiration policy fields
-    expires_in_unit TEXT NULL,
-    expires_in_duration INTEGER NULL,
-
     -- External API key support (added in schema version 6)
     source TEXT NOT NULL DEFAULT 'local',  -- 'local' or 'external'
     external_ref_id TEXT NULL,  -- external reference
 
-    -- Human-readable display name for the API key
-    display_name TEXT NOT NULL DEFAULT '',
+    -- Portal and target tracking
+    issuer TEXT NULL DEFAULT NULL,               -- developer portal identifier; NULL means not specified
 
     -- Foreign key relationship to artifacts
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
 
     -- Composite unique constraint (artifact + api key name must be unique)
-    UNIQUE (artifact_uuid, name, gateway_id)
+    UNIQUE (artifact_uuid, name, gateway_id),
+
+    -- Composite primary key
+    PRIMARY KEY (api_key, gateway_id)
 );
 
 -- Indexes for API key lookups
