@@ -27,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"io"
@@ -78,6 +79,8 @@ type APIServer struct {
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
 	systemConfig         *config.Config
+	eventHub             eventhub.EventHub
+	gatewayID            string
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -94,8 +97,18 @@ func NewAPIServer(
 	validator config.Validator,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
+	eventHub eventhub.EventHub,
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
+
+	// Set EventHub on services for event-driven synchronization
+	if eventHub != nil {
+		gatewayID := systemConfig.Controller.Server.GatewayID
+		deploymentService.SetEventHub(eventHub, gatewayID)
+		apiKeyService.SetEventHub(eventHub, gatewayID)
+	}
+
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	server := &APIServer{
@@ -111,13 +124,14 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, &systemConfig.Router, policyVersionResolver, policyValidator),
-		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
-			&systemConfig.APIKey),
+		apiKeyService:      apiKeyService,
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       &systemConfig.Router,
 		httpClient:         &http.Client{Timeout: 10 * time.Second},
 		systemConfig:       systemConfig,
+		eventHub:           eventHub,
+		gatewayID:          systemConfig.Controller.Server.GatewayID,
 	}
 
 	// Register status update callback
@@ -275,8 +289,9 @@ func (s *APIServer) CreateRestAPI(c *gin.Context) {
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
+	// Build and add policy config derived from API configuration if policies are present.
+	// Skip when eventHub is available — the EventListener handles policy derivation.
+	if s.eventHub == nil && s.policyManager != nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -711,38 +726,51 @@ func (s *APIServer) UpdateRestAPI(c *gin.Context, id string) {
 		}
 	}
 
-	if err := s.store.Update(existing); err != nil {
-		// Log conflict errors at info level, other errors at error level
-		if storage.IsConflictError(err) {
-			log.Info("API configuration handle already exists",
-				slog.String("id", existing.UUID),
-				slog.String("handle", handle))
-			c.JSON(http.StatusConflict, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		} else {
-			log.Error("Failed to update config in memory store", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to update configuration in memory store",
-			})
-		}
-		return
-	}
-
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
+	if s.eventHub != nil {
+		// Event-driven mode: publish event; EventListener handles store/xDS/policy
+		event := eventhub.Event{
+			EventType: eventhub.EventTypeAPI,
+			Action:    "UPDATE",
+			EntityID:  existing.UUID,
+			EventID:   correlationID,
 		}
-	}()
+		if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
+			log.Error("Failed to publish API update event", slog.Any("error", err))
+		}
+	} else {
+		// Inline mode: update store and xDS directly
+		if err := s.store.Update(existing); err != nil {
+			if storage.IsConflictError(err) {
+				log.Info("API configuration handle already exists",
+					slog.String("id", existing.UUID),
+					slog.String("handle", handle))
+				c.JSON(http.StatusConflict, api.ErrorResponse{
+					Status:  "error",
+					Message: err.Error(),
+				})
+			} else {
+				log.Error("Failed to update config in memory store", slog.Any("error", err))
+				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+					Status:  "error",
+					Message: "Failed to update configuration in memory store",
+				})
+			}
+			return
+		}
+
+		// Update xDS snapshot asynchronously
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+			defer cancel()
+
+			if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+				log.Error("Failed to update xDS snapshot", slog.Any("error", err))
+			}
+		}()
+	}
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
@@ -761,7 +789,7 @@ func (s *APIServer) UpdateRestAPI(c *gin.Context, id string) {
 	})
 
 	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
+	if s.eventHub == nil && s.policyManager != nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(existing)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -838,119 +866,130 @@ func (s *APIServer) DeleteRestAPI(c *gin.Context, id string) {
 		}
 	}
 
-	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil {
-		log.Warn("Failed to remove API keys from ConfigStore",
-			slog.String("handle", handle),
-			slog.Any("error", err))
-	}
-
-	// Remove API keys from policy engine via xDS
-	if s.apiKeyXDSManager != nil {
-		// Extract API name and version from the config
-		if restCfg, ok := cfg.Configuration.(api.RestAPI); ok {
-			apiId := cfg.UUID
-			apiName := restCfg.Spec.DisplayName
-			apiVersion := restCfg.Spec.Version
-			correlationID := middleware.GetCorrelationID(c)
-
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID),
-					slog.Any("error", err))
-			} else {
-				log.Info("Successfully removed API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID))
-			}
-		} else {
-			log.Warn("Failed to extract API config data for API key removal",
-				slog.String("handle", handle))
-		}
-	}
-
-	if cfg.Kind == "WebSubApi" {
-		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
-
-		var deregErrs int32
-		var wg sync.WaitGroup
-
-		if len(topicsToUnregister) > 0 {
-			wg.Add(1)
-			go func(list []string) {
-				defer wg.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.UUID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", cfg.UUID))
-							atomic.AddInt32(&deregErrs, 1)
-						} else {
-							log.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", cfg.UUID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-
-		wg.Wait()
-
-		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", cfg.UUID),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Topic lifecycle operations failed",
-			})
-			return
-		}
-	}
-
-	// Delete from in-memory store
-	if err := s.store.Delete(cfg.UUID); err != nil {
-		log.Error("Failed to delete config from memory store", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to delete configuration",
-		})
-		return
-	}
-
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
+	if s.eventHub != nil {
+		// Event-driven mode: publish event; EventListener handles store/xDS/policy cleanup
+		event := eventhub.Event{
+			EventType: eventhub.EventTypeAPI,
+			Action:    "DELETE",
+			EntityID:  cfg.UUID,
+			EventID:   correlationID,
 		}
-	}()
+		if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
+			log.Error("Failed to publish API delete event", slog.Any("error", err))
+		}
+	} else {
+		// Inline mode: update stores and xDS directly
+		// Remove API keys from ConfigStore
+		if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil {
+			log.Warn("Failed to remove API keys from ConfigStore",
+				slog.String("handle", handle),
+				slog.Any("error", err))
+		}
+
+		// Remove API keys from policy engine via xDS
+		if s.apiKeyXDSManager != nil {
+			if restCfg, ok := cfg.Configuration.(api.RestAPI); ok {
+				apiId := cfg.UUID
+				apiName := restCfg.Spec.DisplayName
+				apiVersion := restCfg.Spec.Version
+
+				if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
+					log.Warn("Failed to remove API keys from policy engine",
+						slog.String("api_id", apiId),
+						slog.String("handle", handle),
+						slog.String("api_name", apiName),
+						slog.String("api_version", apiVersion),
+						slog.String("correlation_id", correlationID),
+						slog.Any("error", err))
+				} else {
+					log.Info("Successfully removed API keys from policy engine",
+						slog.String("api_id", apiId),
+						slog.String("handle", handle),
+						slog.String("api_name", apiName),
+						slog.String("api_version", apiVersion),
+						slog.String("correlation_id", correlationID))
+				}
+			} else {
+				log.Warn("Failed to extract API config data for API key removal",
+					slog.String("handle", handle))
+			}
+		}
+
+		if cfg.Kind == "WebSubApi" {
+			topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
+
+			var deregErrs int32
+			var wg sync.WaitGroup
+
+			if len(topicsToUnregister) > 0 {
+				wg.Add(1)
+				go func(list []string) {
+					defer wg.Done()
+					log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.UUID))
+					var childWg sync.WaitGroup
+					for _, topic := range list {
+						childWg.Add(1)
+						go func(topic string) {
+							defer childWg.Done()
+							ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+							defer cancel()
+							if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
+								log.Error("Failed to deregister topic from WebSubHub",
+									slog.Any("error", err),
+									slog.String("topic", topic),
+									slog.String("api_id", cfg.UUID))
+								atomic.AddInt32(&deregErrs, 1)
+							} else {
+								log.Info("Successfully deregistered topic from WebSubHub",
+									slog.String("topic", topic),
+									slog.String("api_id", cfg.UUID))
+							}
+						}(topic)
+					}
+					childWg.Wait()
+				}(topicsToUnregister)
+			}
+
+			wg.Wait()
+
+			log.Info("Topic lifecycle operations completed",
+				slog.String("api_id", cfg.UUID),
+				slog.Int("deregistered", len(topicsToUnregister)),
+				slog.Int("deregister_errors", int(deregErrs)))
+
+			if deregErrs > 0 {
+				log.Error("Failed to register & deregister topics", slog.Any("error", err))
+				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+					Status:  "error",
+					Message: "Topic lifecycle operations failed",
+				})
+				return
+			}
+		}
+
+		// Delete from in-memory store
+		if err := s.store.Delete(cfg.UUID); err != nil {
+			log.Error("Failed to delete config from memory store", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to delete configuration",
+			})
+			return
+		}
+
+		// Update xDS snapshot asynchronously
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+				log.Error("Failed to update xDS snapshot", slog.Any("error", err))
+			}
+		}()
+	}
 
 	log.Info("API configuration deleted",
 		slog.String("id", cfg.UUID),
@@ -968,7 +1007,7 @@ func (s *APIServer) DeleteRestAPI(c *gin.Context, id string) {
 	})
 
 	// Remove derived policy configuration
-	if s.policyManager != nil {
+	if s.eventHub == nil && s.policyManager != nil {
 		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))

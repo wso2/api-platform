@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -71,6 +72,8 @@ type APIDeploymentService struct {
 	validator       config.Validator
 	routerConfig    *config.RouterConfig
 	httpClient      *http.Client
+	eventHub        eventhub.EventHub
+	gatewayID       string
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -89,6 +92,35 @@ func NewAPIDeploymentService(
 		validator:       validator,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		routerConfig:    routerConfig,
+	}
+}
+
+// SetEventHub sets the EventHub for event-driven synchronization.
+// When set, the deployment service publishes events instead of directly
+// updating in-memory stores and xDS snapshots.
+func (s *APIDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
+	s.eventHub = eventHub
+	s.gatewayID = gatewayID
+}
+
+// publishEvent publishes an event to the EventHub for async processing.
+func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
+	if s.eventHub == nil {
+		return
+	}
+	event := eventhub.Event{
+		EventType: eventType,
+		Action:    action,
+		EntityID:  entityID,
+		EventID:   correlationID,
+		EventData: eventhub.EmptyEventData,
+	}
+	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
+		logger.Error("Failed to publish event",
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID),
+			slog.Any("error", err))
 	}
 }
 
@@ -320,18 +352,27 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			params.Logger.Error("Failed to update xDS snapshot",
-				slog.Any("error", err),
-				slog.String("api_id", apiID),
-				slog.String("correlation_id", params.CorrelationID))
+	if s.eventHub != nil {
+		// Event-driven mode: publish event for async processing by EventListener
+		action := "CREATE"
+		if isUpdate {
+			action = "UPDATE"
 		}
-	}()
+		s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
+	} else {
+		// Memory-only mode: update xDS snapshot inline
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot",
+					slog.Any("error", err),
+					slog.String("api_id", apiID),
+					slog.String("correlation_id", params.CorrelationID))
+			}
+		}()
+	}
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
@@ -417,18 +458,21 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		}
 	}
 
-	// Add to in-memory store
-	if err := s.store.Add(storedCfg); err != nil {
-		// Rollback database write (only if persistent mode)
-		if s.db != nil {
-			logger.Info("Error adding new API configuration to memory store, rolling back database",
-				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.DisplayName),
-				slog.String("version", storedCfg.Version))
-			_ = s.db.DeleteConfig(storedCfg.UUID)
+	if s.eventHub == nil {
+		// Memory-only mode: add to in-memory store inline
+		if err := s.store.Add(storedCfg); err != nil {
+			// Rollback database write (only if persistent mode)
+			if s.db != nil {
+				logger.Info("Error adding new API configuration to memory store, rolling back database",
+					slog.String("api_id", storedCfg.UUID),
+					slog.String("displayName", storedCfg.DisplayName),
+					slog.String("version", storedCfg.Version))
+				_ = s.db.DeleteConfig(storedCfg.UUID)
+			}
+			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
-		return false, fmt.Errorf("failed to add config to memory store: %w", err)
 	}
+	// In event-driven mode, the EventListener will add to store via event processing
 
 	return false, nil // Successfully created new config
 }
@@ -460,20 +504,23 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 		}
 	}
 
-	// Update in-memory store
-	if err := s.store.Update(existing); err != nil {
-		// Rollback DB to original state since memory update failed
-		if s.db != nil {
-			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-				logger.Error("Failed to rollback DB after memory update failure",
-					slog.Any("error", rbErr),
-					slog.String("id", original.UUID),
-					slog.String("displayName", original.DisplayName),
-					slog.String("version", original.Version))
+	if s.eventHub == nil {
+		// Memory-only mode: update in-memory store inline
+		if err := s.store.Update(existing); err != nil {
+			// Rollback DB to original state since memory update failed
+			if s.db != nil {
+				if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
+					logger.Error("Failed to rollback DB after memory update failure",
+						slog.Any("error", rbErr),
+						slog.String("id", original.UUID),
+						slog.String("displayName", original.DisplayName),
+						slog.String("version", original.Version))
+				}
 			}
+			return false, fmt.Errorf("failed to update config in memory store: %w", err)
 		}
-		return false, fmt.Errorf("failed to update config in memory store: %w", err)
 	}
+	// In event-driven mode, the EventListener will update store via event processing
 
 	// Update the newConfig to reflect the changes
 	*newConfig = *existing

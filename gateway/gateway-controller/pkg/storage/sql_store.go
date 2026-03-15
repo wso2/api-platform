@@ -1514,6 +1514,10 @@ func (s *sqlStore) RemoveAPIKeyAPIAndName(apiId, name string) error {
 }
 
 // Close closes the database connection
+func (s *sqlStore) GetDB() *sql.DB {
+	return s.db
+}
+
 func (s *sqlStore) Close() error {
 	backend := s.backendName
 	if backend == "" {

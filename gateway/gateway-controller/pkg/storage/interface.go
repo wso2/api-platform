@@ -19,6 +19,8 @@
 package storage
 
 import (
+	"database/sql"
+
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -267,6 +269,11 @@ type Storage interface {
 	//
 	// Returns an error if the certificate does not exist.
 	DeleteCertificate(id string) error
+
+	// GetDB returns the underlying *sql.DB for direct access.
+	// Used by EventHub for event synchronization.
+	// Returns nil for non-SQL backends.
+	GetDB() *sql.DB
 
 	// Close closes the storage connection and releases resources.
 	//

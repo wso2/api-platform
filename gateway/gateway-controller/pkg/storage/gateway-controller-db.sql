@@ -226,4 +226,27 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(app
 CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
 
-PRAGMA user_version = 1;
+-- Table for gateway states (used by eventhub for multi-replica sync)
+CREATE TABLE IF NOT EXISTS gateway_states (
+    gateway_id TEXT PRIMARY KEY,
+    version_id TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table for events (used by eventhub for multi-replica sync)
+CREATE TABLE IF NOT EXISTS events (
+    gateway_id TEXT NOT NULL,
+    processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    originated_timestamp TIMESTAMP NOT NULL,
+    entity_type TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+    entity_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    event_data TEXT NOT NULL,
+    PRIMARY KEY (event_id),
+    FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
+
+PRAGMA user_version = 2;

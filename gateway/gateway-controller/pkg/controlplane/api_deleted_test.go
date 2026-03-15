@@ -19,6 +19,7 @@
 package controlplane
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -340,6 +341,10 @@ func (m *mockStorageForDeletion) GetAllLLMProviderTemplates() ([]*models.StoredL
 }
 
 func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetDB() *sql.DB {
 	return nil
 }
 
