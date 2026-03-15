@@ -200,7 +200,18 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 		if err := l.policyManager.AddPolicy(storedPolicy); err != nil {
 			l.logger.Error("Failed to update policy from replica sync",
 				slog.String("api_id", cfg.ID),
+				slog.String("correlation_id", correlationID),
 				slog.Any("error", err))
+		}
+	} else {
+		policyID := cfg.ID + "-policies"
+		if existingPolicy, err := l.policyManager.GetPolicy(policyID); err == nil && existingPolicy != nil {
+			if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
+				l.logger.Error("Failed to remove policy from replica sync",
+					slog.String("api_id", cfg.ID),
+					slog.String("correlation_id", correlationID),
+					slog.Any("error", err))
+			}
 		}
 	}
 }
