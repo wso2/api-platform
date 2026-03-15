@@ -55,6 +55,27 @@ type ArtifactRepository interface {
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
 }
 
+// ApplicationRepository defines the interface for application data access
+type ApplicationRepository interface {
+	CreateApplication(app *model.Application) error
+	GetApplicationByUUID(appID string) (*model.Application, error)
+	GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error)
+	GetArtifactByUUID(artifactUUID, orgID string) (*model.Artifact, error)
+	GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error)
+	GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error)
+	GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error)
+	CheckApplicationHandleExists(handle, orgID string) (bool, error)
+	UpdateApplication(app *model.Application) error
+	DeleteApplication(appID string) error
+
+	GetAPIKeyByID(keyID, orgID string) (*model.ApplicationAPIKey, error)
+	GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgID string) ([]string, error)
+	ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error)
+	ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
+	AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
+	RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error
+}
+
 // APIRepository defines the interface for API data operations
 type APIRepository interface {
 	CreateAPI(api *model.API) error
@@ -196,6 +217,17 @@ type LLMProviderRepository interface {
 	Update(p *model.LLMProvider) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
+}
+
+// APIKeyRepository defines the interface for API key persistence
+type APIKeyRepository interface {
+	Create(key *model.APIKey) error
+	Update(key *model.APIKey) error
+	Revoke(artifactUUID, name string) error
+	GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error)
+	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
+	Delete(artifactUUID, name string) error
+	ListLLMAPIKeysByUser(orgUUID, username string) ([]*model.UserAPIKey, error)
 }
 
 // LLMProxyRepository defines the interface for LLM proxy persistence

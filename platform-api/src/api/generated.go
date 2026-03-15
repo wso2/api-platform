@@ -450,6 +450,9 @@ type CreateAPIKeyRequest struct {
 	// ExpiresAt Optional expiration time in ISO 8601 format
 	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
 
+	// ExpiresIn Optional expiration duration
+	ExpiresIn *ExpirationDuration `json:"expiresIn,omitempty" yaml:"expiresIn,omitempty"`
+
 	// ExternalRefId Optional reference ID for tracing purposes (from external platforms)
 	ExternalRefId *string `json:"externalRefId" yaml:"externalRefId"`
 
@@ -457,8 +460,8 @@ type CreateAPIKeyRequest struct {
 	// generated from displayName)
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
 
-	// Operations Specifies which API operations this key can access. Use "*" for all operations.
-	Operations *string `json:"operations,omitempty" yaml:"operations,omitempty"`
+	// Issuer Identifier of the developer portal that provisioned this API key. nil if not provided.
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 }
 
 // CreateAPIKeyResponse defines model for CreateAPIKeyResponse.
@@ -534,8 +537,79 @@ type CreateGatewayRequest struct {
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
 type CreateGatewayRequestFunctionalityType string
 
+// APIKeyItem defines a safe representation of an API key (no secret data)
+type APIKeyItem struct {
+	// Name URL-safe identifier of the API key
+	Name string `json:"name" yaml:"name"`
+
+	// MaskedApiKey Masked representation of the API key for display purposes
+	MaskedApiKey string `json:"maskedApiKey" yaml:"maskedApiKey"`
+
+	// Status Current status of the key (active, revoked)
+	Status string `json:"status" yaml:"status"`
+
+	// CreatedAt Timestamp when the key was created
+	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
+
+	// CreatedBy User who created the key
+	CreatedBy string `json:"createdBy" yaml:"createdBy"`
+
+	// UpdatedAt Timestamp when the key was last updated
+	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
+
+	// ExpiresAt Optional expiration timestamp
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+
+	// Issuer Optional identifier of the developer portal that provisioned this key
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
+
+	// AllowedTargets Comma-separated list of allowed LLM providers/proxies; 'ALL' means unrestricted
+	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
+}
+
+// UserAPIKeyItem extends APIKeyItem with artifact context for cross-resource key listing.
+type UserAPIKeyItem struct {
+	APIKeyItem
+
+	// ArtifactId Handle (ID) of the LLM provider or proxy this key belongs to
+	ArtifactId string `json:"artifactId" yaml:"artifactId"`
+
+	// ArtifactType Type of the artifact: llm-provider or llm-proxy
+	ArtifactType string `json:"artifactType" yaml:"artifactType"`
+}
+
+// UserAPIKeyListResponse defines the response for listing LLM API keys for a user.
+type UserAPIKeyListResponse struct {
+	// Items List of API keys
+	Items []UserAPIKeyItem `json:"items" yaml:"items"`
+
+	// Count Total number of API keys
+	Count int `json:"count" yaml:"count"`
+}
+
+// LLMProviderAPIKeyListResponse defines the response for listing LLM provider API keys
+type LLMProviderAPIKeyListResponse struct {
+	// Items List of API keys
+	Items []APIKeyItem `json:"items" yaml:"items"`
+
+	// Count Total number of API keys
+	Count int `json:"count" yaml:"count"`
+}
+
+// LLMProxyAPIKeyListResponse defines the response for listing LLM proxy API keys
+type LLMProxyAPIKeyListResponse struct {
+	// Items List of API keys
+	Items []APIKeyItem `json:"items" yaml:"items"`
+
+	// Count Total number of API keys
+	Count int `json:"count" yaml:"count"`
+}
+
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
+	// AllowedTargets Comma-separated list of LLM provider or proxy names this key is valid for. Use 'ALL' to allow all targets (default).
+	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
+
 	// DisplayName User-friendly name for the API key
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
@@ -544,6 +618,9 @@ type CreateLLMProviderAPIKeyRequest struct {
 
 	// Name Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Issuer Identifier of the developer portal that provisioned this API key. nil if not provided.
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 }
 
 // CreateLLMProviderAPIKeyResponse defines model for CreateLLMProviderAPIKeyResponse.
@@ -563,6 +640,9 @@ type CreateLLMProviderAPIKeyResponse struct {
 
 // CreateLLMProxyAPIKeyRequest defines model for CreateLLMProxyAPIKeyRequest.
 type CreateLLMProxyAPIKeyRequest struct {
+	// AllowedTargets Comma-separated list of LLM provider or proxy names this key is valid for. Use 'ALL' to allow all targets (default).
+	AllowedTargets *string `json:"allowedTargets,omitempty" yaml:"allowedTargets,omitempty"`
+
 	// DisplayName User-friendly name for the API key
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
@@ -571,6 +651,9 @@ type CreateLLMProxyAPIKeyRequest struct {
 
 	// Name Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Issuer Identifier of the developer portal that provisioned this API key. nil if not provided.
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 }
 
 // CreateLLMProxyAPIKeyResponse defines model for CreateLLMProxyAPIKeyResponse.
@@ -2179,11 +2262,11 @@ type UpdateAPIKeyRequest struct {
 	// ExternalRefId Optional reference ID for tracing purposes (from external platforms)
 	ExternalRefId *string `json:"externalRefId" yaml:"externalRefId"`
 
+	// Issuer Identifies the portal that created this key
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
+
 	// Name Unique identifier for this API key within the API (optional; if omitted, generated from displayName)
 	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Operations Specifies which API operations this key can access. Use "*" for all operations.
-	Operations *string `json:"operations,omitempty" yaml:"operations,omitempty"`
 }
 
 // UpdateAPIKeyResponse defines model for UpdateAPIKeyResponse.

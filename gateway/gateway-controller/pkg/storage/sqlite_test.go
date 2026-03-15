@@ -92,6 +92,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"api_keys",
 		"subscriptions",
 		"subscription_plans",
+		"application_api_keys",
 	}
 
 	for _, table := range tables {
@@ -879,7 +880,6 @@ func createTestAPIKey() *models.APIKey {
 		APIKey:       fmt.Sprintf("apk_%d_%d", apiKeyCounter, time.Now().UnixNano()),
 		MaskedAPIKey: "apk_***",
 		ArtifactUUID: "0000-test-api-id-0000-000000000000",
-		Operations:   "*",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",

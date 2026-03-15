@@ -36,10 +36,14 @@ import (
 type mockStorageForDeletion struct {
 	configs            map[string]*models.StoredConfig
 	subscriptions      map[string]*models.Subscription
+	apiKeysByUUID      map[string]*models.APIKey
+	replacedMappings   []*models.ApplicationAPIKeyMapping
+	replacedAppID      string
 	deleteErr          error
 	updateErr          error
 	getErr             error
 	removeKeyErr       error
+	replaceErr         error
 	deleteCallCount    int
 	removeKeyCallCount int
 }
@@ -48,6 +52,7 @@ func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
 		configs:       make(map[string]*models.StoredConfig),
 		subscriptions: make(map[string]*models.Subscription),
+		apiKeysByUUID: make(map[string]*models.APIKey),
 	}
 }
 
@@ -265,6 +270,13 @@ func (m *mockStorageForDeletion) GetAPIKeyByID(apiKeyID string) (*models.APIKey,
 	return nil, storage.ErrNotFound
 }
 
+func (m *mockStorageForDeletion) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	if key, ok := m.apiKeysByUUID[uuid]; ok {
+		return key, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
 func (m *mockStorageForDeletion) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -295,6 +307,15 @@ func (m *mockStorageForDeletion) RemoveAPIKeysAPI(apiID string) error {
 
 func (m *mockStorageForDeletion) CountActiveAPIKeysByUserAndAPI(userID, apiID string) (int, error) {
 	return 0, nil
+}
+
+func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+	if m.replaceErr != nil {
+		return m.replaceErr
+	}
+	m.replacedAppID = applicationID
+	m.replacedMappings = append([]*models.ApplicationAPIKeyMapping(nil), mappings...)
+	return nil
 }
 
 // Certificate methods (not used in deletion tests but required by interface)
@@ -753,4 +774,89 @@ func TestClient_findAPIConfig(t *testing.T) {
 			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
+}
+
+func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+
+	db.apiKeysByUUID["key-uuid-found-1"] = &models.APIKey{UUID: "key-uuid-found-1"}
+	db.apiKeysByUUID["key-uuid-found-2"] = &models.APIKey{UUID: "key-uuid-found-2"}
+
+	client := &Client{
+		logger: logger,
+		db:     db,
+	}
+
+	event := map[string]interface{}{
+		"type": "application.updated",
+		"payload": map[string]interface{}{
+			"applicationId":   "app-123",
+			"applicationUuid": "app-uuid-123",
+			"mappings": []map[string]interface{}{
+				{"apiKeyUuid": "key-uuid-found-1"},
+				{"apiKeyUuid": "key-uuid-missing"},
+				{"apiKeyUuid": "key-uuid-found-2"},
+			},
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-app-update-skip-missing",
+	}
+
+	client.handleApplicationUpdatedEvent(event)
+
+	if db.replacedAppID != "app-123" {
+		t.Fatalf("expected mappings to be replaced for app-123, got %q", db.replacedAppID)
+	}
+
+	if len(db.replacedMappings) != 2 {
+		t.Fatalf("expected 2 resolved mappings, got %d", len(db.replacedMappings))
+	}
+
+	if db.replacedMappings[0].APIKeyID != "key-uuid-found-1" {
+		t.Errorf("expected first mapping key id key-uuid-found-1, got %q", db.replacedMappings[0].APIKeyID)
+	}
+	if db.replacedMappings[1].APIKeyID != "key-uuid-found-2" {
+		t.Errorf("expected second mapping key id key-uuid-found-2, got %q", db.replacedMappings[1].APIKeyID)
+	}
+}
+
+func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+
+	db.apiKeysByUUID["key-uuid-found"] = &models.APIKey{UUID: "key-uuid-found"}
+
+	client := &Client{
+		logger: logger,
+		db:     db,
+	}
+
+	event := map[string]interface{}{
+		"type": "application.updated",
+		"payload": map[string]interface{}{
+			"applicationId":   "app-456",
+			"applicationUuid": "app-uuid-456",
+			"mappings": []map[string]interface{}{
+				{"apiKeyUuid": ""},
+				{"apiKeyUuid": "key-uuid-found"},
+			},
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-app-update-skip-invalid",
+	}
+
+	client.handleApplicationUpdatedEvent(event)
+
+	if db.replacedAppID != "app-456" {
+		t.Fatalf("expected mappings to be replaced for app-456, got %q", db.replacedAppID)
+	}
+
+	if len(db.replacedMappings) != 1 {
+		t.Fatalf("expected 1 resolved mapping, got %d", len(db.replacedMappings))
+	}
+
+	if db.replacedMappings[0].APIKeyID != "key-uuid-found" {
+		t.Errorf("expected resolved mapping key id key-uuid-found, got %q", db.replacedMappings[0].APIKeyID)
+	}
 }

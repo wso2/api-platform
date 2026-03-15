@@ -21,7 +21,6 @@ package apikey
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -54,6 +53,10 @@ type APIKey struct {
 	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
 	// Source tracking for external key support ("local" | "external")
 	Source string `json:"source" yaml:"source"`
+	// Issuer identifies the portal that created this key; nil means no restriction
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
+	// AllowedTargets is a comma-separated list of allowed gateways; "ALL" or "" means unrestricted
+	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
 }
 
 // APIKeyStatus Status of the API key
@@ -166,9 +169,10 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	return nil
 }
 
-// ValidateAPIKey validates the provided API key against the internal APIkey store
-// Supports both local and external keys using unified hash-based lookup
-func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string) (bool, error) {
+// ValidateAPIKey validates the provided API key against the internal APIkey store.
+// Supports both local and external keys using unified hash-based lookup.
+// issuer, when non-empty, restricts validation to keys from a specific portal.
+func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string, issuer ...string) (bool, error) {
 	aks.mu.RLock()
 	defer aks.mu.RUnlock()
 
@@ -195,6 +199,13 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		return false, nil
 	}
 
+	// issuer check: only enforce when issuer is provided and non-empty
+	if len(issuer) > 0 && issuer[0] != "" {
+		if targetAPIKey.Issuer == nil || *targetAPIKey.Issuer != issuer[0] {
+			return false, nil
+		}
+	}
+
 	// Check if the API key is active
 	if targetAPIKey.Status != Active {
 		return false, nil
@@ -206,31 +217,10 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		return false, nil
 	}
 
-	// Check if the API key has access to the requested operation
-	// Operations is a JSON string array of allowed operations in format "METHOD path"
-	// Example: ["GET /{country_code}/{city}", "POST /data"], ["*"] for allow all operations
-	var operations []string
-	if err := json.Unmarshal([]byte(targetAPIKey.Operations), &operations); err != nil {
-		return false, fmt.Errorf("invalid operations format: %w", err)
-	}
-
-	// Check if wildcard is present
-	for _, op := range operations {
-		if strings.TrimSpace(op) == "*" {
-			return true, nil
-		}
-	}
-
-	// Check if the requested operation is in the allowed operations list
-	requestedOperation := fmt.Sprintf("%s %s", operationMethod, apiOperation)
-	for _, op := range operations {
-		if strings.TrimSpace(op) == requestedOperation {
-			return true, nil
-		}
-	}
-
-	// Operation not found in allowed list
-	return false, nil
+    // TODO: Currently, API key creation happens only per API, not per operation, since it was decided to remove the operations field from API keys. 
+	// Therefore, this implementation should include some kind of mapping so that when a policy is attached to a resource, this method  
+	// can look up that mapping and perform the validation.
+	return true, nil
 }
 
 // RevokeAPIKey revokes a specific API key by plain text API key value

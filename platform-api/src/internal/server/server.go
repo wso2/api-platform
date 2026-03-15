@@ -80,6 +80,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgRepo := repository.NewOrganizationRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 	apiRepo := repository.NewAPIRepo(db)
+	appRepo := repository.NewApplicationRepo(db)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	artifactRepo := repository.NewArtifactRepo(db)
 	devPortalRepo := repository.NewDevPortalRepository(db)
@@ -91,6 +92,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
+	apiKeyRepo := repository.NewAPIKeyRepo(db)
 
 	// Seed default LLM provider templates into the DB (per organization)
 	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
@@ -162,13 +164,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, llmTemplateSeeder, cfg, slogger)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
+	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, devPortalRepo, publicationRepo,
 		subscriptionPlanRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, slogger)
 	subscriptionService := service.NewSubscriptionService(apiRepo, subscriptionRepo, gatewayEventsService, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, cfg, slogger)
-	apiKeyService := service.NewAPIKeyService(apiRepo, gatewayEventsService, slogger)
+	apiKeyService := service.NewAPIKeyService(apiRepo, apiKeyRepo, gatewayEventsService, cfg.APIKey.HashingAlgorithms, slogger)
 	gitService := service.NewGitService()
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, apiUtil, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
@@ -185,8 +188,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		cfg,
 		slogger,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, gatewayEventsService, slogger)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, gatewayEventsService, slogger)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
+	llmAPIKeyUserService := service.NewLLMAPIKeyUserService(apiKeyRepo, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
 		deploymentRepo,
@@ -215,6 +219,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
+	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
@@ -224,6 +229,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, slogger)
 	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, slogger)
 	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, slogger)
+	llmAPIKeyUserHandler := handler.NewLLMAPIKeyUserHandler(llmAPIKeyUserService, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
@@ -258,6 +264,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Register routes
 	orgHandler.RegisterRoutes(router)
 	projectHandler.RegisterRoutes(router)
+	appHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
 	devPortalHandler.RegisterRoutes(router)
 	gatewayHandler.RegisterRoutes(router)
@@ -272,6 +279,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmDeploymentHandler.RegisterRoutes(router)
 	llmProviderAPIKeyHandler.RegisterRoutes(router)
 	llmProxyAPIKeyHandler.RegisterRoutes(router)
+	llmAPIKeyUserHandler.RegisterRoutes(router)
 	llmProxyDeploymentHandler.RegisterRoutes(router)
 	mcpProxyHandler.RegisterRoutes(router)
 	mcpProxyDeploymentHandler.RegisterRoutes(router)

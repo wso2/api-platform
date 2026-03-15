@@ -45,6 +45,90 @@ func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService
 	}
 }
 
+// ListAPIKeys handles GET /api/v1/llm-providers/{id}/api-keys
+func (h *LLMProviderAPIKeyHandler) ListAPIKeys(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	providerID := c.Param("id")
+	if providerID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"LLM provider ID is required"))
+		return
+	}
+
+	response, err := h.apiKeyService.ListLLMProviderAPIKeys(c.Request.Context(), providerID, orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"LLM provider not found"))
+			return
+		}
+		h.slogger.Error("Failed to list LLM provider API keys", "providerId", providerID, "organizationId", orgID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to list API keys"))
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// DeleteAPIKey handles DELETE /api/v1/llm-providers/{id}/api-keys/{keyName}
+func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	providerID := c.Param("id")
+	if providerID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"LLM provider ID is required"))
+		return
+	}
+
+	keyName := c.Param("keyName")
+	if keyName == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API key name is required"))
+		return
+	}
+
+	callerUserID := c.GetHeader("x-user-id")
+	
+	err := h.apiKeyService.DeleteLLMProviderAPIKey(c.Request.Context(), providerID, orgID, callerUserID, keyName)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"LLM provider not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrAPIKeyNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API key not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrAPIKeyForbidden) {
+			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+				"Only the key creator can delete this API key"))
+			return
+		}
+		h.slogger.Error("Failed to delete LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to delete API key"))
+		return
+	}
+
+	h.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName, "organizationId", orgID)
+	c.Status(http.StatusNoContent)
+}
+
 // CreateAPIKey handles POST /api/v1/llm-providers/{id}/api-keys
 func (h *LLMProviderAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -109,5 +193,7 @@ func (h *LLMProviderAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	apiKeyGroup := r.Group("/api/v1/llm-providers/:id/api-keys")
 	{
 		apiKeyGroup.POST("", h.CreateAPIKey)
+		apiKeyGroup.GET("", h.ListAPIKeys)
+		apiKeyGroup.DELETE("/:keyName", h.DeleteAPIKey)
 	}
 }

@@ -109,7 +109,6 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	return nil, errors.New("config not found")
 }
 
-
 func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	if m.unavailable {
 		return nil, storage.ErrDatabaseUnavailable
@@ -208,6 +207,18 @@ func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	}
 	if key, ok := m.apiKeys[id]; ok {
 		return key, nil
+	}
+	return nil, errors.New("API key not found")
+}
+
+func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, apiKey := range m.apiKeys {
+		if apiKey.UUID == uuid {
+			return apiKey, nil
+		}
 	}
 	return nil, errors.New("API key not found")
 }
@@ -543,6 +554,13 @@ func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string)
 		if _, keep := idsSet[id]; !keep {
 			delete(m.subscriptions, id)
 		}
+	}
+	return nil
+}
+
+func (m *MockStorage) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+	if m.updateErr != nil {
+		return m.updateErr
 	}
 	return nil
 }
@@ -2612,7 +2630,7 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Equal(t, "error", response.Status)
-	assert.Equal(t, "API key value is required", response.Message)
+	assert.Equal(t, "apiKey is required", response.Message)
 }
 
 // TestRevokeAPIKeyNotFound tests revoking a non-existent API key

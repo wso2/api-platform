@@ -50,11 +50,11 @@ type sqlStore struct {
 
 	rebindQuery func(string) string
 
-	isConfigUniqueViolation          func(error) bool
-	isCertificateUniqueViolation    func(error) bool
-	isTemplateUniqueViolation       func(error) bool
-	isAPIKeyUniqueViolation         func(error) bool
-	isSubscriptionUniqueViolation   func(error) bool
+	isConfigUniqueViolation           func(error) bool
+	isCertificateUniqueViolation      func(error) bool
+	isTemplateUniqueViolation         func(error) bool
+	isAPIKeyUniqueViolation           func(error) bool
+	isSubscriptionUniqueViolation     func(error) bool
 	isSubscriptionPlanUniqueViolation func(error) bool
 
 	backendName string
@@ -64,18 +64,18 @@ type sqlStore struct {
 
 func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string, subscriptionTokenEncryptionKey string) *sqlStore {
 	return &sqlStore{
-		db:          db,
-		logger:      logger,
-		gatewayId:   gatewayId,
-		backendName: backendName,
+		db:                             db,
+		logger:                         logger,
+		gatewayId:                      gatewayId,
+		backendName:                    backendName,
 		subscriptionTokenEncryptionKey: subscriptionTokenEncryptionKey,
 		// Defaults are identity/false; backends can override.
-		rebindQuery:                     func(query string) string { return query },
-		isConfigUniqueViolation:         func(error) bool { return false },
-		isCertificateUniqueViolation:    func(error) bool { return false },
-		isTemplateUniqueViolation:       func(error) bool { return false },
-		isAPIKeyUniqueViolation:         func(error) bool { return false },
-		isSubscriptionUniqueViolation:   func(error) bool { return false },
+		rebindQuery:                       func(query string) string { return query },
+		isConfigUniqueViolation:           func(error) bool { return false },
+		isCertificateUniqueViolation:      func(error) bool { return false },
+		isTemplateUniqueViolation:         func(error) bool { return false },
+		isAPIKeyUniqueViolation:           func(error) bool { return false },
+		isSubscriptionUniqueViolation:     func(error) bool { return false },
 		isSubscriptionPlanUniqueViolation: func(error) bool { return false },
 	}
 }
@@ -1163,30 +1163,27 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 		// No existing record, insert new API key
 		insertQuery := `
 			INSERT INTO api_keys (
-				uuid, gateway_id, name, display_name, api_key, masked_api_key, artifact_uuid, operations, status,
-				created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration,
-				source, external_ref_id
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				uuid, gateway_id, name, api_key, masked_api_key, artifact_uuid, status,
+				created_at, created_by, updated_at, expires_at,
+				source, external_ref_id, issuer
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 
 		_, err := tx.ExecQ(insertQuery,
 			apiKey.UUID,
 			s.gatewayId,
 			apiKey.Name,
-			apiKey.DisplayName,
 			apiKey.APIKey,
 			apiKey.MaskedAPIKey,
 			apiKey.ArtifactUUID,
-			apiKey.Operations,
 			apiKey.Status,
 			apiKey.CreatedAt,
 			apiKey.CreatedBy,
 			apiKey.UpdatedAt,
 			apiKey.ExpiresAt,
-			apiKey.Unit,
-			apiKey.Duration,
 			apiKey.Source,
 			apiKey.ExternalRefId,
+			apiKey.Issuer,
 		)
 
 		if err != nil {
@@ -1225,8 +1222,9 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 // GetAPIKeyByID retrieves an API key by its UUID
 func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	query := `
-		SELECT uuid, name, display_name, api_key, masked_api_key, artifact_uuid, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
+		       issuer
 		FROM api_keys
 		WHERE uuid = ? AND gateway_id = ?
 	`
@@ -1234,15 +1232,14 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
+	var issuer sql.NullString
 
 	err := s.queryRow(query, id, s.gatewayId).Scan(
 		&apiKey.UUID,
 		&apiKey.Name,
-		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.ArtifactUUID,
-		&apiKey.Operations,
 		&apiKey.Status,
 		&apiKey.CreatedAt,
 		&apiKey.CreatedBy,
@@ -1250,6 +1247,7 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		&expiresAt,
 		&apiKey.Source,
 		&externalRefId,
+		&issuer,
 	)
 
 	if err != nil {
@@ -1265,6 +1263,61 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	}
 	if externalRefId.Valid {
 		apiKey.ExternalRefId = &externalRefId.String
+	}
+	if issuer.Valid {
+		apiKey.Issuer = &issuer.String
+	}
+
+	return &apiKey, nil
+}
+
+// GetAPIKeyByUUID retrieves an API key by its platform UUID
+func (s *sqlStore) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	query := `
+		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
+		       issuer
+		FROM api_keys
+		WHERE uuid = ? AND gateway_id = ?
+		LIMIT 1
+	`
+
+	var apiKey models.APIKey
+	var expiresAt sql.NullTime
+	var externalRefId sql.NullString
+	var issuer sql.NullString
+
+	err := s.queryRow(query, uuid, s.gatewayId).Scan(
+		&apiKey.UUID,
+		&apiKey.Name,
+		&apiKey.APIKey,
+		&apiKey.MaskedAPIKey,
+		&apiKey.ArtifactUUID,
+		&apiKey.Status,
+		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
+		&apiKey.UpdatedAt,
+		&expiresAt,
+		&apiKey.Source,
+		&externalRefId,
+		&issuer,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: key not found", ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed to query API key by UUID: %w", err)
+	}
+
+	if expiresAt.Valid {
+		apiKey.ExpiresAt = &expiresAt.Time
+	}
+	if externalRefId.Valid {
+		apiKey.ExternalRefId = &externalRefId.String
+	}
+	if issuer.Valid {
+		apiKey.Issuer = &issuer.String
 	}
 
 	return &apiKey, nil
@@ -1273,8 +1326,9 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 // GetAPIKeyByKey retrieves an API key by its key value
 func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `
-		SELECT uuid, name, display_name, api_key, masked_api_key, artifact_uuid, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
+		       issuer
 		FROM api_keys
 		WHERE api_key = ? AND gateway_id = ?
 	`
@@ -1282,15 +1336,14 @@ func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
+	var issuer sql.NullString
 
 	err := s.queryRow(query, key, s.gatewayId).Scan(
 		&apiKey.UUID,
 		&apiKey.Name,
-		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.ArtifactUUID,
-		&apiKey.Operations,
 		&apiKey.Status,
 		&apiKey.CreatedAt,
 		&apiKey.CreatedBy,
@@ -1298,6 +1351,7 @@ func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 		&expiresAt,
 		&apiKey.Source,
 		&externalRefId,
+		&issuer,
 	)
 
 	if err != nil {
@@ -1314,6 +1368,9 @@ func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	if externalRefId.Valid {
 		apiKey.ExternalRefId = &externalRefId.String
 	}
+	if issuer.Valid {
+		apiKey.Issuer = &issuer.String
+	}
 
 	return &apiKey, nil
 }
@@ -1321,8 +1378,9 @@ func (s *sqlStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 // GetAPIKeysByAPI retrieves all API keys for a specific API
 func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	query := `
-		SELECT uuid, name, display_name, api_key, masked_api_key, artifact_uuid, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
+		       issuer
 		FROM api_keys
 		WHERE artifact_uuid = ? AND gateway_id = ?
 		ORDER BY created_at DESC
@@ -1340,8 +1398,9 @@ func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 // GetAPIKeysByAPIAndName retrieves an API key by its artifact_uuid and name
 func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	query := `
-		SELECT uuid, name, display_name, api_key, masked_api_key, artifact_uuid, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
+		       issuer
 		FROM api_keys
 		WHERE artifact_uuid = ? AND name = ? AND gateway_id = ?
 		LIMIT 1
@@ -1350,15 +1409,14 @@ func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, e
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
+	var issuer sql.NullString
 
 	err := s.queryRow(query, apiId, name, s.gatewayId).Scan(
 		&apiKey.UUID,
 		&apiKey.Name,
-		&apiKey.DisplayName,
 		&apiKey.APIKey,
 		&apiKey.MaskedAPIKey,
 		&apiKey.ArtifactUUID,
-		&apiKey.Operations,
 		&apiKey.Status,
 		&apiKey.CreatedAt,
 		&apiKey.CreatedBy,
@@ -1366,6 +1424,7 @@ func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, e
 		&expiresAt,
 		&apiKey.Source,
 		&externalRefId,
+		&issuer,
 	)
 
 	if err != nil {
@@ -1381,6 +1440,9 @@ func (s *sqlStore) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, e
 	}
 	if externalRefId.Valid {
 		apiKey.ExternalRefId = &externalRefId.String
+	}
+	if issuer.Valid {
+		apiKey.Issuer = &issuer.String
 	}
 
 	return &apiKey, nil
@@ -1405,7 +1467,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 
 	updateQuery := `
 			UPDATE api_keys
-			SET api_key = ?, masked_api_key = ?, display_name = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?,
+			SET api_key = ?, masked_api_key = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?,
 			    source = ?, external_ref_id = ?
 			WHERE artifact_uuid = ? AND name = ? AND gateway_id = ?
 		`
@@ -1413,14 +1475,10 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	_, err = tx.ExecQ(updateQuery,
 		apiKey.APIKey,
 		apiKey.MaskedAPIKey,
-		apiKey.DisplayName,
-		apiKey.Operations,
 		apiKey.Status,
 		apiKey.CreatedBy,
 		apiKey.UpdatedAt,
 		apiKey.ExpiresAt,
-		apiKey.Unit,
-		apiKey.Duration,
 		apiKey.Source,
 		apiKey.ExternalRefId,
 		apiKey.ArtifactUUID,
@@ -1513,6 +1571,64 @@ func (s *sqlStore) RemoveAPIKeyAPIAndName(apiId, name string) error {
 	return nil
 }
 
+// ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
+func (s *sqlStore) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+	tx, err := s.begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		}
+	}()
+
+	if _, err = tx.ExecQ(`
+		DELETE FROM application_api_keys
+		WHERE application_id = ?
+	`, applicationID); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed to clear application mappings: %w", err)
+	}
+
+	seen := make(map[string]struct{})
+	now := time.Now()
+
+	for _, mapping := range mappings {
+		if mapping == nil {
+			continue
+		}
+		if mapping.ApplicationID == "" || mapping.APIKeyID == "" {
+			_ = tx.Rollback()
+			return fmt.Errorf("invalid application mapping payload")
+		}
+
+		composite := mapping.ApplicationID + ":" + mapping.APIKeyID
+		if _, exists := seen[composite]; exists {
+			continue
+		}
+		seen[composite] = struct{}{}
+
+		if _, err = tx.ExecQ(`
+			INSERT INTO application_api_keys (
+				application_id, api_key_id, created_at, updated_at
+			)
+			VALUES (?, ?, ?, ?)
+		`, mapping.ApplicationID, mapping.APIKeyID, now, now); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("failed to insert application mapping: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit application mapping transaction: %w", err)
+	}
+
+	return nil
+}
+
 // Close closes the database connection
 func (s *sqlStore) Close() error {
 	backend := s.backendName
@@ -1529,8 +1645,9 @@ func (s *sqlStore) Close() error {
 // GetAllAPIKeys retrieves all active API keys from the database.
 func (s *sqlStore) GetAllAPIKeys() ([]*models.APIKey, error) {
 	query := `
-		SELECT uuid, name, display_name, api_key, masked_api_key, artifact_uuid, operations, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id
+		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
+		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
+		       issuer
 		FROM api_keys
 		WHERE status = 'active' AND gateway_id = ?
 		ORDER BY created_at DESC
@@ -1553,15 +1670,14 @@ func (s *sqlStore) scanAPIKeyRows(rows *sql.Rows) ([]*models.APIKey, error) {
 		var apiKey models.APIKey
 		var expiresAt sql.NullTime
 		var externalRefId sql.NullString
+		var issuer sql.NullString
 
 		err := rows.Scan(
 			&apiKey.UUID,
 			&apiKey.Name,
-			&apiKey.DisplayName,
 			&apiKey.APIKey,
 			&apiKey.MaskedAPIKey,
 			&apiKey.ArtifactUUID,
-			&apiKey.Operations,
 			&apiKey.Status,
 			&apiKey.CreatedAt,
 			&apiKey.CreatedBy,
@@ -1569,6 +1685,7 @@ func (s *sqlStore) scanAPIKeyRows(rows *sql.Rows) ([]*models.APIKey, error) {
 			&expiresAt,
 			&apiKey.Source,
 			&externalRefId,
+			&issuer,
 		)
 
 		if err != nil {
@@ -1581,6 +1698,9 @@ func (s *sqlStore) scanAPIKeyRows(rows *sql.Rows) ([]*models.APIKey, error) {
 		}
 		if externalRefId.Valid {
 			apiKey.ExternalRefId = &externalRefId.String
+		}
+		if issuer.Valid {
+			apiKey.Issuer = &issuer.String
 		}
 
 		apiKeys = append(apiKeys, &apiKey)
