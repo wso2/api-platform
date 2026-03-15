@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS applications (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(255) NOT NULL,
-    project_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40),
     organization_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255),
     name VARCHAR(255) NOT NULL,
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (application_uuid, api_key_id),
     FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
 );
 
 -- REST APIs table

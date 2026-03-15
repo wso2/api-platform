@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -35,7 +36,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -2304,14 +2305,21 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 
 	for _, mapping := range evt.Payload.Mappings {
 		if mapping.ApiKeyUuid == "" {
-			logger.Error("Invalid application mapping entry in event",
+			logger.Warn("Skipping invalid application mapping entry in event",
 				slog.String("api_key_uuid", mapping.ApiKeyUuid),
 			)
-			return
+			continue
 		}
 
 		apiKey, err := c.db.GetAPIKeyByUUID(mapping.ApiKeyUuid)
 		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				logger.Warn("Skipping unresolved API key for application mapping",
+					slog.String("api_key_uuid", mapping.ApiKeyUuid),
+				)
+				continue
+			}
+
 			logger.Error("Failed to resolve API key for application mapping",
 				slog.String("api_key_uuid", mapping.ApiKeyUuid),
 				slog.Any("error", err),

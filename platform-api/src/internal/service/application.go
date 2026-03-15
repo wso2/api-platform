@@ -75,15 +75,18 @@ func (s *ApplicationService) CreateApplication(req *dto.CreateApplicationRequest
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	project, err := s.projectRepo.GetProjectByUUID(req.ProjectId)
-	if err != nil {
-		return nil, err
-	}
-	if project == nil || project.OrganizationID != orgID {
-		return nil, constants.ErrProjectNotFound
+	projectID := strings.TrimSpace(req.ProjectId)
+	if projectID != "" {
+		project, err := s.projectRepo.GetProjectByUUID(projectID)
+		if err != nil {
+			return nil, err
+		}
+		if project == nil || project.OrganizationID != orgID {
+			return nil, constants.ErrProjectNotFound
+		}
 	}
 
-	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.Name), req.ProjectId, orgID)
+	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.Name), projectID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +116,7 @@ func (s *ApplicationService) CreateApplication(req *dto.CreateApplicationRequest
 	app := &model.Application{
 		UUID:             uuid.New().String(),
 		Handle:           handle,
-		ProjectUUID:      req.ProjectId,
+		ProjectUUID:      projectID,
 		OrganizationUUID: orgID,
 		CreatedBy:        strings.TrimSpace(valueOrEmptyApplication(req.CreatedBy)),
 		Name:             strings.TrimSpace(req.Name),
@@ -278,7 +281,7 @@ func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto
 		return nil, err
 	}
 
-	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeyIds, orgID)
+	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeyIds, orgID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +308,7 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.Add
 		return nil, err
 	}
 
-	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeyIds, orgID)
+	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeyIds, orgID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -338,6 +341,9 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, orgID, use
 	}
 	if key == nil {
 		return constants.ErrAPIKeyNotFound
+	}
+	if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
+		return err
 	}
 
 	if err := s.appRepo.RemoveApplicationAPIKey(app.UUID, key.ID); err != nil {
@@ -373,7 +379,7 @@ func (s *ApplicationService) getApplication(appIDOrHandle, orgID string) (*model
 	return app, nil
 }
 
-func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID string) ([]string, error) {
+func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID, userID string) ([]string, error) {
 	seen := make(map[string]struct{})
 	result := make([]string, 0, len(ids))
 
@@ -389,6 +395,9 @@ func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID string) ([]str
 		if key == nil {
 			return nil, constants.ErrAPIKeyNotFound
 		}
+		if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
+			return nil, err
+		}
 
 		if _, ok := seen[key.ID]; ok {
 			continue
@@ -399,6 +408,25 @@ func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID string) ([]str
 	}
 
 	return result, nil
+}
+
+func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.ApplicationAPIKey, userID string) error {
+	if key == nil {
+		return constants.ErrAPIKeyNotFound
+	}
+
+	creator := strings.TrimSpace(key.CreatedBy)
+	requester := strings.TrimSpace(userID)
+
+	if creator == "" || requester == "" {
+		return nil
+	}
+
+	if creator != requester {
+		return constants.ErrAPIKeyForbidden
+	}
+
+	return nil
 }
 
 func (s *ApplicationService) buildMappedAPIKeyList(applicationUUID string) (*dto.MappedAPIKeyListResponse, error) {

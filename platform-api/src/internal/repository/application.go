@@ -39,6 +39,13 @@ func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
 	app.CreatedAt = now
 	app.UpdatedAt = now
 
+	var projectUUID interface{}
+	if app.ProjectUUID == "" {
+		projectUUID = nil
+	} else {
+		projectUUID = app.ProjectUUID
+	}
+
 	query := `
 		INSERT INTO applications (
 			uuid, handle, project_uuid, organization_uuid, created_by,
@@ -49,7 +56,7 @@ func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
 
 	_, err := r.db.Exec(
 		r.db.Rebind(query),
-		app.UUID, app.Handle, app.ProjectUUID, app.OrganizationUUID, app.CreatedBy,
+		app.UUID, app.Handle, projectUUID, app.OrganizationUUID, app.CreatedBy,
 		app.Name, app.Description, app.Type, app.CreatedAt, app.UpdatedAt,
 	)
 	return err
@@ -144,11 +151,20 @@ func (r *ApplicationRepo) GetApplicationsByOrganizationID(orgID string) ([]*mode
 }
 
 func (r *ApplicationRepo) GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error) {
-	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
-		FROM applications
-		WHERE name = ? AND project_uuid = ? AND organization_uuid = ?
-	`), name, projectID, orgID)
+	var row *sql.Row
+	if projectID == "" {
+		row = r.db.QueryRow(r.db.Rebind(`
+			SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+			FROM applications
+			WHERE name = ? AND project_uuid IS NULL AND organization_uuid = ?
+		`), name, orgID)
+	} else {
+		row = r.db.QueryRow(r.db.Rebind(`
+			SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+			FROM applications
+			WHERE name = ? AND project_uuid = ? AND organization_uuid = ?
+		`), name, projectID, orgID)
+	}
 
 	app, err := scanApplication(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -226,7 +242,7 @@ func (r *ApplicationRepo) GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgI
 
 func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT ak.uuid, ak.uuid, ak.name, ak.artifact_uuid, art.handle, art.kind, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
+		SELECT ak.uuid, ak.name, ak.artifact_uuid, art.handle, art.kind, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
 		FROM application_api_keys aak
 		INNER JOIN api_keys ak ON ak.uuid = aak.api_key_id
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
@@ -333,13 +349,14 @@ type rowScanner interface {
 
 func scanApplication(scanner rowScanner) (*model.Application, error) {
 	var app model.Application
+	var projectUUID sql.NullString
 	var createdBy sql.NullString
 	var description sql.NullString
 
 	err := scanner.Scan(
 		&app.UUID,
 		&app.Handle,
-		&app.ProjectUUID,
+		&projectUUID,
 		&app.OrganizationUUID,
 		&createdBy,
 		&app.Name,
@@ -350,6 +367,10 @@ func scanApplication(scanner rowScanner) (*model.Application, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if projectUUID.Valid {
+		app.ProjectUUID = projectUUID.String
 	}
 
 	if createdBy.Valid {
@@ -376,13 +397,13 @@ func scanApplications(rows *sql.Rows) ([]*model.Application, error) {
 
 func scanApplicationAPIKey(scanner rowScanner) (*model.ApplicationAPIKey, error) {
 	var key model.ApplicationAPIKey
+	var apiKeyUUID string
 	var status sql.NullString
 	var createdBy sql.NullString
 	var expiresAt sql.NullTime
 
 	err := scanner.Scan(
-		&key.ID,
-		&key.APIKeyUUID,
+		&apiKeyUUID,
 		&key.Name,
 		&key.ArtifactID,
 		&key.ArtifactHandle,
@@ -396,6 +417,9 @@ func scanApplicationAPIKey(scanner rowScanner) (*model.ApplicationAPIKey, error)
 	if err != nil {
 		return nil, err
 	}
+
+	key.ID = apiKeyUUID
+	key.APIKeyUUID = apiKeyUUID
 
 	if status.Valid {
 		key.Status = status.String
