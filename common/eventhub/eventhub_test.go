@@ -52,8 +52,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			entity_id TEXT NOT NULL,
 			event_id TEXT NOT NULL,
 			event_data TEXT NOT NULL,
-			PRIMARY KEY (event_id),
-			UNIQUE (gateway_id, processed_timestamp)
+			PRIMARY KEY (event_id)
 		);
 	`)
 	require.NoError(t, err)

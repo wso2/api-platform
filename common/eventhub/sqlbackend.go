@@ -231,7 +231,7 @@ func (b *SQLBackend) prepareStatements() (err error) {
 
 // RegisterGateway registers a new gateway for event tracking.
 func (b *SQLBackend) RegisterGateway(gatewayID string) error {
-	_, err := b.insertGatewayStmt.Exec(gatewayID)
+	_, err := b.insertGatewayStmt.Exec(strings.TrimSpace(gatewayID))
 	if err != nil {
 		// Insert failed; check if a concurrent registration already inserted the gateway.
 		checkErr := b.getGatewayStateStmt.QueryRow(gatewayID).Scan(new(string), new(string), new(time.Time))
@@ -569,6 +569,8 @@ func (b *SQLBackend) pollGatewayWithState(gw *gateway, state GatewayState) error
 				slog.String("entity_id", evt.EntityID))
 			break
 		}
+		// Delivery Starts from the point the subscription is made.
+		// Hence we can keep updating the last polled timestamp regardless of number of subscribers available.
 		for _, ch := range subscribers {
 			ch <- evt
 		}

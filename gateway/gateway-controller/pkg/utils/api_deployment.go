@@ -436,7 +436,13 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	existing, _ := s.store.Get(storedCfg.UUID)
+	var existing *models.StoredConfig
+	if s.db != nil {
+		existing, _ = s.db.GetConfig(storedCfg.UUID)
+	} else {
+		// In-memory mode: check store for existing config to determine if this is an update or create
+		existing, _ = s.store.Get(storedCfg.UUID)
+	}
 
 	// If config already exists, update it
 	if existing != nil {

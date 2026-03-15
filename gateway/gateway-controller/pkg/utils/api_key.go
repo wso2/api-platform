@@ -157,6 +157,64 @@ func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string
 	s.gatewayID = gatewayID
 }
 
+// getAPIConfigByHandle resolves a REST API configuration by handle.
+// It prefers the in-memory store for fast-path reads and falls back to the database when available.
+func (s *APIKeyService) getAPIConfigByHandle(handle string, logger *slog.Logger) (*models.StoredConfig, error) {
+	if s.store != nil {
+		cfg, err := s.store.GetByHandle(handle)
+		if err == nil {
+			if cfg == nil {
+				return nil, storage.ErrNotFound
+			}
+			return cfg, nil
+		}
+
+		if s.db == nil {
+			if storage.IsNotFoundError(err) {
+				return nil, storage.ErrNotFound
+			}
+			return nil, fmt.Errorf("memory store error while fetching config: %w", err)
+		}
+
+		if logger != nil {
+			logger.Debug("Failed to get API configuration from memory store, trying database",
+				slog.String("handle", handle),
+				slog.Any("error", err))
+		}
+
+		cfg, dbErr := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
+		if dbErr == nil {
+			if cfg == nil {
+				return nil, storage.ErrNotFound
+			}
+			return cfg, nil
+		}
+		if storage.IsNotFoundError(dbErr) {
+			if storage.IsNotFoundError(err) {
+				return nil, storage.ErrNotFound
+			}
+			return nil, fmt.Errorf("memory store error while fetching config: %w", err)
+		}
+		return nil, fmt.Errorf("database error while fetching config: %w", dbErr)
+	}
+
+	if s.db != nil {
+		cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
+		if err != nil {
+			if storage.IsNotFoundError(err) {
+				return nil, storage.ErrNotFound
+			}
+			return nil, fmt.Errorf("database error while fetching config: %w", err)
+		}
+		if cfg == nil {
+			return nil, storage.ErrNotFound
+		}
+		return cfg, nil
+	}
+
+	return nil, fmt.Errorf("API configuration storage is not configured")
+}
+
 // publishAPIKeyEvent publishes an API key event to the EventHub.
 func (s *APIKeyService) publishAPIKeyEvent(action, apiID, keyID, correlationID string, logger *slog.Logger) {
 	if s.eventHub == nil {
@@ -177,7 +235,6 @@ func (s *APIKeyService) publishAPIKeyEvent(action, apiID, keyID, correlationID s
 			slog.Any("error", err))
 	}
 }
-
 
 // CreateAPIKey handles the complete API key creation process.
 // Supports both local key generation by generating a new random key and external key injection
@@ -203,12 +260,18 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	}
 
 	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
+	config, err := s.getAPIConfigByHandle(params.Handle, logger)
 	if err != nil {
-		logger.Error("API configuration not found for API Key generation",
+		if storage.IsNotFoundError(err) {
+			logger.Error("API configuration not found for API Key generation",
+				slog.String("operation", operationType+"_key"),
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key generation",
 			slog.String("operation", operationType+"_key"),
 			slog.Any("error", err))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Check API key limit enforcement
@@ -506,10 +569,16 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	// Get the API configuration
-	config, err := s.store.GetByHandle(params.Handle)
+	config, err := s.getAPIConfigByHandle(params.Handle, logger)
 	if err != nil {
-		logger.Warn("API configuration not found for API key update")
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		if storage.IsNotFoundError(err) {
+			logger.Warn("API configuration not found for API key update",
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key update",
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Validate config type before any storage mutations to fail fast
@@ -696,12 +765,20 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		slog.String("correlation_id", params.CorrelationID))
 
 	// Get the API configuration
-	config, err := s.store.GetByHandle(params.Handle)
+	config, err := s.getAPIConfigByHandle(params.Handle, logger)
 	if err != nil {
-		logger.Warn("API configuration not found for API Key regeneration",
+		if storage.IsNotFoundError(err) {
+			logger.Warn("API configuration not found for API Key regeneration",
+				slog.String("handle", params.Handle),
+				slog.String("correlation_id", params.CorrelationID),
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key regeneration",
 			slog.String("handle", params.Handle),
-			slog.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+			slog.String("correlation_id", params.CorrelationID),
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Validate config type before any storage mutations to fail fast
@@ -1101,12 +1178,12 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	}
 
 	apiKey := &models.APIKey{
-		UUID:           id,
+		UUID:         id,
 		Name:         name,
 		DisplayName:  displayName,
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        config.UUID,
+		ArtifactUUID: config.UUID,
 		Operations:   operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    now,
@@ -1318,12 +1395,12 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 
 	// Create the regenerated API key
 	updatedKey := &models.APIKey{
-		UUID:           existingKey.UUID,
+		UUID:         existingKey.UUID,
 		Name:         existingKey.Name,
 		DisplayName:  displayName,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        existingKey.ArtifactUUID,
+		ArtifactUUID: existingKey.ArtifactUUID,
 		Operations:   operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
@@ -1452,11 +1529,11 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 
 	// Create the regenerated API key
 	regeneratedKey := &models.APIKey{
-		UUID:           existingKey.UUID,
+		UUID:         existingKey.UUID,
 		Name:         existingKey.Name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        existingKey.ArtifactUUID,
+		ArtifactUUID: existingKey.ArtifactUUID,
 		Operations:   existingKey.Operations,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
@@ -1638,7 +1715,6 @@ func (s *APIKeyService) hashAPIKeyWithSHA256(plainAPIKey string) (string, error)
 	return hex.EncodeToString(hash), nil
 }
 
-
 // compareAPIKeys compares API keys by hashing the provided key and comparing with stored hash
 // Returns true if the plain API key matches the stored hash, false otherwise
 func (s *APIKeyService) compareAPIKeys(providedAPIKey, storedAPIKey string) bool {
@@ -1659,7 +1735,6 @@ func (s *APIKeyService) compareAPIKeys(providedAPIKey, storedAPIKey string) bool
 	// Constant-time comparison with stored hash
 	return subtle.ConstantTimeCompare([]byte(computedHash), []byte(storedAPIKey)) == 1
 }
-
 
 // SetHashingConfig allows updating the hashing configuration at runtime
 func (s *APIKeyService) SetHashingConfig(config *config.APIKeyConfig) {
@@ -1972,4 +2047,3 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 
 	return nil
 }
-
