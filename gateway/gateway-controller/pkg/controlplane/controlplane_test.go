@@ -178,7 +178,7 @@ func createTestClientWithOnPrem(t *testing.T, onPrem bool) *Client {
 		},
 	}
 
-	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil)
+	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func TestNewClient(t *testing.T) {
