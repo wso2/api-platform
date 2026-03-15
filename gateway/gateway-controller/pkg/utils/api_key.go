@@ -499,7 +499,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 			}
 		}
 
-		s.publishAPIKeyEvent("REVOKE", eventhub.BuildAPIKeyEntityID(config.ID, apiKey.ID), params.CorrelationID, logger)
+		s.publishAPIKeyEvent("DELETE", eventhub.BuildAPIKeyEntityID(config.ID, apiKey.ID), params.CorrelationID, logger)
 	}
 
 	logger.Info("API key revoked successfully",
@@ -797,7 +797,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	plainAPIKey := regeneratedKey.PlainAPIKey // Store plain API key for response
 	regeneratedKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
 
-	s.publishAPIKeyEvent("REGENERATE", eventhub.BuildAPIKeyEntityID(regeneratedKey.APIId, regeneratedKey.ID), params.CorrelationID, logger)
+	s.publishAPIKeyEvent("UPDATE", eventhub.BuildAPIKeyEntityID(regeneratedKey.APIId, regeneratedKey.ID), params.CorrelationID, logger)
 
 	// Build and return the response
 	result.Response = s.buildAPIKeyResponse(regeneratedKey, params.Handle, plainAPIKey, false)
