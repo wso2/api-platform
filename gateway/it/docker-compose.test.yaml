@@ -106,7 +106,6 @@ services:
     volumes:
       - ./coverage/gateway-runtime:/coverage
       - ./test-config.toml:/etc/policy-engine/config.toml:ro
-      - ./test-custom-pricing.json:/etc/policy-engine/test-custom-pricing.json:ro
     depends_on:
       # gateway-controller:
       #   condition: service_healthy
