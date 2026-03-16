@@ -561,7 +561,7 @@ func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string)
 	return nil
 }
 
-func (m *MockStorage) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
 	if m.updateErr != nil {
 		return m.updateErr
 	}

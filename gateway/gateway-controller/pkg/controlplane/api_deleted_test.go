@@ -39,6 +39,9 @@ type mockStorageForDeletion struct {
 	apiKeysByUUID      map[string]*models.APIKey
 	replacedMappings   []*models.ApplicationAPIKeyMapping
 	replacedAppID      string
+	replacedAppUUID    string
+	replacedAppName    string
+	replacedAppType    string
 	deleteErr          error
 	updateErr          error
 	getErr             error
@@ -309,11 +312,16 @@ func (m *mockStorageForDeletion) CountActiveAPIKeysByUserAndAPI(userID, apiID st
 	return 0, nil
 }
 
-func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
 	if m.replaceErr != nil {
 		return m.replaceErr
 	}
-	m.replacedAppID = applicationID
+	if application != nil {
+		m.replacedAppID = application.ApplicationID
+		m.replacedAppUUID = application.ApplicationUUID
+		m.replacedAppName = application.ApplicationName
+		m.replacedAppType = application.ApplicationType
+	}
 	m.replacedMappings = append([]*models.ApplicationAPIKeyMapping(nil), mappings...)
 	return nil
 }
@@ -793,6 +801,8 @@ func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) 
 		"payload": map[string]interface{}{
 			"applicationId":   "app-123",
 			"applicationUuid": "app-uuid-123",
+			"applicationName": "Shopping App",
+			"applicationType": "genai",
 			"mappings": []map[string]interface{}{
 				{"apiKeyUuid": "key-uuid-found-1"},
 				{"apiKeyUuid": "key-uuid-missing"},
@@ -805,8 +815,17 @@ func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) 
 
 	client.handleApplicationUpdatedEvent(event)
 
+	if db.replacedAppUUID != "app-uuid-123" {
+		t.Fatalf("expected mappings to be replaced for app-uuid-123, got %q", db.replacedAppUUID)
+	}
 	if db.replacedAppID != "app-123" {
-		t.Fatalf("expected mappings to be replaced for app-123, got %q", db.replacedAppID)
+		t.Fatalf("expected mappings to be replaced for app id app-123, got %q", db.replacedAppID)
+	}
+	if db.replacedAppName != "Shopping App" {
+		t.Fatalf("expected mappings to be replaced for app name Shopping App, got %q", db.replacedAppName)
+	}
+	if db.replacedAppType != "genai" {
+		t.Fatalf("expected mappings to be replaced for app type genai, got %q", db.replacedAppType)
 	}
 
 	if len(db.replacedMappings) != 2 {
@@ -815,6 +834,9 @@ func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) 
 
 	if db.replacedMappings[0].APIKeyID != "key-uuid-found-1" {
 		t.Errorf("expected first mapping key id key-uuid-found-1, got %q", db.replacedMappings[0].APIKeyID)
+	}
+	if db.replacedMappings[0].ApplicationUUID != "app-uuid-123" {
+		t.Errorf("expected first mapping application uuid app-uuid-123, got %q", db.replacedMappings[0].ApplicationUUID)
 	}
 	if db.replacedMappings[1].APIKeyID != "key-uuid-found-2" {
 		t.Errorf("expected second mapping key id key-uuid-found-2, got %q", db.replacedMappings[1].APIKeyID)
@@ -837,6 +859,8 @@ func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t
 		"payload": map[string]interface{}{
 			"applicationId":   "app-456",
 			"applicationUuid": "app-uuid-456",
+			"applicationName": "Weather App",
+			"applicationType": "genai",
 			"mappings": []map[string]interface{}{
 				{"apiKeyUuid": ""},
 				{"apiKeyUuid": "key-uuid-found"},
@@ -848,8 +872,17 @@ func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t
 
 	client.handleApplicationUpdatedEvent(event)
 
+	if db.replacedAppUUID != "app-uuid-456" {
+		t.Fatalf("expected mappings to be replaced for app-uuid-456, got %q", db.replacedAppUUID)
+	}
 	if db.replacedAppID != "app-456" {
-		t.Fatalf("expected mappings to be replaced for app-456, got %q", db.replacedAppID)
+		t.Fatalf("expected mappings to be replaced for app id app-456, got %q", db.replacedAppID)
+	}
+	if db.replacedAppName != "Weather App" {
+		t.Fatalf("expected mappings to be replaced for app name Weather App, got %q", db.replacedAppName)
+	}
+	if db.replacedAppType != "genai" {
+		t.Fatalf("expected mappings to be replaced for app type genai, got %q", db.replacedAppType)
 	}
 
 	if len(db.replacedMappings) != 1 {
@@ -858,5 +891,8 @@ func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t
 
 	if db.replacedMappings[0].APIKeyID != "key-uuid-found" {
 		t.Errorf("expected resolved mapping key id key-uuid-found, got %q", db.replacedMappings[0].APIKeyID)
+	}
+	if db.replacedMappings[0].ApplicationUUID != "app-uuid-456" {
+		t.Errorf("expected resolved mapping application uuid app-uuid-456, got %q", db.replacedMappings[0].ApplicationUUID)
 	}
 }

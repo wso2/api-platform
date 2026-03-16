@@ -1569,7 +1569,11 @@ func (s *sqlStore) RemoveAPIKeyAPIAndName(apiId, name string) error {
 }
 
 // ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
-func (s *sqlStore) ReplaceApplicationAPIKeyMappings(applicationID string, mappings []*models.ApplicationAPIKeyMapping) error {
+func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+	if application == nil || application.ApplicationUUID == "" || application.ApplicationID == "" || application.ApplicationName == "" || application.ApplicationType == "" {
+		return fmt.Errorf("invalid application payload")
+	}
+
 	tx, err := s.begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -1582,27 +1586,46 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(applicationID string, mappin
 		}
 	}()
 
+	seen := make(map[string]struct{})
+	now := time.Now()
+
+	if _, err = tx.ExecQ(`
+		INSERT INTO applications (
+			application_uuid, application_id, application_name, application_type, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(application_uuid) DO UPDATE SET
+			application_id = excluded.application_id,
+			application_name = excluded.application_name,
+			application_type = excluded.application_type,
+			updated_at = excluded.updated_at
+	`, application.ApplicationUUID, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed to upsert application metadata: %w", err)
+	}
+
 	if _, err = tx.ExecQ(`
 		DELETE FROM application_api_keys
-		WHERE application_id = ?
-	`, applicationID); err != nil {
+		WHERE application_uuid = ?
+	`, application.ApplicationUUID); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("failed to clear application mappings: %w", err)
 	}
-
-	seen := make(map[string]struct{})
-	now := time.Now()
 
 	for _, mapping := range mappings {
 		if mapping == nil {
 			continue
 		}
-		if mapping.ApplicationID == "" || mapping.APIKeyID == "" {
+		if mapping.ApplicationUUID == "" || mapping.APIKeyID == "" {
 			_ = tx.Rollback()
 			return fmt.Errorf("invalid application mapping payload")
 		}
+		if mapping.ApplicationUUID != application.ApplicationUUID {
+			_ = tx.Rollback()
+			return fmt.Errorf("application mapping UUID mismatch")
+		}
 
-		composite := mapping.ApplicationID + ":" + mapping.APIKeyID
+		composite := mapping.ApplicationUUID + ":" + mapping.APIKeyID
 		if _, exists := seen[composite]; exists {
 			continue
 		}
@@ -1610,10 +1633,10 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(applicationID string, mappin
 
 		if _, err = tx.ExecQ(`
 			INSERT INTO application_api_keys (
-				application_id, api_key_id, created_at, updated_at
+				application_uuid, api_key_id, created_at, updated_at
 			)
 			VALUES (?, ?, ?, ?)
-		`, mapping.ApplicationID, mapping.APIKeyID, now, now); err != nil {
+		`, mapping.ApplicationUUID, mapping.APIKeyID, now, now); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("failed to insert application mapping: %w", err)
 		}

@@ -223,7 +223,7 @@ func TestReplaceMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 	}
 }
 
-func TestRemoveMappedAPIKey_RejectsWhenRequesterIsNotCreator(t *testing.T) {
+func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
 		apiKeysByLookupID: map[string]*model.ApplicationAPIKey{
@@ -238,11 +238,11 @@ func TestRemoveMappedAPIKey_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 	svc := &ApplicationService{appRepo: appRepo}
 
 	err := svc.RemoveMappedAPIKey("my-app", "key-1", "org-1", "different-user")
-	if !errors.Is(err, constants.ErrAPIKeyForbidden) {
-		t.Fatalf("expected ErrAPIKeyForbidden, got %v", err)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
-	if appRepo.removeMappedCalled {
-		t.Fatalf("expected RemoveApplicationAPIKey not to be called when requester is not creator")
+	if !appRepo.removeMappedCalled {
+		t.Fatalf("expected RemoveApplicationAPIKey to be called")
 	}
 }
 

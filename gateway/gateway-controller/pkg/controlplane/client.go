@@ -2296,9 +2296,33 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		return
 	}
 
+	if evt.Payload.ApplicationUuid == "" {
+		baseLogger.Error("Application updated event missing required application_uuid",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	if evt.Payload.ApplicationName == "" {
+		baseLogger.Error("Application updated event missing required application_name",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	if evt.Payload.ApplicationType == "" {
+		baseLogger.Error("Application updated event missing required application_type",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
 	logger := baseLogger.With(
 		slog.String("correlation_id", evt.CorrelationID),
 		slog.String("application_id", evt.Payload.ApplicationId),
+		slog.String("application_uuid", evt.Payload.ApplicationUuid),
+		slog.String("application_name", evt.Payload.ApplicationName),
+		slog.String("application_type", evt.Payload.ApplicationType),
 	)
 
 	resolvedMappings := make([]*models.ApplicationAPIKeyMapping, 0, len(evt.Payload.Mappings))
@@ -2328,12 +2352,19 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		}
 
 		resolvedMappings = append(resolvedMappings, &models.ApplicationAPIKeyMapping{
-			ApplicationID: evt.Payload.ApplicationId,
-			APIKeyID:      apiKey.UUID,
+			ApplicationUUID: evt.Payload.ApplicationUuid,
+			APIKeyID:        apiKey.UUID,
 		})
 	}
 
-	if err := c.db.ReplaceApplicationAPIKeyMappings(evt.Payload.ApplicationId, resolvedMappings); err != nil {
+	application := &models.StoredApplication{
+		ApplicationID:   evt.Payload.ApplicationId,
+		ApplicationUUID: evt.Payload.ApplicationUuid,
+		ApplicationName: evt.Payload.ApplicationName,
+		ApplicationType: evt.Payload.ApplicationType,
+	}
+
+	if err := c.db.ReplaceApplicationAPIKeyMappings(application, resolvedMappings); err != nil {
 		logger.Error("Failed to persist application key mappings", slog.Any("error", err))
 		return
 	}

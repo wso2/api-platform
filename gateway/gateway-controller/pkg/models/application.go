@@ -20,10 +20,12 @@ package models
 
 import "time"
 
-// ApplicationAPIKeyMapping represents a gateway-side application to API key mapping.
-type ApplicationAPIKeyMapping struct {
+// StoredApplication represents a gateway-side application metadata record.
+type StoredApplication struct {
+	ApplicationID   string    `json:"applicationId" db:"application_id"`
 	ApplicationUUID string    `json:"applicationUuid" db:"application_uuid"`
-	APIKeyID        string    `json:"apiKeyId" db:"api_key_id"`
+	ApplicationName string    `json:"applicationName" db:"application_name"`
+	ApplicationType string    `json:"applicationType" db:"application_type"`
 	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
 }

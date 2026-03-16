@@ -342,9 +342,6 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, orgID, use
 	if key == nil {
 		return constants.ErrAPIKeyNotFound
 	}
-	if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
-		return err
-	}
 
 	if err := s.appRepo.RemoveApplicationAPIKey(app.UUID, key.ID); err != nil {
 		return err
