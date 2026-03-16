@@ -26,34 +26,169 @@ import (
 	"fmt"
 	"log/slog"
 	"platform-api/src/api"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+// GatewayPolicyInput is the raw policy data received from the gateway controller.
+// IsCustomPolicy is used only for filtering and is not stored or returned.
+type GatewayPolicyInput struct {
+	Name             string                 `json:"name"`
+	Version          string                 `json:"version"`
+	Description      *string                `json:"description,omitempty"`
+	Parameters       map[string]interface{} `json:"parameters,omitempty"`
+	SystemParameters map[string]interface{} `json:"systemParameters,omitempty"`
+	IsCustomPolicy   bool                   `json:"isCustomPolicy"`
+}
+
+// GatewayPolicyDefinition is the cleaned policy data stored in memory and returned to APIM.
+// PolicyDefinition holds the full policy schema (parameters + systemParameters) as received from the gateway controller.
+type GatewayPolicyDefinition struct {
+	Name             string                 `json:"name"`
+	Version          string                 `json:"version"`
+	Description      *string                `json:"description,omitempty"`
+	PolicyDefinition map[string]interface{} `json:"policyDefinition,omitempty"`
+}
+
+// ManifestJob represents the state of an async gateway manifest request.
+type ManifestJob struct {
+	GatewayID string
+	Status    string                    // "pending" | "ready" | "failed"
+	Policies  []GatewayPolicyDefinition // populated only when Status == "ready"
+}
+
 // GatewayService handles gateway business logic
 type GatewayService struct {
-	gatewayRepo repository.GatewayRepository
-	orgRepo     repository.OrganizationRepository
-	apiRepo     repository.APIRepository
-	slogger     *slog.Logger
+	gatewayRepo          repository.GatewayRepository
+	orgRepo              repository.OrganizationRepository
+	apiRepo              repository.APIRepository
+	gatewayEventsService *GatewayEventsService
+	slogger              *slog.Logger
+	manifestMu           sync.RWMutex
+	manifestStore        map[string][]GatewayPolicyDefinition // gatewayID -> custom policies
 }
 
 // NewGatewayService creates a new gateway service
 func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
-	apiRepo repository.APIRepository, slogger *slog.Logger) *GatewayService {
+	apiRepo repository.APIRepository, gatewayEventsService *GatewayEventsService, slogger *slog.Logger) *GatewayService {
 	return &GatewayService{
-		gatewayRepo: gatewayRepo,
-		orgRepo:     orgRepo,
-		apiRepo:     apiRepo,
-		slogger:     slogger,
+		gatewayRepo:          gatewayRepo,
+		orgRepo:              orgRepo,
+		apiRepo:              apiRepo,
+		gatewayEventsService: gatewayEventsService,
+		slogger:              slogger,
+		manifestStore:        make(map[string][]GatewayPolicyDefinition),
 	}
+}
+
+// SyncManifest is called when APIM/UI polls GET /manifest-sync.
+// - If no job exists or the previous job failed, it triggers a new request (pending + WS event).
+// - If already pending, it returns the current state without re-triggering.
+// - If ready, it returns the current state with policies.
+func (s *GatewayService) SyncManifest(gatewayID, orgID string) (*ManifestJob, error) {
+	cfg := config.GetConfig().Deployments
+	manifestPendingTimeout := time.Duration(cfg.ManifestSyncTimeoutSecs) * time.Second
+	manifestReadyTTL := time.Duration(cfg.ManifestReadyTTLSecs) * time.Second
+	// Validate gateway exists and belongs to the org
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	if err != nil || gateway == nil {
+		return nil, errors.New("gateway not found")
+	}
+	if gateway.OrganizationID != orgID {
+		return nil, errors.New("gateway not found")
+	}
+
+	status, requestedAt, err := s.gatewayRepo.GetManifestJob(gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get manifest job: %w", err)
+	}
+
+	// Treat a stale pending job as failed so the next poll re-triggers
+	if status != nil && *status == "pending" && requestedAt != nil {
+		if time.Since(*requestedAt) > manifestPendingTimeout {
+			s.slogger.Warn("Manifest job timed out — marking as failed and re-triggering",
+				slog.String("gateway_id", gatewayID),
+				slog.Duration("elapsed", time.Since(*requestedAt)),
+			)
+			if dbErr := s.gatewayRepo.UpdateManifestJob(gatewayID, "failed"); dbErr != nil {
+				s.slogger.Error("Failed to mark timed-out manifest job as failed",
+					slog.String("gateway_id", gatewayID),
+					slog.Any("error", dbErr),
+				)
+			}
+			status = nil // fall through to trigger a new request
+		}
+	}
+
+	// Ready — check TTL; re-trigger if stale
+	if requestedAt != nil && time.Since(*requestedAt) > manifestReadyTTL {
+		s.slogger.Info("Manifest TTL expired — re-triggering",
+			slog.String("gateway_id", gatewayID),
+			slog.Duration("elapsed", time.Since(*requestedAt)),
+		)
+		status = nil // fall through to trigger a new request below; DB will be updated to "pending"
+	}
+
+	if status != nil && *status == "ready" {
+		job := &ManifestJob{GatewayID: gatewayID, Status: "ready"}
+		s.manifestMu.RLock()
+		job.Policies = s.manifestStore[gatewayID]
+		s.manifestMu.RUnlock()
+		return job, nil
+	}
+
+	// Stale ready — trigger a new request
+	if err := s.gatewayRepo.UpdateManifestJob(gatewayID, "pending"); err != nil {
+		return nil, fmt.Errorf("failed to set manifest job pending: %w", err)
+	}
+	return &ManifestJob{GatewayID: gatewayID, Status: "pending"}, nil
+}
+
+// ReceiveGatewayManifest stores the manifest posted back by the gateway controller.
+// It filters to custom policies only, converts to GatewayPolicyDefinition, and marks the job as ready.
+func (s *GatewayService) ReceiveGatewayManifest(gatewayID string, policies []GatewayPolicyInput) error {
+	var custom []GatewayPolicyDefinition
+	for _, p := range policies {
+		if !p.IsCustomPolicy {
+			continue
+		}
+		policyDef := map[string]interface{}{}
+		if p.Parameters != nil {
+			policyDef["parameters"] = p.Parameters
+		}
+		if p.SystemParameters != nil {
+			policyDef["systemParameters"] = p.SystemParameters
+		}
+		custom = append(custom, GatewayPolicyDefinition{
+			Name:             p.Name,
+			Version:          p.Version,
+			Description:      p.Description,
+			PolicyDefinition: policyDef,
+		})
+	}
+
+	s.manifestMu.Lock()
+	s.manifestStore[gatewayID] = custom
+	s.manifestMu.Unlock()
+
+	if err := s.gatewayRepo.UpdateManifestJob(gatewayID, "ready"); err != nil {
+		return fmt.Errorf("failed to mark manifest job as ready: %w", err)
+	}
+
+	s.slogger.Info("Gateway manifest received and stored",
+		slog.String("gateway_id", gatewayID),
+		slog.Int("custom_policy_count", len(custom)),
+	)
+	return nil
 }
 
 // RegisterGateway registers a new gateway with organization validation

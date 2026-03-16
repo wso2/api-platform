@@ -990,6 +990,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleMCPProxyDeletedEvent(event)
 	case "application.updated":
 		c.handleApplicationUpdatedEvent(event)
+	case "gateway.manifest.request":
+		c.handleGatewayManifestRequestEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -3061,4 +3063,68 @@ func (c *Client) getRestAPIBaseURL() string {
 		return fmt.Sprintf("https://%s%s", c.config.Host, path)
 	}
 	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
+}
+
+// handleGatewayManifestRequestEvent handles the "gateway.manifest.request" WS event.
+// It collects all loaded policy definitions and POSTs them back to the control plane.
+func (c *Client) handleGatewayManifestRequestEvent(event map[string]interface{}) {
+	c.logger.Info("Gateway manifest request received",
+		slog.Any("correlation_id", event["correlationId"]),
+	)
+
+	c.state.mu.RLock()
+	gatewayID := c.state.GatewayID
+	c.state.mu.RUnlock()
+
+	if gatewayID == "" {
+		c.logger.Error("Cannot push gateway manifest: gateway ID not set (connection not yet acknowledged)")
+		return
+	}
+
+	policies := make([]utils.ManifestPolicyEntry, 0, len(c.policyDefinitions))
+	for _, def := range c.policyDefinitions {
+		entry := utils.ManifestPolicyEntry{
+			Name:           def.Name,
+			Version:        def.Version,
+			Description:    def.Description,
+			IsCustomPolicy: def.IsCustomPolicy,
+		}
+		if def.Parameters != nil {
+			entry.Parameters = *def.Parameters
+		}
+		if def.SystemParameters != nil {
+			entry.SystemParameters = *def.SystemParameters
+		}
+		policies = append(policies, entry)
+	}
+
+	const maxRetries = 3
+	var pushErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		pushErr = c.apiUtilsService.PushGatewayManifest(gatewayID, policies)
+		if pushErr == nil {
+			break
+		}
+		c.logger.Warn("Failed to push gateway manifest, retrying",
+			slog.String("gateway_id", gatewayID),
+			slog.Int("attempt", attempt),
+			slog.Int("max_retries", maxRetries),
+			slog.Any("error", pushErr),
+		)
+		if attempt < maxRetries {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		}
+	}
+	if pushErr != nil {
+		c.logger.Error("Failed to push gateway manifest after all retries",
+			slog.String("gateway_id", gatewayID),
+			slog.Any("error", pushErr),
+		)
+		return
+	}
+
+	c.logger.Info("Successfully pushed gateway manifest to control plane",
+		slog.String("gateway_id", gatewayID),
+		slog.Int("policy_count", len(policies)),
+	)
 }

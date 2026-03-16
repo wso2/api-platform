@@ -381,3 +381,11 @@ type ApplicationUpdatedEvent struct {
 	CorrelationID string                         `json:"correlationId"`
 	UserId        string                         `json:"userId"`
 }
+
+// GatewayManifestRequestEvent is sent by the control plane to request the gateway's installed policy manifest.
+// The gateway controller should respond by POSTing its policy definitions back to the control plane.
+type GatewayManifestRequestEvent struct {
+	Type          string `json:"type"`          // always "gateway.manifest.request"
+	Timestamp     string `json:"timestamp"`     // RFC3339 timestamp
+	CorrelationID string `json:"correlationId"` // for tracing
+}

@@ -1188,6 +1188,34 @@ type Policy struct {
 	Version string `json:"version" yaml:"version"`
 }
 
+// PolicyDefinition defines model for PolicyDefinition.
+type PolicyDefinition struct {
+	// Description Human readable description of the policy's purpose
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// IsCustomPolicy Indicates whether this policy is a user-installed custom policy. Set in policy-definition.yaml by the policy author.
+	IsCustomPolicy *bool `json:"isCustomPolicy,omitempty" yaml:"isCustomPolicy,omitempty"`
+
+	// Name Unique policy name
+	Name string `json:"name" yaml:"name"`
+
+	// Parameters JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
+	Parameters *map[string]interface{} `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+
+	// SystemParameters JSON Schema describing any initialization parameters for this policy. This itself is a JSON Schema document.
+	SystemParameters *map[string]interface{} `json:"systemParameters,omitempty" yaml:"systemParameters,omitempty"`
+
+	// Version Semantic version of the policy definition
+	Version string `json:"version" yaml:"version"`
+}
+
+// PolicyListResponse defines model for PolicyListResponse.
+type PolicyListResponse struct {
+	Count    *int                `json:"count,omitempty" yaml:"count,omitempty"`
+	Policies *[]PolicyDefinition `json:"policies,omitempty" yaml:"policies,omitempty"`
+	Status   *string             `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
 // RestAPI defines model for RestAPI.
 type RestAPI struct {
 	// ApiVersion API specification version

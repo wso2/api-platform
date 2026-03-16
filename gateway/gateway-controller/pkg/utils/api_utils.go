@@ -594,6 +594,68 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 
 	return nil
 }
+// ManifestPolicyEntry is a single policy definition sent in the gateway manifest POST-back.
+type ManifestPolicyEntry struct {
+	Name             string                 `json:"name"`
+	Version          string                 `json:"version"`
+	Description      *string                `json:"description,omitempty"`
+	Parameters       map[string]interface{} `json:"parameters,omitempty"`
+	SystemParameters map[string]interface{} `json:"systemParameters,omitempty"`
+	IsCustomPolicy   *bool                   `json:"isCustomPolicy"`
+}
+
+// PushGatewayManifest POSTs the gateway's installed custom policy manifest back to the control plane.
+func (s *APIUtilsService) PushGatewayManifest(gatewayID string, policies []ManifestPolicyEntry) error {
+	url := s.config.BaseURL + "/gateways/" + gatewayID + "/manifest"
+
+	body := struct {
+		Policies []ManifestPolicyEntry `json:"policies"`
+	}{Policies: policies}
+
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest payload: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: s.config.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: s.config.InsecureSkipVerify,
+			},
+		},
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create manifest request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", s.config.Token)
+
+	s.logger.Info("Pushing gateway manifest to control plane",
+		slog.String("gateway_id", gatewayID),
+		slog.String("url", url),
+		slog.Int("policy_count", len(policies)),
+	)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send gateway manifest: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("gateway manifest push failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	s.logger.Info("Successfully pushed gateway manifest to control plane",
+		slog.String("gateway_id", gatewayID),
+	)
+	return nil
+}
+
 func MapToStruct(data map[string]interface{}, out interface{}) error {
 	// Convert map -> JSON bytes
 	jsonBytes, err := json.Marshal(data)

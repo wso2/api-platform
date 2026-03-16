@@ -46,6 +46,12 @@ func NewGatewayHandler(gatewayService *service.GatewayService, slogger *slog.Log
 	}
 }
 
+// manifestSyncResponse is the response body for manifest-sync endpoints
+type manifestSyncResponse struct {
+	Status   string                           `json:"status"`
+	Policies []service.GatewayPolicyDefinition `json:"policies,omitempty"`
+}
+
 // CreateGateway handles POST /api/v1/gateways
 func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -472,6 +478,44 @@ func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 	c.JSON(http.StatusOK, artifactListResponse)
 }
 
+// GetManifestSync handles GET /api/v1/gateways/{gatewayId}/manifest-sync
+// Called by APIM on behalf of the UI (which polls until status is "ready").
+// On the first call (or after a failure) it triggers the manifest request to the gateway controller.
+// Subsequent calls while pending simply return the current status.
+// When ready, returns the filtered custom policies.
+func (h *GatewayHandler) GetManifestSync(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway ID is required"))
+		return
+	}
+
+	job, err := h.gatewayService.SyncManifest(gatewayId, orgId)
+	if err != nil {
+		if strings.Contains(err.Error(), "gateway not found") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to sync gateway manifest"))
+		return
+	}
+
+	c.JSON(http.StatusOK, manifestSyncResponse{
+		Status:   job.Status,
+		Policies: job.Policies,
+	})
+}
+
 // RegisterRoutes registers gateway routes with the router
 func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering gateway routes")
@@ -486,6 +530,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
 		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
 		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
+		gatewayGroup.GET("/:gatewayId/manifest-sync", h.GetManifestSync)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")

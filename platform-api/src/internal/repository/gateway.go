@@ -420,3 +420,46 @@ func (r *GatewayRepo) HasGatewayAssociationsOrDeployments(gatewayID, organizatio
 	// Check associations
 	return r.HasGatewayAssociations(gatewayID, organizationID)
 }
+
+// UpdateManifestJob writes the latest manifest job status to the gateway row.
+// When status is "pending", also stamps manifest_requested_at with the current time.
+// Overwrites any previous status — only one manifest job is tracked per gateway at a time.
+func (r *GatewayRepo) UpdateManifestJob(gatewayID, status string) error {
+	var query string
+	var args []interface{}
+	if status == "pending" {
+		query = `
+			UPDATE gateways
+			SET manifest_providing_status = ?, manifest_requested_at = CURRENT_TIMESTAMP
+			WHERE uuid = ?
+		`
+		args = []interface{}{status, gatewayID}
+	} else {
+		query = `
+			UPDATE gateways
+			SET manifest_providing_status = ?
+			WHERE uuid = ?
+		`
+		args = []interface{}{status, gatewayID}
+	}
+	_, err := r.db.Exec(r.db.Rebind(query), args...)
+	return err
+}
+
+// GetManifestJob returns the manifest job status and the time it was last set to pending.
+// Returns nil status if no job has been requested yet.
+func (r *GatewayRepo) GetManifestJob(gatewayID string) (status *string, requestedAt *time.Time, err error) {
+	query := `
+		SELECT manifest_providing_status, manifest_requested_at
+		FROM gateways
+		WHERE uuid = ?
+	`
+	err = r.db.QueryRow(r.db.Rebind(query), gatewayID).Scan(&status, &requestedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	return status, requestedAt, nil
+}

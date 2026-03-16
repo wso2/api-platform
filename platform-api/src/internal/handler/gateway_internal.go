@@ -533,6 +533,52 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
+// ReceiveGatewayManifest handles POST /api/internal/v1/gateways/:gatewayId/manifest
+// Called by the gateway controller to post back its installed custom policy manifest.
+func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
+	clientIP := c.ClientIP()
+
+	apiKey := c.GetHeader("api-key")
+	if apiKey == "" {
+		h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"API key is required. Provide 'api-key' header."))
+		return
+	}
+
+	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	if err != nil {
+		h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Invalid or expired API key"))
+		return
+	}
+
+	gatewayID := c.Param("gatewayId")
+	if gatewayID == "" || gatewayID != gateway.ID {
+		c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+			"Gateway ID mismatch"))
+		return
+	}
+
+	var body struct {
+		Policies []service.GatewayPolicyInput `json:"policies"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
+	}
+
+	if err := h.gatewayService.ReceiveGatewayManifest(gatewayID, body.Policies); err != nil {
+		h.slogger.Error("Failed to store gateway manifest", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to store gateway manifest"))
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
@@ -565,5 +611,9 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	mcpProxyGroup := r.Group("/api/internal/v1/mcp-proxies")
 	{
 		mcpProxyGroup.GET("/:proxyId", h.GetMCPProxy)
+		gatewayGroup := r.Group("/api/internal/v1/gateways")
+		{
+			gatewayGroup.POST("/:gatewayId/manifest", h.ReceiveGatewayManifest)
+		}
 	}
 }

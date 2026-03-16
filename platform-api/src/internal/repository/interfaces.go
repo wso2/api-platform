@@ -150,6 +150,10 @@ type GatewayRepository interface {
 	GetTokenByUUID(tokenId string) (*model.GatewayToken, error)
 	RevokeToken(tokenId string) error
 	CountActiveTokens(gatewayId string) (int, error)
+
+	// Manifest job operations
+	UpdateManifestJob(gatewayID, status string) error
+	GetManifestJob(gatewayID string) (status *string, requestedAt *time.Time, err error)
 }
 
 // DevPortalRepository interface for DevPortal-related database operations
