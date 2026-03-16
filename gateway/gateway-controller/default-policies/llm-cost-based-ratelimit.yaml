@@ -61,7 +61,7 @@ systemParameters:
         dollar amounts (x-ratelimit-cost-limit-dollars, x-ratelimit-cost-remaining-dollars).
       minimum: 1
       default: 1000000000
-      "wso2/defaultValue": "${config.policy_configurations.llm_cost_ratelimit.cost_scale_factor}"
+      "wso2/defaultValue": "${config.policy_configurations.llm_cost_ratelimit_v0.cost_scale_factor}"
 
     # Rate limiting algorithm and backend - inherited from advanced-ratelimit
     algorithm:
@@ -138,8 +138,8 @@ systemParameters:
         maxEntries:
           type: integer
           default: 10000
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.maxentries}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.max_entries}"
         cleanupInterval:
           type: string
           default: "5m"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanupinterval}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanup_interval}"
