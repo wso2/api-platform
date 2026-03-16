@@ -2271,6 +2271,11 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping application.updated persistence")
+		return
+	}
+
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
 		baseLogger.Error("Failed to marshal application updated event for parsing",
