@@ -309,6 +309,8 @@ func (h *ApplicationHandler) writeApplicationError(c *gin.Context, err error, fa
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application type. Only 'genai' is supported"))
 	case errors.Is(err, constants.ErrInvalidHandle):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application handle format"))
+	case errors.Is(err, constants.ErrInvalidApplicationID):
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application id"))
 	case errors.Is(err, constants.ErrInvalidAPIKey):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API key id"))
 	default:

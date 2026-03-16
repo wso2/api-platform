@@ -313,7 +313,7 @@ paths:
       description: |
         Retrieves a specific application by handle. Access is validated against
         the organization in the JWT token.
-      operationId: GetApplicationByIdOrHandle
+      operationId: GetApplication
       tags:
         - Applications
       parameters:
@@ -7769,8 +7769,8 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             code: 403
-            message: Forbidden
-            description: You do not have permission to perform this action
+            title: Forbidden
+            details: You do not have permission to perform this action
     NotFound:
       description: Not Found. The specified resource does not exist.
       content:

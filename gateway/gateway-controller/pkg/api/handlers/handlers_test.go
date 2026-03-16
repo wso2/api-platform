@@ -223,7 +223,7 @@ func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 			return apiKey, nil
 		}
 	}
-	return nil, errors.New("API key not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
