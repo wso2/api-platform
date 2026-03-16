@@ -43,7 +43,7 @@ Feature: Word Count Guardrail
         context: /word-count-max/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -56,6 +56,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 10
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-max/v1.0/health" to be ready
@@ -93,7 +94,7 @@ Feature: Word Count Guardrail
         context: /word-count-min/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -106,6 +107,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 5
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-min/v1.0/health" to be ready
@@ -147,7 +149,7 @@ Feature: Word Count Guardrail
         context: /word-count-jsonpath/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -210,7 +212,7 @@ Feature: Word Count Guardrail
         context: /word-count-invert/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -223,6 +225,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 5
                     max: 10
+                    jsonPath: ""
                     invert: true
       """
     Then the response should be successful
@@ -272,7 +275,7 @@ Feature: Word Count Guardrail
         context: /word-count-assessment/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -285,6 +288,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
                     showAssessment: true
       """
     Then the response should be successful
@@ -322,7 +326,7 @@ Feature: Word Count Guardrail
         context: /word-count-empty/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -335,6 +339,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-empty/v1.0/health" to be ready
@@ -364,7 +369,7 @@ Feature: Word Count Guardrail
         context: /word-count-boundary/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -377,6 +382,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 5
                     max: 10
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-boundary/v1.0/health" to be ready
@@ -432,7 +438,7 @@ Feature: Word Count Guardrail
         context: /word-count-combined/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -445,9 +451,11 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 10
+                    jsonPath: ""
                   response:
                     min: 1
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-combined/v1.0/health" to be ready
@@ -489,7 +497,7 @@ Feature: Word Count Guardrail
         context: /word-count-nested/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -553,7 +561,7 @@ Feature: Word Count Guardrail
         context: /word-count-invalid-path/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -606,7 +614,7 @@ Feature: Word Count Guardrail
         context: /word-count-punctuation/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -619,6 +627,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-punctuation/v1.0/health" to be ready
@@ -656,7 +665,7 @@ Feature: Word Count Guardrail
         context: /word-count-plaintext/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -669,6 +678,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 10
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-plaintext/v1.0/health" to be ready
@@ -712,7 +722,7 @@ Feature: Word Count Guardrail
         context: /word-count-error-structure/$version
         upstream:
           main:
-            url: http://sample-backend:9080/api/v1
+            url: http://sample-backend:5000/api/v1
         operations:
           - method: GET
             path: /health
@@ -725,6 +735,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
                     showAssessment: true
       """
     Then the response should be successful
