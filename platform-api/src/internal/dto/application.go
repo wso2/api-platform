@@ -75,7 +75,7 @@ type AssociatedEntityResponse struct {
 
 type MappedAPIKeyResponse struct {
 	KeyId            string                   `json:"keyId"`
-	AssociatedEntity AssociatedEntityResponse `json:"associated_entity"`
+	AssociatedEntity AssociatedEntityResponse `json:"associatedEntity"`
 	ApiKeyUuid       string                   `json:"-"`
 	ArtifactId       string                   `json:"-"`
 	Status           *string                  `json:"status,omitempty"`

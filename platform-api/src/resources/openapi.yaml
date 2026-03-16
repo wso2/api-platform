@@ -4609,13 +4609,13 @@ components:
       type: object
       required:
         - keyId
-        - associated_entity
+        - associatedEntity
       properties:
         keyId:
           type: string
           description: Name of the API key
           example: "client-key-1"
-        associated_entity:
+        associatedEntity:
           $ref: '#/components/schemas/AssociatedEntity'
         status:
           type: string
