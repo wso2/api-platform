@@ -66,7 +66,7 @@ type ApplicationRepository interface {
 	GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error)
 	CheckApplicationHandleExists(handle, orgID string) (bool, error)
 	UpdateApplication(app *model.Application) error
-	DeleteApplication(appID string) error
+	DeleteApplication(appID, orgID string) error
 
 	GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error)
 	GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgID string) ([]string, error)

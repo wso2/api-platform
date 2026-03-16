@@ -253,7 +253,7 @@ func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID string) erro
 		return constants.ErrApplicationNotFound
 	}
 
-	return s.appRepo.DeleteApplication(app.UUID)
+	return s.appRepo.DeleteApplication(app.UUID, orgID)
 }
 
 func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string) (*dto.MappedAPIKeyListResponse, error) {

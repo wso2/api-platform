@@ -197,8 +197,8 @@ func (r *ApplicationRepo) UpdateApplication(app *model.Application) error {
 	return err
 }
 
-func (r *ApplicationRepo) DeleteApplication(appID string) error {
-	_, err := r.db.Exec(r.db.Rebind(`DELETE FROM applications WHERE uuid = ?`), appID)
+func (r *ApplicationRepo) DeleteApplication(appID, orgID string) error {
+	_, err := r.db.Exec(r.db.Rebind(`DELETE FROM applications WHERE uuid = ? AND organization_uuid = ?`), appID, orgID)
 	return err
 }
 
