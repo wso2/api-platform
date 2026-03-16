@@ -40,11 +40,6 @@ type API struct {
 	Configuration   RestAPIConfig    `json:"configuration" db:"-"`
 }
 
-type VhostsConfig struct {
-	Main    *string `json:"main,omitempty"`
-	Sandbox *string `json:"sandbox,omitempty"`
-}
-
 type RestAPIConfig struct {
 	Name              string         `json:"name,omitempty"`
 	Version           string         `json:"version,omitempty"`
