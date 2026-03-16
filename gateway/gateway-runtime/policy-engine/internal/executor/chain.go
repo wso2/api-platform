@@ -20,6 +20,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"time"
@@ -63,6 +64,7 @@ type ResponsePolicyResult struct {
 // ResponseExecutionResult represents the result of executing all response policies in a chain
 type ResponseExecutionResult struct {
 	Results            []ResponsePolicyResult
+	ShortCircuited     bool                  // true if chain stopped early due to ImmediateResponse
 	FinalAction        policy.ResponseAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
@@ -143,8 +145,16 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			}
 		}
 
+		// Deep-copy params to prevent a policy from mutating the shared spec map
+		// across concurrent requests (nested maps/slices require a full deep copy).
+		params, err := deepCopyParams(spec.Parameters.Raw)
+		if err != nil {
+			span.End()
+			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
+		}
+
 		// Execute policy
-		action := pol.OnRequest(ctx, spec.Parameters.Raw)
+		action := normalizeRequestAction(pol.OnRequest(ctx, params))
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -181,8 +191,8 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			}
 
 			// Apply modifications to context (T045)
-			if mods, ok := action.(policy.UpstreamRequestModifications); ok {
-				applyRequestModifications(ctx, &mods)
+			if mods, ok := action.(*policy.UpstreamRequestModifications); ok {
+				applyRequestModifications(ctx, mods)
 			}
 		}
 
@@ -270,8 +280,16 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			}
 		}
 
+		// Deep-copy params to prevent a policy from mutating the shared spec map
+		// across concurrent requests (nested maps/slices require a full deep copy).
+		params, err := deepCopyParams(spec.Parameters.Raw)
+		if err != nil {
+			span.End()
+			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
+		}
+
 		// Execute policy
-		action := pol.OnResponse(ctx, spec.Parameters.Raw)
+		action := normalizeResponseAction(pol.OnResponse(ctx, params))
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -295,8 +313,20 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 
 		// Apply action if present (T046)
 		if action != nil {
-			if mods, ok := action.(policy.UpstreamResponseModifications); ok {
-				applyResponseModifications(ctx, &mods)
+			// Check for short-circuit
+			if action.StopExecution() {
+				if span.IsRecording() {
+					span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
+				}
+				metrics.ShortCircuitsTotal.WithLabelValues("", spec.Name).Inc()
+				result.ShortCircuited = true
+				result.FinalAction = action
+				span.End()
+				break
+			}
+
+			if mods, ok := action.(*policy.DownstreamResponseModifications); ok {
+				applyResponseModifications(ctx, mods)
 			}
 		}
 
@@ -307,27 +337,50 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 	return result, nil
 }
 
+// normalizeRequestAction converts legacy value-type actions (returned by older policies)
+// to their pointer equivalents so that all downstream type assertions use the pointer form.
+func normalizeRequestAction(action policy.RequestAction) policy.RequestAction {
+	switch a := action.(type) {
+	case policy.UpstreamRequestModifications:
+		return &a
+	case policy.ImmediateResponse:
+		return &a
+	}
+	return action
+}
+
+// normalizeResponseAction converts legacy value-type actions to pointer form.
+func normalizeResponseAction(action policy.ResponseAction) policy.ResponseAction {
+	switch a := action.(type) {
+	case policy.DownstreamResponseModifications:
+		return &a
+	case policy.ImmediateResponse:
+		return &a
+	}
+	return action
+}
+
 // applyRequestModifications applies request modifications to context
 // T045: Implements request context modification
 func applyRequestModifications(ctx *policy.RequestContext, mods *policy.UpstreamRequestModifications) {
 	// Get direct access to headers for mutation (kernel-only API)
 	headers := ctx.Headers.UnsafeInternalValues()
 
-	// Set headers (replace existing)
+	// Set headers (replace existing) — deprecated flat field
 	if mods.SetHeaders != nil {
 		for key, value := range mods.SetHeaders {
 			headers[key] = []string{value}
 		}
 	}
 
-	// Remove headers
+	// Remove headers — deprecated flat field
 	if mods.RemoveHeaders != nil {
 		for _, key := range mods.RemoveHeaders {
 			delete(headers, key)
 		}
 	}
 
-	// Append headers
+	// Append headers — deprecated flat field
 	if mods.AppendHeaders != nil {
 		for key, values := range mods.AppendHeaders {
 			existing := headers[key]
@@ -367,25 +420,25 @@ func applyRequestModifications(ctx *policy.RequestContext, mods *policy.Upstream
 
 // applyResponseModifications applies response modifications to context
 // T046: Implements response context modification
-func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.UpstreamResponseModifications) {
+func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.DownstreamResponseModifications) {
 	// Get direct access to response headers for mutation (kernel-only API)
 	headers := ctx.ResponseHeaders.UnsafeInternalValues()
 
-	// Set headers (replace existing)
+	// Set headers (replace existing) — deprecated flat field
 	if mods.SetHeaders != nil {
 		for key, value := range mods.SetHeaders {
 			headers[key] = []string{value}
 		}
 	}
 
-	// Remove headers
+	// Remove headers — deprecated flat field
 	if mods.RemoveHeaders != nil {
 		for _, key := range mods.RemoveHeaders {
 			delete(headers, key)
 		}
 	}
 
-	// Append headers
+	// Append headers — deprecated flat field
 	if mods.AppendHeaders != nil {
 		for key, values := range mods.AppendHeaders {
 			existing := headers[key]
@@ -429,4 +482,28 @@ func NewChainExecutor(reg *registry.PolicyRegistry, celEvaluator CELEvaluator, t
 		celEvaluator: celEvaluator,
 		tracer:       tracer,
 	}
+}
+
+// deepCopyParams returns a deep copy of a map[string]interface{} via a JSON round-trip.
+//
+// A shallow copy (e.g. maps.Clone) is not sufficient because params can contain nested
+// maps or slices — if a policy mutates a nested value, the change would bleed into
+// subsequent concurrent requests that share the same PolicySpec.Parameters.Raw map.
+//
+// Trade-off: the JSON marshal/unmarshal adds a small per-request allocation cost.
+// This is acceptable given that params are typically small config objects. If profiling
+// shows this is a hot path, consider a lazy copy-on-write approach at the policy level.
+func deepCopyParams(src map[string]interface{}) (map[string]interface{}, error) {
+	if len(src) == 0 {
+		return make(map[string]interface{}), nil
+	}
+	b, err := json.Marshal(src)
+	if err != nil {
+		return nil, err
+	}
+	var dst map[string]interface{}
+	if err := json.Unmarshal(b, &dst); err != nil {
+		return nil, err
+	}
+	return dst, nil
 }

@@ -110,14 +110,14 @@ func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
 }
 
 func (p *headerModifyPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.UpstreamRequestModifications{
+	return &policy.UpstreamRequestModifications{
 		SetHeaders:    map[string]string{"x-bench-header": "bench-value"},
 		AppendHeaders: map[string][]string{"x-multi": {"v1", "v2"}},
 	}
 }
 
 func (p *headerModifyPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return policy.UpstreamResponseModifications{
+	return &policy.DownstreamResponseModifications{
 		SetHeaders: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
@@ -135,7 +135,7 @@ func (p *shortCircuitPolicy) Mode() policy.ProcessingMode {
 }
 
 func (p *shortCircuitPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return policy.ImmediateResponse{
+	return &policy.ImmediateResponse{
 		StatusCode: 401,
 		Headers:    map[string]string{"content-type": "application/json"},
 		Body:       []byte(`{"error":"unauthorized"}`),

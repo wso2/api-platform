@@ -61,7 +61,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 
 	// Check for short-circuit with immediate response
 	if result.ShortCircuited && result.FinalAction != nil {
-		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
+		if immResp, ok := result.FinalAction.(*policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -102,23 +102,24 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
-				// Collect SetHeader operations
+			if mods, ok := policyResult.Action.(*policy.UpstreamRequestModifications); ok {
+				// Collect SetHeader operations (deprecated flat field)
 				for key, value := range mods.SetHeaders {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
-				// Collect AppendHeader operations
+				// Collect AppendHeader operations (deprecated flat field)
 				for key, values := range mods.AppendHeaders {
 					for _, value := range values {
 						headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "append", value: value})
 					}
 				}
 
-				// Collect RemoveHeader operations
+				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.RemoveHeaders {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
+
 
 				// Handle body modifications (last one wins)
 				if mods.Body != nil {
@@ -138,6 +139,16 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 
 				if mods.RemoveQueryParameters != nil {
 					path = utils.RemoveQueryParametersFromPath(path, mods.RemoveQueryParameters)
+					pathMutation = &path
+				}
+
+				if mods.QueryParametersToAdd != nil {
+					path = utils.AddQueryParametersToPath(path, mods.QueryParametersToAdd)
+					pathMutation = &path
+				}
+
+				if mods.QueryParametersToRemove != nil {
+					path = utils.RemoveQueryParametersFromPath(path, mods.QueryParametersToRemove)
 					pathMutation = &path
 				}
 
@@ -164,9 +175,13 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 				}
 
-				dropAction := mods.DropHeadersFromAnalytics
+				// Prefer the new AnalyticsHeaderFilter field; fall back to deprecated DropHeadersFromAnalytics.
+				dropAction := mods.AnalyticsHeaderFilter
+				if dropAction.Action == "" && len(dropAction.Headers) == 0 {
+					dropAction = mods.DropHeadersFromAnalytics
+				}
 				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-					slog.Debug("Translator: Found DropHeadersFromAnalytics action (REQUEST)",
+					slog.Debug("Translator: Found analytics header filter action (REQUEST)",
 						"action", dropAction.Action,
 						"headers", dropAction.Headers,
 						"headers_count", len(dropAction.Headers))
@@ -369,7 +384,33 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	bodyMutation *extprocv3.BodyMutation,
 	analyticsData map[string]any,
 	dynamicMetadata map[string]map[string]interface{},
+	immediateResp *extprocv3.ProcessingResponse,
 	err error) {
+
+	// Check for short-circuit with immediate response
+	if result.ShortCircuited && result.FinalAction != nil {
+		if immResp, ok := result.FinalAction.(*policy.ImmediateResponse); ok {
+			response := &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status: &typev3.HttpStatus{
+							Code: typev3.StatusCode(immResp.StatusCode),
+						},
+						Headers: buildHeaderValueOptions(immResp.Headers),
+						Body:    immResp.Body,
+					},
+				},
+			}
+
+			// Handle analytics metadata for immediate response
+			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			if err != nil {
+				return nil, nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+			}
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, immResp.DynamicMetadata)
+			return nil, nil, nil, nil, response, nil
+		}
+	}
 
 	// Build final action by resolving conflicting header operations
 	headerOps := make(map[string][]*headerOp)
@@ -395,23 +436,24 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
-				// Collect SetHeader operations
+			if mods, ok := policyResult.Action.(*policy.DownstreamResponseModifications); ok {
+				// Collect SetHeader operations (deprecated flat field)
 				for key, value := range mods.SetHeaders {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
-				// Collect AppendHeader operations
+				// Collect AppendHeader operations (deprecated flat field)
 				for key, values := range mods.AppendHeaders {
 					for _, value := range values {
 						headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "append", value: value})
 					}
 				}
 
-				// Collect RemoveHeader operations
+				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.RemoveHeaders {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
+
 
 				// Handle body modifications (last one wins)
 				if mods.Body != nil {
@@ -422,6 +464,11 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					}
 					finalBodyLength = len(mods.Body)
 					bodyModified = true
+				}
+
+				// Handle status code modification via :status pseudo-header (last one wins)
+				if mods.StatusCode != nil {
+					headerOps[":status"] = append(headerOps[":status"], &headerOp{opType: "set", value: fmt.Sprintf("%d", *mods.StatusCode)})
 				}
 
 				// Collect analytics metadata from policies
@@ -437,24 +484,25 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 				}
 
-				dropAction := mods.DropHeadersFromAnalytics
+				// Prefer the new AnalyticsHeaderFilter field; fall back to deprecated DropHeadersFromAnalytics.
+				dropAction := mods.AnalyticsHeaderFilter
+				if dropAction.Action == "" && len(dropAction.Headers) == 0 {
+					dropAction = mods.DropHeadersFromAnalytics
+				}
 				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-					slog.Debug("Translator: Found DropHeadersFromAnalytics action (RESPONSE)",
+					slog.Debug("Translator: Found analytics header filter action (RESPONSE)",
 						"action", dropAction.Action,
 						"headers", dropAction.Headers,
 						"headers_count", len(dropAction.Headers))
 
-					// Set the finalized headers to the analytics data
 					originalHeaders := execCtx.responseContext.ResponseHeaders.GetAll()
 					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
 					analyticsData["response_headers"] = finalizedHeaders
 
 					// Include request_headers from execution context if it was set in a previous phase
 					if _, exists := execCtx.analyticsMetadata["request_headers"]; exists {
-						slog.Debug("Translator: Including request_headers from execution context")
 						analyticsData["request_headers"] = execCtx.analyticsMetadata["request_headers"]
 					}
-
 				}
 			}
 		}
@@ -473,7 +521,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, nil
+	return headerMutation, bodyMutation, analyticsData, dynamicMetadata, nil, nil
 }
 
 // finalizeAnalyticsHeaders finalizes the analytics headers based on the drop action
@@ -531,9 +579,12 @@ func finalizeAnalyticsHeaders(dropAction policy.DropHeaderAction, originalHeader
 
 // TranslateResponseHeadersActions converts response headers execution result to ext_proc response
 func TranslateResponseHeadersActions(result *executor.ResponseExecutionResult, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, dynamicMetadata, err := translateResponseActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, dynamicMetadata, immediateResp, err := translateResponseActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
+	}
+	if immediateResp != nil {
+		return immediateResp, nil
 	}
 
 	// Build ProcessingResponse for response headers
@@ -560,9 +611,12 @@ func TranslateResponseHeadersActions(result *executor.ResponseExecutionResult, e
 
 // TranslateResponseBodyActions converts response body execution result to ext_proc response
 func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	headerMutation, bodyMutation, analyticsData, dynamicMetadata, err := translateResponseActionsCore(result, execCtx)
+	headerMutation, bodyMutation, analyticsData, dynamicMetadata, immediateResp, err := translateResponseActionsCore(result, execCtx)
 	if err != nil {
 		return nil, err
+	}
+	if immediateResp != nil {
+		return immediateResp, nil
 	}
 
 	// Build ProcessingResponse for response body
