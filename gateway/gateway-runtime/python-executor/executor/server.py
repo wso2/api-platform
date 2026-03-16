@@ -26,6 +26,7 @@ from typing import AsyncIterator, Optional
 
 import grpc
 from grpc import aio
+from google.protobuf.struct_pb2 import Struct
 
 from executor.policy_loader import PolicyLoader
 from executor.instance_store import PolicyInstanceStore
@@ -217,8 +218,12 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
             try:
                 async for request in request_iterator:
                     await concurrency_limit.acquire()
-                    task = asyncio.create_task(process_request(request))
-                    in_flight.add(task)
+                    try:
+                        task = asyncio.create_task(process_request(request))
+                        in_flight.add(task)
+                    except BaseException:
+                        concurrency_limit.release()
+                        raise
             except asyncio.CancelledError:
                 logger.info("Reader cancelled")
             except Exception:
@@ -342,7 +347,6 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
 
     @staticmethod
     def _dict_to_struct(d: dict):
-        from google.protobuf.struct_pb2 import Struct
         s = Struct()
         if d:
             s.update(d)

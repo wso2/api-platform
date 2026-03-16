@@ -18,6 +18,7 @@
 package pythonbridge
 
 import (
+	"fmt"
 	"log/slog"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -174,14 +175,13 @@ func (t *Translator) structToMap(s *structpb.Struct) map[string]interface{} {
 }
 
 // toProtoStruct converts a Go map to a protobuf Struct.
-func toProtoStruct(m map[string]interface{}) *structpb.Struct {
+func toProtoStruct(m map[string]interface{}) (*structpb.Struct, error) {
 	if m == nil {
-		return nil
+		return nil, nil
 	}
 	s, err := structpb.NewStruct(m)
 	if err != nil {
-		slog.Error("Failed to convert map to proto struct", "error", err)
-		return nil
+		return nil, fmt.Errorf("failed to convert map to proto struct: %w", err)
 	}
-	return s
+	return s, nil
 }

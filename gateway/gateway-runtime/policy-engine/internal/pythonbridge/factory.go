@@ -49,7 +49,11 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		"route", metadata.RouteName,
 	)
 
-	// Build InitPolicy request
+	protoParams, err := toProtoStruct(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert params for %s:%s: %w", f.PolicyName, f.PolicyVersion, err)
+	}
+
 	req := &proto.InitPolicyRequest{
 		PolicyName:    f.PolicyName,
 		PolicyVersion: f.PolicyVersion,
@@ -60,7 +64,7 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 			ApiVersion: metadata.APIVersion,
 			AttachedTo: string(metadata.AttachedTo),
 		},
-		Params: toProtoStruct(params),
+		Params: protoParams,
 	}
 
 	// Call InitPolicy RPC

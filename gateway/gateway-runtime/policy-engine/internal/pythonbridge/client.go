@@ -396,15 +396,18 @@ func (sm *StreamManager) HealthCheck(ctx context.Context) (*proto.HealthCheckRes
 	return resp, nil
 }
 
-// getTimeout returns the configured timeout from environment or default.
-func getTimeout() time.Duration {
-	timeoutStr := os.Getenv("PYTHON_POLICY_TIMEOUT")
-	if timeoutStr != "" {
-		if d, err := time.ParseDuration(timeoutStr); err == nil {
+// pythonPolicyTimeout is the configured timeout, resolved once at package init.
+var pythonPolicyTimeout = func() time.Duration {
+	if s := os.Getenv("PYTHON_POLICY_TIMEOUT"); s != "" {
+		if d, err := time.ParseDuration(s); err == nil {
 			return d
 		}
 	}
 	return 30 * time.Second
+}()
+
+func getTimeout() time.Duration {
+	return pythonPolicyTimeout
 }
 
 // Singleton management

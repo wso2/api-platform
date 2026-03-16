@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -39,13 +40,14 @@ import (
 type PythonBridge struct {
 	policyName    string
 	policyVersion string
-	mode          policy.ProcessingMode // Static, from policy-definition.yaml
+	mode          policy.ProcessingMode
 	metadata      policy.PolicyMetadata
 	streamManager *StreamManager
 	translator    *Translator
 	slogger       *slog.Logger
 	instanceID    string
-	closed        bool
+	closeOnce     sync.Once
+	closeErr      error
 }
 
 // Mode returns the policy's processing mode (declared statically for Python policies).
@@ -55,49 +57,50 @@ func (b *PythonBridge) Mode() policy.ProcessingMode {
 
 // OnRequest executes the policy during request phase by delegating to Python.
 func (b *PythonBridge) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	req := b.buildRequest(ctx, "on_request", params)
+	req, err := b.buildRequest(ctx, "on_request", params)
+	if err != nil {
+		b.slogger.Error("Failed to build request", "error", err, "phase", "on_request")
+		return b.errorResponse(err)
+	}
 
-	// Execute via stream manager
 	resp, err := b.streamManager.Execute(context.Background(), req)
 	if err != nil {
 		b.slogger.Error("Failed to execute Python policy", "error", err, "phase", "on_request")
 		return b.errorResponse(err)
 	}
 
-	// Merge updated metadata back into shared context
 	if resp.UpdatedMetadata != nil {
 		b.mergeMetadata(ctx.SharedContext, resp.UpdatedMetadata)
 	}
 
-	// Translate response back to Go action
 	return b.translator.ToGoRequestAction(resp)
 }
 
 // OnResponse executes the policy during response phase by delegating to Python.
 func (b *PythonBridge) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	req := b.buildResponseRequest(ctx, params)
+	req, err := b.buildResponseRequest(ctx, params)
+	if err != nil {
+		b.slogger.Error("Failed to build request", "error", err, "phase", "on_response")
+		return b.errorResponseAction(err)
+	}
 
-	// Execute via stream manager
 	resp, err := b.streamManager.Execute(context.Background(), req)
 	if err != nil {
 		b.slogger.Error("Failed to execute Python policy", "error", err, "phase", "on_response")
 		return b.errorResponseAction(err)
 	}
 
-	// Merge updated metadata back into shared context
 	if resp.UpdatedMetadata != nil {
 		b.mergeMetadata(ctx.SharedContext, resp.UpdatedMetadata)
 	}
 
-	// Translate response back to Go action
 	return b.translator.ToGoResponseAction(resp)
 }
 
 // buildRequest creates an ExecutionRequest for the request phase.
-func (b *PythonBridge) buildRequest(ctx *policy.RequestContext, phase string, params map[string]interface{}) *proto.ExecutionRequest {
+func (b *PythonBridge) buildRequest(ctx *policy.RequestContext, phase string, params map[string]interface{}) (*proto.ExecutionRequest, error) {
 	reqID := uuid.New().String()
 
-	// Convert headers - join multiple values with comma
 	headers := make(map[string]string)
 	if ctx.Headers != nil {
 		ctx.Headers.Iterate(func(name string, values []string) {
@@ -105,7 +108,6 @@ func (b *PythonBridge) buildRequest(ctx *policy.RequestContext, phase string, pa
 		})
 	}
 
-	// Build request context
 	reqCtx := &proto.RequestContext{
 		Headers: headers,
 		Path:    ctx.Path,
@@ -113,37 +115,41 @@ func (b *PythonBridge) buildRequest(ctx *policy.RequestContext, phase string, pa
 		Scheme:  ctx.Scheme,
 	}
 
-	// Add body if present
 	if ctx.Body != nil && ctx.Body.Present {
 		reqCtx.Body = ctx.Body.Content
 		reqCtx.BodyPresent = true
 		reqCtx.EndOfStream = ctx.Body.EndOfStream
 	}
 
-	// Build shared context
-	sharedCtx := b.buildSharedContext(ctx.SharedContext)
+	sharedCtx, err := b.buildSharedContext(ctx.SharedContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build shared context: %w", err)
+	}
 
-	// Build policy metadata
 	policyMeta := b.buildPolicyMetadata()
+
+	protoParams, err := toProtoStruct(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert params: %w", err)
+	}
 
 	return &proto.ExecutionRequest{
 		RequestId:      reqID,
 		PolicyName:     b.policyName,
 		PolicyVersion:  b.policyVersion,
 		Phase:          phase,
-		Params:         toProtoStruct(params),
+		Params:         protoParams,
 		Context:        &proto.ExecutionRequest_RequestContext{RequestContext: reqCtx},
 		SharedContext:  sharedCtx,
 		PolicyMetadata: policyMeta,
 		InstanceId:     b.instanceID,
-	}
+	}, nil
 }
 
 // buildResponseRequest creates an ExecutionRequest for the response phase.
-func (b *PythonBridge) buildResponseRequest(ctx *policy.ResponseContext, params map[string]interface{}) *proto.ExecutionRequest {
+func (b *PythonBridge) buildResponseRequest(ctx *policy.ResponseContext, params map[string]interface{}) (*proto.ExecutionRequest, error) {
 	reqID := uuid.New().String()
 
-	// Convert request headers - join multiple values with comma
 	requestHeaders := make(map[string]string)
 	if ctx.RequestHeaders != nil {
 		ctx.RequestHeaders.Iterate(func(name string, values []string) {
@@ -151,7 +157,6 @@ func (b *PythonBridge) buildResponseRequest(ctx *policy.ResponseContext, params 
 		})
 	}
 
-	// Convert response headers - join multiple values with comma
 	responseHeaders := make(map[string]string)
 	if ctx.ResponseHeaders != nil {
 		ctx.ResponseHeaders.Iterate(func(name string, values []string) {
@@ -159,7 +164,6 @@ func (b *PythonBridge) buildResponseRequest(ctx *policy.ResponseContext, params 
 		})
 	}
 
-	// Build response context
 	respCtx := &proto.ResponseContext{
 		RequestHeaders:  requestHeaders,
 		RequestPath:     ctx.RequestPath,
@@ -168,46 +172,55 @@ func (b *PythonBridge) buildResponseRequest(ctx *policy.ResponseContext, params 
 		ResponseStatus:  int32(ctx.ResponseStatus),
 	}
 
-	// Add request body if present
 	if ctx.RequestBody != nil && ctx.RequestBody.Present {
 		respCtx.RequestBody = ctx.RequestBody.Content
 	}
 
-	// Add response body if present
 	if ctx.ResponseBody != nil && ctx.ResponseBody.Present {
 		respCtx.ResponseBody = ctx.ResponseBody.Content
 		respCtx.ResponseBodyPresent = true
 	}
 
-	// Build shared context
-	sharedCtx := b.buildSharedContext(ctx.SharedContext)
+	sharedCtx, err := b.buildSharedContext(ctx.SharedContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build shared context: %w", err)
+	}
 
-	// Build policy metadata
 	policyMeta := b.buildPolicyMetadata()
+
+	protoParams, err := toProtoStruct(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert params: %w", err)
+	}
 
 	return &proto.ExecutionRequest{
 		RequestId:      reqID,
 		PolicyName:     b.policyName,
 		PolicyVersion:  b.policyVersion,
 		Phase:          "on_response",
-		Params:         toProtoStruct(params),
+		Params:         protoParams,
 		Context:        &proto.ExecutionRequest_ResponseContext{ResponseContext: respCtx},
 		SharedContext:  sharedCtx,
 		PolicyMetadata: policyMeta,
 		InstanceId:     b.instanceID,
-	}
+	}, nil
 }
 
 // buildSharedContext converts the Go SharedContext to proto.
-func (b *PythonBridge) buildSharedContext(shared *policy.SharedContext) *proto.SharedContext {
+func (b *PythonBridge) buildSharedContext(shared *policy.SharedContext) (*proto.SharedContext, error) {
 	if shared == nil {
-		return &proto.SharedContext{}
+		return &proto.SharedContext{}, nil
+	}
+
+	metadataStruct, err := toProtoStruct(shared.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert metadata: %w", err)
 	}
 
 	return &proto.SharedContext{
 		ProjectId:     shared.ProjectID,
 		RequestId:     shared.RequestID,
-		Metadata:      toProtoStruct(shared.Metadata),
+		Metadata:      metadataStruct,
 		ApiId:         shared.APIId,
 		ApiName:       shared.APIName,
 		ApiVersion:    shared.APIVersion,
@@ -215,7 +228,7 @@ func (b *PythonBridge) buildSharedContext(shared *policy.SharedContext) *proto.S
 		ApiContext:    shared.APIContext,
 		OperationPath: shared.OperationPath,
 		AuthContext:   authContextToMap(shared.AuthContext),
-	}
+	}, nil
 }
 
 // authContextToMap flattens the structured AuthContext into a map[string]string
@@ -290,34 +303,32 @@ func (b *PythonBridge) errorResponseAction(err error) policy.ResponseAction {
 }
 
 // Close destroys the Python policy instance via DestroyPolicy RPC.
-// This method will be called by the Kernel when a route is removed or replaced
-// (once discussion #734 lands). It is safe to call multiple times.
+// Safe to call concurrently and multiple times.
+// Go side is not implemented yet.
 func (b *PythonBridge) Close() error {
-	if b.closed {
-		return nil
-	}
-	b.closed = true
+	b.closeOnce.Do(func() {
+		if b.instanceID == "" {
+			return
+		}
 
-	if b.instanceID == "" {
-		return nil // Init was never called or failed
-	}
+		ctx, cancel := context.WithTimeout(context.Background(), getTimeout())
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), getTimeout())
-	defer cancel()
+		req := &proto.DestroyPolicyRequest{
+			InstanceId: b.instanceID,
+		}
 
-	req := &proto.DestroyPolicyRequest{
-		InstanceId: b.instanceID,
-	}
+		resp, err := b.streamManager.DestroyPolicy(ctx, req)
+		if err != nil {
+			b.slogger.Warn("DestroyPolicy RPC failed", "error", err, "instance_id", b.instanceID)
+			b.closeErr = fmt.Errorf("DestroyPolicy failed: %w", err)
+			return
+		}
+		if !resp.Success {
+			b.slogger.Warn("DestroyPolicy returned error", "error", resp.ErrorMessage, "instance_id", b.instanceID)
+		}
 
-	resp, err := b.streamManager.DestroyPolicy(ctx, req)
-	if err != nil {
-		b.slogger.Warn("DestroyPolicy RPC failed", "error", err, "instance_id", b.instanceID)
-		return fmt.Errorf("DestroyPolicy failed: %w", err)
-	}
-	if !resp.Success {
-		b.slogger.Warn("DestroyPolicy returned error", "error", resp.ErrorMessage, "instance_id", b.instanceID)
-	}
-
-	b.slogger.Info("Python policy instance destroyed", "instance_id", b.instanceID)
-	return nil
+		b.slogger.Info("Python policy instance destroyed", "instance_id", b.instanceID)
+	})
+	return b.closeErr
 }
