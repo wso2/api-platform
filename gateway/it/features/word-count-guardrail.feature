@@ -43,7 +43,7 @@ Feature: Word Count Guardrail
         context: /word-count-max/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -94,7 +94,7 @@ Feature: Word Count Guardrail
         context: /word-count-min/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -149,7 +149,7 @@ Feature: Word Count Guardrail
         context: /word-count-jsonpath/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -212,7 +212,7 @@ Feature: Word Count Guardrail
         context: /word-count-invert/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -275,7 +275,7 @@ Feature: Word Count Guardrail
         context: /word-count-assessment/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -326,7 +326,7 @@ Feature: Word Count Guardrail
         context: /word-count-empty/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -369,7 +369,7 @@ Feature: Word Count Guardrail
         context: /word-count-boundary/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -438,7 +438,7 @@ Feature: Word Count Guardrail
         context: /word-count-combined/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -497,7 +497,7 @@ Feature: Word Count Guardrail
         context: /word-count-nested/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -561,7 +561,7 @@ Feature: Word Count Guardrail
         context: /word-count-invalid-path/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -614,7 +614,7 @@ Feature: Word Count Guardrail
         context: /word-count-punctuation/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -665,7 +665,7 @@ Feature: Word Count Guardrail
         context: /word-count-plaintext/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
@@ -722,7 +722,7 @@ Feature: Word Count Guardrail
         context: /word-count-error-structure/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v1
+            url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
             path: /health
