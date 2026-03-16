@@ -745,7 +745,7 @@ func TestUpdateAPIKey_ConfigLookup(t *testing.T) {
 		Handle:     cfg.Handle,
 		APIKeyName: existingKey.Name,
 		Request: api.APIKeyCreationRequest{
-			ApiKey:      &apiKeyValue,
+			ApiKey: &apiKeyValue,
 		},
 		User:          user,
 		CorrelationID: "corr-update-db-fallback",
@@ -845,6 +845,9 @@ func newTestSQLiteStorage(t *testing.T, logger *slog.Logger) storage.Storage {
 	if err != nil {
 		t.Fatalf("failed to create sqlite storage: %v", err)
 	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
 	return db
 }
 

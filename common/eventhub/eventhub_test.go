@@ -35,6 +35,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=ON")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	// Create required tables
 	_, err = db.Exec(`
@@ -52,8 +54,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 			entity_id TEXT NOT NULL,
 			event_id TEXT NOT NULL,
 			event_data TEXT NOT NULL,
-			PRIMARY KEY (event_id)
+			PRIMARY KEY (event_id),
+			FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
 		);
+		CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
 	`)
 	require.NoError(t, err)
 

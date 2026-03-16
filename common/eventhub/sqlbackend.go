@@ -67,6 +67,8 @@ type SQLBackend struct {
 	wg     sync.WaitGroup
 }
 
+var _ EventhubImpl = (*SQLBackend)(nil)
+
 // unixTimestampToTime converts unix timestamps in seconds, milliseconds,
 // microseconds, or nanoseconds to time.Time.
 func unixTimestampToTime(ts int64) time.Time {
@@ -231,7 +233,13 @@ func (b *SQLBackend) prepareStatements() (err error) {
 
 // RegisterGateway registers a new gateway for event tracking.
 func (b *SQLBackend) RegisterGateway(gatewayID string) error {
-	_, err := b.insertGatewayStmt.Exec(strings.TrimSpace(gatewayID))
+
+	gatewayID = strings.TrimSpace(gatewayID)
+	if gatewayID == "" {
+		return fmt.Errorf("gateway_id cannot be empty")
+	}
+
+	_, err := b.insertGatewayStmt.Exec(gatewayID)
 	if err != nil {
 		// Insert failed; check if a concurrent registration already inserted the gateway.
 		checkErr := b.getGatewayStateStmt.QueryRow(gatewayID).Scan(new(string), new(string), new(time.Time))
@@ -321,7 +329,8 @@ func (b *SQLBackend) Publish(gatewayID string, event Event) error {
 	}
 
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("gateway %q is not registered", gatewayID)
+		err = fmt.Errorf("gateway %q is not registered", gatewayID)
+		return err
 	}
 
 	if err = tx.Commit(); err != nil {

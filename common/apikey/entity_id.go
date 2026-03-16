@@ -16,23 +16,23 @@
  * under the License.
  */
 
-package eventhub
+package apikey
 
 import (
 	"fmt"
 	"strings"
 )
 
-const apiKeyEntityIDSeparator = "_"
+const entityIDSeparator = "_"
 
 // BuildAPIKeyEntityID returns the composite entity ID used for API key events.
 func BuildAPIKeyEntityID(apiID, keyID string) string {
-	return apiID + apiKeyEntityIDSeparator + keyID
+	return apiID + entityIDSeparator + keyID
 }
 
 // ParseAPIKeyEntityID splits the composite entity ID used for API key events.
 func ParseAPIKeyEntityID(entityID string) (string, string, error) {
-	separatorIndex := strings.LastIndex(entityID, apiKeyEntityIDSeparator)
+	separatorIndex := strings.LastIndex(entityID, entityIDSeparator)
 	if separatorIndex <= 0 || separatorIndex == len(entityID)-1 {
 		return "", "", fmt.Errorf("invalid API key entity ID: %q", entityID)
 	}

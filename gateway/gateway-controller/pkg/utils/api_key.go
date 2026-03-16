@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 
@@ -191,7 +192,7 @@ func (s *APIKeyService) publishAPIKeyEvent(action, apiID, keyID, correlationID s
 	event := eventhub.Event{
 		EventType: eventhub.EventTypeAPIKey,
 		Action:    action,
-		EntityID:  eventhub.BuildAPIKeyEntityID(apiID, keyID),
+		EntityID:  apikey.BuildAPIKeyEntityID(apiID, keyID),
 		EventID:   correlationID,
 		EventData: eventhub.EmptyEventData,
 	}
@@ -467,15 +468,6 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 			}
 		}
 
-		// Remove the API key from database (complete removal)
-		// Note: This is cleanup only - the revocation is already complete
-		if s.db != nil {
-			if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
-				logger.Warn("Failed to remove API key from database, but revocation was successful",
-					slog.Any("error", err))
-			}
-		}
-
 		apiId := config.UUID
 		apiName := apiConfig.DisplayName
 		apiVersion := apiConfig.Version
@@ -502,6 +494,15 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 					return nil, fmt.Errorf("failed to revoke API key: %w", err)
 				}
 			}
+		}
+	}
+
+	// Remove the API key from database (complete removal)
+	// Note: This is cleanup only - the revocation is already complete
+	if s.db != nil {
+		if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
+			logger.Warn("Failed to remove API key from database, but revocation was successful",
+				slog.Any("error", err))
 		}
 	}
 
@@ -872,11 +873,11 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 				slog.String("handle", params.Handle),
 				slog.String("correlation_id", params.CorrelationID))
 
-			// Rollback database save to maintain consistency
+			// Roll back to the previous credential to maintain consistency
 			if s.db != nil {
-				if delErr := s.db.RemoveAPIKeyAPIAndName(regeneratedKey.ArtifactUUID, regeneratedKey.Name); delErr != nil {
-					logger.Error("Failed to rollback API key from database",
-						slog.Any("error", delErr),
+				if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
+					logger.Error("Failed to rollback regenerated API key in database",
+						slog.Any("error", rollbackErr),
 						slog.String("correlation_id", params.CorrelationID))
 				}
 			}

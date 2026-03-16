@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package eventhub
+package apikey
 
 import (
 	"testing"

@@ -25,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -144,7 +145,7 @@ func TestHandleAPIKeyUpsert_WithoutDBDoesNotStoreKey(t *testing.T) {
 
 	listener.handleAPIKeyUpsert(eventhub.Event{
 		Action:   "CREATE",
-		EntityID: eventhub.BuildAPIKeyEntityID("api-1", "key-1"),
+		EntityID: apikey.BuildAPIKeyEntityID("api-1", "key-1"),
 		EventID:  "corr-no-db",
 	})
 
@@ -163,7 +164,7 @@ func TestHandleAPIKeyUpsert_MissingAPIKeyInDBDoesNotStoreKey(t *testing.T) {
 
 	listener.handleAPIKeyUpsert(eventhub.Event{
 		Action:   "CREATE",
-		EntityID: eventhub.BuildAPIKeyEntityID("api-1", "missing-key"),
+		EntityID: apikey.BuildAPIKeyEntityID("api-1", "missing-key"),
 		EventID:  "corr-missing-key",
 	})
 
@@ -192,7 +193,7 @@ func TestHandleAPIKeyUpsert_StoreConflictStopsBeforeXDS(t *testing.T) {
 
 	listener.handleAPIKeyUpsert(eventhub.Event{
 		Action:   "UPDATE",
-		EntityID: eventhub.BuildAPIKeyEntityID(cfg.UUID, current.UUID),
+		EntityID: apikey.BuildAPIKeyEntityID(cfg.UUID, current.UUID),
 		EventID:  "corr-store-conflict",
 	})
 
@@ -265,7 +266,7 @@ func TestHandleAPIKeyRevoke_WithoutStoreReturnsEarly(t *testing.T) {
 	}
 
 	listener.handleAPIKeyRevoke(eventhub.Event{
-		EntityID: eventhub.BuildAPIKeyEntityID("api-1", "key-1"),
+		EntityID: apikey.BuildAPIKeyEntityID("api-1", "key-1"),
 		EventID:  "corr-nil-store",
 	})
 
@@ -285,7 +286,7 @@ func TestHandleAPIKeyRevoke_WithMissingConfigSkipsXDS(t *testing.T) {
 	}
 
 	listener.handleAPIKeyRevoke(eventhub.Event{
-		EntityID: eventhub.BuildAPIKeyEntityID("api-1", apiKey.UUID),
+		EntityID: apikey.BuildAPIKeyEntityID("api-1", apiKey.UUID),
 		EventID:  "corr-missing-config",
 	})
 

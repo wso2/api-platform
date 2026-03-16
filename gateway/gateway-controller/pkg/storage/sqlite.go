@@ -81,7 +81,7 @@ func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error
 	return storage, nil
 }
 
-const currentSchemaVersion = 2
+const currentSchemaVersion = 1
 
 // initSchema creates the database schema if it doesn't exist
 func (s *SQLiteStorage) initSchema() error {

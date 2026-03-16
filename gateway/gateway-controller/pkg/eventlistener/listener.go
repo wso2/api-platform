@@ -117,6 +117,16 @@ func (l *EventListener) Start() error {
 // Stop gracefully stops the event listener
 func (l *EventListener) Stop() {
 	l.cancel()
+	if l.eventHub != nil && l.eventCh != nil && l.systemConfig != nil {
+		gatewayID := strings.TrimSpace(l.systemConfig.Controller.Server.GatewayID)
+		if gatewayID != "" {
+			if err := l.eventHub.Unsubscribe(gatewayID, l.eventCh); err != nil {
+				l.logger.Warn("Failed to unsubscribe event listener",
+					slog.String("gateway_id", gatewayID),
+					slog.Any("error", err))
+			}
+		}
+	}
 	l.logger.Info("Event listener stopped")
 }
 

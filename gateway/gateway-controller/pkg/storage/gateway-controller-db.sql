@@ -243,4 +243,4 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 1;

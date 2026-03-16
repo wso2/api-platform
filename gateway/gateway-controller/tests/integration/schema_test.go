@@ -104,7 +104,7 @@ func TestSchemaInitialization(t *testing.T) {
 		var version int
 		err := rawDB.QueryRow("PRAGMA user_version").Scan(&version)
 		assert.NoError(t, err)
-		assert.Equal(t, 2, version, "Schema version should be 2")
+		assert.Equal(t, 1, version, "Schema version should be 1")
 	})
 
 	// Verify artifacts table exists
@@ -283,7 +283,7 @@ func TestSchemaInitializationIdempotent(t *testing.T) {
 	defer db2.Close()
 
 	// Verify configuration still exists
-	retrieved, err := db2.GetConfigByKindAndHandle(models.KindRestApi,"IdempotentAPI-v1.0")
+	retrieved, err := db2.GetConfigByKindAndHandle(models.KindRestApi, "IdempotentAPI-v1.0")
 	assert.NoError(t, err)
 	assert.NotNil(t, retrieved)
 	assert.Equal(t, cfg.UUID, retrieved.UUID)

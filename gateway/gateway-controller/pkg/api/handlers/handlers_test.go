@@ -35,12 +35,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -716,9 +717,9 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		},
 		APIKey: config.APIKeyConfig{
 			APIKeysPerUserPerAPI: 10,
-			Algorithm:    "sha256",
-			MinKeyLength: 32,
-			MaxKeyLength: 128,
+			Algorithm:            "sha256",
+			MinKeyLength:         32,
+			MaxKeyLength:         128,
 		},
 	}
 
@@ -896,8 +897,8 @@ func createTestAPIKeyRequestBody(t *testing.T, name, displayName, apiKeyValue st
 	t.Helper()
 
 	request := api.APIKeyCreationRequest{
-		Name:        &name,
-		ApiKey:      &apiKeyValue,
+		Name:   &name,
+		ApiKey: &apiKeyValue,
 	}
 
 	body, err := json.Marshal(request)
@@ -1605,7 +1606,7 @@ func TestCreateAPIKeyWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
 	assert.Equal(t, eventhub.EventTypeAPIKey, mockHub.publishedEvents[0].event.EventType)
 	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
-	assert.Equal(t, eventhub.BuildAPIKeyEntityID(cfg.UUID, createdKey.UUID), mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, apikey.BuildAPIKeyEntityID(cfg.UUID, createdKey.UUID), mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-id-create-key", mockHub.publishedEvents[0].event.EventID)
 	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
 }
@@ -1672,7 +1673,7 @@ func TestRevokeAPIKeyWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
 	assert.Equal(t, eventhub.EventTypeAPIKey, mockHub.publishedEvents[0].event.EventType)
 	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
-	assert.Equal(t, eventhub.BuildAPIKeyEntityID(cfg.UUID, storeKey.UUID), mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, apikey.BuildAPIKeyEntityID(cfg.UUID, storeKey.UUID), mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-id-revoke-key", mockHub.publishedEvents[0].event.EventID)
 	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
 
@@ -2991,7 +2992,7 @@ func TestUpdateAPIKeyWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
 	assert.Equal(t, eventhub.EventTypeAPIKey, mockHub.publishedEvents[0].event.EventType)
 	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
-	assert.Equal(t, eventhub.BuildAPIKeyEntityID(cfg.UUID, storeKey.UUID), mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, apikey.BuildAPIKeyEntityID(cfg.UUID, storeKey.UUID), mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-id-update-key", mockHub.publishedEvents[0].event.EventID)
 	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
 

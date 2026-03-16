@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -48,7 +49,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS(t *testing.T) {
 	listener.handleEvent(eventhub.Event{
 		EventType: eventhub.EventTypeAPIKey,
 		Action:    "CREATE",
-		EntityID:  eventhub.BuildAPIKeyEntityID(cfg.UUID, apiKey.UUID),
+		EntityID:  apikey.BuildAPIKeyEntityID(cfg.UUID, apiKey.UUID),
 		EventID:   "corr-apikey-create",
 	})
 
@@ -92,7 +93,7 @@ func TestHandleEvent_APIKeyUpdate_SyncsMemoryAndXDS(t *testing.T) {
 	listener.handleEvent(eventhub.Event{
 		EventType: eventhub.EventTypeAPIKey,
 		Action:    "UPDATE",
-		EntityID:  eventhub.BuildAPIKeyEntityID(cfg.UUID, updatedKey.UUID),
+		EntityID:  apikey.BuildAPIKeyEntityID(cfg.UUID, updatedKey.UUID),
 		EventID:   "corr-apikey-update",
 	})
 
@@ -127,7 +128,7 @@ func TestHandleEvent_APIKeyDelete_RemovesMemoryAndXDS(t *testing.T) {
 	listener.handleEvent(eventhub.Event{
 		EventType: eventhub.EventTypeAPIKey,
 		Action:    "DELETE",
-		EntityID:  eventhub.BuildAPIKeyEntityID(cfg.UUID, apiKey.UUID),
+		EntityID:  apikey.BuildAPIKeyEntityID(cfg.UUID, apiKey.UUID),
 		EventID:   "corr-apikey-delete",
 	})
 
@@ -158,7 +159,7 @@ func TestHandleEvent_APIKeyDelete_SkipsXDSWhenKeyNameIsUnavailable(t *testing.T)
 	listener.handleEvent(eventhub.Event{
 		EventType: eventhub.EventTypeAPIKey,
 		Action:    "DELETE",
-		EntityID:  eventhub.BuildAPIKeyEntityID(cfg.UUID, "missing-key-id"),
+		EntityID:  apikey.BuildAPIKeyEntityID(cfg.UUID, "missing-key-id"),
 		EventID:   "corr-apikey-missing",
 	})
 

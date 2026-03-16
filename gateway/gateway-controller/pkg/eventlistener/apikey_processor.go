@@ -21,6 +21,7 @@ package eventlistener
 import (
 	"log/slog"
 
+	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -69,7 +70,7 @@ func (l *EventListener) syncAPIConfigForAPIKeyEvent(apiID string) (*models.Store
 
 // handleAPIKeyUpsert handles API key create/update/regenerate events.
 func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
-	apiID, keyID, err := eventhub.ParseAPIKeyEntityID(event.EntityID)
+	apiID, keyID, err := apikey.ParseAPIKeyEntityID(event.EntityID)
 	if err != nil {
 		l.logger.Error("Failed to parse API key event entity ID",
 			slog.String("action", event.Action),
@@ -152,7 +153,7 @@ func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
 
 // handleAPIKeyRevoke handles API key revoke events.
 func (l *EventListener) handleAPIKeyRevoke(event eventhub.Event) {
-	apiID, keyID, err := eventhub.ParseAPIKeyEntityID(event.EntityID)
+	apiID, keyID, err := apikey.ParseAPIKeyEntityID(event.EntityID)
 	if err != nil {
 		l.logger.Error("Failed to parse API key revoke event entity ID",
 			slog.String("entity_id", event.EntityID),
