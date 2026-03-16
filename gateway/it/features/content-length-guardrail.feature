@@ -54,6 +54,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 10
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/clg-valid/v1.0/health" to be ready
@@ -95,6 +96,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 50
                     max: 200
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/clg-below-min/v1.0/health" to be ready
@@ -138,6 +140,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 10
                     max: 50
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/clg-above-max/v1.0/health" to be ready
@@ -180,6 +183,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 1
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/clg-empty/v1.0/health" to be ready
@@ -221,6 +225,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 20
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/clg-min-boundary/v1.0/health" to be ready
@@ -262,6 +267,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 10
                     max: 50
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/clg-max-boundary/v1.0/health" to be ready
@@ -477,6 +483,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 20
                     max: 50
+                    jsonPath: ""
                     invert: true
                     showAssessment: true
       """
@@ -522,6 +529,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 20
                     max: 50
+                    jsonPath: ""
                     invert: true
       """
     Then the response should be successful
@@ -566,6 +574,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 50
                     max: 100
+                    jsonPath: ""
                     showAssessment: true
       """
     Then the response should be successful
@@ -611,6 +620,7 @@ Feature: Content Length Guardrail Policy
                   request:
                     min: 50
                     max: 100
+                    jsonPath: ""
                     showAssessment: false
       """
     Then the response should be successful
