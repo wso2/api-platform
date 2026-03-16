@@ -94,13 +94,13 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v0
     - name: sentence-count-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v0
     - name: set-headers
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v0
     - name: url-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0
     - name: word-count-guardrail
       version: v0.2.1
