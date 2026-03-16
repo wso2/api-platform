@@ -144,6 +144,7 @@ func NewAPIServer(
 		deploymentService, apiKeyXDSManager,
 		controlPlaneClient, routerConfig, systemConfig,
 		httpClient, parser, validator, logger,
+		eventHub,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 

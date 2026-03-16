@@ -202,7 +202,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	var existingConfig *models.StoredConfig
 	var isUpdate bool
 
+	// TODO: (VirajSalaka) Revisit the logic to do these validations from the gateway itself 
+
 	// Check for conflicts with other configurations
+	
 	if s.store != nil {
 		existingConfig, _ = s.store.Get(apiID)
 		isUpdate = existingConfig != nil

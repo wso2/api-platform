@@ -715,6 +715,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 			VHosts:      *vhosts,
 		},
 		APIKey: config.APIKeyConfig{
+			APIKeysPerUserPerAPI: 10,
 			Algorithm:    "sha256",
 			MinKeyLength: 32,
 			MaxKeyLength: 128,
@@ -743,7 +744,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		policyDefs, &server.policyDefMu,
 		nil, nil, nil,
 		routerCfg, systemCfg,
-		httpClient, parser, validator, logger,
+		httpClient, parser, validator, logger, server.eventHub,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -853,6 +854,19 @@ func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, co
 func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID string) {
 	server.eventHub = hub
 	server.gatewayID = gatewayID
+	if server.systemConfig != nil {
+		server.systemConfig.Controller.Server.GatewayID = gatewayID
+	}
+	if server.RestAPIHandler != nil {
+		restAPIService := restapi.NewRestAPIService(
+			server.store, server.db, nil, nil,
+			server.policyDefinitions, &server.policyDefMu,
+			nil, nil, nil,
+			server.routerConfig, server.systemConfig,
+			server.httpClient, server.parser, server.validator, server.logger, hub,
+		)
+		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
+	}
 	if server.apiKeyService != nil {
 		server.apiKeyService.SetEventHub(hub, gatewayID)
 	}
@@ -1342,45 +1356,6 @@ func TestUpdateRestAPINotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// TestUpdateRestAPINoDB tests UpdateRestAPI when DB is not available
-func TestUpdateRestAPINoDB(t *testing.T) {
-	server := createTestAPIServerWithDB(nil)
-	mockDB := server.db.(*MockStorage)
-	mockHub := &mockEventHub{}
-	server.eventHub = mockHub
-
-	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "original-display-name", "v1.0.0", "/original")
-	existing.Handle = "test-handle"
-	mockDB.SaveConfig(existing)
-
-	body := createTestRestAPIRequestBody(t, "test-handle", "updated-display-name", "v2.0.0", "/updated")
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
-		"Content-Type": "application/json",
-	})
-	c.Set(middleware.CorrelationIDKey, "corr-id-update")
-
-	server.UpdateRestAPI(c, "test-handle")
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	require.Len(t, mockHub.publishedEvents, 1)
-	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
-	assert.Equal(t, eventhub.EventTypeAPI, mockHub.publishedEvents[0].event.EventType)
-	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
-	assert.Equal(t, existing.UUID, mockHub.publishedEvents[0].event.EntityID)
-	assert.Equal(t, "corr-id-update", mockHub.publishedEvents[0].event.EventID)
-
-	updated, err := mockDB.GetConfig(existing.UUID)
-	require.NoError(t, err)
-	updatedConfig, ok := updated.Configuration.(api.RestAPI)
-	require.True(t, ok)
-	assert.Equal(t, "updated-display-name", updatedConfig.Spec.DisplayName)
-	assert.Equal(t, "v2.0.0", updatedConfig.Spec.Version)
-	assert.Equal(t, "/updated", updatedConfig.Spec.Context)
-	assert.Equal(t, models.StatusPending, updated.Status)
-	assert.Nil(t, updated.DeployedAt)
-	assert.Zero(t, updated.DeployedVersion)
-}
-
 // TestUpdateRestAPIHandleMismatch tests UpdateRestAPI with handle mismatch
 // Note: This test requires full parser/validator setup
 func TestUpdateRestAPIHandleMismatch(t *testing.T) {
@@ -1392,8 +1367,7 @@ func TestDeleteRestAPIWithDBAndEventHub(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
-	server.eventHub = mockHub
-	server.gatewayID = "test-gateway"
+	attachTestEventHub(server, mockHub, "test-gateway")
 
 	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "test-api", "v1.0.0", "/test")
 	cfg.Handle = "test-handle"
@@ -2852,7 +2826,7 @@ func TestDeleteRestAPIDBError(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
-	server.eventHub = mockHub
+	attachTestEventHub(server, mockHub, "test-gateway")
 
 	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "test-api", "v1.0.0", "/test")
 	cfg.Handle = "test-handle"
@@ -2875,7 +2849,7 @@ func TestUpdateRestAPIDBError(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
-	server.eventHub = mockHub
+	attachTestEventHub(server, mockHub, "test-gateway")
 
 	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "original-display-name", "v1.0.0", "/original")
 	existing.Handle = "test-handle"

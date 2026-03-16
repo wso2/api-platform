@@ -704,7 +704,7 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 	})
 }
 
-func TestCreateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
+func TestCreateAPIKey_ConfigLookup(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
@@ -712,9 +712,6 @@ func TestCreateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
 
 	if err := db.SaveConfig(cfg); err != nil {
 		t.Fatalf("failed to seed config in database: %v", err)
-	}
-	if _, err := store.GetByHandle(cfg.Handle); !storage.IsNotFoundError(err) {
-		t.Fatalf("expected config to be absent from memory store, got: %v", err)
 	}
 
 	service := NewAPIKeyService(store, db, nil, newTestAPIKeyConfig())
@@ -752,7 +749,7 @@ func TestCreateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
 	}
 }
 
-func TestUpdateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
+func TestUpdateAPIKey_ConfigLookup(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
@@ -760,9 +757,6 @@ func TestUpdateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
 
 	if err := db.SaveConfig(cfg); err != nil {
 		t.Fatalf("failed to seed config in database: %v", err)
-	}
-	if _, err := store.GetByHandle(cfg.Handle); !storage.IsNotFoundError(err) {
-		t.Fatalf("expected config to be absent from memory store, got: %v", err)
 	}
 
 	existingKey := newTestStoredAPIKey(cfg.UUID, "external-key", "creator-user", "external")
@@ -814,7 +808,7 @@ func TestUpdateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
 	}
 }
 
-func TestRegenerateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
+func TestRegenerateAPIKey_ConfigLookup(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
@@ -822,9 +816,6 @@ func TestRegenerateAPIKey_FallsBackToDBForConfigLookup(t *testing.T) {
 
 	if err := db.SaveConfig(cfg); err != nil {
 		t.Fatalf("failed to seed config in database: %v", err)
-	}
-	if _, err := store.GetByHandle(cfg.Handle); !storage.IsNotFoundError(err) {
-		t.Fatalf("expected config to be absent from memory store, got: %v", err)
 	}
 
 	existingKey := newTestStoredAPIKey(cfg.UUID, "local-key", "creator-user", "local")

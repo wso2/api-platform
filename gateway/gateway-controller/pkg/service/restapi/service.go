@@ -23,10 +23,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -82,6 +84,7 @@ type RestAPIService struct {
 	parser             *config.Parser
 	validator          config.Validator
 	logger             *slog.Logger
+	eventHub           eventhub.EventHub
 }
 
 // NewRestAPIService creates a new RestAPIService.
@@ -101,6 +104,7 @@ func NewRestAPIService(
 	parser *config.Parser,
 	validator config.Validator,
 	logger *slog.Logger,
+	eventHub eventhub.EventHub,
 ) *RestAPIService {
 	return &RestAPIService{
 		store:              store,
@@ -118,6 +122,7 @@ func NewRestAPIService(
 		parser:             parser,
 		validator:          validator,
 		logger:             logger,
+		eventHub:           eventHub,
 	}
 }
 
@@ -271,25 +276,11 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, fmt.Errorf("failed to persist configuration update: %w", err)
 	}
 
-	if err := s.store.Update(existing); err != nil {
-		return nil, err
-	}
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-		defer cancel()
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
+	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
 		slog.String("handle", params.Handle))
-
-	// Rebuild policy configuration
-	s.updatePolicyForConfig(existing, false, log)
 
 	return &UpdateResult{Config: existing}, nil
 }
@@ -326,42 +317,7 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 			slog.String("handle", params.Handle),
 			slog.Any("error", err))
 	}
-
-	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil {
-		log.Warn("Failed to remove API keys from ConfigStore",
-			slog.String("handle", params.Handle),
-			slog.Any("error", err))
-	}
-
-	// Remove API keys from policy engine via xDS
-	if s.apiKeyXDSManager != nil {
-		if restCfg, ok := cfg.Configuration.(api.RestAPI); ok {
-			apiId := cfg.UUID
-			apiName := restCfg.Spec.DisplayName
-			apiVersion := restCfg.Spec.Version
-
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, params.CorrelationID); err != nil {
-				log.Warn("Failed to remove API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", params.Handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", params.CorrelationID),
-					slog.Any("error", err))
-			} else {
-				log.Info("Successfully removed API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", params.Handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		} else {
-			log.Warn("Failed to extract API config data for API key removal",
-				slog.String("handle", params.Handle))
-		}
-	}
+	//
 
 	// WebSub topic deregistration
 	if cfg.Kind == "WebSubApi" {
@@ -370,34 +326,12 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 		}
 	}
 
-	// Delete from in-memory store
-	if err := s.store.Delete(cfg.UUID); err != nil {
-		log.Error("Failed to delete config from memory store", slog.Any("error", err))
-		return nil, fmt.Errorf("failed to delete configuration: %w", err)
-	}
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
+	// Publish deletion event so all replicas (including self) converge through event listener sync.
+	s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, params.CorrelationID, log)
 
 	log.Info("API configuration deleted",
 		slog.String("id", cfg.UUID),
 		slog.String("handle", params.Handle))
-
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
 
 	return &DeleteResult{Handle: params.Handle}, nil
 }
@@ -555,4 +489,45 @@ func stringPtr(s string) *string {
 
 func timePtr(t time.Time) *time.Time {
 	return &t
+}
+
+// publishEvent publishes an event to the event hub
+func (s *RestAPIService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
+	if s.eventHub == nil {
+		return
+	}
+
+	gatewayID := strings.TrimSpace(s.systemConfig.Controller.Server.GatewayID)
+	if gatewayID == "" {
+		logger.Warn("Skipping event hub publish because gateway ID is not configured",
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID))
+		return
+	}
+
+	event := eventhub.Event{
+		GatewayID:           gatewayID,
+		OriginatedTimestamp: time.Now(),
+		EventType:           eventType,
+		Action:              action,
+		EntityID:            entityID,
+		EventID:             correlationID,
+		EventData:           eventhub.EmptyEventData,
+	}
+
+	if err := s.eventHub.PublishEvent(gatewayID, event); err != nil {
+		logger.Warn("Failed to publish event to event hub",
+			slog.String("gateway_id", gatewayID),
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID),
+			slog.Any("error", err))
+	} else {
+		logger.Debug("Published event to event hub",
+			slog.String("gateway_id", gatewayID),
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID))
+	}
 }
