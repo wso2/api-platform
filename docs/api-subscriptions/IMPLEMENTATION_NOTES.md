@@ -157,6 +157,6 @@ This document captures how the **Subscription Design** (including Subscription P
 - **Events**: Platform-API sends **plain** subscription token in WebSocket events (created/updated/deleted). Transport is WSS (TLS).
 - **Storage**: Gateway encrypts the token (AES-256-GCM) before storing. Also stores `subscription_token_hash` for validation and uniqueness.
 - **Schema**: `subscription_token` (encrypted), `subscription_token_hash` (SHA-256). Unique constraint on `(api_id, subscription_token_hash, gateway_id)`.
-- **Config**: `subscriptions.subscription_token_encryption_key` (32 bytes, 64 hex or 44 base64). Env: `APIP_GW_SUBSCRIPTIONS_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY`.
+- **Token storage**: Gateway stores only `subscription_token_hash` for validation. Use Platform-API to retrieve the original token.
 - **GET /subscriptions**: Decrypts and returns plain token.
 - **xDS/Policy**: Uses `subscription_token_hash` for validation (policy hashes client token and looks up).

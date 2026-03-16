@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"regexp"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // ValidationError represents a field-level validation error

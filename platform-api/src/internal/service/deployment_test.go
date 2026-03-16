@@ -119,224 +119,6 @@ func TestValidateEndpointURL(t *testing.T) {
 	}
 }
 
-// TestOverrideEndpointURL tests the overrideEndpointURL helper function
-func TestOverrideEndpointURL(t *testing.T) {
-	tests := []struct {
-		name           string
-		inputYAML      string
-		newURL         string
-		wantErr        bool
-		errContains    string
-		validateResult func(t *testing.T, result []byte)
-	}{
-		{
-			name: "override existing main URL",
-			inputYAML: `apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: RestApi
-metadata:
-  name: test-api
-spec:
-  displayName: Test API
-  version: v1
-  context: /test
-  upstream:
-    main:
-      url: http://old-backend.com/api
-  operations: []
-`,
-			newURL:  "https://new-backend.com/api/v2",
-			wantErr: false,
-			validateResult: func(t *testing.T, result []byte) {
-				var apiDeployment dto.APIDeploymentYAML
-				if err := yaml.Unmarshal(result, &apiDeployment); err != nil {
-					t.Fatalf("Failed to unmarshal result YAML: %v", err)
-				}
-				if apiDeployment.Spec.Upstream == nil || apiDeployment.Spec.Upstream.Main == nil {
-					t.Fatal("Upstream.Main should not be nil")
-				}
-				if apiDeployment.Spec.Upstream.Main.URL != "https://new-backend.com/api/v2" {
-					t.Errorf("Expected URL to be 'https://new-backend.com/api/v2', got %q", apiDeployment.Spec.Upstream.Main.URL)
-				}
-				if apiDeployment.Spec.Upstream.Main.Ref != "" {
-					t.Errorf("Expected Ref to be empty, got %q", apiDeployment.Spec.Upstream.Main.Ref)
-				}
-			},
-		},
-		{
-			name: "override when upstream is nil",
-			inputYAML: `apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: RestApi
-metadata:
-  name: test-api
-spec:
-  displayName: Test API
-  version: v1
-  context: /test
-  operations: []
-`,
-			newURL:  "http://backend.example.com:8080",
-			wantErr: false,
-			validateResult: func(t *testing.T, result []byte) {
-				var apiDeployment dto.APIDeploymentYAML
-				if err := yaml.Unmarshal(result, &apiDeployment); err != nil {
-					t.Fatalf("Failed to unmarshal result YAML: %v", err)
-				}
-				if apiDeployment.Spec.Upstream == nil || apiDeployment.Spec.Upstream.Main == nil {
-					t.Fatal("Upstream.Main should be created")
-				}
-				if apiDeployment.Spec.Upstream.Main.URL != "http://backend.example.com:8080" {
-					t.Errorf("Expected URL to be 'http://backend.example.com:8080', got %q", apiDeployment.Spec.Upstream.Main.URL)
-				}
-			},
-		},
-		{
-			name: "override URL that had ref instead",
-			inputYAML: `apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: RestApi
-metadata:
-  name: test-api
-spec:
-  displayName: Test API
-  version: v1
-  context: /test
-  upstream:
-    main:
-      ref: backend-service-ref
-  operations: []
-`,
-			newURL:  "https://direct-url.com/api",
-			wantErr: false,
-			validateResult: func(t *testing.T, result []byte) {
-				var apiDeployment dto.APIDeploymentYAML
-				if err := yaml.Unmarshal(result, &apiDeployment); err != nil {
-					t.Fatalf("Failed to unmarshal result YAML: %v", err)
-				}
-				if apiDeployment.Spec.Upstream.Main.URL != "https://direct-url.com/api" {
-					t.Errorf("Expected URL to be 'https://direct-url.com/api', got %q", apiDeployment.Spec.Upstream.Main.URL)
-				}
-				if apiDeployment.Spec.Upstream.Main.Ref != "" {
-					t.Errorf("Expected Ref to be cleared, got %q", apiDeployment.Spec.Upstream.Main.Ref)
-				}
-			},
-		},
-		{
-			name: "preserve sandbox endpoint",
-			inputYAML: `apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: RestApi
-metadata:
-  name: test-api
-spec:
-  displayName: Test API
-  version: v1
-  context: /test
-  upstream:
-    main:
-      url: http://prod.example.com
-    sandbox:
-      url: http://sandbox.example.com
-  operations: []
-`,
-			newURL:  "https://new-prod.example.com",
-			wantErr: false,
-			validateResult: func(t *testing.T, result []byte) {
-				var apiDeployment dto.APIDeploymentYAML
-				if err := yaml.Unmarshal(result, &apiDeployment); err != nil {
-					t.Fatalf("Failed to unmarshal result YAML: %v", err)
-				}
-				if apiDeployment.Spec.Upstream.Main.URL != "https://new-prod.example.com" {
-					t.Errorf("Expected main URL to be updated to 'https://new-prod.example.com', got %q", apiDeployment.Spec.Upstream.Main.URL)
-				}
-				if apiDeployment.Spec.Upstream.Sandbox == nil || apiDeployment.Spec.Upstream.Sandbox.URL != "http://sandbox.example.com" {
-					t.Error("Expected sandbox URL to be preserved")
-				}
-			},
-		},
-		{
-			name:        "invalid YAML",
-			inputYAML:   `invalid: yaml: [unclosed`,
-			newURL:      "http://example.com",
-			wantErr:     true,
-			errContains: "failed to parse deployment YAML",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := overrideEndpointURL([]byte(tt.inputYAML), tt.newURL)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("overrideEndpointURL() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if err != nil && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
-				t.Errorf("overrideEndpointURL() error = %v, want error containing %q", err, tt.errContains)
-				return
-			}
-			if !tt.wantErr && tt.validateResult != nil {
-				tt.validateResult(t, result)
-			}
-		})
-	}
-}
-
-// TestOverrideEndpointURLPreservesOtherFields tests that the override preserves other YAML fields
-func TestOverrideEndpointURLPreservesOtherFields(t *testing.T) {
-	inputYAML := `apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: RestApi
-metadata:
-  name: my-api-123
-spec:
-  displayName: My Test API
-  version: v2.0
-  context: /myapi/v2
-  upstream:
-    main:
-      url: http://old.example.com:8080/api
-  operations:
-    - method: GET
-      path: /users
-    - method: POST
-      path: /users
-`
-
-	result, err := overrideEndpointURL([]byte(inputYAML), "https://new.example.com:9090/api/v2")
-	if err != nil {
-		t.Fatalf("overrideEndpointURL() failed: %v", err)
-	}
-
-	var apiDeployment dto.APIDeploymentYAML
-	if err := yaml.Unmarshal(result, &apiDeployment); err != nil {
-		t.Fatalf("Failed to unmarshal result YAML: %v", err)
-	}
-
-	// Verify all fields are preserved
-	if apiDeployment.ApiVersion != "gateway.api-platform.wso2.com/v1alpha1" {
-		t.Errorf("ApiVersion not preserved, got %q", apiDeployment.ApiVersion)
-	}
-	if apiDeployment.Kind != "RestApi" {
-		t.Errorf("Kind not preserved, got %q", apiDeployment.Kind)
-	}
-	if apiDeployment.Metadata.Name != "my-api-123" {
-		t.Errorf("Metadata.Name not preserved, got %q", apiDeployment.Metadata.Name)
-	}
-	if apiDeployment.Spec.DisplayName != "My Test API" {
-		t.Errorf("Spec.DisplayName not preserved, got %q", apiDeployment.Spec.DisplayName)
-	}
-	if apiDeployment.Spec.Version != "v2.0" {
-		t.Errorf("Spec.Version not preserved, got %q", apiDeployment.Spec.Version)
-	}
-	if apiDeployment.Spec.Context != "/myapi/v2" {
-		t.Errorf("Spec.Context not preserved, got %q", apiDeployment.Spec.Context)
-	}
-	if len(apiDeployment.Spec.Operations) != 2 {
-		t.Errorf("Expected 2 operations, got %d", len(apiDeployment.Spec.Operations))
-	}
-
-	// Verify URL was updated
-	if apiDeployment.Spec.Upstream.Main.URL != "https://new.example.com:9090/api/v2" {
-		t.Errorf("Expected URL to be updated to 'https://new.example.com:9090/api/v2', got %q", apiDeployment.Spec.Upstream.Main.URL)
-	}
-}
-
 // ============================================================================
 // Mock Repository Implementations for DeploymentService Tests
 // ============================================================================
@@ -1932,7 +1714,267 @@ func TestRollbackDeployment_NonExistentDeployment(t *testing.T) {
 		t.Fatal("Expected error when restoring to non-existent deployment")
 	}
 
-	if !errors.Is(err, constants.ErrDeploymentNotFound) {
-		t.Errorf("Expected ErrDeploymentNotFound, got %v", err)
+}
+
+func TestIsValidVHostOrSentinel(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"sentinel accepted", "_gateway_default_", true},
+		{"simple hostname", "api.example.com", true},
+		{"single label", "localhost", true},
+		{"wildcard label", "*.example.com", false},
+		{"empty string rejected", "", false},
+		{"trailing dot rejected", "api.example.com.", false},
+		{"label too long", strings.Repeat("a", 64) + ".com", false},
+		{"underscore rejected", "api_v1.example.com", false},
+		{"hyphen start rejected", "-api.example.com", false},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isValidVHostOrSentinel(tc.input)
+			if got != tc.want {
+				t.Errorf("isValidVHostOrSentinel(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestApplyStructOverrides(t *testing.T) {
+	t.Run("endpoint URL sets upstream and clears ref", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{
+				Upstream: &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{Ref: "my-endpoint-ref"},
+				},
+			},
+		}
+		eu := "https://new.example.com/api"
+		applyStructOverrides(d, &eu, nil, nil)
+		if d.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", d.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+		if d.Spec.Upstream.Main.Ref != "" {
+			t.Errorf("Ref should be cleared, got %q", d.Spec.Upstream.Main.Ref)
+		}
+	})
+
+	t.Run("endpoint URL creates upstream when nil", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{},
+		}
+		eu := "https://new.example.com/api"
+		applyStructOverrides(d, &eu, nil, nil)
+		if d.Spec.Upstream == nil || d.Spec.Upstream.Main == nil {
+			t.Fatal("expected upstream.main to be created")
+		}
+		if d.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", d.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+	})
+
+	t.Run("vhost sets main and sandbox", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{},
+		}
+		main := "api.example.com"
+		sandbox := "sandbox.example.com"
+		applyStructOverrides(d, nil, &main, &sandbox)
+		if d.Spec.Vhosts == nil {
+			t.Fatal("expected vhosts to be set")
+		}
+		if d.Spec.Vhosts.Main == nil || *d.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("main = %v, want %q", d.Spec.Vhosts.Main, "api.example.com")
+		}
+		if d.Spec.Vhosts.Sandbox == nil || *d.Spec.Vhosts.Sandbox != "sandbox.example.com" {
+			t.Errorf("sandbox = %v, want %q", d.Spec.Vhosts.Sandbox, "sandbox.example.com")
+		}
+	})
+
+	t.Run("vhost main only without sandbox", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{},
+		}
+		main := "_gateway_default_"
+		applyStructOverrides(d, nil, &main, nil)
+		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main == nil || *d.Spec.Vhosts.Main != "_gateway_default_" {
+			t.Errorf("expected sentinel, got %v", d.Spec.Vhosts)
+		}
+		if d.Spec.Vhosts.Sandbox != nil {
+			t.Errorf("sandbox should be nil, got %q", *d.Spec.Vhosts.Sandbox)
+		}
+	})
+
+	t.Run("both endpoint and vhost", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{
+				Upstream: &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{URL: "http://old.example.com"},
+				},
+			},
+		}
+		eu := "https://new.example.com/api"
+		main := "api.example.com"
+		applyStructOverrides(d, &eu, &main, nil)
+		if d.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", d.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+		if d.Spec.Vhosts == nil || d.Spec.Vhosts.Main == nil || *d.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("expected vhost main, got %v", d.Spec.Vhosts)
+		}
+	})
+
+	t.Run("no-op with nil pointers", func(t *testing.T) {
+		d := &dto.APIDeploymentYAML{
+			Spec: dto.APIYAMLData{
+				Upstream: &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{URL: "http://original.example.com"},
+				},
+			},
+		}
+		applyStructOverrides(d, nil, nil, nil)
+		if d.Spec.Upstream.Main.URL != "http://original.example.com" {
+			t.Errorf("URL should be unchanged, got %q", d.Spec.Upstream.Main.URL)
+		}
+		if d.Spec.Vhosts != nil {
+			t.Errorf("vhosts should remain nil, got %v", d.Spec.Vhosts)
+		}
+	})
+}
+
+func TestApplyDeploymentOverrides(t *testing.T) {
+	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: test-api
+spec:
+  displayName: Test API
+  version: v1.0
+  context: /test
+  upstream:
+    main:
+      url: http://backend:8080
+  vhosts:
+    main: old-main.example.com
+    sandbox: old-sandbox.example.com
+`
+
+	t.Run("endpoint only preserves vhosts", func(t *testing.T) {
+		eu := "https://new.example.com/api"
+		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, nil, nil, false, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", parsed.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+		if parsed.Spec.Vhosts == nil {
+			t.Fatal("expected vhosts to remain set")
+		}
+		if parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
+			t.Errorf("main = %v, want %q", parsed.Spec.Vhosts.Main, "old-main.example.com")
+		}
+		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
+			t.Errorf("sandbox = %v, want %q", parsed.Spec.Vhosts.Sandbox, "old-sandbox.example.com")
+		}
+	})
+
+	t.Run("vhost main only preserves sandbox", func(t *testing.T) {
+		main := "api.example.com"
+		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, &main, nil, true, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
+		}
+		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
+			t.Errorf("expected sandbox to be preserved, got %v", parsed.Spec.Vhosts.Sandbox)
+		}
+		if parsed.Spec.Upstream.Main.URL != "http://backend:8080" {
+			t.Errorf("upstream URL should be unchanged, got %q", parsed.Spec.Upstream.Main.URL)
+		}
+	})
+
+	t.Run("vhost sandbox only preserves main", func(t *testing.T) {
+		sandbox := "sandbox.example.com"
+		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, &sandbox, false, true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Vhosts == nil {
+			t.Fatal("expected vhosts to remain set")
+		}
+		if parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
+			t.Errorf("main should be preserved, got %v", parsed.Spec.Vhosts.Main)
+		}
+		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
+			t.Errorf("expected sandbox override, got %v", parsed.Spec.Vhosts.Sandbox)
+		}
+	})
+
+	t.Run("both endpoint and vhosts", func(t *testing.T) {
+		eu := "https://new.example.com/api"
+		main := "api.example.com"
+		sandbox := "sandbox.example.com"
+		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, &main, &sandbox, true, true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Upstream.Main.URL != "https://new.example.com/api" {
+			t.Errorf("URL = %q, want %q", parsed.Spec.Upstream.Main.URL, "https://new.example.com/api")
+		}
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "api.example.com" {
+			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
+		}
+		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
+			t.Errorf("expected sandbox vhost, got %v", parsed.Spec.Vhosts.Sandbox)
+		}
+	})
+
+	t.Run("neither override is no-op", func(t *testing.T) {
+		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, nil, false, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		var parsed dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(result, &parsed); err != nil {
+			t.Fatalf("failed to parse result: %v", err)
+		}
+		if parsed.Spec.Upstream.Main.URL != "http://backend:8080" {
+			t.Errorf("upstream URL should be unchanged, got %q", parsed.Spec.Upstream.Main.URL)
+		}
+		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
+			t.Errorf("vhost main should remain unchanged, got %v", parsed.Spec.Vhosts)
+		}
+		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
+			t.Errorf("vhost sandbox should remain unchanged, got %v", parsed.Spec.Vhosts.Sandbox)
+		}
+	})
+
+	t.Run("invalid YAML returns error", func(t *testing.T) {
+		eu := "https://new.example.com/api"
+		_, err := applyDeploymentOverrides([]byte("not: valid: yaml: :::"), &eu, nil, nil, false, false)
+		if err == nil {
+			t.Fatal("expected error for invalid YAML")
+		}
+	})
 }

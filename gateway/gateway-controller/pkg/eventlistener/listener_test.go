@@ -31,7 +31,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -224,11 +224,9 @@ func testAPIKey(uuid, name, displayName, artifactUUID string) *models.APIKey {
 	return &models.APIKey{
 		UUID:         uuid,
 		Name:         name,
-		DisplayName:  displayName,
 		APIKey:       "hashed-" + uuid,
 		MaskedAPIKey: "***" + name,
 		ArtifactUUID: artifactUUID,
-		Operations:   `["*"]`,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    now,
 		CreatedBy:    "test-user",

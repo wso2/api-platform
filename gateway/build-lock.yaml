@@ -28,7 +28,7 @@ policies:
       version: v0.8.3
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0
     - name: content-length-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v0
     - name: cors
       version: v0.8.0
@@ -37,7 +37,7 @@ policies:
       version: v0.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
     - name: json-schema-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
     - name: jwt-auth
       version: v0.8.2
@@ -85,7 +85,7 @@ policies:
       version: v0.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/request-rewrite@v0
     - name: respond
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/respond@v0
     - name: semantic-cache
       version: v0.8.0
@@ -94,16 +94,16 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v0
     - name: sentence-count-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v0
     - name: set-headers
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v0
     - name: url-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0
     - name: word-count-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
     - name: json-xml-mediator
       version: v0.8.0

@@ -56,7 +56,7 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -456,7 +456,7 @@ func (t *Translator) TranslateConfigs(
 		})
 		virtualHost := &route.VirtualHost{
 			Name:    vhost,
-			Domains: []string{vhost, vhost + ":*"},
+			Domains: t.getVHostDomains(vhost),
 			Routes:  routes,
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
@@ -598,6 +598,51 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	return resources, nil
+}
+
+// getVHostDomains returns Envoy domain patterns for a resolved vhost.
+// If the vhost equals a configured default and that default has explicit domains,
+// all configured domains are used; otherwise it falls back to the vhost itself.
+func (t *Translator) getVHostDomains(effectiveVHost string) []string {
+	// appendDomainPatterns appends domain and, for bare hostnames only, domain+":*".
+	// Port-qualified entries (e.g. "api.example.com:8443") are left as-is because
+	// appending ":*" to them produces an invalid Envoy domain pattern.
+	appendDomainPatterns := func(out []string, domain string) []string {
+		domain = strings.TrimSpace(domain)
+		if domain == "" {
+			return out
+		}
+		out = append(out, domain)
+		if !strings.Contains(domain, ":") {
+			out = append(out, domain+":*")
+		}
+		return out
+	}
+
+	expand := func(domains []string) []string {
+		expanded := make([]string, 0, len(domains)*2)
+		for _, domain := range domains {
+			expanded = appendDomainPatterns(expanded, domain)
+		}
+		return expanded
+	}
+
+	mainVHost := t.config.Router.VHosts.Main
+	if effectiveVHost == mainVHost.Default && len(mainVHost.Domains) > 0 {
+		if expanded := expand(mainVHost.Domains); len(expanded) > 0 {
+			return expanded
+		}
+	}
+
+	sandboxVHost := t.config.Router.VHosts.Sandbox
+	if effectiveVHost == sandboxVHost.Default && len(sandboxVHost.Domains) > 0 {
+		if expanded := expand(sandboxVHost.Domains); len(expanded) > 0 {
+			return expanded
+		}
+	}
+
+	out := make([]string, 0, 2)
+	return appendDomainPatterns(out, effectiveVHost)
 }
 
 // translateAsyncAPIConfig translates a single API configuration

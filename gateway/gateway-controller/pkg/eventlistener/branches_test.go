@@ -198,7 +198,7 @@ func TestHandleAPIKeyUpsert_StoreConflictStopsBeforeXDS(t *testing.T) {
 
 	storedKey, err := store.GetAPIKeyByID(cfg.UUID, conflicting.UUID)
 	require.NoError(t, err)
-	assert.Equal(t, conflicting.DisplayName, storedKey.DisplayName)
+	assert.Equal(t, conflicting.Name, storedKey.Name)
 	assert.Empty(t, xdsManager.storeCalls)
 }
 

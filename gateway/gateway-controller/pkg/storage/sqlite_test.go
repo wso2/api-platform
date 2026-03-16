@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"gotest.tools/v3/assert"
@@ -879,7 +879,6 @@ func createTestAPIKey() *models.APIKey {
 		APIKey:       fmt.Sprintf("apk_%d_%d", apiKeyCounter, time.Now().UnixNano()),
 		MaskedAPIKey: "apk_***",
 		ArtifactUUID: "0000-test-api-id-0000-000000000000",
-		Operations:   "*",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",

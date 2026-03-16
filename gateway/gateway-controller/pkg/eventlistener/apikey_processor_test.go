@@ -98,7 +98,7 @@ func TestHandleEvent_APIKeyUpdate_SyncsMemoryAndXDS(t *testing.T) {
 
 	storedKey, err := store.GetAPIKeyByName(cfg.UUID, updatedKey.Name)
 	require.NoError(t, err)
-	assert.Equal(t, updatedKey.DisplayName, storedKey.DisplayName)
+	assert.Equal(t, updatedKey.Name, storedKey.Name)
 
 	if assert.Len(t, xdsManager.storeCalls, 1) {
 		assert.Equal(t, cfg.UUID, xdsManager.storeCalls[0].apiID)

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -236,7 +236,6 @@ func (cs *ConfigStore) Get(id string) (*models.StoredConfig, error) {
 	}
 	return cfg, nil
 }
-
 
 // GetAll returns all configurations
 func (cs *ConfigStore) GetAll() []*models.StoredConfig {

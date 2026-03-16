@@ -38,7 +38,7 @@ help: ## Show this help message
 
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Generating API server code from OpenAPI spec..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/openapi.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/openapi-management.yaml
 	@echo "Generating admin API models from OpenAPI admin spec..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-admin.yaml api/openapi-admin.yaml
 test: ## Run unit and integration tests
@@ -120,5 +120,5 @@ generate-listener-certs: ## Generate listener certificates
 
 generate-postman-collection: ## Generate Postman collection from OpenAPI spec
 	@echo "Generating Postman collection from OpenAPI spec..."
-	@npx openapi-to-postmanv2 -s api/openapi.yaml -o api/postman_collection.json -p
+	@npx openapi-to-postmanv2 -s api/openapi-management.yaml -o api/postman_collection.json -p
 	@echo "Postman collection generated at api/postman_collection.json"

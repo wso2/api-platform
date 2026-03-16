@@ -21,7 +21,7 @@ package models
 import (
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // StoredLLMProviderTemplate represents the LLM provider template stored in the database and in-memory

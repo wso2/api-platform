@@ -1,5 +1,5 @@
-package: api
-output: pkg/api/generated/generated.go
+package: management
+output: pkg/api/management/generated.go
 generate:
   gin-server: true
   models: true

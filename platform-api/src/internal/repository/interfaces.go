@@ -94,6 +94,10 @@ type DeploymentRepository interface {
 	SetCurrent(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (updatedAt time.Time, err error)
 	GetStatus(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
+
+	// Gateway deployment methods
+	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
+	GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error)
 }
 
 // GatewayRepository defines the interface for gateway data access
@@ -196,6 +200,17 @@ type LLMProviderRepository interface {
 	Update(p *model.LLMProvider) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
+}
+
+// APIKeyRepository defines the interface for API key persistence
+type APIKeyRepository interface {
+	Create(key *model.APIKey) error
+	Update(key *model.APIKey) error
+	Revoke(artifactUUID, name string) error
+	GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error)
+	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
+	Delete(artifactUUID, name string) error
+	ListAPIKeysByUser(orgUUID, username string, kinds []string) ([]*model.UserAPIKey, error)
 }
 
 // LLMProxyRepository defines the interface for LLM proxy persistence

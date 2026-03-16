@@ -478,8 +478,8 @@ func (u *APIUtil) upstreamAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth 
 	return apiAuth
 }
 
-// GenerateAPIDeploymentYAML creates the deployment YAML from API model
-func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error) {
+// BuildAPIDeploymentYAML builds the deployment YAML struct from API model without marshalling
+func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymentYAML, error) {
 	operationList := make([]api.OperationRequest, 0)
 	for _, op := range apiModel.Configuration.Operations {
 		operationList = append(operationList, api.OperationRequest{
@@ -545,7 +545,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error)
 		apiType = constants.WebSubApi
 	}
 
-	apiDeployment := dto.APIDeploymentYAML{
+	return &dto.APIDeploymentYAML{
 		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
 		Kind:       apiType,
 		Metadata: dto.DeploymentMetadata{
@@ -555,6 +555,14 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error)
 			},
 		},
 		Spec: apiYAMLData,
+	}, nil
+}
+
+// GenerateAPIDeploymentYAML creates the deployment YAML from API model
+func (u *APIUtil) GenerateAPIDeploymentYAML(apiModel *model.API) (string, error) {
+	apiDeployment, err := u.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		return "", err
 	}
 
 	// Convert to YAML

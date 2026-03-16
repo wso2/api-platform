@@ -151,6 +151,7 @@ var (
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyAlreadyExists = errors.New("api key already exists")
 	ErrInvalidAPIKey       = errors.New("invalid api key")
+	ErrAPIKeyForbidden     = errors.New("forbidden: only the key creator can perform this action")
 	ErrGatewayUnavailable  = errors.New("gateway unavailable")
 	ErrAPIKeyEventDelivery = errors.New("failed to deliver api key event to gateway")
 	ErrAPIKeyHashingFailed = errors.New("failed to hash api key")
@@ -171,4 +172,10 @@ var (
 	ErrSubscriptionPlanNotFound           = errors.New("subscription plan not found")
 	ErrSubscriptionPlanNotFoundOrInactive = errors.New("subscription plan not found or not active")
 	ErrSubscriptionPlanAlreadyExists      = errors.New("subscription plan with this name already exists for the organization")
+)
+
+var (
+	// Gateway Internal API errors
+	ErrMissingAPIKey   = errors.New("API key is required")
+	ErrInvalidAPIToken = errors.New("invalid API token")
 )

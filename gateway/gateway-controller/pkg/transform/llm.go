@@ -21,7 +21,7 @@ package transform
 import (
 	"fmt"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -32,7 +32,7 @@ import (
 // It first uses the existing LLMProviderTransformer to produce a RestAPI, then runs
 // RestAPITransformer on the result, and finally enriches the metadata with LLM-specific fields.
 type LLMTransformer struct {
-	llmTransformer *utils.LLMProviderTransformer
+	llmTransformer  *utils.LLMProviderTransformer
 	restTransformer *RestAPITransformer
 	store           *storage.ConfigStore
 }

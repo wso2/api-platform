@@ -1,10 +1,7 @@
 name: json-schema-guardrail
-version: v0.1.0
+version: v0.2.1
 description: |
-  Validates request or response body content against a JSON Schema.
-  Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Can be configured with inverted logic to pass when schema validation fails.
-  Supports separate configuration for request and response phases.
+  Validate request or response content against a JSON Schema.
 
 parameters:
   type: object
@@ -13,64 +10,82 @@ parameters:
       type: object
       description: Configuration for request phase validation
       properties:
+        enabled:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          description: Enables validation for the request flow.
+          default: false
         schema:
           type: string
-          description: |
-            JSON Schema as a string (must be valid JSON).
-            Supports all JSON Schema draft 7 features including types, properties, required fields, constraints, etc.
-            Example: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
+          description: Provide the JSON Schema as a valid JSON string for validating the extracted or full payload.
         jsonPath:
           type: string
+          x-wso2-policy-advanced-param: false
           description: |
-            JSONPath expression to extract a specific value from JSON payload for validation.
-            If empty, validates the entire payload against the schema.
-            Examples: "$.data", "$.userInfo", "$.items[0]"
-          default: ""
+            Extract JSON with JSONPath before schema validation.
+          default: "$.messages[-1].content"
         invert:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, validation passes when schema validation FAILS (inverted logic).
             If false (default), validation passes when schema validation succeeds.
           default: false
         showAssessment:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, includes detailed validation error information in error responses.
             If false, returns minimal error information.
           default: false
-      required:
-      - schema
+      anyOf:
+      - properties:
+          enabled:
+            const: false
+        required:
+        - enabled
+      - required:
+        - schema
     response:
       type: object
       description: Configuration for response phase validation
       properties:
+        enabled:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          description: Enables validation for the response flow.
+          default: true
         schema:
           type: string
-          description: |
-            JSON Schema as a string (must be valid JSON).
-            Supports all JSON Schema draft 7 features including types, properties, required fields, constraints, etc.
-            Example: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
+          description: Provide the JSON Schema as a valid JSON string for validating the extracted or full payload.
         jsonPath:
           type: string
+          x-wso2-policy-advanced-param: false
           description: |
-            JSONPath expression to extract a specific value from JSON payload for validation.
-            If empty, validates the entire payload against the schema.
-            Examples: "$.data", "$.userInfo", "$.items[0]"
-          default: ""
+            Extract JSON with JSONPath before schema validation.
+          default: "$.choices[0].message.content"
         invert:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, validation passes when schema validation FAILS (inverted logic).
             If false (default), validation passes when schema validation succeeds.
           default: false
         showAssessment:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, includes detailed validation error information in error responses.
             If false, returns minimal error information.
           default: false
-      required:
-      - schema
+      anyOf:
+      - properties:
+          enabled:
+            const: false
+        required:
+        - enabled
+      - required:
+        - schema
 
 systemParameters:         
   type: object

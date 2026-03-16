@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"gopkg.in/yaml.v3"
 )
 

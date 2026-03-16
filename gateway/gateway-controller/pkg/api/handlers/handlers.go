@@ -39,8 +39,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
@@ -1916,11 +1916,11 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		return
 	}
 
-	// If API key is not provided, return an error
-	if request.ApiKey == nil {
+	// If plain-text API key is not provided, return an error
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "API key value is required",
+			Message: "apiKey is required",
 		})
 		return
 	}
@@ -2187,6 +2187,10 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiId is required"})
 		return
 	}
+	if strings.TrimSpace(req.SubscriptionToken) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "subscriptionToken is required"})
+		return
+	}
 
 	// Resolve apiId (deployment ID or handle) to the internal deployment ID used for persistence.
 	apiID, err := s.resolveAPIIDByHandle(c, req.ApiId, log)
@@ -2273,6 +2277,7 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		ApplicationID:      appID,
 		SubscriptionPlanID: req.SubscriptionPlanId,
 		Status:             status,
+		SubscriptionToken:  strings.TrimSpace(req.SubscriptionToken),
 	}
 	if err := s.db.SaveSubscription(sub); err != nil {
 		if storage.IsConflictError(err) {
@@ -2752,14 +2757,15 @@ func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionP
 }
 
 // subscriptionToResponse builds a response without the subscription token.
-// The token is only returned once at creation; DB reads contain hashes and must never be exposed.
+// DB reads only have subscription_token_hash; token is never stored. Token is returned only at creation via subscriptionToResponseWithToken.
 func subscriptionToResponse(sub *models.Subscription) api.SubscriptionResponse {
 	resp := api.SubscriptionResponse{
-		Id:        ptr(sub.ID),
-		ApiId:     ptr(sub.APIID),
-		GatewayId: ptr(sub.GatewayID),
-		CreatedAt: &sub.CreatedAt,
-		UpdatedAt: &sub.UpdatedAt,
+		Id:                ptr(sub.ID),
+		ApiId:             ptr(sub.APIID),
+		GatewayId:         ptr(sub.GatewayID),
+		CreatedAt:         &sub.CreatedAt,
+		UpdatedAt:         &sub.UpdatedAt,
+		SubscriptionToken: nil, // Explicitly omit; gateway does not store token, use Platform-API to retrieve
 	}
 	if sub.ApplicationID != nil {
 		resp.ApplicationId = sub.ApplicationID

@@ -33,6 +33,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}},"required":["name","age"]}'
           - method: GET
             path: /health
@@ -70,6 +72,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}},"required":["name","age"]}'
           - method: GET
             path: /health
@@ -108,6 +112,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"username":{"type":"string"},"email":{"type":"string"}},"required":["username","email"]}'
           - method: GET
             path: /health
@@ -146,6 +152,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}},"required":["name","age"]}'
           - method: GET
             path: /health
@@ -187,6 +195,7 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   response:
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"method":{"type":"string"},"path":{"type":"string"}},"required":["method","path"]}'
           - method: GET
             path: /health
@@ -225,8 +234,11 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}'
                   response:
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"method":{"type":"string"}},"required":["method"]}'
           - method: GET
             path: /health
@@ -268,6 +280,7 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
                     schema: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
                     jsonPath: $.user
           - method: GET
@@ -306,6 +319,7 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
                     schema: '{"type":"object","properties":{"age":{"type":"integer","minimum":18}},"required":["age"]}'
                     jsonPath: $.user
           - method: GET
@@ -344,6 +358,7 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
                     schema: '{"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string"},"zipCode":{"type":"string"}},"required":["street","city","zipCode"]}'
                     jsonPath: $.order.shippingAddress
           - method: GET
@@ -386,6 +401,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"dangerousCommand":{"type":"string","pattern":"^(rm|delete|drop).*"}},"required":["dangerousCommand"]}'
                     invert: true
           - method: GET
@@ -424,6 +441,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"command":{"type":"string","pattern":"^(rm|delete|drop).*"}},"required":["command"]}'
                     invert: true
           - method: GET
@@ -462,6 +481,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"query":{"type":"string","pattern":".*DROP TABLE.*"}}}'
                     invert: true
           - method: GET
@@ -504,6 +525,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"name":{"type":"string","minLength":3},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
                     showAssessment: true
           - method: GET
@@ -543,6 +566,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}'
                     showAssessment: false
           - method: GET
@@ -586,6 +611,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"username":{"type":"string","minLength":3,"maxLength":20}},"required":["username"]}'
           - method: GET
             path: /health
@@ -623,6 +650,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"price":{"type":"number","minimum":0,"maximum":10000}},"required":["price"]}'
           - method: GET
             path: /health
@@ -660,6 +689,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"tags":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":5}},"required":["tags"]}'
           - method: GET
             path: /health
@@ -697,6 +728,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"status":{"type":"string","enum":["pending","processing","completed","cancelled"]}},"required":["status"]}'
           - method: GET
             path: /health
@@ -734,6 +767,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"email":{"type":"string","pattern":"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"}},"required":["email"]}'
           - method: GET
             path: /health
@@ -775,6 +810,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"name":{"type":"string"},"address":{"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string"}},"required":["street","city"]}},"required":["name","address"]}'
           - method: GET
             path: /health
@@ -812,6 +849,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"productId":{"type":"string"},"quantity":{"type":"integer","minimum":1}},"required":["productId","quantity"]}}},"required":["items"]}'
           - method: GET
             path: /health
@@ -853,6 +892,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"data":{"type":"string"}},"required":["data"]}'
           - method: GET
             path: /health
@@ -889,6 +930,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object"}'
           - method: GET
             path: /health
@@ -926,6 +969,7 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
                     schema: '{"type":"object"}'
                     jsonPath: $.nonexistent.field
           - method: GET
@@ -968,6 +1012,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"username":{"type":"string","minLength":3,"maxLength":20,"pattern":"^[a-zA-Z0-9_]+$"},"email":{"type":"string","pattern":"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"},"password":{"type":"string","minLength":8},"age":{"type":"integer","minimum":13},"termsAccepted":{"type":"boolean","enum":[true]}},"required":["username","email","password","age","termsAccepted"]}'
                     showAssessment: true
           - method: GET
@@ -1006,6 +1052,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"query":{"type":"string","pattern":".*((DROP|DELETE|INSERT|UPDATE|SELECT).*(TABLE|FROM|WHERE)).*"}}}'
                     invert: true
           - method: GET
@@ -1044,6 +1092,8 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"customerId":{"type":"string","minLength":1},"items":{"type":"array","items":{"type":"object","properties":{"productId":{"type":"string"},"quantity":{"type":"integer","minimum":1},"price":{"type":"number","minimum":0}},"required":["productId","quantity","price"]},"minItems":1},"shippingAddress":{"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string"},"zipCode":{"type":"string","pattern":"^[0-9]{5}$"}},"required":["street","city","zipCode"]},"paymentMethod":{"type":"string","enum":["credit_card","paypal","bank_transfer"]}},"required":["customerId","items","shippingAddress","paymentMethod"]}'
                     showAssessment: true
           - method: GET
@@ -1082,6 +1132,7 @@ Feature: JSON Schema Guardrail Policy
                 version: v0
                 params:
                   response:
+                    jsonPath: ""
                     schema: '{"type":"object","properties":{"method":{"type":"string"},"path":{"type":"string"},"headers":{"type":"object"}},"required":["method","path","headers"]}'
                     showAssessment: true
           - method: GET

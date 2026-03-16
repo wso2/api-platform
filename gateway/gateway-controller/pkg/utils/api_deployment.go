@@ -30,8 +30,9 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -333,6 +334,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
+	// Resolve gateway-default sentinels to the current config values before persisting so that
+	// the stored vhosts are immune to future gateway config changes.
+	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
+	}
+	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
+	// (the DB layer marshals SourceConfiguration, not Configuration).
+	storedCfg.SourceConfiguration = storedCfg.Configuration
+
 	// Try to save/update the configuration
 	var saveErr error
 	isUpdate, saveErr = s.saveOrUpdateConfig(storedCfg, params.Logger)
@@ -614,4 +624,74 @@ func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpCl
 	}
 
 	return fmt.Errorf("WebSubHub request failed after %d retries; last status: %d", maxRetries, lastStatus)
+}
+
+// resolveVhostSentinels replaces the gateway-default sentinel in a RestAPI or WebSubAPI's vhosts
+// with the actual default values from the router config. This ensures that the stored value is
+// always a concrete hostname, making deployments immune to future gateway config changes.
+// cfg must be a pointer to an any holding either api.RestAPI or api.WebSubAPI.
+func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
+	if cfg == nil || routerCfg == nil {
+		return nil
+	}
+	switch c := (*cfg).(type) {
+	case api.RestAPI:
+		if c.Spec.Vhosts == nil {
+			// Populate defaults when vhosts is omitted entirely (e.g. direct gateway deployment
+			// without platform-api injecting sentinels). This freezes the current gateway defaults
+			// so that routing is immune to future config changes.
+			main := routerCfg.VHosts.Main.Default
+			c.Spec.Vhosts = &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: main,
+			}
+			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+				c.Spec.Vhosts.Sandbox = &sandboxDefault
+			}
+			*cfg = c
+			return nil
+		}
+		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
+			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		}
+		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
+			resolved := routerCfg.VHosts.Sandbox.Default
+			if resolved != "" {
+				c.Spec.Vhosts.Sandbox = &resolved
+			} else {
+				c.Spec.Vhosts.Sandbox = nil
+			}
+		}
+		*cfg = c
+	case api.WebSubAPI:
+		if c.Spec.Vhosts == nil {
+			main := routerCfg.VHosts.Main.Default
+			c.Spec.Vhosts = &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: main,
+			}
+			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+				c.Spec.Vhosts.Sandbox = &sandboxDefault
+			}
+			*cfg = c
+			return nil
+		}
+		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
+			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		}
+		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
+			resolved := routerCfg.VHosts.Sandbox.Default
+			if resolved != "" {
+				c.Spec.Vhosts.Sandbox = &resolved
+			} else {
+				c.Spec.Vhosts.Sandbox = nil
+			}
+		}
+		*cfg = c
+	}
+	return nil
 }

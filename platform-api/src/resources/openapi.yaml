@@ -3147,6 +3147,82 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List API keys for an LLM provider
+      description: Returns all API keys associated with the specified LLM provider. The plain key value is never returned.
+      operationId: listLLMProviderAPIKeys
+      tags:
+        - LLM Providers
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+      responses:
+        '200':
+          description: List of API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderAPIKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{id}/api-keys/{keyName}:
+    delete:
+      summary: Delete an API key for an LLM provider
+      description: |
+        Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
+      operationId: deleteLLMProviderAPIKey
+      tags:
+        - LLM Providers
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: keyName
+          in: path
+          required: true
+          description: Name of the API key to delete
+          schema:
+            type: string
+          example: my-api-key
+      responses:
+        '204':
+          description: API key deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: No gateway connections available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /llm-proxies:
     post:
@@ -3349,6 +3425,119 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List API keys for an LLM proxy
+      description: Returns all API keys associated with the specified LLM proxy. The plain key value is never returned.
+      operationId: listLLMProxyAPIKeys
+      tags:
+        - LLM Proxies
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+          example: wso2-openai-proxy
+      responses:
+        '200':
+          description: List of API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyAPIKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{id}/api-keys/{keyName}:
+    delete:
+      summary: Delete an API key for an LLM proxy
+      description: |
+        Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
+      operationId: deleteLLMProxyAPIKey
+      tags:
+        - LLM Proxies
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+          example: wso2-openai-proxy
+        - name: keyName
+          in: path
+          required: true
+          description: Name of the API key to delete
+          schema:
+            type: string
+          example: my-api-key
+      responses:
+        '204':
+          description: API key deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM proxy or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: No gateway connections available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /me/api-keys:
+    get:
+      summary: List API keys for the current user
+      description: |
+        Returns API keys created by the caller within the organization.
+        Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
+        The plain key value is never returned.
+      operationId: listUserAPIKeys
+      tags:
+        - API Keys
+      parameters:
+        - name: type
+          in: query
+          description: |
+            Comma-separated list of artifact types to filter by.
+            If omitted, all types are returned.
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [RestApi, LlmProvider, LlmProxy]
+          style: form
+          explode: false
+          example: LlmProxy,LlmProvider
+      responses:
+        '200':
+          description: List of API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAPIKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3804,6 +3993,111 @@ components:
         Example: `Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...`
 
   schemas:
+    APIKeyItem:
+      type: object
+      required:
+        - name
+        - maskedApiKey
+        - status
+        - createdAt
+        - createdBy
+        - updatedAt
+        - allowedTargets
+      properties:
+        name:
+          type: string
+          description: URL-safe identifier of the API key
+        maskedApiKey:
+          type: string
+          description: Masked representation of the API key for display purposes
+        status:
+          type: string
+          description: Current status of the key
+          enum: [active, revoked, expired]
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the key was created
+        createdBy:
+          type: string
+          description: User who created the key
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the key was last updated
+        expiresAt:
+          type: string
+          format: date-time
+          description: Optional expiration timestamp
+        issuer:
+          type: string
+          description: Optional identifier of the developer portal that provisioned this key
+        allowedTargets:
+          type: string
+          description: "Comma-separated list of allowed gateways; 'ALL' means unrestricted"
+
+    UserAPIKeyItem:
+      allOf:
+        - $ref: '#/components/schemas/APIKeyItem'
+        - type: object
+          required:
+            - artifactId
+            - artifactType
+          properties:
+            artifactId:
+              type: string
+              description: Handle (ID) of the artifact this key belongs to
+              example: wso2-openai-provider
+            artifactType:
+              type: string
+              enum: [RestApi, LlmProvider, LlmProxy]
+              description: Type of the artifact this key belongs to
+
+    UserAPIKeyListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserAPIKeyItem'
+          description: List of API keys
+        count:
+          type: integer
+          description: Total number of API keys returned
+
+    LLMProviderAPIKeyListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyItem'
+          description: List of API keys
+        count:
+          type: integer
+          description: Total number of API keys returned
+
+    LLMProxyAPIKeyListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyItem'
+          description: List of API keys
+        count:
+          type: integer
+          description: Total number of API keys returned
+
     Organization:
       type: object
       required:
@@ -4768,18 +5062,20 @@ components:
           description: Optional reference ID for tracing purposes (from external platforms)
           nullable: true
           example: "ext-ref-12345"
-        operations:
-          type: string
-          description: |
-            Specifies which API operations this key can access. Use "*" for all operations.
-          default: "*"
-          example: "*"
         expiresAt:
           type: string
           format: date-time
           description: Optional expiration time in ISO 8601 format
           nullable: true
           example: "2026-12-31T23:59:59Z"
+        expiresIn:
+          $ref: '#/components/schemas/ExpirationDuration'
+          description: Optional expiration duration
+        issuer:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "api-platform-devportal"
 
     CreateAPIKeyResponse:
       type: object
@@ -4824,12 +5120,6 @@ components:
           description: Optional reference ID for tracing purposes (from external platforms)
           nullable: true
           example: "ext-ref-12345"
-        operations:
-          type: string
-          description: |
-            Specifies which API operations this key can access. Use "*" for all operations.
-          default: "*"
-          example: "*"
         expiresAt:
           type: string
           format: date-time
@@ -4839,6 +5129,10 @@ components:
         expiresIn:
           $ref: '#/components/schemas/ExpirationDuration'
           description: Optional expiration duration
+        issuer:
+          type: string
+          description: Identifies the portal that created this key
+          example: "api-platform-devportal"
 
     UpdateAPIKeyResponse:
       type: object
@@ -5824,7 +6118,7 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional metadata for the deployment (e.g., endpointUrl overrides)
+          description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 
     DeploymentResponse:
       type: object
@@ -6718,6 +7012,18 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
+        issuer:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "api-platform-devportal"
+        allowedTargets:
+          type: string
+          description: |
+            Comma-separated list of gateways this key is valid for.
+            Use 'ALL' to allow all targets (default).
+          nullable: true
+          example: "dev_gateway,test_gateway"
     CreateLLMProviderAPIKeyResponse:
       type: object
       required:
@@ -6761,6 +7067,18 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
+        issuer:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "api-platform-devportal"
+        allowedTargets:
+          type: string
+          description: |
+            Comma-separated list of gateways this key is valid for.
+            Use 'ALL' to allow all targets (default).
+          nullable: true
+          example: "dev_gateway,test_gateway"
     CreateLLMProxyAPIKeyResponse:
       type: object
       required:

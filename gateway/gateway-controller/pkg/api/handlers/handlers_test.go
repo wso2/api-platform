@@ -38,9 +38,9 @@ import (
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -897,7 +897,6 @@ func createTestAPIKeyRequestBody(t *testing.T, name, displayName, apiKeyValue st
 
 	request := api.APIKeyCreationRequest{
 		Name:        &name,
-		DisplayName: &displayName,
 		ApiKey:      &apiKeyValue,
 	}
 
@@ -911,11 +910,9 @@ func createStoredExternalAPIKey(id, apiID, name, displayName, createdBy, maskedA
 	return &models.APIKey{
 		UUID:         id,
 		Name:         name,
-		DisplayName:  displayName,
 		APIKey:       "hashed-value",
 		MaskedAPIKey: maskedAPIKey,
 		ArtifactUUID: apiID,
-		Operations:   "[\"*\"]",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    now.Add(-1 * time.Hour),
 		CreatedBy:    createdBy,
@@ -2962,7 +2959,7 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Equal(t, "error", response.Status)
-	assert.Equal(t, "API key value is required", response.Message)
+	assert.Equal(t, "apiKey is required", response.Message)
 }
 
 func TestUpdateAPIKeyWithDBAndEventHub(t *testing.T) {
@@ -3000,7 +2997,6 @@ func TestUpdateAPIKeyWithDBAndEventHub(t *testing.T) {
 
 	updatedKey, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
 	require.NoError(t, err)
-	assert.Equal(t, "Updated Key", updatedKey.DisplayName)
 	assert.Equal(t, models.APIKeyStatusActive, updatedKey.Status)
 	assert.Equal(t, string(api.External), updatedKey.Source)
 	assert.NotEqual(t, "apip_****old", updatedKey.MaskedAPIKey)
@@ -3035,7 +3031,6 @@ func TestUpdateAPIKeyDBError(t *testing.T) {
 
 	storedKey, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
 	require.NoError(t, err)
-	assert.Equal(t, "Old Key", storedKey.DisplayName)
 	assert.Equal(t, "apip_****old", storedKey.MaskedAPIKey)
 }
 

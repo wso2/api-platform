@@ -583,3 +583,154 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 
 	return deployments, nil
 }
+
+// GetAllDeploymentsByGateway retrieves all deployments for a specific gateway
+// Returns lightweight DeploymentInfo for listing deployments
+// Only returns deployments that have an active status (DEPLOYED or UNDEPLOYED)
+// Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp) to ensure
+// dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
+// If since is provided, only returns deployments updated after that timestamp
+func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
+	var query string
+	var args []interface{}
+
+	if since != nil {
+		query = `
+			SELECT
+				s.deployment_id,
+				s.artifact_uuid,
+				a.handle,
+				a.kind,
+				s.status,
+				s.updated_at
+			FROM deployment_status s
+			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
+			WHERE s.gateway_uuid = ? AND s.organization_uuid = ? AND s.updated_at > ?
+			ORDER BY 
+				CASE a.kind 
+					WHEN 'RestApi' THEN 1 
+					WHEN 'LlmProvider' THEN 2 
+					WHEN 'LlmProxy' THEN 3 
+					WHEN 'Mcp' THEN 4 
+					ELSE 5 
+				END,
+				s.updated_at DESC
+		`
+		args = []interface{}{gatewayID, orgUUID, *since}
+	} else {
+		query = `
+			SELECT
+				s.deployment_id,
+				s.artifact_uuid,
+				a.handle,
+				a.kind,
+				s.status,
+				s.updated_at
+			FROM deployment_status s
+			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
+			WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
+			ORDER BY 
+				CASE a.kind 
+					WHEN 'RestApi' THEN 1 
+					WHEN 'LlmProvider' THEN 2 
+					WHEN 'LlmProxy' THEN 3 
+					WHEN 'Mcp' THEN 4 
+					ELSE 5 
+				END,
+				s.updated_at DESC
+		`
+		args = []interface{}{gatewayID, orgUUID}
+	}
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []*model.DeploymentInfo
+	for rows.Next() {
+		dep := &model.DeploymentInfo{}
+		var statusStr string
+
+		err := rows.Scan(
+			&dep.DeploymentID,
+			&dep.ArtifactID,
+			&dep.Handle,
+			&dep.Kind,
+			&statusStr,
+			&dep.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		dep.Status = model.DeploymentStatus(statusStr)
+		deployments = append(deployments, dep)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during deployment info iteration: %w", err)
+	}
+
+	return deployments, nil
+}
+
+// GetDeploymentContentByIDs retrieves deployment content for a batch of deployment IDs.
+// Returns a map of deploymentID -> DeploymentContent.
+// This is the only query that joins with the artifacts table to fetch Kind,
+// keeping that concern isolated to the batch sync use case.
+func (r *DeploymentRepo) GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error) {
+	if len(deploymentIDs) == 0 {
+		return map[string]*model.DeploymentContent{}, nil
+	}
+
+	placeholders := make([]string, len(deploymentIDs))
+	args := make([]interface{}, len(deploymentIDs)+2)
+	for i, id := range deploymentIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	args[len(deploymentIDs)] = orgUUID
+	args[len(deploymentIDs)+1] = gatewayUUID
+
+	query := fmt.Sprintf(`
+		SELECT d.deployment_id, d.artifact_uuid, a.kind, d.content
+		FROM deployments d
+		INNER JOIN artifacts a ON d.artifact_uuid = a.uuid
+		WHERE d.deployment_id IN (%s) AND d.organization_uuid = ? AND d.gateway_uuid = ?
+	`, joinStrings(placeholders, ","))
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]*model.DeploymentContent)
+	for rows.Next() {
+		dc := &model.DeploymentContent{}
+		if err := rows.Scan(&dc.DeploymentID, &dc.ArtifactID, &dc.Kind, &dc.Content); err != nil {
+			return nil, err
+		}
+		result[dc.DeploymentID] = dc
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during deployment content iteration: %w", err)
+	}
+
+	return result, nil
+}
+
+// joinStrings joins strings with a separator (helper for building IN clauses)
+func joinStrings(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
+}
