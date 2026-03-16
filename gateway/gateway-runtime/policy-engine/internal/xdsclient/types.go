@@ -35,6 +35,9 @@ const (
 	// SubscriptionStateTypeURL is the custom type URL for subscription state
 	SubscriptionStateTypeURL = "api-platform.wso2.org/v1.SubscriptionState"
 
+	// RouteConfigTypeURL is the custom type URL for route config (metadata + resolver)
+	RouteConfigTypeURL = "api-platform.wso2.org/v1.RouteConfig"
+
 	// Default configuration values
 	DefaultConnectTimeout        = 10 * time.Second
 	DefaultRequestTimeout        = 5 * time.Second

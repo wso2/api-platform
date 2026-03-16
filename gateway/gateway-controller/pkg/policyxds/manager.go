@@ -20,47 +20,56 @@ package policyxds
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
-// PolicyManager manages policy configurations and snapshot updates
+// PolicyManager manages runtime deploy configurations and snapshot updates.
+// It supports both the legacy PolicyStore API (AddPolicy/RemovePolicy) and
+// the new RuntimeConfigStore API (AddRuntimeConfig/RemoveRuntimeConfig).
 type PolicyManager struct {
-	store           *storage.PolicyStore
+	runtimeStore    *storage.RuntimeConfigStore
+	legacyStore     *storage.PolicyStore
 	snapshotManager *SnapshotManager
 	logger          *slog.Logger
 }
 
-// NewPolicyManager creates a new policy manager
-func NewPolicyManager(store *storage.PolicyStore, snapshotManager *SnapshotManager, logger *slog.Logger) *PolicyManager {
+// NewPolicyManager creates a new policy manager using the legacy PolicyStore.
+// The legacy store is used for backward-compatible AddPolicy/RemovePolicy/GetPolicy/ListPolicies.
+func NewPolicyManager(legacyStore *storage.PolicyStore, snapshotManager *SnapshotManager, logger *slog.Logger) *PolicyManager {
 	return &PolicyManager{
-		store:           store,
+		legacyStore:     legacyStore,
 		snapshotManager: snapshotManager,
 		logger:          logger,
 	}
 }
 
-// AddPolicy adds or updates a policy configuration
+// SetRuntimeStore sets the RuntimeConfigStore for the new API path.
+func (pm *PolicyManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
+	pm.runtimeStore = store
+}
+
+// --- Legacy API (backward compatible with StoredPolicyConfig) ---
+
+// AddPolicy adds a StoredPolicyConfig to the legacy store and triggers snapshot update.
 func (pm *PolicyManager) AddPolicy(policy *models.StoredPolicyConfig) error {
-	// Store the policy
-	if err := pm.store.Set(policy); err != nil {
+	if pm.legacyStore == nil {
+		return fmt.Errorf("legacy policy store not configured")
+	}
+
+	if err := pm.legacyStore.Set(policy); err != nil {
 		return fmt.Errorf("failed to store policy: %w", err)
 	}
 
-	pm.logger.Info("Policy configuration added",
+	pm.logger.Info("Policy configuration added (legacy)",
 		slog.String("id", policy.ID),
-		slog.String("api_name", policy.APIName()),
-		slog.String("version", policy.APIVersion()),
-		slog.String("context", policy.Context()))
+		slog.String("id", policy.ID))
 
-	// Update xDS snapshot
-	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
-		pm.logger.Error("Failed to update policy snapshot after adding policy",
+	if err := pm.snapshotManager.UpdateSnapshotLegacy(context.Background(), pm.legacyStore); err != nil {
+		pm.logger.Error("Failed to update snapshot after adding policy",
 			slog.String("id", policy.ID),
 			slog.Any("error", err))
 		return fmt.Errorf("failed to update snapshot: %w", err)
@@ -69,17 +78,20 @@ func (pm *PolicyManager) AddPolicy(policy *models.StoredPolicyConfig) error {
 	return nil
 }
 
-// RemovePolicy removes a policy configuration
+// RemovePolicy removes a StoredPolicyConfig by ID and triggers snapshot update.
 func (pm *PolicyManager) RemovePolicy(id string) error {
-	if err := pm.store.Delete(id); err != nil {
-		return fmt.Errorf("failed to delete policy: %w", err)
+	if pm.legacyStore == nil {
+		return fmt.Errorf("legacy policy store not configured")
 	}
 
-	pm.logger.Info("Policy configuration removed", slog.String("id", id))
+	if err := pm.legacyStore.Delete(id); err != nil {
+		return err
+	}
 
-	// Update xDS snapshot
-	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
-		pm.logger.Error("Failed to update policy snapshot after removing policy",
+	pm.logger.Info("Policy configuration removed (legacy)", slog.String("id", id))
+
+	if err := pm.snapshotManager.UpdateSnapshotLegacy(context.Background(), pm.legacyStore); err != nil {
+		pm.logger.Error("Failed to update snapshot after removing policy",
 			slog.String("id", id),
 			slog.Any("error", err))
 		return fmt.Errorf("failed to update snapshot: %w", err)
@@ -88,39 +100,104 @@ func (pm *PolicyManager) RemovePolicy(id string) error {
 	return nil
 }
 
-// GetPolicy retrieves a policy by ID
+// GetPolicy retrieves a StoredPolicyConfig by ID from the legacy store.
 func (pm *PolicyManager) GetPolicy(id string) (*models.StoredPolicyConfig, error) {
-	policy, exists := pm.store.Get(id)
+	if pm.legacyStore == nil {
+		return nil, fmt.Errorf("legacy policy store not configured")
+	}
+
+	policy, exists := pm.legacyStore.Get(id)
 	if !exists {
 		return nil, fmt.Errorf("policy not found: %s", id)
 	}
 	return policy, nil
 }
 
-// ListPolicies returns all policies
+// ListPolicies returns all StoredPolicyConfigs from the legacy store.
 func (pm *PolicyManager) ListPolicies() []*models.StoredPolicyConfig {
-	return pm.store.GetAll()
+	if pm.legacyStore == nil {
+		return nil
+	}
+	return pm.legacyStore.GetAll()
 }
 
-// GetResourceVersion returns the current policy resource version used for xDS updates.
+// --- New RuntimeDeployConfig API ---
+
+// AddRuntimeConfig adds or updates a RuntimeDeployConfig and triggers snapshot update.
+func (pm *PolicyManager) AddRuntimeConfig(key string, rdc *models.RuntimeDeployConfig) error {
+	if pm.runtimeStore == nil {
+		return fmt.Errorf("runtime config store not configured")
+	}
+
+	pm.runtimeStore.Set(key, rdc)
+
+	pm.logger.Info("Runtime deploy config added",
+		slog.String("key", key),
+		slog.String("kind", rdc.Metadata.Kind),
+		slog.String("name", rdc.Metadata.DisplayName),
+		slog.Int("routes", len(rdc.Routes)),
+		slog.Int("policy_chains", len(rdc.PolicyChains)))
+
+	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
+		pm.logger.Error("Failed to update snapshot after adding runtime config",
+			slog.String("key", key),
+			slog.Any("error", err))
+		return fmt.Errorf("failed to update snapshot: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveRuntimeConfig removes a RuntimeDeployConfig and triggers snapshot update.
+func (pm *PolicyManager) RemoveRuntimeConfig(key string) error {
+	if pm.runtimeStore == nil {
+		return fmt.Errorf("runtime config store not configured")
+	}
+
+	if err := pm.runtimeStore.Delete(key); err != nil {
+		return fmt.Errorf("failed to delete runtime config: %w", err)
+	}
+
+	pm.logger.Info("Runtime deploy config removed", slog.String("key", key))
+
+	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
+		pm.logger.Error("Failed to update snapshot after removing runtime config",
+			slog.String("key", key),
+			slog.Any("error", err))
+		return fmt.Errorf("failed to update snapshot: %w", err)
+	}
+
+	return nil
+}
+
+// GetRuntimeConfig retrieves a RuntimeDeployConfig by key.
+func (pm *PolicyManager) GetRuntimeConfig(key string) (*models.RuntimeDeployConfig, error) {
+	if pm.runtimeStore == nil {
+		return nil, fmt.Errorf("runtime config store not configured")
+	}
+
+	rdc, exists := pm.runtimeStore.Get(key)
+	if !exists {
+		return nil, fmt.Errorf("runtime config not found: %s", key)
+	}
+	return rdc, nil
+}
+
+// ListRuntimeConfigs returns all RuntimeDeployConfigs.
+func (pm *PolicyManager) ListRuntimeConfigs() []*models.RuntimeDeployConfig {
+	if pm.runtimeStore == nil {
+		return nil
+	}
+	return pm.runtimeStore.GetAll()
+}
+
+// GetResourceVersion returns the current resource version used for xDS updates.
 func (pm *PolicyManager) GetResourceVersion() int64 {
-	return pm.store.GetResourceVersion()
-}
-
-// ParsePolicyJSON parses a policy configuration from JSON string
-func ParsePolicyJSON(jsonStr string) (*policyenginev1.Configuration, error) {
-	var config policyenginev1.Configuration
-	if err := json.Unmarshal([]byte(jsonStr), &config); err != nil {
-		return nil, fmt.Errorf("failed to parse policy JSON: %w", err)
+	if pm.runtimeStore != nil {
+		return pm.runtimeStore.GetResourceVersion()
 	}
-	return &config, nil
-}
-
-// CreateStoredPolicy creates a StoredPolicyConfig from a PolicyConfiguration
-func CreateStoredPolicy(id string, config policyenginev1.Configuration) *models.StoredPolicyConfig {
-	return &models.StoredPolicyConfig{
-		ID:            id,
-		Configuration: config,
-		Version:       config.Metadata.ResourceVersion,
+	if pm.legacyStore != nil {
+		return pm.legacyStore.GetResourceVersion()
 	}
+	return 0
 }

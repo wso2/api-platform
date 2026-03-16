@@ -68,7 +68,8 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	defer cs.mu.Unlock()
 
 	key := cfg.GetCompositeKey()
-	if existingID, exists := cs.handle[cfg.Handle]; exists {
+	handleKey := cfg.Kind + ":" + cfg.Handle
+	if existingID, exists := cs.handle[handleKey]; exists {
 		return fmt.Errorf("%w: configuration with handle '%s' already exists (ID: %s)",
 			ErrConflict, cfg.Handle, existingID)
 	}
@@ -78,7 +79,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	}
 
 	cs.configs[cfg.UUID] = cfg
-	cs.handle[cfg.Handle] = cfg.UUID
+	cs.handle[handleKey] = cfg.UUID
 	cs.nameVersion[key] = cfg.UUID
 
 	// Store labels if present
@@ -112,15 +113,17 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	// If handle changed, update the handle index
 	oldHandle := existing.Handle
 	newHandle := cfg.Handle
+	oldHandleKey := existing.Kind + ":" + oldHandle
+	newHandleKey := cfg.Kind + ":" + newHandle
 
-	if oldHandle != newHandle {
+	if oldHandleKey != newHandleKey {
 		// Check if new handle already exists
-		if existingUUID, exists := cs.handle[newHandle]; exists && existingUUID != cfg.UUID {
+		if existingUUID, exists := cs.handle[newHandleKey]; exists && existingUUID != cfg.UUID {
 			return fmt.Errorf("%w: configuration with handle '%s' already exists (UUID: %s)",
 				ErrConflict, newHandle, existingUUID)
 		}
-		delete(cs.handle, oldHandle)
-		cs.handle[newHandle] = cfg.UUID
+		delete(cs.handle, oldHandleKey)
+		cs.handle[newHandleKey] = cfg.UUID
 	}
 
 	// If name/version changed, update the nameVersion index
@@ -214,7 +217,7 @@ func (cs *ConfigStore) Delete(id string) error {
 	if cfg.Kind == "WebSubApi" {
 		cs.TopicManager.RemoveAllForConfig(cfg.UUID)
 	}
-	delete(cs.handle, cfg.Handle)
+	delete(cs.handle, cfg.Kind+":"+cfg.Handle)
 	delete(cs.nameVersion, cfg.GetCompositeKey())
 	delete(cs.configs, id)
 	// Remove from labels map
@@ -234,45 +237,6 @@ func (cs *ConfigStore) Get(id string) (*models.StoredConfig, error) {
 	return cfg, nil
 }
 
-// GetByNameVersion retrieves a configuration by name and version
-func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredConfig, error) {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-
-	key := fmt.Sprintf("%s:%s", name, version)
-	configID, exists := cs.nameVersion[key]
-	if !exists {
-		return nil, fmt.Errorf("%w: name=%s, version=%s", ErrNotFound, name, version)
-	}
-
-	cfg, exists := cs.configs[configID]
-	if !exists {
-		return nil, fmt.Errorf("%w: name=%s, version=%s", ErrNotFound, name, version)
-	}
-	return cfg, nil
-}
-
-// GetByHandle retrieves a configuration by handle
-func (cs *ConfigStore) GetByHandle(handle string) (*models.StoredConfig, error) {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-
-	key := fmt.Sprintf("%s", handle)
-	configID, exists := cs.handle[key]
-	if !exists {
-		return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
-	}
-
-	cfg, exists := cs.configs[configID]
-	if !exists {
-		return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
-	}
-
-	if cfg.Handle != handle {
-		return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
-	}
-	return cfg, nil
-}
 
 // GetAll returns all configurations
 func (cs *ConfigStore) GetAll() []*models.StoredConfig {
@@ -305,15 +269,17 @@ func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	for _, cfg := range cs.configs {
-		if cfg.Kind != kind {
-			continue
-		}
-		if cfg.DisplayName == name && cfg.Version == version {
-			return cfg, nil
-		}
+	key := fmt.Sprintf("%s:%s:%s", kind, name, version)
+	configID, exists := cs.nameVersion[key]
+	if !exists {
+		return nil, nil
 	}
-	return nil, nil
+
+	cfg, exists := cs.configs[configID]
+	if !exists {
+		return nil, nil
+	}
+	return cfg, nil
 }
 
 // GetByKindAndHandle returns a configuration of a specific kind, and handle
@@ -321,15 +287,17 @@ func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) (*models.S
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	for _, cfg := range cs.configs {
-		if cfg.Kind != kind {
-			continue
-		}
-		if cfg.Handle == handle {
-			return cfg, nil
-		}
+	handleKey := kind + ":" + handle
+	configID, exists := cs.handle[handleKey]
+	if !exists {
+		return nil, nil
 	}
-	return nil, nil
+
+	cfg, exists := cs.configs[configID]
+	if !exists {
+		return nil, nil
+	}
+	return cfg, nil
 }
 
 // IncrementSnapshotVersion atomically increments and returns the next snapshot version

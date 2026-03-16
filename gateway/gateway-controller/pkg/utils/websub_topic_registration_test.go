@@ -139,8 +139,8 @@ spec:
 		t.Fatalf("failed to parse inline yaml: %v", err)
 	}
 
-	cfg, err = service.store.GetByNameVersion("testapi", "v1")
-	if err != nil {
+	cfg, err = service.store.GetByKindNameAndVersion(models.KindWebSubApi, "testapi", "v1")
+	if err != nil || cfg == nil {
 		t.Fatalf("failed to get config from store: %v", err)
 	}
 
