@@ -33,9 +33,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// errMissingAPIKey is returned when the API key header is not provided
-var errMissingAPIKey = errors.New("API key is required")
-
 type GatewayInternalAPIHandler struct {
 	gatewayService         *service.GatewayService
 	gatewayInternalService *service.GatewayInternalAPIService
@@ -54,7 +51,7 @@ func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
 // authenticateGateway validates the API key and returns the authenticated gateway.
 func (h *GatewayInternalAPIHandler) authenticateGateway(apiKey string) (*model.Gateway, error) {
 	if apiKey == "" {
-		return nil, errMissingAPIKey
+		return nil, constants.ErrMissingAPIKey
 	}
 	return h.gatewayService.VerifyToken(apiKey)
 }
@@ -66,14 +63,18 @@ func (h *GatewayInternalAPIHandler) authenticateRequest(c *gin.Context) (orgID, 
 
 	gateway, err := h.authenticateGateway(apiKey)
 	if err != nil {
-		if errors.Is(err, errMissingAPIKey) {
+		if errors.Is(err, constants.ErrMissingAPIKey) {
 			h.slogger.Warn("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
 			c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 				"API key is required. Provide 'api-key' header."))
-		} else {
-			h.slogger.Warn("Authentication failed", "clientIP", clientIP, "error", err)
+		} else if errors.Is(err, constants.ErrInvalidAPIToken) {
+			h.slogger.Warn("Authentication failed - Invalid API key", "clientIP", clientIP)
 			c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
 				"Invalid or expired API key"))
+		} else {
+			h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+				"Error while validating API key"))
 		}
 		return "", "", false
 	}
@@ -428,30 +429,15 @@ func (h *GatewayInternalAPIHandler) BatchFetchDeployments(c *gin.Context) {
 
 // GetSubscriptions handles GET /api/internal/v1/apis/:apiId/subscriptions
 func (h *GatewayInternalAPIHandler) GetSubscriptions(c *gin.Context) {
-	clientIP := c.ClientIP()
-
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
 
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
-		return
-	}
-
-	orgID := gateway.OrganizationID
-	gatewayID := gateway.ID
 	apiID := c.Param("apiId")
 	if apiID == "" {
 		h.slogger.Error("API ID is required for subscriptions request",
-			"clientIP", clientIP,
+			"clientIP", c.ClientIP(),
 			"organizationId", orgID,
 			"apiId", apiID)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -514,25 +500,11 @@ func (h *GatewayInternalAPIHandler) GetSubscriptions(c *gin.Context) {
 
 // GetSubscriptionPlans handles GET /api/internal/v1/subscription-plans
 func (h *GatewayInternalAPIHandler) GetSubscriptionPlans(c *gin.Context) {
-	clientIP := c.ClientIP()
-
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
+	orgID, _, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
 
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
-		return
-	}
-
-	orgID := gateway.OrganizationID
 	plans, err := h.gatewayInternalService.ListSubscriptionPlansForOrg(orgID)
 	if err != nil {
 		h.slogger.Error("Failed to list subscription plans",
@@ -548,29 +520,11 @@ func (h *GatewayInternalAPIHandler) GetSubscriptionPlans(c *gin.Context) {
 
 // GetMCPProxy handles GET /api/internal/v1/mcp-proxies/:proxyId
 func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
-	// Extract client IP for rate limiting
-	clientIP := c.ClientIP()
 
-	// Extract and validate API key from header
-	apiKey := c.GetHeader("api-key")
-	if apiKey == "" {
-		h.slogger.Error("Unauthorized access attempt - Missing API key", "clientIP", clientIP)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"API key is required. Provide 'api-key' header."))
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
 		return
 	}
-
-	// Authenticate gateway using API key
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
-	if err != nil {
-		h.slogger.Error("Authentication failed", "clientIP", clientIP, "error", err)
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Invalid or expired API key"))
-		return
-	}
-
-	orgID := gateway.OrganizationID
-	gatewayID := gateway.ID
 	proxyID := c.Param("proxyId")
 	if proxyID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -581,18 +535,18 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
 	proxy, err := h.gatewayInternalService.GetActiveMCPProxyDeploymentByGateway(proxyID, orgID, gatewayID)
 	if err != nil {
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			h.slogger.Error("No active deployment found for MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			h.slogger.Error("No active deployment found for MCP proxy", "clientIP", c.ClientIP(), "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"No active deployment found for this MCP proxy on this gateway"))
 			return
 		}
 		if errors.Is(err, constants.ErrMCPProxyNotFound) {
-			h.slogger.Error("MCP proxy not found", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			h.slogger.Error("MCP proxy not found", "clientIP", c.ClientIP(), "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"MCP proxy not found"))
 			return
 		}
-		h.slogger.Error("Failed to get MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		h.slogger.Error("Failed to get MCP proxy", "clientIP", c.ClientIP(), "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to get MCP proxy"))
 		return
