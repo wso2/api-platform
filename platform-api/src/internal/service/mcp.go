@@ -160,6 +160,36 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 	return resp, nil
 }
 
+// ListByProject retrieves MCP proxies for an organization filtered by project ID
+func (s *MCPProxyService) ListByProject(orgUUID, projectUUID string, limit, offset int) (*api.MCPProxyListResponse, error) {
+	// TODO: pagination
+	proxies, err := s.repo.ListByProject(orgUUID, projectUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list MCP proxies by project: %w", err)
+	}
+
+	totalCount, err := s.repo.CountByProject(orgUUID, projectUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count MCP proxies by project: %w", err)
+	}
+
+	resp := &api.MCPProxyListResponse{
+		Count: len(proxies),
+		Pagination: api.Pagination{
+			Limit:  limit,
+			Offset: offset,
+			Total:  totalCount,
+		},
+	}
+
+	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
+	for _, p := range proxies {
+		resp.List = append(resp.List, *mapMCPProxyModelToListItem(p))
+	}
+
+	return resp, nil
+}
+
 // Get retrieves an MCP proxy by its handle
 func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 	if handle == "" {
