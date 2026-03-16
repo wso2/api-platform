@@ -305,17 +305,21 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 	if err != nil {
 		return err
 	}
-	defer existingRows.Close()
 
 	existing := make(map[string]struct{})
 	for existingRows.Next() {
 		var apiKeyID string
 		if err := existingRows.Scan(&apiKeyID); err != nil {
+			_ = existingRows.Close()
 			return err
 		}
 		existing[apiKeyID] = struct{}{}
 	}
 	if err := existingRows.Err(); err != nil {
+		_ = existingRows.Close()
+		return err
+	}
+	if err := existingRows.Close(); err != nil {
 		return err
 	}
 
