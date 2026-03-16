@@ -33,9 +33,13 @@ type mockApplicationRepository struct {
 	app                 *model.Application
 	mappedKeys          []*model.ApplicationAPIKey
 	apiKeysByLookupKey  map[string]*model.ApplicationAPIKey
+	artifactByID        map[string]*model.Artifact
+	deployedGatewayIDs  map[string][]string
 	existingByName      *model.Application
 	appErr              error
 	mappedErr           error
+	artifactErr         error
+	deployedGatewayErr  error
 	existingByNameErr   error
 	handleExists        bool
 	handleExistsErr     error
@@ -81,6 +85,26 @@ func (m *mockApplicationRepository) RemoveApplicationAPIKey(applicationUUID, api
 	m.removeMappedCalled = true
 	m.removedAPIKeyID = apiKeyID
 	return nil
+}
+
+func (m *mockApplicationRepository) GetArtifactByUUID(artifactID, orgID string) (*model.Artifact, error) {
+	if m.artifactErr != nil {
+		return nil, m.artifactErr
+	}
+	if m.artifactByID == nil {
+		return nil, nil
+	}
+	return m.artifactByID[artifactID], nil
+}
+
+func (m *mockApplicationRepository) GetDeployedGatewayIDsByArtifactUUID(artifactID, orgID string) ([]string, error) {
+	if m.deployedGatewayErr != nil {
+		return nil, m.deployedGatewayErr
+	}
+	if m.deployedGatewayIDs == nil {
+		return nil, nil
+	}
+	return m.deployedGatewayIDs[artifactID], nil
 }
 
 func apiKeyLookupKey(keyName, artifactHandle string) string {
@@ -335,6 +359,98 @@ func TestAddMappedAPIKeys_ResolvesByAssociatedEntityID(t *testing.T) {
 	}
 	if len(appRepo.addedAPIKeyIDs) != 1 || appRepo.addedAPIKeyIDs[0] != "api-key-db-id-b" {
 		t.Fatalf("expected add call to resolve entity-b key uuid, got %#v", appRepo.addedAPIKeyIDs)
+	}
+}
+
+func TestAddMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", Handle: "my-app", OrganizationUUID: "org-1"},
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("key-1", "orders-api"): {
+				ID:        "api-key-db-id-1",
+				Name:      "key-1",
+				CreatedBy: "creator-user",
+			},
+		},
+		mappedKeys: []*model.ApplicationAPIKey{
+			{APIKeyUUID: "api-key-db-id-1", ArtifactID: "artifact-1"},
+		},
+		artifactErr: errors.New("artifact lookup failed"),
+	}
+
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
+
+	_, err := svc.AddMappedAPIKeys("my-app", &dto.AddApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
+		KeyID: "key-1",
+		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
+			ID: "orders-api",
+		},
+	}}}, "org-1", "creator-user")
+	if err != nil {
+		t.Fatalf("expected nil error when broadcast fails, got %v", err)
+	}
+	if !appRepo.addMappedCalled {
+		t.Fatalf("expected AddApplicationAPIKeys to be called")
+	}
+}
+
+func TestReplaceMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", Handle: "my-app", OrganizationUUID: "org-1"},
+		mappedKeys: []*model.ApplicationAPIKey{
+			{APIKeyUUID: "api-key-db-id-1", ArtifactID: "artifact-1"},
+		},
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("key-1", "orders-api"): {
+				ID:         "api-key-db-id-1",
+				APIKeyUUID: "api-key-db-id-1",
+				Name:       "key-1",
+				ArtifactID: "artifact-1",
+				CreatedBy:  "creator-user",
+			},
+		},
+		artifactErr: errors.New("artifact lookup failed"),
+	}
+
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
+
+	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
+		KeyID: "key-1",
+		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
+			ID: "orders-api",
+		},
+	}}}, "org-1", "creator-user")
+	if err != nil {
+		t.Fatalf("expected nil error when broadcast fails, got %v", err)
+	}
+	if !appRepo.replaceMappedCalled {
+		t.Fatalf("expected ReplaceApplicationAPIKeys to be called")
+	}
+}
+
+func TestRemoveMappedAPIKey_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", Handle: "my-app", OrganizationUUID: "org-1"},
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("key-1", "orders-api"): {
+				ID:         "api-key-db-id-1",
+				APIKeyUUID: "api-key-db-id-1",
+				Name:       "key-1",
+				ArtifactID: "artifact-1",
+				CreatedBy:  "creator-user",
+			},
+		},
+		artifactErr: errors.New("artifact lookup failed"),
+	}
+
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
+
+	err := svc.RemoveMappedAPIKey("my-app", "key-1", "orders-api", "org-1", "creator-user")
+	if err != nil {
+		t.Fatalf("expected nil error when broadcast fails, got %v", err)
+	}
+	if !appRepo.removeMappedCalled {
+		t.Fatalf("expected RemoveApplicationAPIKey to be called")
 	}
 }
 

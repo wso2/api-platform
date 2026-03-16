@@ -237,8 +237,8 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *dto.Up
 		return nil, err
 	}
 
-	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil {
-		return nil, err
+	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil && s.slogger != nil {
+		s.slogger.Warn("Application update succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
 	return s.modelToApplicationResponse(app), nil
@@ -320,8 +320,8 @@ func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto
 		return nil, err
 	}
 
-	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, collectArtifactIDsFromMappedKeys(previousKeys)); err != nil {
-		return nil, err
+	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, collectArtifactIDsFromMappedKeys(previousKeys)); err != nil && s.slogger != nil {
+		s.slogger.Warn("Replace mapped API keys succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
 	return keys, nil
@@ -347,8 +347,8 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.Add
 		return nil, err
 	}
 
-	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil {
-		return nil, err
+	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil && s.slogger != nil {
+		s.slogger.Warn("Add mapped API keys succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
 	return keys, nil
@@ -379,7 +379,11 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, 
 		return err
 	}
 
-	return s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, []string{key.ArtifactID})
+	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, []string{key.ArtifactID}); err != nil && s.slogger != nil {
+		s.slogger.Warn("Remove mapped API key succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
+	}
+
+	return nil
 }
 
 func (s *ApplicationService) HandleExistsCheck(orgID string) func(string) bool {
