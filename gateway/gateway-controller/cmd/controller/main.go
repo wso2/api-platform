@@ -21,8 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
@@ -553,8 +553,8 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"DELETE /subscriptions/:subscriptionId": {"admin", "developer"},
 
 		// Subscription plan endpoints
-		"POST /subscription-plans":       {"admin", "developer"},
-		"GET /subscription-plans":        {"admin", "developer"},
+		"POST /subscription-plans":           {"admin", "developer"},
+		"GET /subscription-plans":            {"admin", "developer"},
 		"GET /subscription-plans/:planId":    {"admin", "developer"},
 		"PUT /subscription-plans/:planId":    {"admin", "developer"},
 		"DELETE /subscription-plans/:planId": {"admin", "developer"},

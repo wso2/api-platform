@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -50,11 +50,11 @@ type sqlStore struct {
 
 	rebindQuery func(string) string
 
-	isConfigUniqueViolation          func(error) bool
-	isCertificateUniqueViolation    func(error) bool
-	isTemplateUniqueViolation       func(error) bool
-	isAPIKeyUniqueViolation         func(error) bool
-	isSubscriptionUniqueViolation   func(error) bool
+	isConfigUniqueViolation           func(error) bool
+	isCertificateUniqueViolation      func(error) bool
+	isTemplateUniqueViolation         func(error) bool
+	isAPIKeyUniqueViolation           func(error) bool
+	isSubscriptionUniqueViolation     func(error) bool
 	isSubscriptionPlanUniqueViolation func(error) bool
 
 	backendName string
@@ -68,12 +68,12 @@ func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId 
 		gatewayId:   gatewayId,
 		backendName: backendName,
 		// Defaults are identity/false; backends can override.
-		rebindQuery:                     func(query string) string { return query },
-		isConfigUniqueViolation:         func(error) bool { return false },
-		isCertificateUniqueViolation:    func(error) bool { return false },
-		isTemplateUniqueViolation:       func(error) bool { return false },
-		isAPIKeyUniqueViolation:         func(error) bool { return false },
-		isSubscriptionUniqueViolation:   func(error) bool { return false },
+		rebindQuery:                       func(query string) string { return query },
+		isConfigUniqueViolation:           func(error) bool { return false },
+		isCertificateUniqueViolation:      func(error) bool { return false },
+		isTemplateUniqueViolation:         func(error) bool { return false },
+		isAPIKeyUniqueViolation:           func(error) bool { return false },
+		isSubscriptionUniqueViolation:     func(error) bool { return false },
 		isSubscriptionPlanUniqueViolation: func(error) bool { return false },
 	}
 }

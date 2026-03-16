@@ -35,7 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 
 	commonmodels "github.com/wso2/api-platform/common/models"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -156,7 +156,6 @@ func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager
 		apiKeyConfig: apiKeyConfig,
 	}
 }
-
 
 // CreateAPIKey handles the complete API key creation process.
 // Supports both local key generation by generating a new random key and external key injection
@@ -644,14 +643,14 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 			Status:  "success",
 			Message: responseMessage,
 			ApiKey: &api.APIKey{
-				Name:   updatedKey.Name,
-				ApiKey: responseAPIKey,
-				ApiId:       params.Handle,
-				Status:      api.APIKeyStatus(updatedKey.Status),
-				CreatedAt:   updatedKey.CreatedAt,
-				CreatedBy:   updatedKey.CreatedBy,
-				ExpiresAt:   updatedKey.ExpiresAt,
-				Source:      api.APIKeySource(updatedKey.Source),
+				Name:      updatedKey.Name,
+				ApiKey:    responseAPIKey,
+				ApiId:     params.Handle,
+				Status:    api.APIKeyStatus(updatedKey.Status),
+				CreatedAt: updatedKey.CreatedAt,
+				CreatedBy: updatedKey.CreatedBy,
+				ExpiresAt: updatedKey.ExpiresAt,
+				Source:    api.APIKeySource(updatedKey.Source),
 			},
 		},
 	}
@@ -910,8 +909,8 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	for _, key := range activeUserAPIKeys {
 		// Return masked API key for display purposes
 		responseAPIKey := api.APIKey{
-			Name:   key.Name,
-			ApiKey: &key.MaskedAPIKey, // Return masked API key for security
+			Name:          key.Name,
+			ApiKey:        &key.MaskedAPIKey, // Return masked API key for security
 			ApiId:         params.Handle,     // Use handle instead of internal API ID
 			Status:        api.APIKeyStatus(key.Status),
 			CreatedAt:     key.CreatedAt,
@@ -1070,11 +1069,11 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	}
 
 	apiKey := &models.APIKey{
-		UUID: keyUUID,
-		Name: name,
+		UUID:         keyUUID,
+		Name:         name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        config.UUID,
+		ArtifactUUID: config.UUID,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    now,
 		CreatedBy:    user,
@@ -1150,14 +1149,14 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string, p
 		Message:              message,
 		RemainingApiKeyQuota: remainingQuota,
 		ApiKey: &api.APIKey{
-			Name:   key.Name,
-			ApiKey: responseAPIKey, // Return plain key only for locally generated keys
-			ApiId:       handle,
-			Status:      api.APIKeyStatus(key.Status),
-			CreatedAt:   key.CreatedAt,
-			CreatedBy:   key.CreatedBy,
-			ExpiresAt:   key.ExpiresAt,
-			Source:      api.APIKeySource(key.Source),
+			Name:      key.Name,
+			ApiKey:    responseAPIKey, // Return plain key only for locally generated keys
+			ApiId:     handle,
+			Status:    api.APIKeyStatus(key.Status),
+			CreatedAt: key.CreatedAt,
+			CreatedBy: key.CreatedBy,
+			ExpiresAt: key.ExpiresAt,
+			Source:    api.APIKeySource(key.Source),
 		},
 	}
 }
@@ -1328,11 +1327,11 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 
 	// Create the regenerated API key
 	regeneratedKey := &models.APIKey{
-		UUID:           existingKey.UUID,
+		UUID:         existingKey.UUID,
 		Name:         existingKey.Name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        existingKey.ArtifactUUID,
+		ArtifactUUID: existingKey.ArtifactUUID,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
 		CreatedBy:    existingKey.CreatedBy,
@@ -1526,7 +1525,6 @@ func (s *APIKeyService) hashAPIKeyWithSHA256(plainAPIKey string) (string, error)
 	return hex.EncodeToString(hash), nil
 }
 
-
 // compareAPIKeys compares API keys by hashing the provided key and comparing with stored hash
 // Returns true if the plain API key matches the stored hash, false otherwise
 func (s *APIKeyService) compareAPIKeys(providedAPIKey, storedAPIKey string) bool {
@@ -1547,7 +1545,6 @@ func (s *APIKeyService) compareAPIKeys(providedAPIKey, storedAPIKey string) bool
 	// Constant-time comparison with stored hash
 	return subtle.ConstantTimeCompare([]byte(computedHash), []byte(storedAPIKey)) == 1
 }
-
 
 // SetHashingConfig allows updating the hashing configuration at runtime
 func (s *APIKeyService) SetHashingConfig(config *config.APIKeyConfig) {
@@ -1866,4 +1863,3 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 
 	return nil
 }
-

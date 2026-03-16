@@ -31,7 +31,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -68,7 +68,7 @@ func TestAPIDeploymentParams(t *testing.T) {
 func TestAPIDeploymentResult(t *testing.T) {
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		UUID:        "0000-test-id-0000-000000000000",
+		UUID:      "0000-test-id-0000-000000000000",
 		Kind:      "RestApi",
 		Status:    models.StatusPending,
 		CreatedAt: now,
@@ -91,7 +91,7 @@ func TestGetTopicsForUpdate(t *testing.T) {
 	t.Run("Empty config returns empty lists", func(t *testing.T) {
 		// Create a config with invalid spec (will fail parsing)
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-test-api-1-0000-000000000000",
+			UUID: "0000-test-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 		// Set up an empty spec that will fail to parse
@@ -117,7 +117,7 @@ func TestGetTopicsForUpdate(t *testing.T) {
 		}
 
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-websub-api-1-0000-000000000000",
+			UUID: "0000-websub-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
@@ -138,7 +138,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns topics from topic manager", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-test-api-1-0000-000000000000",
+			UUID: "0000-test-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 
@@ -154,7 +154,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns empty for non-existent config", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-non-existent-api-0000-000000000000",
+			UUID: "0000-non-existent-api-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 
@@ -194,7 +194,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		}
 
 		storedCfg := &models.StoredConfig{
-			UUID:   "0000-new-api-id-0000-000000000000",
+			UUID: "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -227,7 +227,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 
 		// First, add a config
 		existingCfg := &models.StoredConfig{
-			UUID:   "0000-existing-api-id-0000-000000000000",
+			UUID: "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -247,7 +247,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		}
 
 		updateCfg := &models.StoredConfig{
-			UUID:   "0000-existing-api-id-0000-000000000000",
+			UUID: "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -279,7 +279,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			UUID:   "0000-config-to-update-0000-000000000000",
+			UUID: "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -299,7 +299,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 		}
 
 		newConfig := &models.StoredConfig{
-			UUID:   "0000-config-to-update-0000-000000000000",
+			UUID: "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -596,7 +596,7 @@ spec:
 		}
 
 		existingCfg := &models.StoredConfig{
-			UUID:   "0000-existing-websub-0000-000000000000",
+			UUID: "0000-existing-websub-0000-000000000000",
 			Kind: string(api.WebSubApi),
 			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
@@ -652,7 +652,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		}
 
 		newCfg := &models.StoredConfig{
-			UUID:   "0000-new-api-id-0000-000000000000",
+			UUID: "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -685,7 +685,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		}
 
 		existingCfg := &models.StoredConfig{
-			UUID:   "0000-existing-id-0000-000000000000",
+			UUID: "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -701,7 +701,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 
 		// Try to save with same ID (should update instead)
 		updateCfg := &models.StoredConfig{
-			UUID:   "0000-existing-id-0000-000000000000",
+			UUID: "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -733,7 +733,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			UUID:   "0000-test-api-0000-000000000000",
+			UUID: "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -755,7 +755,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 		}
 
 		newConfig := &models.StoredConfig{
-			UUID:   "0000-test-api-0000-000000000000",
+			UUID: "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,

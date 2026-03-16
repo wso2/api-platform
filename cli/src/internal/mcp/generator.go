@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	gwmodels "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	gwmodels "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"gopkg.in/yaml.v3"
 )
 

@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonconstants "github.com/wso2/api-platform/common/constants"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -1351,24 +1351,24 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	route := translator.createRoute(
-		"api-123",      // apiId
-		"0000-test-api-0000-000000000000",     // apiName
-		"v1",           // apiVersion
-		"/api",         // context
-		"GET",          // method
-		"/users",       // path
-		"test-cluster", // clusterName
-		"",             // upstreamPath
-		"localhost",    // vhost
-		"API",          // apiKind
-		"",             // templateHandle
-		"",             // providerName
-		nil,            // hostRewrite
-		"proj-001",     // projectID
-		nil,            // timeoutCfg
-		false,          // useClusterHeader
-		"",             // defaultCluster
-		nil,            // upstreamDefPaths
+		"api-123",                         // apiId
+		"0000-test-api-0000-000000000000", // apiName
+		"v1",                              // apiVersion
+		"/api",                            // context
+		"GET",                             // method
+		"/users",                          // path
+		"test-cluster",                    // clusterName
+		"",                                // upstreamPath
+		"localhost",                       // vhost
+		"API",                             // apiKind
+		"",                                // templateHandle
+		"",                                // providerName
+		nil,                               // hostRewrite
+		"proj-001",                        // projectID
+		nil,                               // timeoutCfg
+		false,                             // useClusterHeader
+		"",                                // defaultCluster
+		nil,                               // upstreamDefPaths
 	)
 
 	assert.NotNil(t, route)
@@ -1666,8 +1666,8 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			UUID: "0000-websub-api-2-0000-000000000000",
 			Kind: "WebSubApi",
 			Configuration: api.WebSubAPI{
-				Metadata: api.Metadata{Name: "websub-invalid"},
-				Kind:     api.WebSubApi,
+				Metadata:   api.Metadata{Name: "websub-invalid"},
+				Kind:       api.WebSubApi,
 				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Invalid",

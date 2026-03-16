@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -215,13 +215,13 @@ func TestConfigStore_APIKeyOperations(t *testing.T) {
 	cs := NewConfigStore()
 
 	apiKey := &models.APIKey{
-		UUID:        "0000-key-1-0000-000000000000",
-		Name:      "test-key",
-		APIKey:    "hashed-key-value",
-		ArtifactUUID:     "0000-api-1-0000-000000000000",
-		Status:    models.APIKeyStatusActive,
-		CreatedBy: "user-1",
-		CreatedAt: time.Now(),
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test-key",
+		APIKey:       "hashed-key-value",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
+		CreatedBy:    "user-1",
+		CreatedAt:    time.Now(),
 	}
 
 	// Store API key
@@ -266,28 +266,28 @@ func TestConfigStore_APIKeyErrors(t *testing.T) {
 
 	// Store key with empty name
 	err = cs.StoreAPIKey(&models.APIKey{
-		UUID:     "0000-key-1-0000-000000000000",
-		Name:   "",
-		APIKey: "value",
-		ArtifactUUID:  "0000-api-1-0000-000000000000",
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "",
+		APIKey:       "value",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
 	})
 	assert.Error(t, err)
 
 	// Store key with empty value
 	err = cs.StoreAPIKey(&models.APIKey{
-		UUID:     "0000-key-1-0000-000000000000",
-		Name:   "test",
-		APIKey: "",
-		ArtifactUUID:  "0000-api-1-0000-000000000000",
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test",
+		APIKey:       "",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
 	})
 	assert.Error(t, err)
 
 	// Store key with empty API ID
 	err = cs.StoreAPIKey(&models.APIKey{
-		UUID:     "0000-key-1-0000-000000000000",
-		Name:   "test",
-		APIKey: "value",
-		ArtifactUUID:  "",
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "test",
+		APIKey:       "value",
+		ArtifactUUID: "",
 	})
 	assert.Error(t, err)
 
@@ -309,12 +309,12 @@ func TestConfigStore_RemoveAPIKeysByAPI(t *testing.T) {
 	// Add multiple keys for an API
 	for i := 1; i <= 3; i++ {
 		err := cs.StoreAPIKey(&models.APIKey{
-			UUID:        "0000-key--0000-000000000000" + string(rune('0'+i)),
-			Name:      "test-key-" + string(rune('0'+i)),
-			APIKey:    "value-" + string(rune('0'+i)),
-			ArtifactUUID:     "0000-api-1-0000-000000000000",
-			Status:    models.APIKeyStatusActive,
-			CreatedBy: "user-1",
+			UUID:         "0000-key--0000-000000000000" + string(rune('0'+i)),
+			Name:         "test-key-" + string(rune('0'+i)),
+			APIKey:       "value-" + string(rune('0'+i)),
+			ArtifactUUID: "0000-api-1-0000-000000000000",
+			Status:       models.APIKeyStatusActive,
+			CreatedBy:    "user-1",
 		})
 		require.NoError(t, err)
 	}
@@ -353,34 +353,34 @@ func TestConfigStore_CountActiveAPIKeysByUserAndAPI(t *testing.T) {
 
 	// Add active key
 	err := cs.StoreAPIKey(&models.APIKey{
-		UUID:        "0000-key-1-0000-000000000000",
-		Name:      "active-key",
-		APIKey:    "value-1",
-		ArtifactUUID:     "0000-api-1-0000-000000000000",
-		Status:    models.APIKeyStatusActive,
-		CreatedBy: "user-1",
+		UUID:         "0000-key-1-0000-000000000000",
+		Name:         "active-key",
+		APIKey:       "value-1",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
+		CreatedBy:    "user-1",
 	})
 	require.NoError(t, err)
 
 	// Add revoked key
 	err = cs.StoreAPIKey(&models.APIKey{
-		UUID:        "0000-key-2-0000-000000000000",
-		Name:      "revoked-key",
-		APIKey:    "value-2",
-		ArtifactUUID:     "0000-api-1-0000-000000000000",
-		Status:    models.APIKeyStatusRevoked,
-		CreatedBy: "user-1",
+		UUID:         "0000-key-2-0000-000000000000",
+		Name:         "revoked-key",
+		APIKey:       "value-2",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusRevoked,
+		CreatedBy:    "user-1",
 	})
 	require.NoError(t, err)
 
 	// Add key for different user
 	err = cs.StoreAPIKey(&models.APIKey{
-		UUID:        "0000-key-3-0000-000000000000",
-		Name:      "other-user-key",
-		APIKey:    "value-3",
-		ArtifactUUID:     "0000-api-1-0000-000000000000",
-		Status:    models.APIKeyStatusActive,
-		CreatedBy: "user-2",
+		UUID:         "0000-key-3-0000-000000000000",
+		Name:         "other-user-key",
+		APIKey:       "value-3",
+		ArtifactUUID: "0000-api-1-0000-000000000000",
+		Status:       models.APIKeyStatusActive,
+		CreatedBy:    "user-2",
 	})
 	require.NoError(t, err)
 

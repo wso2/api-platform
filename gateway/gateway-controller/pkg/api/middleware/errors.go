@@ -23,7 +23,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // ErrorHandlingMiddleware creates a Gin middleware for error recovery

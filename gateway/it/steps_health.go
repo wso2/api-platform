@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
 

@@ -23,7 +23,7 @@ import (
 	"net/url"
 	"regexp"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // LLMValidator validates LLM-related configurations (provider templates, providers, proxies)

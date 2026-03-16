@@ -38,8 +38,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
@@ -2143,7 +2143,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 		return "", fmt.Errorf("api not found")
 	}
 	return cfg.UUID, nil
-	}
+}
 
 // CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
 func (s *APIServer) CreateSubscription(c *gin.Context) {
@@ -2255,7 +2255,7 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 	sub := &models.Subscription{
 		ID:                 uuid.New().String(),
 		APIID:              apiID,
-		ApplicationID:     appID,
+		ApplicationID:      appID,
 		SubscriptionPlanID: req.SubscriptionPlanId,
 		Status:             status,
 		SubscriptionToken:  strings.TrimSpace(req.SubscriptionToken),

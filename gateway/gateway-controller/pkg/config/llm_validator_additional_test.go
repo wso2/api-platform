@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // Tests for lines 56-57, 60-61, 64-65: Validate method with value types (not pointers)
