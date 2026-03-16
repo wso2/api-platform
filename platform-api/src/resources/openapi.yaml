@@ -417,40 +417,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-    put:
-      summary: Replace application API key mappings
-      description: |
-        Replaces all mapped API keys for the specified application.
-      operationId: ReplaceApplicationAPIKeys
-      tags:
-        - Applications
-        - API Keys
-      parameters:
-        - $ref: '#/components/parameters/appId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReplaceApplicationAPIKeysRequest'
-      responses:
-        '200':
-          description: Mapped API keys replaced successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MappedAPIKeyListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
     post:
       summary: Add application API key mappings
       description: |
@@ -4588,18 +4554,6 @@ components:
             $ref: '#/components/schemas/Application'
         pagination:
           $ref: '#/components/schemas/Pagination'
-
-    ReplaceApplicationAPIKeysRequest:
-      type: object
-      required:
-        - apiKeyIds
-      properties:
-        apiKeyIds:
-          type: array
-          description: List of API key IDs to map to the application
-          items:
-            type: string
-            format: uuid
 
     AddApplicationAPIKeysRequest:
       type: object

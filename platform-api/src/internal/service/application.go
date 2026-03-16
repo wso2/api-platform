@@ -281,9 +281,34 @@ func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto
 		return nil, err
 	}
 
-	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeyIds, orgID, userID)
+	resolvedKeys, err := s.resolveAPIKeys(req.ApiKeyIds, orgID)
 	if err != nil {
 		return nil, err
+	}
+
+	existingMapped := make(map[string]struct{}, len(previousKeys.List))
+	for _, mapped := range previousKeys.List {
+		if mapped == nil {
+			continue
+		}
+		apiKeyUUID := strings.TrimSpace(mapped.ApiKeyUuid)
+		if apiKeyUUID == "" {
+			continue
+		}
+		existingMapped[apiKeyUUID] = struct{}{}
+	}
+
+	apiKeyIDs := make([]string, 0, len(resolvedKeys))
+	for _, key := range resolvedKeys {
+		apiKeyIDs = append(apiKeyIDs, key.ID)
+
+		if _, alreadyMapped := existingMapped[key.ID]; alreadyMapped {
+			continue
+		}
+
+		if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.appRepo.ReplaceApplicationAPIKeys(app.UUID, apiKeyIDs); err != nil {
@@ -377,8 +402,25 @@ func (s *ApplicationService) getApplication(appIDOrHandle, orgID string) (*model
 }
 
 func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID, userID string) ([]string, error) {
+	keys, err := s.resolveAPIKeys(ids, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
+			return nil, err
+		}
+		result = append(result, key.ID)
+	}
+
+	return result, nil
+}
+
+func (s *ApplicationService) resolveAPIKeys(ids []string, orgID string) ([]*model.ApplicationAPIKey, error) {
 	seen := make(map[string]struct{})
-	result := make([]string, 0, len(ids))
+	result := make([]*model.ApplicationAPIKey, 0, len(ids))
 
 	for _, id := range ids {
 		keyID := strings.TrimSpace(id)
@@ -392,16 +434,13 @@ func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID, userID string
 		if key == nil {
 			return nil, constants.ErrAPIKeyNotFound
 		}
-		if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
-			return nil, err
-		}
 
 		if _, ok := seen[key.ID]; ok {
 			continue
 		}
 
 		seen[key.ID] = struct{}{}
-		result = append(result, key.ID)
+		result = append(result, key)
 	}
 
 	return result, nil
@@ -583,6 +622,8 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 	event := &model.ApplicationUpdatedEvent{
 		ApplicationId:   app.Handle,
 		ApplicationUuid: app.UUID,
+		ApplicationName: app.Name,
+		ApplicationType: app.Type,
 		Mappings:        mappings,
 	}
 

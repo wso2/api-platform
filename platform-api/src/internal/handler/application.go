@@ -183,35 +183,6 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, keys)
 }
 
-func (h *ApplicationHandler) ReplaceApplicationAPIKeys(c *gin.Context) {
-	orgID, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-
-	appID := c.Param("appId")
-	userID := h.resolveRequesterUserID(c)
-	if strings.TrimSpace(appID) == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
-		return
-	}
-
-	var req dto.ReplaceApplicationAPIKeysRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.NewValidationErrorResponse(c, err)
-		return
-	}
-
-	keys, err := h.applicationService.ReplaceMappedAPIKeys(appID, &req, orgID, userID)
-	if err != nil {
-		h.writeApplicationError(c, err, "Failed to replace mapped API keys")
-		return
-	}
-
-	c.JSON(http.StatusOK, keys)
-}
-
 func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -282,7 +253,6 @@ func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
 		applicationGroup.DELETE("/:appId", h.DeleteApplication)
 
 		applicationGroup.GET("/:appId/api-keys", h.ListApplicationAPIKeys)
-		applicationGroup.PUT("/:appId/api-keys", h.ReplaceApplicationAPIKeys)
 		applicationGroup.POST("/:appId/api-keys", h.AddApplicationAPIKeys)
 		applicationGroup.DELETE("/:appId/api-keys/:keyId", h.RemoveApplicationAPIKey)
 	}

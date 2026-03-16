@@ -27,5 +27,7 @@ type ApplicationKeyMapping struct {
 type ApplicationUpdatedEvent struct {
 	ApplicationId   string                  `json:"applicationId"`
 	ApplicationUuid string                  `json:"applicationUuid"`
+	ApplicationName string                  `json:"applicationName"`
+	ApplicationType string                  `json:"applicationType"`
 	Mappings        []ApplicationKeyMapping `json:"mappings"`
 }

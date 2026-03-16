@@ -223,6 +223,37 @@ func TestReplaceMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 	}
 }
 
+func TestReplaceMappedAPIKeys_AllowsRemovalForNonCreator(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
+		mappedKeys: []*model.ApplicationAPIKey{
+			{
+				ID:         "api-key-db-id-1",
+				APIKeyUUID: "api-key-db-id-1",
+				Name:       "key-1",
+				CreatedBy:  "creator-user",
+			},
+		},
+		apiKeysByLookupID: map[string]*model.ApplicationAPIKey{
+			"key-1": {
+				ID:        "api-key-db-id-1",
+				Name:      "key-1",
+				CreatedBy: "creator-user",
+			},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{ApiKeyIds: []string{"key-1"}}, "org-1", "different-user")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !appRepo.replaceMappedCalled {
+		t.Fatalf("expected ReplaceApplicationAPIKeys to be called")
+	}
+}
+
 func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
