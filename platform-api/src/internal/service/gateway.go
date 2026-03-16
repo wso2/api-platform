@@ -240,7 +240,7 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID string) error {
 // VerifyToken verifies a plain-text token and returns the associated gateway
 func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) {
 	if plainToken == "" {
-		return nil, errors.New("token is required")
+		return nil, constants.ErrMissingAPIKey
 	}
 
 	// Hash the token and look it up directly in the database
@@ -250,7 +250,7 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 		return nil, fmt.Errorf("failed to query token: %w", err)
 	}
 	if token == nil {
-		return nil, errors.New("invalid token")
+		return nil, constants.ErrInvalidAPIToken
 	}
 
 	// Fetch the associated gateway
@@ -259,7 +259,7 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, errors.New("invalid token")
+		return nil, constants.ErrInvalidAPIToken
 	}
 
 	return gateway, nil

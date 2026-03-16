@@ -173,3 +173,9 @@ var (
 	ErrSubscriptionPlanNotFoundOrInactive = errors.New("subscription plan not found or not active")
 	ErrSubscriptionPlanAlreadyExists      = errors.New("subscription plan with this name already exists for the organization")
 )
+
+var (
+	// Gateway Internal API errors
+	ErrMissingAPIKey   = errors.New("API key is required")
+	ErrInvalidAPIToken = errors.New("invalid API token")
+)
