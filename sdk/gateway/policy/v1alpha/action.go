@@ -17,7 +17,10 @@ type ImmediateResponse struct {
 	Body                     []byte
 	AnalyticsMetadata        map[string]any            // Custom analytics metadata
 	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
-	AnalyticsHeaderFilter DropHeaderAction          // Headers to exclude from analytics
+	AnalyticsHeaderFilter    DropHeaderAction          // Headers to exclude from analytics
+
+	// Deprecated: Use AnalyticsHeaderFilter instead.
+	DropHeadersFromAnalytics DropHeaderAction
 }
 
 // ─── Header phase actions (sealed oneof) ─────────────────────────────────────
@@ -110,6 +113,22 @@ type UpstreamRequestModifications struct {
 	AnalyticsMetadata     map[string]any
 	DynamicMetadata       map[string]map[string]any
 	AnalyticsHeaderFilter DropHeaderAction
+
+	// Deprecated fields — retained for backward compatibility with policies written
+	// against SDK ≤ v0.4.1. New policies should use Header and the renamed fields instead.
+
+	// Deprecated: Use Header.Set instead.
+	SetHeaders map[string]string
+	// Deprecated: Use Header.Remove instead.
+	RemoveHeaders []string
+	// Deprecated: Use Header.Append instead.
+	AppendHeaders map[string][]string
+	// Deprecated: Use QueryParametersToAdd instead.
+	AddQueryParameters map[string][]string
+	// Deprecated: Use QueryParametersToRemove instead.
+	RemoveQueryParameters []string
+	// Deprecated: Use AnalyticsHeaderFilter instead.
+	DropHeadersFromAnalytics DropHeaderAction
 }
 
 func (UpstreamRequestModifications) isRequestAction()       {}
@@ -143,6 +162,18 @@ type DownstreamResponseModifications struct {
 	AnalyticsMetadata     map[string]any
 	DynamicMetadata       map[string]map[string]any
 	AnalyticsHeaderFilter DropHeaderAction
+
+	// Deprecated fields — retained for backward compatibility with policies written
+	// against SDK ≤ v0.4.1. New policies should use Header instead.
+
+	// Deprecated: Use Header.Set instead.
+	SetHeaders map[string]string
+	// Deprecated: Use Header.Remove instead.
+	RemoveHeaders []string
+	// Deprecated: Use Header.Append instead.
+	AppendHeaders map[string][]string
+	// Deprecated: Use AnalyticsHeaderFilter instead.
+	DropHeadersFromAnalytics DropHeaderAction
 }
 
 func (DownstreamResponseModifications) isResponseAction()    {}

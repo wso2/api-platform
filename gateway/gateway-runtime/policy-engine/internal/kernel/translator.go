@@ -149,6 +149,8 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 		if a.Header != nil {
 			collectHeaderOps(headerOps, a.Header.Set, a.Header.Remove, a.Header.Append)
 		}
+		// Deprecated flat fields — backward compat with SDK ≤ v0.4.1
+		collectHeaderOps(headerOps, a.SetHeaders, a.RemoveHeaders, a.AppendHeaders)
 
 		if a.Path != nil {
 			pathMutation = a.Path
@@ -162,6 +164,15 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 			path = utils.RemoveQueryParametersFromPath(path, a.QueryParametersToRemove)
 			pathMutation = &path
 		}
+		// Deprecated: AddQueryParameters / RemoveQueryParameters — backward compat with SDK ≤ v0.4.1
+		if a.AddQueryParameters != nil {
+			path = utils.AddQueryParametersToPath(path, a.AddQueryParameters)
+			pathMutation = &path
+		}
+		if a.RemoveQueryParameters != nil {
+			path = utils.RemoveQueryParametersFromPath(path, a.RemoveQueryParameters)
+			pathMutation = &path
+		}
 		if a.Method != nil {
 			methodMutation = a.Method
 			headerOps[":method"] = append(headerOps[":method"], &headerOp{opType: "set", value: *a.Method})
@@ -170,7 +181,12 @@ func TranslateRequestBodyActions(result *executor.RequestBodyExecutionResult, ch
 			targetUpstreamName = a.UpstreamName
 		}
 
-		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.requestBodyCtx.Headers.GetAll(), "request_headers")
+		// Prefer new AnalyticsHeaderFilter; fall back to deprecated DropHeadersFromAnalytics.
+		requestAnalyticsFilter := a.AnalyticsHeaderFilter
+		if requestAnalyticsFilter.Action == "" {
+			requestAnalyticsFilter = a.DropHeadersFromAnalytics
+		}
+		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, requestAnalyticsFilter, execCtx.requestBodyCtx.Headers.GetAll(), "request_headers")
 		mergeDynamicMetadata(dynamicMetadata, a.DynamicMetadata)
 		mergeDynamicMetadata(execCtx.dynamicMetadata, a.DynamicMetadata)
 	}
@@ -321,8 +337,15 @@ func TranslateResponseBodyActions(result *executor.ResponseBodyExecutionResult, 
 		if a.Header != nil {
 			collectHeaderOps(headerOps, a.Header.Set, a.Header.Remove, a.Header.Append)
 		}
+		// Deprecated flat fields — backward compat with SDK ≤ v0.4.1
+		collectHeaderOps(headerOps, a.SetHeaders, a.RemoveHeaders, a.AppendHeaders)
 
-		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, a.AnalyticsHeaderFilter, execCtx.responseBodyCtx.ResponseHeaders.GetAll(), "response_headers")
+		// Prefer new AnalyticsHeaderFilter; fall back to deprecated DropHeadersFromAnalytics.
+		responseAnalyticsFilter := a.AnalyticsHeaderFilter
+		if responseAnalyticsFilter.Action == "" {
+			responseAnalyticsFilter = a.DropHeadersFromAnalytics
+		}
+		mergeAnalytics(analyticsData, execCtx, a.AnalyticsMetadata, responseAnalyticsFilter, execCtx.responseBodyCtx.ResponseHeaders.GetAll(), "response_headers")
 		mergeDynamicMetadata(dynamicMetadata, a.DynamicMetadata)
 		mergeDynamicMetadata(execCtx.dynamicMetadata, a.DynamicMetadata)
 	}
