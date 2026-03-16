@@ -19,11 +19,11 @@
 package policy
 
 import (
+	"log/slog"
 	"strings"
 	"time"
-	"log/slog"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -68,9 +68,9 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
 				for _, p := range *apiData.Policies {
 					// Only append if the policy was successfully resolved (exists in apiPolicies map)
-				if v, ok := apiPolicies[p.Name]; ok {
-					finalPolicies = append(finalPolicies, v)
-				}
+					if v, ok := apiPolicies[p.Name]; ok {
+						finalPolicies = append(finalPolicies, v)
+					}
 				}
 			}
 

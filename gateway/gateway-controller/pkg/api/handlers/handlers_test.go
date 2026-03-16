@@ -36,8 +36,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/constants"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -54,26 +54,26 @@ func init() {
 
 // MockStorage implements the storage.Storage interface for testing
 type MockStorage struct {
-	configs          map[string]*models.StoredConfig
-	templates        map[string]*models.StoredLLMProviderTemplate
-	apiKeys          map[string]*models.APIKey
-	certs            []*models.StoredCertificate
-	subscriptions    map[string]*models.Subscription
+	configs           map[string]*models.StoredConfig
+	templates         map[string]*models.StoredLLMProviderTemplate
+	apiKeys           map[string]*models.APIKey
+	certs             []*models.StoredCertificate
+	subscriptions     map[string]*models.Subscription
 	subscriptionPlans map[string]*models.SubscriptionPlan
-	saveErr          error
-	getErr           error
-	updateErr        error
-	deleteErr        error
-	unavailable      bool
+	saveErr           error
+	getErr            error
+	updateErr         error
+	deleteErr         error
+	unavailable       bool
 }
 
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
-		configs:          make(map[string]*models.StoredConfig),
-		templates:        make(map[string]*models.StoredLLMProviderTemplate),
-		apiKeys:          make(map[string]*models.APIKey),
-		certs:            make([]*models.StoredCertificate, 0),
-		subscriptions:    make(map[string]*models.Subscription),
+		configs:           make(map[string]*models.StoredConfig),
+		templates:         make(map[string]*models.StoredLLMProviderTemplate),
+		apiKeys:           make(map[string]*models.APIKey),
+		certs:             make([]*models.StoredCertificate, 0),
+		subscriptions:     make(map[string]*models.Subscription),
 		subscriptionPlans: make(map[string]*models.SubscriptionPlan),
 	}
 }
@@ -111,7 +111,6 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	}
 	return nil, errors.New("config not found")
 }
-
 
 func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	if m.unavailable {
@@ -2229,7 +2228,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		CreatedAt:           time.Now(),
-		UpdatedAt: time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 	_ = server.store.Add(cfg)
 

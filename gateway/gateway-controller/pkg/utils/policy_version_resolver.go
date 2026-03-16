@@ -24,8 +24,8 @@ import (
 	"strconv"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	versionutil "github.com/wso2/api-platform/common/version"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // PolicyDefinitionMissingUserMessage is returned to clients when a required policy definition is missing.

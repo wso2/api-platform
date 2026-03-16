@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/constants"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -66,22 +66,22 @@ func TestListAPIKeysSuccess(t *testing.T) {
 
 	// Create test API keys
 	key1 := &models.APIKey{
-		UUID:           "0000-key1-0000-000000000000",
+		UUID:         "0000-key1-0000-000000000000",
 		Name:         "0000-key1-0000-000000000000",
 		APIKey:       "hashed-key-1",
 		MaskedAPIKey: "***key-1",
-		ArtifactUUID:        "0000-test-handle-0000-000000000000",
+		ArtifactUUID: "0000-test-handle-0000-000000000000",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",
 		UpdatedAt:    time.Now(),
 	}
 	key2 := &models.APIKey{
-		UUID:           "0000-key2-0000-000000000000",
+		UUID:         "0000-key2-0000-000000000000",
 		Name:         "0000-key2-0000-000000000000",
 		APIKey:       "hashed-key-2",
 		MaskedAPIKey: "***key-2",
-		ArtifactUUID:        "0000-test-handle-0000-000000000000",
+		ArtifactUUID: "0000-test-handle-0000-000000000000",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",
@@ -252,7 +252,7 @@ func TestListLLMProvidersWithData(t *testing.T) {
 
 	now := time.Now()
 	provider := &models.StoredConfig{
-		UUID:     "0000-provider1-0000-000000000000",
+		UUID:   "0000-provider1-0000-000000000000",
 		Kind:   "LlmProvider",
 		Status: "active",
 		SourceConfiguration: api.LLMProviderConfiguration{
@@ -314,7 +314,7 @@ func TestListLLMProxiesWithData(t *testing.T) {
 
 	now := time.Now()
 	proxy := &models.StoredConfig{
-		UUID:     "0000-proxy1-0000-000000000000",
+		UUID:   "0000-proxy1-0000-000000000000",
 		Kind:   "LlmProxy",
 		Status: "active",
 		SourceConfiguration: api.LLMProxyConfiguration{

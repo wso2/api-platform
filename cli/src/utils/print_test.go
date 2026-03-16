@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package utils
 
 import (
@@ -9,19 +27,29 @@ import (
 )
 
 // captureStdout captures stdout output from fn.
-func captureStdout(fn func()) string {
+func captureStdout(fn func()) (string, error) {
 	old := os.Stdout
-	r, w, _ := os.Pipe()
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", err
+	}
 	os.Stdout = w
+
+	defer func() {
+		os.Stdout = old
+		r.Close()
+	}()
 
 	fn()
 
+	// Close write end before reading so io.Copy can detect EOF
 	w.Close()
-	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	return buf.String()
+	if _, err := io.Copy(&buf, r); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 func TestPrintTable_NormalCase(t *testing.T) {
@@ -31,9 +59,12 @@ func TestPrintTable_NormalCase(t *testing.T) {
 		{"prod", "https://api.example.com", "oauth2"},
 	}
 
-	out := captureStdout(func() {
+	out, err := captureStdout(func() {
 		PrintTable(headers, rows)
 	})
+	if err != nil {
+		t.Fatalf("failed to capture stdout: %v", err)
+	}
 
 	// Should not contain bordered table characters
 	for _, ch := range []string{"+", "|", "---"} {
@@ -64,9 +95,12 @@ func TestPrintTable_NormalCase(t *testing.T) {
 }
 
 func TestPrintTable_EmptyHeaders(t *testing.T) {
-	out := captureStdout(func() {
+	out, err := captureStdout(func() {
 		PrintTable([]string{}, [][]string{{"a", "b"}})
 	})
+	if err != nil {
+		t.Fatalf("failed to capture stdout: %v", err)
+	}
 
 	if out != "" {
 		t.Errorf("expected no output for empty headers, got:\n%s", out)
@@ -79,9 +113,12 @@ func TestPrintTable_RowsShorterThanHeaders(t *testing.T) {
 		{"dev"}, // only 1 of 3 columns
 	}
 
-	out := captureStdout(func() {
+	out, err := captureStdout(func() {
 		PrintTable(headers, rows)
 	})
+	if err != nil {
+		t.Fatalf("failed to capture stdout: %v", err)
+	}
 
 	if !strings.Contains(out, "dev") {
 		t.Errorf("output should contain 'dev', got:\n%s", out)
@@ -97,9 +134,12 @@ func TestPrintTable_RowsShorterThanHeaders(t *testing.T) {
 func TestPrintTable_NoRows(t *testing.T) {
 	headers := []string{"NAME", "SERVER"}
 
-	out := captureStdout(func() {
+	out, err := captureStdout(func() {
 		PrintTable(headers, nil)
 	})
+	if err != nil {
+		t.Fatalf("failed to capture stdout: %v", err)
+	}
 
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != 1 {
