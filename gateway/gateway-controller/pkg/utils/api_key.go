@@ -158,61 +158,19 @@ func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string
 }
 
 // getAPIConfigByHandle resolves a REST API configuration by handle.
-// It prefers the in-memory store for fast-path reads and falls back to the database when available.
-func (s *APIKeyService) getAPIConfigByHandle(handle string, logger *slog.Logger) (*models.StoredConfig, error) {
-	if s.store != nil {
-		cfg, err := s.store.GetByHandle(handle)
-		if err == nil {
-			if cfg == nil {
-				return nil, storage.ErrNotFound
-			}
-			return cfg, nil
-		}
+func (s *APIKeyService) getAPIConfigByHandle(kind models.ArtifactKind, handle string) (*models.StoredConfig, error) {
 
-		if s.db == nil {
-			if storage.IsNotFoundError(err) {
-				return nil, storage.ErrNotFound
-			}
-			return nil, fmt.Errorf("memory store error while fetching config: %w", err)
-		}
-
-		if logger != nil {
-			logger.Debug("Failed to get API configuration from memory store, trying database",
-				slog.String("handle", handle),
-				slog.Any("error", err))
-		}
-
-		cfg, dbErr := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
-		if dbErr == nil {
-			if cfg == nil {
-				return nil, storage.ErrNotFound
-			}
-			return cfg, nil
-		}
-		if storage.IsNotFoundError(dbErr) {
-			if storage.IsNotFoundError(err) {
-				return nil, storage.ErrNotFound
-			}
-			return nil, fmt.Errorf("memory store error while fetching config: %w", err)
-		}
-		return nil, fmt.Errorf("database error while fetching config: %w", dbErr)
-	}
-
-	if s.db != nil {
-		cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
-		if err != nil {
-			if storage.IsNotFoundError(err) {
-				return nil, storage.ErrNotFound
-			}
-			return nil, fmt.Errorf("database error while fetching config: %w", err)
-		}
-		if cfg == nil {
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
 			return nil, storage.ErrNotFound
 		}
-		return cfg, nil
+		return nil, fmt.Errorf("database error while fetching config: %w", err)
 	}
-
-	return nil, fmt.Errorf("API configuration storage is not configured")
+	if cfg == nil {
+		return nil, storage.ErrNotFound
+	}
+	return cfg, nil
 }
 
 // publishAPIKeyEvent publishes an API key event to the EventHub.
@@ -260,7 +218,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	}
 
 	// Validate that API exists
-	config, err := s.getAPIConfigByHandle(params.Handle, logger)
+	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			logger.Error("API configuration not found for API Key generation",
@@ -420,8 +378,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
+	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	if err != nil || config == nil {
 		logger.Warn("API configuration not found for API key revocation",
 			slog.Any("error", err))
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
@@ -569,7 +527,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	// Get the API configuration
-	config, err := s.getAPIConfigByHandle(params.Handle, logger)
+	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			logger.Warn("API configuration not found for API key update",
@@ -765,7 +723,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		slog.String("correlation_id", params.CorrelationID))
 
 	// Get the API configuration
-	config, err := s.getAPIConfigByHandle(params.Handle, logger)
+	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			logger.Warn("API configuration not found for API Key regeneration",
@@ -949,8 +907,8 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	user := params.User
 
 	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
+	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	if err != nil || config == nil {
 		logger.Warn("API configuration not found for API keys listing",
 			slog.String("handle", params.Handle),
 			slog.String("correlation_id", params.CorrelationID))

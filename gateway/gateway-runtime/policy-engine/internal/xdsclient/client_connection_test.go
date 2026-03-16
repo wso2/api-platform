@@ -175,8 +175,8 @@ func TestClient_SendDiscoveryRequest_AllTypes(t *testing.T) {
 	err = client.sendDiscoveryRequest("1.0", "nonce-123")
 	require.NoError(t, err)
 
-	// Should have sent 4 requests (PolicyChain, APIKey, LazyResource, SubscriptionState)
-	assert.Len(t, mockStream.sentRequests, 4)
+	// Should have sent 5 requests (PolicyChain, APIKey, LazyResource, SubscriptionState, RouteConfig)
+	assert.Len(t, mockStream.sentRequests, 5)
 
 	// Verify request types
 	typeURLs := make(map[string]bool)
@@ -191,6 +191,7 @@ func TestClient_SendDiscoveryRequest_AllTypes(t *testing.T) {
 	assert.True(t, typeURLs[APIKeyStateTypeURL], "Should send APIKey request")
 	assert.True(t, typeURLs[LazyResourceTypeURL], "Should send LazyResource request")
 	assert.True(t, typeURLs[SubscriptionStateTypeURL], "Should send SubscriptionState request")
+	assert.True(t, typeURLs[RouteConfigTypeURL], "Should send RouteConfig request")
 }
 
 // TestClient_SendDiscoveryRequest_NoStream tests error when stream is not available

@@ -45,12 +45,14 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
+	metrics.Init()
 }
 
 // MockStorage implements the storage.Storage interface for testing
@@ -683,50 +685,67 @@ func (m *MockControlPlaneClient) Close() error {
 
 // createTestAPIServer creates a minimal test server with dependencies
 func createTestAPIServer() *APIServer {
-	metrics.Init()
+	return createTestAPIServerWithDB(NewMockStorage())
+}
 
+func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
-	mockDB := NewMockStorage()
 
 	vhosts := &config.VHostsConfig{
 		Main:    config.VHostEntry{Default: "localhost"},
 		Sandbox: config.VHostEntry{Default: "sandbox-localhost"},
 	}
 
-	server := &APIServer{
-		store:             store,
-		db:                mockDB,
-		logger:            logger,
-		parser:            config.NewParser(),
-		validator:         config.NewAPIValidator(),
-		policyDefinitions: make(map[string]api.PolicyDefinition),
-		routerConfig: &config.RouterConfig{
+	parser := config.NewParser()
+	validator := config.NewAPIValidator()
+	policyDefs := make(map[string]api.PolicyDefinition)
+	routerCfg := &config.RouterConfig{
+		GatewayHost: "localhost",
+		VHosts:      *vhosts,
+		EventGateway: config.EventGatewayConfig{
+			TimeoutSeconds: 10,
+		},
+	}
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	systemCfg := &config.Config{
+		Controller: config.Controller{},
+		Router: config.RouterConfig{
 			GatewayHost: "localhost",
 			VHosts:      *vhosts,
-			EventGateway: config.EventGatewayConfig{
-				TimeoutSeconds: 10,
-			},
 		},
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		systemConfig: &config.Config{
-			Controller: config.Controller{},
-			Router: config.RouterConfig{
-				GatewayHost: "localhost",
-				VHosts:      *vhosts,
-			},
-			APIKey: config.APIKeyConfig{
-				Algorithm:            "sha256",
-				MinKeyLength:         32,
-				MaxKeyLength:         128,
-				APIKeysPerUserPerAPI: 5,
-			},
+		APIKey: config.APIKeyConfig{
+			Algorithm:    "sha256",
+			MinKeyLength: 32,
+			MaxKeyLength: 128,
 		},
 	}
 
+	server := &APIServer{
+		store:             store,
+		db:                db,
+		logger:            logger,
+		parser:            parser,
+		validator:         validator,
+		policyDefinitions: policyDefs,
+		routerConfig:      routerCfg,
+		httpClient:        httpClient,
+		systemConfig:      systemCfg,
+	}
+
 	// Initialize API key service (needed for API key operations)
-	apiKeyService := utils.NewAPIKeyService(store, mockDB, nil, &server.systemConfig.APIKey)
+	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
 	server.apiKeyService = apiKeyService
+
+	// Initialize RestAPI service and handler
+	restAPIService := restapi.NewRestAPIService(
+		store, db, nil, nil,
+		policyDefs, &server.policyDefMu,
+		nil, nil, nil,
+		routerCfg, systemCfg,
+		httpClient, parser, validator, logger,
+	)
+	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	return server
 }
@@ -1027,8 +1046,7 @@ func TestGetRestAPIByIdNotFound(t *testing.T) {
 
 // TestGetAPIByIdNoDB tests getting an API when DB is not available
 func TestGetRestAPIByIdNoDB(t *testing.T) {
-	server := createTestAPIServer()
-	server.db = nil // Simulate no DB
+	server := createTestAPIServerWithDB(nil)
 
 	c, w := createTestContext("GET", "/rest-apis/test-id", nil)
 	server.GetRestAPIById(c, "0000-test-id-0000-000000000000")
@@ -1324,13 +1342,12 @@ func TestUpdateRestAPINotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// TestUpdateRestAPIWithDBAndEventHub tests UpdateRestAPI on the DB-backed event-driven path.
-func TestUpdateRestAPIWithDBAndEventHub(t *testing.T) {
-	server := createTestAPIServer()
+// TestUpdateRestAPINoDB tests UpdateRestAPI when DB is not available
+func TestUpdateRestAPINoDB(t *testing.T) {
+	server := createTestAPIServerWithDB(nil)
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	server.eventHub = mockHub
-	server.gatewayID = "test-gateway"
 
 	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "original-display-name", "v1.0.0", "/original")
 	existing.Handle = "test-handle"
