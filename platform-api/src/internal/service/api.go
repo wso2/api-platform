@@ -757,14 +757,6 @@ func (s *APIService) isValidVersion(version string) bool {
 	return matched && len(version) > 0 && len(version) <= 30
 }
 
-// isValidVHost validates vhost format
-func (s *APIService) isValidVHost(vhost string) bool {
-	// Basic hostname validation pattern as per RFC 1123
-	pattern := `^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-ZaZ0-9\-]*[A-ZaZ0-9])$`
-	matched, _ := regexp.MatchString(pattern, vhost)
-	return matched
-}
-
 // generateDefaultOperations creates default CRUD operations for an API
 func (s *APIService) generateDefaultOperations() []api.Operation {
 	return []api.Operation{

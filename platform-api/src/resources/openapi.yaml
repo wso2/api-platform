@@ -5824,7 +5824,7 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional metadata for the deployment (e.g., endpointUrl overrides)
+          description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 
     DeploymentResponse:
       type: object
