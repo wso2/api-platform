@@ -127,7 +127,7 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
-			apiKeyService:      apiKeyService,
+		apiKeyService:      apiKeyService,
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
@@ -170,7 +170,11 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 
 	now := time.Now()
 	if success {
-		cfg.Status = models.StatusDeployed
+		if cfg.Status == models.StatusUndeployed {
+			cfg.Status = models.StatusUndeployed
+		} else {
+			cfg.Status = models.StatusDeployed
+		}
 		cfg.DeployedAt = &now
 		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
@@ -2158,7 +2162,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 		return "", fmt.Errorf("api not found")
 	}
 	return cfg.UUID, nil
-	}
+}
 
 // CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
 func (s *APIServer) CreateSubscription(c *gin.Context) {
@@ -2264,11 +2268,11 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		appID = req.ApplicationId
 	}
 	sub := &models.Subscription{
-		ID:                uuid.New().String(),
-		APIID:             apiID,
-		ApplicationID:     appID,
+		ID:                 uuid.New().String(),
+		APIID:              apiID,
+		ApplicationID:      appID,
 		SubscriptionPlanID: req.SubscriptionPlanId,
-		Status:            status,
+		Status:             status,
 	}
 	if err := s.db.SaveSubscription(sub); err != nil {
 		if storage.IsConflictError(err) {
