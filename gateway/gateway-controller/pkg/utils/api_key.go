@@ -173,8 +173,8 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	}
 
 	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
+	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	if err != nil || config == nil {
 		logger.Error("API configuration not found for API Key generation",
 			slog.String("operation", operationType+"_key"),
 			slog.Any("error", err))
@@ -321,8 +321,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
+	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	if err != nil || config == nil {
 		logger.Warn("API configuration not found for API key revocation",
 			slog.Any("error", err))
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
@@ -481,8 +481,8 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	// Get the API configuration
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
+	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	if err != nil || config == nil {
 		logger.Warn("API configuration not found for API key update")
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 	}
@@ -666,8 +666,8 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		slog.String("correlation_id", params.CorrelationID))
 
 	// Get the API configuration
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
+	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	if err != nil || config == nil {
 		logger.Warn("API configuration not found for API Key regeneration",
 			slog.String("handle", params.Handle),
 			slog.String("correlation_id", params.CorrelationID))
@@ -837,8 +837,8 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	user := params.User
 
 	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
+	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	if err != nil || config == nil {
 		logger.Warn("API configuration not found for API keys listing",
 			slog.String("handle", params.Handle),
 			slog.String("correlation_id", params.CorrelationID))

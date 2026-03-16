@@ -135,9 +135,9 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 			APIVersion: apiMetadata.Version,
 		}
 
-		// Create instance using factory with metadata and params
-		// CreateInstance returns the policy and merged params (initParams + runtime params)
-		impl, mergedParams, err := cl.registry.CreateInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
+		// Get instance using factory with metadata and params
+		// GetInstance returns the policy and merged params (initParams + runtime params)
+		impl, mergedParams, err := cl.registry.GetInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
 				policyConfig.Name, policyConfig.Version, routeKey, err)

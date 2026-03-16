@@ -81,6 +81,7 @@ type Translator struct {
 	routerConfig *config.RouterConfig
 	certStore    *certstore.CertStore
 	config       *config.Config
+	transformers map[string]models.ConfigTransformer // kind → transformer (optional)
 }
 
 // resolvedTimeout represents parsed timeout values for an upstream.
@@ -159,6 +160,184 @@ func (t *Translator) GetCertStore() *certstore.CertStore {
 	return t.certStore
 }
 
+// SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
+// When a transformer is available for a config's kind, the translator will
+// produce a RuntimeDeployConfig first, then convert it to Envoy resources
+// with minimal metadata (only route_name).
+func (t *Translator) SetTransformers(transformers map[string]models.ConfigTransformer) {
+	t.transformers = transformers
+}
+
+// translateRuntimeConfig converts a RuntimeDeployConfig to Envoy routes and clusters.
+// Routes carry only route_name in dynamic metadata; all other metadata is delivered
+// to the policy engine via the RouteConfig xDS resource type.
+func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]*route.Route, []*cluster.Cluster, error) {
+	var routes []*route.Route
+	var clusters []*cluster.Cluster
+
+	// Build clusters from UpstreamClusters
+	for clusterName, uc := range rdc.UpstreamClusters {
+		if len(uc.Endpoints) == 0 {
+			continue
+		}
+		ep := uc.Endpoints[0]
+		parsedURL := &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
+			Path:   uc.BasePath,
+		}
+		if uc.TLS != nil && uc.TLS.Enabled {
+			parsedURL.Scheme = "https"
+		}
+		var connectTimeout *time.Duration
+		// Use global default; per-cluster timeout comes from the route's Timeout field
+		c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+		clusters = append(clusters, c)
+	}
+
+	// Build routes from Routes map
+	for routeKey, rdcRoute := range rdc.Routes {
+		r := t.createRouteFromRDC(routeKey, rdcRoute, rdc)
+		routes = append(routes, r)
+	}
+
+	return routes, clusters, nil
+}
+
+// createRouteFromRDC creates an Envoy route from a RuntimeDeployConfig Route.
+// Only route_name is injected as dynamic metadata.
+func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route, rdc *models.RuntimeDeployConfig) *route.Route {
+	fullPath := rdcRoute.Path
+	method := rdcRoute.Method
+	operationPath := rdcRoute.OperationPath
+
+	// Determine path type
+	isWildcardPath := strings.HasSuffix(operationPath, "/*")
+	hasParams := strings.Contains(operationPath, "{")
+
+	var pathSpecifier *route.RouteMatch_SafeRegex
+	if isWildcardPath {
+		prefixPath := strings.TrimSuffix(fullPath, "/*")
+		pathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "/.*$",
+			},
+		}
+	} else if hasParams {
+		regexPattern := t.pathToRegex(fullPath)
+		pathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: regexPattern,
+			},
+		}
+	}
+
+	// Build route action with timeouts
+	routeAction := &route.Route_Route{
+		Route: &route.RouteAction{
+			Timeout: durationpb.New(
+				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutMs) * time.Millisecond,
+			),
+			IdleTimeout: durationpb.New(
+				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
+			),
+		},
+	}
+
+	// Set cluster specifier
+	if rdcRoute.Upstream.UseClusterHeader {
+		routeAction.Route.ClusterSpecifier = &route.RouteAction_ClusterHeader{
+			ClusterHeader: constants.TargetUpstreamHeader,
+		}
+	} else {
+		routeAction.Route.ClusterSpecifier = &route.RouteAction_Cluster{
+			Cluster: rdcRoute.Upstream.ClusterKey,
+		}
+	}
+
+	// Set host rewrite
+	if rdcRoute.AutoHostRewrite {
+		routeAction.Route.HostRewriteSpecifier = &route.RouteAction_AutoHostRewrite{
+			AutoHostRewrite: &wrapperspb.BoolValue{Value: true},
+		}
+	}
+
+	r := &route.Route{
+		Name:   routeKey,
+		Match:  &route.RouteMatch{},
+		Action: routeAction,
+	}
+
+	// Strip target upstream header when using cluster_header routing
+	if rdcRoute.Upstream.UseClusterHeader {
+		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
+	}
+
+	// Set method matcher (not for wildcard paths)
+	if !isWildcardPath {
+		r.Match = &route.RouteMatch{
+			Headers: []*route.HeaderMatcher{{
+				Name: ":method",
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: method,
+						},
+					},
+				},
+			}},
+		}
+	}
+
+	// Minimal metadata: only route_name
+	// All other metadata (api_name, api_version, etc.) is delivered via RouteConfig xDS
+	metaMap := map[string]interface{}{
+		"route_name": routeKey,
+	}
+	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
+		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
+			"wso2.route": metaStruct,
+		}}
+	}
+
+	// Set path specifier
+	if isWildcardPath || hasParams {
+		r.Match.PathSpecifier = pathSpecifier
+	} else {
+		r.Match.PathSpecifier = &route.RouteMatch_Path{
+			Path: fullPath,
+		}
+	}
+
+	// Compute regex rewrite to strip context and prepend upstream path
+	upstreamPath := ""
+	if uc, ok := rdc.UpstreamClusters[rdcRoute.Upstream.ClusterKey]; ok {
+		upstreamPath = uc.BasePath
+	}
+	if upstreamPath == "/" {
+		upstreamPath = ""
+	}
+
+	// Derive context prefix from fullPath minus operationPath
+	// fullPath = contextWithVersion + operationPath
+	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
+	if isWildcardPath {
+		// For wildcard, include the path up to the /* in the context for rewriting
+		pathWithoutWildcard := strings.TrimSuffix(operationPath, "/*")
+		contextWithVersion = strings.TrimSuffix(fullPath, operationPath) + pathWithoutWildcard
+	}
+
+	escapedContext := regexp.QuoteMeta(contextWithVersion)
+	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+		Pattern: &matcher.RegexMatcher{
+			Regex: "^" + escapedContext + "(.*)$",
+		},
+		Substitution: upstreamPath + "\\1",
+	}
+
+	return r
+}
+
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
 func (t *Translator) TranslateConfigs(
@@ -197,17 +376,34 @@ func (t *Translator) TranslateConfigs(
 		var routesList []*route.Route
 		var clusterList []*cluster.Cluster
 		var err error
-		if cfg.Kind == "WebSubApi" {
-			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg, configs)
-			if err != nil {
-				log.Error("Failed to translate config",
+
+		// Try RuntimeDeployConfig transformer path first (produces minimal metadata routes)
+		if transformer, ok := t.transformers[cfg.Kind]; ok {
+			rdc, transformErr := transformer.Transform(cfg)
+			if transformErr != nil {
+				log.Error("Failed to transform config via RuntimeDeployConfig, falling back to legacy path",
 					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName),
-					slog.Any("error", err))
-				continue
+					slog.String("kind", cfg.Kind),
+					slog.Any("error", transformErr))
+				// Fall through to legacy path
+			} else {
+				routesList, clusterList, err = t.translateRuntimeConfig(rdc)
+				if err != nil {
+					log.Error("Failed to translate RuntimeDeployConfig",
+						slog.String("id", cfg.UUID),
+						slog.Any("error", err))
+					continue
+				}
 			}
-		} else {
-			routesList, clusterList, err = t.translateAPIConfig(cfg, configs)
+		}
+
+		// Legacy path: direct translation from StoredConfig (WebSubApi, or fallback)
+		if routesList == nil {
+			if cfg.Kind == "WebSubApi" {
+				routesList, clusterList, err = t.translateAsyncAPIConfig(cfg, configs)
+			} else {
+				routesList, clusterList, err = t.translateAPIConfig(cfg, configs)
+			}
 			if err != nil {
 				log.Error("Failed to translate config",
 					slog.String("id", cfg.UUID),

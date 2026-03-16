@@ -130,36 +130,36 @@ func TestNewCombinedCache(t *testing.T) {
 	subscriptionCache := newMockCache()
 
 	t.Run("creates combined cache successfully", func(t *testing.T) {
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 		assert.NotNil(t, cc)
 	})
 
 	t.Run("panics with nil policy cache", func(t *testing.T) {
 		assert.Panics(t, func() {
-			NewCombinedCache(nil, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+			NewCombinedCache(nil, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 		})
 	})
 
 	t.Run("panics with nil api key cache", func(t *testing.T) {
 		assert.Panics(t, func() {
-			NewCombinedCache(policyCache, nil, lazyResourceCache, subscriptionCache, logger)
+			NewCombinedCache(policyCache, nil, lazyResourceCache, subscriptionCache, nil, logger)
 		})
 	})
 
 	t.Run("panics with nil lazy resource cache", func(t *testing.T) {
 		assert.Panics(t, func() {
-			NewCombinedCache(policyCache, apiKeyCache, nil, subscriptionCache, logger)
+			NewCombinedCache(policyCache, apiKeyCache, nil, subscriptionCache, nil, logger)
 		})
 	})
 
 	t.Run("panics with nil subscription cache", func(t *testing.T) {
 		assert.Panics(t, func() {
-			NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, nil, logger)
+			NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, nil, nil, logger)
 		})
 	})
 
 	t.Run("uses default logger when nil", func(t *testing.T) {
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, nil)
 		assert.NotNil(t, cc)
 	})
 }
@@ -172,7 +172,7 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -211,7 +211,7 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		lazyResourceCache.watchCancelFunc = func() { lazyResourceCancelCalled = true }
 		subscriptionCache.watchCancelFunc = func() { subscriptionCancelCalled = true }
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -240,7 +240,7 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		apiKeyCache := newMockDeltaCache()
 		lazyResourceCache := newMockDeltaCache()
 		subscriptionCache := newMockDeltaCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
 			TypeUrl: "test-type",
@@ -269,7 +269,7 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
 			TypeUrl: "test-type",
@@ -300,7 +300,7 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		lazyResourceCache.deltaWatchCancelFunc = func() { lazyResourceCancelCalled = true }
 		subscriptionCache.deltaWatchCancelFunc = func() { subscriptionCancelCalled = true }
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
 			TypeUrl: "test-type",
@@ -331,7 +331,7 @@ func TestCombinedCache_Fetch(t *testing.T) {
 		policyCache.fetchResponse = expectedResponse
 		policyCache.fetchError = nil
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -355,7 +355,7 @@ func TestCombinedCache_Fetch(t *testing.T) {
 		apiKeyCache.fetchResponse = expectedResponse
 		apiKeyCache.fetchError = nil
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -381,7 +381,7 @@ func TestCombinedCache_Fetch(t *testing.T) {
 		lazyResourceCache.fetchResponse = expectedResponse
 		lazyResourceCache.fetchError = nil
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -406,7 +406,7 @@ func TestCombinedCache_Fetch(t *testing.T) {
 		apiKeyCache.fetchError = assert.AnError
 		lazyResourceCache.fetchError = assert.AnError
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -430,7 +430,7 @@ func TestCombinedCache_CancelWatch(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		// Should not panic
 		cc.cancelWatch(99999)
@@ -441,7 +441,7 @@ func TestCombinedCache_CancelWatch(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -478,7 +478,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -487,7 +487,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		mainResponseChan := make(chan cache.Response, 1)
 		done := make(chan struct{})
 
-		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 
 		// Send a policy response
 		policyResponseChan <- &mockResponse{version: "v1"}
@@ -509,7 +509,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 2)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -518,7 +518,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		mainResponseChan := make(chan cache.Response, 2)
 		done := make(chan struct{})
 
-		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 
 		// Send same response twice
 		policyResponseChan <- &mockResponse{version: "v1"}
@@ -549,7 +549,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 2)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -558,7 +558,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		mainResponseChan := make(chan cache.Response, 1)
 		done := make(chan struct{})
 
-		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 
 		// Send nil response followed by real response
 		policyResponseChan <- nil
@@ -581,7 +581,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -592,7 +592,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 
 		exited := make(chan struct{})
 		go func() {
-			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 			close(exited)
 		}()
 
@@ -613,7 +613,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -624,7 +624,7 @@ func TestCombinedCache_HandleCombinedResponses(t *testing.T) {
 
 		exited := make(chan struct{})
 		go func() {
-			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 			close(exited)
 		}()
 
@@ -649,7 +649,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		mainResponseChan := make(chan cache.DeltaResponse, 1)
 		responseChan := cc.createDeltaResponseHandler(1, "test", mainResponseChan)
@@ -673,7 +673,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		// Create a channel with no buffer to block
 		mainResponseChan := make(chan cache.DeltaResponse)
@@ -693,7 +693,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -703,7 +703,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		mainResponseChan := make(chan cache.Response)
 		done := make(chan struct{})
 
-		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 
 		// Send a policy response (should timeout since mainResponseChan is unbuffered and no one reading)
 		policyResponseChan <- &mockResponse{version: "v1"}
@@ -719,7 +719,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -729,7 +729,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		mainResponseChan := make(chan cache.Response)
 		done := make(chan struct{})
 
-		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 
 		// Send an API key response (should timeout since mainResponseChan is unbuffered)
 		apiKeyResponseChan <- &mockResponse{version: "v1"}
@@ -745,7 +745,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -755,7 +755,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		mainResponseChan := make(chan cache.Response)
 		done := make(chan struct{})
 
-		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 
 		// Send a lazy resource response (should timeout since mainResponseChan is unbuffered)
 		lazyResourceResponseChan <- &mockResponse{version: "v1"}
@@ -771,7 +771,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -782,7 +782,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 
 		exited := make(chan struct{})
 		go func() {
-			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 			close(exited)
 		}()
 
@@ -803,7 +803,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 2)
@@ -812,7 +812,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		mainResponseChan := make(chan cache.Response, 1)
 		done := make(chan struct{})
 
-		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+		go cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 
 		// Send nil response followed by real response
 		apiKeyResponseChan <- nil
@@ -835,7 +835,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
 		subscriptionCache := newMockCache()
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger).(*CombinedCache)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger).(*CombinedCache)
 
 		policyResponseChan := make(chan cache.Response, 1)
 		apiKeyResponseChan := make(chan cache.Response, 1)
@@ -846,7 +846,7 @@ func TestCombinedCache_CreateDeltaResponseHandler(t *testing.T) {
 
 		exited := make(chan struct{})
 		go func() {
-			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, mainResponseChan, done)
+			cc.handleCombinedResponses(1, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, nil, mainResponseChan, done)
 			close(exited)
 		}()
 
@@ -876,7 +876,7 @@ func TestCombinedCache_Fetch_VersionErrors(t *testing.T) {
 		policyCache.fetchResponse = &mockResponseWithVersionError{}
 		policyCache.fetchError = nil
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -898,7 +898,7 @@ func TestCombinedCache_Fetch_VersionErrors(t *testing.T) {
 		apiKeyCache.fetchResponse = &mockResponseWithVersionError{}
 		apiKeyCache.fetchError = nil
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",
@@ -921,7 +921,7 @@ func TestCombinedCache_Fetch_VersionErrors(t *testing.T) {
 		lazyResourceCache.fetchResponse = &mockResponseWithVersionError{}
 		lazyResourceCache.fetchError = nil
 
-		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, logger)
+		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
 			TypeUrl: "test-type",

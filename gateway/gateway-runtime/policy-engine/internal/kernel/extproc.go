@@ -329,14 +329,46 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	}
 }
 
-// initializeExecutionContext sets up the execution context for a request by retrieving the policy chain
-// T061: Extract metadata key from request and get policy chain
-// T064: Generate request ID
+// initializeExecutionContext sets up the execution context for a request by retrieving the policy chain.
+// It first tries the new RouteConfigs path (metadata pre-loaded via xDS), then falls back to the
+// legacy extractRouteMetadata path (metadata parsed from Envoy route metadata at request time).
 func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) *RouteMetadata {
-	// Extract route metadata from request
+	// Extract route key from Envoy attributes (just xds.route_name, lightweight)
+	routeKey := s.extractRouteKey(req)
+
+	// Try new path: RouteConfigs + PolicyChains
+	if rc := s.kernel.GetRouteConfig(routeKey); rc != nil {
+		// Metadata is pre-populated from xDS — no request-time parsing needed
+		routeMetadata := rc.Metadata
+		routeMetadata.RouteName = routeKey
+		routeMetadata.DefaultUpstreamCluster = rc.DefaultUpstreamCluster
+		routeMetadata.UpstreamBasePath = rc.UpstreamBasePath
+		routeMetadata.UpstreamDefinitionPaths = rc.UpstreamDefinitionPaths
+
+		// Resolve policy chain key (route-key resolver: policyChainKey = routeKey)
+		policyChainKey := routeKey // For route-key resolver, this is always the same
+
+		chain := s.kernel.GetPolicyChain(policyChainKey)
+		if chain == nil {
+			slog.InfoContext(ctx, "No policy chain found for route (new path), skipping all processing",
+				"route", routeKey,
+				"api_name", routeMetadata.APIName)
+			*execCtx = nil
+			return &routeMetadata
+		}
+
+		*execCtx = newPolicyExecutionContext(s, routeKey, chain)
+		(*execCtx).defaultUpstreamCluster = rc.DefaultUpstreamCluster
+		(*execCtx).upstreamBasePath = rc.UpstreamBasePath
+		(*execCtx).apiContext = routeMetadata.Context
+		(*execCtx).upstreamDefinitionPaths = rc.UpstreamDefinitionPaths
+		(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+		return &routeMetadata
+	}
+
+	// Fallback: legacy path using extractRouteMetadata (prototext.Unmarshal from Envoy route metadata)
 	routeMetadata := s.extractRouteMetadata(req)
 
-	// Get policy chain for this route using route name
 	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
 	if chain == nil {
 		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
@@ -349,21 +381,31 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		return &routeMetadata
 	}
 
-	// Create execution context for this request-response lifecycle
 	*execCtx = newPolicyExecutionContext(s, routeMetadata.RouteName, chain)
-
-	// Set default upstream cluster for dynamic cluster routing
 	(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
-
-	// Set upstream path information for dynamic path rewriting when UpstreamName is used
 	(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 	(*execCtx).apiContext = routeMetadata.Context
 	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
-
-	// Build request context from Envoy headers with route metadata
-	// Request ID will be extracted from x-request-id header or generated if not present
 	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
 	return &routeMetadata
+}
+
+// extractRouteKey extracts just the route key (xds.route_name) from the request attributes.
+// This is a lightweight extraction that avoids parsing route metadata.
+func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingRequest) string {
+	if req.Attributes == nil {
+		return "default"
+	}
+	extProcAttrs, ok := req.Attributes[constants.ExtProcFilter]
+	if !ok || extProcAttrs.Fields == nil {
+		return "default"
+	}
+	if routeNameValue, ok := extProcAttrs.Fields["xds.route_name"]; ok {
+		if stringValue := routeNameValue.GetStringValue(); stringValue != "" {
+			return stringValue
+		}
+	}
+	return "default"
 }
 
 // skipAllProcessing returns a response that skips all processing phases

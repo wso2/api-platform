@@ -64,9 +64,9 @@ type StoredConfig struct {
 	DeployedVersion     int64                `json:"deployed_version"` // Runtime-only: xDS snapshot version, not persisted to DB
 }
 
-// GetCompositeKey returns the composite key "displayName:version" for indexing
+// GetCompositeKey returns the composite key "kind:displayName:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
-	return fmt.Sprintf("%s:%s", c.DisplayName, c.Version)
+	return fmt.Sprintf("%s:%s:%s", c.Kind, c.DisplayName, c.Version)
 }
 
 // GetContext returns the context path from SourceConfiguration.
