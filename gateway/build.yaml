@@ -78,4 +78,6 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0
   - name: llm-cost
     gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
+  - name: llm-cost-based-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0
 
