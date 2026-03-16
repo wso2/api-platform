@@ -20,8 +20,11 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 )
@@ -150,9 +153,21 @@ func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
 	return nil
 }
 
-// ListLLMAPIKeysByUser retrieves all API keys for LLM providers and proxies created by a given user within an org.
-func (r *APIKeyRepo) ListLLMAPIKeysByUser(orgUUID, username string) ([]*model.UserAPIKey, error) {
-	query := `
+// ListAPIKeysByUser retrieves API keys created by a given user within an org, optionally filtered by artifact kinds.
+// If kinds is empty, all supported kinds (RestApi, LlmProvider, LlmProxy) are returned.
+func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string) ([]*model.UserAPIKey, error) {
+	if len(kinds) == 0 {
+		kinds = []string{constants.RestApi, constants.LLMProvider, constants.LLMProxy}
+	}
+
+	placeholders := make([]string, len(kinds))
+	args := []any{username, orgUUID}
+	for i, k := range kinds {
+		placeholders[i] = "?"
+		args = append(args, k)
+	}
+
+	query := fmt.Sprintf(`
 		SELECT ak.uuid, ak.artifact_uuid, ak.name, ak.masked_api_key, ak.api_key_hashes,
 		       ak.status, ak.created_at, ak.created_by, ak.updated_at, ak.expires_at,
 		       ak.issuer, ak.allowed_targets,
@@ -161,10 +176,11 @@ func (r *APIKeyRepo) ListLLMAPIKeysByUser(orgUUID, username string) ([]*model.Us
 		JOIN artifacts a ON a.uuid = ak.artifact_uuid
 		WHERE ak.created_by = ?
 		  AND a.organization_uuid = ?
-		  AND a.kind IN ('LlmProvider', 'LlmProxy')
+		  AND a.kind IN (%s)
 		ORDER BY ak.created_at DESC
-	`
-	rows, err := r.db.Query(r.db.Rebind(query), username, orgUUID)
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}

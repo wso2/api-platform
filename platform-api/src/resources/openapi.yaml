@@ -3504,18 +3504,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /user/llm-api-keys:
+  /me/api-keys:
     get:
-      summary: List LLM API keys for the current user
+      summary: List API keys for the current user
       description: |
-        Returns all API keys for LLM providers and LLM proxies created by the caller
-        within the organization. The plain key value is never returned.
-      operationId: listUserLLMAPIKeys
+        Returns API keys created by the caller within the organization.
+        Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
+        The plain key value is never returned.
+      operationId: listUserAPIKeys
       tags:
         - API Keys
+      parameters:
+        - name: type
+          in: query
+          description: |
+            Comma-separated list of artifact types to filter by.
+            If omitted, all types are returned.
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [RestApi, LlmProvider, LlmProxy]
+          style: form
+          explode: false
+          example: LlmProxy,LlmProvider
       responses:
         '200':
-          description: List of LLM API keys retrieved successfully
+          description: List of API keys retrieved successfully
           content:
             application/json:
               schema:
@@ -4030,11 +4046,11 @@ components:
           properties:
             artifactId:
               type: string
-              description: Handle (ID) of the LLM provider or proxy this key belongs to
+              description: Handle (ID) of the artifact this key belongs to
               example: wso2-openai-provider
             artifactType:
               type: string
-              enum: [llm-provider, llm-proxy]
+              enum: [RestApi, LlmProvider, LlmProxy]
               description: Type of the artifact this key belongs to
 
     UserAPIKeyListResponse:
@@ -4047,7 +4063,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/UserAPIKeyItem'
-          description: List of LLM API keys
+          description: List of API keys
         count:
           type: integer
           description: Total number of API keys returned
@@ -5059,7 +5075,7 @@ components:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
           nullable: true
-          example: "bijira-devportal"
+          example: "api-platform-devportal"
 
     CreateAPIKeyResponse:
       type: object
@@ -5116,7 +5132,7 @@ components:
         issuer:
           type: string
           description: Identifies the portal that created this key
-          example: "bijira-devportal"
+          example: "api-platform-devportal"
 
     UpdateAPIKeyResponse:
       type: object
@@ -7000,7 +7016,7 @@ components:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
           nullable: true
-          example: "bijira-devportal"
+          example: "api-platform-devportal"
         allowedTargets:
           type: string
           description: |
@@ -7055,7 +7071,7 @@ components:
           type: string
           description: Identifier of the developer portal that provisioned this API key. Null if not provided.
           nullable: true
-          example: "bijira-devportal"
+          example: "api-platform-devportal"
         allowedTargets:
           type: string
           description: |

@@ -2995,7 +2995,7 @@ components:
           description: |
             Identifies the portal that created this key. If provided, only api keys generated from
             the same portal will be accepted. If not provided, there is no portal restriction.
-          example: "bijira-devportal"
+          example: "api-platform-devportal"
     APIKeyCreationResponse:
       type: object
       properties:

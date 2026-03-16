@@ -378,8 +378,9 @@ const (
 
 // Defines values for UserAPIKeyItemArtifactType.
 const (
-	LlmProvider UserAPIKeyItemArtifactType = "llm-provider"
-	LlmProxy    UserAPIKeyItemArtifactType = "llm-proxy"
+	UserAPIKeyItemArtifactTypeLlmProvider UserAPIKeyItemArtifactType = "LlmProvider"
+	UserAPIKeyItemArtifactTypeLlmProxy    UserAPIKeyItemArtifactType = "LlmProxy"
+	UserAPIKeyItemArtifactTypeRestApi     UserAPIKeyItemArtifactType = "RestApi"
 )
 
 // Defines values for UserAPIKeyItemStatus.
@@ -436,6 +437,13 @@ const (
 	GetMCPProxyDeploymentsParamsStatusARCHIVED   GetMCPProxyDeploymentsParamsStatus = "ARCHIVED"
 	GetMCPProxyDeploymentsParamsStatusDEPLOYED   GetMCPProxyDeploymentsParamsStatus = "DEPLOYED"
 	GetMCPProxyDeploymentsParamsStatusUNDEPLOYED GetMCPProxyDeploymentsParamsStatus = "UNDEPLOYED"
+)
+
+// Defines values for ListUserAPIKeysParamsType.
+const (
+	ListUserAPIKeysParamsTypeLlmProvider ListUserAPIKeysParamsType = "LlmProvider"
+	ListUserAPIKeysParamsTypeLlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
+	ListUserAPIKeysParamsTypeRestApi     ListUserAPIKeysParamsType = "RestApi"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
@@ -2600,7 +2608,7 @@ type UserAPIKeyItem struct {
 	// AllowedTargets Comma-separated list of allowed gateways; 'ALL' means unrestricted
 	AllowedTargets string `binding:"required" json:"allowedTargets" yaml:"allowedTargets"`
 
-	// ArtifactId Handle (ID) of the LLM provider or proxy this key belongs to
+	// ArtifactId Handle (ID) of the artifact this key belongs to
 	ArtifactId string `json:"artifactId" yaml:"artifactId"`
 
 	// ArtifactType Type of the artifact this key belongs to
@@ -2642,7 +2650,7 @@ type UserAPIKeyListResponse struct {
 	// Count Total number of API keys returned
 	Count int `binding:"required" json:"count" yaml:"count"`
 
-	// Items List of LLM API keys
+	// Items List of API keys
 	Items []UserAPIKeyItem `binding:"required" json:"items" yaml:"items"`
 }
 
@@ -2915,6 +2923,16 @@ type UndeployMCPProxyDeploymentParams struct {
 	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
+
+// ListUserAPIKeysParams defines parameters for ListUserAPIKeys.
+type ListUserAPIKeysParams struct {
+	// Type Comma-separated list of artifact types to filter by.
+	// If omitted, all types are returned.
+	Type *[]ListUserAPIKeysParamsType `form:"type,omitempty" json:"type,omitempty" yaml:"type,omitempty"`
+}
+
+// ListUserAPIKeysParamsType defines parameters for ListUserAPIKeys.
+type ListUserAPIKeysParamsType string
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {

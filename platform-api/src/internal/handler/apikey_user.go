@@ -20,6 +20,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
@@ -28,22 +29,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// LLMAPIKeyUserHandler handles listing LLM API keys for a user across providers and proxies.
-type LLMAPIKeyUserHandler struct {
-	apiKeyUserService *service.LLMAPIKeyUserService
+// APIKeyUserHandler handles listing API keys for a user across artifact types.
+type APIKeyUserHandler struct {
+	apiKeyUserService *service.APIKeyUserService
 	slogger           *slog.Logger
 }
 
-// NewLLMAPIKeyUserHandler creates a new LLMAPIKeyUserHandler.
-func NewLLMAPIKeyUserHandler(apiKeyUserService *service.LLMAPIKeyUserService, slogger *slog.Logger) *LLMAPIKeyUserHandler {
-	return &LLMAPIKeyUserHandler{
+// NewAPIKeyUserHandler creates a new APIKeyUserHandler.
+func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, slogger *slog.Logger) *APIKeyUserHandler {
+	return &APIKeyUserHandler{
 		apiKeyUserService: apiKeyUserService,
 		slogger:           slogger,
 	}
 }
 
-// ListUserLLMAPIKeys handles GET /api/v1/user/llm-api-keys
-func (h *LLMAPIKeyUserHandler) ListUserLLMAPIKeys(c *gin.Context) {
+// ListUserAPIKeys handles GET /api/v1/me/api-keys
+func (h *APIKeyUserHandler) ListUserAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
@@ -53,9 +54,14 @@ func (h *LLMAPIKeyUserHandler) ListUserLLMAPIKeys(c *gin.Context) {
 
 	callerUserID := c.GetHeader("x-user-id")
 
-	response, err := h.apiKeyUserService.ListLLMAPIKeysByUser(c.Request.Context(), orgID, callerUserID)
+	var types []string
+	if typeParam := c.Query("type"); typeParam != "" {
+		types = strings.Split(typeParam, ",")
+	}
+
+	response, err := h.apiKeyUserService.ListAPIKeysByUser(c.Request.Context(), orgID, callerUserID, types)
 	if err != nil {
-		h.slogger.Error("Failed to list LLM API keys for user", "orgId", orgID, "error", err)
+		h.slogger.Error("Failed to list API keys for user", "orgId", orgID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to list API keys"))
 		return
@@ -64,7 +70,7 @@ func (h *LLMAPIKeyUserHandler) ListUserLLMAPIKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// RegisterRoutes registers the user LLM API key routes.
-func (h *LLMAPIKeyUserHandler) RegisterRoutes(r *gin.Engine) {
-	r.GET("/api/v1/user/llm-api-keys", h.ListUserLLMAPIKeys)
+// RegisterRoutes registers the user API key routes.
+func (h *APIKeyUserHandler) RegisterRoutes(r *gin.Engine) {
+	r.GET("/api/v1/me/api-keys", h.ListUserAPIKeys)
 }

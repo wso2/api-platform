@@ -23,45 +23,41 @@ import (
 	"log/slog"
 
 	"platform-api/src/api"
-	"platform-api/src/internal/constants"
 	"platform-api/src/internal/repository"
 )
 
-// LLMAPIKeyUserService handles listing LLM API keys across providers and proxies for a given user.
-type LLMAPIKeyUserService struct {
+// APIKeyUserService handles listing API keys across artifact types for a given user.
+type APIKeyUserService struct {
 	apiKeyRepo repository.APIKeyRepository
 	slogger    *slog.Logger
 }
 
-// NewLLMAPIKeyUserService creates a new LLMAPIKeyUserService instance.
-func NewLLMAPIKeyUserService(
+// NewAPIKeyUserService creates a new APIKeyUserService instance.
+func NewAPIKeyUserService(
 	apiKeyRepo repository.APIKeyRepository,
 	slogger *slog.Logger,
-) *LLMAPIKeyUserService {
-	return &LLMAPIKeyUserService{
+) *APIKeyUserService {
+	return &APIKeyUserService{
 		apiKeyRepo: apiKeyRepo,
 		slogger:    slogger,
 	}
 }
 
-// ListLLMAPIKeysByUser returns all LLM provider and proxy API keys created by the given user within the org.
-func (s *LLMAPIKeyUserService) ListLLMAPIKeysByUser(
+// ListAPIKeysByUser returns API keys created by the given user within the org, optionally filtered by artifact types.
+func (s *APIKeyUserService) ListAPIKeysByUser(
 	ctx context.Context,
 	orgID, username string,
+	types []string,
 ) (*api.UserAPIKeyListResponse, error) {
 
-	keys, err := s.apiKeyRepo.ListLLMAPIKeysByUser(orgID, username)
+	keys, err := s.apiKeyRepo.ListAPIKeysByUser(orgID, username, types)
 	if err != nil {
-		s.slogger.Error("Failed to list LLM API keys for user", "username", username, "orgId", orgID, "error", err)
+		s.slogger.Error("Failed to list API keys for user", "username", username, "orgId", orgID, "error", err)
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
 
 	items := make([]api.UserAPIKeyItem, 0, len(keys))
 	for _, k := range keys {
-		artifactType := "llm-provider"
-		if k.ArtifactKind == constants.LLMProxy {
-			artifactType = "llm-proxy"
-		}
 		item := api.UserAPIKeyItem{
 			Name:           k.Name,
 			MaskedApiKey:   k.MaskedAPIKey,
@@ -73,7 +69,7 @@ func (s *LLMAPIKeyUserService) ListLLMAPIKeysByUser(
 			Issuer:         k.Issuer,
 			AllowedTargets: k.AllowedTargets,
 			ArtifactId:     k.ArtifactHandle,
-			ArtifactType:   api.UserAPIKeyItemArtifactType(artifactType),
+			ArtifactType:   api.UserAPIKeyItemArtifactType(k.ArtifactKind),
 		}
 		items = append(items, item)
 	}

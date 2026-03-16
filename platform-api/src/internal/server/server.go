@@ -188,7 +188,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	)
 	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
 	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
-	llmAPIKeyUserService := service.NewLLMAPIKeyUserService(apiKeyRepo, slogger)
+	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
 		deploymentRepo,
@@ -226,7 +226,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, slogger)
 	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, slogger)
 	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, slogger)
-	llmAPIKeyUserHandler := handler.NewLLMAPIKeyUserHandler(llmAPIKeyUserService, slogger)
+	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
@@ -275,7 +275,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmDeploymentHandler.RegisterRoutes(router)
 	llmProviderAPIKeyHandler.RegisterRoutes(router)
 	llmProxyAPIKeyHandler.RegisterRoutes(router)
-	llmAPIKeyUserHandler.RegisterRoutes(router)
+	apiKeyUserHandler.RegisterRoutes(router)
 	llmProxyDeploymentHandler.RegisterRoutes(router)
 	mcpProxyHandler.RegisterRoutes(router)
 	mcpProxyDeploymentHandler.RegisterRoutes(router)
