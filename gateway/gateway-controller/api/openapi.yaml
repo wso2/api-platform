@@ -3216,11 +3216,15 @@ components:
       type: object
       required:
         - apiId
+        - subscriptionToken
       properties:
         apiId:
           type: string
           description: API identifier (deployment ID or handle)
           example: "c9f2b6ae-1234-5678-9abc-def012345678"
+        subscriptionToken:
+          type: string
+          description: Opaque subscription token for API invocation (required; stored as hash only)
         applicationId:
           type: string
           description: Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
@@ -3248,7 +3252,7 @@ components:
           type: string
         subscriptionToken:
           type: string
-          description: Opaque subscription token for API invocation
+          description: Opaque subscription token (returned only on create; use Platform-API to retrieve for existing subscriptions)
         subscriptionPlanId:
           type: string
           description: Subscription plan UUID

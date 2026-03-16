@@ -2168,6 +2168,10 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiId is required"})
 		return
 	}
+	if strings.TrimSpace(req.SubscriptionToken) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "subscriptionToken is required"})
+		return
+	}
 
 	// Resolve apiId (deployment ID or handle) to the internal deployment ID used for persistence.
 	apiID, err := s.resolveAPIIDByHandle(c, req.ApiId, log)
@@ -2249,11 +2253,12 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		appID = req.ApplicationId
 	}
 	sub := &models.Subscription{
-		ID:                uuid.New().String(),
-		APIID:             apiID,
+		ID:                 uuid.New().String(),
+		APIID:              apiID,
 		ApplicationID:     appID,
 		SubscriptionPlanID: req.SubscriptionPlanId,
-		Status:            status,
+		Status:             status,
+		SubscriptionToken:  strings.TrimSpace(req.SubscriptionToken),
 	}
 	if err := s.db.SaveSubscription(sub); err != nil {
 		if storage.IsConflictError(err) {
@@ -2733,14 +2738,15 @@ func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionP
 }
 
 // subscriptionToResponse builds a response without the subscription token.
-// The token is only returned once at creation; DB reads contain hashes and must never be exposed.
+// DB reads only have subscription_token_hash; token is never stored. Token is returned only at creation via subscriptionToResponseWithToken.
 func subscriptionToResponse(sub *models.Subscription) api.SubscriptionResponse {
 	resp := api.SubscriptionResponse{
-		Id:        ptr(sub.ID),
-		ApiId:     ptr(sub.APIID),
-		GatewayId: ptr(sub.GatewayID),
-		CreatedAt: &sub.CreatedAt,
-		UpdatedAt: &sub.UpdatedAt,
+		Id:                ptr(sub.ID),
+		ApiId:             ptr(sub.APIID),
+		GatewayId:         ptr(sub.GatewayID),
+		CreatedAt:         &sub.CreatedAt,
+		UpdatedAt:         &sub.UpdatedAt,
+		SubscriptionToken: nil, // Explicitly omit; gateway does not store token, use Platform-API to retrieve
 	}
 	if sub.ApplicationID != nil {
 		resp.ApplicationId = sub.ApplicationID

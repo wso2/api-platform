@@ -59,16 +59,14 @@ type sqlStore struct {
 
 	backendName string
 
-	subscriptionTokenEncryptionKey string
 }
 
-func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string, subscriptionTokenEncryptionKey string) *sqlStore {
+func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId string) *sqlStore {
 	return &sqlStore{
 		db:          db,
 		logger:      logger,
 		gatewayId:   gatewayId,
 		backendName: backendName,
-		subscriptionTokenEncryptionKey: subscriptionTokenEncryptionKey,
 		// Defaults are identity/false; backends can override.
 		rebindQuery:                     func(query string) string { return query },
 		isConfigUniqueViolation:         func(error) bool { return false },
@@ -1787,30 +1785,22 @@ func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
 	}
 	sub.GatewayID = s.gatewayId
 	plainToken := sub.SubscriptionToken
+	if plainToken == "" {
+		return fmt.Errorf("subscription token cannot be empty")
+	}
 	tokenHash := hashSubscriptionToken(plainToken)
-
-	if s.subscriptionTokenEncryptionKey == "" {
-		return fmt.Errorf("subscription token encryption key required; configure subscriptions.subscription_token_encryption_key to store subscriptions")
-	}
-	key, err := DeriveEncryptionKey(s.subscriptionTokenEncryptionKey)
-	if err != nil {
-		return fmt.Errorf("subscription token encryption key: %w", err)
-	}
-	encryptedToken, err := EncryptSubscriptionToken(key, plainToken)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt subscription token: %w", err)
-	}
+	sub.SubscriptionTokenHash = tokenHash
 
 	now := time.Now()
 	sub.CreatedAt = now
 	sub.UpdatedAt = now
 	query := `
-		INSERT INTO subscriptions (id, gateway_id, api_id, application_id, subscription_token, subscription_token_hash,
+		INSERT INTO subscriptions (id, gateway_id, api_id, application_id, subscription_token_hash,
 			subscription_plan_id, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err = s.exec(query, sub.ID, s.gatewayId, sub.APIID, sub.ApplicationID,
-		encryptedToken, tokenHash, sub.SubscriptionPlanID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
+	_, err := s.exec(query, sub.ID, s.gatewayId, sub.APIID, sub.ApplicationID,
+		tokenHash, sub.SubscriptionPlanID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
 	if err != nil {
 		if s.isSubscriptionUniqueViolation(err) {
 			return fmt.Errorf("%w: subscription token already exists for this API", ErrConflict)
@@ -1821,18 +1811,17 @@ func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
 }
 
 // GetSubscriptionByID retrieves a subscription by ID and gateway.
-// Decrypts subscription_token for API response.
+// SubscriptionToken is not stored; use Platform-API to retrieve the original token.
 func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
 	query := `
-		SELECT id, api_id, application_id, subscription_token, subscription_token_hash, subscription_plan_id,
+		SELECT id, api_id, application_id, subscription_token_hash, subscription_plan_id,
 			gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE id = ? AND gateway_id = ?
 	`
 	sub := &models.Subscription{}
-	var storedToken string
 	err := s.queryRow(query, id, s.gatewayId).Scan(
-		&sub.ID, &sub.APIID, &sub.ApplicationID, &storedToken, &sub.SubscriptionTokenHash,
+		&sub.ID, &sub.APIID, &sub.ApplicationID, &sub.SubscriptionTokenHash,
 		&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status,
 		&sub.CreatedAt, &sub.UpdatedAt,
 	)
@@ -1842,36 +1831,13 @@ func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscripti
 		}
 		return nil, err
 	}
-	plainToken, err := s.decryptSubscriptionToken(storedToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt subscription token: %w", err)
-	}
-	sub.SubscriptionToken = plainToken
 	return sub, nil
-}
-
-func (s *sqlStore) decryptSubscriptionToken(stored string) (string, error) {
-	if stored == "" {
-		return "", nil
-	}
-	if s.subscriptionTokenEncryptionKey == "" {
-		return stored, nil // stored without encryption, return as-is
-	}
-	key, err := DeriveEncryptionKey(s.subscriptionTokenEncryptionKey)
-	if err != nil {
-		return "", fmt.Errorf("key derivation: %w", err)
-	}
-	plain, err := DecryptSubscriptionToken(key, stored)
-	if err != nil {
-		return "", fmt.Errorf("decryption: %w", err)
-	}
-	return plain, nil
 }
 
 // ListSubscriptionsByAPI returns subscriptions for an API with optional filters.
 func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
 	query := `
-		SELECT id, api_id, application_id, subscription_token, subscription_token_hash, subscription_plan_id,
+		SELECT id, api_id, application_id, subscription_token_hash, subscription_plan_id,
 			gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE gateway_id = ?
@@ -1898,16 +1864,10 @@ func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID
 	var list []*models.Subscription
 	for rows.Next() {
 		sub := &models.Subscription{}
-		var storedToken string
-		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &storedToken, &sub.SubscriptionTokenHash,
+		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &sub.SubscriptionTokenHash,
 			&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
 			return nil, err
 		}
-		plainToken, err := s.decryptSubscriptionToken(storedToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt subscription token for %s: %w", sub.ID, err)
-		}
-		sub.SubscriptionToken = plainToken
 		list = append(list, sub)
 	}
 	return list, rows.Err()
@@ -1916,7 +1876,7 @@ func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID
 // ListActiveSubscriptions returns all ACTIVE subscriptions for this gateway in one query.
 func (s *sqlStore) ListActiveSubscriptions() ([]*models.Subscription, error) {
 	query := `
-		SELECT id, api_id, application_id, subscription_token, subscription_token_hash, subscription_plan_id,
+		SELECT id, api_id, application_id, subscription_token_hash, subscription_plan_id,
 			gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE gateway_id = ? AND status = ?
@@ -1930,24 +1890,18 @@ func (s *sqlStore) ListActiveSubscriptions() ([]*models.Subscription, error) {
 	var list []*models.Subscription
 	for rows.Next() {
 		sub := &models.Subscription{}
-		var storedToken string
-		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &storedToken, &sub.SubscriptionTokenHash,
+		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &sub.SubscriptionTokenHash,
 			&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
 			return nil, err
 		}
-		plainToken, err := s.decryptSubscriptionToken(storedToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt subscription token for %s: %w", sub.ID, err)
-		}
-		sub.SubscriptionToken = plainToken
 		list = append(list, sub)
 	}
 	return list, rows.Err()
 }
 
 // UpdateSubscription updates an existing subscription.
-// Persists all mutable fields: application_id, subscription_token, subscription_plan_id, status.
-// Receives plain token; encrypts and hashes before storage (same as SaveSubscription).
+// Persists all mutable fields: application_id, subscription_token_hash, subscription_plan_id, status.
+// If plainToken is set, hashes it; otherwise reuses existing SubscriptionTokenHash (for status-only updates from DB-loaded subs).
 func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
 	if sub == nil {
 		return fmt.Errorf("failed to update subscription: nil subscription")
@@ -1955,27 +1909,22 @@ func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
 	sub.GatewayID = s.gatewayId
 	sub.UpdatedAt = time.Now()
 	plainToken := sub.SubscriptionToken
-	tokenHash := hashSubscriptionToken(plainToken)
-
-	if s.subscriptionTokenEncryptionKey == "" {
-		return fmt.Errorf("subscription token encryption key required; configure subscriptions.subscription_token_encryption_key to store subscriptions")
+	tokenHash := sub.SubscriptionTokenHash
+	if plainToken != "" {
+		tokenHash = hashSubscriptionToken(plainToken)
 	}
-	key, err := DeriveEncryptionKey(s.subscriptionTokenEncryptionKey)
-	if err != nil {
-		return fmt.Errorf("subscription token encryption key: %w", err)
+	if tokenHash == "" {
+		return fmt.Errorf("subscription token hash cannot be empty")
 	}
-	encryptedToken, err := EncryptSubscriptionToken(key, plainToken)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt subscription token: %w", err)
-	}
+	sub.SubscriptionTokenHash = tokenHash
 
 	query := `
 		UPDATE subscriptions
-		SET api_id = ?, application_id = ?, subscription_token = ?, subscription_token_hash = ?,
+		SET api_id = ?, application_id = ?, subscription_token_hash = ?,
 			subscription_plan_id = ?, status = ?, updated_at = ?
 		WHERE id = ? AND gateway_id = ?
 	`
-	result, err := s.exec(query, sub.APIID, sub.ApplicationID, encryptedToken, tokenHash,
+	result, err := s.exec(query, sub.APIID, sub.ApplicationID, sub.SubscriptionTokenHash,
 		sub.SubscriptionPlanID, string(sub.Status), sub.UpdatedAt, sub.ID, s.gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to update subscription: %w", err)

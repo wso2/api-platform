@@ -200,14 +200,12 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 );
 
 -- Subscriptions table (application-level subscriptions for REST APIs)
--- subscription_token: encrypted (AES-256-GCM) for GET display
--- subscription_token_hash: for xDS validation and uniqueness
+-- subscription_token_hash: for xDS validation and request validation (Platform-API stores original token)
 CREATE TABLE IF NOT EXISTS subscriptions (
     id TEXT PRIMARY KEY,
     gateway_id TEXT NOT NULL,
     api_id TEXT NOT NULL,
     application_id TEXT,
-    subscription_token TEXT NOT NULL,
     subscription_token_hash TEXT NOT NULL,
     subscription_plan_id TEXT,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',

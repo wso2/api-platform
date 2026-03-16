@@ -44,17 +44,9 @@ var (
 
 func toBackendConfig(cfg *config.Config) storage.BackendConfig {
 	pg := cfg.Controller.Storage.Postgres
-	subTokenKey := ""
-	if cfg.Subscriptions != nil {
-		subTokenKey = cfg.Subscriptions.SubscriptionTokenEncryptionKey
-	}
-	if subTokenKey == "" {
-		subTokenKey = os.Getenv("APIP_GW_SUBSCRIPTIONS_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY")
-	}
 	return storage.BackendConfig{
-		Type:                          cfg.Controller.Storage.Type,
-		SQLitePath:                    cfg.Controller.Storage.SQLite.Path,
-		SubscriptionTokenEncryptionKey: subTokenKey,
+		Type:        cfg.Controller.Storage.Type,
+		SQLitePath:  cfg.Controller.Storage.SQLite.Path,
 		Postgres: storage.PostgresConnectionConfig{
 			DSN:             pg.DSN,
 			Host:            pg.Host,
