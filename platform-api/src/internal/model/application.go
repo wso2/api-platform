@@ -39,7 +39,7 @@ func (Application) TableName() string {
 
 // ApplicationAPIKey represents an API key mapped to an application.
 type ApplicationAPIKey struct {
-	ID         string     `json:"id" db:"id"`
+	ID         string     `json:"id"`
 	APIKeyUUID string     `json:"-" db:"uuid"`
 	Name       string     `json:"name" db:"name"`
 	ArtifactID string     `json:"artifactId" db:"artifact_uuid"`

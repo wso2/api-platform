@@ -418,6 +418,7 @@ func scanApplicationAPIKey(scanner rowScanner) (*model.ApplicationAPIKey, error)
 		return nil, err
 	}
 
+	// API response ID is derived from the API key UUID selected as ak.uuid.
 	key.ID = apiKeyUUID
 	key.APIKeyUUID = apiKeyUUID
 
