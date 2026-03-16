@@ -73,17 +73,6 @@ CREATE TABLE IF NOT EXISTS artifacts (
     UNIQUE(uuid, organization_uuid)
 );
 
--- Application API Key mappings table
-CREATE TABLE IF NOT EXISTS application_api_keys (
-    application_uuid VARCHAR(40) NOT NULL,
-    api_key_id VARCHAR(40) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (application_uuid, api_key_id),
-    FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
-);
-
 -- REST APIs table
 CREATE TABLE IF NOT EXISTS rest_apis (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -349,6 +338,17 @@ CREATE TABLE IF NOT EXISTS api_keys (
     allowed_targets TEXT NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     UNIQUE(artifact_uuid, name)
+);
+
+-- Application API Key mappings table
+CREATE TABLE IF NOT EXISTS application_api_keys (
+    application_uuid VARCHAR(40) NOT NULL,
+    api_key_id VARCHAR(40) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_uuid, api_key_id),
+    FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
 );
 
 -- Indexes for better performance
