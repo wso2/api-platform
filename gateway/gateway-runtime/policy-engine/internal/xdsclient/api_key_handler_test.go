@@ -195,7 +195,7 @@ func TestHandleAPIKeyOperation_ValidResource(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the API key was stored
-	valid, err := store.ValidateAPIKey("api-1", "*", "GET", "test-api-key-value")
+	valid, err := store.ValidateAPIKey("api-1", "*", "GET", "test-api-key-value", "")
 	assert.NoError(t, err)
 	assert.True(t, valid)
 }
@@ -242,11 +242,11 @@ func TestReplaceAllAPIKeys_ClearsExistingKeys(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Old key should no longer be valid
-	valid, _ := store.ValidateAPIKey("api-1", "*", "GET", "old-api-key-value")
+	valid, _ := store.ValidateAPIKey("api-1", "*", "GET", "old-api-key-value", "")
 	assert.False(t, valid)
 
 	// New key should be valid
-	valid, err = store.ValidateAPIKey("api-1", "*", "GET", "new-api-key-value")
+	valid, err = store.ValidateAPIKey("api-1", "*", "GET", "new-api-key-value", "")
 	assert.NoError(t, err)
 	assert.True(t, valid)
 }
@@ -278,6 +278,6 @@ func TestReplaceAllAPIKeys_EmptyList(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Key should no longer be valid
-	valid, _ := store.ValidateAPIKey("api-1", "*", "GET", "api-key-value")
+	valid, _ := store.ValidateAPIKey("api-1", "*", "GET", "api-key-value", "")
 	assert.False(t, valid)
 }

@@ -151,6 +151,7 @@ var (
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyAlreadyExists = errors.New("api key already exists")
 	ErrInvalidAPIKey       = errors.New("invalid api key")
+	ErrAPIKeyForbidden     = errors.New("forbidden: only the key creator can perform this action")
 	ErrGatewayUnavailable  = errors.New("gateway unavailable")
 	ErrAPIKeyEventDelivery = errors.New("failed to deliver api key event to gateway")
 	ErrAPIKeyHashingFailed = errors.New("failed to hash api key")

@@ -2933,12 +2933,6 @@ components:
     APIKeyCreationRequest:
       type: object
       properties:
-        displayName:
-          type: string
-          description: Human-readable name for the API key (1-100 characters)
-          minLength: 1
-          maxLength: 100
-          example: My Production Key
         name:
           type: string
           description: Identifier of the API key. If not provided, a default identifier will be generated
@@ -2956,6 +2950,12 @@ components:
             (minimum 36 characters). Use this for injecting externally generated
             API keys.
           example: "cloud-apim-key-abc123xyz789"
+        maskedApiKey:
+          type: string
+          description: |
+            Masked version of the API key for display purposes.
+            Provided by the platform API when injecting pre-hashed keys.
+          example: "apip_****xyz789"
         expiresIn:
           type: object
           description: Expiration duration for the API key
@@ -2990,6 +2990,12 @@ components:
             This field is optional and used for tracing purposes only.
             The gateway generates its own internal ID for tracking.
           example: "cloud-apim-key-98765"
+        issuer:
+          type: string
+          description: |
+            Identifies the portal that created this key. If provided, only api keys generated from
+            the same portal will be accepted. If not provided, there is no portal restriction.
+          example: "api-platform-devportal"
     APIKeyCreationResponse:
       type: object
       properties:
@@ -3033,10 +3039,6 @@ components:
           type: string
           description: Unique public identifier of the API that the key is associated with
           example: weather-api-v1.0
-        operations:
-          type: string
-          description: List of API operations the key will have access to
-          example: "[GET /{country_code}/{city}, POST /data]"
         status:
           type: string
           description: Status of the API key
@@ -3074,7 +3076,6 @@ components:
       required:
         - name
         - apiId
-        - operations
         - status
         - createdAt
         - createdBy

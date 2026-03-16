@@ -879,7 +879,6 @@ func createTestAPIKey() *models.APIKey {
 		APIKey:       fmt.Sprintf("apk_%d_%d", apiKeyCounter, time.Now().UnixNano()),
 		MaskedAPIKey: "apk_***",
 		ArtifactUUID: "0000-test-api-id-0000-000000000000",
-		Operations:   "*",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",

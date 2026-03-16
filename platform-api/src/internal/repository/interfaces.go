@@ -198,6 +198,17 @@ type LLMProviderRepository interface {
 	Exists(providerID, orgUUID string) (bool, error)
 }
 
+// APIKeyRepository defines the interface for API key persistence
+type APIKeyRepository interface {
+	Create(key *model.APIKey) error
+	Update(key *model.APIKey) error
+	Revoke(artifactUUID, name string) error
+	GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error)
+	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
+	Delete(artifactUUID, name string) error
+	ListAPIKeysByUser(orgUUID, username string, kinds []string) ([]*model.UserAPIKey, error)
+}
+
 // LLMProxyRepository defines the interface for LLM proxy persistence
 type LLMProxyRepository interface {
 	Create(p *model.LLMProxy) error

@@ -304,6 +304,24 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
 );
 
+-- API Keys table (stores API keys for artifacts with hashes as JSON string)
+CREATE TABLE IF NOT EXISTS api_keys (
+    uuid VARCHAR(40) PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(63) NOT NULL,
+    masked_api_key VARCHAR(8) NOT NULL,
+    api_key_hashes TEXT NOT NULL DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP,
+    issuer TEXT NULL DEFAULT NULL,
+    allowed_targets TEXT NOT NULL DEFAULT 'ALL',
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    UNIQUE(artifact_uuid, name)
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
@@ -332,3 +350,4 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_org ON llm_provider_templa
 CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(template_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
