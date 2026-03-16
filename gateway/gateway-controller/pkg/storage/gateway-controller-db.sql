@@ -170,8 +170,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Composite unique constraint (artifact + api key name must be unique)
     UNIQUE (artifact_uuid, name, gateway_id),
 
-    -- API key UUID must be unique for cross-table references
-    UNIQUE (uuid),
+    -- API key UUID must be unique within a gateway for cross-table references
+    UNIQUE (uuid, gateway_id),
 
     -- Composite primary key
     PRIMARY KEY (api_key, gateway_id)
@@ -238,14 +238,15 @@ CREATE INDEX IF NOT EXISTS idx_applications_application_id ON applications(appli
 CREATE TABLE IF NOT EXISTS application_api_keys (
     application_uuid TEXT NOT NULL,
     api_key_id TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (application_uuid, api_key_id),
+    PRIMARY KEY (application_uuid, api_key_id, gateway_id),
     FOREIGN KEY (application_uuid) REFERENCES applications(application_uuid) ON DELETE CASCADE,
-    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_key_id, gateway_id) REFERENCES api_keys(uuid, gateway_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_app_api_keys_application_uuid ON application_api_keys(application_uuid);
-CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(api_key_id);
+CREATE INDEX IF NOT EXISTS idx_app_api_keys_application_uuid ON application_api_keys(application_uuid, gateway_id);
+CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(api_key_id, gateway_id);
 
 PRAGMA user_version = 1;

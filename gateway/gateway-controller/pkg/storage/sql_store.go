@@ -1606,8 +1606,8 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 
 	if _, err = tx.ExecQ(`
 		DELETE FROM application_api_keys
-		WHERE application_uuid = ?
-	`, application.ApplicationUUID); err != nil {
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, s.gatewayId); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("failed to clear application mappings: %w", err)
 	}
@@ -1633,10 +1633,10 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 
 		if _, err = tx.ExecQ(`
 			INSERT INTO application_api_keys (
-				application_uuid, api_key_id, created_at, updated_at
+				application_uuid, api_key_id, gateway_id, created_at, updated_at
 			)
-			VALUES (?, ?, ?, ?)
-		`, mapping.ApplicationUUID, mapping.APIKeyID, now, now); err != nil {
+			VALUES (?, ?, ?, ?, ?)
+		`, mapping.ApplicationUUID, mapping.APIKeyID, s.gatewayId, now, now); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("failed to insert application mapping: %w", err)
 		}
