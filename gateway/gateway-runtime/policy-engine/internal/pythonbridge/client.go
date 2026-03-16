@@ -335,7 +335,15 @@ func (sm *StreamManager) InitPolicy(ctx context.Context, req *proto.InitPolicyRe
 		}
 	}
 
-	resp, err := sm.client.InitPolicy(ctx, req)
+	sm.connectMu.Lock()
+	client := sm.client
+	sm.connectMu.Unlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("python executor client is not connected")
+	}
+
+	resp, err := client.InitPolicy(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("InitPolicy RPC failed: %w", err)
 	}
@@ -350,7 +358,15 @@ func (sm *StreamManager) DestroyPolicy(ctx context.Context, req *proto.DestroyPo
 		}
 	}
 
-	resp, err := sm.client.DestroyPolicy(ctx, req)
+	sm.connectMu.Lock()
+	client := sm.client
+	sm.connectMu.Unlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("python executor client is not connected")
+	}
+
+	resp, err := client.DestroyPolicy(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("DestroyPolicy RPC failed: %w", err)
 	}
@@ -365,7 +381,15 @@ func (sm *StreamManager) HealthCheck(ctx context.Context) (*proto.HealthCheckRes
 		}
 	}
 
-	resp, err := sm.client.HealthCheck(ctx, &proto.HealthCheckRequest{})
+	sm.connectMu.Lock()
+	client := sm.client
+	sm.connectMu.Unlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("python executor client is not connected")
+	}
+
+	resp, err := client.HealthCheck(ctx, &proto.HealthCheckRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("HealthCheck RPC failed: %w", err)
 	}

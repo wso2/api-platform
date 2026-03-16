@@ -139,21 +139,23 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         self, request: proto.DestroyPolicyRequest
     ) -> proto.DestroyPolicyResponse:
         """Synchronous destroy — runs in thread pool."""
-        instance = self._store.remove(request.instance_id)
-        if instance is None:
+        result = self._store.mark_for_destruction(request.instance_id)
+        if result is None:
             logger.warning(
                 f"DestroyPolicy: instance_id={request.instance_id} not found (already destroyed?)"
             )
             return proto.DestroyPolicyResponse(success=True)
 
-        try:
-            instance.close()
-        except Exception as e:
-            logger.warning(
-                f"DestroyPolicy: close() raised for instance_id={request.instance_id}: {e}"
-            )
-            # Still consider success — the instance is removed from the store
-            return proto.DestroyPolicyResponse(success=True, error_message=str(e))
+        instance, should_close = result
+        if should_close:
+            try:
+                instance.close()
+            except Exception as e:
+                logger.warning(
+                    f"DestroyPolicy: close() raised for instance_id={request.instance_id}: {e}"
+                )
+                # Still consider success — the instance is marked and removed from the active store
+                return proto.DestroyPolicyResponse(success=True, error_message=str(e))
 
         logger.info(f"DestroyPolicy OK: instance_id={request.instance_id}")
         return proto.DestroyPolicyResponse(success=True)
@@ -268,46 +270,57 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         Looks up the policy instance by instance_id, then calls
         on_request or on_response.
         """
-        record = self._store.get(request.instance_id)
+        record = self._store.acquire_for_execution(request.instance_id)
         if record is None:
             raise ValueError(
                 f"No policy instance for instance_id={request.instance_id} "
                 f"(policy={request.policy_name}:{request.policy_version})"
             )
 
-        instance = record.policy
-        # Use per-call params from the request (Go sends the merged system+user params
-        # on every call). This is necessary for singleton policies where one Python
-        # object is shared across multiple routes with different params each.
-        params = self._translator.struct_to_dict(request.params)
-        shared_ctx = self._translator.to_python_shared_context(request.shared_context)
+        try:
+            instance = record.policy
+            # Use per-call params from the request (Go sends the merged system+user params
+            # on every call). This is necessary for singleton policies where one Python
+            # object is shared across multiple routes with different params each.
+            params = self._translator.struct_to_dict(request.params)
+            shared_ctx = self._translator.to_python_shared_context(request.shared_context)
 
-        if request.phase == "on_request":
-            req_ctx = self._translator.to_python_request_context(
-                request.request_context, shared_ctx
-            )
-            action = instance.on_request(req_ctx, params)
-            updated_metadata = self._dict_to_struct(shared_ctx.metadata)
-            return proto.ExecutionResponse(
-                request_id=request.request_id,
-                request_result=self._translator.to_proto_request_action_result(action),
-                updated_metadata=updated_metadata,
-            )
+            if request.phase == "on_request":
+                req_ctx = self._translator.to_python_request_context(
+                    request.request_context, shared_ctx
+                )
+                action = instance.on_request(req_ctx, params)
+                updated_metadata = self._dict_to_struct(shared_ctx.metadata)
+                return proto.ExecutionResponse(
+                    request_id=request.request_id,
+                    request_result=self._translator.to_proto_request_action_result(action),
+                    updated_metadata=updated_metadata,
+                )
 
-        elif request.phase == "on_response":
-            resp_ctx = self._translator.to_python_response_context(
-                request.response_context, shared_ctx
-            )
-            action = instance.on_response(resp_ctx, params)
-            updated_metadata = self._dict_to_struct(shared_ctx.metadata)
-            return proto.ExecutionResponse(
-                request_id=request.request_id,
-                response_result=self._translator.to_proto_response_action_result(action),
-                updated_metadata=updated_metadata,
-            )
+            elif request.phase == "on_response":
+                resp_ctx = self._translator.to_python_response_context(
+                    request.response_context, shared_ctx
+                )
+                action = instance.on_response(resp_ctx, params)
+                updated_metadata = self._dict_to_struct(shared_ctx.metadata)
+                return proto.ExecutionResponse(
+                    request_id=request.request_id,
+                    response_result=self._translator.to_proto_response_action_result(action),
+                    updated_metadata=updated_metadata,
+                )
 
-        else:
-            raise ValueError(f"Unknown phase: {request.phase}")
+            else:
+                raise ValueError(f"Unknown phase: {request.phase}")
+
+        finally:
+            if self._store.release_execution(request.instance_id):
+                try:
+                    record.policy.close()
+                    logger.info(f"Delayed DestroyPolicy OK: instance_id={request.instance_id}")
+                except Exception as e:
+                    logger.warning(
+                        f"DestroyPolicy: close() raised during delayed destruction for instance_id={request.instance_id}: {e}"
+                    )
 
     def _error_response(
         self,
