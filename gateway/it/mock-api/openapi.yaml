@@ -59,6 +59,9 @@ paths:
   # Mock unknown LLM (no pricing data)
   /unknown-llm/v1/chat:
     $ref: ./paths/unknown-llm/chat.yaml
+  # Mock response with no model/modelVersion field (cost cannot be calculated)
+  /unknown-llm/v1/no-model-field:
+    $ref: ./paths/unknown-llm/no_model_field.yaml
   # Mock custom-priced LLMs (for custom pricing file tests)
   /custom-llm/v1/chat:
     $ref: ./paths/custom-llm/chat.yaml

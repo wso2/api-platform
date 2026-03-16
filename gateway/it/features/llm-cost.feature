@@ -1000,6 +1000,63 @@ Feature: LLM Cost User Policy
     When I delete the LLM provider template "llm-cost-mistral-template"
     Then the response status code should be 200
 
+  Scenario: No model field in response — x-llm-cost-status is not_calculated
+    # The upstream response contains neither "model" nor "modelVersion".
+    # The policy cannot identify the model, so cost calculation fails gracefully.
+    # Expected: x-llm-cost=0.0000000000, x-llm-cost-status=not_calculated
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: llm-cost-no-model-template
+      spec:
+        displayName: LLM Cost No Model Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: llm-cost-no-model-provider
+      spec:
+        displayName: LLM Cost No Model Provider
+        version: v1.0
+        context: /llm-cost-no-model
+        template: llm-cost-no-model-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for the endpoint "http://localhost:8080/llm-cost-no-model/unknown-llm/v1/no-model-field" to be ready with method "POST" and body '{"messages": [{"role": "user", "content": "Hello"}]}'
+    Given I set header "Content-Type" to "application/json"
+    When I send a POST request to "http://localhost:8080/llm-cost-no-model/unknown-llm/v1/no-model-field" with body:
+      """ json
+      {"messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-llm-cost" should be "0.0000000000"
+    And the response header "x-llm-cost-status" should be "not_calculated"
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "llm-cost-no-model-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "llm-cost-no-model-template"
+    Then the response status code should be 200
+
   Scenario: RestApi kind — x-llm-cost header is not injected (policy is LLM-only)
     # llm-cost is a system policy restricted to LlmProvider/LlmProxy kinds.
     # A plain RestApi pointing at an LLM backend must NOT receive the x-llm-cost header.
