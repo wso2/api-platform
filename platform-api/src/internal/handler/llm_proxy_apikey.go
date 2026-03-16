@@ -61,7 +61,9 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	response, err := h.apiKeyService.ListLLMProxyAPIKeys(c.Request.Context(), proxyID, orgID)
+	callerUserID := c.GetHeader("x-user-id")
+
+	response, err := h.apiKeyService.ListLLMProxyAPIKeys(c.Request.Context(), proxyID, orgID, callerUserID)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

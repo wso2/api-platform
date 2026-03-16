@@ -57,10 +57,10 @@ func NewLLMProviderAPIKeyService(
 	}
 }
 
-// ListLLMProviderAPIKeys returns all API keys for an LLM provider.
+// ListLLMProviderAPIKeys returns API keys for an LLM provider, filtered to those created by userID.
 func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 	ctx context.Context,
-	providerID, orgID string,
+	providerID, orgID, userID string,
 ) (*api.LLMProviderAPIKeyListResponse, error) {
 
 	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
@@ -80,6 +80,9 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 
 	items := make([]api.APIKeyItem, 0, len(keys))
 	for _, k := range keys {
+		if k.CreatedBy != userID {
+			continue
+		}
 		item := api.APIKeyItem{
 			Name:           k.Name,
 			MaskedApiKey:   k.MaskedAPIKey,

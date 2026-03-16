@@ -57,10 +57,10 @@ func NewLLMProxyAPIKeyService(
 	}
 }
 
-// ListLLMProxyAPIKeys returns all API keys for an LLM proxy.
+// ListLLMProxyAPIKeys returns API keys for an LLM proxy, filtered to those created by userID.
 func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	ctx context.Context,
-	proxyID, orgID string,
+	proxyID, orgID, userID string,
 ) (*api.LLMProxyAPIKeyListResponse, error) {
 
 	proxy, err := s.llmProxyRepo.GetByID(proxyID, orgID)
@@ -80,6 +80,9 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 
 	items := make([]api.APIKeyItem, 0, len(keys))
 	for _, k := range keys {
+		if k.CreatedBy != userID {
+			continue
+		}
 		item := api.APIKeyItem{
 			Name:           k.Name,
 			MaskedApiKey:   k.MaskedAPIKey,
