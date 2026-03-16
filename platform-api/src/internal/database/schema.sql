@@ -351,6 +351,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_org_name_project_key
+    ON applications ((COALESCE(project_uuid, '__NULL_PROJECT__')), organization_uuid, name);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_api_uuid ON subscriptions(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);

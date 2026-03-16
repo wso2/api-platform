@@ -352,6 +352,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_org_name_null_project
+    ON applications(organization_uuid, name) WHERE project_uuid IS NULL;
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_api_uuid ON subscriptions(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
