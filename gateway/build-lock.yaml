@@ -28,7 +28,7 @@ policies:
       version: v0.8.3
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0
     - name: content-length-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v0
     - name: cors
       version: v0.8.0
@@ -37,7 +37,7 @@ policies:
       version: v0.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
     - name: json-schema-guardrail
-      version: v0.2.0
+      version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
     - name: jwt-auth
       version: v0.8.2
