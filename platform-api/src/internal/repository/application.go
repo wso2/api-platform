@@ -266,30 +266,6 @@ func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.Ap
 	return keys, rows.Err()
 }
 
-func (r *ApplicationRepo) ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error {
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err = tx.Exec(r.db.Rebind(`DELETE FROM application_api_keys WHERE application_uuid = ?`), applicationUUID); err != nil {
-		return err
-	}
-
-	for _, apiKeyID := range uniqueStrings(apiKeyIDs) {
-		now := time.Now()
-		if _, err = tx.Exec(r.db.Rebind(`
-			INSERT INTO application_api_keys (application_uuid, api_key_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?)
-		`), applicationUUID, apiKeyID, now, now); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
-}
-
 func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error {
 	tx, err := r.db.Begin()
 	if err != nil {

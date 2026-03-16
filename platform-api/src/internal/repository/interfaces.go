@@ -71,7 +71,6 @@ type ApplicationRepository interface {
 	GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error)
 	GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgID string) ([]string, error)
 	ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error)
-	ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
 	AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
 	RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error
 }

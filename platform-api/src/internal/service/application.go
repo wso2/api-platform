@@ -270,63 +270,6 @@ func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string) (*dt
 	return keys, nil
 }
 
-func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto.ReplaceApplicationAPIKeysRequest, orgID, userID string) (*dto.MappedAPIKeyListResponse, error) {
-	app, err := s.getApplication(appIDOrHandle, orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	previousKeys, err := s.buildMappedAPIKeyList(app.UUID)
-	if err != nil {
-		return nil, err
-	}
-
-	resolvedKeys, err := s.resolveAPIKeys(req.APIKeys, orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	existingMapped := make(map[string]struct{}, len(previousKeys.List))
-	for _, mapped := range previousKeys.List {
-		if mapped == nil {
-			continue
-		}
-		apiKeyUUID := strings.TrimSpace(mapped.ApiKeyUuid)
-		if apiKeyUUID == "" {
-			continue
-		}
-		existingMapped[apiKeyUUID] = struct{}{}
-	}
-
-	apiKeyIDs := make([]string, 0, len(resolvedKeys))
-	for _, key := range resolvedKeys {
-		apiKeyIDs = append(apiKeyIDs, key.ID)
-
-		if _, alreadyMapped := existingMapped[key.ID]; alreadyMapped {
-			continue
-		}
-
-		if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := s.appRepo.ReplaceApplicationAPIKeys(app.UUID, apiKeyIDs); err != nil {
-		return nil, err
-	}
-
-	keys, err := s.buildMappedAPIKeyList(app.UUID)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, collectArtifactIDsFromMappedKeys(previousKeys)); err != nil && s.slogger != nil {
-		s.slogger.Warn("Replace mapped API keys succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
-	}
-
-	return keys, nil
-}
-
 func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.AddApplicationAPIKeysRequest, orgID, userID string) (*dto.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {

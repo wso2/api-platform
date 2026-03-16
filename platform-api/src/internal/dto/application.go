@@ -51,10 +51,6 @@ type ApplicationListResponse struct {
 	Pagination Pagination             `json:"pagination"`
 }
 
-type ReplaceApplicationAPIKeysRequest struct {
-	APIKeys []APIKeyMappingSelectorRequest `json:"apiKeys"`
-}
-
 type AddApplicationAPIKeysRequest struct {
 	APIKeys []APIKeyMappingSelectorRequest `json:"apiKeys"`
 }

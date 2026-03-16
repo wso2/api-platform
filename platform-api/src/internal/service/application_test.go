@@ -45,12 +45,10 @@ type mockApplicationRepository struct {
 	handleExistsErr     error
 	createErr           error
 	addMappedCalled     bool
-	replaceMappedCalled bool
 	removeMappedCalled  bool
 	createCalled        bool
 	createdApplication  *model.Application
 	addedAPIKeyIDs      []string
-	replacedAPIKeyIDs   []string
 	removedAPIKeyID     string
 }
 
@@ -72,12 +70,6 @@ func (m *mockApplicationRepository) GetAPIKeyByNameAndArtifactHandle(keyName, ar
 func (m *mockApplicationRepository) AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error {
 	m.addMappedCalled = true
 	m.addedAPIKeyIDs = append([]string(nil), apiKeyIDs...)
-	return nil
-}
-
-func (m *mockApplicationRepository) ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error {
-	m.replaceMappedCalled = true
-	m.replacedAPIKeyIDs = append([]string(nil), apiKeyIDs...)
 	return nil
 }
 
@@ -242,69 +234,6 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 	}
 }
 
-func TestReplaceMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
-	appRepo := &mockApplicationRepository{
-		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
-		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
-			apiKeyLookupKey("key-1", "orders-api"): {
-				ID:        "api-key-db-id-1",
-				Name:      "key-1",
-				CreatedBy: "creator-user",
-			},
-		},
-	}
-
-	svc := &ApplicationService{appRepo: appRepo}
-
-	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
-		KeyID: "key-1",
-		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
-			ID: "orders-api",
-		},
-	}}}, "org-1", "different-user")
-	if !errors.Is(err, constants.ErrAPIKeyForbidden) {
-		t.Fatalf("expected ErrAPIKeyForbidden, got %v", err)
-	}
-	if appRepo.replaceMappedCalled {
-		t.Fatalf("expected ReplaceApplicationAPIKeys not to be called when requester is not creator")
-	}
-}
-
-func TestReplaceMappedAPIKeys_AllowsRemovalForNonCreator(t *testing.T) {
-	appRepo := &mockApplicationRepository{
-		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
-		mappedKeys: []*model.ApplicationAPIKey{
-			{
-				ID:         "api-key-db-id-1",
-				APIKeyUUID: "api-key-db-id-1",
-				Name:       "key-1",
-				CreatedBy:  "creator-user",
-			},
-		},
-		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
-			apiKeyLookupKey("key-1", "orders-api"): {
-				ID:        "api-key-db-id-1",
-				Name:      "key-1",
-				CreatedBy: "creator-user",
-			},
-		},
-	}
-
-	svc := &ApplicationService{appRepo: appRepo}
-
-	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
-		KeyID: "key-1",
-		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
-			ID: "orders-api",
-		},
-	}}}, "org-1", "different-user")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
-	}
-	if !appRepo.replaceMappedCalled {
-		t.Fatalf("expected ReplaceApplicationAPIKeys to be called")
-	}
-}
 
 func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 	appRepo := &mockApplicationRepository{
@@ -391,40 +320,6 @@ func TestAddMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) 
 	}
 	if !appRepo.addMappedCalled {
 		t.Fatalf("expected AddApplicationAPIKeys to be called")
-	}
-}
-
-func TestReplaceMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) {
-	appRepo := &mockApplicationRepository{
-		app: &model.Application{UUID: "app-uuid", Handle: "my-app", OrganizationUUID: "org-1"},
-		mappedKeys: []*model.ApplicationAPIKey{
-			{APIKeyUUID: "api-key-db-id-1", ArtifactID: "artifact-1"},
-		},
-		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
-			apiKeyLookupKey("key-1", "orders-api"): {
-				ID:         "api-key-db-id-1",
-				APIKeyUUID: "api-key-db-id-1",
-				Name:       "key-1",
-				ArtifactID: "artifact-1",
-				CreatedBy:  "creator-user",
-			},
-		},
-		artifactErr: errors.New("artifact lookup failed"),
-	}
-
-	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
-
-	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
-		KeyID: "key-1",
-		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
-			ID: "orders-api",
-		},
-	}}}, "org-1", "creator-user")
-	if err != nil {
-		t.Fatalf("expected nil error when broadcast fails, got %v", err)
-	}
-	if !appRepo.replaceMappedCalled {
-		t.Fatalf("expected ReplaceApplicationAPIKeys to be called")
 	}
 }
 
