@@ -544,6 +544,7 @@ func (c *ChainExecutor) ExecuteResponseBodyPolicies(
 		}
 
 		action := bodyPol.OnResponseBody(ctx)
+
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
@@ -850,7 +851,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		if action.Body != nil {
 			currentChunk = &policy.StreamBody{
 				Chunk:       action.Body,
-				EndOfStream: chunk.EndOfStream,
+				EndOfStream: currentChunk.EndOfStream,
 			}
 		}
 

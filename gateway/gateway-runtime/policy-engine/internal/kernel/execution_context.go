@@ -197,9 +197,21 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 }
 
 // getStreamingResponseModeOverride returns a ModeOverride that upgrades the response
-// body processing to FULL_DUPLEX_STREAMED.
+// body processing to FULL_DUPLEX_STREAMED. RequestBodyMode is explicitly set to match
+// the value already negotiated at request-headers time so that Envoy does not revert
+// the request body mode to the filter-level default when this override is applied.
 func (ec *PolicyExecutionContext) getStreamingResponseModeOverride() *extprocconfigv3.ProcessingMode {
+	var requestBodyMode extprocconfigv3.ProcessingMode_BodySendMode
+	switch {
+	case !ec.policyChain.RequiresRequestBody:
+		requestBodyMode = extprocconfigv3.ProcessingMode_NONE
+	case ec.isStreamingRequest:
+		requestBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+	default:
+		requestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
+	}
 	return &extprocconfigv3.ProcessingMode{
+		RequestBodyMode:     requestBodyMode,
 		ResponseBodyMode:    extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED,
 		RequestTrailerMode:  extprocconfigv3.ProcessingMode_SKIP,
 		ResponseTrailerMode: extprocconfigv3.ProcessingMode_SKIP,
@@ -412,7 +424,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	)
 
 	// Check if accumulator has grown too large and force flush to prevent unbounded memory growth
-	shouldForceFlush := len(ec.streamAccumulator) > maxStreamAccumulatorSize
+	shouldForceFlush := len(ec.streamAccumulator) >= maxStreamAccumulatorSize
 
 	if shouldForceFlush {
 		slog.Warn("[streaming] response accumulator size limit exceeded, forcing flush",
@@ -467,6 +479,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		ec.policyChain.HasExecutionConditions,
 	)
 	if err != nil {
+		ec.streamAccumulator = nil
 		return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
 	}
 
@@ -495,7 +508,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	)
 
 	// Check if accumulator has grown too large and force flush to prevent unbounded memory growth
-	shouldForceFlush := len(ec.requestStreamAccumulator) > maxStreamAccumulatorSize
+	shouldForceFlush := len(ec.requestStreamAccumulator) >= maxStreamAccumulatorSize
 
 	if shouldForceFlush {
 		slog.Warn("[streaming] request accumulator size limit exceeded, forcing flush",
@@ -563,6 +576,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		ec.policyChain.HasExecutionConditions,
 	)
 	if err != nil {
+		ec.requestStreamAccumulator = nil
 		return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
 	}
 

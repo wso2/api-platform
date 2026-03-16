@@ -59,8 +59,12 @@ type ExternalProcessorServer struct {
 
 	// routeMetadataCache caches parsed route metadata by raw metadata string.
 	// This avoids expensive prototext.Unmarshal on every request (~11% CPU savings).
-	// Key: raw metadata string from Envoy, Value: parsed RouteMetadata
-	routeMetadataCache sync.Map
+	// Key: raw metadata string from Envoy, Value: parsed RouteMetadata.
+	// Protected by routeMetadataCacheMu; replaced atomically on xDS updates so
+	// stale entries from deleted routes are evicted in O(1) rather than accumulating
+	// indefinitely.
+	routeMetadataCache   map[string]RouteMetadata
+	routeMetadataCacheMu sync.RWMutex
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer
@@ -72,9 +76,10 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 	}
 
 	return &ExternalProcessorServer{
-		kernel:   kernel,
-		executor: chainExecutor,
-		tracer:   otel.Tracer(serviceName),
+		kernel:             kernel,
+		executor:           chainExecutor,
+		tracer:             otel.Tracer(serviceName),
+		routeMetadataCache: make(map[string]RouteMetadata),
 	}
 }
 
@@ -440,9 +445,13 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 	if routeMetadataValue, ok := extProcAttrs.Fields["xds.route_metadata"]; ok {
 		if metadataStr := routeMetadataValue.GetStringValue(); metadataStr != "" {
 			// Check cache first - routes with the same metadata string get cache hits
-			if cached, ok := s.routeMetadataCache.Load(metadataStr); ok {
-				cachedMeta := cached.(RouteMetadata)
-				// Copy API fields from cache, keep the route name from this request
+			s.routeMetadataCacheMu.RLock()
+			cachedMeta, ok := s.routeMetadataCache[metadataStr]
+			s.routeMetadataCacheMu.RUnlock()
+			if ok {
+				// Copy API fields from cache, keep the route name from this request.
+				// UpstreamDefinitionPaths is deep-copied so per-request contexts own their
+				// map and future mutations (if any) cannot corrupt the shared cache entry.
 				metadata.APIId = cachedMeta.APIId
 				metadata.APIName = cachedMeta.APIName
 				metadata.APIVersion = cachedMeta.APIVersion
@@ -455,7 +464,13 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 				metadata.ProjectID = cachedMeta.ProjectID
 				metadata.DefaultUpstreamCluster = cachedMeta.DefaultUpstreamCluster
 				metadata.UpstreamBasePath = cachedMeta.UpstreamBasePath
-				metadata.UpstreamDefinitionPaths = cachedMeta.UpstreamDefinitionPaths
+				if cachedMeta.UpstreamDefinitionPaths != nil {
+					copied := make(map[string]string, len(cachedMeta.UpstreamDefinitionPaths))
+					for k, v := range cachedMeta.UpstreamDefinitionPaths {
+						copied[k] = v
+					}
+					metadata.UpstreamDefinitionPaths = copied
+				}
 			} else {
 				// Cache miss - parse the protobuf text format string
 				var envoyMetadata core.Metadata
@@ -511,7 +526,12 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 						}
 					}
 					// Cache the parsed metadata for future requests
-					s.routeMetadataCache.Store(metadataStr, metadata)
+					s.routeMetadataCacheMu.Lock()
+				// Double-check: another goroutine may have populated the key while we were parsing.
+				if _, exists := s.routeMetadataCache[metadataStr]; !exists {
+					s.routeMetadataCache[metadataStr] = metadata
+				}
+				s.routeMetadataCacheMu.Unlock()
 				}
 			}
 		}
@@ -525,13 +545,13 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 	return metadata
 }
 
-// ClearRouteMetadataCache clears the route metadata cache.
-// Call this when routes are updated via xDS to ensure stale metadata is not used.
+// ClearRouteMetadataCache atomically replaces the route metadata cache with an empty map.
+// Called on xDS route updates so that stale entries from deleted routes are evicted
+// immediately rather than accumulating indefinitely.
 func (s *ExternalProcessorServer) ClearRouteMetadataCache() {
-	s.routeMetadataCache.Range(func(key, value interface{}) bool {
-		s.routeMetadataCache.Delete(key)
-		return true
-	})
+	s.routeMetadataCacheMu.Lock()
+	s.routeMetadataCache = make(map[string]RouteMetadata)
+	s.routeMetadataCacheMu.Unlock()
 	slog.Info("Route metadata cache cleared")
 }
 
