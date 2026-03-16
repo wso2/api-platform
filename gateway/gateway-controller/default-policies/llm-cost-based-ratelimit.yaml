@@ -11,6 +11,7 @@ description: |
 parameters:
   type: object
   additionalProperties: false
+  required: ["budgetLimits"]
   properties:
     budgetLimits:
       type: array
@@ -37,7 +38,7 @@ parameters:
             description: |
               Time window for the budget limit (Go duration string format).
               Examples: "1h" (1 hour), "24h" (1 day), "168h" (1 week), "720h" (30 days)
-            pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+            pattern: "^(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
 
 systemParameters:
   type: object
@@ -157,24 +158,24 @@ systemParameters:
         keyPrefix:
           type: string
           default: "ratelimit:v1:"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.keyprefix}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.key_prefix}"
         failureMode:
           type: string
           enum: ["open", "closed"]
           default: "open"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.failuremode}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.failure_mode}"
         connectionTimeout:
           type: string
           default: "5s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connectiontimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connection_timeout}"
         readTimeout:
           type: string
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.readtimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.read_timeout}"
         writeTimeout:
           type: string
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.writetimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.write_timeout}"
 
     memory:
       type: object
