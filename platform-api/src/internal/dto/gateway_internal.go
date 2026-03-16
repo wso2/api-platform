@@ -82,7 +82,7 @@ type GatewayDeploymentsResponse struct {
 	Deployments []GatewayDeploymentInfo `json:"deployments"`
 }
 
-// BatchDeploymentsRequest represents the request body for batch fetching deployments
-type BatchDeploymentsRequest struct {
+// DeploymentsBatchFetchRequest represents the request body for batch fetching deployments
+type DeploymentsBatchFetchRequest struct {
 	DeploymentIDs []string `json:"deploymentIds" binding:"required,min=1"`
 }

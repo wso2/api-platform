@@ -666,7 +666,7 @@ paths:
                 message: "Internal Server Error"
                 description: "Failed to get deployments"
 
-  /api/internal/v1/deployments/batch:
+  /api/internal/v1/deployments/fetch-batch:
     post:
       summary: Batch fetch deployment content
       description: |
@@ -716,7 +716,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BatchDeploymentsRequest'
+              $ref: '#/components/schemas/DeploymentsBatchFetchRequest'
       responses:
         '200':
           description: TAR.GZ archive containing deployment content
@@ -884,7 +884,7 @@ components:
           items:
             $ref: '#/components/schemas/GatewayDeploymentInfo'
 
-    BatchDeploymentsRequest:
+    DeploymentsBatchFetchRequest:
       type: object
       description: Request body for batch fetching deployment content
       required:

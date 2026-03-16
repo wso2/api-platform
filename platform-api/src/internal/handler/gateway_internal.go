@@ -365,7 +365,7 @@ func (h *GatewayInternalAPIHandler) GetGatewayDeployments(c *gin.Context) {
 	c.JSON(http.StatusOK, deployments)
 }
 
-// BatchFetchDeployments handles POST /api/internal/v1/deployments/batch
+// BatchFetchDeployments handles POST /api/internal/v1/deployments/fetch-batch
 // Fetches multiple deployment artifacts in a single request for gateway startup sync
 func (h *GatewayInternalAPIHandler) BatchFetchDeployments(c *gin.Context) {
 	orgID, gatewayID, ok := h.authenticateRequest(c)
@@ -381,7 +381,7 @@ func (h *GatewayInternalAPIHandler) BatchFetchDeployments(c *gin.Context) {
 	}
 
 	// Parse request body
-	var req dto.BatchDeploymentsRequest
+	var req dto.DeploymentsBatchFetchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Invalid request body: "+err.Error()))
@@ -643,7 +643,7 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	deploymentGroup := r.Group("/api/internal/v1/deployments")
 	{
 		deploymentGroup.GET("", h.GetGatewayDeployments)
-		deploymentGroup.POST("/batch", h.BatchFetchDeployments)
+		deploymentGroup.POST("/fetch-batch", h.BatchFetchDeployments)
 	}
 
 	mcpProxyGroup := r.Group("/api/internal/v1/mcp-proxies")
