@@ -202,13 +202,13 @@ func (r *ApplicationRepo) DeleteApplication(appID string) error {
 	return err
 }
 
-func (r *ApplicationRepo) GetAPIKeyByID(keyID, orgID string) (*model.ApplicationAPIKey, error) {
+func (r *ApplicationRepo) GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
 		SELECT ak.uuid, ak.name, ak.artifact_uuid, art.handle, art.kind, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
 		FROM api_keys ak
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
-		WHERE art.organization_uuid = ? AND ak.name = ?
-	`), orgID, keyID)
+		WHERE art.organization_uuid = ? AND ak.name = ? AND art.handle = ?
+	`), orgID, keyName, artifactHandle)
 
 	key, err := scanApplicationAPIKey(row)
 	if errors.Is(err, sql.ErrNoRows) {

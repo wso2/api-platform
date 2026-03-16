@@ -68,7 +68,7 @@ type ApplicationRepository interface {
 	UpdateApplication(app *model.Application) error
 	DeleteApplication(appID string) error
 
-	GetAPIKeyByID(keyID, orgID string) (*model.ApplicationAPIKey, error)
+	GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error)
 	GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgID string) ([]string, error)
 	ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error)
 	ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error

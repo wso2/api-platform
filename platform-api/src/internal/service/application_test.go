@@ -32,7 +32,7 @@ type mockApplicationRepository struct {
 	repository.ApplicationRepository
 	app                 *model.Application
 	mappedKeys          []*model.ApplicationAPIKey
-	apiKeysByLookupID   map[string]*model.ApplicationAPIKey
+	apiKeysByLookupKey  map[string]*model.ApplicationAPIKey
 	existingByName      *model.Application
 	appErr              error
 	mappedErr           error
@@ -45,6 +45,9 @@ type mockApplicationRepository struct {
 	removeMappedCalled  bool
 	createCalled        bool
 	createdApplication  *model.Application
+	addedAPIKeyIDs      []string
+	replacedAPIKeyIDs   []string
+	removedAPIKeyID     string
 }
 
 func (m *mockApplicationRepository) GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error) {
@@ -55,26 +58,33 @@ func (m *mockApplicationRepository) ListMappedAPIKeys(applicationUUID string) ([
 	return m.mappedKeys, m.mappedErr
 }
 
-func (m *mockApplicationRepository) GetAPIKeyByID(keyID, orgID string) (*model.ApplicationAPIKey, error) {
-	if m.apiKeysByLookupID == nil {
+func (m *mockApplicationRepository) GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error) {
+	if m.apiKeysByLookupKey == nil {
 		return nil, nil
 	}
-	return m.apiKeysByLookupID[keyID], nil
+	return m.apiKeysByLookupKey[apiKeyLookupKey(keyName, artifactHandle)], nil
 }
 
 func (m *mockApplicationRepository) AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error {
 	m.addMappedCalled = true
+	m.addedAPIKeyIDs = append([]string(nil), apiKeyIDs...)
 	return nil
 }
 
 func (m *mockApplicationRepository) ReplaceApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error {
 	m.replaceMappedCalled = true
+	m.replacedAPIKeyIDs = append([]string(nil), apiKeyIDs...)
 	return nil
 }
 
 func (m *mockApplicationRepository) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
 	m.removeMappedCalled = true
+	m.removedAPIKeyID = apiKeyID
 	return nil
+}
+
+func apiKeyLookupKey(keyName, artifactHandle string) string {
+	return keyName + "|" + artifactHandle
 }
 
 func (m *mockApplicationRepository) GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error) {
@@ -175,13 +185,16 @@ func TestListMappedAPIKeys_ReturnsUnifiedMappingsWithMetadata(t *testing.T) {
 	if resp.List[1].UserId == nil || *resp.List[1].UserId != "user-2" {
 		t.Fatalf("expected second mapping userId user-2")
 	}
+	if resp.List[0].AssociatedEntity.ID != "orders-api" {
+		t.Fatalf("expected first mapping associated entity id orders-api, got %s", resp.List[0].AssociatedEntity.ID)
+	}
 }
 
 func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
-		apiKeysByLookupID: map[string]*model.ApplicationAPIKey{
-			"key-1": {
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("key-1", "orders-api"): {
 				ID:        "api-key-db-id-1",
 				Name:      "key-1",
 				CreatedBy: "creator-user",
@@ -191,7 +204,12 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	_, err := svc.AddMappedAPIKeys("my-app", &dto.AddApplicationAPIKeysRequest{ApiKeyIds: []string{"key-1"}}, "org-1", "different-user")
+	_, err := svc.AddMappedAPIKeys("my-app", &dto.AddApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
+		KeyID: "key-1",
+		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
+			ID: "orders-api",
+		},
+	}}}, "org-1", "different-user")
 	if !errors.Is(err, constants.ErrAPIKeyForbidden) {
 		t.Fatalf("expected ErrAPIKeyForbidden, got %v", err)
 	}
@@ -203,8 +221,8 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 func TestReplaceMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
-		apiKeysByLookupID: map[string]*model.ApplicationAPIKey{
-			"key-1": {
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("key-1", "orders-api"): {
 				ID:        "api-key-db-id-1",
 				Name:      "key-1",
 				CreatedBy: "creator-user",
@@ -214,7 +232,12 @@ func TestReplaceMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{ApiKeyIds: []string{"key-1"}}, "org-1", "different-user")
+	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
+		KeyID: "key-1",
+		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
+			ID: "orders-api",
+		},
+	}}}, "org-1", "different-user")
 	if !errors.Is(err, constants.ErrAPIKeyForbidden) {
 		t.Fatalf("expected ErrAPIKeyForbidden, got %v", err)
 	}
@@ -234,8 +257,8 @@ func TestReplaceMappedAPIKeys_AllowsRemovalForNonCreator(t *testing.T) {
 				CreatedBy:  "creator-user",
 			},
 		},
-		apiKeysByLookupID: map[string]*model.ApplicationAPIKey{
-			"key-1": {
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("key-1", "orders-api"): {
 				ID:        "api-key-db-id-1",
 				Name:      "key-1",
 				CreatedBy: "creator-user",
@@ -245,7 +268,12 @@ func TestReplaceMappedAPIKeys_AllowsRemovalForNonCreator(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{ApiKeyIds: []string{"key-1"}}, "org-1", "different-user")
+	_, err := svc.ReplaceMappedAPIKeys("my-app", &dto.ReplaceApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
+		KeyID: "key-1",
+		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
+			ID: "orders-api",
+		},
+	}}}, "org-1", "different-user")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -257,8 +285,8 @@ func TestReplaceMappedAPIKeys_AllowsRemovalForNonCreator(t *testing.T) {
 func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 	appRepo := &mockApplicationRepository{
 		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
-		apiKeysByLookupID: map[string]*model.ApplicationAPIKey{
-			"key-1": {
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("key-1", "orders-api"): {
 				ID:        "api-key-db-id-1",
 				Name:      "key-1",
 				CreatedBy: "creator-user",
@@ -268,12 +296,45 @@ func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	err := svc.RemoveMappedAPIKey("my-app", "key-1", "org-1", "different-user")
+	err := svc.RemoveMappedAPIKey("my-app", "key-1", "orders-api", "org-1", "different-user")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 	if !appRepo.removeMappedCalled {
 		t.Fatalf("expected RemoveApplicationAPIKey to be called")
+	}
+}
+
+func TestAddMappedAPIKeys_ResolvesByAssociatedEntityID(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
+		apiKeysByLookupKey: map[string]*model.ApplicationAPIKey{
+			apiKeyLookupKey("shared-key", "entity-a"): {
+				ID:        "api-key-db-id-a",
+				Name:      "shared-key",
+				CreatedBy: "creator-user",
+			},
+			apiKeyLookupKey("shared-key", "entity-b"): {
+				ID:        "api-key-db-id-b",
+				Name:      "shared-key",
+				CreatedBy: "creator-user",
+			},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	_, err := svc.AddMappedAPIKeys("my-app", &dto.AddApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
+		KeyID: "shared-key",
+		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
+			ID: "entity-b",
+		},
+	}}}, "org-1", "creator-user")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(appRepo.addedAPIKeyIDs) != 1 || appRepo.addedAPIKeyIDs[0] != "api-key-db-id-b" {
+		t.Fatalf("expected add call to resolve entity-b key uuid, got %#v", appRepo.addedAPIKeyIDs)
 	}
 }
 

@@ -462,7 +462,8 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/appId'
-        - $ref: '#/components/parameters/keyId'
+        - $ref: '#/components/parameters/mappedKeyId'
+        - $ref: '#/components/parameters/entityID-Q'
       responses:
         '204':
           description: API key mapping removed successfully
@@ -4558,24 +4559,46 @@ components:
     AddApplicationAPIKeysRequest:
       type: object
       required:
-        - apiKeyIds
+        - apiKeys
       properties:
-        apiKeyIds:
+        apiKeys:
           type: array
-          description: List of API key IDs to add to the application mappings
+          description: List of API key selectors to add to the application mappings
           items:
-            type: string
-            format: uuid
+            $ref: '#/components/schemas/APIKeyMappingSelector'
+
+    APIKeyMappingSelector:
+      type: object
+      required:
+        - keyId
+        - associatedEntity
+      properties:
+        keyId:
+          type: string
+          description: API key name
+          example: client-key-1
+        associatedEntity:
+          $ref: '#/components/schemas/APIKeyMappingAssociatedEntity'
+
+    APIKeyMappingAssociatedEntity:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: ID of the entity that owns the API key
+          example: pizza-api
 
     AssociatedEntity:
       type: object
       required:
-        - handle
+        - id
         - kind
       properties:
-        handle:
+        id:
           type: string
-          description: Handle of the associated entity
+          description: ID of the associated entity
           example: pizza-api
         kind:
           type: string
@@ -7832,6 +7855,26 @@ components:
         type: string
         format: uuid
         example: "d2612fbe-b297-4f3c-9d2d-cc821b4dc8d2"
+
+    mappedKeyId:
+      name: keyId
+      in: path
+      description: |
+        **API Key ID** consisting of the **name** of the API key.
+      required: true
+      schema:
+        type: string
+        example: "client-key-1"
+
+    entityID-Q:
+      name: entityID
+      in: query
+      required: true
+      description: |
+        **Entity ID** of the artifact associated with the API key mapping.
+      schema:
+        type: string
+        example: my-rest-api-handle
 
 
     projectId-Q:

@@ -202,8 +202,8 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
 		utils.NewValidationErrorResponse(c, err)
 		return
 	}
-	if len(req.ApiKeyIds) == 0 {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one API key id is required"))
+	if len(req.APIKeys) == 0 {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one API key mapping is required"))
 		return
 	}
 
@@ -225,6 +225,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(c *gin.Context) {
 
 	appID := c.Param("appId")
 	keyID := c.Param("keyId")
+	entityID := strings.TrimSpace(c.Query("entityID"))
 	userID := h.resolveRequesterUserID(c)
 	if strings.TrimSpace(appID) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
@@ -234,8 +235,12 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API key id is required"))
 		return
 	}
+	if entityID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Entity ID is required"))
+		return
+	}
 
-	if err := h.applicationService.RemoveMappedAPIKey(appID, keyID, orgID, userID); err != nil {
+	if err := h.applicationService.RemoveMappedAPIKey(appID, keyID, entityID, orgID, userID); err != nil {
 		h.writeApplicationError(c, err, "Failed to remove mapped API key")
 		return
 	}

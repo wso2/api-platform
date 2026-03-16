@@ -281,7 +281,7 @@ func (s *ApplicationService) ReplaceMappedAPIKeys(appIDOrHandle string, req *dto
 		return nil, err
 	}
 
-	resolvedKeys, err := s.resolveAPIKeys(req.ApiKeyIds, orgID)
+	resolvedKeys, err := s.resolveAPIKeys(req.APIKeys, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +333,7 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.Add
 		return nil, err
 	}
 
-	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeyIds, orgID, userID)
+	apiKeyIDs, err := s.resolveAPIKeyIDs(req.APIKeys, orgID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -354,18 +354,20 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.Add
 	return keys, nil
 }
 
-func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, orgID, userID string) error {
+func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, orgID, userID string) error {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return err
 	}
 
-	key, err := s.appRepo.GetAPIKeyByID(keyID, orgID)
+	key, err := s.resolveAPIKey(dto.APIKeyMappingSelectorRequest{
+		KeyID: keyID,
+		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
+			ID: entityID,
+		},
+	}, orgID)
 	if err != nil {
 		return err
-	}
-	if key == nil {
-		return constants.ErrAPIKeyNotFound
 	}
 
 	if err := s.appRepo.RemoveApplicationAPIKey(app.UUID, key.ID); err != nil {
@@ -401,8 +403,8 @@ func (s *ApplicationService) getApplication(appIDOrHandle, orgID string) (*model
 	return app, nil
 }
 
-func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID, userID string) ([]string, error) {
-	keys, err := s.resolveAPIKeys(ids, orgID)
+func (s *ApplicationService) resolveAPIKeyIDs(selectors []dto.APIKeyMappingSelectorRequest, orgID, userID string) ([]string, error) {
+	keys, err := s.resolveAPIKeys(selectors, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -418,21 +420,14 @@ func (s *ApplicationService) resolveAPIKeyIDs(ids []string, orgID, userID string
 	return result, nil
 }
 
-func (s *ApplicationService) resolveAPIKeys(ids []string, orgID string) ([]*model.ApplicationAPIKey, error) {
+func (s *ApplicationService) resolveAPIKeys(selectors []dto.APIKeyMappingSelectorRequest, orgID string) ([]*model.ApplicationAPIKey, error) {
 	seen := make(map[string]struct{})
-	result := make([]*model.ApplicationAPIKey, 0, len(ids))
+	result := make([]*model.ApplicationAPIKey, 0, len(selectors))
 
-	for _, id := range ids {
-		keyID := strings.TrimSpace(id)
-		if keyID == "" {
-			return nil, constants.ErrInvalidAPIKey
-		}
-		key, err := s.appRepo.GetAPIKeyByID(keyID, orgID)
+	for _, selector := range selectors {
+		key, err := s.resolveAPIKey(selector, orgID)
 		if err != nil {
 			return nil, err
-		}
-		if key == nil {
-			return nil, constants.ErrAPIKeyNotFound
 		}
 
 		if _, ok := seen[key.ID]; ok {
@@ -444,6 +439,25 @@ func (s *ApplicationService) resolveAPIKeys(ids []string, orgID string) ([]*mode
 	}
 
 	return result, nil
+}
+
+func (s *ApplicationService) resolveAPIKey(selector dto.APIKeyMappingSelectorRequest, orgID string) (*model.ApplicationAPIKey, error) {
+	keyID := strings.TrimSpace(selector.KeyID)
+	entityID := strings.TrimSpace(selector.AssociatedEntity.ID)
+
+	if keyID == "" || entityID == "" {
+		return nil, constants.ErrInvalidAPIKey
+	}
+
+	key, err := s.appRepo.GetAPIKeyByNameAndArtifactHandle(keyID, entityID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if key == nil {
+		return nil, constants.ErrAPIKeyNotFound
+	}
+
+	return key, nil
 }
 
 func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.ApplicationAPIKey, userID string) error {
@@ -513,8 +527,8 @@ func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationA
 	return &dto.MappedAPIKeyResponse{
 		KeyId: key.Name,
 		AssociatedEntity: dto.AssociatedEntityResponse{
-			Handle: key.ArtifactHandle,
-			Kind:   key.ArtifactKind,
+			ID:   key.ArtifactHandle,
+			Kind: key.ArtifactKind,
 		},
 		ApiKeyUuid: key.APIKeyUUID,
 		ArtifactId: key.ArtifactID,

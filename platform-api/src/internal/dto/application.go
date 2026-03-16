@@ -52,16 +52,25 @@ type ApplicationListResponse struct {
 }
 
 type ReplaceApplicationAPIKeysRequest struct {
-	ApiKeyIds []string `json:"apiKeyIds"`
+	APIKeys []APIKeyMappingSelectorRequest `json:"apiKeys"`
 }
 
 type AddApplicationAPIKeysRequest struct {
-	ApiKeyIds []string `json:"apiKeyIds"`
+	APIKeys []APIKeyMappingSelectorRequest `json:"apiKeys"`
+}
+
+type APIKeyMappingSelectorRequest struct {
+	KeyID            string                          `json:"keyId"`
+	AssociatedEntity APIKeyAssociatedEntityIDRequest `json:"associatedEntity"`
+}
+
+type APIKeyAssociatedEntityIDRequest struct {
+	ID string `json:"id"`
 }
 
 type AssociatedEntityResponse struct {
-	Handle string `json:"handle"`
-	Kind   string `json:"kind"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
 }
 
 type MappedAPIKeyResponse struct {
