@@ -383,7 +383,6 @@ func TestAPIDeploymentPush_JSON(t *testing.T) {
 		CreatedAt:         now,
 		UpdatedAt:         now,
 		DeployedAt:        &now,
-		DeployedVersion:   1,
 		ProjectIdentifier: "default",
 	}
 

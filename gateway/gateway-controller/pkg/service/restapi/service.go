@@ -263,7 +263,6 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
 
 	// Dual-write: database first, then in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {
