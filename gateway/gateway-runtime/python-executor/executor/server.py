@@ -44,22 +44,25 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         self,
         policy_loader: PolicyLoader,
         instance_store: PolicyInstanceStore,
-        worker_count: int = 4,
+        executor: futures.ThreadPoolExecutor,
         max_concurrent: int = 100,
+        timeout: int = 30,
     ):
         self._loader = policy_loader
         self._store = instance_store
         self._translator = Translator()
-        self._executor = futures.ThreadPoolExecutor(max_workers=worker_count)
+        self._executor = executor
         self._max_concurrent = max_concurrent
+        self._timeout = timeout
         logger.info(
-            f"PythonExecutorServicer initialized with {worker_count} workers, "
-            f"max_concurrent={max_concurrent}"
+            f"PythonExecutorServicer initialized with shared executor, "
+            f"max_concurrent={max_concurrent}, timeout={timeout}s"
         )
 
     def close(self):
-        """Shutdown the thread pool executor."""
-        self._executor.shutdown(wait=True)
+        """Shutdown logic is now handled by the PythonExecutorServer.
+        This servicer no longer owns the executor."""
+        pass
 
     # ------------------------------------------------------------------ #
     #  InitPolicy — called once per route during chain building           #
@@ -187,32 +190,44 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         async def process_request(request: proto.ExecutionRequest) -> None:
             response: Optional[proto.ExecutionResponse] = None
             try:
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    self._executor,
-                    self._execute_policy,
-                    request,
-                )
-            except Exception as e:
-                logger.exception(
-                    f"Error executing policy {request.policy_name}:{request.policy_version}"
-                )
-                response = self._error_response(
-                    request.request_id, e, request.policy_name, request.policy_version
-                )
-
-            async with response_ready:
                 try:
-                    if response is not None:
-                        response_deque.append(response)
-                finally:
-                    # Keep in-flight updates under the same condition lock so
-                    # writers observe deque/in_flight state changes atomically.
-                    in_flight.discard(asyncio.current_task())
-                    response_ready.notify()
+                    loop = asyncio.get_event_loop()
+                    future = loop.run_in_executor(
+                        self._executor,
+                        self._execute_policy,
+                        request,
+                    )
+                    response = await asyncio.wait_for(future, timeout=self._timeout)
+                except asyncio.TimeoutError:
+                    logger.error(
+                        f"Execution timed out after {self._timeout}s for {request.policy_name}:{request.policy_version}"
+                    )
+                    response = self._error_response(
+                        request.request_id,
+                        TimeoutError(f"Execution timed out after {self._timeout}s"),
+                        request.policy_name,
+                        request.policy_version
+                    )
+                except Exception as e:
+                    logger.exception(
+                        f"Error executing policy {request.policy_name}:{request.policy_version}"
+                    )
+                    response = self._error_response(
+                        request.request_id, e, request.policy_name, request.policy_version
+                    )
+            finally:
+                async with response_ready:
+                    try:
+                        if response is not None:
+                            response_deque.append(response)
+                    finally:
+                        # Keep in-flight updates under the same condition lock so
+                        # writers observe deque/in_flight state changes atomically.
+                        in_flight.discard(asyncio.current_task())
+                        response_ready.notify()
 
-            # Release capacity after notifying waiters to re-check in_flight.
-            concurrency_limit.release()
+                # Release capacity after notifying waiters to re-check in_flight.
+                concurrency_limit.release()
 
         async def reader() -> None:
             try:
@@ -258,7 +273,7 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
             reader_task.cancel()
             for task in list(in_flight):
                 task.cancel()
-            all_tasks = [reader_task] + list(in_flight)
+            all_tasks = [reader_task, *list(in_flight)]
             await asyncio.shield(asyncio.gather(*all_tasks, return_exceptions=True))
             raise
         finally:
@@ -365,15 +380,16 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
 class PythonExecutorServer:
     """Python Executor gRPC server."""
 
-    def __init__(self, socket_path: str, worker_count: int = 4, max_concurrent: int = 100):
+    def __init__(self, socket_path: str, worker_count: int = 4, max_concurrent: int = 100, timeout: int = 30):
         self.socket_path = socket_path
         self.worker_count = worker_count
         self.max_concurrent = max_concurrent
+        self.timeout = timeout
         self.server: Optional[aio.Server] = None
         self._loader = PolicyLoader()
         self._store = PolicyInstanceStore()
         self._servicer: Optional[PythonExecutorServicer] = None
-        self._aio_worker_executor: Optional[futures.ThreadPoolExecutor] = None
+        self._shared_executor: Optional[futures.ThreadPoolExecutor] = None
 
     async def start(self):
         """Start the server."""
@@ -382,9 +398,12 @@ class PythonExecutorServer:
         loaded_count = self._loader.load_policies()
         logger.info(f"Loaded {loaded_count} policy factories")
 
-        self._aio_worker_executor = futures.ThreadPoolExecutor(max_workers=self.worker_count)
+        self._shared_executor = futures.ThreadPoolExecutor(
+            max_workers=self.worker_count,
+            thread_name_prefix="grpc_policy_worker"
+        )
         self.server = aio.server(
-            migration_thread_pool=self._aio_worker_executor,
+            migration_thread_pool=self._shared_executor,
             options=[
                 ('grpc.max_send_message_length', 50 * 1024 * 1024),
                 ('grpc.max_receive_message_length', 50 * 1024 * 1024),
@@ -392,7 +411,7 @@ class PythonExecutorServer:
         )
 
         self._servicer = PythonExecutorServicer(
-            self._loader, self._store, self.worker_count, self.max_concurrent
+            self._loader, self._store, self._shared_executor, self.max_concurrent, self.timeout
         )
         proto_grpc.add_PythonExecutorServiceServicer_to_server(self._servicer, self.server)
 
@@ -407,7 +426,12 @@ class PythonExecutorServer:
                 logger.error(f"Error checking or removing socket path at {self.socket_path}: {e}")
                 raise
 
-        self.server.add_insecure_port(f"unix:{self.socket_path}")
+        rv = self.server.add_insecure_port(f"unix:{self.socket_path}")
+        if rv == 0:
+            error_msg = f"Failed to bind to UNIX domain socket at {self.socket_path}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
         await self.server.start()
         logger.info(f"Python Executor ready on {self.socket_path}")
 
@@ -436,7 +460,7 @@ class PythonExecutorServer:
                 logger.warning(f"Error closing policy instance during shutdown: {e}")
 
         # 4. Shut down the core IO/server thread pool last
-        if self._aio_worker_executor:
-            self._aio_worker_executor.shutdown(wait=True)
+        if self._shared_executor:
+            self._shared_executor.shutdown(wait=True)
 
         logger.info("Python Executor shutdown complete")

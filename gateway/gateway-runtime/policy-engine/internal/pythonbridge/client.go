@@ -281,7 +281,10 @@ func (sm *StreamManager) Execute(ctx context.Context, req *proto.ExecutionReques
 	case resp := <-respCh:
 		return resp, nil
 	case <-ctx.Done():
-		return nil, fmt.Errorf("timeout waiting for Python response after %v", timeout)
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("timeout waiting for Python response after %v", timeout)
+		}
+		return nil, ctx.Err()
 	}
 }
 

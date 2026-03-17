@@ -189,9 +189,17 @@ func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPo
 
 	// 3. Merge requirements.txt files (including base requirements)
 	baseReqPath := filepath.Join(pythonOutputDir, "requirements.txt")
-	baseRequirements, _ := os.ReadFile(baseReqPath)
+	baseRequirements := ""
+	data, err := os.ReadFile(baseReqPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to read base requirements.txt: %w", err)
+		}
+	} else {
+		baseRequirements = string(data)
+	}
 
-	requirements, err := mergeRequirements(pythonPolicies, string(baseRequirements))
+	requirements, err := mergeRequirements(pythonPolicies, baseRequirements)
 	if err != nil {
 		return fmt.Errorf("failed to merge requirements.txt: %w", err)
 	}

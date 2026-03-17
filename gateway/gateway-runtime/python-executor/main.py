@@ -82,6 +82,11 @@ def _parse_args():
         help="Max concurrent policy executions (env: PYTHON_POLICY_MAX_CONCURRENT)",
     )
     parser.add_argument(
+        "--timeout",
+        default=os.environ.get("PYTHON_POLICY_TIMEOUT"),
+        help="Timeout in seconds for policy execution (env: PYTHON_POLICY_TIMEOUT)",
+    )
+    parser.add_argument(
         "--log-level",
         default=os.environ.get("LOG_LEVEL", "info"),
         help="Log level (env: LOG_LEVEL)",
@@ -92,6 +97,11 @@ def _parse_args():
         "--max-concurrent",
         args.max_concurrent,
         100,
+    )
+    args.timeout = _resolve_positive_int(
+        "--timeout",
+        args.timeout,
+        30,
     )
     return args
 
@@ -136,10 +146,11 @@ async def main():
     socket_path = args.socket
     worker_count = args.workers
     max_concurrent = args.max_concurrent
+    timeout = args.timeout
 
-    logger.info(f"Python Executor starting (workers={worker_count}, max_concurrent={max_concurrent}, log_level={LOG_LEVEL})")
+    logger.info(f"Python Executor starting (workers={worker_count}, max_concurrent={max_concurrent}, timeout={timeout}s, log_level={LOG_LEVEL})")
 
-    server = PythonExecutorServer(socket_path, worker_count, max_concurrent)
+    server = PythonExecutorServer(socket_path, worker_count, max_concurrent, timeout)
 
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_event_loop()

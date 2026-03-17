@@ -251,9 +251,9 @@ func authContextToMap(ac *policy.AuthContext) map[string]string {
 	if ac.CredentialID != "" {
 		m["credential_id"] = ac.CredentialID
 	}
-	// Flatten properties
+	// Flatten properties with namespace prefix to avoid overwriting reserved keys
 	for k, v := range ac.Properties {
-		m[k] = v
+		m["prop_"+k] = v
 	}
 	return m
 }
