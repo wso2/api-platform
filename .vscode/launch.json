@@ -11,6 +11,15 @@
             "mode": "auto",
             "program": "${workspaceFolder}/platform-api/src/cmd/main.go",
             "cwd": "${workspaceFolder}/platform-api/src",
+            "env": {
+                // Database configuration
+                "DATABASE_DRIVER": "sqlite3",
+                "DATABASE_DB_PATH": "${workspaceFolder}/platform-api/src/data/api_platform.db",
+                "DATABASE_EXECUTE_SCHEMA_DDL": "true",
+                "DB_SCHEMA_PATH": "./internal/database/schema.sqlite.sql",
+                // JWT - skip signature validation in development
+                "JWT_SKIP_VALIDATION": "true",
+            },
         },
         {
             "name": "Gateway Controller",

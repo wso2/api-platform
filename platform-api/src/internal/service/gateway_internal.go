@@ -71,25 +71,6 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 	}
 }
 
-// GetAPIsByOrganization retrieves all APIs for a specific organization (used by gateways)
-func (s *GatewayInternalAPIService) GetAPIsByOrganization(orgID string) (map[string]string, error) {
-	// Get all APIs for the organization
-	apis, err := s.apiRepo.GetAPIsByOrganizationUUID(orgID, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve APIs: %w", err)
-	}
-
-	apiYamlMap := make(map[string]string)
-	for _, api := range apis {
-		apiYaml, err := s.apiUtil.GenerateAPIDeploymentYAML(api)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate API YAML: %w", err)
-		}
-		apiYamlMap[api.ID] = apiYaml
-	}
-	return apiYamlMap, nil
-}
-
 // GetAPIByUUID retrieves an API by its ID
 func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[string]string, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
