@@ -69,12 +69,13 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
-		--platform linux/arm64 \
+		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
+		--push \
 		.
 
 build-coverage-image: test ## Build coverage-instrumented gateway-controller image
