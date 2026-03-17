@@ -13,6 +13,7 @@ parameters:
   properties:
     budgetLimits:
       type: array
+      x-wso2-policy-advanced-param: false
       description: |
         Budget limits define the maximum amount of money the user is willing to spend
         within specific time windows. Multiple limits can be configured for different
@@ -21,11 +22,13 @@ parameters:
       maxItems: 10
       items:
         type: object
+        x-wso2-policy-advanced-param: false
         additionalProperties: false
         required: ["amount", "duration"]
         properties:
           amount:
             type: number
+            x-wso2-policy-advanced-param: false
             description: |
               Maximum monetary budget allowed in the specified time window.
               This is the spending cap that the user defines (e.g., 10 for $10).
@@ -33,6 +36,7 @@ parameters:
             maximum: 1000000
           duration:
             type: string
+            x-wso2-policy-advanced-param: false
             description: |
               Time window for the budget limit (Go duration string format).
               Examples: "1h" (1 hour), "24h" (1 day), "168h" (1 week), "720h" (30 days)
