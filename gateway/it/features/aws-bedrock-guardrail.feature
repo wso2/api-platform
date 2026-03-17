@@ -288,6 +288,7 @@ Feature: AWS Bedrock Guardrail Policy
                     jsonPath: ""
                     redactPII: false
                   response:
+                    enabled: true
                     jsonPath: ""
       """
     Then the response should be successful
@@ -334,6 +335,7 @@ Feature: AWS Bedrock Guardrail Policy
                 version: v0
                 params:
                   request:
+                    jsonPath: ""
                     redactPII: true
       """
     Then the response should be successful
