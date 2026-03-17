@@ -406,13 +406,11 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	config, err := s.getAPIConfigByHandle(kind, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			logger.Error("API configuration not found for API Key revoke",
-				slog.String("operation", operationType+"_key"),
+			logger.Warn("API configuration not found for API key revoke",
 				slog.Any("error", err))
 			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 		}
 		logger.Error("Failed to retrieve API configuration for API key revoke",
-			slog.String("operation", operationType+"_key"),
 			slog.Any("error", err))
 		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
