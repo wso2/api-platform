@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -35,7 +36,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -798,6 +799,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleMCPProxyUndeploymentEvent(event)
 	case "mcpproxy.deleted":
 		c.handleMCPProxyDeletedEvent(event)
+	case "application.updated":
+		c.handleApplicationUpdatedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -2259,6 +2262,119 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		return
 	}
 	logger.Info("Successfully processed API key updated event")
+}
+
+// handleApplicationUpdatedEvent handles application mapping update events from platform-api.
+func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if baseLogger == nil {
+		baseLogger = slog.Default()
+	}
+
+	if c.db == nil {
+		baseLogger.Warn("Storage not configured; skipping application.updated persistence")
+		return
+	}
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		baseLogger.Error("Failed to marshal application updated event for parsing",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var evt ApplicationUpdatedEvent
+	if err := json.Unmarshal(eventBytes, &evt); err != nil {
+		baseLogger.Error("Failed to parse application updated event",
+			slog.Any("correlation_id", event["correlationId"]),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	if evt.Payload.ApplicationId == "" {
+		baseLogger.Error("Application updated event missing required application_id",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	if evt.Payload.ApplicationUuid == "" {
+		baseLogger.Error("Application updated event missing required application_uuid",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	if evt.Payload.ApplicationName == "" {
+		baseLogger.Error("Application updated event missing required application_name",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	if evt.Payload.ApplicationType == "" {
+		baseLogger.Error("Application updated event missing required application_type",
+			slog.Any("correlation_id", event["correlationId"]),
+		)
+		return
+	}
+
+	logger := baseLogger.With(
+		slog.String("correlation_id", evt.CorrelationID),
+		slog.String("application_id", evt.Payload.ApplicationId),
+		slog.String("application_uuid", evt.Payload.ApplicationUuid),
+		slog.String("application_name", evt.Payload.ApplicationName),
+		slog.String("application_type", evt.Payload.ApplicationType),
+	)
+
+	resolvedMappings := make([]*models.ApplicationAPIKeyMapping, 0, len(evt.Payload.Mappings))
+
+	for _, mapping := range evt.Payload.Mappings {
+		if mapping.ApiKeyUuid == "" {
+			logger.Warn("Skipping invalid application mapping entry in event",
+				slog.String("api_key_uuid", mapping.ApiKeyUuid),
+			)
+			continue
+		}
+
+		apiKey, err := c.db.GetAPIKeyByUUID(mapping.ApiKeyUuid)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				logger.Warn("Skipping unresolved API key for application mapping",
+					slog.String("api_key_uuid", mapping.ApiKeyUuid),
+				)
+				continue
+			}
+
+			logger.Error("Failed to resolve API key for application mapping",
+				slog.String("api_key_uuid", mapping.ApiKeyUuid),
+				slog.Any("error", err),
+			)
+			return
+		}
+
+		resolvedMappings = append(resolvedMappings, &models.ApplicationAPIKeyMapping{
+			ApplicationUUID: evt.Payload.ApplicationUuid,
+			APIKeyID:        apiKey.UUID,
+		})
+	}
+
+	application := &models.StoredApplication{
+		ApplicationID:   evt.Payload.ApplicationId,
+		ApplicationUUID: evt.Payload.ApplicationUuid,
+		ApplicationName: evt.Payload.ApplicationName,
+		ApplicationType: evt.Payload.ApplicationType,
+	}
+
+	if err := c.db.ReplaceApplicationAPIKeyMappings(application, resolvedMappings); err != nil {
+		logger.Error("Failed to persist application key mappings", slog.Any("error", err))
+		return
+	}
+
+	logger.Info("Successfully processed application updated event", slog.Int("mapping_count", len(resolvedMappings)))
 }
 
 // calculateNextRetryDelay calculates the next retry delay with exponential backoff and jitter

@@ -251,6 +251,233 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /applications:
+    post:
+      summary: Create a new application
+      description: |
+        Creates a new application within the organization specified in the JWT token.
+      operationId: CreateApplication
+      tags:
+        - Applications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Application created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get applications for current user's organization
+      description: |
+        Retrieves applications belonging to the organization specified in the JWT token.
+        Optionally filters by project using the `projectId` query parameter.
+      operationId: ListApplications
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+      responses:
+        '200':
+          description: Applications retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications/{appId}:
+    get:
+      summary: Get application by handle
+      description: |
+        Retrieves a specific application by handle. Access is validated against
+        the organization in the JWT token.
+      operationId: GetApplication
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      responses:
+        '200':
+          description: Application retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update application
+      description: |
+        Updates an existing application by handle.
+      operationId: UpdateApplication
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationRequest'
+      responses:
+        '200':
+          description: Application updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete application
+      description: |
+        Deletes an existing application by handle.
+      operationId: DeleteApplication
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      responses:
+        '204':
+          description: Application deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications/{appId}/api-keys:
+    get:
+      summary: List application API key mappings
+      description: |
+        Lists all API keys mapped to the specified application.
+      operationId: ListApplicationAPIKeys
+      tags:
+        - Applications
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      responses:
+        '200':
+          description: Mapped API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappedAPIKeyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Add application API key mappings
+      description: |
+        Adds API key mappings to the specified application.
+      operationId: AddApplicationAPIKeys
+      tags:
+        - Applications
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddApplicationAPIKeysRequest'
+      responses:
+        '200':
+          description: API key mappings added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappedAPIKeyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications/{appId}/api-keys/{keyId}:
+    delete:
+      summary: Remove application API key mapping
+      description: |
+        Removes a mapped API key from the specified application.
+      operationId: RemoveApplicationAPIKey
+      tags:
+        - Applications
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/appId'
+        - $ref: '#/components/parameters/mappedKeyId'
+        - $ref: '#/components/parameters/entityID-Q'
+      responses:
+        '204':
+          description: API key mapping removed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /validate/api-project:
     post:
       summary: Validate API project
@@ -4218,6 +4445,222 @@ components:
           readOnly: true
           example: "2023-10-12T10:30:00Z"
 
+    ApplicationType:
+      type: string
+      description: Type of the application
+      enum:
+        - genai
+      example: genai
+
+    CreateApplicationRequest:
+      description: Request body for creating an application.
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        id:
+          type: string
+          description: Unique handle/identifier for the application. Can be provided during creation or auto-generated.
+          example: my-app-handle
+        name:
+          type: string
+          minLength: 1
+          description: Name of the application
+          example: "GenAI Demo App"
+        projectId:
+          type: string
+          format: uuid
+          description: UUID of the project this application belongs to. If omitted, the application is not mapped to a project.
+          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+        type:
+          $ref: '#/components/schemas/ApplicationType'
+        description:
+          type: string
+          description: Description of the application
+          example: "Sample GenAI application"
+        createdBy:
+          type: string
+          description: Creator identifier
+          example: "admin"
+
+    UpdateApplicationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name of the application
+          example: "Updated GenAI App"
+        description:
+          type: string
+          description: Description of the application
+          example: "Updated application description"
+        type:
+          $ref: '#/components/schemas/ApplicationType'
+
+    Application:
+      type: object
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: string
+          description: Application handle/identifier
+          example: "my-app-handle"
+        name:
+          type: string
+          description: Name of the application
+          example: "GenAI Demo App"
+        projectId:
+          type: string
+          format: uuid
+          description: UUID of the project this application belongs to
+          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+        type:
+          $ref: '#/components/schemas/ApplicationType'
+        description:
+          type: string
+          description: Description of the application
+          example: "Sample GenAI application"
+        createdBy:
+          type: string
+          description: Creator identifier
+          example: "admin"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2025-11-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2025-11-15T11:30:00Z"
+
+    ApplicationListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    AddApplicationAPIKeysRequest:
+      type: object
+      required:
+        - apiKeys
+      properties:
+        apiKeys:
+          type: array
+          description: List of API key selectors to add to the application mappings
+          items:
+            $ref: '#/components/schemas/APIKeyMappingSelector'
+
+    APIKeyMappingSelector:
+      type: object
+      required:
+        - keyId
+        - associatedEntity
+      properties:
+        keyId:
+          type: string
+          description: API key name
+          example: client-key-1
+        associatedEntity:
+          $ref: '#/components/schemas/APIKeyMappingAssociatedEntity'
+
+    APIKeyMappingAssociatedEntity:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: ID of the entity that owns the API key
+          example: pizza-api
+
+    AssociatedEntity:
+      type: object
+      required:
+        - id
+        - kind
+      properties:
+        id:
+          type: string
+          description: ID of the associated entity
+          example: pizza-api
+        kind:
+          type: string
+          description: Type of the associated entity
+          example: RestApi
+
+    MappedAPIKey:
+      type: object
+      required:
+        - keyId
+        - associatedEntity
+      properties:
+        keyId:
+          type: string
+          description: Name of the API key
+          example: "client-key-1"
+        associatedEntity:
+          $ref: '#/components/schemas/AssociatedEntity'
+        status:
+          type: string
+          description: Status of the API key
+          example: "ACTIVE"
+        userId:
+          type: string
+          description: User id of the key creator
+          example: "user-123"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was created
+          example: "2025-11-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was updated
+          example: "2025-11-15T11:30:00Z"
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp of the API key
+          example: "2026-11-15T10:30:00Z"
+
+    MappedAPIKeyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MappedAPIKey'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
     RESTAPI:
       title: API object
       required:
@@ -7331,6 +7774,16 @@ components:
             code: 400
             message: Bad Request
             description: Invalid request or validation error
+    Forbidden:
+      description: Forbidden. The authenticated user does not have permission to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 403
+            title: Forbidden
+            details: You do not have permission to perform this action
     NotFound:
       description: Not Found. The specified resource does not exist.
       content:
@@ -7391,6 +7844,47 @@ components:
       description: |
         **API ID** consisting of the **handle** (unique identifier) of the API.
       required: true
+      schema:
+        type: string
+        example: my-rest-api-handle
+
+    appId:
+      name: appId
+      in: path
+      description: |
+        **Application ID** consisting of the **handle** of the application.
+      required: true
+      schema:
+        type: string
+        example: my-app-handle
+
+    keyId:
+      name: keyId
+      in: path
+      description: |
+        **API Key ID** consisting of the **UUID** of the API key.
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: "d2612fbe-b297-4f3c-9d2d-cc821b4dc8d2"
+
+    mappedKeyId:
+      name: keyId
+      in: path
+      description: |
+        **API Key ID** consisting of the **name** of the API key.
+      required: true
+      schema:
+        type: string
+        example: "client-key-1"
+
+    entityID-Q:
+      name: entityID
+      in: query
+      required: true
+      description: |
+        **Entity ID** of the artifact associated with the API key mapping.
       schema:
         type: string
         example: my-rest-api-handle
@@ -7547,6 +8041,8 @@ tags:
     description: Organization management operations
   - name: Projects
     description: Project management operations
+  - name: Applications
+    description: Application management operations
   - name: REST APIs
     description: API management operations
   - name: REST API Deployments

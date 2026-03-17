@@ -38,7 +38,7 @@ const (
 	sqliteUniqueCertificatesUUID     = "UNIQUE constraint failed: certificates.uuid"
 	sqliteUniqueTemplatesHandle      = "UNIQUE constraint failed: llm_provider_templates.handle, llm_provider_templates.gateway_id"
 	sqliteUniqueAPIKeysKey           = "UNIQUE constraint failed: api_keys.api_key"
-	sqliteUniqueAPIKeysUUID          = "UNIQUE constraint failed: api_keys.uuid"
+	sqliteUniqueAPIKeysUUID          = "UNIQUE constraint failed: api_keys.uuid, api_keys.gateway_id"
 	sqliteUniqueSubscriptionPlans    = "UNIQUE constraint failed: subscription_plans.gateway_id, subscription_plans.plan_name"
 )
 
