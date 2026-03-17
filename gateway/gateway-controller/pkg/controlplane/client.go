@@ -1713,6 +1713,8 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 			slog.String("provider_id", providerID),
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1772,6 +1774,8 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
