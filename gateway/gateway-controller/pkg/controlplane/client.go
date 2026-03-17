@@ -1059,7 +1059,6 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	// Set status to undeployed (preserve config, keys, and policies)
 	apiConfig.Status = models.StatusUndeployed
 	apiConfig.UpdatedAt = time.Now()
-	// Keep DeployedVersion as-is - it tracks when it was last deployed
 
 	// Update database (only if persistent mode)
 	if c.db != nil {
@@ -1883,7 +1882,6 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 	// Set status to undeployed (preserve config, keys, and policies)
 	mcpConfig.Status = models.StatusUndeployed
 	mcpConfig.UpdatedAt = time.Now()
-	// Keep DeployedVersion as-is - it tracks when it was last deployed
 
 	// Update database (only if persistent mode)
 	if c.db != nil {

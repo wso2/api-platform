@@ -155,7 +155,7 @@ func NewAPIServer(
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
-func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64, correlationID string) {
+func (s *APIServer) handleStatusUpdate(configID string, success bool, correlationID string) {
 	// Create a logger with correlation ID if provided
 	log := s.logger
 	if correlationID != "" {
@@ -176,7 +176,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 			cfg.Status = models.StatusDeployed
 		}
 		cfg.DeployedAt = &now
-		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
@@ -184,7 +183,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
-		cfg.DeployedVersion = 0
 		log.Error("Configuration deployment failed",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),

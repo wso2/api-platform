@@ -1302,13 +1302,12 @@ func TestHandleStatusUpdate(t *testing.T) {
 	_ = server.store.Add(cfg)
 
 	// Test successful deployment
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 
 	// Verify status updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 	assert.NotNil(t, updatedCfg.DeployedAt)
-	assert.Equal(t, int64(1), updatedCfg.DeployedVersion)
 }
 
 // TestHandleStatusUpdateFailure tests status update for failed deployment
@@ -1320,7 +1319,7 @@ func TestHandleStatusUpdateFailure(t *testing.T) {
 	_ = server.store.Add(cfg)
 
 	// Test failed deployment
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", false, 0, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", false, "")
 
 	// Verify status updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
@@ -1333,7 +1332,7 @@ func TestHandleStatusUpdateNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Should not panic
-	server.handleStatusUpdate("nonexistent", true, 1, "")
+	server.handleStatusUpdate("nonexistent", true, "")
 }
 
 // TestCreateRestAPIInvalidBody tests CreateRestAPI with invalid request body
@@ -1938,7 +1937,7 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 
 	case <-time.After(2 * time.Second):
 		// Trigger graceful exit by updating status to deployed
-		server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
+		server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 		require.NoError(t, <-done)
 
 		retrievedCfg, err := server.store.Get("0000-test-id-0000-000000000000")
@@ -2135,7 +2134,7 @@ func TestHandleStatusUpdateWithDB(t *testing.T) {
 	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	// Test successful deployment
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 
 	// Verify both store and DB are updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
@@ -2154,7 +2153,7 @@ func TestHandleStatusUpdateDBError(t *testing.T) {
 	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	// Should not panic even with DB error
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 }
 
 // TestBuildStoredPolicyFromAPIInvalidKind tests buildStoredPolicyFromAPI with invalid kind
@@ -2410,7 +2409,7 @@ func TestHandleStatusUpdateStoreError(t *testing.T) {
 
 	// Corrupt the store to cause an error on update
 	// Since we can't easily corrupt the store, just verify it doesn't panic
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
@@ -2697,7 +2696,7 @@ func TestHandleStatusUpdateEmptyCorrelationID(t *testing.T) {
 	_ = server.store.Add(cfg)
 
 	// Test with empty correlation ID
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)

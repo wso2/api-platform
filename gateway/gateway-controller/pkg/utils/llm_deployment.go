@@ -161,7 +161,6 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
-		DeployedVersion:     0,
 	}
 
 	// Save or update
@@ -285,7 +284,6 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
-		DeployedVersion:     0,
 	}
 
 	// Save or update

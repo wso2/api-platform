@@ -242,7 +242,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
-		DeployedVersion:     0,
 	}
 
 	if kind == "WebSubApi" {
@@ -515,7 +514,6 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
 
 	// Update database first (only if persistent mode)
 	if s.db != nil {
