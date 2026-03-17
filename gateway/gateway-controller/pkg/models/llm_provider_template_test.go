@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 func TestStoredLLMProviderTemplate_GetHandle(t *testing.T) {

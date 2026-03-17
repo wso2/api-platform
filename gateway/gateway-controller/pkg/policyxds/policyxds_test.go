@@ -40,6 +40,10 @@ func TestNewSnapshotManager(t *testing.T) {
 	if manager.GetCache() == nil {
 		t.Error("GetCache() returned nil")
 	}
+
+	if manager.GetRouteCache() == nil {
+		t.Error("GetRouteCache() returned nil")
+	}
 }
 
 func TestNewPolicyManager(t *testing.T) {
@@ -75,71 +79,97 @@ func TestPolicyChainTypeURL(t *testing.T) {
 	}
 }
 
-func TestTranslator_TranslatePolicies(t *testing.T) {
+func TestRouteConfigTypeURL(t *testing.T) {
+	expected := "api-platform.wso2.org/v1.RouteConfig"
+	if RouteConfigTypeURL != expected {
+		t.Errorf("RouteConfigTypeURL = %q, want %q", RouteConfigTypeURL, expected)
+	}
+}
+
+func TestTranslator_TranslateRuntimeConfigs(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	translator := NewTranslator(logger)
 
-	// Test with empty policies
-	t.Run("empty policies", func(t *testing.T) {
-		resources, err := translator.TranslatePolicies([]*models.StoredPolicyConfig{})
+	// Test with empty configs
+	t.Run("empty configs", func(t *testing.T) {
+		resources, err := translator.TranslateRuntimeConfigs([]*models.RuntimeDeployConfig{})
 		if err != nil {
-			t.Fatalf("TranslatePolicies failed: %v", err)
+			t.Fatalf("TranslateRuntimeConfigs failed: %v", err)
 		}
 		if resources == nil {
-			t.Error("TranslatePolicies returned nil resources")
+			t.Error("TranslateRuntimeConfigs returned nil resources")
 		}
 		if _, ok := resources[PolicyChainTypeURL]; !ok {
 			t.Error("Expected PolicyChainTypeURL in resources")
 		}
+		if _, ok := resources[RouteConfigTypeURL]; !ok {
+			t.Error("Expected RouteConfigTypeURL in resources")
+		}
 	})
 
-	// Test with policies
-	t.Run("with policies", func(t *testing.T) {
-		policies := []*models.StoredPolicyConfig{
+	// Test with a RuntimeDeployConfig
+	t.Run("with runtime config", func(t *testing.T) {
+		rdcs := []*models.RuntimeDeployConfig{
 			{
-				ID: "policy-1",
-				Configuration: policyenginev1.Configuration{
-					Routes: []policyenginev1.PolicyChain{
-						{
-							RouteKey: "GET:/api/v1/users",
-							Policies: []policyenginev1.PolicyInstance{
-								{Name: "rate-limit", Version: "v1", Enabled: true},
-							},
+				Metadata: models.Metadata{
+					Kind:        "RestApi",
+					Handle:      "test-handle",
+					Name:        "TestAPI",
+					Version:     "v1",
+					DisplayName: "TestAPI",
+				},
+				Context:             "/api",
+				PolicyChainResolver: "route-key",
+				Routes: map[string]*models.Route{
+					"GET|/api/v1/users|localhost": {
+						Method:        "GET",
+						Path:          "/api/v1/users",
+						OperationPath: "/users",
+						Vhost:         "localhost",
+						Upstream: models.RouteUpstream{
+							ClusterKey: "upstream_main_localhost_8080",
 						},
 					},
-					Metadata: policyenginev1.Metadata{
-						APIName: "TestAPI",
-						Version: "v1",
-						Context: "/api",
+				},
+				PolicyChains: map[string]*models.PolicyChain{
+					"GET|/api/v1/users|localhost": {
+						Policies: []models.Policy{
+							{Name: "rate-limit", Version: "v1"},
+						},
 					},
 				},
-				Version: 1,
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"upstream_main_localhost_8080": {
+						BasePath:  "/",
+						Endpoints: []models.Endpoint{{Host: "localhost", Port: 8080}},
+					},
+				},
 			},
 		}
 
-		resources, err := translator.TranslatePolicies(policies)
+		resources, err := translator.TranslateRuntimeConfigs(rdcs)
 		if err != nil {
-			t.Fatalf("TranslatePolicies failed: %v", err)
-		}
-		if resources == nil {
-			t.Error("TranslatePolicies returned nil resources")
+			t.Fatalf("TranslateRuntimeConfigs failed: %v", err)
 		}
 		if len(resources[PolicyChainTypeURL]) != 1 {
-			t.Errorf("Expected 1 resource, got %d", len(resources[PolicyChainTypeURL]))
+			t.Errorf("Expected 1 policy resource, got %d", len(resources[PolicyChainTypeURL]))
+		}
+		if len(resources[RouteConfigTypeURL]) != 1 {
+			t.Errorf("Expected 1 route config resource, got %d", len(resources[RouteConfigTypeURL]))
 		}
 	})
 }
 
-func TestSnapshotManager_UpdateSnapshot(t *testing.T) {
+func TestSnapshotManager_UpdateSnapshotLegacy(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewPolicyStore()
 	manager := NewSnapshotManager(store, logger)
 
 	// Test update with empty store
 	t.Run("empty store", func(t *testing.T) {
-		err := manager.UpdateSnapshot(nil)
+		err := manager.UpdateSnapshotLegacy(nil, store)
 		if err != nil {
-			t.Errorf("UpdateSnapshot failed: %v", err)
+			t.Errorf("UpdateSnapshotLegacy failed: %v", err)
 		}
 	})
 
@@ -166,9 +196,9 @@ func TestSnapshotManager_UpdateSnapshot(t *testing.T) {
 		}
 		store.Set(policy)
 
-		err := manager.UpdateSnapshot(nil)
+		err := manager.UpdateSnapshotLegacy(nil, store)
 		if err != nil {
-			t.Errorf("UpdateSnapshot failed: %v", err)
+			t.Errorf("UpdateSnapshotLegacy failed: %v", err)
 		}
 	})
 }
@@ -288,74 +318,6 @@ func TestPolicyManager_GetPolicy(t *testing.T) {
 	_, err = manager.GetPolicy("non-existent")
 	if err == nil {
 		t.Error("GetPolicy should fail for non-existent policy")
-	}
-}
-
-func TestParsePolicyJSON(t *testing.T) {
-	// Valid JSON
-	t.Run("valid json", func(t *testing.T) {
-		jsonStr := `{
-			"routes": [
-				{
-					"routeKey": "GET:/api/test",
-					"policies": [
-						{"name": "cors", "version": "v1", "enabled": true}
-					]
-				}
-			],
-			"metadata": {
-				"apiName": "TestAPI",
-				"version": "v1",
-				"context": "/api"
-			}
-		}`
-
-		config, err := ParsePolicyJSON(jsonStr)
-		if err != nil {
-			t.Fatalf("ParsePolicyJSON failed: %v", err)
-		}
-		if config == nil {
-			t.Error("ParsePolicyJSON returned nil config")
-		}
-		if len(config.Routes) != 1 {
-			t.Errorf("Expected 1 route, got %d", len(config.Routes))
-		}
-	})
-
-	// Invalid JSON
-	t.Run("invalid json", func(t *testing.T) {
-		_, err := ParsePolicyJSON("not valid json")
-		if err == nil {
-			t.Error("ParsePolicyJSON should fail for invalid JSON")
-		}
-	})
-}
-
-func TestCreateStoredPolicy(t *testing.T) {
-	config := policyenginev1.Configuration{
-		Routes: []policyenginev1.PolicyChain{
-			{
-				RouteKey: "GET:/test",
-				Policies: []policyenginev1.PolicyInstance{},
-			},
-		},
-		Metadata: policyenginev1.Metadata{
-			APIName:         "TestAPI",
-			Version:         "v1",
-			Context:         "/api",
-			ResourceVersion: 5,
-		},
-	}
-
-	stored := CreateStoredPolicy("policy-123", config)
-	if stored == nil {
-		t.Fatal("CreateStoredPolicy returned nil")
-	}
-	if stored.ID != "policy-123" {
-		t.Errorf("ID = %q, want %q", stored.ID, "policy-123")
-	}
-	if stored.Version != 5 {
-		t.Errorf("Version = %d, want 5", stored.Version)
 	}
 }
 

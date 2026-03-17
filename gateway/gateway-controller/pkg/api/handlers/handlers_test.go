@@ -36,41 +36,44 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/constants"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
+	metrics.Init()
 }
 
 // MockStorage implements the storage.Storage interface for testing
 type MockStorage struct {
-	configs          map[string]*models.StoredConfig
-	templates        map[string]*models.StoredLLMProviderTemplate
-	apiKeys          map[string]*models.APIKey
-	certs            []*models.StoredCertificate
-	subscriptions    map[string]*models.Subscription
+	configs           map[string]*models.StoredConfig
+	templates         map[string]*models.StoredLLMProviderTemplate
+	apiKeys           map[string]*models.APIKey
+	certs             []*models.StoredCertificate
+	subscriptions     map[string]*models.Subscription
 	subscriptionPlans map[string]*models.SubscriptionPlan
-	saveErr          error
-	getErr           error
-	updateErr        error
-	deleteErr        error
-	unavailable      bool
+	saveErr           error
+	getErr            error
+	updateErr         error
+	deleteErr         error
+	unavailable       bool
 }
 
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
-		configs:          make(map[string]*models.StoredConfig),
-		templates:        make(map[string]*models.StoredLLMProviderTemplate),
-		apiKeys:          make(map[string]*models.APIKey),
-		certs:            make([]*models.StoredCertificate, 0),
-		subscriptions:    make(map[string]*models.Subscription),
+		configs:           make(map[string]*models.StoredConfig),
+		templates:         make(map[string]*models.StoredLLMProviderTemplate),
+		apiKeys:           make(map[string]*models.APIKey),
+		certs:             make([]*models.StoredCertificate, 0),
+		subscriptions:     make(map[string]*models.Subscription),
 		subscriptionPlans: make(map[string]*models.SubscriptionPlan),
 	}
 }
@@ -109,8 +112,7 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	return nil, errors.New("config not found")
 }
 
-
-func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	if m.unavailable {
 		return nil, storage.ErrDatabaseUnavailable
 	}
@@ -118,7 +120,7 @@ func (m *MockStorage) GetConfigByHandle(handle string) (*models.StoredConfig, er
 		return nil, m.getErr
 	}
 	for _, cfg := range m.configs {
-		if cfg.Handle == handle {
+		if cfg.Kind == kind && cfg.Handle == handle {
 			return cfg, nil
 		}
 	}
@@ -627,47 +629,67 @@ func (m *MockControlPlaneClient) Close() error {
 
 // createTestAPIServer creates a minimal test server with dependencies
 func createTestAPIServer() *APIServer {
+	return createTestAPIServerWithDB(NewMockStorage())
+}
+
+func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
-	mockDB := NewMockStorage()
 
 	vhosts := &config.VHostsConfig{
 		Main:    config.VHostEntry{Default: "localhost"},
 		Sandbox: config.VHostEntry{Default: "sandbox-localhost"},
 	}
 
-	server := &APIServer{
-		store:             store,
-		db:                mockDB,
-		logger:            logger,
-		parser:            config.NewParser(),
-		validator:         config.NewAPIValidator(),
-		policyDefinitions: make(map[string]api.PolicyDefinition),
-		routerConfig: &config.RouterConfig{
+	parser := config.NewParser()
+	validator := config.NewAPIValidator()
+	policyDefs := make(map[string]api.PolicyDefinition)
+	routerCfg := &config.RouterConfig{
+		GatewayHost: "localhost",
+		VHosts:      *vhosts,
+		EventGateway: config.EventGatewayConfig{
+			TimeoutSeconds: 10,
+		},
+	}
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	systemCfg := &config.Config{
+		Controller: config.Controller{},
+		Router: config.RouterConfig{
 			GatewayHost: "localhost",
 			VHosts:      *vhosts,
-			EventGateway: config.EventGatewayConfig{
-				TimeoutSeconds: 10,
-			},
 		},
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		systemConfig: &config.Config{
-			Controller: config.Controller{},
-			Router: config.RouterConfig{
-				GatewayHost: "localhost",
-				VHosts:      *vhosts,
-			},
-			APIKey: config.APIKeyConfig{
-				Algorithm:    "sha256",
-				MinKeyLength: 32,
-				MaxKeyLength: 128,
-			},
+		APIKey: config.APIKeyConfig{
+			Algorithm:    "sha256",
+			MinKeyLength: 32,
+			MaxKeyLength: 128,
 		},
 	}
 
+	server := &APIServer{
+		store:             store,
+		db:                db,
+		logger:            logger,
+		parser:            parser,
+		validator:         validator,
+		policyDefinitions: policyDefs,
+		routerConfig:      routerCfg,
+		httpClient:        httpClient,
+		systemConfig:      systemCfg,
+	}
+
 	// Initialize API key service (needed for API key operations)
-	apiKeyService := utils.NewAPIKeyService(store, mockDB, nil, &server.systemConfig.APIKey)
+	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
 	server.apiKeyService = apiKeyService
+
+	// Initialize RestAPI service and handler
+	restAPIService := restapi.NewRestAPIService(
+		store, db, nil, nil,
+		policyDefs, &server.policyDefMu,
+		nil, nil, nil,
+		routerCfg, systemCfg,
+		httpClient, parser, validator, logger,
+	)
+	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	return server
 }
@@ -738,7 +760,7 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 }
 
 // TestListAPIs tests listing all APIs
-func TestListAPIs(t *testing.T) {
+func TestListRestAPIs(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test configs to store
@@ -748,7 +770,7 @@ func TestListAPIs(t *testing.T) {
 	_ = server.store.Add(cfg2)
 
 	c, w := createTestContext("GET", "/rest-apis", nil)
-	server.ListAPIs(c, api.ListAPIsParams{})
+	server.ListRestAPIs(c, api.ListRestAPIsParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -760,7 +782,7 @@ func TestListAPIs(t *testing.T) {
 }
 
 // TestListAPIsWithFilters tests listing APIs with filters
-func TestListAPIsWithFilters(t *testing.T) {
+func TestListRestAPIsWithFilters(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Add test configs to store
@@ -773,7 +795,7 @@ func TestListAPIsWithFilters(t *testing.T) {
 	c, w := createTestContext("GET", "/rest-apis?displayName=test-api-1", nil)
 	c.Request.URL.RawQuery = "displayName=test-api-1"
 	displayName := "0000-test-api-1-0000-000000000000"
-	server.ListAPIs(c, api.ListAPIsParams{DisplayName: &displayName})
+	server.ListRestAPIs(c, api.ListRestAPIsParams{DisplayName: &displayName})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -784,11 +806,11 @@ func TestListAPIsWithFilters(t *testing.T) {
 }
 
 // TestListAPIsEmpty tests listing APIs when none exist
-func TestListAPIsEmpty(t *testing.T) {
+func TestListRestAPIsEmpty(t *testing.T) {
 	server := createTestAPIServer()
 
 	c, w := createTestContext("GET", "/rest-apis", nil)
-	server.ListAPIs(c, api.ListAPIsParams{})
+	server.ListRestAPIs(c, api.ListRestAPIsParams{})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -837,7 +859,7 @@ func TestGetAPIByNameVersionNotFound(t *testing.T) {
 }
 
 // TestGetAPIById tests getting an API by ID
-func TestGetAPIById(t *testing.T) {
+func TestGetRestAPIById(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
@@ -846,7 +868,7 @@ func TestGetAPIById(t *testing.T) {
 	mockDB.SaveConfig(cfg)
 
 	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
-	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
+	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -857,11 +879,11 @@ func TestGetAPIById(t *testing.T) {
 }
 
 // TestGetAPIByIdNotFound tests getting an API by ID that doesn't exist
-func TestGetAPIByIdNotFound(t *testing.T) {
+func TestGetRestAPIByIdNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
 	c, w := createTestContext("GET", "/rest-apis/nonexistent", nil)
-	server.GetAPIById(c, "nonexistent")
+	server.GetRestAPIById(c, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
@@ -872,18 +894,17 @@ func TestGetAPIByIdNotFound(t *testing.T) {
 }
 
 // TestGetAPIByIdNoDB tests getting an API when DB is not available
-func TestGetAPIByIdNoDB(t *testing.T) {
-	server := createTestAPIServer()
-	server.db = nil // Simulate no DB
+func TestGetRestAPIByIdNoDB(t *testing.T) {
+	server := createTestAPIServerWithDB(nil)
 
 	c, w := createTestContext("GET", "/rest-apis/test-id", nil)
-	server.GetAPIById(c, "0000-test-id-0000-000000000000")
+	server.GetRestAPIById(c, "0000-test-id-0000-000000000000")
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
 // TestGetAPIByIdWrongKind tests getting an API with wrong kind
-func TestGetAPIByIdWrongKind(t *testing.T) {
+func TestGetRestAPIByIdWrongKind(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
@@ -893,9 +914,9 @@ func TestGetAPIByIdWrongKind(t *testing.T) {
 	mockDB.SaveConfig(cfg)
 
 	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
-	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
+	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // TestSearchDeploymentsWithNilStore tests SearchDeployments with nil store
@@ -1133,21 +1154,21 @@ func TestHandleStatusUpdateNotFound(t *testing.T) {
 	server.handleStatusUpdate("nonexistent", true, 1, "")
 }
 
-// TestCreateAPIInvalidBody tests CreateAPI with invalid request body
+// TestCreateRestAPIInvalidBody tests CreateRestAPI with invalid request body
 // Note: This test requires a full deployment service setup, so we skip it
-func TestCreateAPIInvalidBody(t *testing.T) {
+func TestCreateRestAPIInvalidBody(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestUpdateAPIInvalidBody tests UpdateAPI with invalid request body
+// TestUpdateRestAPIInvalidBody tests UpdateRestAPI with invalid request body
 // Note: This test requires the validator to return errors but the parser
 // fails first due to nil pointer issues, so we skip it
-func TestUpdateAPIInvalidBody(t *testing.T) {
+func TestUpdateRestAPIInvalidBody(t *testing.T) {
 	t.Skip("Skipping test that requires full parser/validator setup")
 }
 
-// TestUpdateAPINotFound tests UpdateAPI for non-existent API
-func TestUpdateAPINotFound(t *testing.T) {
+// TestUpdateRestAPINotFound tests UpdateRestAPI for non-existent API
+func TestUpdateRestAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
 	body := []byte(`{
@@ -1165,15 +1186,14 @@ func TestUpdateAPINotFound(t *testing.T) {
 	c, w := createTestContextWithHeader("PUT", "/rest-apis/nonexistent", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.UpdateAPI(c, "nonexistent")
+	server.UpdateRestAPI(c, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// TestUpdateAPINoDB tests UpdateAPI when DB is not available
-func TestUpdateAPINoDB(t *testing.T) {
-	server := createTestAPIServer()
-	server.db = nil
+// TestUpdateRestAPINoDB tests UpdateRestAPI when DB is not available
+func TestUpdateRestAPINoDB(t *testing.T) {
+	server := createTestAPIServerWithDB(nil)
 
 	body := []byte(`{
 		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
@@ -1190,29 +1210,29 @@ func TestUpdateAPINoDB(t *testing.T) {
 	c, w := createTestContextWithHeader("PUT", "/rest-apis/test", body, map[string]string{
 		"Content-Type": "application/json",
 	})
-	server.UpdateAPI(c, "test")
+	server.UpdateRestAPI(c, "test")
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-// TestUpdateAPIHandleMismatch tests UpdateAPI with handle mismatch
+// TestUpdateRestAPIHandleMismatch tests UpdateRestAPI with handle mismatch
 // Note: This test requires full parser/validator setup
-func TestUpdateAPIHandleMismatch(t *testing.T) {
+func TestUpdateRestAPIHandleMismatch(t *testing.T) {
 	t.Skip("Skipping test that requires full parser/validator setup")
 }
 
-// TestDeleteAPINoDB tests DeleteAPI when DB is not available
+// TestDeleteRestAPINoDB tests DeleteRestAPI when DB is not available
 // Note: This test requires full deployment service setup
-func TestDeleteAPINoDB(t *testing.T) {
+func TestDeleteRestAPINoDB(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestDeleteAPINotFound tests DeleteAPI for non-existent API
-func TestDeleteAPINotFound(t *testing.T) {
+// TestDeleteRestAPINotFound tests DeleteRestAPI for non-existent API
+func TestDeleteRestAPINotFound(t *testing.T) {
 	server := createTestAPIServer()
 
 	c, w := createTestContext("DELETE", "/rest-apis/nonexistent", nil)
-	server.DeleteAPI(c, "nonexistent")
+	server.DeleteRestAPI(c, "nonexistent")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -1714,8 +1734,8 @@ func TestSearchDeploymentsFilters(t *testing.T) {
 	}
 }
 
-// TestGetAPIByIdWithDeployedAt tests GetAPIById with deployedAt in response
-func TestGetAPIByIdWithDeployedAt(t *testing.T) {
+// TestGetRestAPIByIdWithDeployedAt tests GetRestAPIById with deployedAt in response
+func TestGetRestAPIByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
@@ -1726,7 +1746,7 @@ func TestGetAPIByIdWithDeployedAt(t *testing.T) {
 	mockDB.SaveConfig(cfg)
 
 	c, w := createTestContext("GET", "/rest-apis/test-handle", nil)
-	server.GetAPIById(c, "0000-test-handle-0000-000000000000")
+	server.GetRestAPIById(c, "0000-test-handle-0000-000000000000")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1894,9 +1914,9 @@ func TestSearchDeploymentsAPIKind(t *testing.T) {
 	assert.Contains(t, response, "apis")
 }
 
-// TestValidationErrorsInUpdateAPI tests UpdateAPI with validation errors
+// TestValidationErrorsInUpdateRestAPI tests UpdateRestAPI with validation errors
 // Note: This test requires full parser/validator setup
-func TestValidationErrorsInUpdateAPI(t *testing.T) {
+func TestValidationErrorsInUpdateRestAPI(t *testing.T) {
 	t.Skip("Skipping test that requires full parser/validator setup")
 }
 
@@ -2083,9 +2103,9 @@ func TestHandleStatusUpdateStoreError(t *testing.T) {
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 }
 
-// TestCreateAPIMissingContentType tests CreateAPI with missing content type
+// TestCreateRestAPIMissingContentType tests CreateRestAPI with missing content type
 // Note: This test requires full deployment service setup
-func TestCreateAPIMissingContentType(t *testing.T) {
+func TestCreateRestAPIMissingContentType(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
@@ -2108,7 +2128,7 @@ func TestMCPProxyKindMismatch(t *testing.T) {
 }
 
 // BenchmarkListAPIs benchmarks the list APIs endpoint
-func BenchmarkListAPIs(b *testing.B) {
+func BenchmarkListRestAPIs(b *testing.B) {
 	server := createTestAPIServer()
 
 	// Add some test configs
@@ -2126,7 +2146,7 @@ func BenchmarkListAPIs(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		c, _ := createTestContext("GET", "/rest-apis", nil)
-		server.ListAPIs(c, api.ListAPIsParams{})
+		server.ListRestAPIs(c, api.ListRestAPIsParams{})
 	}
 }
 
@@ -2208,7 +2228,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		CreatedAt:           time.Now(),
-		UpdatedAt: time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 	_ = server.store.Add(cfg)
 
@@ -2473,7 +2493,7 @@ func TestConvertHandleToUUIDInvalid(t *testing.T) {
 
 // TestDeleteAPIWithAPIKeys tests deleting an API that has API keys
 // Note: This test requires full deployment service setup
-func TestDeleteAPIWithAPIKeys(t *testing.T) {
+func TestDeleteRestAPIWithAPIKeys(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
@@ -2505,15 +2525,15 @@ func TestGetMCPProxyByIdWithDeployedAt(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestDeleteAPIDBError tests DeleteAPI with database delete error
+// TestDeleteRestAPIDBError tests DeleteRestAPI with database delete error
 // Note: This test requires full deployment service setup
-func TestDeleteAPIDBError(t *testing.T) {
+func TestDeleteRestAPIDBError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestUpdateAPIDBError tests UpdateAPI with database update error
+// TestUpdateRestAPIDBError tests UpdateRestAPI with database update error
 // Note: This test requires full deployment service setup
-func TestUpdateAPIDBError(t *testing.T) {
+func TestUpdateRestAPIDBError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
@@ -2612,7 +2632,7 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Equal(t, "error", response.Status)
-	assert.Equal(t, "API key value is required", response.Message)
+	assert.Equal(t, "apiKey is required", response.Message)
 }
 
 // TestRevokeAPIKeyNotFound tests revoking a non-existent API key

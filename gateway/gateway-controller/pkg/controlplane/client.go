@@ -26,17 +26,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -2053,8 +2052,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		)
 		return
 	}
-	if keyCreatedEvent.Payload.ApiKey == "" {
-		baseLogger.Error("API key created event missing required api_key",
+	if keyCreatedEvent.Payload.ApiKeyHashes == "" {
+		baseLogger.Error("API key created event missing required api_key_hashes",
 			slog.Any("correlation_id", event["correlationId"]),
 		)
 		return
@@ -2065,18 +2064,6 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		// Validate the name format
 		if err := utils.ValidateAPIKeyName(keyCreatedEvent.Payload.Name); err != nil {
 			baseLogger.Error("API key created event has invalid name",
-				slog.Any("correlation_id", event["correlationId"]),
-				slog.Any("error", err),
-			)
-			return
-		}
-	}
-
-	// Validate DisplayName - optional field (pointer may be nil)
-	if keyCreatedEvent.Payload.DisplayName != nil && strings.TrimSpace(*keyCreatedEvent.Payload.DisplayName) != "" {
-		// Validate the display name format
-		if err := utils.ValidateDisplayName(*keyCreatedEvent.Payload.DisplayName); err != nil {
-			baseLogger.Error("API key created event has invalid display_name",
 				slog.Any("correlation_id", event["correlationId"]),
 				slog.Any("error", err),
 			)
@@ -2096,11 +2083,15 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
+	var keyUUID *string
+	if payload.UUID != "" {
+		keyUUID = &payload.UUID
+	}
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKey:        &payload.ApiKey,
-		DisplayName:   payload.DisplayName,
+		MaskedApiKey:  &payload.MaskedApiKey,
 		Name:          &payload.Name,
 		ExternalRefId: payload.ExternalRefId,
+		Issuer:        payload.Issuer,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
@@ -2150,6 +2141,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		payload.ApiId,
 		keyCreatedEvent.UserId,
 		&apiKeyCreationRequest,
+		keyUUID,
+		&payload.ApiKeyHashes,
 		keyCreatedEvent.CorrelationID,
 		logger,
 	)
@@ -2273,34 +2266,14 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		)
 		return
 	}
-	if payload.ApiKey == "" {
-		baseLogger.Error("API key updated event missing required api_key",
+	if payload.ApiKeyHashes == "" {
+		baseLogger.Error("API key updated event missing required api_key_hashes",
 			slog.Any("correlation_id", event["correlationId"]),
 			slog.String("api_id", payload.ApiId),
 			slog.String("key_name", payload.KeyName),
 		)
 		return
 	}
-	if payload.DisplayName == "" {
-		baseLogger.Error("API key updated event missing required display_name",
-			slog.Any("correlation_id", event["correlationId"]),
-			slog.String("api_id", payload.ApiId),
-			slog.String("key_name", payload.KeyName),
-		)
-		return
-	}
-
-	// Validate the display name format
-	if err := utils.ValidateDisplayName(payload.DisplayName); err != nil {
-		baseLogger.Error("API key updated event has invalid display_name",
-			slog.Any("correlation_id", event["correlationId"]),
-			slog.String("api_id", payload.ApiId),
-			slog.String("key_name", payload.KeyName),
-			slog.Any("error", err),
-		)
-		return
-	}
-
 	logger := baseLogger.With(
 		slog.String("correlation_id", evt.CorrelationID),
 		slog.String("user_id", evt.UserId),
@@ -2313,10 +2286,10 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	now := time.Now()
 
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
-		ApiKey:        &payload.ApiKey,
-		DisplayName:   &payload.DisplayName,
-		ExternalRefId: &payload.ExternalRefId,
+		MaskedApiKey:  &payload.MaskedApiKey,
+		ExternalRefId: payload.ExternalRefId,
 		Name:          &payload.KeyName,
+		Issuer:        payload.Issuer,
 	}
 	if payload.ExpiresAt != nil {
 		// payload.ExpiresAt is likely a *string (RFC3339). Attempt to parse it to time.Time
@@ -2366,6 +2339,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		payload.ApiId,
 		payload.KeyName,
 		&apiKeyCreationRequest,
+		&payload.ApiKeyHashes,
 		evt.UserId,
 		evt.CorrelationID,
 		logger,

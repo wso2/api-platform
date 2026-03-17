@@ -99,6 +99,9 @@ const (
 	// Router constants
 	BASE_PATH = "/"
 	WILD_CARD = "*"
+	// VHostGatewayDefault is the sentinel value written by platform-api to indicate that the
+	// gateway-controller should resolve and persist its current configured default vhost values.
+	VHostGatewayDefault = "_gateway_default_"
 
 	WEBSUBHUB_INTERNAL_CLUSTER_NAME = "WEBSUBHUB_INTERNAL_CLUSTER"
 

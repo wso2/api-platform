@@ -129,7 +129,12 @@ func getFeaturePaths() []string {
 		"features/cel-conditions.feature",
 		"features/analytics-basic.feature",
 		"features/token-based-ratelimit.feature",
+		"features/sandbox-routing.feature",
 		"features/subscription-validation.feature",
+		"features/log-message.feature",
+    // These tests require different gateway configurations and are not included in the default suite run.
+		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
+		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))

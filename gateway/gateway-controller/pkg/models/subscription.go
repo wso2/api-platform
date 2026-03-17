@@ -34,8 +34,8 @@ type Subscription struct {
 	ID                  string             `json:"id"`
 	APIID               string             `json:"apiId" db:"api_id"`
 	ApplicationID       *string            `json:"applicationId,omitempty" db:"application_id"`
-	SubscriptionToken   string             `json:"subscriptionToken" db:"subscription_token"`       // Decrypted for API response
-	SubscriptionTokenHash string            `json:"-" db:"subscription_token_hash"`                   // For xDS validation; not exposed in API
+	SubscriptionToken    string  `json:"subscriptionToken"`                    // Transient; only set when creating from request, never from DB (gateway stores only hash)
+	SubscriptionTokenHash string `json:"-" db:"subscription_token_hash"`       // For xDS validation; not exposed in API
 	SubscriptionPlanID  *string            `json:"subscriptionPlanId,omitempty" db:"subscription_plan_id"`
 	GatewayID           string             `json:"gatewayId" db:"gateway_id"`
 	Status              SubscriptionStatus `json:"status" db:"status"`

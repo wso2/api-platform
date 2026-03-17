@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -103,9 +103,9 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
-func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+func (m *mockStorageForDeletion) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
-		if config.Handle == handle {
+		if config.Kind == kind && config.Handle == handle {
 			return config, nil
 		}
 	}

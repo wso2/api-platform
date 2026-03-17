@@ -28,7 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -221,8 +221,8 @@ func TestSQLiteStorage_ErrorHandling(t *testing.T) {
 
 	// Test get by handle non-existent
 	t.Run("GetByHandleNonExistent", func(t *testing.T) {
-		_, err := db.GetConfigByHandle("NonExistent-v1.0")
-		assert.Error(t, err, "GetConfigByHandle should fail for non-existent config")
+		_, err := db.GetConfigByKindAndHandle(models.KindRestApi, "NonExistent-v1.0")
+		assert.Error(t, err, "GetConfigByKindAndHandle should fail for non-existent config")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }

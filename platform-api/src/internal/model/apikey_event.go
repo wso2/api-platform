@@ -35,29 +35,29 @@ type ExpiresInDuration struct {
 // APIKeyCreatedEvent represents the payload for "apikey.created" event type.
 // This event is sent when an external API key is registered to hybrid gateways.
 type APIKeyCreatedEvent struct {
+	// UUID is the UUID v7 of the API key record in the platform API database
+	UUID string `json:"uuid"`
+
 	// ApiId identifies the API this key belongs to
 	ApiId string `json:"apiId"`
 
 	// Name is the unique name of the API key
 	Name string `json:"name,omitempty"`
 
-	// DisplayName is the display name of the API key
-	DisplayName string `json:"displayName,omitempty"`
+	// ApiKeyHashes is a JSON string representation of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
+	ApiKeyHashes string `json:"apiKeyHashes"`
 
-	// ApiKey is the plain API key value (hashing happens in the gateway)
-	ApiKey string `json:"apiKey"`
+	// MaskedApiKey is the masked representation of the API key for display purposes
+	MaskedApiKey string `json:"maskedApiKey"`
 
 	// ExternalRefId is an optional reference ID for tracing purposes
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 
-	// Operations specifies which API operations this key can access (default: "*")
-	Operations string `json:"operations"`
-
 	// ExpiresAt is the optional expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
 
-	// ExpiresIn is the optional expiration duration
-	ExpiresIn *ExpiresInDuration `json:"expiresIn,omitempty"`
+	// Issuer identifies the developer portal that provisioned this key; nil (omitted) if not provided
+	Issuer *string `json:"issuer,omitempty"`
 }
 
 // APIKeyRevokedEvent represents the payload for "apikey.revoked" event type.
@@ -79,21 +79,18 @@ type APIKeyUpdatedEvent struct {
 	// KeyName is the unique name of the API key being updated
 	KeyName string `json:"keyName"`
 
-	// DisplayName is the display name of the API key
-	DisplayName string `json:"displayName,omitempty"`
-
 	// ExternalRefId is an optional reference ID for tracing purposes
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 
-	// Operations specifies which API operations this key can access (default: "*")
-	Operations string `json:"operations"`
+	// ApiKeyHashes is a JSON string representation of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
+	ApiKeyHashes string `json:"apiKeyHashes"`
 
-	// ExpiresIn is the optional expiration duration
-	ExpiresIn *ExpiresInDuration `json:"expiresIn,omitempty"`
-
-	// ApiKey is the new plain API key value (hashing happens in the gateway)
-	ApiKey string `json:"apiKey"`
+	// MaskedApiKey is the masked representation of the API key for display purposes
+	MaskedApiKey string `json:"maskedApiKey"`
 
 	// ExpiresAt is the optional new expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
+
+	// Issuer identifies the developer portal that provisioned this key; nil (omitted) if not provided
+	Issuer *string `json:"issuer,omitempty"`
 }

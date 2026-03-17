@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -109,7 +109,7 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 }
 
 var (
-	fullSemverPattern  = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+	fullSemverPattern   = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 	majorVersionPattern = regexp.MustCompile(`^v\d+$`)
 )
 

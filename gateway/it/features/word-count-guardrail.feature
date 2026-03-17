@@ -56,6 +56,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 10
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-max/v1.0/health" to be ready
@@ -106,6 +107,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 5
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-min/v1.0/health" to be ready
@@ -223,6 +225,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 5
                     max: 10
+                    jsonPath: ""
                     invert: true
       """
     Then the response should be successful
@@ -285,6 +288,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
                     showAssessment: true
       """
     Then the response should be successful
@@ -335,6 +339,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-empty/v1.0/health" to be ready
@@ -377,6 +382,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 5
                     max: 10
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-boundary/v1.0/health" to be ready
@@ -445,9 +451,11 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 10
+                    jsonPath: ""
                   response:
                     min: 1
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-combined/v1.0/health" to be ready
@@ -619,6 +627,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-punctuation/v1.0/health" to be ready
@@ -669,6 +678,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 10
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/word-count-plaintext/v1.0/health" to be ready
@@ -725,6 +735,7 @@ Feature: Word Count Guardrail
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
                     showAssessment: true
       """
     Then the response should be successful

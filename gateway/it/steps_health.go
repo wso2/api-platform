@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
 
@@ -49,6 +49,7 @@ func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps
 	ctx.Step(`^I check the health of all gateway services$`, h.iCheckHealthOfAllGatewayServices)
 	ctx.Step(`^all services should report healthy status$`, h.allServicesShouldReportHealthyStatus)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready$`, h.iWaitForEndpointToBeReady)
+	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with host "([^"]*)"$`, h.iWaitForEndpointToBeReadyWithHost)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with method "([^"]*)" and body '([^']*)'$`, h.iWaitForEndpointToBeReadyWithMethodAndBody)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to return 403$`, h.iWaitForEndpointToReturn403)
 }
@@ -176,6 +177,39 @@ func (h *HealthSteps) iWaitForEndpointToBeReady(url string) error {
 	}
 
 	return fmt.Errorf("endpoint %s did not become ready after %d attempts", url, maxAttempts)
+}
+
+// iWaitForEndpointToBeReadyWithHost polls an endpoint with a specific host override until it returns 200 or times out.
+func (h *HealthSteps) iWaitForEndpointToBeReadyWithHost(url, host string) error {
+	maxAttempts := 30
+	attemptInterval := 300 * time.Millisecond
+	trimmedHost := strings.TrimSpace(host)
+	if trimmedHost == "" {
+		return fmt.Errorf("host override must not be empty")
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Host = trimmedHost
+
+		resp, err := h.state.HTTPClient.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return h.waitForPolicySnapshotSync()
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(attemptInterval)
+		}
+	}
+
+	return fmt.Errorf("endpoint %s with host %s did not become ready after %d attempts", url, trimmedHost, maxAttempts)
 }
 
 // iWaitForEndpointToReturn403 polls an endpoint until it returns 403 (e.g. subscription-protected route blocking unauthenticated requests)

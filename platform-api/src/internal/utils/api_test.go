@@ -582,3 +582,75 @@ func TestAPIYAMLDataToRESTAPIPreservesPolicies(t *testing.T) {
 		t.Errorf("API policies = %v, want %v", restAPI.Policies, expectedPolicies)
 	}
 }
+
+// TestBuildAPIDeploymentYAML verifies that BuildAPIDeploymentYAML produces the same result
+// as GenerateAPIDeploymentYAML when marshalled to YAML.
+func TestBuildAPIDeploymentYAML(t *testing.T) {
+	util := &APIUtil{}
+
+	ctx := "/test"
+	apiModel := &model.API{
+		Name:    "Test API",
+		Handle:  "test-api-handle",
+		Version: "v1.0",
+		Kind:    constants.RestApi,
+		Configuration: model.RestAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL: "http://backend:8080",
+				},
+			},
+			Operations: []model.Operation{
+				{
+					Request: &model.OperationRequest{
+						Method: "GET",
+						Path:   "/pets",
+					},
+				},
+			},
+		},
+		ProjectID: "proj-123",
+	}
+
+	// Build struct
+	deploymentStruct, err := util.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("BuildAPIDeploymentYAML() error = %v", err)
+	}
+
+	// Marshal the struct
+	structBytes, err := yaml.Marshal(deploymentStruct)
+	if err != nil {
+		t.Fatalf("failed to marshal struct: %v", err)
+	}
+
+	// Generate via the wrapper
+	yamlString, err := util.GenerateAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("GenerateAPIDeploymentYAML() error = %v", err)
+	}
+
+	// Compare: both should produce identical YAML
+	if string(structBytes) != yamlString {
+		t.Errorf("BuildAPIDeploymentYAML + Marshal differs from GenerateAPIDeploymentYAML.\nBuild:\n%s\nGenerate:\n%s", string(structBytes), yamlString)
+	}
+
+	// Verify key struct fields
+	if deploymentStruct.ApiVersion != "gateway.api-platform.wso2.com/v1alpha1" {
+		t.Errorf("ApiVersion = %q", deploymentStruct.ApiVersion)
+	}
+	if deploymentStruct.Kind != constants.RestApi {
+		t.Errorf("Kind = %q", deploymentStruct.Kind)
+	}
+	if deploymentStruct.Metadata.Name != "test-api-handle" {
+		t.Errorf("Metadata.Name = %q", deploymentStruct.Metadata.Name)
+	}
+	if deploymentStruct.Spec.Upstream == nil || deploymentStruct.Spec.Upstream.Main == nil {
+		t.Fatal("expected upstream.main to be set")
+	}
+	if deploymentStruct.Spec.Upstream.Main.URL != "http://backend:8080" {
+		t.Errorf("Upstream URL = %q", deploymentStruct.Spec.Upstream.Main.URL)
+	}
+}
+

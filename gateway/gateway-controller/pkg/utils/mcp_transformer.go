@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
@@ -105,7 +105,7 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Kind = api.RestApi
 
-	// Build APIConfigData and set it into the APIConfiguration_Spec union
+	// Build APIConfigData and set it directly on the RestAPI spec
 	apiData := api.APIConfigData{
 		DisplayName: mcpConfig.Spec.DisplayName,
 		Version:     mcpConfig.Spec.Version,

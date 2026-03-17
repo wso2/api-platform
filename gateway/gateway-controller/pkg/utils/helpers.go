@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // ExtractNameVersion returns the name and version from an API configuration

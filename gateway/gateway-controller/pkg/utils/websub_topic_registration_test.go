@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -139,8 +139,8 @@ spec:
 		t.Fatalf("failed to parse inline yaml: %v", err)
 	}
 
-	cfg, err = service.store.GetByNameVersion("testapi", "v1")
-	if err != nil {
+	cfg, err = service.store.GetByKindNameAndVersion(models.KindWebSubApi, "testapi", "v1")
+	if err != nil || cfg == nil {
 		t.Fatalf("failed to get config from store: %v", err)
 	}
 

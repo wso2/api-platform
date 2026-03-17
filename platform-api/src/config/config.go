@@ -52,6 +52,9 @@ type Server struct {
 	Deployments Deployments `envconfig:"DEPLOYMENTS"`
 	// TLS configurations
 	TLS TLS `envconfig:"TLS"`
+
+	// API key configurations
+	APIKey APIKey `envconfig:"API_KEY"`
 }
 
 // TLS holds TLS certificate configuration
@@ -138,6 +141,14 @@ type Deployments struct {
 	TimeoutEnabled  bool `envconfig:"TIMEOUT_ENABLED" default:"true"`
 	TimeoutInterval int  `envconfig:"TIMEOUT_INTERVAL" default:"20"` // seconds between checks
 	TimeoutDuration int  `envconfig:"TIMEOUT_DURATION" default:"60"` // seconds before a status is considered stale
+}
+
+// APIKey holds API key-specific configuration
+type APIKey struct {
+	// HashingAlgorithms is the list of algorithms used to hash API keys before storage and broadcast.
+	// Multiple algorithms can be specified as a comma-separated value (e.g. "sha256,sha512").
+	// Currently only "sha256" is supported. Defaults to "sha256".
+	HashingAlgorithms []string `envconfig:"HASHING_ALGORITHMS" default:"sha256"`
 }
 
 // package-level variable and mutex for thread safety

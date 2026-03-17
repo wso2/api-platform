@@ -27,7 +27,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -151,28 +151,28 @@ func TestMaskAPIKey(t *testing.T) {
 		{
 			name:     "Long API key",
 			input:    "apip_abcdef1234567890abcdef1234567890",
-			expected: "apip_abcde*********",
+			expected: "***67890",
 		},
 		{
 			name:     "Short API key",
 			input:    "short",
-			expected: "**********",
+			expected: "********",
 		},
 		{
 			name:     "Exactly 10 characters",
 			input:    "1234567890",
-			expected: "**********",
+			expected: "***67890",
 		},
 		{
 			name:     "11 characters",
 			input:    "12345678901",
-			expected: "1234567890*********",
+			expected: "***78901",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := service.MaskAPIKey(tt.input)
+			result := service.maskAPIKey(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -455,37 +455,6 @@ func TestFilterAPIKeysByUser(t *testing.T) {
 	})
 }
 
-func TestGenerateOperationsString(t *testing.T) {
-	service := &APIKeyService{
-		apiKeyConfig: &config.APIKeyConfig{
-			Algorithm: constants.HashingAlgorithmSHA256,
-		},
-	}
-
-	t.Run("Empty operations returns wildcard", func(t *testing.T) {
-		result := service.generateOperationsString([]api.Operation{})
-		assert.Equal(t, "[\"*\"]", result)
-	})
-
-	t.Run("Single operation", func(t *testing.T) {
-		ops := []api.Operation{
-			{Method: "GET", Path: "/users"},
-		}
-		result := service.generateOperationsString(ops)
-		assert.Contains(t, result, "GET /users")
-	})
-
-	t.Run("Multiple operations", func(t *testing.T) {
-		ops := []api.Operation{
-			{Method: "GET", Path: "/users"},
-			{Method: "POST", Path: "/users"},
-		}
-		result := service.generateOperationsString(ops)
-		assert.Contains(t, result, "GET /users")
-		assert.Contains(t, result, "POST /users")
-	})
-}
-
 func TestBuildAPIKeyResponse(t *testing.T) {
 	service := &APIKeyService{
 		store: storage.NewConfigStore(),
@@ -504,13 +473,13 @@ func TestBuildAPIKeyResponse(t *testing.T) {
 	t.Run("Valid API key returns success response", func(t *testing.T) {
 		apiKey := &models.APIKey{
 			UUID:         "0000-key-id-123-0000-000000000000",
-			Name:       "my-test-key",
-			APIKey:     "$sha256$salt$hash",
-			ArtifactUUID:      "0000-api-id-123-0000-000000000000",
-			Operations: "[\"*\"]",
-			Status:     models.APIKeyStatusActive,
-			CreatedAt:  time.Now(),
-			CreatedBy:  "test-user",
+			Name:         "my-test-key",
+			APIKey:       "$sha256$salt$hash",
+			ArtifactUUID: "0000-api-id-123-0000-000000000000",
+
+			Status:    models.APIKeyStatusActive,
+			CreatedAt: time.Now(),
+			CreatedBy: "test-user",
 		}
 		plainKey := "apip_plain123456789"
 
@@ -523,13 +492,13 @@ func TestBuildAPIKeyResponse(t *testing.T) {
 	t.Run("Without plain key does not expose hashed key", func(t *testing.T) {
 		apiKey := &models.APIKey{
 			UUID:         "0000-key-id-123-0000-000000000000",
-			Name:       "my-test-key",
-			APIKey:     "$sha256$salt$hash",
-			ArtifactUUID:      "0000-api-id-123-0000-000000000000",
-			Operations: "[\"*\"]",
-			Status:     models.APIKeyStatusActive,
-			CreatedAt:  time.Now(),
-			CreatedBy:  "test-user",
+			Name:         "my-test-key",
+			APIKey:       "$sha256$salt$hash",
+			ArtifactUUID: "0000-api-id-123-0000-000000000000",
+
+			Status:    models.APIKeyStatusActive,
+			CreatedAt: time.Now(),
+			CreatedBy: "test-user",
 		}
 
 		response := service.buildAPIKeyResponse(apiKey, "0000-test-handle-0000-000000000000", "", false)
@@ -598,7 +567,7 @@ func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 	}
 
 	apiConfig := &models.StoredConfig{
-		UUID:   "0000-test-api-0000-000000000000",
+		UUID: "0000-test-api-0000-000000000000",
 		Kind: "Api",
 		Configuration: api.RestAPI{
 			Metadata: api.Metadata{Name: "0000-test-api-0000-000000000000"},
@@ -618,7 +587,7 @@ func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 				Unit:     api.APIKeyCreationRequestExpiresInUnitSeconds,
 			},
 		}
-		key, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		key, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig, nil, nil)
 		assert.NoError(t, err)
 		assert.NotNil(t, key.ExpiresAt)
 	})
@@ -630,7 +599,7 @@ func TestCreateAPIKeyFromRequest_Expiration_AllUnits(t *testing.T) {
 			Name:      &name,
 			ExpiresAt: &past,
 		}
-		_, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig)
+		_, err := service.createAPIKeyFromRequest("h1", req, "u1", apiConfig, nil, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "must be in the future")
 	})
@@ -645,15 +614,13 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 		},
 	}
 
-	t.Run("uses existing key duration when no request expiration", func(t *testing.T) {
-		unit := "days"
-		dur := 30
+	t.Run("uses existing key expiry when no request expiration", func(t *testing.T) {
+		exp := time.Now().Add(30 * 24 * time.Hour)
 		existing := &models.APIKey{
-			UUID:        "0000-k1-0000-000000000000",
+			UUID:      "0000-k1-0000-000000000000",
 			Name:      "n1",
 			CreatedBy: "u1",
-			Unit:      &unit,
-			Duration:  &dur,
+			ExpiresAt: &exp,
 		}
 		req := api.APIKeyRegenerationRequest{}
 		key, err := service.regenerateAPIKey(existing, req, "u1", logger)
@@ -664,7 +631,7 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 	t.Run("uses existing absolute expiry", func(t *testing.T) {
 		exp := time.Now().Add(10 * 24 * time.Hour)
 		existing := &models.APIKey{
-			UUID:        "0000-k1-0000-000000000000",
+			UUID:      "0000-k1-0000-000000000000",
 			Name:      "n1",
 			CreatedBy: "u1",
 			ExpiresAt: &exp,
@@ -677,7 +644,7 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 
 	t.Run("no expiry when existing has none", func(t *testing.T) {
 		existing := &models.APIKey{
-			UUID:        "0000-k1-0000-000000000000",
+			UUID:      "0000-k1-0000-000000000000",
 			Name:      "n1",
 			CreatedBy: "u1",
 		}
@@ -689,7 +656,7 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 
 	t.Run("past expiration fails", func(t *testing.T) {
 		existing := &models.APIKey{
-			UUID:        "0000-k1-0000-000000000000",
+			UUID:      "0000-k1-0000-000000000000",
 			Name:      "n1",
 			CreatedBy: "u1",
 		}

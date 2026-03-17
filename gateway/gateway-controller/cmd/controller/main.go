@@ -21,8 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
@@ -44,17 +44,9 @@ var (
 
 func toBackendConfig(cfg *config.Config) storage.BackendConfig {
 	pg := cfg.Controller.Storage.Postgres
-	subTokenKey := ""
-	if cfg.Subscriptions != nil {
-		subTokenKey = cfg.Subscriptions.SubscriptionTokenEncryptionKey
-	}
-	if subTokenKey == "" {
-		subTokenKey = os.Getenv("APIP_GW_SUBSCRIPTIONS_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY")
-	}
 	return storage.BackendConfig{
-		Type:                          cfg.Controller.Storage.Type,
-		SQLitePath:                    cfg.Controller.Storage.SQLite.Path,
-		SubscriptionTokenEncryptionKey: subTokenKey,
+		Type:        cfg.Controller.Storage.Type,
+		SQLitePath:  cfg.Controller.Storage.SQLite.Path,
 		Postgres: storage.PostgresConnectionConfig{
 			DSN:             pg.DSN,
 			Host:            pg.Host,
@@ -561,8 +553,8 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"DELETE /subscriptions/:subscriptionId": {"admin", "developer"},
 
 		// Subscription plan endpoints
-		"POST /subscription-plans":       {"admin", "developer"},
-		"GET /subscription-plans":        {"admin", "developer"},
+		"POST /subscription-plans":           {"admin", "developer"},
+		"GET /subscription-plans":            {"admin", "developer"},
 		"GET /subscription-plans/:planId":    {"admin", "developer"},
 		"PUT /subscription-plans/:planId":    {"admin", "developer"},
 		"DELETE /subscription-plans/:planId": {"admin", "developer"},

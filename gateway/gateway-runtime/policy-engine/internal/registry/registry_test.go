@@ -338,8 +338,8 @@ func TestDumpPolicies(t *testing.T) {
 	})
 }
 
-// TestCreateInstance tests the CreateInstance function
-func TestCreateInstance(t *testing.T) {
+// TestGetInstance tests the GetInstance function
+func TestGetInstance(t *testing.T) {
 	t.Run("create instance with config resolver", func(t *testing.T) {
 		reg := newTestRegistry()
 
@@ -375,7 +375,7 @@ func TestCreateInstance(t *testing.T) {
 			"audience": "my-audience",
 		}
 
-		instance, mergedParams, err := reg.CreateInstance("jwt-auth", "v1", metadata, params)
+		instance, mergedParams, err := reg.GetInstance("jwt-auth", "v1", metadata, params)
 		require.NoError(t, err)
 		assert.NotNil(t, instance)
 		assert.NotNil(t, mergedParams)
@@ -400,7 +400,7 @@ func TestCreateInstance(t *testing.T) {
 		metadata := policy.PolicyMetadata{}
 		params := map[string]interface{}{}
 
-		instance, _, err := reg.CreateInstance("jwt-auth", "v1", metadata, params)
+		instance, _, err := reg.GetInstance("jwt-auth", "v1", metadata, params)
 		assert.Error(t, err)
 		assert.Nil(t, instance)
 		assert.Contains(t, err.Error(), "ConfigResolver is not initialized")
@@ -414,7 +414,7 @@ func TestCreateInstance(t *testing.T) {
 		metadata := policy.PolicyMetadata{}
 		params := map[string]interface{}{}
 
-		instance, _, err := reg.CreateInstance("non-existent", "v1", metadata, params)
+		instance, _, err := reg.GetInstance("non-existent", "v1", metadata, params)
 		assert.Error(t, err)
 		assert.Nil(t, instance)
 		assert.Contains(t, err.Error(), "policy not found")
@@ -446,7 +446,7 @@ func TestCreateInstance(t *testing.T) {
 			"timeout": 60, // Override the system param
 		}
 
-		instance, mergedParams, err := reg.CreateInstance("timeout", "v1", metadata, params)
+		instance, mergedParams, err := reg.GetInstance("timeout", "v1", metadata, params)
 		require.NoError(t, err)
 		assert.NotNil(t, instance)
 		assert.Equal(t, 60, mergedParams["timeout"])
@@ -469,7 +469,7 @@ func TestCreateInstance(t *testing.T) {
 		metadata := policy.PolicyMetadata{}
 		params := map[string]interface{}{"key": "value"}
 
-		instance, mergedParams, err := reg.CreateInstance("simple", "v1", metadata, params)
+		instance, mergedParams, err := reg.GetInstance("simple", "v1", metadata, params)
 		require.NoError(t, err)
 		assert.NotNil(t, instance)
 		assert.Equal(t, "value", mergedParams["key"])
@@ -501,7 +501,7 @@ func TestCreateInstance(t *testing.T) {
 		err = reg.Register(def, factory)
 		require.NoError(t, err)
 
-		instance, mergedParams, err := reg.CreateInstance("advanced-ratelimit", "v1", policy.PolicyMetadata{}, map[string]interface{}{})
+		instance, mergedParams, err := reg.GetInstance("advanced-ratelimit", "v1", policy.PolicyMetadata{}, map[string]interface{}{})
 		require.NoError(t, err)
 		assert.NotNil(t, instance)
 		assert.Equal(t, "gcra", mergedParams["algorithm"])
@@ -531,7 +531,7 @@ func TestCreateInstance(t *testing.T) {
 		err = reg.Register(def, factory)
 		require.NoError(t, err)
 
-		instance, mergedParams, err := reg.CreateInstance("optional-system-param", "v1", policy.PolicyMetadata{}, map[string]interface{}{})
+		instance, mergedParams, err := reg.GetInstance("optional-system-param", "v1", policy.PolicyMetadata{}, map[string]interface{}{})
 		require.NoError(t, err)
 		assert.NotNil(t, instance)
 		assert.NotContains(t, mergedParams, "optionalTimeout")
@@ -557,7 +557,7 @@ func TestCreateInstance(t *testing.T) {
 		err = reg.Register(def, factory)
 		require.NoError(t, err)
 
-		instance, _, err := reg.CreateInstance("required-system-param", "v1", policy.PolicyMetadata{}, map[string]interface{}{})
+		instance, _, err := reg.GetInstance("required-system-param", "v1", policy.PolicyMetadata{}, map[string]interface{}{})
 		require.Error(t, err)
 		assert.Nil(t, instance)
 		assert.Contains(t, err.Error(), "failed to resolve config for policy required-system-param:v1")

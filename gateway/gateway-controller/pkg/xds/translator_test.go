@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonconstants "github.com/wso2/api-platform/common/constants"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -910,6 +910,88 @@ func TestTranslator_TranslateConfigs_EmptyConfigs(t *testing.T) {
 	assert.NotNil(t, resources)
 }
 
+func TestTranslator_GetVHostDomains(t *testing.T) {
+	logger := createTestLogger()
+
+	t.Run("fallback domains when explicit domain lists are empty", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.example.com")
+		assert.Equal(t, []string{"api.example.com", "api.example.com:*"}, domains)
+	})
+
+	t.Run("expands configured main domains when vhost equals main default", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"*.wso2.com", "*.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*.wso2.com")
+		assert.Equal(t, []string{"*.wso2.com", "*.wso2.com:*", "*.foo.com", "*.foo.com:*"}, domains)
+	})
+
+	t.Run("expands configured sandbox domains when vhost equals sandbox default", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Sandbox.Default = "*-sandbox.wso2.com"
+		routerCfg.VHosts.Sandbox.Domains = []string{"*-sandbox.wso2.com", "*-sandbox.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*-sandbox.wso2.com")
+		assert.Equal(t, []string{"*-sandbox.wso2.com", "*-sandbox.wso2.com:*", "*-sandbox.foo.com", "*-sandbox.foo.com:*"}, domains)
+	})
+
+	t.Run("api-level vhost override uses fallback pair only", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"*.wso2.com", "*.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("custom.wso2.com")
+		assert.Equal(t, []string{"custom.wso2.com", "custom.wso2.com:*"}, domains)
+	})
+
+	t.Run("port-qualified domain is not expanded with :*", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.example.com:8443")
+		assert.Equal(t, []string{"api.example.com:8443"}, domains)
+	})
+
+	t.Run("whitespace-only domain list falls back to effective vhost", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"   ", "  "}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*.wso2.com")
+		assert.Equal(t, []string{"*.wso2.com", "*.wso2.com:*"}, domains)
+	})
+
+	t.Run("port-qualified domain in configured list is not expanded with :*", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "api.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"api.wso2.com", "api.wso2.com:8443"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.wso2.com")
+		assert.Equal(t, []string{"api.wso2.com", "api.wso2.com:*", "api.wso2.com:8443"}, domains)
+	})
+}
+
 func TestTranslator_GetCertStore_Nil(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -1269,24 +1351,24 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	route := translator.createRoute(
-		"api-123",      // apiId
-		"0000-test-api-0000-000000000000",     // apiName
-		"v1",           // apiVersion
-		"/api",         // context
-		"GET",          // method
-		"/users",       // path
-		"test-cluster", // clusterName
-		"",             // upstreamPath
-		"localhost",    // vhost
-		"API",          // apiKind
-		"",             // templateHandle
-		"",             // providerName
-		nil,            // hostRewrite
-		"proj-001",     // projectID
-		nil,            // timeoutCfg
-		false,          // useClusterHeader
-		"",             // defaultCluster
-		nil,            // upstreamDefPaths
+		"api-123",                         // apiId
+		"0000-test-api-0000-000000000000", // apiName
+		"v1",                              // apiVersion
+		"/api",                            // context
+		"GET",                             // method
+		"/users",                          // path
+		"test-cluster",                    // clusterName
+		"",                                // upstreamPath
+		"localhost",                       // vhost
+		"API",                             // apiKind
+		"",                                // templateHandle
+		"",                                // providerName
+		nil,                               // hostRewrite
+		"proj-001",                        // projectID
+		nil,                               // timeoutCfg
+		false,                             // useClusterHeader
+		"",                                // defaultCluster
+		nil,                               // upstreamDefPaths
 	)
 
 	assert.NotNil(t, route)
@@ -1584,8 +1666,8 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			UUID: "0000-websub-api-2-0000-000000000000",
 			Kind: "WebSubApi",
 			Configuration: api.WebSubAPI{
-				Metadata: api.Metadata{Name: "websub-invalid"},
-				Kind:     api.WebSubApi,
+				Metadata:   api.Metadata{Name: "websub-invalid"},
+				Kind:       api.WebSubApi,
 				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Invalid",

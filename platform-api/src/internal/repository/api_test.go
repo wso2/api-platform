@@ -448,7 +448,6 @@ func TestAPIRepo_CreateAndRead_FullConfiguration(t *testing.T) {
 			Name:    "Full Config API",
 			Version: "2.0.0",
 			Context: strPtr("/full-config"),
-			Vhost:   strPtr("api.example.com"),
 			Upstream: model.UpstreamConfig{
 				Main: &model.UpstreamEndpoint{
 					URL: "https://backend.example.com",
@@ -514,3 +513,4 @@ func TestAPIRepo_CreateAndRead_FullConfiguration(t *testing.T) {
 		t.Fatalf("Full configuration mismatch. expected=%+v actual=%+v", api.Configuration, created.Configuration)
 	}
 }
+
