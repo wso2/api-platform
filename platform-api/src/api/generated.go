@@ -1726,8 +1726,15 @@ type MCPServerInfoFetchRequest struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// Url Endpoint URL of the MCP server to fetch information from
-	Url string `binding:"required" json:"url" yaml:"url"`
+	// ProxyId MCP proxy handle (identifier) for refresh operations. When provided,
+	// the server fetches URL and auth from the stored proxy configuration.
+	// Auth override is not allowed in refetch mode.
+	ProxyId *string `json:"proxyId,omitempty" yaml:"proxyId,omitempty"`
+
+	// Url Endpoint URL of the MCP server to fetch information from.
+	// Required when proxyId is not provided. When proxyId is provided,
+	// the URL from the stored proxy configuration is used.
+	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
 }
 
 // MCPServerInfoFetchResponse defines model for MCPServerInfoFetchResponse.

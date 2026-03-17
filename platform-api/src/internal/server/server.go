@@ -84,6 +84,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgRepo := repository.NewOrganizationRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 	apiRepo := repository.NewAPIRepo(db)
+	appRepo := repository.NewApplicationRepo(db)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	artifactRepo := repository.NewArtifactRepo(db)
 	devPortalRepo := repository.NewDevPortalRepository(db)
@@ -167,6 +168,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, llmTemplateSeeder, cfg, slogger)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
+	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, devPortalRepo, publicationRepo,
 		subscriptionPlanRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, slogger)
@@ -221,6 +223,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
+	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
@@ -273,6 +276,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Register routes
 	orgHandler.RegisterRoutes(router)
 	projectHandler.RegisterRoutes(router)
+	appHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
 	devPortalHandler.RegisterRoutes(router)
 	gatewayHandler.RegisterRoutes(router)
