@@ -6146,11 +6146,17 @@ components:
           enum:
             - DEPLOYED
             - UNDEPLOYED
+            - DEPLOYING
+            - UNDEPLOYING
+            - FAILED
             - ARCHIVED
           description: |
             Current deployment lifecycle state:
             - DEPLOYED: Currently active on the gateway
             - UNDEPLOYED: Suspended but can be rolled back
+            - DEPLOYING: Deployment in progress, waiting for gateway acknowledgement
+            - UNDEPLOYING: Undeployment in progress, waiting for gateway acknowledgement
+            - FAILED: Deployment or undeployment failed (see statusReason for error code)
             - ARCHIVED: Historical deployment, can be rolled back
         baseDeploymentId:
           type: string
@@ -7528,8 +7534,11 @@ components:
         enum:
           - DEPLOYED
           - UNDEPLOYED
+          - DEPLOYING
+          - UNDEPLOYING
+          - FAILED
           - ARCHIVED
-      description: Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+      description: Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 
 tags:
   - name: Health

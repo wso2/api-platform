@@ -610,9 +610,12 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	// 1. Validation Logic
 	if status != nil {
 		validStatuses := map[string]bool{
-			string(model.DeploymentStatusDeployed):   true,
-			string(model.DeploymentStatusUndeployed): true,
-			string(model.DeploymentStatusArchived):   true,
+			string(model.DeploymentStatusDeployed):    true,
+			string(model.DeploymentStatusUndeployed):  true,
+			string(model.DeploymentStatusDeploying):   true,
+			string(model.DeploymentStatusUndeploying): true,
+			string(model.DeploymentStatusFailed):      true,
+			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
 			return nil, fmt.Errorf("invalid deployment status: %s", *status)

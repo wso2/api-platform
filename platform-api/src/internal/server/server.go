@@ -31,9 +31,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"platform-api/src/internal/middleware"
 	"strings"
+	"syscall"
 	"time"
 
 	"platform-api/src/config"
@@ -49,13 +51,14 @@ import (
 )
 
 type Server struct {
-	router      *gin.Engine
-	orgRepo     repository.OrganizationRepository
-	projRepo    repository.ProjectRepository
-	apiRepo     repository.APIRepository
-	gatewayRepo repository.GatewayRepository
-	wsManager   *websocket.Manager // WebSocket connection manager
-	logger      *slog.Logger
+	router         *gin.Engine
+	orgRepo        repository.OrganizationRepository
+	projRepo       repository.ProjectRepository
+	apiRepo        repository.APIRepository
+	gatewayRepo    repository.GatewayRepository
+	wsManager      *websocket.Manager // WebSocket connection manager
+	timeoutService *service.DeploymentTimeoutService
+	logger         *slog.Logger
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
@@ -238,7 +241,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		Timeout:  time.Duration(cfg.Deployments.TimeoutDuration) * time.Second,
 	}
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
-	go timeoutService.Start(context.Background())
 
 	slogger.Info("Initialized all services and handlers successfully")
 
@@ -299,13 +301,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	)
 
 	return &Server{
-		router:      router,
-		orgRepo:     orgRepo,
-		projRepo:    projectRepo,
-		apiRepo:     apiRepo,
-		gatewayRepo: gatewayRepo,
-		wsManager:   wsManager,
-		logger:      slogger,
+		router:         router,
+		orgRepo:        orgRepo,
+		projRepo:       projectRepo,
+		apiRepo:        apiRepo,
+		gatewayRepo:    gatewayRepo,
+		wsManager:      wsManager,
+		timeoutService: timeoutService,
+		logger:         slogger,
 	}, nil
 }
 
@@ -422,7 +425,7 @@ func (s *Server) Start(port string, certDir string) error {
 	}
 
 	address := fmt.Sprintf(":%s", port)
-	server := &http.Server{
+	httpServer := &http.Server{
 		Addr:      address,
 		Handler:   s.router,
 		TLSConfig: tlsConfig,
@@ -432,7 +435,30 @@ func (s *Server) Start(port string, certDir string) error {
 	if certGenerated {
 		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
 	}
-	return server.ListenAndServeTLS("", "")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go s.timeoutService.Start(ctx)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- httpServer.ListenAndServeTLS("", "")
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-errCh:
+		return err
+	case sig := <-quit:
+		s.logger.Info("Received shutdown signal", "signal", sig)
+		cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		return httpServer.Shutdown(shutdownCtx)
+	}
 }
 
 // GetRouter returns the gin router for testing purposes

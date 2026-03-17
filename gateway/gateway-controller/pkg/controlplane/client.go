@@ -230,16 +230,21 @@ func (c *Client) Stop() {
 	close(c.stopChan)
 	c.cancel()
 
-	// Close active connection if exists
+	// Close active connection if exists: nil out conn under state.mu first so no
+	// new sendMessage call can obtain it, then acquire writeMu to drain any
+	// in-flight write before sending the close frame.
 	c.state.mu.Lock()
-	if c.state.Conn != nil {
-		// Send close frame with normal closure code
-		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Gateway shutting down")
-		_ = c.state.Conn.WriteMessage(websocket.CloseMessage, closeMsg)
-		_ = c.state.Conn.Close()
-		c.state.Conn = nil
-	}
+	conn := c.state.Conn
+	c.state.Conn = nil
 	c.state.mu.Unlock()
+
+	if conn != nil {
+		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Gateway shutting down")
+		c.writeMu.Lock()
+		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		c.writeMu.Unlock()
+		_ = conn.Close()
+	}
 
 	// Wait for goroutines to finish
 	c.wg.Wait()
@@ -606,19 +611,21 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 
 // Close closes the WebSocket connection
 func (c *Client) Close() error {
+	// Nil out conn under state.mu first so no new sendMessage call can obtain
+	// it, then acquire writeMu to drain any in-flight write before sending the
+	// close frame.
 	c.state.mu.Lock()
-	defer c.state.mu.Unlock()
+	conn := c.state.Conn
+	c.state.Conn = nil
+	c.setStateNoLock(Disconnected)
+	c.state.mu.Unlock()
 
-	if c.state.Conn != nil {
-		// Send close frame with normal closure code
+	if conn != nil {
 		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Client closing connection")
-		_ = c.state.Conn.WriteMessage(websocket.CloseMessage, closeMsg)
-
-		err := c.state.Conn.Close()
-		c.state.Conn = nil
-		c.setStateNoLock(Disconnected)
-
-		return err
+		c.writeMu.Lock()
+		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		c.writeMu.Unlock()
+		return conn.Close()
 	}
 
 	return nil
@@ -1511,6 +1518,8 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1521,6 +1530,8 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1529,6 +1540,8 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
