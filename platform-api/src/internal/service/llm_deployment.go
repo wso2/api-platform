@@ -211,14 +211,9 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if provider.Configuration.VHost != nil {
-			vhost = *provider.Configuration.VHost
-		}
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
 			ProviderId:   provider.ID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
 			Environment:  "production",
 		}
 
@@ -283,14 +278,9 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if provider.Configuration.VHost != nil {
-			vhost = *provider.Configuration.VHost
-		}
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
 			ProviderId:   provider.ID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
 			Environment:  "production",
 		}
 
@@ -350,13 +340,8 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 
 	// Broadcast LLM provider undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if provider.Configuration.VHost != nil {
-			vhost = *provider.Configuration.VHost
-		}
 		undeploymentEvent := &model.LLMProviderUndeploymentEvent{
 			ProviderId:  provider.ID,
-			Vhost:       vhost,
 			Environment: "production",
 		}
 
@@ -984,14 +969,9 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 
 	// Broadcast LLM proxy deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if proxy.Configuration.Vhost != nil {
-			vhost = *proxy.Configuration.Vhost
-		}
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
 			ProxyId:      proxy.ID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
 			Environment:  "production",
 		}
 
@@ -1056,14 +1036,9 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 
 	// Broadcast LLM proxy deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if proxy.Configuration.Vhost != nil {
-			vhost = *proxy.Configuration.Vhost
-		}
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
 			ProxyId:      proxy.ID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
 			Environment:  "production",
 		}
 
@@ -1123,13 +1098,8 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 
 	// Broadcast LLM proxy undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if proxy.Configuration.Vhost != nil {
-			vhost = *proxy.Configuration.Vhost
-		}
 		undeploymentEvent := &model.LLMProxyUndeploymentEvent{
 			ProxyId:     proxy.ID,
-			Vhost:       vhost,
 			Environment: "production",
 		}
 

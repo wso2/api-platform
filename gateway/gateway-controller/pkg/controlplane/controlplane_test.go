@@ -95,7 +95,6 @@ func TestAPIDeployedEvent(t *testing.T) {
 		Payload: APIDeployedEventPayload{
 			APIID:        "api-123",
 			DeploymentID: "rev-1",
-			VHost:        "api.example.com",
 		},
 		Timestamp:     "2025-01-30T12:00:00Z",
 		CorrelationID: "corr-789",
@@ -110,9 +109,6 @@ func TestAPIDeployedEvent(t *testing.T) {
 	if event.Payload.DeploymentID != "rev-1" {
 		t.Errorf("Payload.DeploymentID = %q, want %q", event.Payload.DeploymentID, "rev-1")
 	}
-	if event.Payload.VHost != "api.example.com" {
-		t.Errorf("Payload.VHost = %q, want %q", event.Payload.VHost, "api.example.com")
-	}
 	if event.CorrelationID != "corr-789" {
 		t.Errorf("CorrelationID = %q, want %q", event.CorrelationID, "corr-789")
 	}
@@ -122,7 +118,6 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 	payload := APIDeployedEventPayload{
 		APIID:        "test-api",
 		DeploymentID: "rev-2",
-		VHost:        "staging.example.com",
 	}
 
 	if payload.APIID != "test-api" {
@@ -130,9 +125,6 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 	}
 	if payload.DeploymentID != "rev-2" {
 		t.Errorf("DeploymentID = %q, want %q", payload.DeploymentID, "rev-2")
-	}
-	if payload.VHost != "staging.example.com" {
-		t.Errorf("VHost = %q, want %q", payload.VHost, "staging.example.com")
 	}
 }
 

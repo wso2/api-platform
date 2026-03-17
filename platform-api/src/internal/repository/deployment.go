@@ -584,6 +584,34 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	return deployments, nil
 }
 
+// GetDeployedGatewayIDs returns the gateway IDs that have an active deployment status
+// (DEPLOYED or UNDEPLOYED) for the given artifact. Since the deployment_status table
+// only holds rows for those two states, a plain SELECT is sufficient.
+func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error) {
+	query := `SELECT gateway_uuid FROM deployment_status WHERE artifact_uuid = ? AND organization_uuid = ?`
+
+	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var gatewayIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		gatewayIDs = append(gatewayIDs, id)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating gateway IDs: %w", err)
+	}
+
+	return gatewayIDs, nil
+}
+
 // GetAllDeploymentsByGateway retrieves all deployments for a specific gateway
 // Returns lightweight DeploymentInfo for listing deployments
 // Only returns deployments that have an active status (DEPLOYED or UNDEPLOYED)

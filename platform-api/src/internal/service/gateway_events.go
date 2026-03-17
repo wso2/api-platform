@@ -41,9 +41,11 @@ const (
 
 	EventTypeLLMProviderDeployed   = "llmprovider.deployed"
 	EventTypeLLMProviderUndeployed = "llmprovider.undeployed"
+	EventTypeLLMProviderDeleted    = "llmprovider.deleted"
 
 	EventTypeLLMProxyDeployed   = "llmproxy.deployed"
 	EventTypeLLMProxyUndeployed = "llmproxy.undeployed"
+	EventTypeLLMProxyDeleted    = "llmproxy.deleted"
 
 	EventTypeMCPProxyDeployed   = "mcpproxy.deployed"
 	EventTypeMCPProxyUndeployed = "mcpproxy.undeployed"
@@ -818,6 +820,136 @@ func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(gatewayID string, 
 
 	if successCount == 0 {
 		return fmt.Errorf("failed to deliver MCP proxy deletion event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastLLMProviderDeletionEvent sends an LLM provider deletion event to target gateway
+func (s *GatewayEventsService) BroadcastLLMProviderDeletionEvent(gatewayID string, deletion *model.LLMProviderDeletionEvent) error {
+	correlationID := uuid.New().String()
+
+	payloadJSON, err := json.Marshal(deletion)
+	if err != nil {
+		s.slogger.Error("Failed to serialize LLM provider deletion event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize LLM provider deletion event: %w", err)
+	}
+
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	eventDTO := dto.GatewayEventDTO{
+		Type:          EventTypeLLMProviderDeleted,
+		Payload:       deletion,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send LLM provider deletion event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Debug("LLM provider deletion event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	s.slogger.Debug("LLM provider deletion broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver LLM provider deletion event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
+// BroadcastLLMProxyDeletionEvent sends an LLM proxy deletion event to target gateway
+func (s *GatewayEventsService) BroadcastLLMProxyDeletionEvent(gatewayID string, deletion *model.LLMProxyDeletionEvent) error {
+	correlationID := uuid.New().String()
+
+	payloadJSON, err := json.Marshal(deletion)
+	if err != nil {
+		s.slogger.Error("Failed to serialize LLM proxy deletion event", "gatewayID", gatewayID, "error", err)
+		return fmt.Errorf("failed to serialize LLM proxy deletion event: %w", err)
+	}
+
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		s.slogger.Error("Payload size validation failed", "gatewayID", gatewayID, "size", len(payloadJSON), "error", err)
+		return err
+	}
+
+	eventDTO := dto.GatewayEventDTO{
+		Type:          EventTypeLLMProxyDeleted,
+		Payload:       deletion,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+	}
+
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		s.slogger.Error("Failed to marshal event DTO", "gatewayID", gatewayID, "correlationId", correlationID, "error", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		s.slogger.Warn("No active connections for gateway", "gatewayID", gatewayID, "correlationId", correlationID)
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send LLM proxy deletion event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Debug("LLM proxy deletion event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "type", eventDTO.Type)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	s.slogger.Debug("LLM proxy deletion broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver LLM proxy deletion event to any connection: %w", lastError)
 	}
 
 	return nil

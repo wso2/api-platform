@@ -953,7 +953,6 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	c.logger.Info("Processing API deployment",
 		slog.String("api_id", apiID),
 		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		slog.String("vhost", deployedEvent.Payload.VHost),
 		slog.String("correlation_id", deployedEvent.CorrelationID),
 	)
 
@@ -1011,7 +1010,6 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("Processing API undeployment",
 		slog.String("api_id", apiID),
 		slog.String("environment", undeployedEvent.Payload.Environment),
-		slog.String("vhost", undeployedEvent.Payload.VHost),
 		slog.String("correlation_id", undeployedEvent.CorrelationID),
 	)
 
@@ -1372,7 +1370,6 @@ func (c *Client) handleAPIDeletedEvent(event map[string]interface{}) {
 
 	c.logger.Info("Processing API deletion",
 		slog.String("api_id", apiID),
-		slog.String("vhost", deletedEvent.Payload.VHost),
 		slog.String("correlation_id", deletedEvent.CorrelationID),
 	)
 
@@ -1433,7 +1430,6 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		slog.String("proxy_id", proxyID),
 		slog.String("environment", deployedEvent.Payload.Environment),
 		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		slog.String("vhost", deployedEvent.Payload.VHost),
 		slog.String("correlation_id", deployedEvent.CorrelationID),
 	)
 
@@ -1522,7 +1518,6 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 		slog.String("provider_id", providerID),
 		slog.String("environment", deployedEvent.Payload.Environment),
 		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		slog.String("vhost", deployedEvent.Payload.VHost),
 		slog.String("correlation_id", deployedEvent.CorrelationID),
 	)
 
@@ -1718,7 +1713,6 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 		slog.String("proxy_id", proxyID),
 		slog.String("environment", deployedEvent.Payload.Environment),
 		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		slog.String("vhost", deployedEvent.Payload.VHost),
 		slog.String("correlation_id", deployedEvent.CorrelationID),
 	)
 

@@ -201,7 +201,6 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		deploymentEvent := &model.DeploymentEvent{
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
-			Vhost:        gateway.Vhost,
 		}
 
 		if err := s.gatewayEventsService.BroadcastDeploymentEvent(gatewayID, deploymentEvent); err != nil {
@@ -267,7 +266,6 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		deploymentEvent := &model.DeploymentEvent{
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
-			Vhost:        gateway.Vhost,
 		}
 
 		if err := s.gatewayEventsService.BroadcastDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
@@ -325,10 +323,8 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 
 	// Send undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := gateway.Vhost
 		undeploymentEvent := &model.APIUndeploymentEvent{
 			ApiId: apiUUID,
-			Vhost: vhost,
 		}
 
 		if err := s.gatewayEventsService.BroadcastUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {

@@ -94,6 +94,7 @@ type DeploymentRepository interface {
 	SetCurrent(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (updatedAt time.Time, err error)
 	GetStatus(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
+	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 
 	// Gateway deployment methods
 	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
