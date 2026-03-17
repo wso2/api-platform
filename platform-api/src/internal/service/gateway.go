@@ -112,6 +112,7 @@ func (s *GatewayService) ReceiveGatewayManifest(gatewayID string, policies []Gat
 		entry := GatewayPolicyDefinition{
 			Name:           p.Name,
 			Version:        p.Version,
+			Description:    p.Description,
 			IsCustomPolicy: p.IsCustomPolicy,
 		}
 		if p.IsCustomPolicy {

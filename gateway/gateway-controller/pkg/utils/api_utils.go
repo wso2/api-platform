@@ -601,7 +601,7 @@ type ManifestPolicyEntry struct {
 	Description      *string                `json:"description,omitempty"`
 	Parameters       map[string]interface{} `json:"parameters,omitempty"`
 	SystemParameters map[string]interface{} `json:"systemParameters,omitempty"`
-	IsCustomPolicy   *bool                   `json:"isCustomPolicy"`
+	IsCustomPolicy   bool                   `json:"isCustomPolicy"`
 }
 
 // PushGatewayManifest POSTs the gateway's installed custom policy manifest back to the control plane.

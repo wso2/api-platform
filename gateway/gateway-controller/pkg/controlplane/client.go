@@ -3079,11 +3079,12 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 
 	policies := make([]utils.ManifestPolicyEntry, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {
+		isCustomPolicy := def.IsCustomPolicy != nil && *def.IsCustomPolicy
 		entry := utils.ManifestPolicyEntry{
 			Name:           def.Name,
 			Version:        def.Version,
 			Description:    def.Description,
-			IsCustomPolicy: def.IsCustomPolicy,
+			IsCustomPolicy: isCustomPolicy,
 		}
 		if def.Parameters != nil {
 			entry.Parameters = *def.Parameters
