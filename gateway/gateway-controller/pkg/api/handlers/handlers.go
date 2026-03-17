@@ -1769,6 +1769,7 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 
 	// Prepare parameters
 	params := utils.APIKeyCreationParams{
+		Kind:          models.KindRestApi,
 		Handle:        handle,
 		Request:       request,
 		User:          user,
@@ -1908,6 +1909,7 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 
 	// Prepare parameters
 	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindRestApi,
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
 		Request:       request,
