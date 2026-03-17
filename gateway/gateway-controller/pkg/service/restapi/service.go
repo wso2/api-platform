@@ -165,8 +165,12 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 }
 
 // List returns REST API configurations, optionally filtered.
-func (s *RestAPIService) List(params api.ListRestAPIsParams) *ListResult {
-	configs := s.store.GetAllByKind(string(api.RestApi))
+func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error) {
+	configs, err := s.db.GetAllConfigsByKind(string(api.RestApi))
+	if err != nil {
+		s.logger.Error("Failed to get APIs", slog.Any("error", err))
+		return nil, fmt.Errorf("Failed to retrieve API configurations")
+	}
 
 	items := make([]api.RestAPIListItem, 0, len(configs))
 	for _, cfg := range configs {
@@ -201,7 +205,7 @@ func (s *RestAPIService) List(params api.ListRestAPIsParams) *ListResult {
 		})
 	}
 
-	return &ListResult{Items: items}
+	return &ListResult{Items: items}, nil
 }
 
 // GetByHandle retrieves a REST API by its handle from the database.
