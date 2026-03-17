@@ -33,6 +33,33 @@ import (
 const (
 	// Maximum event payload size (1MB)
 	MaxEventPayloadSize = 1024 * 1024
+
+	// Gateway event type constants
+	EventTypeAPIDeployed   = "api.deployed"
+	EventTypeAPIUndeployed = "api.undeployed"
+	EventTypeAPIDeleted    = "api.deleted"
+
+	EventTypeLLMProviderDeployed   = "llmprovider.deployed"
+	EventTypeLLMProviderUndeployed = "llmprovider.undeployed"
+
+	EventTypeLLMProxyDeployed   = "llmproxy.deployed"
+	EventTypeLLMProxyUndeployed = "llmproxy.undeployed"
+
+	EventTypeMCPProxyDeployed   = "mcpproxy.deployed"
+	EventTypeMCPProxyUndeployed = "mcpproxy.undeployed"
+	EventTypeMCPProxyDeleted    = "mcpproxy.deleted"
+
+	EventTypeAPIKeyCreated = "apikey.created"
+	EventTypeAPIKeyRevoked = "apikey.revoked"
+	EventTypeAPIKeyUpdated = "apikey.updated"
+
+	EventTypeSubscriptionCreated = "subscription.created"
+	EventTypeSubscriptionUpdated = "subscription.updated"
+	EventTypeSubscriptionDeleted = "subscription.deleted"
+
+	EventTypeSubscriptionPlanCreated = "subscriptionPlan.created"
+	EventTypeSubscriptionPlanUpdated = "subscriptionPlan.updated"
+	EventTypeSubscriptionPlanDeleted = "subscriptionPlan.deleted"
 )
 
 // GatewayEventsService handles broadcasting events to connected gateways
@@ -78,7 +105,7 @@ func (s *GatewayEventsService) BroadcastDeploymentEvent(gatewayID string, deploy
 
 	// Create gateway event DTO
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "api.deployed",
+		Type:          EventTypeAPIDeployed,
 		Payload:       deployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -159,7 +186,7 @@ func (s *GatewayEventsService) BroadcastUndeploymentEvent(gatewayID string, unde
 
 	// Create gateway event DTO with undeployment type
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "api.undeployed",
+		Type:          EventTypeAPIUndeployed,
 		Payload:       undeployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -232,7 +259,7 @@ func (s *GatewayEventsService) BroadcastAPIDeletionEvent(gatewayID string, delet
 
 	// Create gateway event DTO with deletion type
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "api.deleted",
+		Type:          EventTypeAPIDeleted,
 		Payload:       deletion,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -305,7 +332,7 @@ func (s *GatewayEventsService) BroadcastLLMProviderDeploymentEvent(gatewayID str
 
 	// Create gateway event DTO
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "llmprovider.deployed",
+		Type:          EventTypeLLMProviderDeployed,
 		Payload:       deployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -379,7 +406,7 @@ func (s *GatewayEventsService) BroadcastLLMProviderUndeploymentEvent(gatewayID s
 
 	// Create gateway event DTO with undeployment type
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "llmprovider.undeployed",
+		Type:          EventTypeLLMProviderUndeployed,
 		Payload:       undeployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -452,7 +479,7 @@ func (s *GatewayEventsService) BroadcastLLMProxyDeploymentEvent(gatewayID string
 
 	// Create gateway event DTO
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "llmproxy.deployed",
+		Type:          EventTypeLLMProxyDeployed,
 		Payload:       deployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -525,7 +552,7 @@ func (s *GatewayEventsService) BroadcastLLMProxyUndeploymentEvent(gatewayID stri
 
 	// Create gateway event DTO with undeployment type
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "llmproxy.undeployed",
+		Type:          EventTypeLLMProxyUndeployed,
 		Payload:       undeployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -598,7 +625,7 @@ func (s *GatewayEventsService) BroadcastMCPProxyDeploymentEvent(gatewayID string
 
 	// Create gateway event DTO
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "mcpproxy.deployed",
+		Type:          EventTypeMCPProxyDeployed,
 		Payload:       deployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -671,7 +698,7 @@ func (s *GatewayEventsService) BroadcastMCPProxyUndeploymentEvent(gatewayID stri
 
 	// Create gateway event DTO with undeployment type
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "mcpproxy.undeployed",
+		Type:          EventTypeMCPProxyUndeployed,
 		Payload:       undeployment,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -744,7 +771,7 @@ func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(gatewayID string, 
 
 	// Create gateway event DTO with deletion type
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "mcpproxy.deleted",
+		Type:          EventTypeMCPProxyDeleted,
 		Payload:       deletion,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -870,7 +897,7 @@ func (s *GatewayEventsService) broadcastAPIKeyCreated(gatewayID, userId string, 
 
 	// Create gateway event DTO
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "apikey.created",
+		Type:          EventTypeAPIKeyCreated,
 		Payload:       event,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -941,7 +968,7 @@ func (s *GatewayEventsService) broadcastAPIKeyRevoked(gatewayID, userId string, 
 
 	// Create gateway event DTO
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "apikey.revoked",
+		Type:          EventTypeAPIKeyRevoked,
 		Payload:       event,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -1040,7 +1067,7 @@ func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID, userId string, 
 
 	// Create gateway event DTO
 	eventDTO := dto.GatewayEventDTO{
-		Type:          "apikey.updated",
+		Type:          EventTypeAPIKeyUpdated,
 		Payload:       event,
 		Timestamp:     time.Now().Format(time.RFC3339),
 		CorrelationID: correlationID,
@@ -1094,17 +1121,17 @@ func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID, userId string, 
 
 // BroadcastSubscriptionCreatedEvent sends a subscription.created event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionCreatedEvent(gatewayID string, event *model.SubscriptionCreatedEvent) error {
-	return s.broadcastSubscriptionEvent(gatewayID, "subscription.created", event)
+	return s.broadcastSubscriptionEvent(gatewayID, EventTypeSubscriptionCreated, event)
 }
 
 // BroadcastSubscriptionUpdatedEvent sends a subscription.updated event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionUpdatedEvent(gatewayID string, event *model.SubscriptionUpdatedEvent) error {
-	return s.broadcastSubscriptionEvent(gatewayID, "subscription.updated", event)
+	return s.broadcastSubscriptionEvent(gatewayID, EventTypeSubscriptionUpdated, event)
 }
 
 // BroadcastSubscriptionDeletedEvent sends a subscription.deleted event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionDeletedEvent(gatewayID string, event *model.SubscriptionDeletedEvent) error {
-	return s.broadcastSubscriptionEvent(gatewayID, "subscription.deleted", event)
+	return s.broadcastSubscriptionEvent(gatewayID, EventTypeSubscriptionDeleted, event)
 }
 
 func (s *GatewayEventsService) broadcastSubscriptionEvent(gatewayID, eventType string, payload interface{}) error {
@@ -1177,15 +1204,15 @@ func (s *GatewayEventsService) broadcastSubscriptionEvent(gatewayID, eventType s
 
 // BroadcastSubscriptionPlanCreatedEvent sends a subscriptionPlan.created event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionPlanCreatedEvent(gatewayID string, event *model.SubscriptionPlanCreatedEvent) error {
-	return s.broadcastSubscriptionEvent(gatewayID, "subscriptionPlan.created", event)
+	return s.broadcastSubscriptionEvent(gatewayID, EventTypeSubscriptionPlanCreated, event)
 }
 
 // BroadcastSubscriptionPlanUpdatedEvent sends a subscriptionPlan.updated event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionPlanUpdatedEvent(gatewayID string, event *model.SubscriptionPlanUpdatedEvent) error {
-	return s.broadcastSubscriptionEvent(gatewayID, "subscriptionPlan.updated", event)
+	return s.broadcastSubscriptionEvent(gatewayID, EventTypeSubscriptionPlanUpdated, event)
 }
 
 // BroadcastSubscriptionPlanDeletedEvent sends a subscriptionPlan.deleted event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionPlanDeletedEvent(gatewayID string, event *model.SubscriptionPlanDeletedEvent) error {
-	return s.broadcastSubscriptionEvent(gatewayID, "subscriptionPlan.deleted", event)
+	return s.broadcastSubscriptionEvent(gatewayID, EventTypeSubscriptionPlanDeleted, event)
 }
