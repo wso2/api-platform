@@ -948,8 +948,8 @@ func TestListRestAPIs(t *testing.T) {
 	// Add test configs to store
 	cfg1 := createTestStoredConfig("test-id-1", "0000-test-api-1-0000-000000000000", "v1.0.0", "/test1")
 	cfg2 := createTestStoredConfig("test-id-2", "test-api-2", "v2.0.0", "/test2")
-	_ = server.store.Add(cfg1)
-	_ = server.store.Add(cfg2)
+	_ = server.db.SaveConfig(cfg1)
+	_ = server.db.SaveConfig(cfg2)
 
 	c, w := createTestContext("GET", "/rest-apis", nil)
 	server.ListRestAPIs(c, api.ListRestAPIsParams{})
