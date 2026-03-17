@@ -1622,6 +1622,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1632,6 +1634,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1640,6 +1644,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.String("provider_id", providerID),
 			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
