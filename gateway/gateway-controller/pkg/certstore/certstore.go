@@ -343,7 +343,7 @@ func (cs *CertStore) GetCertsDir() string {
 func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 	// Check if directory exists
 	if _, err := os.Stat(cs.certsDir); os.IsNotExist(err) {
-		cs.logger.Debug("Certificates directory does not exist, skipping bootstrap",
+		cs.logger.Info("Certificates directory does not exist, skipping bootstrap",
 			slog.String("path", cs.certsDir))
 		return nil
 	}
