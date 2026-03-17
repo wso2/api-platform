@@ -160,15 +160,8 @@ func (s *GatewayInternalAPIService) GetActiveLLMProviderDeploymentByGateway(prov
 
 // GetActiveLLMProxyDeploymentByGateway retrieves the currently deployed LLM proxy artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID, orgID, gatewayID string) (map[string]string, error) {
-	proxy, err := s.proxyRepo.GetByID(proxyID, orgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get LLM proxy: %w", err)
-	}
-	if proxy == nil {
-		return nil, constants.ErrLLMProxyNotFound
-	}
 
-	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxy.UUID, gatewayID, orgID)
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxyID, gatewayID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
