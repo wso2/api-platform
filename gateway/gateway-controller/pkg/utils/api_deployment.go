@@ -477,7 +477,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		}
 	}
 
-	if s.eventHub == nil {
+	// TODO: (VirajSalaka) Fix other types also with the same eventing synchronization.
+	if s.eventHub == nil || (storedCfg.Kind != "WebSubApi" && storedCfg.Kind != "RestApi") {
 		// Memory-only mode: add to in-memory store inline
 		if err := s.store.Add(storedCfg); err != nil {
 			// Rollback database write (only if persistent mode)
@@ -523,7 +524,8 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 		}
 	}
 
-	if s.eventHub == nil {
+	// TODO: (VirajSalaka) Fix other types also with the same eventing synchronization.
+	if s.eventHub == nil || (existing.Kind != "WebSubApi" && existing.Kind != "RestApi") {
 		// Memory-only mode: update in-memory store inline
 		if err := s.store.Update(existing); err != nil {
 			// Rollback DB to original state since memory update failed
