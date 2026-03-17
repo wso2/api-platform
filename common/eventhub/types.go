@@ -89,7 +89,7 @@ type Config struct {
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:    2 * time.Second,
+		PollInterval:    200 * time.Millisecond,
 		CleanupInterval: 5 * time.Minute,
 		RetentionPeriod: 1 * time.Hour,
 	}
