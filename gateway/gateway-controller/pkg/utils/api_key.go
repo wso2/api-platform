@@ -174,7 +174,7 @@ func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string
 // getAPIConfigByHandle resolves a REST API configuration by handle.
 func (s *APIKeyService) getAPIConfigByHandle(kind models.ArtifactKind, handle string) (*models.StoredConfig, error) {
 
-	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(kind, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			return nil, storage.ErrNotFound
@@ -403,11 +403,18 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	if kind == "" {
 		kind = models.KindRestApi
 	}
-	config, err := s.store.GetByKindAndHandle(kind, params.Handle)
-	if err != nil || config == nil {
-		logger.Warn("API configuration not found for API key revocation",
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			logger.Error("API configuration not found for API Key revoke",
+				slog.String("operation", operationType+"_key"),
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key revoke",
+			slog.String("operation", operationType+"_key"),
 			slog.Any("error", err))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Validate config type before any storage mutations to fail fast
