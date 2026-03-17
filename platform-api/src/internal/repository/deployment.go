@@ -399,9 +399,9 @@ func (r *DeploymentRepo) GetStatusFull(artifactUUID, orgUUID, gatewayID string) 
 		WHERE artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
 	`
 
-	var pat time.Time
+	var patNull sql.NullTime
 	err = r.db.QueryRow(r.db.Rebind(query), artifactUUID, orgUUID, gatewayID).Scan(
-		&deploymentID, &status, &pat, &statusReason)
+		&deploymentID, &status, &patNull, &statusReason)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -410,7 +410,12 @@ func (r *DeploymentRepo) GetStatusFull(artifactUUID, orgUUID, gatewayID string) 
 		return "", "", nil, "", err
 	}
 
-	return deploymentID, status, &pat, statusReason, nil
+	var performedAtPtr *time.Time
+	if patNull.Valid {
+		t := patNull.Time
+		performedAtPtr = &t
+	}
+	return deploymentID, status, performedAtPtr, statusReason, nil
 }
 
 // UpdateStatusWithPerformedAtGuard conditionally updates the deployment status only if performed_at matches.

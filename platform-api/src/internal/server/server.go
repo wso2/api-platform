@@ -452,6 +452,7 @@ func (s *Server) Start(port string, certDir string) error {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
 
 	select {
 	case err := <-errCh:
