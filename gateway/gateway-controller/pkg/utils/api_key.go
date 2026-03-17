@@ -495,14 +495,13 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 				}
 			}
 		}
-	}
-
-	// Remove the API key from database (complete removal)
-	// Note: This is cleanup only - the revocation is already complete
-	if s.db != nil {
-		if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
-			logger.Warn("Failed to remove API key from database, but revocation was successful",
-				slog.Any("error", err))
+		// Remove the API key from database (complete removal)
+		// Note: This is cleanup only - the revocation is already complete
+		if s.db != nil {
+			if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
+				logger.Warn("Failed to remove API key from database, but revocation was successful",
+					slog.Any("error", err))
+			}
 		}
 	}
 
