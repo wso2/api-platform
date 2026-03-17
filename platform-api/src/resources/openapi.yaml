@@ -3976,6 +3976,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7248,16 +7250,27 @@ components:
     
     MCPServerInfoFetchRequest:
       type: object
-      required:
-        - url
       properties:
         url:
           type: string
           format: uri
-          description: Endpoint URL of the MCP server to fetch information from
+          description: |
+            Endpoint URL of the MCP server to fetch information from.
+            Required when proxyId is not provided. When proxyId is provided,
+            the URL from the stored proxy configuration is used.
           example: https://mcp.server.com/mcp
+        proxyId:
+          type: string
+          description: |
+            MCP proxy handle (identifier) for refresh operations. When provided,
+            the server fetches URL and auth from the stored proxy configuration.
+            Auth override is not allowed in refetch mode.
+          example: my-mcp-proxy
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
+          description: |
+            Authentication configuration for the fetch request.
+            Only allowed when proxyId is not provided (initial creation flow).
 
     MCPServerInfoFetchResponse:
       type: object

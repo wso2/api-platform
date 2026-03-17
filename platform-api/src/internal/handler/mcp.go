@@ -213,7 +213,7 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.FetchServerInfo(&req)
+	resp, err := h.service.FetchServerInfo(orgID, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrInvalidURL):
