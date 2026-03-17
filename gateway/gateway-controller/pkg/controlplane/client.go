@@ -369,6 +369,13 @@ func (c *Client) Connect() error {
 		c.syncSubscriptionsForExistingAPIs(gwID)
 	}(gatewayID)
 
+	// Push gateway manifest to the control plane on connect
+	c.wg.Add(1)
+	go func(gwID string) {
+		defer c.wg.Done()
+		c.pushGatewayManifestOnConnect(gwID)
+	}(gatewayID)
+
 	// Start heartbeat monitor
 	c.wg.Add(1)
 	go c.heartbeatMonitor()
@@ -990,8 +997,6 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleMCPProxyDeletedEvent(event)
 	case "application.updated":
 		c.handleApplicationUpdatedEvent(event)
-	case "gateway.manifest.request":
-		c.handleGatewayManifestRequestEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -3065,21 +3070,12 @@ func (c *Client) getRestAPIBaseURL() string {
 	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
 }
 
-// handleGatewayManifestRequestEvent handles the "gateway.manifest.request" WS event.
-// It collects all loaded policy definitions and POSTs them back to the control plane.
-func (c *Client) handleGatewayManifestRequestEvent(event map[string]interface{}) {
-	c.logger.Info("Gateway manifest request received",
-		slog.Any("correlation_id", event["correlationId"]),
+// pushGatewayManifestOnConnect collects all loaded policy definitions and POSTs
+// them to the control plane immediately after the connection is established.
+func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
+	c.logger.Info("Pushing gateway manifest on connect",
+		slog.String("gateway_id", gatewayID),
 	)
-
-	c.state.mu.RLock()
-	gatewayID := c.state.GatewayID
-	c.state.mu.RUnlock()
-
-	if gatewayID == "" {
-		c.logger.Error("Cannot push gateway manifest: gateway ID not set (connection not yet acknowledged)")
-		return
-	}
 
 	policies := make([]utils.ManifestPolicyEntry, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {

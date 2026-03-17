@@ -148,14 +148,12 @@ CREATE TABLE IF NOT EXISTS gateways (
     is_critical BOOLEAN DEFAULT FALSE,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,
+    manifest JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    manifest_providing_status VARCHAR(20),
-    manifest_requested_at TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, name),
-    CHECK (gateway_functionality_type IN ('regular', 'ai', 'event')),
-    CHECK (manifest_providing_status IN ('pending', 'ready', 'failed'))
+    CHECK (gateway_functionality_type IN ('regular', 'ai', 'event'))
 );
 
 -- Custom Policies table (org-scoped custom policies synced from gateway manifests)

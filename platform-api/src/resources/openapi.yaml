@@ -1967,28 +1967,21 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}/manifest-sync:
+  /gateways/{gatewayId}/manifest:
     get:
-      summary: Sync and poll gateway custom policy manifest
+      summary: Get gateway policy manifest
       description: |
-        Triggers or polls the retrieval gateway manifest installed on a gateway controller.
-
-        **Behaviour:**
-        - **First call / after failure:** Sets status to `pending` and sends a WebSocket event to the gateway
-          controller to request its installed policy manifest. Returns `{ "status": "pending" }`.
-        - **While pending:** Returns `{ "status": "pending" }` without re-triggering the gateway.
-        - **When ready:** Returns `{ "status": "ready", "policies": [...] }` with the filtered custom policies.
-        - **On failure:** Returns `{ "status": "failed" }`. The next call will re-trigger the request.
-
-        The client should poll this endpoint until `status` is `ready` or until a client-side timeout is reached.
-      operationId: GetManifestSync
+        Returns the policy manifest for the specified gateway. The manifest is populated by the gateway
+        controller when it connects to the platform API, and contains all installed policies. Custom
+        policies additionally include their full policy definition schema.
+      operationId: GetGatewayManifest
       tags:
         - Gateways
       parameters:
         - $ref: '#/components/parameters/GatewayID'
       responses:
         '200':
-          description: Manifest sync status (and policies when ready)
+          description: Gateway policy manifest
           content:
             application/json:
               schema:
@@ -5083,10 +5076,11 @@ components:
 
     GatewayPolicyDefinition:
       type: object
-      description: A custom policy installed on a gateway controller.
+      description: A policy installed on a gateway controller.
       required:
         - name
         - version
+        - isCustomPolicy
       properties:
         name:
           type: string
@@ -5100,30 +5094,26 @@ components:
           type: string
           description: Human-readable description of the policy
           example: "Sets WSO2-specific headers in the request and response."
+        isCustomPolicy:
+          type: boolean
+          description: Whether this is a user-installed custom policy.
+          example: true
         policyDefinition:
           type: object
           description: |
             The full policy schema as declared in the policy's policy-definition.yaml.
             Contains `parameters` and `systemParameters` JSON Schema documents.
+            Only present for custom policies.
           additionalProperties: true
 
     ManifestSyncResponse:
       type: object
-      required:
-        - status
       properties:
-        status:
-          type: string
-          enum: [pending, ready, failed]
-          description: |
-            Current state of the manifest sync job.
-            - `pending`: Request sent to gateway controller, waiting for response.
-            - `ready`: Manifest received and policies are available.
-            - `failed`: Request could not be delivered (gateway offline or error).
-          example: "ready"
         policies:
           type: array
-          description: Custom policies installed on the gateway. Only present when status is `ready`.
+          description: |
+            All policies installed on the gateway. Each entry includes name, version, and isCustomPolicy.
+            Custom policies additionally include policyDefinition with their parameters and systemParameters schemas.
           items:
             $ref: '#/components/schemas/GatewayPolicyDefinition'
 

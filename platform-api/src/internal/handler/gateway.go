@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -48,8 +49,7 @@ func NewGatewayHandler(gatewayService *service.GatewayService, slogger *slog.Log
 
 // manifestSyncResponse is the response body for manifest-sync endpoints
 type manifestSyncResponse struct {
-	Status   string                           `json:"status"`
-	Policies []service.GatewayPolicyDefinition `json:"policies,omitempty"`
+	Policies json.RawMessage `json:"policies,omitempty"`
 }
 
 // CreateGateway handles POST /api/v1/gateways
@@ -478,12 +478,9 @@ func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 	c.JSON(http.StatusOK, artifactListResponse)
 }
 
-// GetManifestSync handles GET /api/v1/gateways/{gatewayId}/manifest-sync
-// Called by APIM on behalf of the UI (which polls until status is "ready").
-// On the first call (or after a failure) it triggers the manifest request to the gateway controller.
-// Subsequent calls while pending simply return the current status.
-// When ready, returns the filtered custom policies.
-func (h *GatewayHandler) GetManifestSync(c *gin.Context) {
+// GetGatewayManifest handles GET /api/v1/gateways/{gatewayId}/manifest
+// Called by APIM to retrieve the manifest pushed by the gateway controller on connect.
+func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
@@ -498,7 +495,7 @@ func (h *GatewayHandler) GetManifestSync(c *gin.Context) {
 		return
 	}
 
-	job, err := h.gatewayService.SyncManifest(gatewayId, orgId)
+	dataFromDb, err := h.gatewayService.GetStoredManifest(gatewayId, orgId)
 	if err != nil {
 		if strings.Contains(err.Error(), "gateway not found") {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -511,8 +508,7 @@ func (h *GatewayHandler) GetManifestSync(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, manifestSyncResponse{
-		Status:   job.Status,
-		Policies: job.Policies,
+		Policies: dataFromDb.Policies,
 	})
 }
 
@@ -530,7 +526,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
 		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
 		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
-		gatewayGroup.GET("/:gatewayId/manifest-sync", h.GetManifestSync)
+		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")
