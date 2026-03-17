@@ -845,7 +845,7 @@ type DeployRequest struct {
 	// GatewayId The target gateway UUID for this deployment
 	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
-	// Metadata Optional metadata for the deployment (e.g., endpointUrl, vhostMain, vhostSandbox overrides)
+	// Metadata Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
@@ -1699,8 +1699,15 @@ type MCPServerInfoFetchRequest struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// Url Endpoint URL of the MCP server to fetch information from
-	Url string `binding:"required" json:"url" yaml:"url"`
+	// ProxyId MCP proxy handle (identifier) for refresh operations. When provided,
+	// the server fetches URL and auth from the stored proxy configuration.
+	// Auth override is not allowed in refetch mode.
+	ProxyId *string `json:"proxyId,omitempty" yaml:"proxyId,omitempty"`
+
+	// Url Endpoint URL of the MCP server to fetch information from.
+	// Required when proxyId is not provided. When proxyId is provided,
+	// the URL from the stored proxy configuration is used.
+	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
 }
 
 // MCPServerInfoFetchResponse defines model for MCPServerInfoFetchResponse.
