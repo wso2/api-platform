@@ -160,6 +160,36 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 	return resp, nil
 }
 
+// ListByProject retrieves MCP proxies for an organization filtered by project ID
+func (s *MCPProxyService) ListByProject(orgUUID, projectUUID string, limit, offset int) (*api.MCPProxyListResponse, error) {
+	// TODO: pagination
+	proxies, err := s.repo.ListByProject(orgUUID, projectUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list MCP proxies by project: %w", err)
+	}
+
+	totalCount, err := s.repo.CountByProject(orgUUID, projectUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count MCP proxies by project: %w", err)
+	}
+
+	resp := &api.MCPProxyListResponse{
+		Count: len(proxies),
+		Pagination: api.Pagination{
+			Limit:  limit,
+			Offset: offset,
+			Total:  totalCount,
+		},
+	}
+
+	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
+	for _, p := range proxies {
+		resp.List = append(resp.List, *mapMCPProxyModelToListItem(p))
+	}
+
+	return resp, nil
+}
+
 // Get retrieves an MCP proxy by its handle
 func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 	if handle == "" {
@@ -202,6 +232,9 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 		return nil, constants.ErrMCPProxyNotFound
 	}
 
+	// Store existing upstream config for auth preservation
+	existingUpstreamConfig := existing.Configuration.Upstream
+
 	// Update fields
 	existing.Name = req.Name
 	existing.Version = req.Version
@@ -216,6 +249,10 @@ func (s *MCPProxyService) Update(orgUUID, handle string, req *api.MCPProxy) (*ap
 		Policies:     mapMCPPoliciesAPIToModel(req.Policies),
 		Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
 	}
+
+	// Preserve existing upstream auth credential if not provided in update request
+	// (the auth value is redacted in GET responses, so clients send empty value on updates)
+	existing.Configuration.Upstream = *preserveMCPUpstreamAuthValue(&existingUpstreamConfig, &existing.Configuration.Upstream)
 
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -347,7 +384,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		Context:        m.Configuration.Context,
 		Vhost:          m.Configuration.Vhost,
 		McpSpecVersion: specVersion,
-		Upstream:       mapUpstreamModelToAPI(&m.Configuration.Upstream),
+		Upstream:       mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
 		Policies:       mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		Capabilities:   mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
 	}
@@ -441,4 +478,84 @@ func mapMcpCapabilitiesModelToAPI(in *model.MCPProxyCapabilities) *api.MCPProxyC
 		Resources: in.Resources,
 		Tools:     in.Tools,
 	}
+}
+
+// mapMCPUpstreamModelToAPI maps upstream config to API type with auth values redacted for security
+func mapMCPUpstreamModelToAPI(in *model.UpstreamConfig) api.Upstream {
+	main := api.UpstreamDefinition{}
+	if in != nil && in.Main != nil {
+		if in.Main.URL != "" {
+			u := in.Main.URL
+			main.Url = &u
+		}
+		if in.Main.Ref != "" {
+			r := in.Main.Ref
+			main.Ref = &r
+		}
+		if in.Main.Auth != nil {
+			// Redact auth value for security
+			var authType *api.UpstreamAuthType
+			if in.Main.Auth.Type != "" {
+				t := api.UpstreamAuthType(in.Main.Auth.Type)
+				authType = &t
+			}
+			main.Auth = &api.UpstreamAuth{
+				Type:   authType,
+				Header: utils.StringPtrIfNotEmpty(in.Main.Auth.Header),
+				Value:  nil, // Redact value - never expose auth credential
+			}
+		}
+	}
+	var sandbox *api.UpstreamDefinition
+	if in != nil && in.Sandbox != nil {
+		s := api.UpstreamDefinition{}
+		if in.Sandbox.URL != "" {
+			u := in.Sandbox.URL
+			s.Url = &u
+		}
+		if in.Sandbox.Ref != "" {
+			r := in.Sandbox.Ref
+			s.Ref = &r
+		}
+		if in.Sandbox.Auth != nil {
+			// Redact auth value for security
+			var authType *api.UpstreamAuthType
+			if in.Sandbox.Auth.Type != "" {
+				t := api.UpstreamAuthType(in.Sandbox.Auth.Type)
+				authType = &t
+			}
+			s.Auth = &api.UpstreamAuth{
+				Type:   authType,
+				Header: utils.StringPtrIfNotEmpty(in.Sandbox.Auth.Header),
+				Value:  nil, // Redact value - never expose auth credential
+			}
+		}
+		sandbox = &s
+	}
+	return api.Upstream{Main: main, Sandbox: sandbox}
+}
+
+// preserveMCPUpstreamAuthValue preserves the existing upstream auth value when the update
+// request doesn't provide a new one (empty string). This prevents accidental credential
+// loss when the client receives a redacted response and sends it back in an update.
+func preserveMCPUpstreamAuthValue(existing, updated *model.UpstreamConfig) *model.UpstreamConfig {
+	if updated == nil {
+		return existing
+	}
+	if existing == nil {
+		return updated
+	}
+	if updated.Main == nil {
+		return updated
+	}
+	if existing.Main == nil || existing.Main.Auth == nil {
+		return updated
+	}
+	if updated.Main.Auth == nil {
+		return updated
+	}
+	if updated.Main.Auth.Value == "" {
+		updated.Main.Auth.Value = existing.Main.Auth.Value
+	}
+	return updated
 }
