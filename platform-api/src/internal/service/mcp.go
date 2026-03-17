@@ -331,24 +331,60 @@ func (s *MCPProxyService) Delete(orgUUID, handle string) error {
 	return nil
 }
 
-// FetchServerInfo fetches server information from an MCP backend
-func (s *MCPProxyService) FetchServerInfo(req *api.MCPServerInfoFetchRequest) (*api.MCPServerInfoFetchResponse, error) {
-	if req == nil || req.Url == "" {
+// FetchServerInfo fetches server information from an MCP backend.
+// When proxyId is provided, the URL and auth are fetched from the stored proxy configuration.
+// When proxyId is not provided, url is required and auth is optional.
+func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfoFetchRequest) (*api.MCPServerInfoFetchResponse, error) {
+	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
 
-	if err := utils.ValidateURL(context.Background(), req.Url); err != nil {
+	var url string
+	var headerName, headerValue string
+
+	if req.ProxyId != nil && *req.ProxyId != "" {
+		if req.Auth != nil {
+			s.slogger.Warn("Auth override is not allowed when proxyId is provided. Ignoring auth in request and using stored auth from proxy configuration.", "org_id", orgUUID, "proxy_id", *req.ProxyId)
+		}
+		// ProxyId provided - fetch stored configuration (refetch flow)
+		// Auth override is NOT allowed in refetch - use exactly what's stored
+		proxy, err := s.repo.GetByHandle(*req.ProxyId, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get MCP proxy: %w", err)
+		}
+		if proxy == nil {
+			return nil, constants.ErrMCPProxyNotFound
+		}
+
+		// Use stored URL from proxy configuration
+		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.URL != "" {
+			url = proxy.Configuration.Upstream.Main.URL
+		}
+
+		// Use stored auth from proxy configuration
+		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.Auth != nil {
+			headerName = proxy.Configuration.Upstream.Main.Auth.Header
+			headerValue = proxy.Configuration.Upstream.Main.Auth.Value
+		}
+	} else {
+		// No proxyId - initial creation flow, url is required
+		if req.Url == nil || *req.Url == "" {
+			return nil, constants.ErrInvalidInput
+		}
+		url = *req.Url
+
+		// Use provided auth (optional for initial fetch)
+		if req.Auth != nil && req.Auth.Header != nil && req.Auth.Value != nil {
+			headerName = *req.Auth.Header
+			headerValue = *req.Auth.Value
+		}
+	}
+
+	if err := utils.ValidateURL(context.Background(), url); err != nil {
 		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
 	}
 
-	// Extract header info from auth if provided
-	var headerName, headerValue string
-	if req.Auth != nil && req.Auth.Header != nil && req.Auth.Value != nil {
-		headerName = *req.Auth.Header
-		headerValue = *req.Auth.Value
-	}
-
-	return utils.FetchMCPServerInfo(req.Url, headerName, headerValue)
+	return utils.FetchMCPServerInfo(url, headerName, headerValue)
 }
 
 // Helper functions
