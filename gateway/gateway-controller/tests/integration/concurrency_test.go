@@ -211,7 +211,6 @@ func TestConcurrentMixedOperations(t *testing.T) {
 			}
 
 			cfg.Status = models.StatusDeployed
-			cfg.DeployedVersion = int64(id)
 			if err := db.UpdateConfig(cfg); err != nil {
 				errors <- fmt.Errorf("updater %d failed to update: %w", id, err)
 			}
@@ -275,8 +274,7 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 			}
 
 			// Update it
-			cfg.DeployedVersion = int64(id)
-			if err := db.UpdateConfig(cfg); err != nil {
+				if err := db.UpdateConfig(cfg); err != nil {
 				errors <- fmt.Errorf("goroutine %d failed to update config: %w", id, err)
 			}
 		}(i)
@@ -299,9 +297,6 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, finalCfg)
 	assert.Equal(t, "SharedAPI", finalCfg.DisplayName)
-
-	// The final DeployedVersion will be whichever goroutine completed last
-	t.Logf("Final deployed version: %d", finalCfg.DeployedVersion)
 }
 
 // TestConcurrentGetAllConfigs tests concurrent GetAllConfigs calls

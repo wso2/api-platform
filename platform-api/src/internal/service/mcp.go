@@ -423,6 +423,8 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		Upstream:       mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
 		Policies:       mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		Capabilities:   mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
+		CreatedAt:      utils.TimePtr(m.CreatedAt),
+		UpdatedAt:      utils.TimePtr(m.UpdatedAt),
 	}
 }
 

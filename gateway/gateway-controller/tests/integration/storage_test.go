@@ -96,7 +96,6 @@ func createTestConfig(name, version string) *models.StoredConfig {
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Status:              models.StatusPending,
-		DeployedVersion:     0,
 	}
 }
 
@@ -132,7 +131,6 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 
 		// Update the configuration
 		cfg.Status = "deployed"
-		cfg.DeployedVersion = 1
 		err = db.UpdateConfig(cfg)
 		assert.NoError(t, err, "UpdateConfig should succeed")
 
@@ -140,7 +138,6 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
 		assert.Equal(t, models.StatusDeployed, retrieved.Status)
-		// DeployedVersion is runtime-only (not persisted to DB)
 	})
 
 	// Test DeleteConfig
@@ -340,7 +337,6 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Status:              models.StatusPending,
-		DeployedVersion:     0,
 	}
 }
 
@@ -549,7 +545,6 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 			Configuration:       newApiConfig,
 			SourceConfiguration: newApiConfig,
 			Status:              cfg.Status,
-			DeployedVersion:     cfg.DeployedVersion,
 		}
 		newHandle := updatedCfg.Handle
 
@@ -636,7 +631,6 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 			Configuration:       asyncApiConfig,
 			SourceConfiguration: asyncApiConfig,
 			Status:              models.StatusPending,
-			DeployedVersion:     0,
 		}
 
 		err := configStore.Add(cfg)

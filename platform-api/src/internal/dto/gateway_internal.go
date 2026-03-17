@@ -27,7 +27,6 @@ type DeploymentNotification struct {
 	CreatedAt         time.Time        `json:"createdAt" binding:"required"`
 	UpdatedAt         time.Time        `json:"updatedAt" binding:"required"`
 	DeployedAt        *time.Time       `json:"deployedAt,omitempty"`
-	DeployedVersion   *int             `json:"deployedVersion,omitempty"`
 	ProjectIdentifier string           `json:"projectIdentifier" binding:"required"`
 }
 

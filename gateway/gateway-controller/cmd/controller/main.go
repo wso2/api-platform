@@ -13,8 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
@@ -45,8 +47,8 @@ var (
 func toBackendConfig(cfg *config.Config) storage.BackendConfig {
 	pg := cfg.Controller.Storage.Postgres
 	return storage.BackendConfig{
-		Type:        cfg.Controller.Storage.Type,
-		SQLitePath:  cfg.Controller.Storage.SQLite.Path,
+		Type:       cfg.Controller.Storage.Type,
+		SQLitePath: cfg.Controller.Storage.SQLite.Path,
 		Postgres: storage.PostgresConnectionConfig{
 			DSN:             pg.DSN,
 			Host:            pg.Host,
@@ -130,6 +132,31 @@ func main() {
 		defer db.Close()
 	} else {
 		log.Info("Running in memory-only mode (no persistent storage)")
+	}
+
+	// Initialize EventHub for multi-replica sync (requires persistent storage)
+	var eventHubInstance eventhub.EventHub
+	var eventHubStorage storage.Storage
+	if cfg.IsPersistentMode() {
+		// Create separate storage connection for EventHub (avoids SQLite lock contention)
+		eventHubStorage, err = storage.NewStorage(toBackendConfig(cfg), log)
+		if err != nil {
+			log.Error("Failed to initialize EventHub storage", slog.Any("error", err))
+			os.Exit(1)
+		}
+		eventHubDB := eventHubStorage.GetDB()
+		if eventHubDB != nil {
+			eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
+			if err := eventHubInstance.Initialize(); err != nil {
+				log.Error("Failed to initialize EventHub", slog.Any("error", err))
+				os.Exit(1)
+			}
+			eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID)
+			log.Info("EventHub initialized for multi-replica sync",
+				slog.String("gateway_id", cfg.Controller.Server.GatewayID))
+		} else {
+			log.Warn("EventHub storage returned nil DB, skipping EventHub initialization")
+		}
 	}
 
 	// Initialize in-memory config store
@@ -326,7 +353,7 @@ func main() {
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation and API key management
-	cpClient := controlplane.NewClient(cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router, apiKeyXDSManager, &cfg.APIKey, policyManager, cfg, policyDefinitions, lazyResourceXDSManager, templateDefinitions, subscriptionSnapshotManager)
+	cpClient := controlplane.NewClient(cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router, apiKeyXDSManager, &cfg.APIKey, policyManager, cfg, policyDefinitions, lazyResourceXDSManager, templateDefinitions, subscriptionSnapshotManager, eventHubInstance)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -358,9 +385,31 @@ func main() {
 	router.Use(authenticators.AuthorizationMiddleware(authConfig, log))
 	router.Use(gin.Recovery())
 
+	// Initialize EventListener for multi-replica sync (consumes EventHub events)
+	var evtListener *eventlistener.EventListener
+	if eventHubInstance != nil {
+		evtListener = eventlistener.NewEventListener(
+			eventHubInstance,
+			configStore,
+			db,
+			snapshotManager,
+			apiKeyXDSManager,
+			policyManager,
+			&cfg.Router,
+			log,
+			cfg,
+			policyDefinitions,
+		)
+		if err := evtListener.Start(); err != nil {
+			log.Error("Failed to start event listener", slog.Any("error", err))
+			os.Exit(1)
+		}
+		log.Info("EventListener started for multi-replica sync")
+	}
+
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg)
+		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
@@ -460,7 +509,18 @@ func main() {
 	ctx, cancel = context.WithTimeout(context.Background(), cfg.Controller.Server.ShutdownTimeout)
 	defer cancel()
 
-	// Stop control plane client first
+	// Stop event listener and EventHub first
+	if evtListener != nil {
+		evtListener.Stop()
+	}
+	if eventHubInstance != nil {
+		eventHubInstance.Close()
+	}
+	if eventHubStorage != nil {
+		eventHubStorage.Close()
+	}
+
+	// Stop control plane client
 	cpClient.Stop()
 
 	if err := srv.Shutdown(ctx); err != nil {
