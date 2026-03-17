@@ -151,7 +151,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 	}
 
 	event := &model.APIKeyRevokedEvent{
-		ApiId:   proxyID,
+		ApiId:   proxy.UUID,
 		KeyName: keyName,
 	}
 

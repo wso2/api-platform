@@ -150,7 +150,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 	}
 
 	event := &model.APIKeyRevokedEvent{
-		ApiId:   providerID,
+		ApiId:   provider.UUID,
 		KeyName: keyName,
 	}
 

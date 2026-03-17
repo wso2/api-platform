@@ -565,7 +565,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 
 	// Build the API key revoked event
 	event := &model.APIKeyRevokedEvent{
-		ApiId:   apiHandle,
+		ApiId:   apiId,
 		KeyName: keyName,
 	}
 
