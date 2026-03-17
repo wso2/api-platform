@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"io"
@@ -77,6 +78,8 @@ type APIServer struct {
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
 	systemConfig         *config.Config
+	eventHub             eventhub.EventHub
+	gatewayID            string
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -93,8 +96,18 @@ func NewAPIServer(
 	validator config.Validator,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
+	eventHub eventhub.EventHub,
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
+
+	// Set EventHub on services for event-driven synchronization
+	if eventHub != nil {
+		gatewayID := systemConfig.Controller.Server.GatewayID
+		deploymentService.SetEventHub(eventHub, gatewayID)
+		apiKeyService.SetEventHub(eventHub, gatewayID)
+	}
+
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	parser := config.NewParser()
@@ -114,13 +127,14 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
-		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
-			&systemConfig.APIKey),
+		apiKeyService:      apiKeyService,
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
 		httpClient:         httpClient,
 		systemConfig:       systemConfig,
+		eventHub:           eventHub,
+		gatewayID:          systemConfig.Controller.Server.GatewayID,
 	}
 
 	// Create RestAPI service and handler
@@ -130,6 +144,7 @@ func NewAPIServer(
 		deploymentService, apiKeyXDSManager,
 		controlPlaneClient, routerConfig, systemConfig,
 		httpClient, parser, validator, logger,
+		eventHub,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -155,7 +170,11 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 
 	now := time.Now()
 	if success {
-		cfg.Status = models.StatusDeployed
+		if cfg.Status == models.StatusUndeployed {
+			cfg.Status = models.StatusUndeployed
+		} else {
+			cfg.Status = models.StatusDeployed
+		}
 		cfg.DeployedAt = &now
 		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",

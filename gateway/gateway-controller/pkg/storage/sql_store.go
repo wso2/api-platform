@@ -1650,6 +1650,10 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 }
 
 // Close closes the database connection
+func (s *sqlStore) GetDB() *sql.DB {
+	return s.db
+}
+
 func (s *sqlStore) Close() error {
 	backend := s.backendName
 	if backend == "" {
