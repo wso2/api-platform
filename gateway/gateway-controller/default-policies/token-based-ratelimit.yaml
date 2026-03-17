@@ -1,5 +1,5 @@
 name: token-based-ratelimit
-version: v0.8.2
+version: v0.8.3
 description: |
   Enforces token-based rate limits for LLM traffic by resolving token extraction
   paths from provider templates and delegating enforcement to the
@@ -28,8 +28,8 @@ parameters:
           duration:
             type: string
             x-wso2-policy-advanced-param: false
-            description: Specifies the duration window for the limit, for
-              example "1m", "1h", or "24h".
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
             pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
     completionTokenLimits:
       type: array
@@ -50,8 +50,8 @@ parameters:
           duration:
             type: string
             x-wso2-policy-advanced-param: false
-            description: Specifies the duration window for the limit, for
-              example "1m", "1h", or "24h".
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
             pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
     totalTokenLimits:
       type: array
@@ -72,9 +72,35 @@ parameters:
           duration:
             type: string
             x-wso2-policy-advanced-param: false
-            description: Specifies the duration window for the limit, for
-              example "1m", "1h", or "24h".
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
             pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+  oneOf:
+    - required: ["promptTokenLimits"]
+      not:
+        anyOf:
+          - required: ["completionTokenLimits"]
+          - required: ["totalTokenLimits"]
+    - required: ["completionTokenLimits"]
+      not:
+        anyOf:
+          - required: ["promptTokenLimits"]
+          - required: ["totalTokenLimits"]
+    - required: ["totalTokenLimits"]
+      not:
+        anyOf:
+          - required: ["promptTokenLimits"]
+          - required: ["completionTokenLimits"]
+    - required: ["promptTokenLimits", "completionTokenLimits"]
+      not:
+        required: ["totalTokenLimits"]
+    - required: ["promptTokenLimits", "totalTokenLimits"]
+      not:
+        required: ["completionTokenLimits"]
+    - required: ["completionTokenLimits", "totalTokenLimits"]
+      not:
+        required: ["promptTokenLimits"]
+    - required: ["promptTokenLimits", "completionTokenLimits", "totalTokenLimits"]
 
 systemParameters:
   type: object
@@ -132,14 +158,20 @@ systemParameters:
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.failuremode}"
         connectionTimeout:
           type: string
+          description: Redis connection timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
           default: "5s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connectiontimeout}"
         readTimeout:
           type: string
+          description: Redis read timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
           default: "3s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.readtimeout}"
         writeTimeout:
           type: string
+          description: Redis write timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
           default: "3s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.writetimeout}"
 
@@ -154,5 +186,8 @@ systemParameters:
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.maxentries}"
         cleanupInterval:
           type: string
+          description: Interval for cleaning up expired in-memory entries as a
+            Go duration string, for example "1s", "1m", "1h", or "24h". Use
+            "0" to disable cleanup.
           default: "5m"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanupinterval}"

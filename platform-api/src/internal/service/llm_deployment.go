@@ -216,7 +216,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 			vhost = *provider.Configuration.VHost
 		}
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
-			ProviderId:   provider.ID,
+			ProviderId:   provider.UUID,
 			DeploymentID: deploymentID,
 			Vhost:        vhost,
 			Environment:  "production",

@@ -151,7 +151,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 	}
 
 	event := &model.APIKeyRevokedEvent{
-		ApiId:   proxyID,
+		ApiId:   proxy.UUID,
 		KeyName: keyName,
 	}
 
@@ -266,7 +266,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 
 	event := &model.APIKeyCreatedEvent{
 		UUID:         apiKeyUUID,
-		ApiId:        proxyID,
+		ApiId:        proxy.UUID,
 		Name:         name,
 		ApiKeyHashes: apiKeyHashesJSON,
 		MaskedApiKey: maskedAPIKey,
