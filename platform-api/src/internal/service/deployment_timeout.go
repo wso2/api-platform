@@ -71,7 +71,7 @@ func (s *DeploymentTimeoutService) Start(ctx context.Context) {
 	}
 
 	s.slogger.Info("Deployment timeout job started",
-		"interval", interval, "timeout", timeout)
+		slog.String("interval", interval.String()), slog.String("timeout", timeout.String()))
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

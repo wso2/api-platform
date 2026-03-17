@@ -174,6 +174,9 @@ func GetConfig() *Server {
 			// Validate default devportal configuration
 			err = validateDefaultDevPortalConfig(&settingInstance.DefaultDevPortal)
 		}
+		if err == nil {
+			err = validateDeploymentsConfig(&settingInstance.Deployments)
+		}
 	})
 	if err != nil {
 		panic(err)
@@ -223,5 +226,20 @@ func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
 		return fmt.Errorf("default DevPortal header key name is not configured")
 	}
 
+	return nil
+}
+
+// validateDeploymentsConfig validates deployment timeout configuration.
+// When timeout is enabled, interval and duration must be positive.
+func validateDeploymentsConfig(cfg *Deployments) error {
+	if !cfg.TimeoutEnabled {
+		return nil
+	}
+	if cfg.TimeoutInterval <= 0 {
+		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_INTERVAL must be a positive integer (got %d)", cfg.TimeoutInterval)
+	}
+	if cfg.TimeoutDuration <= 0 {
+		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_DURATION must be a positive integer (got %d)", cfg.TimeoutDuration)
+	}
 	return nil
 }
