@@ -279,7 +279,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 
 	event := &model.APIKeyCreatedEvent{
 		UUID:         apiKeyUUID,
-		ApiId:        providerID,
+		ApiId:        provider.UUID,
 		Name:         name,
 		ApiKeyHashes: apiKeyHashesJSON,
 		MaskedApiKey: maskedAPIKey,
