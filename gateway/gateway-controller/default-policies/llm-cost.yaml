@@ -1,8 +1,9 @@
 name: llm-cost
 version: v0.1.0
 description: |
-  Calculates the monetary cost of LLM API calls at response time and injects the
-  result as an x-llm-cost response header (value: USD float, e.g. "0.0000423100").
+  Calculates the monetary cost of LLM API calls at response time and stores the
+  result in SharedContext.Metadata under "x-llm-cost" (USD float, e.g. "0.0000423100").
+  The cost is not exposed as a response header so it never reaches the end user.
 
   The policy reads the model name from $.model in the response body (or $.modelVersion
   for Gemini native format), looks it up in the pricing database, normalises

@@ -2,8 +2,8 @@ name: llm-cost-based-ratelimit
 version: v0.1.0
 description: |
   A specialized rate limiting policy for LLMs that limits usage based on monetary budgets.
-  The policy reads costs from the x-llm-cost response header (set by the llm-cost system
-  policy) and enforces per-consumer spending limits (e.g., $10 per hour, $100 per day).
+  The policy reads costs from SharedContext.Metadata under "x-llm-cost" (set by the llm-cost
+  system policy) and enforces per-consumer spending limits (e.g., $10 per hour, $100 per day).
   It delegates the actual rate limiting to the advanced-ratelimit engine.
 
 parameters:
