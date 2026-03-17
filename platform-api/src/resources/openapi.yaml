@@ -5871,6 +5871,10 @@ components:
           type: string
           format: date-time
           description: Timestamp when the deployment artifact was created
+        statusReason:
+          type: string
+          nullable: true
+          description: Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR)
         updatedAt:
           type: string
           format: date-time

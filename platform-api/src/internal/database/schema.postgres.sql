@@ -175,13 +175,15 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     gateway_uuid VARCHAR(40) NOT NULL,
     deployment_id VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
+    status_desired VARCHAR(20),
+    performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status_reason VARCHAR(50),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (artifact_uuid, organization_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE,
-    CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
+    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
 );
 
 -- Artifact Associations table (for both gateways and dev portals)

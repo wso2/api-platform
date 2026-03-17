@@ -702,6 +702,9 @@ type DeploymentResponse struct {
 	// - ARCHIVED: Historical deployment, can be rolled back
 	Status DeploymentResponseStatus `binding:"required" json:"status" yaml:"status"`
 
+	// StatusReason Error code explaining the failure reason (null unless status is FAILED)
+	StatusReason *string `json:"statusReason" yaml:"statusReason"`
+
 	// UpdatedAt Timestamp when the deployment status last changed (null for ARCHIVED deployments)
 	UpdatedAt *time.Time `json:"updatedAt" yaml:"updatedAt"`
 }

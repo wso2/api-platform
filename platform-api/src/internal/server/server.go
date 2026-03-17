@@ -18,6 +18,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -215,7 +216,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
-	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin, slogger)
+	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
 	gitHandler := handler.NewGitHandler(gitService, slogger)
@@ -227,6 +228,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
+	// Start deployment timeout background job
+	timeoutConfig := service.DeploymentTimeoutConfig{
+		Enabled:  cfg.Deployments.TimeoutEnabled,
+		Interval: time.Duration(cfg.Deployments.TimeoutInterval) * time.Second,
+		Timeout:  time.Duration(cfg.Deployments.TimeoutDuration) * time.Second,
+	}
+	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
+	go timeoutService.Start(context.Background())
+
 	slogger.Info("Initialized all services and handlers successfully")
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {

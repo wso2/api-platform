@@ -127,6 +127,17 @@ type DefaultDevPortal struct {
 // Deployments holds deployment-specific configuration
 type Deployments struct {
 	MaxPerAPIGateway int `envconfig:"MAX_PER_API_GATEWAY" default:"20"`
+
+	// TransitionalStatusEnabled controls whether deploy/undeploy sets DEPLOYING/UNDEPLOYING
+	// before waiting for a gateway ack. When false (default), status is set immediately to
+	// DEPLOYED/UNDEPLOYED without waiting for acknowledgement.
+	TransitionalStatusEnabled bool `envconfig:"TRANSITIONAL_STATUS_ENABLED" default:"false"`
+
+	// Timeout job settings for transitional deployment statuses (DEPLOYING/UNDEPLOYING).
+	// Only relevant when TransitionalStatusEnabled is true.
+	TimeoutEnabled  bool `envconfig:"TIMEOUT_ENABLED" default:"true"`
+	TimeoutInterval int  `envconfig:"TIMEOUT_INTERVAL" default:"20"` // seconds between checks
+	TimeoutDuration int  `envconfig:"TIMEOUT_DURATION" default:"60"` // seconds before a status is considered stale
 }
 
 // package-level variable and mutex for thread safety

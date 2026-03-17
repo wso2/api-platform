@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/model"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	ws "platform-api/src/internal/websocket"
@@ -35,10 +36,11 @@ import (
 
 // WebSocketHandler handles WebSocket connection upgrades and lifecycle
 type WebSocketHandler struct {
-	manager        *ws.Manager
-	gatewayService *service.GatewayService
-	upgrader       websocket.Upgrader
-	slogger        *slog.Logger
+	manager           *ws.Manager
+	gatewayService    *service.GatewayService
+	deploymentService *service.DeploymentService
+	upgrader          websocket.Upgrader
+	slogger           *slog.Logger
 
 	// Rate limiting: track connection attempts per IP
 	rateLimitMu    sync.RWMutex
@@ -47,10 +49,11 @@ type WebSocketHandler struct {
 }
 
 // NewWebSocketHandler creates a new WebSocket handler
-func NewWebSocketHandler(manager *ws.Manager, gatewayService *service.GatewayService, rateLimitCount int, slogger *slog.Logger) *WebSocketHandler {
+func NewWebSocketHandler(manager *ws.Manager, gatewayService *service.GatewayService, deploymentService *service.DeploymentService, rateLimitCount int, slogger *slog.Logger) *WebSocketHandler {
 	return &WebSocketHandler{
-		manager:        manager,
-		gatewayService: gatewayService,
+		manager:           manager,
+		gatewayService:    gatewayService,
+		deploymentService: deploymentService,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				// TODO: Implement proper origin checking in production
@@ -196,9 +199,7 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	}
 }
 
-// readLoop reads messages from the WebSocket connection.
-// This is primarily for handling control frames (ping/pong) and detecting disconnections.
-// Gateways are not expected to send application messages to the platform.
+// readLoop reads messages from the WebSocket connection and routes them to handlers.
 func (h *WebSocketHandler) readLoop(conn *ws.Connection) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -206,34 +207,69 @@ func (h *WebSocketHandler) readLoop(conn *ws.Connection) {
 		}
 	}()
 
-	// Read messages until connection closes
-	// The gorilla/websocket library handles ping/pong automatically via SetPongHandler
 	for {
-		// Check if connection is closed
 		if conn.IsClosed() {
 			return
 		}
 
-		// Read next message (blocks until message or error)
-		// We don't expect gateways to send messages, but we need to read
-		// to detect disconnections and handle control frames
 		wsTransport, ok := conn.Transport.(*ws.WebSocketTransport)
 		if !ok {
 			h.slogger.Error("Invalid transport type for connection", "gatewayID", conn.GatewayID, "connectionID", conn.ConnectionID)
 			return
 		}
 
-		_, _, err := wsTransport.ReadMessage()
+		_, message, err := wsTransport.ReadMessage()
 		if err != nil {
-			// Connection closed or error occurred
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 				h.slogger.Error("WebSocket read error", "gatewayID", conn.GatewayID, "connectionID", conn.ConnectionID, "error", err)
 			}
 			return
 		}
 
-		// If gateway sends messages, we can handle them here in future iterations
-		// For now, we just ignore any messages from the gateway
+		// Parse message type
+		var msg struct {
+			Type    string          `json:"type"`
+			Payload json.RawMessage `json:"payload"`
+		}
+		if err := json.Unmarshal(message, &msg); err != nil {
+			h.slogger.Warn("Failed to parse incoming WebSocket message",
+				"gatewayID", conn.GatewayID, "connectionID", conn.ConnectionID, "error", err)
+			continue
+		}
+
+		switch msg.Type {
+		case "deployment.ack":
+			h.handleDeploymentAck(conn, msg.Payload)
+		default:
+			h.slogger.Debug("Received unknown message type from gateway",
+				"gatewayID", conn.GatewayID, "type", msg.Type)
+		}
+	}
+}
+
+// handleDeploymentAck processes a deployment acknowledgement message from the gateway
+func (h *WebSocketHandler) handleDeploymentAck(conn *ws.Connection, payload json.RawMessage) {
+	var ack model.DeploymentAckPayload
+	if err := json.Unmarshal(payload, &ack); err != nil {
+		h.slogger.Error("Failed to parse deployment.ack payload",
+			"gatewayID", conn.GatewayID, "connectionID", conn.ConnectionID, "error", err)
+		return
+	}
+
+	h.slogger.Info("Received deployment.ack",
+		"gatewayID", conn.GatewayID, "artifactID", ack.ArtifactID,
+		"deploymentID", ack.DeploymentID, "action", ack.Action,
+		"status", ack.Status, "performedAt", ack.PerformedAt)
+
+	if h.deploymentService == nil {
+		h.slogger.Error("DeploymentService not available for ack handling",
+			"gatewayID", conn.GatewayID)
+		return
+	}
+
+	if err := h.deploymentService.HandleDeploymentAck(conn.GatewayID, conn.OrganizationID, &ack); err != nil {
+		h.slogger.Error("Failed to handle deployment ack",
+			"gatewayID", conn.GatewayID, "error", err)
 	}
 }
 
