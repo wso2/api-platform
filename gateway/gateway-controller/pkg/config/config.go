@@ -378,13 +378,13 @@ type LoggingConfig struct {
 
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
-	Host                 string        `koanf:"host"`                   // Control plane hostname
-	Token                string        `koanf:"token"`                  // Registration token (api-key)
-	ReconnectInitial     time.Duration `koanf:"reconnect_initial"`      // Initial retry delay
-	ReconnectMax         time.Duration `koanf:"reconnect_max"`          // Maximum retry delay
-	PollingInterval      time.Duration `koanf:"polling_interval"`       // Reconciliation polling interval
-	InsecureSkipVerify   bool          `koanf:"insecure_skip_verify"`   // Skip TLS certificate verification (default: true for dev)
-	DeploymentPushEnabled bool         `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
+	Host                  string        `koanf:"host"`                    // Control plane hostname
+	Token                 string        `koanf:"token"`                   // Registration token (api-key)
+	ReconnectInitial      time.Duration `koanf:"reconnect_initial"`       // Initial retry delay
+	ReconnectMax          time.Duration `koanf:"reconnect_max"`           // Maximum retry delay
+	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
+	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (default: true for dev)
+	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
 }
 
 // APIKeyConfig represents the configuration for API keys

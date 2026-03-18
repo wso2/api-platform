@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -229,7 +230,7 @@ func (c *Client) Start() error {
 
 	c.logger.Info("Starting control plane client",
 		slog.String("host", c.config.Host),
-		slog.String("websocket_url", c.getWebSocketURL()),
+		slog.String("websocket_url", c.getWebSocketConnectURL()),
 	)
 
 	// Start connection in background
@@ -273,8 +274,9 @@ func (c *Client) Stop() {
 func (c *Client) Connect() error {
 	c.setState(Connecting)
 
+	wsURL := c.resolveWebSocketConnectURL()
 	c.logger.Info("Connecting to control plane",
-		slog.String("url", c.getWebSocketURL()),
+		slog.String("url", wsURL),
 		slog.Int("retry_count", c.state.RetryCount),
 	)
 
@@ -295,8 +297,7 @@ func (c *Client) Connect() error {
 	headers := http.Header{}
 	headers.Add("api-key", c.config.Token)
 
-	// Dial WebSocket
-	wsURL := c.getWebSocketURL() + "/gateways/connect"
+	// Dial WebSocket: URL from well-known discovery with fallback to default path.
 	conn, resp, err := dialer.Dial(wsURL, headers)
 	if err != nil {
 		if resp != nil {
@@ -372,6 +373,79 @@ func (c *Client) Connect() error {
 	go c.heartbeatMonitor()
 
 	return nil
+}
+
+// gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1/ws"}.
+// Extra fields from the server are ignored.
+type gatewayWellKnownResponse struct {
+	GatewayPath string `json:"gatewayPath"`
+}
+
+// resolveWebSocketConnectURL resolves the registration URL using the control plane well-known endpoint.
+// Falls back to the default configured URL when discovery fails.
+func (c *Client) resolveWebSocketConnectURL() string {
+	gatewayPath, err := c.discoverGatewayPath()
+	if err != nil {
+		c.logger.Debug("Failed to resolve gateway path from well-known endpoint, falling back to configured URL",
+			slog.Any("error", err),
+		)
+		return c.getWebSocketConnectURL()
+	}
+
+	resolvedURL := fmt.Sprintf("wss://%s%s/gateways/connect", c.config.Host, gatewayPath)
+	c.logger.Debug("Resolved WebSocket connect URL from well-known endpoint",
+		slog.String("gateway_path", gatewayPath),
+		slog.String("resolved_url", resolvedURL),
+	)
+
+	return resolvedURL
+}
+
+// discoverGatewayPath fetches the gateway websocket base path from the control plane well-known endpoint.
+func (c *Client) discoverGatewayPath() (string, error) {
+	wellKnownURL := fmt.Sprintf("https://%s/internal/gateway/.well-known", c.config.Host)
+
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.config.InsecureSkipVerify},
+		},
+	}
+
+	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, wellKnownURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create well-known request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call well-known endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("well-known endpoint returned non-200 status: %d", resp.StatusCode)
+	}
+
+	var wellKnownResp gatewayWellKnownResponse
+	if err := json.NewDecoder(resp.Body).Decode(&wellKnownResp); err != nil {
+		return "", fmt.Errorf("failed to decode well-known response: %w", err)
+	}
+
+	gatewayPath := normalizeGatewayPath(wellKnownResp.GatewayPath)
+	if gatewayPath == "" {
+		return "", fmt.Errorf("well-known response missing gatewayPath")
+	}
+
+	return gatewayPath, nil
+}
+
+func normalizeGatewayPath(path string) string {
+	trimmed := strings.Trim(strings.TrimSpace(path), "/")
+	if trimmed == "" {
+		return ""
+	}
+	return "/" + trimmed
 }
 
 // sendMessage writes a message to the WebSocket connection with proper serialization
@@ -2944,16 +3018,17 @@ func (c *Client) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig,
 	return c.apiUtilsService.PushAPIDeployment(apiID, apiConfig, deploymentID)
 }
 
-// getWebSocketURL constructs the base WebSocket URL from configuration
+// getWebSocketURL constructs the base WebSocket URL from configuration (cloud default; on-prem may override via well-known).
 func (c *Client) getWebSocketURL() string {
-	return fmt.Sprintf("wss://%s/api/internal/v1/ws",
-		c.config.Host,
-	)
+	return fmt.Sprintf("wss://%s/api/internal/v1/ws", c.config.Host)
 }
 
-// getRestAPIBaseURL constructs the base REST API URL from configuration
+// getWebSocketConnectURL returns the full WebSocket URL for gateway connect (fallback when well-known is unavailable).
+func (c *Client) getWebSocketConnectURL() string {
+	return c.getWebSocketURL() + "/gateways/connect"
+}
+
+// getRestAPIBaseURL constructs the base REST API URL from configuration.
 func (c *Client) getRestAPIBaseURL() string {
-	return fmt.Sprintf("https://%s/api/internal/v1",
-		c.config.Host,
-	)
+	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
 }
