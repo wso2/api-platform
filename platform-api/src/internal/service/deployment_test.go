@@ -219,6 +219,17 @@ func (m *mockDeploymentAPIRepository) SetCurrent(artifactUUID, orgUUID, gatewayI
 	return m.setCurrentUpdatedAt, nil
 }
 
+func (m *mockDeploymentAPIRepository) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
+	m.setCurrentCalled = true
+	m.setCurrentArtifactID = artifactUUID
+	m.setCurrentGatewayID = gatewayID
+	m.setCurrentStatus = status
+	if m.setCurrentError != nil {
+		return time.Time{}, m.setCurrentError
+	}
+	return m.setCurrentUpdatedAt, nil
+}
+
 func (m *mockDeploymentAPIRepository) Delete(deploymentID, artifactUUID, orgUUID string) error {
 	m.deleteCalled = true
 	return m.deleteError
@@ -295,6 +306,17 @@ func (m *mockDeploymentRepo) GetStatus(artifactUUID, orgUUID, gatewayID string) 
 }
 
 func (m *mockDeploymentRepo) SetCurrent(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (time.Time, error) {
+	m.setCurrentCalled = true
+	m.setCurrentArtifactID = artifactUUID
+	m.setCurrentGatewayID = gatewayID
+	m.setCurrentStatus = status
+	if m.setCurrentError != nil {
+		return time.Time{}, m.setCurrentError
+	}
+	return m.setCurrentUpdatedAt, nil
+}
+
+func (m *mockDeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
 	m.setCurrentCalled = true
 	m.setCurrentArtifactID = artifactUUID
 	m.setCurrentGatewayID = gatewayID
@@ -538,6 +560,7 @@ func TestRestoreDeployment(t *testing.T) {
 				apiRepo:        mockAPIRepo,
 				deploymentRepo: mockDeploymentRepo,
 				gatewayRepo:    mockGatewayRepo,
+				cfg:            &config.Server{},
 			}
 
 			result, err := service.RestoreDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID)
@@ -744,6 +767,7 @@ func TestUndeployDeployment(t *testing.T) {
 			service := &DeploymentService{
 				deploymentRepo: mockDeploymentRepo,
 				gatewayRepo:    mockGatewayRepo,
+				cfg:            &config.Server{},
 			}
 
 			result, err := service.UndeployDeployment(testAPIUUID, tt.deploymentID, tt.gatewayID, testOrgUUID)
@@ -1307,6 +1331,7 @@ func TestRollbackDeployment_WhenAllDeploymentsArchived(t *testing.T) {
 	service := &DeploymentService{
 		deploymentRepo: mockDeploymentRepo,
 		gatewayRepo:    mockGatewayRepo,
+		cfg:            &config.Server{},
 	}
 
 	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
@@ -1363,6 +1388,7 @@ func TestRollbackDeployment_ToArchivedWhenCurrentUndeployed(t *testing.T) {
 	service := &DeploymentService{
 		deploymentRepo: mockDeploymentRepo,
 		gatewayRepo:    mockGatewayRepo,
+		cfg:            &config.Server{},
 	}
 
 	result, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
@@ -1549,6 +1575,7 @@ func TestUndeployDeployment_WhenOnlyOneDeploymentExists(t *testing.T) {
 	service := &DeploymentService{
 		deploymentRepo: mockDeploymentRepo,
 		gatewayRepo:    mockGatewayRepo,
+		cfg:            &config.Server{},
 	}
 
 	result, err := service.UndeployDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)
@@ -1599,6 +1626,7 @@ func TestRollbackDeployment_CurrentlyDeployedSameID(t *testing.T) {
 	service := &DeploymentService{
 		deploymentRepo: mockDeploymentRepo,
 		gatewayRepo:    mockGatewayRepo,
+		cfg:            &config.Server{},
 	}
 
 	_, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID)

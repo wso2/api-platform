@@ -104,6 +104,7 @@ type Client struct {
 	cancel                      context.CancelFunc
 	stopChan                    chan struct{}
 	wg                          sync.WaitGroup
+	writeMu                     sync.Mutex // serializes writes to the WebSocket connection
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -246,16 +247,21 @@ func (c *Client) Stop() {
 	close(c.stopChan)
 	c.cancel()
 
-	// Close active connection if exists
+	// Close active connection if exists: nil out conn under state.mu first so no
+	// new sendMessage call can obtain it, then acquire writeMu to drain any
+	// in-flight write before sending the close frame.
 	c.state.mu.Lock()
-	if c.state.Conn != nil {
-		// Send close frame with normal closure code
-		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Gateway shutting down")
-		_ = c.state.Conn.WriteMessage(websocket.CloseMessage, closeMsg)
-		_ = c.state.Conn.Close()
-		c.state.Conn = nil
-	}
+	conn := c.state.Conn
+	c.state.Conn = nil
 	c.state.mu.Unlock()
+
+	if conn != nil {
+		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Gateway shutting down")
+		c.writeMu.Lock()
+		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		c.writeMu.Unlock()
+		_ = conn.Close()
+	}
 
 	// Wait for goroutines to finish
 	c.wg.Wait()
@@ -366,6 +372,65 @@ func (c *Client) Connect() error {
 	go c.heartbeatMonitor()
 
 	return nil
+}
+
+// sendMessage writes a message to the WebSocket connection with proper serialization
+func (c *Client) sendMessage(message []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	c.state.mu.RLock()
+	conn := c.state.Conn
+	c.state.mu.RUnlock()
+
+	if conn == nil {
+		return fmt.Errorf("no active WebSocket connection")
+	}
+
+	return conn.WriteMessage(websocket.TextMessage, message)
+}
+
+// sendDeploymentAck sends a deployment acknowledgement message back to the control plane
+func (c *Client) sendDeploymentAck(deploymentID, artifactID, resourceType, action, status string, performedAt time.Time, errorCode string) {
+	// Skip ack if control plane is not configured — no connection will be active.
+	if c.config.Host == "" {
+		return
+	}
+	ack := DeploymentAckMessage{
+		Type: "deployment.ack",
+		Payload: DeploymentAckPayload{
+			DeploymentID: deploymentID,
+			ArtifactID:   artifactID,
+			ResourceType: resourceType,
+			Action:       action,
+			Status:       status,
+			PerformedAt:  performedAt,
+			ErrorCode:    errorCode,
+		},
+	}
+
+	ackJSON, err := json.Marshal(ack)
+	if err != nil {
+		c.logger.Error("Failed to marshal deployment ack",
+			slog.String("deployment_id", deploymentID),
+			slog.Any("error", err))
+		return
+	}
+
+	if err := c.sendMessage(ackJSON); err != nil {
+		c.logger.Error("Failed to send deployment ack",
+			slog.String("deployment_id", deploymentID),
+			slog.String("artifact_id", artifactID),
+			slog.Any("error", err))
+		return
+	}
+
+	c.logger.Info("Deployment ack sent",
+		slog.String("deployment_id", deploymentID),
+		slog.String("artifact_id", artifactID),
+		slog.String("resource_type", resourceType),
+		slog.String("action", action),
+		slog.String("status", status))
 }
 
 // waitForConnectionAck waits for the connection.ack message from the server
@@ -567,19 +632,21 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 
 // Close closes the WebSocket connection
 func (c *Client) Close() error {
+	// Nil out conn under state.mu first so no new sendMessage call can obtain
+	// it, then acquire writeMu to drain any in-flight write before sending the
+	// close frame.
 	c.state.mu.Lock()
-	defer c.state.mu.Unlock()
+	conn := c.state.Conn
+	c.state.Conn = nil
+	c.setStateNoLock(Disconnected)
+	c.state.mu.Unlock()
 
-	if c.state.Conn != nil {
-		// Send close frame with normal closure code
+	if conn != nil {
 		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Client closing connection")
-		_ = c.state.Conn.WriteMessage(websocket.CloseMessage, closeMsg)
-
-		err := c.state.Conn.Close()
-		c.state.Conn = nil
-		c.setStateNoLock(Disconnected)
-
-		return err
+		c.writeMu.Lock()
+		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		c.writeMu.Unlock()
+		return conn.Close()
 	}
 
 	return nil
@@ -979,7 +1046,8 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	// (deploymentService handles DB + event publishing when eventHub is set)
 	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.CorrelationID)
 	if err != nil {
-		// Error already logged in fetchAndDeployAPI
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -987,10 +1055,14 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	// Skip when eventHub is set — EventListener handles policy derivation
 	if c.eventHub == nil {
 		if err := c.updatePolicyForDeployment(apiID, deployedEvent.CorrelationID, result); err != nil {
-			// Error already logged in updatePolicyForDeployment
+			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
+				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 			return
 		}
 	}
+
+	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "success",
+		deployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed API deployment event",
 		slog.String("api_id", apiID),
@@ -1044,7 +1116,9 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 			c.logger.Warn("API configuration not found for undeployment",
 				slog.String("api_id", apiID),
 			)
-			// Not an error - the API might already be undeployed or deleted
+			// Still send success ack - the API is already undeployed
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
 			return
 		}
 		// Real storage error - log and abort
@@ -1053,6 +1127,8 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1067,6 +1143,8 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 				slog.String("api_id", apiID),
 				slog.Any("error", err),
 			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 			return
 		}
 	}
@@ -1089,6 +1167,8 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 				slog.String("api_id", apiID),
 				slog.Any("error", err),
 			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 			return
 		}
 
@@ -1098,6 +1178,9 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
 		c.updateXDSSnapshotAsync(apiID, undeployedEvent.CorrelationID, false, true)
 	}
+
+	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "success",
+		undeployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed API undeployment event",
 		slog.String("api_id", apiID),
@@ -1502,6 +1585,8 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1512,6 +1597,8 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1520,6 +1607,8 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1530,14 +1619,20 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
 	// Update policy engine xDS snapshot (best-effort)
 	if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
-		// Error already logged in updatePolicyForDeployment
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "success",
+		deployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed LLM proxy deployment event",
 		slog.String("proxy_id", proxyID),
@@ -1591,6 +1686,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1601,6 +1698,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1609,6 +1708,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.String("provider_id", providerID),
 			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1619,14 +1720,20 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
 	// Update policy engine xDS snapshot (best-effort)
 	if err := c.updatePolicyForDeployment(providerID, deployedEvent.CorrelationID, result); err != nil {
-		// Error already logged in updatePolicyForDeployment
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "success",
+		deployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed LLM provider deployment event",
 		slog.String("provider_id", providerID),
@@ -1670,6 +1777,8 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 			slog.String("provider_id", providerID),
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1679,8 +1788,13 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",
+		undeployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed LLM provider undeployment event",
 		slog.String("provider_id", providerID),
@@ -1724,6 +1838,8 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1733,8 +1849,13 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "success",
+		undeployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed LLM proxy undeployment event",
 		slog.String("proxy_id", proxyID),

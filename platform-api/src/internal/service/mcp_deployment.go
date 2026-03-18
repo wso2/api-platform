@@ -280,6 +280,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		nil,
 	)
 }
 
@@ -364,6 +365,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		deployment.Metadata,
 		deployment.CreatedAt,
 		&newUpdatedAt,
+		nil,
 	)
 }
 
@@ -429,6 +431,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		targetDeployment.Metadata,
 		targetDeployment.CreatedAt,
 		&updatedAt,
+		nil,
 	)
 }
 
@@ -461,6 +464,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		deployment.StatusReason,
 	)
 }
 
@@ -508,6 +512,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 			d.Metadata,
 			d.CreatedAt,
 			d.UpdatedAt,
+			d.StatusReason,
 		)
 		if err != nil {
 			return nil, err

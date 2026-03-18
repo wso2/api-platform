@@ -305,12 +305,27 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		s.slogger.Warn("Failed to ensure API-gateway association", "error", err)
 	}
 
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	if _, err := s.deploymentRepo.SetCurrentWithDetails(
+		apiUUID, orgUUID, gatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	); err != nil {
+		s.slogger.Warn("Failed to set deployment status", "error", err)
+	}
+
 	// Send deployment event to gateway
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.DeploymentEvent{
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
 			Vhost:        gateway.Vhost,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastDeploymentEvent(gatewayID, deploymentEvent); err != nil {
@@ -318,16 +333,16 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		}
 	}
 
-	// Return deployment response (status and updatedAt are set by CreateDeploymentWithLimitEnforcement)
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		nil,
 	)
 }
 
@@ -365,8 +380,17 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	// Use SetCurrentDeployment to activate the target deployment with status='DEPLOYED'
-	updatedAt, err := s.deploymentRepo.SetCurrent(apiUUID, orgUUID, targetDeployment.GatewayID, deploymentID, model.DeploymentStatusDeployed)
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		apiUUID, orgUUID, targetDeployment.GatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
@@ -377,6 +401,7 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
 			Vhost:        gateway.Vhost,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
@@ -388,11 +413,12 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
 		targetDeployment.CreatedAt,
 		&updatedAt,
+		nil,
 	)
 }
 
@@ -426,18 +452,28 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	// Update status to UNDEPLOYED using SetCurrentDeployment
-	newUpdatedAt, err := s.deploymentRepo.SetCurrent(apiUUID, orgUUID, deployment.GatewayID, deploymentID, model.DeploymentStatusUndeployed)
+	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusUndeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusUndeploying
+	}
+	performedAt := time.Now()
+	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		apiUUID, orgUUID, deployment.GatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusUndeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
 	// Send undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := gateway.Vhost
 		undeploymentEvent := &model.APIUndeploymentEvent{
-			ApiId: apiUUID,
-			Vhost: vhost,
+			ApiId:        apiUUID,
+			DeploymentID: deploymentID,
+			Vhost:        gateway.Vhost,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
@@ -449,11 +485,12 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusUndeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
 		&newUpdatedAt,
+		nil,
 	)
 }
 
@@ -479,6 +516,86 @@ func (s *DeploymentService) DeleteDeployment(apiUUID, deploymentID, orgUUID stri
 	}
 
 	return nil
+}
+
+// HandleDeploymentAck processes a deployment acknowledgement from the gateway.
+// It validates the ack, checks the performed_at concurrency token, and transitions
+// the deployment status accordingly.
+func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *model.DeploymentAckPayload) error {
+	if ack == nil {
+		return fmt.Errorf("ack payload is nil")
+	}
+	if ack.ArtifactID == "" || ack.DeploymentID == "" {
+		return fmt.Errorf("ack missing required fields: artifactId=%q, deploymentId=%q", ack.ArtifactID, ack.DeploymentID)
+	}
+
+	s.slogger.Info("Processing deployment ack",
+		"gatewayID", gatewayID, "artifactID", ack.ArtifactID,
+		"deploymentID", ack.DeploymentID, "action", ack.Action,
+		"status", ack.Status, "performedAt", ack.PerformedAt)
+
+	// Resolve the artifact UUID from the deployment ID. Acks from LLM provider/proxy handlers
+	// send the human-readable string ID (e.g. "ct-openai-provider") as artifactId, not the UUID.
+	artifactUUID, err := s.deploymentRepo.GetArtifactUUIDByDeploymentID(ack.DeploymentID, orgID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve artifact UUID for ack: %w", err)
+	}
+	if artifactUUID == "" {
+		s.slogger.Info("Ack received for unknown deployment, discarding",
+			"gatewayID", gatewayID, "deploymentID", ack.DeploymentID)
+		return nil
+	}
+
+	if ack.Status == "failed" {
+		// Failure ack: overwrite any status (DEPLOYING, DEPLOYED, UNDEPLOYING) to FAILED
+		// as long as performed_at matches
+		rowsAffected, err := s.deploymentRepo.UpdateStatusWithPerformedAtGuard(
+			artifactUUID, orgID, gatewayID,
+			model.DeploymentStatusFailed, ack.ErrorCode,
+			ack.PerformedAt, nil,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update status for failure ack: %w", err)
+		}
+		if rowsAffected == 0 {
+			s.slogger.Info("Stale failure ack discarded (performed_at mismatch)",
+				"gatewayID", gatewayID, "artifactID", ack.ArtifactID)
+		}
+		return nil
+	}
+
+	if ack.Status == "success" {
+		var newStatus model.DeploymentStatus
+		var requiredStatuses []model.DeploymentStatus
+
+		switch ack.Action {
+		case "deploy":
+			newStatus = model.DeploymentStatusDeployed
+			requiredStatuses = []model.DeploymentStatus{model.DeploymentStatusDeploying}
+		case "undeploy":
+			newStatus = model.DeploymentStatusUndeployed
+			requiredStatuses = []model.DeploymentStatus{model.DeploymentStatusUndeploying}
+		default:
+			return fmt.Errorf("unknown ack action: %s", ack.Action)
+		}
+
+		rowsAffected, err := s.deploymentRepo.UpdateStatusWithPerformedAtGuard(
+			artifactUUID, orgID, gatewayID,
+			newStatus, "",
+			ack.PerformedAt, requiredStatuses,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update status for success ack: %w", err)
+		}
+		if rowsAffected == 0 {
+			s.slogger.Info("Success ack discarded (stale or status already changed)",
+				"gatewayID", gatewayID, "artifactID", ack.ArtifactID,
+				"action", ack.Action)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("unknown ack status: %s", ack.Status)
 }
 
 // validateEndpointURL validates the format of an endpoint URL
@@ -607,9 +724,12 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	// Validate status parameter
 	if status != nil {
 		validStatuses := map[string]bool{
-			string(model.DeploymentStatusDeployed):   true,
-			string(model.DeploymentStatusUndeployed): true,
-			string(model.DeploymentStatusArchived):   true,
+			string(model.DeploymentStatusDeployed):    true,
+			string(model.DeploymentStatusUndeployed):  true,
+			string(model.DeploymentStatusDeploying):   true,
+			string(model.DeploymentStatusUndeploying): true,
+			string(model.DeploymentStatusFailed):      true,
+			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
 			return nil, constants.ErrInvalidDeploymentStatus
@@ -636,6 +756,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 			d.Metadata,
 			d.CreatedAt,
 			d.UpdatedAt,
+			d.StatusReason,
 		)
 		if err != nil {
 			return nil, err
@@ -678,6 +799,7 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		deployment.StatusReason,
 	)
 }
 
@@ -836,12 +958,13 @@ func toAPIDeploymentResponse(
 	metadata map[string]interface{},
 	createdAt time.Time,
 	updatedAt *time.Time,
+	statusReason *string,
 ) (*api.DeploymentResponse, error) {
 	deploymentUUID := utils.ParseOpenAPIUUIDOrZero(deploymentID)
 	gatewayUUID := utils.ParseOpenAPIUUIDOrZero(gatewayID)
 	baseUUID := utils.ParseOptionalOpenAPIUUID(baseDeploymentID)
 
-	return &api.DeploymentResponse{
+	resp := &api.DeploymentResponse{
 		BaseDeploymentId: baseUUID,
 		CreatedAt:        createdAt,
 		DeploymentId:     deploymentUUID,
@@ -849,6 +972,8 @@ func toAPIDeploymentResponse(
 		Metadata:         utils.MapPtrIfNotEmpty(metadata),
 		Name:             name,
 		Status:           api.DeploymentResponseStatus(status),
+		StatusReason:     statusReason,
 		UpdatedAt:        updatedAt,
-	}, nil
+	}
+	return resp, nil
 }
