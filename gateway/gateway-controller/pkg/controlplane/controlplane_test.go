@@ -22,7 +22,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -229,6 +232,17 @@ func createTestClientWithConfig(t *testing.T, cfg config.ControlPlaneConfig) *Cl
 	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub)
 }
 
+func createTestClientWithHost(t *testing.T, host string) *Client {
+	t.Helper()
+	return createTestClientWithConfig(t, config.ControlPlaneConfig{
+		Host:               host,
+		Token:              "test-token",
+		ReconnectInitial:   1 * time.Second,
+		ReconnectMax:       30 * time.Second,
+		InsecureSkipVerify: true,
+	})
+}
+
 func TestNewClient(t *testing.T) {
 	client := createTestClient(t)
 	if client == nil {
@@ -313,6 +327,75 @@ func TestClient_getRestAPIBaseURL(t *testing.T) {
 	expected := "https://control-plane.example.com/api/internal/v1"
 	if url != expected {
 		t.Errorf("getRestAPIBaseURL() = %q, want %q", url, expected)
+	}
+}
+
+func TestClient_discoverGatewayPath_Success(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/gateway/.well-known" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"gateway_path":"internal/data/v1/ws"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	gatewayPath, err := client.discoverGatewayPath()
+	if err != nil {
+		t.Fatalf("discoverGatewayPath() error = %v", err)
+	}
+
+	if gatewayPath != "/internal/data/v1/ws" {
+		t.Errorf("discoverGatewayPath() = %q, want %q", gatewayPath, "/internal/data/v1/ws")
+	}
+
+	resolved := client.resolveWebSocketConnectURL()
+	expected := "wss://" + host + "/internal/data/v1/ws/gateways/connect"
+	if resolved != expected {
+		t.Errorf("resolveWebSocketConnectURL() = %q, want %q", resolved, expected)
+	}
+}
+
+func TestClient_resolveWebSocketConnectURL_FallbackOnWellKnownError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal error"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	resolved := client.resolveWebSocketConnectURL()
+	fallback := client.getWebSocketConnectURL()
+
+	if resolved != fallback {
+		t.Errorf("resolveWebSocketConnectURL() = %q, want fallback %q", resolved, fallback)
+	}
+}
+
+func TestNormalizeGatewayPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "plain", input: "internal/data/v1/ws", expected: "/internal/data/v1/ws"},
+		{name: "leading slash", input: "/internal/data/v1/ws", expected: "/internal/data/v1/ws"},
+		{name: "trailing slash", input: "internal/data/v1/ws/", expected: "/internal/data/v1/ws"},
+		{name: "surrounded spaces", input: "  /internal/data/v1/ws/  ", expected: "/internal/data/v1/ws"},
+		{name: "empty", input: "", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeGatewayPath(tt.input); got != tt.expected {
+				t.Errorf("normalizeGatewayPath(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
 	}
 }
 
