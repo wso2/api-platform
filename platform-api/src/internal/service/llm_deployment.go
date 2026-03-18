@@ -989,7 +989,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 			vhost = *proxy.Configuration.Vhost
 		}
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
-			ProxyId:      proxy.ID,
+			ProxyId:      proxy.UUID,
 			DeploymentID: deploymentID,
 			Vhost:        vhost,
 			Environment:  "production",

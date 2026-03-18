@@ -46,6 +46,7 @@ import (
 // APIKeyCreationParams contains parameters for API key creation operations.
 // Handles both local key generation and external key injection.
 type APIKeyCreationParams struct {
+	Kind          string                    // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                    // API handle/ID
 	Request       api.APIKeyCreationRequest // Request body with API key creation details
 	User          *commonmodels.AuthContext // User who initiated the request
@@ -68,6 +69,7 @@ type APIKeyCreationResult struct {
 
 // APIKeyRevocationParams contains parameters for API key revocation operations
 type APIKeyRevocationParams struct {
+	Kind          string                    // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                    // API handle/ID
 	APIKeyName    string                    // // Name of the API key to revoke
 	User          *commonmodels.AuthContext // User who initiated the request
@@ -98,6 +100,7 @@ type APIKeyRegenerationResult struct {
 
 // APIKeyUpdateParams contains parameters for API key update operations
 type APIKeyUpdateParams struct {
+	Kind          string                    // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                    // API handle/ID
 	APIKeyName    string                    // Name of the API key to update
 	Request       api.APIKeyCreationRequest // Request body with update details
@@ -171,7 +174,7 @@ func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string
 // getAPIConfigByHandle resolves a REST API configuration by handle.
 func (s *APIKeyService) getAPIConfigByHandle(kind models.ArtifactKind, handle string) (*models.StoredConfig, error) {
 
-	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(kind, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			return nil, storage.ErrNotFound
@@ -232,7 +235,11 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	}
 
 	// Validate that API exists
-	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			logger.Error("API configuration not found for API Key generation",
@@ -392,11 +399,20 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// Validate that API exists
-	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
-	if err != nil || config == nil {
-		logger.Warn("API configuration not found for API key revocation",
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			logger.Warn("API configuration not found for API key revoke",
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key revoke",
 			slog.Any("error", err))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Validate config type before any storage mutations to fail fast
@@ -540,7 +556,11 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	// Get the API configuration
-	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			logger.Warn("API configuration not found for API key update",
@@ -1819,7 +1839,7 @@ func (s *APIKeyService) generateShortUniqueID() (string, error) {
 // This is used when platform-api broadcasts an apikey.created event.
 // The plain API key is hashed before storage.
 func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
-	handle string,
+	artifactUUID string,
 	user string,
 	request *api.APIKeyCreationRequest,
 	uuid *string,
@@ -1829,19 +1849,33 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 ) (*APIKeyCreationResult, error) {
 	if request == nil {
 		logger.Error("nil APIKeyCreationRequest",
-			slog.String("api_id", handle),
+			slog.String("artifact_uuid", artifactUUID),
 			slog.String("correlation_id", correlationID),
 		)
-		return nil, fmt.Errorf("nil APIKeyCreationRequest for api %s", handle)
+		return nil, fmt.Errorf("nil APIKeyCreationRequest for artifact %s", artifactUUID)
+	}
+
+	// Resolve artifact UUID to kind and handle
+	storedConfig, err := s.store.Get(artifactUUID)
+	if err != nil || storedConfig == nil {
+		logger.Error("artifact not found for UUID",
+			slog.String("artifact_uuid", artifactUUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("artifact not found for UUID %s", artifactUUID)
 	}
 
 	logger.Info("Creating external API key from event",
-		slog.String("api_id", handle),
+		slog.String("artifact_uuid", artifactUUID),
+		slog.String("kind", storedConfig.Kind),
+		slog.String("handle", storedConfig.Handle),
 		slog.Bool("has_expiry", request.ExpiresAt != nil),
 	)
 
 	params := APIKeyCreationParams{
-		Handle:  handle,
+		Kind:    storedConfig.Kind,
+		Handle:  storedConfig.Handle,
 		Request: *request,
 		User: &commonmodels.AuthContext{
 			UserID: user,
@@ -1864,14 +1898,26 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 // RevokeExternalAPIKeyFromEvent revokes an API key from an external event (websocket).
 // This is used when platform-api broadcasts an apikey.revoked event.
 func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
-	handle string,
+	artifactUUID string,
 	keyName string,
 	user string,
 	correlationID string,
 	logger *slog.Logger,
 ) error {
+	// Resolve artifact UUID to kind and handle
+	storedConfig, err := s.store.Get(artifactUUID)
+	if err != nil || storedConfig == nil {
+		logger.Error("artifact not found for UUID",
+			slog.String("artifact_uuid", artifactUUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("artifact not found for UUID %s", artifactUUID)
+	}
+
 	apiKeyRevocationParams := APIKeyRevocationParams{
-		Handle:     handle,
+		Kind:       storedConfig.Kind,
+		Handle:     storedConfig.Handle,
 		APIKeyName: keyName,
 		User: &commonmodels.AuthContext{
 			UserID: user,
@@ -1880,7 +1926,7 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 		CorrelationID: correlationID,
 	}
 
-	_, err := s.RevokeAPIKey(apiKeyRevocationParams)
+	_, err = s.RevokeAPIKey(apiKeyRevocationParams)
 	if err != nil {
 		logger.Error("Failed to revoke external API key", slog.Any("error", err))
 		return err
@@ -1894,7 +1940,7 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 // UpdateExternalAPIKeyFromEvent updates an API key from an external event (websocket).
 // This is used when platform-api broadcasts an apikey.updated event.
 func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
-	handle string,
+	artifactUUID string,
 	apiKeyName string,
 	request *api.APIKeyCreationRequest,
 	apiKeyHashes *string,
@@ -1904,14 +1950,26 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 ) error {
 	if request == nil {
 		logger.Error("nil APIKeyCreationRequest",
-			slog.String("api_id", handle),
+			slog.String("artifact_uuid", artifactUUID),
 			slog.String("correlation_id", correlationID),
 		)
-		return fmt.Errorf("nil APIKeyCreationRequest for api %s", handle)
+		return fmt.Errorf("nil APIKeyCreationRequest for artifact %s", artifactUUID)
+	}
+
+	// Resolve artifact UUID to kind and handle
+	storedConfig, err := s.store.Get(artifactUUID)
+	if err != nil || storedConfig == nil {
+		logger.Error("artifact not found for UUID",
+			slog.String("artifact_uuid", artifactUUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("artifact not found for UUID %s", artifactUUID)
 	}
 
 	apiKeyUpdateParams := APIKeyUpdateParams{
-		Handle:       handle,
+		Kind:         storedConfig.Kind,
+		Handle:       storedConfig.Handle,
 		APIKeyName:   apiKeyName,
 		Request:      *request,
 		ApiKeyHashes: apiKeyHashes,
@@ -1921,12 +1979,12 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 		Logger:        logger,
 		CorrelationID: correlationID,
 	}
-	_, err := s.UpdateAPIKey(apiKeyUpdateParams)
+	_, err = s.UpdateAPIKey(apiKeyUpdateParams)
 	if err != nil {
 		logger.Error("Failed to update external API key", slog.Any("error", err),
 			slog.String("correlation_id", correlationID),
 			slog.String("user_id", user),
-			slog.String("api_id", handle),
+			slog.String("artifact_uuid", artifactUUID),
 		)
 		return err
 	}
