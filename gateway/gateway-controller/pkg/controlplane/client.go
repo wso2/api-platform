@@ -376,6 +376,10 @@ func (c *Client) sendMessage(message []byte) error {
 
 // sendDeploymentAck sends a deployment acknowledgement message back to the control plane
 func (c *Client) sendDeploymentAck(deploymentID, artifactID, resourceType, action, status string, performedAt time.Time, errorCode string) {
+	// Skip ack if control plane is not configured — no connection will be active.
+	if c.config.Host == "" {
+		return
+	}
 	ack := DeploymentAckMessage{
 		Type: "deployment.ack",
 		Payload: DeploymentAckPayload{
