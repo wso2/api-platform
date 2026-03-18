@@ -336,7 +336,7 @@ func TestClient_discoverGatewayPath_Success(t *testing.T) {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"gateway_path":"internal/data/v1/ws"}`))
+		_, _ = w.Write([]byte(`{"gatewayPath":"internal/data/v1/ws"}`))
 	}))
 	defer server.Close()
 

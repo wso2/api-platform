@@ -375,8 +375,10 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-type controlPlaneWellKnownResponse struct {
-	GatewayPath string `json:"gateway_path"`
+// gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1/ws"}.
+// Extra fields from the server are ignored.
+type gatewayWellKnownResponse struct {
+	GatewayPath string `json:"gatewayPath"`
 }
 
 // resolveWebSocketConnectURL resolves the registration URL using the control plane well-known endpoint.
@@ -425,14 +427,14 @@ func (c *Client) discoverGatewayPath() (string, error) {
 		return "", fmt.Errorf("well-known endpoint returned non-200 status: %d", resp.StatusCode)
 	}
 
-	var wellKnownResp controlPlaneWellKnownResponse
+	var wellKnownResp gatewayWellKnownResponse
 	if err := json.NewDecoder(resp.Body).Decode(&wellKnownResp); err != nil {
 		return "", fmt.Errorf("failed to decode well-known response: %w", err)
 	}
 
 	gatewayPath := normalizeGatewayPath(wellKnownResp.GatewayPath)
 	if gatewayPath == "" {
-		return "", fmt.Errorf("well-known response missing gateway_path")
+		return "", fmt.Errorf("well-known response missing gatewayPath")
 	}
 
 	return gatewayPath, nil
