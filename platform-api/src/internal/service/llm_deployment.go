@@ -221,7 +221,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	); err != nil {
-		s.slogger.Warn("Failed to set deployment status for LLM provider", "error", err)
+		return nil, fmt.Errorf("failed to set deployment status for LLM provider: %w", err)
 	}
 
 	// Broadcast LLM provider deployment event to gateway
