@@ -34,18 +34,20 @@ import (
 
 // SubscriptionHandler handles application-level subscription CRUD
 type SubscriptionHandler struct {
-	subscriptionService *service.SubscriptionService
-	slogger             *slog.Logger
+	subscriptionService     *service.SubscriptionService
+	subscriptionPlanService *service.SubscriptionPlanService
+	slogger                 *slog.Logger
 }
 
 // NewSubscriptionHandler creates a new subscription handler
-func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, slogger *slog.Logger) *SubscriptionHandler {
+func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, subscriptionPlanService *service.SubscriptionPlanService, slogger *slog.Logger) *SubscriptionHandler {
 	if slogger == nil {
 		slogger = slog.Default()
 	}
 	return &SubscriptionHandler{
-		subscriptionService: subscriptionService,
-		slogger:             slogger,
+		subscriptionService:     subscriptionService,
+		subscriptionPlanService: subscriptionPlanService,
+		slogger:                 slogger,
 	}
 }
 
@@ -101,7 +103,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create subscription"))
 		return
 	}
-	c.JSON(http.StatusCreated, toSubscriptionResponse(sub))
+	c.JSON(http.StatusCreated, h.toSubscriptionResponse(sub, orgId))
 }
 
 // ListSubscriptions handles GET /api/v1/subscriptions
@@ -156,9 +158,40 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
 		return
 	}
+	// Bulk fetch API handles and plan names to avoid N+1 queries
+	apiUUIDSet := make(map[string]struct{})
+	planIDSet := make(map[string]struct{})
+	for _, sub := range list {
+		if sub.APIUUID != "" {
+			apiUUIDSet[sub.APIUUID] = struct{}{}
+		}
+		if sub.SubscriptionPlanID != nil && *sub.SubscriptionPlanID != "" {
+			planIDSet[*sub.SubscriptionPlanID] = struct{}{}
+		}
+	}
+	apiUUIDs := make([]string, 0, len(apiUUIDSet))
+	for u := range apiUUIDSet {
+		apiUUIDs = append(apiUUIDs, u)
+	}
+	planIDs := make([]string, 0, len(planIDSet))
+	for id := range planIDSet {
+		planIDs = append(planIDs, id)
+	}
+	apiHandleMap, err := h.subscriptionService.GetAPIHandleMap(apiUUIDs, orgId)
+	if err != nil {
+		h.slogger.Error("Failed to bulk fetch API handles for list", "organizationId", orgId, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		return
+	}
+	planNameMap, err := h.subscriptionPlanService.GetPlanNameMap(planIDs, orgId)
+	if err != nil {
+		h.slogger.Error("Failed to bulk fetch plan names for list", "organizationId", orgId, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list subscriptions"))
+		return
+	}
 	items := make([]gin.H, 0, len(list))
 	for _, sub := range list {
-		items = append(items, toSubscriptionResponse(sub))
+		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, apiHandleMap, planNameMap))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"subscriptions": items,
@@ -194,7 +227,7 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get subscription"))
 		return
 	}
-	c.JSON(http.StatusOK, toSubscriptionResponse(sub))
+	c.JSON(http.StatusOK, h.toSubscriptionResponse(sub, orgId))
 }
 
 // UpdateSubscription handles PUT /api/v1/subscriptions/:subscriptionId
@@ -231,7 +264,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update subscription"))
 		return
 	}
-	c.JSON(http.StatusOK, toSubscriptionResponse(sub))
+	c.JSON(http.StatusOK, h.toSubscriptionResponse(sub, orgId))
 }
 
 // DeleteSubscription handles DELETE /api/v1/subscriptions/:subscriptionId
@@ -272,10 +305,15 @@ func (h *SubscriptionHandler) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
-func toSubscriptionResponse(sub *model.Subscription) gin.H {
+func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) gin.H {
+	// apiId in response should be the handle (e.g. "samp1"), not the internal UUID
+	apiIdForResponse := h.subscriptionService.ResolveAPIHandle(sub.APIUUID, orgId)
+	if apiIdForResponse == "" {
+		apiIdForResponse = sub.APIUUID // fallback to UUID
+	}
 	resp := gin.H{
 		"id":             sub.UUID,
-		"apiId":          sub.APIUUID,
+		"apiId":          apiIdForResponse,
 		"organizationId": sub.OrganizationUUID,
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
@@ -286,8 +324,45 @@ func toSubscriptionResponse(sub *model.Subscription) gin.H {
 	}
 	if sub.SubscriptionPlanID != nil {
 		resp["subscriptionPlanId"] = *sub.SubscriptionPlanID
+		// Resolve plan name for display (subscription_plans.plan_name)
+		if h.subscriptionPlanService != nil {
+			plan, err := h.subscriptionPlanService.GetPlan(*sub.SubscriptionPlanID, orgId)
+			if err == nil && plan != nil {
+				resp["subscriptionPlanName"] = plan.PlanName
+			}
+		}
 	}
 	// subscriptionToken is decrypted from DB; empty for legacy hashed tokens
+	if sub.SubscriptionToken != "" {
+		resp["subscriptionToken"] = sub.SubscriptionToken
+	}
+	return resp
+}
+
+// toSubscriptionResponseWithMaps builds a subscription response using pre-fetched lookup maps.
+// Used by ListSubscriptions to avoid N+1 queries.
+func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, apiHandleMap, planNameMap map[string]string) gin.H {
+	apiIdForResponse := apiHandleMap[sub.APIUUID]
+	if apiIdForResponse == "" {
+		apiIdForResponse = sub.APIUUID // fallback to UUID
+	}
+	resp := gin.H{
+		"id":             sub.UUID,
+		"apiId":          apiIdForResponse,
+		"organizationId": sub.OrganizationUUID,
+		"status":         string(sub.Status),
+		"createdAt":      sub.CreatedAt,
+		"updatedAt":      sub.UpdatedAt,
+	}
+	if sub.ApplicationID != nil {
+		resp["applicationId"] = *sub.ApplicationID
+	}
+	if sub.SubscriptionPlanID != nil {
+		resp["subscriptionPlanId"] = *sub.SubscriptionPlanID
+		if name := planNameMap[*sub.SubscriptionPlanID]; name != "" {
+			resp["subscriptionPlanName"] = name
+		}
+	}
 	if sub.SubscriptionToken != "" {
 		resp["subscriptionToken"] = sub.SubscriptionToken
 	}

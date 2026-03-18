@@ -5764,6 +5764,9 @@ components:
         subscriptionPlanId:
           type: string
           description: Subscription plan UUID
+        subscriptionPlanName:
+          type: string
+          description: Subscription plan display name (e.g. Bronze, Gold)
         organizationId:
           type: string
           format: uuid
