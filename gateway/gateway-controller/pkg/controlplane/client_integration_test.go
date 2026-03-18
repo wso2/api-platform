@@ -488,7 +488,7 @@ func TestAPIDeployedEvent_JSONParsing(t *testing.T) {
 		"type": "api.deployed",
 		"payload": {
 			"apiId": "api-123",
-			"deploymentId": "rev-1",
+			"deploymentId": "rev-1"
 		},
 		"timestamp": "2025-01-30T12:00:00Z",
 		"correlationId": "corr-789"
