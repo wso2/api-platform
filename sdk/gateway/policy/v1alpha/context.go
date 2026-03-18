@@ -148,6 +148,12 @@ type StreamBody struct {
 	// EndOfStream signals that no more chunks will follow for this message.
 	// Policies should finalize any accumulated state when true.
 	EndOfStream bool
+
+	// Index is the zero-based sequential position of this chunk within the stream.
+	// The kernel increments this for every chunk delivered to the policy chain.
+	// Useful for accumulation logic (e.g. "have I seen enough chunks yet?"),
+	// first-chunk initialization, and debug logging.
+	Index uint64
 }
 
 // RequestStreamContext is the per-chunk context passed to StreamingRequestBodyPolicy.

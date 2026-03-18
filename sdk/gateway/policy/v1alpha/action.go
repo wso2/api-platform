@@ -37,11 +37,20 @@ type RequestHeaderAction interface {
 }
 
 // UpstreamRequestHeaderModifications continues the request to upstream with the
-// specified header modifications. Returned when no short-circuit is needed.
+// specified header and routing modifications. Returned when no short-circuit is needed.
 type UpstreamRequestHeaderModifications struct {
 	Set    map[string]string   // overwrite header (last write wins)
 	Remove []string            // remove by name (case-insensitive)
 	Append map[string][]string // append values alongside existing
+
+	// Routing mutations — applied before the request is forwarded to upstream.
+	// These are valid at the header phase because routing decisions do not require
+	// the request body to be available.
+	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	Path                    *string             // rewrite the request path (nil = no change)
+	Method                  *string             // rewrite the request method (nil = no change)
+	QueryParametersToAdd    map[string][]string // add or replace query parameters
+	QueryParametersToRemove []string            // remove query parameters by name
 
 	AnalyticsMetadata     map[string]any            // custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
