@@ -229,7 +229,6 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
 			ProviderId:   provider.UUID,
 			DeploymentID: deploymentID,
-			Environment:  "production",
 			PerformedAt:  performedAt,
 		}
 
@@ -308,7 +307,6 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
 			ProviderId:   provider.ID,
 			DeploymentID: deploymentID,
-			Environment:  "production",
 			PerformedAt:  performedAt,
 		}
 
@@ -1032,7 +1030,6 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
 			ProxyId:      proxy.UUID,
 			DeploymentID: deploymentID,
-			Environment:  "production",
 			PerformedAt:  performedAt,
 		}
 
@@ -1111,7 +1108,6 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
 			ProxyId:      proxy.ID,
 			DeploymentID: deploymentID,
-			Environment:  "production",
 			PerformedAt:  performedAt,
 		}
 
@@ -1185,7 +1181,6 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		undeploymentEvent := &model.LLMProxyUndeploymentEvent{
 			ProxyId:      proxy.ID,
 			DeploymentID: deploymentID,
-			Environment:  "production",
 			PerformedAt:  performedAt,
 		}
 

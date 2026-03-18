@@ -88,9 +88,6 @@ type LLMProviderDeploymentEvent struct {
 	// DeploymentID identifies the specific deployment artifact
 	DeploymentID string `json:"deploymentId"`
 
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
-
 	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
 }
@@ -103,9 +100,6 @@ type LLMProviderUndeploymentEvent struct {
 
 	// DeploymentID identifies the specific deployment being undeployed
 	DeploymentID string `json:"deploymentId"`
-
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
 
 	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
@@ -120,9 +114,6 @@ type LLMProxyDeploymentEvent struct {
 	// DeploymentID identifies the specific deployment artifact
 	DeploymentID string `json:"deploymentId"`
 
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
-
 	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
 }
@@ -135,9 +126,6 @@ type LLMProxyUndeploymentEvent struct {
 
 	// DeploymentID identifies the specific deployment being undeployed
 	DeploymentID string `json:"deploymentId"`
-
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
 
 	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
