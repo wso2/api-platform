@@ -79,6 +79,7 @@ type ApplicationRepository interface {
 type APIRepository interface {
 	CreateAPI(api *model.API) error
 	GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error)
+	GetAPIsByUUIDs(uuids []string, orgUUID string) (map[string]string, error)
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
 	GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error)
 	GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) ([]*model.API, error)
@@ -171,6 +172,7 @@ type DevPortalRepository interface {
 type SubscriptionPlanRepository interface {
 	Create(plan *model.SubscriptionPlan) error
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
+	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByNameAndOrg(planName, orgUUID string) (*model.SubscriptionPlan, error)
 	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
 	Update(plan *model.SubscriptionPlan) error

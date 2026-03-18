@@ -106,6 +106,11 @@ func (s *SubscriptionPlanService) GetPlan(planID, orgUUID string) (*model.Subscr
 	return plan, nil
 }
 
+// GetPlanNameMap returns a map of plan UUID to plan name for bulk lookup (avoids N+1 queries).
+func (s *SubscriptionPlanService) GetPlanNameMap(planIDs []string, orgUUID string) (map[string]string, error) {
+	return s.planRepo.GetByIDs(planIDs, orgUUID)
+}
+
 // ListPlans returns subscription plans for an organization with pagination
 func (s *SubscriptionPlanService) ListPlans(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error) {
 	return s.planRepo.ListByOrganization(orgUUID, limit, offset)

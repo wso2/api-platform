@@ -221,7 +221,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	apiHandler := handler.NewAPIHandler(apiService, slogger)
 	devPortalHandler := handler.NewDevPortalHandler(devPortalService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
-	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, slogger)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)

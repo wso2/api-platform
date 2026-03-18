@@ -87,6 +87,23 @@ func derefString(s *string) string {
 	return *s
 }
 
+// ResolveAPIHandle returns the API handle for display (apiId in responses should be the handle, not UUID).
+func (s *SubscriptionService) ResolveAPIHandle(apiUUID, orgUUID string) string {
+	if apiUUID == "" {
+		return ""
+	}
+	api, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
+	if err != nil || api == nil {
+		return apiUUID // fallback to UUID if lookup fails
+	}
+	return api.Handle
+}
+
+// GetAPIHandleMap returns a map of API UUID to handle for bulk lookup (avoids N+1 queries).
+func (s *SubscriptionService) GetAPIHandleMap(uuids []string, orgUUID string) (map[string]string, error) {
+	return s.apiRepo.GetAPIsByUUIDs(uuids, orgUUID)
+}
+
 // CreateSubscription creates a new subscription for an API
 func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, applicationId *string, subscriptionPlanId *string, status string) (*model.Subscription, error) {
 	apiUUID, err := s.resolveAPIUUID(apiId, orgUUID)
