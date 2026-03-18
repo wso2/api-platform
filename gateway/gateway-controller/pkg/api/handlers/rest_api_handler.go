@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
@@ -99,7 +99,14 @@ func (h *RestAPIHandler) CreateRestAPI(c *gin.Context) {
 // ListRestAPIs implements ServerInterface.ListRestAPIs
 // (GET /rest-apis)
 func (h *RestAPIHandler) ListRestAPIs(c *gin.Context, params api.ListRestAPIsParams) {
-	result := h.service.List(params)
+	result, err := h.service.List(params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve API configurations",
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",

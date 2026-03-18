@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // ArtifactKind identifies the type of configuration stored in the database.
@@ -31,10 +31,10 @@ import (
 type ArtifactKind = string
 
 const (
-	KindRestApi    ArtifactKind = "RestApi"
-	KindWebSubApi  ArtifactKind = "WebSubApi"
-	KindMcp        ArtifactKind = "Mcp"
-	KindLlmProxy   ArtifactKind = "LlmProxy"
+	KindRestApi     ArtifactKind = "RestApi"
+	KindWebSubApi   ArtifactKind = "WebSubApi"
+	KindMcp         ArtifactKind = "Mcp"
+	KindLlmProxy    ArtifactKind = "LlmProxy"
 	KindLlmProvider ArtifactKind = "LlmProvider"
 )
 
@@ -50,18 +50,17 @@ const (
 
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
-	UUID                string               `json:"uuid"`
-	Kind                string               `json:"kind"`
-	Handle              string               `json:"handle"`
-	DisplayName         string               `json:"displayName"`
-	Version             string               `json:"version"`
-	Configuration       any                  `json:"configuration"`
-	SourceConfiguration any                  `json:"source_configuration,omitempty"`
-	Status              ConfigStatus         `json:"status"`
-	CreatedAt           time.Time            `json:"createdAt"`
-	UpdatedAt           time.Time            `json:"updatedAt"`
-	DeployedAt          *time.Time           `json:"deployedAt,omitempty"`
-	DeployedVersion     int64                `json:"deployed_version"` // Runtime-only: xDS snapshot version, not persisted to DB
+	UUID                string       `json:"uuid"`
+	Kind                string       `json:"kind"`
+	Handle              string       `json:"handle"`
+	DisplayName         string       `json:"displayName"`
+	Version             string       `json:"version"`
+	Configuration       any          `json:"configuration"`
+	SourceConfiguration any          `json:"source_configuration,omitempty"`
+	Status              ConfigStatus `json:"status"`
+	CreatedAt           time.Time    `json:"createdAt"`
+	UpdatedAt           time.Time    `json:"updatedAt"`
+	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
 }
 
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing

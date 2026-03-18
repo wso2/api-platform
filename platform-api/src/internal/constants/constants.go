@@ -116,6 +116,12 @@ const (
 	AssociationTypeDevPortal = "dev_portal"
 )
 
+// API Key allowed targets constants
+const APIKeyAllowedTargetsAll = "ALL"
+
+// AdminRole is the role name that grants administrative privileges
+const AdminRole = "admin"
+
 // Deployment limit constants
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement
@@ -128,3 +134,17 @@ const (
 )
 
 const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+
+// Metadata key constants for deployment metadata
+const (
+	// MetadataKeyEndpointUrl is the metadata key for the per-deployment endpoint URL override.
+	MetadataKeyEndpointUrl = "endpointUrl"
+	// MetadataKeyVhostMain is the metadata key for the per-deployment main vhost value.
+	MetadataKeyVhostMain = "vhostMain"
+	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
+	MetadataKeyVhostSandbox = "vhostSandbox"
+	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
+	// and persist the current gateway default vhosts, ensuring deployments are immune to future
+	// gateway config changes.
+	VhostGatewayDefault = "_gateway_default_"
+)

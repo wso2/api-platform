@@ -37,6 +37,24 @@ CREATE TABLE IF NOT EXISTS projects (
     UNIQUE(name, organization_uuid)
 );
 
+-- Applications table
+CREATE TABLE IF NOT EXISTS applications (
+    uuid VARCHAR(40) PRIMARY KEY,
+    handle VARCHAR(255) NOT NULL,
+    project_uuid VARCHAR(40),
+    organization_uuid VARCHAR(40) NOT NULL,
+    created_by VARCHAR(255),
+    name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(50) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(project_uuid, organization_uuid, name),
+    UNIQUE(handle, organization_uuid)
+);
+
 -- Artifacts table
 CREATE TABLE IF NOT EXISTS artifacts (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -175,13 +193,15 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     gateway_uuid VARCHAR(40) NOT NULL,
     deployment_id VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
+    status_desired VARCHAR(20),
+    performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status_reason VARCHAR(50),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (artifact_uuid, organization_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE,
-    CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
+    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
 );
 
 -- Artifact Associations table (for both gateways and dev portals)
@@ -303,8 +323,39 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
 );
 
+-- API Keys table (stores API keys for artifacts with hashes as JSON string)
+CREATE TABLE IF NOT EXISTS api_keys (
+    uuid VARCHAR(40) PRIMARY KEY,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(63) NOT NULL,
+    masked_api_key VARCHAR(8) NOT NULL,
+    api_key_hashes TEXT NOT NULL DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME,
+    issuer TEXT NULL DEFAULT NULL,
+    allowed_targets TEXT NOT NULL DEFAULT 'ALL',
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    UNIQUE(artifact_uuid, name)
+);
+
+-- Application API Key mappings table
+CREATE TABLE IF NOT EXISTS application_api_keys (
+    application_uuid VARCHAR(40) NOT NULL,
+    api_key_id VARCHAR(40) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_uuid, api_key_id),
+    FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_org_name_null_project
+    ON applications(organization_uuid, name) WHERE project_uuid IS NULL;
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_api_uuid ON subscriptions(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
@@ -331,3 +382,9 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_org ON llm_provider_templa
 CREATE INDEX IF NOT EXISTS idx_llm_providers_template ON llm_providers(template_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_project ON llm_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_uuid, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_applications_name_project ON applications(name, project_uuid, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_applications_handle_org ON applications(handle, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_keys(application_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);

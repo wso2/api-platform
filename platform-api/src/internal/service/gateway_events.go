@@ -186,6 +186,97 @@ func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID, userId str
 	return fmt.Errorf("failed to deliver API key update event: %w", lastError)
 }
 
+// BroadcastApplicationUpdatedEvent sends an application updated event to target gateway.
+func (s *GatewayEventsService) BroadcastApplicationUpdatedEvent(gatewayID, userId string, event *model.ApplicationUpdatedEvent) error {
+	const maxAttempts = 2
+
+	var lastError error
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		err := s.broadcastApplicationUpdated(gatewayID, userId, event)
+		if err == nil {
+			return nil
+		}
+
+		lastError = err
+		s.slogger.Warn("Application updated event delivery failed", "gatewayID", gatewayID, "error", err)
+	}
+
+	s.slogger.Error("Application updated event delivery failed", "gatewayID", gatewayID, "error", lastError)
+	return fmt.Errorf("failed to deliver application updated event: %w", lastError)
+}
+
+// broadcastAPIKeyUpdated is the internal implementation for broadcasting API key updated events
+func (s *GatewayEventsService) broadcastAPIKeyUpdated(gatewayID, userId string, event *model.APIKeyUpdatedEvent) error {
+	// Create correlation ID for tracing
+	correlationID := uuid.New().String()
+
+	// Serialize payload
+	payloadJSON, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to serialize API key updated event: %w", err)
+	}
+
+	// Validate payload size
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		return err
+	}
+
+	// Create gateway event DTO
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "apikey.updated",
+		Payload:       event,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+		UserId:        userId,
+	}
+
+	// Serialize complete event
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	// Get all connections for this gateway
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	// Broadcast to all connections
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send API key updated event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Debug("API key updated event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "keyName", event.KeyName)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	// Log broadcast summary
+	s.slogger.Debug("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "apikey.updated", "total", len(connections), "success", successCount, "failed", failureCount)
+
+	// Return error if all deliveries failed
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver event to any connection: %w", lastError)
+	}
+
+	return nil
+}
+
 // BroadcastSubscriptionCreatedEvent sends a subscription.created event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionCreatedEvent(gatewayID string, event *model.SubscriptionCreatedEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeSubscriptionCreated, event)
@@ -293,4 +384,65 @@ func (s *GatewayEventsService) BroadcastSubscriptionPlanUpdatedEvent(gatewayID s
 // BroadcastSubscriptionPlanDeletedEvent sends a subscriptionPlan.deleted event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionPlanDeletedEvent(gatewayID string, event *model.SubscriptionPlanDeletedEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeSubscriptionPlanDeleted, event)
+}
+
+func (s *GatewayEventsService) broadcastApplicationUpdated(gatewayID, userId string, event *model.ApplicationUpdatedEvent) error {
+	correlationID := uuid.New().String()
+
+	payloadJSON, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to serialize application updated event: %w", err)
+	}
+
+	if len(payloadJSON) > MaxEventPayloadSize {
+		err := fmt.Errorf("event payload exceeds maximum size: %d bytes (limit: %d bytes)", len(payloadJSON), MaxEventPayloadSize)
+		return err
+	}
+
+	eventDTO := dto.GatewayEventDTO{
+		Type:          "application.updated",
+		Payload:       event,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CorrelationID: correlationID,
+		UserId:        userId,
+	}
+
+	eventJSON, err := json.Marshal(eventDTO)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	connections := s.manager.GetConnections(gatewayID)
+	if len(connections) == 0 {
+		return fmt.Errorf("no active connections for gateway: %s", gatewayID)
+	}
+
+	successCount := 0
+	failureCount := 0
+	var lastError error
+
+	for _, conn := range connections {
+		err := conn.Send(eventJSON)
+		if err != nil {
+			failureCount++
+			lastError = err
+			s.slogger.Error("Failed to send application updated event",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "error", err)
+			conn.DeliveryStats.IncrementFailed(fmt.Sprintf("send error: %v", err))
+		} else {
+			successCount++
+			s.slogger.Info("Application updated event sent",
+				"gatewayID", gatewayID, "connectionID", conn.ConnectionID, "correlationId", correlationID, "applicationId", event.ApplicationId)
+			conn.DeliveryStats.IncrementTotalSent()
+			s.manager.IncrementTotalEventsSent()
+		}
+	}
+
+	s.slogger.Info("Broadcast summary", "gatewayID", gatewayID, "correlationId", correlationID, "type", "application.updated", "total", len(connections), "success", successCount, "failed", failureCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to deliver event to any connection: %w", lastError)
+	}
+
+	return nil
 }

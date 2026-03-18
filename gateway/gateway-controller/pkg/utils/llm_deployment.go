@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -116,7 +116,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("provider validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
 
-	// Transform to APIConfiguration
+	// Transform to RestAPI configuration
 	_, err := s.transformer.Transform(&providerConfig, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM provider to API configuration: %w", err)
@@ -161,7 +161,6 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
-		DeployedVersion:     0,
 	}
 
 	// Save or update
@@ -240,7 +239,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, fmt.Errorf("proxy validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
 
-	// Transform to APIConfiguration
+	// Transform to RestAPI configuration
 	_, err := s.transformer.Transform(&proxyConfig, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM proxy to API configuration: %w", err)
@@ -285,7 +284,6 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
-		DeployedVersion:     0,
 	}
 
 	// Save or update

@@ -19,6 +19,8 @@
 package storage
 
 import (
+	"database/sql"
+
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -151,6 +153,11 @@ type Storage interface {
 	// This is used for API key validation during authentication.
 	GetAPIKeyByID(id string) (*models.APIKey, error)
 
+	// GetAPIKeyByUUID retrieves an API key by its platform UUID.
+	//
+	// Returns an error if the API key is not found.
+	GetAPIKeyByUUID(uuid string) (*models.APIKey, error)
+
 	// GetAPIKeyByKey retrieves an API key by its key value.
 	//
 	// Returns an error if the API key is not found.
@@ -241,6 +248,10 @@ type Storage interface {
 	// DeleteSubscriptionsForAPINotIn removes subscriptions for the given API whose IDs are not in the set.
 	// Used for bulk-sync reconciliation when subscriptions were deleted on the control plane during downtime.
 	DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error
+	// ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
+	//
+	// Existing mappings are removed and the supplied mapping set is inserted.
+	ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error
 
 	// SaveCertificate persists a new certificate.
 	//
@@ -267,6 +278,11 @@ type Storage interface {
 	//
 	// Returns an error if the certificate does not exist.
 	DeleteCertificate(id string) error
+
+	// GetDB returns the underlying *sql.DB for direct access.
+	// Used by EventHub for event synchronization.
+	// Returns nil for non-SQL backends.
+	GetDB() *sql.DB
 
 	// Close closes the storage connection and releases resources.
 	//

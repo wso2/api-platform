@@ -33,7 +33,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -200,7 +200,7 @@ func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 	// Helper function to create minimal test StoredConfig
 	createTestStoredConfig := func() *models.StoredConfig {
 		return &models.StoredConfig{
-			UUID:        "0000-test-api-0000-000000000000",
+			UUID:      "0000-test-api-0000-000000000000",
 			Kind:      "RestApi",
 			Status:    models.StatusDeployed,
 			CreatedAt: time.Now(),
@@ -383,7 +383,6 @@ func TestAPIDeploymentPush_JSON(t *testing.T) {
 		CreatedAt:         now,
 		UpdatedAt:         now,
 		DeployedAt:        &now,
-		DeployedVersion:   1,
 		ProjectIdentifier: "default",
 	}
 

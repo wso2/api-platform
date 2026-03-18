@@ -30,8 +30,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/stretchr/testify/require"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -66,7 +68,7 @@ func TestAPIDeploymentParams(t *testing.T) {
 func TestAPIDeploymentResult(t *testing.T) {
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		UUID:        "0000-test-id-0000-000000000000",
+		UUID:      "0000-test-id-0000-000000000000",
 		Kind:      "RestApi",
 		Status:    models.StatusPending,
 		CreatedAt: now,
@@ -89,7 +91,7 @@ func TestGetTopicsForUpdate(t *testing.T) {
 	t.Run("Empty config returns empty lists", func(t *testing.T) {
 		// Create a config with invalid spec (will fail parsing)
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-test-api-1-0000-000000000000",
+			UUID: "0000-test-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 		// Set up an empty spec that will fail to parse
@@ -115,7 +117,7 @@ func TestGetTopicsForUpdate(t *testing.T) {
 		}
 
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-websub-api-1-0000-000000000000",
+			UUID: "0000-websub-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
@@ -136,7 +138,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns topics from topic manager", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-test-api-1-0000-000000000000",
+			UUID: "0000-test-api-1-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 
@@ -152,7 +154,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns empty for non-existent config", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			UUID:   "0000-non-existent-api-0000-000000000000",
+			UUID: "0000-non-existent-api-0000-000000000000",
 			Kind: string(api.WebSubApi),
 		}
 
@@ -192,7 +194,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		}
 
 		storedCfg := &models.StoredConfig{
-			UUID:   "0000-new-api-id-0000-000000000000",
+			UUID: "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -225,7 +227,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 
 		// First, add a config
 		existingCfg := &models.StoredConfig{
-			UUID:   "0000-existing-api-id-0000-000000000000",
+			UUID: "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -245,7 +247,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		}
 
 		updateCfg := &models.StoredConfig{
-			UUID:   "0000-existing-api-id-0000-000000000000",
+			UUID: "0000-existing-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -277,7 +279,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			UUID:   "0000-config-to-update-0000-000000000000",
+			UUID: "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -297,7 +299,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 		}
 
 		newConfig := &models.StoredConfig{
-			UUID:   "0000-config-to-update-0000-000000000000",
+			UUID: "0000-config-to-update-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -594,7 +596,7 @@ spec:
 		}
 
 		existingCfg := &models.StoredConfig{
-			UUID:   "0000-existing-websub-0000-000000000000",
+			UUID: "0000-existing-websub-0000-000000000000",
 			Kind: string(api.WebSubApi),
 			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
@@ -650,7 +652,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		}
 
 		newCfg := &models.StoredConfig{
-			UUID:   "0000-new-api-id-0000-000000000000",
+			UUID: "0000-new-api-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -683,7 +685,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		}
 
 		existingCfg := &models.StoredConfig{
-			UUID:   "0000-existing-id-0000-000000000000",
+			UUID: "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -699,7 +701,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 
 		// Try to save with same ID (should update instead)
 		updateCfg := &models.StoredConfig{
-			UUID:   "0000-existing-id-0000-000000000000",
+			UUID: "0000-existing-id-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -731,7 +733,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 
 		// Add original config
 		original := &models.StoredConfig{
-			UUID:   "0000-test-api-0000-000000000000",
+			UUID: "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -753,7 +755,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 		}
 
 		newConfig := &models.StoredConfig{
-			UUID:   "0000-test-api-0000-000000000000",
+			UUID: "0000-test-api-0000-000000000000",
 			Kind: string(api.RestApi),
 			Configuration: api.RestAPI{
 				Kind: api.RestApi,
@@ -830,4 +832,203 @@ func TestRegisterAndUnregisterTopicWithHub(t *testing.T) {
 		err := service.UnregisterTopicWithHub(ctx, service.httpClient, "/test", "localhost", 9999, logger)
 		assert.Error(t, err) // Will fail because no server is running
 	})
+}
+
+func TestResolveVhostSentinels_RestApi(t *testing.T) {
+	sandbox := constants.VHostGatewayDefault
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	main := constants.VHostGatewayDefault
+	var cfg any = api.RestAPI{
+		Kind: api.RestApi,
+		Spec: api.APIConfigData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    main,
+				Sandbox: &sandbox,
+			},
+		},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.RestAPI).Spec
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_ExplicitValuesUnchanged(t *testing.T) {
+	sandboxValue := "custom-sandbox.example.com"
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	var cfg any = api.RestAPI{
+		Kind: api.RestApi,
+		Spec: api.APIConfigData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    "custom.example.com",
+				Sandbox: &sandboxValue,
+			},
+		},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.RestAPI).Spec
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "custom.example.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "custom-sandbox.example.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_NilVhostsPopulatesDefaults(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	var cfg any = api.RestAPI{
+		Kind: api.RestApi,
+		Spec: api.APIConfigData{Vhosts: nil},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.RestAPI).Spec
+	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with defaults")
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_NilVhostsNoSandboxDefault(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main: config.VHostEntry{Default: "*.wso2.com"},
+		},
+	}
+
+	var cfg any = api.RestAPI{
+		Kind: api.RestApi,
+		Spec: api.APIConfigData{Vhosts: nil},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.RestAPI).Spec
+	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with main default")
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	assert.Nil(t, resolved.Vhosts.Sandbox, "sandbox should remain nil when no sandbox default configured")
+}
+
+func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T) {
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	var cfg any = api.WebSubAPI{
+		Kind: api.WebSubApi,
+		Spec: api.WebhookAPIData{Vhosts: nil},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.WebSubAPI).Spec
+	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with defaults")
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
+	sandbox := constants.VHostGatewayDefault
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	var cfg any = api.WebSubAPI{
+		Kind: api.WebSubApi,
+		Spec: api.WebhookAPIData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    constants.VHostGatewayDefault,
+				Sandbox: &sandbox,
+			},
+		},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.WebSubAPI).Spec
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_WebSubApi_ExplicitValues(t *testing.T) {
+	sandboxValue := "custom-sandbox.example.com"
+	routerCfg := &config.RouterConfig{
+		VHosts: config.VHostsConfig{
+			Main:    config.VHostEntry{Default: "*.wso2.com"},
+			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
+		},
+	}
+
+	var cfg any = api.WebSubAPI{
+		Kind: api.WebSubApi,
+		Spec: api.WebhookAPIData{
+			Vhosts: &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main:    "custom.example.com",
+				Sandbox: &sandboxValue,
+			},
+		},
+	}
+
+	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
+
+	resolved := cfg.(api.WebSubAPI).Spec
+	require.NotNil(t, resolved.Vhosts)
+	assert.Equal(t, "custom.example.com", resolved.Vhosts.Main)
+	require.NotNil(t, resolved.Vhosts.Sandbox)
+	assert.Equal(t, "custom-sandbox.example.com", *resolved.Vhosts.Sandbox)
+}
+
+func TestResolveVhostSentinels_NilCfgNoOp(t *testing.T) {
+	routerCfg := &config.RouterConfig{}
+	require.NoError(t, resolveVhostSentinels(nil, routerCfg)) // should not panic
+}
+
+func TestResolveVhostSentinels_NilRouterCfgNoOp(t *testing.T) {
+	var cfg any = api.RestAPI{Kind: api.RestApi}
+	require.NoError(t, resolveVhostSentinels(&cfg, nil)) // should not panic
 }

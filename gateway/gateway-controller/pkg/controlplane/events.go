@@ -20,6 +20,24 @@ package controlplane
 
 import "time"
 
+// DeploymentAckMessage represents the acknowledgement message sent back to the control plane
+// after a gateway has processed a deployment or undeployment event.
+type DeploymentAckMessage struct {
+	Type    string               `json:"type"` // always "deployment.ack"
+	Payload DeploymentAckPayload `json:"payload"`
+}
+
+// DeploymentAckPayload contains the details of the deployment acknowledgement
+type DeploymentAckPayload struct {
+	DeploymentID string    `json:"deploymentId"`
+	ArtifactID   string    `json:"artifactId"`
+	ResourceType string    `json:"resourceType"` // "api", "llmprovider", "llmproxy"
+	Action       string    `json:"action"`       // "deploy", "undeploy"
+	Status       string    `json:"status"`       // "success", "failed"
+	PerformedAt  time.Time `json:"performedAt"`
+	ErrorCode    string    `json:"errorCode,omitempty"`
+}
+
 // ConnectionAckMessage represents the acknowledgment message sent by the control plane
 // upon successful WebSocket connection establishment
 type ConnectionAckMessage struct {
@@ -31,8 +49,9 @@ type ConnectionAckMessage struct {
 
 // APIDeployedEventPayload represents the payload of an API deployment event
 type APIDeployedEventPayload struct {
-	APIID        string `json:"apiId"`
-	DeploymentID string `json:"deploymentId"`
+	APIID        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // APIDeployedEvent represents the complete API deployment event
@@ -45,9 +64,10 @@ type APIDeployedEvent struct {
 
 // LLMProviderDeployedEventPayload represents the payload of an LLM provider deployment event
 type LLMProviderDeployedEventPayload struct {
-	ProviderID   string `json:"providerId"`
-	Environment  string `json:"environment"`
-	DeploymentID string `json:"deploymentId"`
+	ProviderID   string    `json:"providerId"`
+	Environment  string    `json:"environment"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // LLMProviderDeployedEvent represents the complete LLM provider deployment event
@@ -60,8 +80,10 @@ type LLMProviderDeployedEvent struct {
 
 // LLMProviderUndeployedEventPayload represents the payload of an LLM provider undeployment event
 type LLMProviderUndeployedEventPayload struct {
-	ProviderID  string `json:"providerId"`
-	Environment string `json:"environment"`
+	ProviderID   string    `json:"providerId"`
+	DeploymentID string    `json:"deploymentId"`
+	Environment  string    `json:"environment"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // LLMProviderUndeployedEvent represents the complete LLM provider undeployment event
@@ -74,9 +96,10 @@ type LLMProviderUndeployedEvent struct {
 
 // LLMProxyDeployedEventPayload represents the payload of an LLM proxy deployment event
 type LLMProxyDeployedEventPayload struct {
-	ProxyID      string `json:"proxyId"`
-	Environment  string `json:"environment"`
-	DeploymentID string `json:"deploymentId"`
+	ProxyID      string    `json:"proxyId"`
+	Environment  string    `json:"environment"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // LLMProxyDeployedEvent represents the complete LLM proxy deployment event
@@ -89,8 +112,10 @@ type LLMProxyDeployedEvent struct {
 
 // LLMProxyUndeployedEventPayload represents the payload of an LLM proxy undeployment event
 type LLMProxyUndeployedEventPayload struct {
-	ProxyID     string `json:"proxyId"`
-	Environment string `json:"environment"`
+	ProxyID      string    `json:"proxyId"`
+	DeploymentID string    `json:"deploymentId"`
+	Environment  string    `json:"environment"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // LLMProxyUndeployedEvent represents the complete LLM proxy undeployment event
@@ -103,8 +128,10 @@ type LLMProxyUndeployedEvent struct {
 
 // APIUndeployedEventPayload represents the payload of an API undeployment event
 type APIUndeployedEventPayload struct {
-	APIID       string `json:"apiId"`
-	Environment string `json:"environment"`
+	APIID        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	Environment  string    `json:"environment"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // APIUndeployedEvent represents the complete API undeployment event
@@ -130,17 +157,18 @@ type APIDeletedEvent struct {
 
 // APIKeyCreatedEventPayload represents the payload of an API key created event.
 type APIKeyCreatedEventPayload struct {
+	UUID          string  `json:"uuid"` // UUID v7 from platform API for cross-system correlation
 	ApiId         string  `json:"apiId"`
-	ApiKey        string  `json:"apiKey"`         // Plain text API key (will be hashed by gateway)
-	Name          string  `json:"name,omitempty"` //  URL-safe identifier (3-63 chars, lowercase alphanumeric with hyphens)
+	ApiKeyHashes  string  `json:"apiKeyHashes"`   // JSON string of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
+	MaskedApiKey  string  `json:"maskedApiKey"`   // Masked representation of the API key for display
+	Name          string  `json:"name,omitempty"` // URL-safe identifier (3-63 chars, lowercase alphanumeric with hyphens)
 	ExternalRefId *string `json:"externalRefId,omitempty"`
-	Operations    string  `json:"operations"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
 	ExpiresIn     *struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	DisplayName *string `json:"displayName,omitempty"`
+	Issuer *string `json:"issuer,omitempty"` // nil if not provided by the platform API
 }
 
 // APIKeyCreatedEvent represents the complete API key created event
@@ -155,15 +183,15 @@ type APIKeyCreatedEvent struct {
 type APIKeyUpdatedEventPayload struct {
 	ApiId         string  `json:"apiId"`
 	KeyName       string  `json:"keyName"`
-	ApiKey        string  `json:"apiKey"` // Plain text API key (will be hashed by gateway)
-	ExternalRefId string  `json:"externalRefId"`
-	Operations    string  `json:"operations"`
+	ApiKeyHashes  string  `json:"apiKeyHashes"` // JSON string of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
+	MaskedApiKey  string  `json:"maskedApiKey"` // Masked representation of the API key for display
+	ExternalRefId *string `json:"externalRefId"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
 	ExpiresIn     *struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	DisplayName string `json:"displayName"`
+	Issuer *string `json:"issuer,omitempty"` // nil if not provided by the platform API
 }
 
 // APIKeyUpdatedEvent represents the complete API key updated event
@@ -336,4 +364,27 @@ type SubscriptionPlanDeletedEvent struct {
 	Payload       SubscriptionPlanDeletedEventPayload `json:"payload"`
 	Timestamp     string                              `json:"timestamp"`
 	CorrelationID string                              `json:"correlationId"`
+}
+
+// ApplicationKeyMappingPayload represents a single application to API key mapping entry.
+type ApplicationKeyMappingPayload struct {
+	ApiKeyUuid string `json:"apiKeyUuid"`
+}
+
+// ApplicationUpdatedEventPayload represents the payload for application mapping updates.
+type ApplicationUpdatedEventPayload struct {
+	ApplicationId   string                         `json:"applicationId"`
+	ApplicationUuid string                         `json:"applicationUuid"`
+	ApplicationName string                         `json:"applicationName"`
+	ApplicationType string                         `json:"applicationType"`
+	Mappings        []ApplicationKeyMappingPayload `json:"mappings"`
+}
+
+// ApplicationUpdatedEvent represents the complete application updated event.
+type ApplicationUpdatedEvent struct {
+	Type          string                         `json:"type"`
+	Payload       ApplicationUpdatedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
+	UserId        string                         `json:"userId"`
 }

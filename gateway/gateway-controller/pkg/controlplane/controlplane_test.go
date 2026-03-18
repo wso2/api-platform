@@ -27,10 +27,60 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
+
+type publishedControlPlaneEvent struct {
+	gatewayID string
+	event     eventhub.Event
+}
+
+type mockControlPlaneEventHub struct {
+	publishedEvents []publishedControlPlaneEvent
+	publishErr      error
+}
+
+func (m *mockControlPlaneEventHub) Initialize() error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) RegisterGateway(string) error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) PublishEvent(gatewayID string, event eventhub.Event) error {
+	if m.publishErr != nil {
+		return m.publishErr
+	}
+	m.publishedEvents = append(m.publishedEvents, publishedControlPlaneEvent{
+		gatewayID: gatewayID,
+		event:     event,
+	})
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) Subscribe(string) (<-chan eventhub.Event, error) {
+	return nil, nil
+}
+
+func (m *mockControlPlaneEventHub) Unsubscribe(string, <-chan eventhub.Event) error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) UnsubscribeAll(string) error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) CleanUpEvents() error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) Close() error {
+	return nil
+}
 
 func TestState_String(t *testing.T) {
 	tests := []struct {
@@ -130,15 +180,20 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 
 func createTestClient(t *testing.T) *Client {
 	t.Helper()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-
-	cfg := config.ControlPlaneConfig{
+	return createTestClientWithConfig(t, config.ControlPlaneConfig{
 		Host:             "control-plane.example.com",
 		Token:            "test-token",
 		ReconnectInitial: 1 * time.Second,
 		ReconnectMax:     30 * time.Second,
-	}
+	})
+}
+
+func createTestClientWithConfig(t *testing.T, cfg config.ControlPlaneConfig) *Client {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	store := storage.NewConfigStore()
+	db := newMockStorageForDeletion()
+	mockHub := &mockControlPlaneEventHub{}
 
 	routerConfig := &config.RouterConfig{
 		VHosts: config.VHostsConfig{
@@ -147,7 +202,23 @@ func createTestClient(t *testing.T) *Client {
 		},
 	}
 
-	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil, nil)
+	apiKeyConfig := &config.APIKeyConfig{
+		Algorithm:            "sha256",
+		MinKeyLength:         32,
+		MaxKeyLength:         128,
+		APIKeysPerUserPerAPI: 5,
+	}
+	systemConfig := &config.Config{
+		Controller: config.Controller{
+			Server: config.ServerConfig{
+				GatewayID: "test-gateway",
+			},
+		},
+		Router: *routerConfig,
+		APIKey: *apiKeyConfig,
+	}
+
+	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub)
 }
 
 func TestNewClient(t *testing.T) {
@@ -164,6 +235,18 @@ func TestNewClient(t *testing.T) {
 	// Verify not connected initially
 	if client.IsConnected() {
 		t.Error("Client should not be connected initially")
+	}
+
+	if client.db == nil {
+		t.Error("Client should be initialized with a database in tests")
+	}
+
+	if client.eventHub == nil {
+		t.Error("Client should be initialized with an event hub in tests")
+	}
+
+	if client.gatewayID != "test-gateway" {
+		t.Errorf("gatewayID = %q, want %q", client.gatewayID, "test-gateway")
 	}
 }
 
@@ -241,18 +324,13 @@ func TestClient_isShuttingDown(t *testing.T) {
 }
 
 func TestClient_isShuttingDown_ContextCancelled(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-
 	cfg := config.ControlPlaneConfig{
 		Host:             "control-plane.example.com",
 		Token:            "test-token",
 		ReconnectInitial: 1 * time.Second,
 		ReconnectMax:     30 * time.Second,
 	}
-
-	routerConfig := &config.RouterConfig{}
-	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil, nil)
+	client := createTestClientWithConfig(t, cfg)
 
 	// Cancel context
 	client.cancel()
@@ -301,9 +379,6 @@ func TestClient_PushAPIDeployment_NotConnected(t *testing.T) {
 }
 
 func TestClient_Start_NoToken(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-
 	// Create client without token
 	cfg := config.ControlPlaneConfig{
 		Host:             "control-plane.example.com",
@@ -311,9 +386,7 @@ func TestClient_Start_NoToken(t *testing.T) {
 		ReconnectInitial: 1 * time.Second,
 		ReconnectMax:     30 * time.Second,
 	}
-
-	routerConfig := &config.RouterConfig{}
-	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil, nil)
+	client := createTestClientWithConfig(t, cfg)
 
 	// Start should return nil and not attempt connection when no token
 	err := client.Start()

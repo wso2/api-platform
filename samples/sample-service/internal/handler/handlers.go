@@ -34,6 +34,7 @@ type Handler struct {
 // RegisterRoutes registers all routes on the given mux.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.Health)
+	mux.HandleFunc("GET /sandbox/whoami", h.SandboxWhoAmI)
 	mux.HandleFunc("GET /captured-request", h.GetCapturedRequest)
 	mux.HandleFunc("/", h.Request)
 }

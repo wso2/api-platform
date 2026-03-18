@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"io"
@@ -38,8 +39,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
@@ -77,6 +78,8 @@ type APIServer struct {
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
 	systemConfig         *config.Config
+	eventHub             eventhub.EventHub
+	gatewayID            string
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -93,8 +96,18 @@ func NewAPIServer(
 	validator config.Validator,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
+	eventHub eventhub.EventHub,
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
+
+	// Set EventHub on services for event-driven synchronization
+	if eventHub != nil {
+		gatewayID := systemConfig.Controller.Server.GatewayID
+		deploymentService.SetEventHub(eventHub, gatewayID)
+		apiKeyService.SetEventHub(eventHub, gatewayID)
+	}
+
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	parser := config.NewParser()
@@ -114,13 +127,14 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
-		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
-			&systemConfig.APIKey),
+		apiKeyService:      apiKeyService,
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
 		httpClient:         httpClient,
 		systemConfig:       systemConfig,
+		eventHub:           eventHub,
+		gatewayID:          systemConfig.Controller.Server.GatewayID,
 	}
 
 	// Create RestAPI service and handler
@@ -130,6 +144,7 @@ func NewAPIServer(
 		deploymentService, apiKeyXDSManager,
 		controlPlaneClient, routerConfig, systemConfig,
 		httpClient, parser, validator, logger,
+		eventHub,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -140,7 +155,7 @@ func NewAPIServer(
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
-func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64, correlationID string) {
+func (s *APIServer) handleStatusUpdate(configID string, success bool, correlationID string) {
 	// Create a logger with correlation ID if provided
 	log := s.logger
 	if correlationID != "" {
@@ -155,9 +170,12 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 
 	now := time.Now()
 	if success {
-		cfg.Status = models.StatusDeployed
+		if cfg.Status == models.StatusUndeployed {
+			cfg.Status = models.StatusUndeployed
+		} else {
+			cfg.Status = models.StatusDeployed
+		}
 		cfg.DeployedAt = &now
-		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
@@ -165,7 +183,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
-		cfg.DeployedVersion = 0
 		log.Error("Configuration deployment failed",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
@@ -1769,6 +1786,7 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 
 	// Prepare parameters
 	params := utils.APIKeyCreationParams{
+		Kind:          models.KindRestApi,
 		Handle:        handle,
 		Request:       request,
 		User:          user,
@@ -1897,17 +1915,18 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		return
 	}
 
-	// If API key is not provided, return an error
-	if request.ApiKey == nil {
+	// If plain-text API key is not provided, return an error
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "API key value is required",
+			Message: "apiKey is required",
 		})
 		return
 	}
 
 	// Prepare parameters
 	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindRestApi,
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
 		Request:       request,
@@ -2143,7 +2162,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 		return "", fmt.Errorf("api not found")
 	}
 	return cfg.UUID, nil
-	}
+}
 
 // CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
 func (s *APIServer) CreateSubscription(c *gin.Context) {
@@ -2166,6 +2185,10 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 	}
 	if strings.TrimSpace(req.ApiId) == "" {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiId is required"})
+		return
+	}
+	if strings.TrimSpace(req.SubscriptionToken) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "subscriptionToken is required"})
 		return
 	}
 
@@ -2249,11 +2272,12 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		appID = req.ApplicationId
 	}
 	sub := &models.Subscription{
-		ID:                uuid.New().String(),
-		APIID:             apiID,
-		ApplicationID:     appID,
+		ID:                 uuid.New().String(),
+		APIID:              apiID,
+		ApplicationID:      appID,
 		SubscriptionPlanID: req.SubscriptionPlanId,
-		Status:            status,
+		Status:             status,
+		SubscriptionToken:  strings.TrimSpace(req.SubscriptionToken),
 	}
 	if err := s.db.SaveSubscription(sub); err != nil {
 		if storage.IsConflictError(err) {
@@ -2733,14 +2757,15 @@ func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionP
 }
 
 // subscriptionToResponse builds a response without the subscription token.
-// The token is only returned once at creation; DB reads contain hashes and must never be exposed.
+// DB reads only have subscription_token_hash; token is never stored. Token is returned only at creation via subscriptionToResponseWithToken.
 func subscriptionToResponse(sub *models.Subscription) api.SubscriptionResponse {
 	resp := api.SubscriptionResponse{
-		Id:        ptr(sub.ID),
-		ApiId:     ptr(sub.APIID),
-		GatewayId: ptr(sub.GatewayID),
-		CreatedAt: &sub.CreatedAt,
-		UpdatedAt: &sub.UpdatedAt,
+		Id:                ptr(sub.ID),
+		ApiId:             ptr(sub.APIID),
+		GatewayId:         ptr(sub.GatewayID),
+		CreatedAt:         &sub.CreatedAt,
+		UpdatedAt:         &sub.UpdatedAt,
+		SubscriptionToken: nil, // Explicitly omit; gateway does not store token, use Platform-API to retrieve
 	}
 	if sub.ApplicationID != nil {
 		resp.ApplicationId = sub.ApplicationID

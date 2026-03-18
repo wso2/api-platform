@@ -35,23 +35,23 @@ const (
 type APIKey struct {
 	UUID         string       `json:"uuid" db:"uuid"`
 	Name         string       `json:"name" db:"name"`                   // URL-safe identifier (auto-generated, immutable)
-	DisplayName  string       `json:"displayName" db:"display_name"`    // Human-readable name (user-provided, mutable)
 	APIKey       string       `json:"apiKey" db:"api_key"`              // Stores hashed API key
 	MaskedAPIKey string       `json:"maskedApiKey" db:"masked_api_key"` // Stores masked API key for display
 	PlainAPIKey  string       `json:"-" db:"-"`                         // Temporary field for plain API key (not persisted)
 	ArtifactUUID string       `json:"artifactUuid" db:"artifact_uuid"`
-	Operations   string       `json:"operations" db:"operations"`
 	Status       APIKeyStatus `json:"status" db:"status"`
 	CreatedAt    time.Time    `json:"createdAt" db:"created_at"`
 	CreatedBy    string       `json:"createdBy" db:"created_by"`
 	UpdatedAt    time.Time    `json:"updatedAt" db:"updated_at"`
 	ExpiresAt    *time.Time   `json:"expiresAt" db:"expires_at"`
-	Unit         *string      `json:"-" db:"expires_in_unit"`
-	Duration     *int         `json:"-" db:"expires_in_duration"`
 
 	// Source tracking for external key support
 	Source        string  `json:"source" db:"source"`                 // "local" | "external"
 	ExternalRefId *string `json:"externalRefId" db:"external_ref_id"` // Cloud APIM key ID or other external reference
+
+	// Issuer identifies the developer portal that provisioned this key; nil if not provided
+	Issuer *string `json:"issuer,omitempty" db:"issuer"`
+
 }
 
 // IsValid checks if the API key is valid (active and not expired)

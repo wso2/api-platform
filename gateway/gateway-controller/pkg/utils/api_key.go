@@ -32,10 +32,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/apikey"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 
 	commonmodels "github.com/wso2/api-platform/common/models"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -44,11 +46,18 @@ import (
 // APIKeyCreationParams contains parameters for API key creation operations.
 // Handles both local key generation and external key injection.
 type APIKeyCreationParams struct {
+	Kind          string                    // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                    // API handle/ID
 	Request       api.APIKeyCreationRequest // Request body with API key creation details
 	User          *commonmodels.AuthContext // User who initiated the request
 	CorrelationID string                    // Correlation ID for tracking
 	Logger        *slog.Logger              // Logger instance
+	// UUID is the pre-assigned key UUID from the platform API event path.
+	// Nil in the REST API path (a new UUID is generated instead).
+	UUID *string
+	// ApiKeyHashes contains pre-computed hashes from the platform API event path.
+	// Nil in the REST API path (which provides a plain-text key instead).
+	ApiKeyHashes *string
 }
 
 // APIKeyCreationResult contains the result of API key creation.
@@ -60,6 +69,7 @@ type APIKeyCreationResult struct {
 
 // APIKeyRevocationParams contains parameters for API key revocation operations
 type APIKeyRevocationParams struct {
+	Kind          string                    // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                    // API handle/ID
 	APIKeyName    string                    // // Name of the API key to revoke
 	User          *commonmodels.AuthContext // User who initiated the request
@@ -90,12 +100,16 @@ type APIKeyRegenerationResult struct {
 
 // APIKeyUpdateParams contains parameters for API key update operations
 type APIKeyUpdateParams struct {
+	Kind          string                    // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                    // API handle/ID
 	APIKeyName    string                    // Name of the API key to update
 	Request       api.APIKeyCreationRequest // Request body with update details
 	User          *commonmodels.AuthContext // User who initiated the request
 	CorrelationID string                    // Correlation ID for tracking
 	Logger        *slog.Logger              // Logger instance
+	// ApiKeyHashes contains pre-computed hashes from the platform API event path.
+	// Nil in the REST API path (which provides a plain-text key instead).
+	ApiKeyHashes *string
 }
 
 // APIKeyUpdateResult contains the result of API key update
@@ -135,6 +149,8 @@ type APIKeyService struct {
 	db           storage.Storage
 	xdsManager   XDSManager
 	apiKeyConfig *config.APIKeyConfig // Configuration for API keys
+	eventHub     eventhub.EventHub
+	gatewayID    string
 }
 
 // NewAPIKeyService creates a new API key generation service
@@ -148,6 +164,49 @@ func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager
 	}
 }
 
+// TODO: (VirajSalaka) Set at the construction of the service.
+// SetEventHub sets the EventHub for event-driven synchronization.
+func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
+	s.eventHub = eventHub
+	s.gatewayID = gatewayID
+}
+
+// getAPIConfigByHandle resolves a REST API configuration by handle.
+func (s *APIKeyService) getAPIConfigByHandle(kind models.ArtifactKind, handle string) (*models.StoredConfig, error) {
+
+	cfg, err := s.db.GetConfigByKindAndHandle(kind, handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			return nil, storage.ErrNotFound
+		}
+		return nil, fmt.Errorf("database error while fetching config: %w", err)
+	}
+	if cfg == nil {
+		return nil, storage.ErrNotFound
+	}
+	return cfg, nil
+}
+
+// publishAPIKeyEvent publishes an API key event to the EventHub.
+func (s *APIKeyService) publishAPIKeyEvent(action, apiID, keyID, correlationID string, logger *slog.Logger) {
+	if s.eventHub == nil {
+		return
+	}
+	event := eventhub.Event{
+		EventType: eventhub.EventTypeAPIKey,
+		Action:    action,
+		EntityID:  apikey.BuildAPIKeyEntityID(apiID, keyID),
+		EventID:   correlationID,
+		EventData: eventhub.EmptyEventData,
+	}
+	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
+		logger.Error("Failed to publish API key event",
+			slog.String("action", action),
+			slog.String("api_id", apiID),
+			slog.String("key_id", keyID),
+			slog.Any("error", err))
+	}
+}
 
 // CreateAPIKey handles the complete API key creation process.
 // Supports both local key generation by generating a new random key and external key injection
@@ -166,19 +225,32 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	)
 
 	// Determine operation type for context-aware messaging
-	isExternalKeyInjection := params.Request.ApiKey != nil && strings.TrimSpace(*params.Request.ApiKey) != ""
+	// External key injection occurs when either pre-computed hashes (from platform API event)
+	// or a plain-text API key (from REST API) is provided.
+	isExternalKeyInjection := (params.ApiKeyHashes != nil && strings.TrimSpace(*params.ApiKeyHashes) != "") ||
+		(params.Request.ApiKey != nil && strings.TrimSpace(*params.Request.ApiKey) != "")
 	operationType := "generate"
 	if isExternalKeyInjection {
 		operationType = "register"
 	}
 
 	// Validate that API exists
-	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
-	if err != nil || config == nil {
-		logger.Error("API configuration not found for API Key generation",
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			logger.Error("API configuration not found for API Key generation",
+				slog.String("operation", operationType+"_key"),
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key generation",
 			slog.String("operation", operationType+"_key"),
 			slog.Any("error", err))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Check API key limit enforcement
@@ -196,7 +268,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 
 	// Create the API key from request (generate new or register external)
 	// For local keys, retry once if duplicate is detected during generation
-	apiKey, err := s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
+	apiKey, err := s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes)
 	if err != nil {
 		logger.Error("Failed to generate API key",
 			slog.Any("error", err),
@@ -222,7 +294,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 					slog.String("operation", operationType+"_key"))
 
 				// Generate a new key
-				apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
+				apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes)
 				if err != nil {
 					logger.Error("Failed to generate API key after collision",
 						slog.String("operation", operationType+"_key"),
@@ -251,39 +323,45 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	plainAPIKey := apiKey.PlainAPIKey // Store plain API key for response
 	apiKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
 
-	// Store the API key in the ConfigStore (for both generated and registered keys)
-	if err := s.store.StoreAPIKey(apiKey); err != nil {
-		logger.Error("Failed to store API key in ConfigStore",
-			slog.Any("error", err),
-			slog.String("operation", operationType+"_key"))
-
-		// Rollback database save to maintain consistency
-		if s.db != nil {
-			if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.ArtifactUUID, apiKey.Name); delErr != nil {
-				logger.Error("Failed to rollback API key from database",
-					slog.Any("error", delErr),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}
-		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
-	}
-
 	apiId := config.UUID
 	apiName := config.DisplayName
 	apiVersion := config.Version
-	logger.Info("Storing API key in policy engine",
-		slog.String("name", apiKey.Name),
-		slog.String("api_name", apiName),
-		slog.String("api_version", apiVersion),
-		slog.String("operation", operationType+"_key"))
 
-	// Send the API key to the policy engine via xDS
-	if s.xdsManager != nil {
-		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, apiKey, params.CorrelationID); err != nil {
-			logger.Error("Failed to send API key to policy engine",
-				slog.String("operation", operationType+"_key"),
-				slog.Any("error", err))
-			return nil, fmt.Errorf("failed to send API key to policy engine: %w", err)
+	if s.eventHub != nil {
+		// Event-driven mode: publish event for async processing by EventListener
+		s.publishAPIKeyEvent("CREATE", apiId, apiKey.UUID, params.CorrelationID, logger)
+	} else {
+		// Memory-only mode: store in ConfigStore and push to xDS inline
+		if err := s.store.StoreAPIKey(apiKey); err != nil {
+			logger.Error("Failed to store API key in ConfigStore",
+				slog.Any("error", err),
+				slog.String("operation", operationType+"_key"))
+
+			// Rollback database save to maintain consistency
+			if s.db != nil {
+				if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.ArtifactUUID, apiKey.Name); delErr != nil {
+					logger.Error("Failed to rollback API key from database",
+						slog.Any("error", delErr),
+						slog.String("correlation_id", params.CorrelationID))
+				}
+			}
+			return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
+		}
+
+		logger.Info("Storing API key in policy engine",
+			slog.String("name", apiKey.Name),
+			slog.String("api_name", apiName),
+			slog.String("api_version", apiVersion),
+			slog.String("operation", operationType+"_key"))
+
+		// Send the API key to the policy engine via xDS
+		if s.xdsManager != nil {
+			if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, apiKey, params.CorrelationID); err != nil {
+				logger.Error("Failed to send API key to policy engine",
+					slog.String("operation", operationType+"_key"),
+					slog.Any("error", err))
+				return nil, fmt.Errorf("failed to send API key to policy engine: %w", err)
+			}
 		}
 	}
 
@@ -321,11 +399,20 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// Validate that API exists
-	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
-	if err != nil || config == nil {
-		logger.Warn("API configuration not found for API key revocation",
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			logger.Warn("API configuration not found for API key revoke",
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key revoke",
 			slog.Any("error", err))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Validate config type before any storage mutations to fail fast
@@ -337,7 +424,6 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	apiConfig := restCfg.Spec
 
 	var apiKey *models.APIKey
-	var matchedKey *models.APIKey
 
 	existingAPIKey, err := s.store.GetAPIKeyByName(config.UUID, apiKeyName)
 	if err != nil {
@@ -359,7 +445,6 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	apiKey = existingAPIKey
-	matchedKey = existingAPIKey
 
 	// For security reasons, perform all validations but don't return errors
 	// This prevents information leakage about API key details
@@ -399,50 +484,40 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 			}
 		}
 
-		// Remove the API key from memory store by name (since we have the matched key)
-		if err := s.store.RemoveAPIKeyByID(config.UUID, apiKey.UUID); err != nil {
-			logger.Error("Failed to remove API key from memory store",
-				slog.Any("error", err))
+		apiId := config.UUID
+		apiName := apiConfig.DisplayName
+		apiVersion := apiConfig.Version
 
-			// Try to rollback database update if memory removal fails
-			if s.db != nil {
-				apiKey.Status = models.APIKeyStatusActive // Rollback status
-				if rollbackErr := s.db.UpdateAPIKey(apiKey); rollbackErr != nil {
-					logger.Error("Failed to rollback API key status in database",
-						slog.Any("error", rollbackErr))
+		if s.eventHub != nil {
+			// Event-driven mode: publish event for async processing by EventListener
+			s.publishAPIKeyEvent("DELETE", apiId, apiKey.UUID, params.CorrelationID, logger)
+		} else {
+			// Memory-only mode: remove from store and xDS inline
+			if err := s.store.RemoveAPIKeyByID(config.UUID, apiKey.UUID); err != nil {
+				logger.Error("Failed to remove API key from memory store",
+					slog.Any("error", err))
+			}
+
+			logger.Info("Removing API key from policy engine",
+				slog.String("api key", apiKeyName),
+				slog.String("api_name", apiName),
+				slog.String("api_version", apiVersion))
+
+			if s.xdsManager != nil {
+				if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, apiKeyName, params.CorrelationID); err != nil {
+					logger.Error("Failed to remove API key from policy engine",
+						slog.Any("error", err))
+					return nil, fmt.Errorf("failed to revoke API key: %w", err)
 				}
 			}
-			return nil, fmt.Errorf("failed to revoke API key: %w", err)
 		}
-	}
-
-	// Remove the API key from database (complete removal)
-	// Note: This is cleanup only - the revocation is already complete
-	if s.db != nil && matchedKey != nil {
-		if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, matchedKey.Name); err != nil {
-			logger.Warn("Failed to remove API key from database, but revocation was successful",
-				slog.Any("error", err))
-			// Don't return error - revocation was already successful
-			// The key is marked as revoked in DB and removed from memory
-		}
-	}
-
-	// remove the api key from the policy engine
-	apiId := config.UUID
-	apiName := apiConfig.DisplayName
-	apiVersion := apiConfig.Version
-	logger.Info("Removing API key from policy engine",
-		slog.String("api key", apiKeyName),
-		slog.String("api_name", apiName),
-		slog.String("api_version", apiVersion))
-
-	// Send the plain API key revocation to the policy engine via xDS
-	// The policy engine will find and revoke the matching hashed key
-	if s.xdsManager != nil {
-		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, apiKeyName, params.CorrelationID); err != nil {
-			logger.Error("Failed to remove API key from policy engine",
-				slog.Any("error", err))
-			return nil, fmt.Errorf("failed to revoke API key: %w", err)
+		// Remove the API key from database (complete removal)
+		// Note: This is cleanup only - the revocation is already complete
+		if s.db != nil {
+			if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
+				logger.Warn("Failed to remove API key from database, but revocation was successful",
+					slog.Any("error", err))
+			}
 		}
 	}
 
@@ -481,10 +556,20 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	// Get the API configuration
-	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
-	if err != nil || config == nil {
-		logger.Warn("API configuration not found for API key update")
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			logger.Warn("API configuration not found for API key update",
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key update",
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Validate config type before any storage mutations to fail fast
@@ -500,7 +585,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	if err != nil {
 		// Only create a new API key if it's a "not found" error
 		// For other errors (DB connection, etc.), return the error
-		if storage.IsNotFoundError(err) && params.Request.ApiKey != nil && strings.TrimSpace(*params.Request.ApiKey) != "" {
+		if storage.IsNotFoundError(err) && params.ApiKeyHashes != nil && strings.TrimSpace(*params.ApiKeyHashes) != "" {
 			logger.Info("API key not found for update, creating new API key",
 				slog.String("handle", params.Handle),
 				slog.String("api_key_name", params.APIKeyName),
@@ -516,6 +601,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 				User:          user,
 				CorrelationID: params.CorrelationID,
 				Logger:        logger,
+				ApiKeyHashes:  params.ApiKeyHashes,
 			}
 
 			creationResult, err := s.CreateAPIKey(creationParams)
@@ -566,7 +652,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("not authorized to update API key '%s'", params.APIKeyName)
 	}
 
-	updatedKey, err := s.updateAPIKeyFromRequest(existingKey, params.Request, user.UserID, logger)
+	updatedKey, err := s.updateAPIKeyFromRequest(existingKey, params.Request, user.UserID, logger, params.ApiKeyHashes)
 	if err != nil {
 		logger.Error("Failed to update API key from request",
 			slog.Any("error", err))
@@ -584,39 +670,44 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		}
 	}
 
-	// Update in ConfigStore
-	if err := s.store.StoreAPIKey(updatedKey); err != nil {
-		logger.Error("Failed to update API key in ConfigStore",
-			slog.Any("error", err))
-
-		// Rollback database update if we have a persistent DB
-		if s.db != nil {
-			if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
-				logger.Error("Failed to rollback API key in database after ConfigStore failure",
-					slog.Any("error", rollbackErr),
-					slog.Any("original_error", err))
-			} else {
-				logger.Info("Successfully rolled back API key in database after ConfigStore failure")
-			}
-		}
-
-		return nil, fmt.Errorf("failed to update API key in ConfigStore: %w", err)
-	}
-
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
-	logger.Info("Updating API key in policy engine",
-		slog.String("api_name", apiName),
-		slog.String("api_version", apiVersion),
-		slog.String("user", user.UserID))
 
-	// Update xDS snapshot to propagate to policy engine
-	if s.xdsManager != nil {
-		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, updatedKey, params.CorrelationID); err != nil {
-			logger.Error("Failed to send updated API key to policy engine",
+	if s.eventHub != nil {
+		// Event-driven mode: publish event for async processing by EventListener
+		s.publishAPIKeyEvent("UPDATE", apiId, updatedKey.UUID, params.CorrelationID, logger)
+	} else {
+		// Memory-only mode: update in ConfigStore and push to xDS inline
+		if err := s.store.StoreAPIKey(updatedKey); err != nil {
+			logger.Error("Failed to update API key in ConfigStore",
 				slog.Any("error", err))
-			return nil, fmt.Errorf("failed to send updated API key to policy engine: %w", err)
+
+			// Rollback database update if we have a persistent DB
+			if s.db != nil {
+				if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
+					logger.Error("Failed to rollback API key in database after ConfigStore failure",
+						slog.Any("error", rollbackErr),
+						slog.Any("original_error", err))
+				} else {
+					logger.Info("Successfully rolled back API key in database after ConfigStore failure")
+				}
+			}
+
+			return nil, fmt.Errorf("failed to update API key in ConfigStore: %w", err)
+		}
+
+		logger.Info("Updating API key in policy engine",
+			slog.String("api_name", apiName),
+			slog.String("api_version", apiVersion),
+			slog.String("user", user.UserID))
+
+		if s.xdsManager != nil {
+			if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, updatedKey, params.CorrelationID); err != nil {
+				logger.Error("Failed to send updated API key to policy engine",
+					slog.Any("error", err))
+				return nil, fmt.Errorf("failed to send updated API key to policy engine: %w", err)
+			}
 		}
 	}
 
@@ -631,16 +722,14 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 			Status:  "success",
 			Message: responseMessage,
 			ApiKey: &api.APIKey{
-				Name:        updatedKey.Name,
-				DisplayName: &updatedKey.DisplayName,
-				ApiKey:      responseAPIKey,
-				ApiId:       params.Handle,
-				Operations:  updatedKey.Operations,
-				Status:      api.APIKeyStatus(updatedKey.Status),
-				CreatedAt:   updatedKey.CreatedAt,
-				CreatedBy:   updatedKey.CreatedBy,
-				ExpiresAt:   updatedKey.ExpiresAt,
-				Source:      api.APIKeySource(updatedKey.Source),
+				Name:      updatedKey.Name,
+				ApiKey:    responseAPIKey,
+				ApiId:     params.Handle,
+				Status:    api.APIKeyStatus(updatedKey.Status),
+				CreatedAt: updatedKey.CreatedAt,
+				CreatedBy: updatedKey.CreatedBy,
+				ExpiresAt: updatedKey.ExpiresAt,
+				Source:    api.APIKeySource(updatedKey.Source),
 			},
 		},
 	}
@@ -666,12 +755,20 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		slog.String("correlation_id", params.CorrelationID))
 
 	// Get the API configuration
-	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
-	if err != nil || config == nil {
-		logger.Warn("API configuration not found for API Key regeneration",
+	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			logger.Warn("API configuration not found for API Key regeneration",
+				slog.String("handle", params.Handle),
+				slog.String("correlation_id", params.CorrelationID),
+				slog.Any("error", err))
+			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+		}
+		logger.Error("Failed to retrieve API configuration for API key regeneration",
 			slog.String("handle", params.Handle),
-			slog.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+			slog.String("correlation_id", params.CorrelationID),
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
 	// Validate config type before any storage mutations to fail fast
@@ -780,42 +877,47 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	plainAPIKey := regeneratedKey.PlainAPIKey // Store plain API key for response
 	regeneratedKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
 
-	// Store the generated API key in the ConfigStore
-	if err := s.store.StoreAPIKey(regeneratedKey); err != nil {
-		logger.Error("Failed to store the regenerated API key in ConfigStore",
-			slog.Any("error", err),
-			slog.String("handle", params.Handle),
-			slog.String("correlation_id", params.CorrelationID))
-
-		// Rollback database save to maintain consistency
-		if s.db != nil {
-			if delErr := s.db.RemoveAPIKeyAPIAndName(regeneratedKey.ArtifactUUID, regeneratedKey.Name); delErr != nil {
-				logger.Error("Failed to rollback API key from database",
-					slog.Any("error", delErr),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}
-		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
-	}
-
 	apiId := config.UUID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
-	logger.Info("Storing API key in policy engine",
-		slog.String("handle", params.Handle),
-		slog.String("name", regeneratedKey.Name),
-		slog.String("api_name", apiName),
-		slog.String("api_version", apiVersion),
-		slog.String("user", user.UserID),
-		slog.String("correlation_id", params.CorrelationID))
 
-	// Update xDS snapshot if needed
-	if s.xdsManager != nil {
-		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, regeneratedKey, params.CorrelationID); err != nil {
-			logger.Error("Failed to send regenerated API key to policy engine",
+	if s.eventHub != nil {
+		// Event-driven mode: publish event for async processing by EventListener
+		s.publishAPIKeyEvent("UPDATE", apiId, regeneratedKey.UUID, params.CorrelationID, logger)
+	} else {
+		// Memory-only mode: store in ConfigStore and push to xDS inline
+		if err := s.store.StoreAPIKey(regeneratedKey); err != nil {
+			logger.Error("Failed to store the regenerated API key in ConfigStore",
 				slog.Any("error", err),
+				slog.String("handle", params.Handle),
 				slog.String("correlation_id", params.CorrelationID))
-			return nil, fmt.Errorf("failed to send regenerated API key to policy engine: %w", err)
+
+			// Roll back to the previous credential to maintain consistency
+			if s.db != nil {
+				if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
+					logger.Error("Failed to rollback regenerated API key in database",
+						slog.Any("error", rollbackErr),
+						slog.String("correlation_id", params.CorrelationID))
+				}
+			}
+			return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
+		}
+
+		logger.Info("Storing API key in policy engine",
+			slog.String("handle", params.Handle),
+			slog.String("name", regeneratedKey.Name),
+			slog.String("api_name", apiName),
+			slog.String("api_version", apiVersion),
+			slog.String("user", user.UserID),
+			slog.String("correlation_id", params.CorrelationID))
+
+		if s.xdsManager != nil {
+			if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, regeneratedKey, params.CorrelationID); err != nil {
+				logger.Error("Failed to send regenerated API key to policy engine",
+					slog.Any("error", err),
+					slog.String("correlation_id", params.CorrelationID))
+				return nil, fmt.Errorf("failed to send regenerated API key to policy engine: %w", err)
+			}
 		}
 	}
 
@@ -900,10 +1002,8 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 		// Return masked API key for display purposes
 		responseAPIKey := api.APIKey{
 			Name:          key.Name,
-			DisplayName:   &key.DisplayName,
 			ApiKey:        &key.MaskedAPIKey, // Return masked API key for security
 			ApiId:         params.Handle,     // Use handle instead of internal API ID
-			Operations:    key.Operations,
 			Status:        api.APIKeyStatus(key.Status),
 			CreatedAt:     key.CreatedAt,
 			CreatedBy:     key.CreatedBy,
@@ -939,28 +1039,53 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 // Handles both local key generation (creates new random key) and external key injection
 // (uses provided key from external platforms).
 func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIKeyCreationRequest, user string,
-	config *models.StoredConfig) (*models.APIKey, error) {
+	config *models.StoredConfig, uuid *string, apiKeyHashes *string) (*models.APIKey, error) {
 
-	// Generate short unique ID (22 characters, URL-safe)
-	// This is an internal ID for tracking and is always generated regardless of source
+	// Generate short unique ID (22 characters, URL-safe) for the internal DB primary key
 	id, err := s.generateShortUniqueID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate unique ID: %w", err)
 	}
 
+	// Resolve keyUUID: use the one from the platform API event if provided, otherwise generate locally
+	var keyUUID string
+	if uuid != nil && strings.TrimSpace(*uuid) != "" {
+		keyUUID = strings.TrimSpace(*uuid)
+	} else {
+		keyUUID, err = GenerateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate api key UUID: %w", err)
+		}
+	}
+
 	// Determine if this is an external key injection or local key generation
-	var plainAPIKeyValue string // The key value to be hashed
+	var plainAPIKeyValue string
+	var hashedAPIKeyValue string
+	var maskedAPIKeyValue string
 	var source string
 	var isExternalKey bool
 
-	if request.ApiKey != nil {
-		// External key injection: use provided key AS-IS
-		providedKey := strings.TrimSpace(*request.ApiKey)
-		if err := s.ValidateAPIKeyValue(providedKey); err != nil {
-			return nil, err
+	if request.ApiKey != nil && strings.TrimSpace(*request.ApiKey) != "" {
+		// External key injection via REST API: plain-text key provided, hash it before storage
+		plainAPIKeyValue = strings.TrimSpace(*request.ApiKey)
+		hashedAPIKeyValue, err = s.hashAPIKey(plainAPIKeyValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash API key: %w", err)
 		}
-		// Use the key as-is - we don't dictate format for external keys
-		plainAPIKeyValue = providedKey
+		maskedAPIKeyValue = s.maskAPIKey(plainAPIKeyValue)
+		source = "external"
+		isExternalKey = true
+	} else if apiKeyHashes != nil && strings.TrimSpace(*apiKeyHashes) != "" {
+		// External key injection via platform API event: pre-computed hashes provided, store directly
+		hash, err := extractSHA256Hash(strings.TrimSpace(*apiKeyHashes))
+		if err != nil {
+			return nil, fmt.Errorf("invalid apiKeyHashes: %w", err)
+		}
+		hashedAPIKeyValue = hash
+		// Use the masked key sent by the platform API
+		if request.MaskedApiKey != nil {
+			maskedAPIKeyValue = strings.TrimSpace(*request.MaskedApiKey)
+		}
 		source = "external"
 		isExternalKey = true
 	} else {
@@ -970,34 +1095,15 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		if err != nil {
 			return nil, err
 		}
+		// Hash the API key for storage and policy engine
+		hashedAPIKeyValue, err = s.hashAPIKey(plainAPIKeyValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash API key: %w", err)
+		}
+		// Generate masked API key for display purposes
+		maskedAPIKeyValue = s.maskAPIKey(plainAPIKeyValue)
 		source = "local"
 		isExternalKey = false
-	}
-
-	// Hash the API key for storage and policy engine
-	// Works for any format - we just hash whatever we receive
-	hashedAPIKeyValue, err := s.hashAPIKey(plainAPIKeyValue)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash API key: %w", err)
-	}
-
-	// Generate masked API key for display purposes
-	maskedAPIKeyValue := s.MaskAPIKey(plainAPIKeyValue)
-
-	// Handle displayName - optional during creation
-	var displayName string
-	if request.DisplayName != nil && strings.TrimSpace(*request.DisplayName) != "" {
-		// User provided a display name
-		displayName = strings.TrimSpace(*request.DisplayName)
-
-		// Validate user-provided displayName
-		if err := ValidateDisplayName(displayName); err != nil {
-			return nil, fmt.Errorf("invalid display name: %w", err)
-		}
-	} else {
-		// Auto-generate display name: use handle + short ID portion
-		// Example: "weather-api-jh~cPInv"
-		displayName = fmt.Sprintf("%s-key-%s", handle, id[:8])
 	}
 
 	// Handle name - optional during creation
@@ -1009,35 +1115,24 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 			return nil, fmt.Errorf("invalid name: %w", err)
 		}
 	} else {
-		// Generate unique URL-safe name from displayName with collision handling
+		// Generate unique URL-safe name: use handle + short ID portion as base
 		// name is immutable after creation and used in path parameters
 		// Use config.UUID (API internal ID) not handle so uniqueness is checked per API
-		name, err = s.generateUniqueAPIKeyName(config.UUID, displayName, 5)
+		baseName := fmt.Sprintf("%s-key-%s", handle, id[:8])
+		name, err = s.generateUniqueAPIKeyName(config.UUID, baseName, 5)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate unique API key name: %w", err)
 		}
 	}
 
-	// Process operations
-	operations := "[\"*\"]" // Default to all operations
-	//if request.Operations != nil && len(*request.Operations) > 0 {
-	//	operations = s.generateOperationsString(*request.Operations)
-	//}
-
 	now := time.Now()
 
 	// Calculate expiration time
 	var expiresAt *time.Time
-	var unit *string
-	var duration *int
 
 	if request.ExpiresAt != nil {
 		expiresAt = request.ExpiresAt
 	} else if request.ExpiresIn != nil {
-		// Store the original unit and duration values
-		unitStr := string(request.ExpiresIn.Unit)
-		unit = &unitStr
-		duration = &request.ExpiresIn.Duration
 		timeDuration := time.Duration(request.ExpiresIn.Duration)
 		switch request.ExpiresIn.Unit {
 		case api.APIKeyCreationRequestExpiresInUnitSeconds:
@@ -1066,20 +1161,16 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	}
 
 	apiKey := &models.APIKey{
-		UUID:           id,
+		UUID:         keyUUID,
 		Name:         name,
-		DisplayName:  displayName,
 		APIKey:       hashedAPIKeyValue, // Store hashed key in database and policy engine
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        config.UUID,
-		Operations:   operations,
+		ArtifactUUID: config.UUID,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    now,
 		CreatedBy:    user,
 		UpdatedAt:    now,
 		ExpiresAt:    expiresAt,
-		Unit:         unit,
-		Duration:     duration,
 		Source:       source, // "local" or "external"
 	}
 
@@ -1090,6 +1181,11 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		apiKey.ExternalRefId = &externalRefId
 	}
 
+	// Set issuer (nil if not provided)
+	if request.Issuer != nil && strings.TrimSpace(*request.Issuer) != "" {
+		v := strings.TrimSpace(*request.Issuer)
+		apiKey.Issuer = &v
+	}
 	// Temporarily store the plain key for response generation
 	// This field is not persisted and only used for returning to user
 	// For external keys, we do NOT store the plain key (caller already has it)
@@ -1098,31 +1194,6 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 	}
 
 	return apiKey, nil
-}
-
-// generateOperationsString creates a string array from operations in format "METHOD path"
-// Example: ["GET /{country_code}/{city}", "POST /data"]
-// Ignores the policies field from operations
-func (s *APIKeyService) generateOperationsString(operations []api.Operation) string {
-	if len(operations) == 0 {
-		return "[\"*\"]" // Default to all operations if none specified
-	}
-
-	var operationStrings []string
-	for _, op := range operations {
-		// Format: "METHOD path" (ignoring policies)
-		operationStr := fmt.Sprintf("%s %s", op.Method, op.Path)
-		operationStrings = append(operationStrings, operationStr)
-	}
-
-	// Create JSON array string with comma-separated operations
-	operationsJSON, err := json.Marshal(operationStrings)
-	if err != nil {
-		// Fallback to default if marshaling fails
-		return "[\"*\"]"
-	}
-
-	return string(operationsJSON)
 }
 
 // buildAPIKeyResponse builds the response following the generated schema
@@ -1170,16 +1241,14 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string, p
 		Message:              message,
 		RemainingApiKeyQuota: remainingQuota,
 		ApiKey: &api.APIKey{
-			Name:        key.Name,
-			DisplayName: &key.DisplayName,
-			ApiKey:      responseAPIKey, // Return plain key only for locally generated keys
-			ApiId:       handle,
-			Operations:  key.Operations,
-			Status:      api.APIKeyStatus(key.Status),
-			CreatedAt:   key.CreatedAt,
-			CreatedBy:   key.CreatedBy,
-			ExpiresAt:   key.ExpiresAt,
-			Source:      api.APIKeySource(key.Source),
+			Name:      key.Name,
+			ApiKey:    responseAPIKey, // Return plain key only for locally generated keys
+			ApiId:     handle,
+			Status:    api.APIKeyStatus(key.Status),
+			CreatedAt: key.CreatedAt,
+			CreatedBy: key.CreatedBy,
+			ExpiresAt: key.ExpiresAt,
+			Source:    api.APIKeySource(key.Source),
 		},
 	}
 }
@@ -1188,64 +1257,50 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string, p
 // Only mutable fields (displayName, api_key value, expiration) can be updated
 // Immutable fields (name, source, createdAt, createdBy) are preserved from existing key
 func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, request api.APIKeyCreationRequest,
-	user string, logger *slog.Logger) (*models.APIKey, error) {
+	user string, logger *slog.Logger, apiKeyHashes *string) (*models.APIKey, error) {
 
-	// Validate required field: api_key value
-	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
-		return nil, fmt.Errorf("api_key is required for update")
+	// Validate that either a plain-text key (REST API) or pre-computed hashes (platform API event) is provided
+	if (request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "") &&
+		(apiKeyHashes == nil || strings.TrimSpace(*apiKeyHashes) == "") {
+		return nil, fmt.Errorf("apiKey or apiKeyHashes is required for update")
 	}
 
-	plainAPIKeyValue := strings.TrimSpace(*request.ApiKey)
-	if err := s.ValidateAPIKeyValue(plainAPIKeyValue); err != nil {
-		return nil, fmt.Errorf("invalid API key value: %w", err)
-	}
+	var hashedAPIKeyValue string
+	var maskedAPIKeyValue string
+	var err error
 
-	// Handle displayName - optional during update
-	// If not provided or empty, keep the existing displayName
-	var displayName string
-	if request.DisplayName != nil && strings.TrimSpace(*request.DisplayName) != "" {
-		displayName = strings.TrimSpace(*request.DisplayName)
-
-		// Validate user-provided displayName
-		if err := ValidateDisplayName(displayName); err != nil {
-			return nil, fmt.Errorf("invalid display name: %w", err)
+	if request.ApiKey != nil && strings.TrimSpace(*request.ApiKey) != "" {
+		// Plain-text key from REST API: hash it before storage
+		plainKey := strings.TrimSpace(*request.ApiKey)
+		hashedAPIKeyValue, err = s.hashAPIKey(plainKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash API key: %w", err)
 		}
+		maskedAPIKeyValue = s.maskAPIKey(plainKey)
 	} else {
-		return nil, fmt.Errorf("display name is required for update")
+		// Pre-computed hashes from platform API event: store directly
+		hashedAPIKeyValue, err = extractSHA256Hash(strings.TrimSpace(*apiKeyHashes))
+		if err != nil {
+			return nil, fmt.Errorf("invalid apiKeyHashes: %w", err)
+		}
+		if request.MaskedApiKey != nil {
+			maskedAPIKeyValue = strings.TrimSpace(*request.MaskedApiKey)
+		}
 	}
-
-	operations := "[\"*\"]" // Default to all operations
-
-	// Hash the new API key for storage
-	hashedAPIKeyValue, err := s.hashAPIKey(plainAPIKeyValue)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash API key: %w", err)
-	}
-
-	// Generate masked API key for display purposes
-	maskedAPIKeyValue := s.MaskAPIKey(plainAPIKeyValue)
 
 	now := time.Now()
 
-	// Determine expiration settings based on request and existing key
+	// Determine expiration time from request
 	var expiresAt *time.Time
-	var unit *string
-	var duration *int
 
 	if request.ExpiresAt != nil {
 		if request.ExpiresAt.Before(now) {
 			return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
 				request.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 		}
-		// If expires_at is explicitly provided, use it
 		expiresAt = request.ExpiresAt
 		logger.Info("Using provided expires_at for update", slog.Time("expires_at", *expiresAt))
 	} else if request.ExpiresIn != nil {
-		// If expires_in is provided, calculate expires_at from now
-		unitStr := string(request.ExpiresIn.Unit)
-		unit = &unitStr
-		duration = &request.ExpiresIn.Duration
-
 		timeDuration := time.Duration(request.ExpiresIn.Duration)
 		switch request.ExpiresIn.Unit {
 		case api.APIKeyCreationRequestExpiresInUnitSeconds:
@@ -1266,13 +1321,9 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
 		logger.Info("Using provided expires_in for update",
-			slog.String("unit", unitStr),
-			slog.Int("duration", *duration),
+			slog.String("unit", string(request.ExpiresIn.Unit)),
+			slog.Int("duration", request.ExpiresIn.Duration),
 			slog.Time("calculated_expires_at", *expiresAt))
-	} else if request.ExpiresAt == nil && request.ExpiresIn == nil {
-		// Existing key has no expiry, new key also has no expiry
-		expiresAt = nil
-		logger.Info("No expiry set for updated key (matching existing key)")
 	}
 
 	// Validate that expiresAt is in the future (if set)
@@ -1281,27 +1332,19 @@ func (s *APIKeyService) updateAPIKeyFromRequest(existingKey *models.APIKey, requ
 			expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 	}
 
-	// Create the regenerated API key
 	updatedKey := &models.APIKey{
-		UUID:           existingKey.UUID,
+		UUID:         existingKey.UUID,
 		Name:         existingKey.Name,
-		DisplayName:  displayName,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        existingKey.ArtifactUUID,
-		Operations:   operations,
+		ArtifactUUID: existingKey.ArtifactUUID,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
 		CreatedBy:    existingKey.CreatedBy,
 		UpdatedAt:    now,
 		ExpiresAt:    expiresAt,
-		Unit:         unit,
-		Duration:     duration,
 		Source:       existingKey.Source, // Preserve source from original key.
 	}
-
-	// Temporarily store the plain key for response generation
-	updatedKey.PlainAPIKey = plainAPIKeyValue
 
 	return updatedKey, nil
 }
@@ -1322,29 +1365,21 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 	}
 
 	// Generate masked API key for display purposes
-	maskedAPIKeyValue := s.MaskAPIKey(plainAPIKeyValue)
+	maskedAPIKeyValue := s.maskAPIKey(plainAPIKeyValue)
 
 	now := time.Now()
 
 	// Determine expiration settings based on request and existing key
 	var expiresAt *time.Time
-	var unit *string
-	var duration *int
 
 	if request.ExpiresAt != nil {
 		if request.ExpiresAt.Before(now) {
 			return nil, fmt.Errorf("API key expiration time must be in the future, got: %s (current time: %s)",
 				request.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 		}
-		// If expires_at is explicitly provided, use it
 		expiresAt = request.ExpiresAt
 		logger.Info("Using provided expires_at for regeneration", slog.Time("expires_at", *expiresAt))
 	} else if request.ExpiresIn != nil {
-		// If expires_in is provided, calculate expires_at from now
-		unitStr := string(request.ExpiresIn.Unit)
-		unit = &unitStr
-		duration = &request.ExpiresIn.Duration
-
 		timeDuration := time.Duration(request.ExpiresIn.Duration)
 		switch request.ExpiresIn.Unit {
 		case api.APIKeyRegenerationRequestExpiresInUnitSeconds:
@@ -1365,48 +1400,15 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
 		logger.Info("Using provided expires_in for regeneration",
-			slog.String("unit", unitStr),
-			slog.Int("duration", *duration),
+			slog.String("unit", string(request.ExpiresIn.Unit)),
+			slog.Int("duration", request.ExpiresIn.Duration),
 			slog.Time("calculated_expires_at", *expiresAt))
+	} else if existingKey.ExpiresAt != nil {
+		// No expiration in request — preserve existing absolute expiry
+		expiresAt = existingKey.ExpiresAt
+		logger.Info("Using existing key's expires_at for regeneration", slog.Time("expires_at", *expiresAt))
 	} else {
-		// No expiration provided in request, use existing key's logic
-		if existingKey.Unit != nil && existingKey.Duration != nil {
-			// Existing key has duration/unit, apply same duration from now
-			unit = existingKey.Unit
-			duration = existingKey.Duration
-
-			timeDuration := time.Duration(*existingKey.Duration)
-			switch *existingKey.Unit {
-			case string(api.APIKeyRegenerationRequestExpiresInUnitSeconds):
-				timeDuration *= time.Second
-			case string(api.APIKeyRegenerationRequestExpiresInUnitMinutes):
-				timeDuration *= time.Minute
-			case string(api.APIKeyRegenerationRequestExpiresInUnitHours):
-				timeDuration *= time.Hour
-			case string(api.APIKeyRegenerationRequestExpiresInUnitDays):
-				timeDuration *= 24 * time.Hour
-			case string(api.APIKeyRegenerationRequestExpiresInUnitWeeks):
-				timeDuration *= 7 * 24 * time.Hour
-			case string(api.APIKeyRegenerationRequestExpiresInUnitMonths):
-				timeDuration *= 30 * 24 * time.Hour
-			default:
-				return nil, fmt.Errorf("unsupported existing expiration unit: %s", *existingKey.Unit)
-			}
-			expiry := now.Add(timeDuration)
-			expiresAt = &expiry
-			logger.Info("Using existing key's duration settings for regeneration",
-				slog.String("unit", *unit),
-				slog.Int("duration", *duration),
-				slog.Time("calculated_expires_at", *expiresAt))
-		} else if existingKey.ExpiresAt != nil {
-			// Existing key has absolute expiry, use same expiry
-			expiresAt = existingKey.ExpiresAt
-			logger.Info("Using existing key's expires_at for regeneration", slog.Time("expires_at", *expiresAt))
-		} else {
-			// Existing key has no expiry, new key also has no expiry
-			expiresAt = nil
-			logger.Info("No expiry set for regenerated key (matching existing key)")
-		}
+		logger.Info("No expiry set for regenerated key (matching existing key)")
 	}
 
 	// Validate that expiresAt is in the future (if set)
@@ -1417,19 +1419,16 @@ func (s *APIKeyService) regenerateAPIKey(existingKey *models.APIKey, request api
 
 	// Create the regenerated API key
 	regeneratedKey := &models.APIKey{
-		UUID:           existingKey.UUID,
+		UUID:         existingKey.UUID,
 		Name:         existingKey.Name,
 		APIKey:       hashedAPIKeyValue, // Store hashed key
 		MaskedAPIKey: maskedAPIKeyValue, // Store masked key for display
-		ArtifactUUID:        existingKey.ArtifactUUID,
-		Operations:   existingKey.Operations,
+		ArtifactUUID: existingKey.ArtifactUUID,
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    existingKey.CreatedAt,
 		CreatedBy:    existingKey.CreatedBy,
 		UpdatedAt:    now,
 		ExpiresAt:    expiresAt,
-		Unit:         unit,
-		Duration:     duration,
 		Source:       existingKey.Source, // Preserve source from original key
 	}
 
@@ -1555,12 +1554,13 @@ func (s *APIKeyService) generateAPIKeyValue() (string, error) {
 	return constants.APIKeyPrefix + hex.EncodeToString(randomBytes), nil
 }
 
-// MaskAPIKey masks an API key for secure logging, showing first 10 characters
-func (s *APIKeyService) MaskAPIKey(apiKey string) string {
-	if len(apiKey) <= 10 {
-		return "**********"
+// maskAPIKey returns an 8-character masked representation of the API key:
+// "***" + last 5 characters. If the key is 5 characters or shorter, returns "********".
+func (s *APIKeyService) maskAPIKey(apiKey string) string {
+	if len(apiKey) <= 5 {
+		return "********"
 	}
-	return apiKey[:10] + "*********"
+	return "***" + apiKey[len(apiKey)-5:]
 }
 
 // isAdmin checks if the user has admin role
@@ -1571,6 +1571,20 @@ func (s *APIKeyService) isAdmin(user *commonmodels.AuthContext) bool {
 // isDeveloper checks if the user has developer role
 func (s *APIKeyService) isDeveloper(user *commonmodels.AuthContext) bool {
 	return slices.Contains(user.Roles, "developer")
+}
+
+// extractSHA256Hash parses the apiKeyHashes JSON string and returns the sha256 hash value.
+// Expected format: {"sha256": "<hex_hash>"}
+func extractSHA256Hash(apiKeyHashes string) (string, error) {
+	var hashes map[string]string
+	if err := json.Unmarshal([]byte(apiKeyHashes), &hashes); err != nil {
+		return "", fmt.Errorf("invalid apiKeyHashes format: %w", err)
+	}
+	hash, ok := hashes[constants.HashingAlgorithmSHA256]
+	if !ok || strings.TrimSpace(hash) == "" {
+		return "", fmt.Errorf("apiKeyHashes must contain a non-empty '%s' entry", constants.HashingAlgorithmSHA256)
+	}
+	return strings.TrimSpace(hash), nil
 }
 
 // hashAPIKey securely hashes an API key using the configured algorithm
@@ -1603,7 +1617,6 @@ func (s *APIKeyService) hashAPIKeyWithSHA256(plainAPIKey string) (string, error)
 	return hex.EncodeToString(hash), nil
 }
 
-
 // compareAPIKeys compares API keys by hashing the provided key and comparing with stored hash
 // Returns true if the plain API key matches the stored hash, false otherwise
 func (s *APIKeyService) compareAPIKeys(providedAPIKey, storedAPIKey string) bool {
@@ -1624,7 +1637,6 @@ func (s *APIKeyService) compareAPIKeys(providedAPIKey, storedAPIKey string) bool
 	// Constant-time comparison with stored hash
 	return subtle.ConstantTimeCompare([]byte(computedHash), []byte(storedAPIKey)) == 1
 }
-
 
 // SetHashingConfig allows updating the hashing configuration at runtime
 func (s *APIKeyService) SetHashingConfig(config *config.APIKeyConfig) {
@@ -1827,33 +1839,51 @@ func (s *APIKeyService) generateShortUniqueID() (string, error) {
 // This is used when platform-api broadcasts an apikey.created event.
 // The plain API key is hashed before storage.
 func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
-	handle string,
+	artifactUUID string,
 	user string,
 	request *api.APIKeyCreationRequest,
+	uuid *string,
+	apiKeyHashes *string,
 	correlationID string,
 	logger *slog.Logger,
 ) (*APIKeyCreationResult, error) {
 	if request == nil {
 		logger.Error("nil APIKeyCreationRequest",
-			slog.String("api_id", handle),
+			slog.String("artifact_uuid", artifactUUID),
 			slog.String("correlation_id", correlationID),
 		)
-		return nil, fmt.Errorf("nil APIKeyCreationRequest for api %s", handle)
+		return nil, fmt.Errorf("nil APIKeyCreationRequest for artifact %s", artifactUUID)
+	}
+
+	// Resolve artifact UUID to kind and handle
+	storedConfig, err := s.store.Get(artifactUUID)
+	if err != nil || storedConfig == nil {
+		logger.Error("artifact not found for UUID",
+			slog.String("artifact_uuid", artifactUUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("artifact not found for UUID %s", artifactUUID)
 	}
 
 	logger.Info("Creating external API key from event",
-		slog.String("api_id", handle),
+		slog.String("artifact_uuid", artifactUUID),
+		slog.String("kind", storedConfig.Kind),
+		slog.String("handle", storedConfig.Handle),
 		slog.Bool("has_expiry", request.ExpiresAt != nil),
 	)
 
 	params := APIKeyCreationParams{
-		Handle:  handle,
+		Kind:    storedConfig.Kind,
+		Handle:  storedConfig.Handle,
 		Request: *request,
 		User: &commonmodels.AuthContext{
 			UserID: user,
 		},
 		Logger:        logger,
 		CorrelationID: correlationID,
+		UUID:          uuid,
+		ApiKeyHashes:  apiKeyHashes,
 	}
 
 	result, err := s.CreateAPIKey(params)
@@ -1868,14 +1898,26 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 // RevokeExternalAPIKeyFromEvent revokes an API key from an external event (websocket).
 // This is used when platform-api broadcasts an apikey.revoked event.
 func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
-	handle string,
+	artifactUUID string,
 	keyName string,
 	user string,
 	correlationID string,
 	logger *slog.Logger,
 ) error {
+	// Resolve artifact UUID to kind and handle
+	storedConfig, err := s.store.Get(artifactUUID)
+	if err != nil || storedConfig == nil {
+		logger.Error("artifact not found for UUID",
+			slog.String("artifact_uuid", artifactUUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("artifact not found for UUID %s", artifactUUID)
+	}
+
 	apiKeyRevocationParams := APIKeyRevocationParams{
-		Handle:     handle,
+		Kind:       storedConfig.Kind,
+		Handle:     storedConfig.Handle,
 		APIKeyName: keyName,
 		User: &commonmodels.AuthContext{
 			UserID: user,
@@ -1884,7 +1926,7 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 		CorrelationID: correlationID,
 	}
 
-	_, err := s.RevokeAPIKey(apiKeyRevocationParams)
+	_, err = s.RevokeAPIKey(apiKeyRevocationParams)
 	if err != nil {
 		logger.Error("Failed to revoke external API key", slog.Any("error", err))
 		return err
@@ -1898,37 +1940,51 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 // UpdateExternalAPIKeyFromEvent updates an API key from an external event (websocket).
 // This is used when platform-api broadcasts an apikey.updated event.
 func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
-	handle string,
+	artifactUUID string,
 	apiKeyName string,
 	request *api.APIKeyCreationRequest,
+	apiKeyHashes *string,
 	user string,
 	correlationID string,
 	logger *slog.Logger,
 ) error {
 	if request == nil {
 		logger.Error("nil APIKeyCreationRequest",
-			slog.String("api_id", handle),
+			slog.String("artifact_uuid", artifactUUID),
 			slog.String("correlation_id", correlationID),
 		)
-		return fmt.Errorf("nil APIKeyCreationRequest for api %s", handle)
+		return fmt.Errorf("nil APIKeyCreationRequest for artifact %s", artifactUUID)
+	}
+
+	// Resolve artifact UUID to kind and handle
+	storedConfig, err := s.store.Get(artifactUUID)
+	if err != nil || storedConfig == nil {
+		logger.Error("artifact not found for UUID",
+			slog.String("artifact_uuid", artifactUUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("artifact not found for UUID %s", artifactUUID)
 	}
 
 	apiKeyUpdateParams := APIKeyUpdateParams{
-		Handle:     handle,
-		APIKeyName: apiKeyName,
-		Request:    *request,
+		Kind:         storedConfig.Kind,
+		Handle:       storedConfig.Handle,
+		APIKeyName:   apiKeyName,
+		Request:      *request,
+		ApiKeyHashes: apiKeyHashes,
 		User: &commonmodels.AuthContext{
 			UserID: user,
 		},
 		Logger:        logger,
 		CorrelationID: correlationID,
 	}
-	_, err := s.UpdateAPIKey(apiKeyUpdateParams)
+	_, err = s.UpdateAPIKey(apiKeyUpdateParams)
 	if err != nil {
 		logger.Error("Failed to update external API key", slog.Any("error", err),
 			slog.String("correlation_id", correlationID),
 			slog.String("user_id", user),
-			slog.String("api_id", handle),
+			slog.String("artifact_uuid", artifactUUID),
 		)
 		return err
 	}
@@ -1937,4 +1993,3 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 
 	return nil
 }
-

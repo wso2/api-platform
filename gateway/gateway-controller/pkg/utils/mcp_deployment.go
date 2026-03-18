@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -140,7 +140,6 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
-		DeployedVersion:     0,
 	}
 
 	// Try to save/update the configuration
@@ -245,7 +244,6 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
 
 	// Update database first (only if persistent mode)
 	if s.db != nil {

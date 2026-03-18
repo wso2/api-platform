@@ -29,6 +29,8 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
+
+	"gopkg.in/yaml.v3"
 )
 
 type MCPDeploymentService struct {
@@ -166,19 +168,46 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, constants.ErrMCPProxyNotFound
 	}
 
+	// Generate deployment ID
+	deploymentID, err := utils.GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
+	}
+
+	// Collect endpoint URL override from metadata
+	var endpointURL *string
+	if req.Metadata != nil {
+		if v, exists := metadata["endpointUrl"]; exists {
+			eu, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: expected string, got %T", constants.ErrInvalidInput, v)
+			}
+			if eu != "" {
+				if err := validateEndpointURL(eu); err != nil {
+					return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: %v", constants.ErrInvalidInput, err)
+				}
+				endpointURL = &eu
+			}
+		}
+	}
+
 	var baseDeploymentID *string
 	var contentBytes []byte
 
-	// Determine the source: "current" or existing deployment
 	if req.Base == "current" {
-		// Generate MCP deployment YAML for storage using the model directly
-		mcpYaml, err := s.utils.GenerateMCPDeploymentYAML(mcpProxy)
+		// Build struct directly, apply overrides on struct, marshal once
+		d, err := s.utils.BuildMCPDeploymentYAML(mcpProxy)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate MCP deployment YAML: %w", err)
+			return nil, fmt.Errorf("failed to build MCP deployment YAML: %w", err)
 		}
-
-		// Create immutable deployment artifact content (store as YAML bytes)
-		contentBytes = []byte(mcpYaml)
+		if endpointURL != nil {
+			d.Spec.Upstream.URL = *endpointURL
+			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+		}
+		contentBytes, err = yaml.Marshal(d)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
+		}
 	} else {
 		// Use existing deployment as base
 		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, proxyUUID, orgId)
@@ -188,39 +217,21 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
-
-		// Deployment content is already stored as YAML, reuse it directly
 		contentBytes = baseDeployment.Content
 		baseDeploymentID = &req.Base
-	}
 
-	// Generate deployment ID
-	deploymentID, err := utils.GenerateUUID()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
-	}
-
-	// Handle endpoint URL override from metadata (Phase 5)
-	if req.Metadata != nil {
-		if v, exists := metadata["endpointUrl"]; exists {
-			endpointURL, ok := v.(string)
-			if !ok {
-				return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: expected string, got %T", constants.ErrInvalidInput, v)
+		if endpointURL != nil {
+			// Unmarshal into the correct MCP type, apply override, marshal back
+			var mcpDeployment model.MCPProxyDeploymentYAML
+			if err := yaml.Unmarshal(contentBytes, &mcpDeployment); err != nil {
+				return nil, fmt.Errorf("failed to parse MCP deployment YAML: %w", err)
 			}
-			if endpointURL != "" {
-				// Validate endpoint URL format
-				if err := validateEndpointURL(endpointURL); err != nil {
-					return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: %v", constants.ErrInvalidInput, err)
-				}
-
-				// Override endpoint URL in deployment content
-				modifiedContent, err := overrideEndpointURL(contentBytes, endpointURL)
-				if err != nil {
-					return nil, fmt.Errorf("failed to override endpoint URL: %w", err)
-				}
-				contentBytes = modifiedContent
-				s.slogger.Info("Endpoint URL overridden", "endpointURL", endpointURL, "deploymentID", deploymentID)
+			mcpDeployment.Spec.Upstream.URL = *endpointURL
+			contentBytes, err = yaml.Marshal(&mcpDeployment)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal modified MCP deployment YAML: %w", err)
 			}
+			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
 	}
 
@@ -268,6 +279,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		nil,
 	)
 }
 
@@ -351,6 +363,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		deployment.Metadata,
 		deployment.CreatedAt,
 		&newUpdatedAt,
+		nil,
 	)
 }
 
@@ -415,6 +428,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		targetDeployment.Metadata,
 		targetDeployment.CreatedAt,
 		&updatedAt,
+		nil,
 	)
 }
 
@@ -447,6 +461,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		deployment.StatusReason,
 	)
 }
 
@@ -494,6 +509,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 			d.Metadata,
 			d.CreatedAt,
 			d.UpdatedAt,
+			d.StatusReason,
 		)
 		if err != nil {
 			return nil, err

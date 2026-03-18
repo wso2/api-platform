@@ -1,9 +1,8 @@
 name: azure-content-safety-content-moderation
-version: v0.8.0
+version: v0.8.1
 description: |
   Validates request and response content with Azure Content Safety moderation
-  checks. Supports configurable category thresholds, optional JSONPath
-  extraction, and separate settings for request and response phases.
+  checks.
 
 parameters:
   type: object
@@ -15,11 +14,10 @@ parameters:
       properties:
         jsonPath:
           type: string
-          x-wso2-policy-advanced-param: true
+          x-wso2-policy-advanced-param: false
           description: |
-            Specifies the JSONPath used to extract content for moderation. When
-            empty, the entire payload is evaluated as plain text.
-          default: ""
+            Extract text with JSONPath for moderation.
+          default: "$.messages[-1].content"
         passthroughOnError:
           type: boolean
           x-wso2-policy-advanced-param: true
@@ -77,11 +75,10 @@ parameters:
       properties:
         jsonPath:
           type: string
-          x-wso2-policy-advanced-param: true
+          x-wso2-policy-advanced-param: false
           description: |
-            Specifies the JSONPath used to extract content for moderation. When
-            empty, the entire payload is evaluated as plain text.
-          default: ""
+            Extract text with JSONPath for moderation.
+          default: "$.choices[0].message.content"
         passthroughOnError:
           type: boolean
           x-wso2-policy-advanced-param: true

@@ -19,6 +19,7 @@
 package controlplane
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -26,9 +27,9 @@ import (
 	"testing"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -36,10 +37,17 @@ import (
 type mockStorageForDeletion struct {
 	configs            map[string]*models.StoredConfig
 	subscriptions      map[string]*models.Subscription
+	apiKeysByUUID      map[string]*models.APIKey
+	replacedMappings   []*models.ApplicationAPIKeyMapping
+	replacedAppID      string
+	replacedAppUUID    string
+	replacedAppName    string
+	replacedAppType    string
 	deleteErr          error
 	updateErr          error
 	getErr             error
 	removeKeyErr       error
+	replaceErr         error
 	deleteCallCount    int
 	removeKeyCallCount int
 }
@@ -48,6 +56,7 @@ func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
 		configs:       make(map[string]*models.StoredConfig),
 		subscriptions: make(map[string]*models.Subscription),
+		apiKeysByUUID: make(map[string]*models.APIKey),
 	}
 }
 
@@ -265,6 +274,13 @@ func (m *mockStorageForDeletion) GetAPIKeyByID(apiKeyID string) (*models.APIKey,
 	return nil, storage.ErrNotFound
 }
 
+func (m *mockStorageForDeletion) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	if key, ok := m.apiKeysByUUID[uuid]; ok {
+		return key, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
 func (m *mockStorageForDeletion) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -295,6 +311,20 @@ func (m *mockStorageForDeletion) RemoveAPIKeysAPI(apiID string) error {
 
 func (m *mockStorageForDeletion) CountActiveAPIKeysByUserAndAPI(userID, apiID string) (int, error) {
 	return 0, nil
+}
+
+func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+	if m.replaceErr != nil {
+		return m.replaceErr
+	}
+	if application != nil {
+		m.replacedAppID = application.ApplicationID
+		m.replacedAppUUID = application.ApplicationUUID
+		m.replacedAppName = application.ApplicationName
+		m.replacedAppType = application.ApplicationType
+	}
+	m.replacedMappings = append([]*models.ApplicationAPIKeyMapping(nil), mappings...)
+	return nil
 }
 
 // Certificate methods (not used in deletion tests but required by interface)
@@ -343,31 +373,7 @@ func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {
 	return nil
 }
 
-// mockXDSManager implements a mock XDSManager for testing
-type mockXDSManager struct {
-	removedAPIs []string
-	removeErr   error
-}
-
-func newMockXDSManager() *mockXDSManager {
-	return &mockXDSManager{
-		removedAPIs: make([]string, 0),
-	}
-}
-
-func (m *mockXDSManager) StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error {
-	return nil
-}
-
-func (m *mockXDSManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyName, correlationID string) error {
-	return nil
-}
-
-func (m *mockXDSManager) RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error {
-	if m.removeErr != nil {
-		return m.removeErr
-	}
-	m.removedAPIs = append(m.removedAPIs, apiId)
+func (m *mockStorageForDeletion) GetDB() *sql.DB {
 	return nil
 }
 
@@ -410,17 +416,26 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	}
 }
 
-// TestClient_handleAPIDeletedEvent_InvalidPayload tests invalid event handling
-func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
+func createDeletionTestClient() (*Client, *storage.ConfigStore, *mockStorageForDeletion, *mockControlPlaneEventHub) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
 	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
 
 	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
+		logger:    logger,
+		store:     store,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
 	}
+
+	return client, store, db, hub
+}
+
+// TestClient_handleAPIDeletedEvent_InvalidPayload tests invalid event handling
+func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
+	client, _, _, hub := createDeletionTestClient()
 
 	tests := []struct {
 		name  string
@@ -472,21 +487,16 @@ func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Should handle gracefully without panic
 			client.handleAPIDeletedEvent(tt.event)
+			if len(hub.publishedEvents) != 0 {
+				t.Fatalf("expected no events to be published for invalid payload, got %d", len(hub.publishedEvents))
+			}
 		})
 	}
 }
 
 // TestClient_handleAPIDeletedEvent_OrphanedCleanup tests orphaned resource cleanup
 func TestClient_handleAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-	db := newMockStorageForDeletion()
-
-	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
-	}
+	client, _, db, hub := createDeletionTestClient()
 
 	apiID := "non-existent-api"
 	event := map[string]interface{}{
@@ -507,37 +517,34 @@ func TestClient_handleAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
 		t.Errorf("Expected RemoveAPIKeysAPI to be called for orphan cleanup, got %d", db.removeKeyCallCount)
 	}
 
-	// Config should still not exist
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("API config should not exist in store after orphan cleanup")
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one orphan cleanup event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].gatewayID != "test-gateway" {
+		t.Errorf("expected gatewayID test-gateway, got %s", hub.publishedEvents[0].gatewayID)
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeAPI {
+		t.Errorf("expected event type API, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-orphan" {
+		t.Errorf("expected correlation ID corr-orphan, got %s", hub.publishedEvents[0].event.EventID)
 	}
 }
 
 // TestClient_handleAPIDeletedEvent_FullDeletion tests complete deletion workflow
 func TestClient_handleAPIDeletedEvent_FullDeletion(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-	db := newMockStorageForDeletion()
-	xdsMgr := newMockXDSManager()
-
-	// Create a real PolicyManager with mock dependencies
-	policyStore := storage.NewPolicyStore()
-	policySnapshotMgr := policyxds.NewSnapshotManager(policyStore, logger)
-	policyMgr := policyxds.NewPolicyManager(policyStore, policySnapshotMgr, logger)
+	client, store, db, hub := createDeletionTestClient()
 
 	apiID := "test-api-full-delete"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
 	db.SaveConfig(apiConfig)
 	store.Add(apiConfig)
-
-	client := &Client{
-		logger:           logger,
-		store:            store,
-		db:               db,
-		policyManager:    policyMgr,
-		apiKeyXDSManager: xdsMgr,
-	}
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
@@ -561,43 +568,31 @@ func TestClient_handleAPIDeletedEvent_FullDeletion(t *testing.T) {
 		t.Errorf("Expected RemoveAPIKeysAPI to be called once, got %d", db.removeKeyCallCount)
 	}
 
-	// Verify API keys removed from XDS manager
-	if len(xdsMgr.removedAPIs) != 1 {
-		t.Errorf("Expected XDS manager to remove API keys for 1 API, got %d", len(xdsMgr.removedAPIs))
-	} else if xdsMgr.removedAPIs[0] != apiID {
-		t.Errorf("Expected XDS manager to remove keys for API %s, got %s", apiID, xdsMgr.removedAPIs[0])
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one delete event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeAPI {
+		t.Errorf("expected event type API, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
 	}
 
-	// Verify config removed from memory
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("Expected API config to be removed from memory store")
+	if _, err := db.GetConfig(apiID); !storage.IsNotFoundError(err) {
+		t.Errorf("expected API config to be removed from database, got %v", err)
 	}
-
-	// Verify policy cleanup was called (policy ID would be apiID + "-policies")
-	policyID := apiID + "-policies"
-	_, policyExists := policyStore.Get(policyID)
-	if policyExists {
-		// If policy existed, it should have been removed
-		t.Error("Expected policy to be removed from policy store")
-	}
-	// Note: If policy never existed, Get returns false which is expected
 }
 
-// TestClient_handleAPIDeletedEvent_MemoryOnly tests deletion when no database exists
-func TestClient_handleAPIDeletedEvent_MemoryOnly(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
+// TestClient_handleAPIDeletedEvent_DBOnlyConfig tests deletion when the API exists only in the database.
+func TestClient_handleAPIDeletedEvent_DBOnlyConfig(t *testing.T) {
+	client, _, db, hub := createDeletionTestClient()
 
-	apiID := "test-api-memory-only"
+	apiID := "test-api-db-only"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
-	store.Add(apiConfig)
-
-	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     nil, // No database
-	}
+	db.SaveConfig(apiConfig)
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
@@ -612,18 +607,23 @@ func TestClient_handleAPIDeletedEvent_MemoryOnly(t *testing.T) {
 
 	client.handleAPIDeletedEvent(event)
 
-	// Verify config removed from memory
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("Expected API config to be removed from memory store")
+	if db.deleteCallCount != 1 {
+		t.Errorf("expected DeleteConfig to be called once, got %d", db.deleteCallCount)
+	}
+	if db.removeKeyCallCount != 1 {
+		t.Errorf("expected RemoveAPIKeysAPI to be called once, got %d", db.removeKeyCallCount)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one delete event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
 	}
 }
 
 // TestClient_handleAPIDeletedEvent_StorageErrors tests error handling
 func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-	db := newMockStorageForDeletion()
+	client, store, db, hub := createDeletionTestClient()
 
 	apiID := "test-api-error"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
@@ -633,12 +633,6 @@ func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
 	// Simulate storage errors
 	db.deleteErr = errors.New("database connection failed")
 	db.removeKeyErr = errors.New("failed to remove keys")
-
-	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
-	}
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
@@ -661,6 +655,13 @@ func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
 
 	if db.removeKeyCallCount != 1 {
 		t.Errorf("Expected RemoveAPIKeysAPI to be attempted, got %d", db.removeKeyCallCount)
+	}
+
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one delete event even when DB cleanup errors occur, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
 	}
 }
 
@@ -731,26 +732,134 @@ func TestClient_findAPIConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("Works when database is nil", func(t *testing.T) {
+	t.Run("Returns database errors without falling back", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 		store := storage.NewConfigStore()
-
-		apiID := "test-api-no-db"
-		apiConfig := createTestAPIConfigForDeletion(apiID)
-		store.Add(apiConfig)
+		db := newMockStorageForDeletion()
+		db.getErr = errors.New("database unavailable")
 
 		client := &Client{
 			logger: logger,
 			store:  store,
-			db:     nil,
+			db:     db,
 		}
 
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory when DB is nil, got error: %v", err)
-		}
-		if config.UUID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
+		_, err := client.findAPIConfig("test-api-db-error")
+		if err == nil || err.Error() != "database error while fetching config: database unavailable" {
+			t.Errorf("expected database error to be returned, got: %v", err)
 		}
 	})
+}
+
+func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+
+	db.apiKeysByUUID["key-uuid-found-1"] = &models.APIKey{UUID: "key-uuid-found-1"}
+	db.apiKeysByUUID["key-uuid-found-2"] = &models.APIKey{UUID: "key-uuid-found-2"}
+
+	client := &Client{
+		logger: logger,
+		db:     db,
+	}
+
+	event := map[string]interface{}{
+		"type": "application.updated",
+		"payload": map[string]interface{}{
+			"applicationId":   "app-123",
+			"applicationUuid": "app-uuid-123",
+			"applicationName": "Shopping App",
+			"applicationType": "genai",
+			"mappings": []map[string]interface{}{
+				{"apiKeyUuid": "key-uuid-found-1"},
+				{"apiKeyUuid": "key-uuid-missing"},
+				{"apiKeyUuid": "key-uuid-found-2"},
+			},
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-app-update-skip-missing",
+	}
+
+	client.handleApplicationUpdatedEvent(event)
+
+	if db.replacedAppUUID != "app-uuid-123" {
+		t.Fatalf("expected mappings to be replaced for app-uuid-123, got %q", db.replacedAppUUID)
+	}
+	if db.replacedAppID != "app-123" {
+		t.Fatalf("expected mappings to be replaced for app id app-123, got %q", db.replacedAppID)
+	}
+	if db.replacedAppName != "Shopping App" {
+		t.Fatalf("expected mappings to be replaced for app name Shopping App, got %q", db.replacedAppName)
+	}
+	if db.replacedAppType != "genai" {
+		t.Fatalf("expected mappings to be replaced for app type genai, got %q", db.replacedAppType)
+	}
+
+	if len(db.replacedMappings) != 2 {
+		t.Fatalf("expected 2 resolved mappings, got %d", len(db.replacedMappings))
+	}
+
+	if db.replacedMappings[0].APIKeyID != "key-uuid-found-1" {
+		t.Errorf("expected first mapping key id key-uuid-found-1, got %q", db.replacedMappings[0].APIKeyID)
+	}
+	if db.replacedMappings[0].ApplicationUUID != "app-uuid-123" {
+		t.Errorf("expected first mapping application uuid app-uuid-123, got %q", db.replacedMappings[0].ApplicationUUID)
+	}
+	if db.replacedMappings[1].APIKeyID != "key-uuid-found-2" {
+		t.Errorf("expected second mapping key id key-uuid-found-2, got %q", db.replacedMappings[1].APIKeyID)
+	}
+}
+
+func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+
+	db.apiKeysByUUID["key-uuid-found"] = &models.APIKey{UUID: "key-uuid-found"}
+
+	client := &Client{
+		logger: logger,
+		db:     db,
+	}
+
+	event := map[string]interface{}{
+		"type": "application.updated",
+		"payload": map[string]interface{}{
+			"applicationId":   "app-456",
+			"applicationUuid": "app-uuid-456",
+			"applicationName": "Weather App",
+			"applicationType": "genai",
+			"mappings": []map[string]interface{}{
+				{"apiKeyUuid": ""},
+				{"apiKeyUuid": "key-uuid-found"},
+			},
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-app-update-skip-invalid",
+	}
+
+	client.handleApplicationUpdatedEvent(event)
+
+	if db.replacedAppUUID != "app-uuid-456" {
+		t.Fatalf("expected mappings to be replaced for app-uuid-456, got %q", db.replacedAppUUID)
+	}
+	if db.replacedAppID != "app-456" {
+		t.Fatalf("expected mappings to be replaced for app id app-456, got %q", db.replacedAppID)
+	}
+	if db.replacedAppName != "Weather App" {
+		t.Fatalf("expected mappings to be replaced for app name Weather App, got %q", db.replacedAppName)
+	}
+	if db.replacedAppType != "genai" {
+		t.Fatalf("expected mappings to be replaced for app type genai, got %q", db.replacedAppType)
+	}
+
+	if len(db.replacedMappings) != 1 {
+		t.Fatalf("expected 1 resolved mapping, got %d", len(db.replacedMappings))
+	}
+
+	if db.replacedMappings[0].APIKeyID != "key-uuid-found" {
+		t.Errorf("expected resolved mapping key id key-uuid-found, got %q", db.replacedMappings[0].APIKeyID)
+	}
+	if db.replacedMappings[0].ApplicationUUID != "app-uuid-456" {
+		t.Errorf("expected resolved mapping application uuid app-uuid-456, got %q", db.replacedMappings[0].ApplicationUUID)
+	}
 }

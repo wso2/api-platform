@@ -49,5 +49,3 @@ type ConnectionAckDTO struct {
 	// Timestamp records when the connection was established
 	Timestamp string `json:"timestamp"`
 }
-
-

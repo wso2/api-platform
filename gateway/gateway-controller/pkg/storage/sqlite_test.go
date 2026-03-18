@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"gotest.tools/v3/assert"
@@ -92,6 +92,10 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"api_keys",
 		"subscriptions",
 		"subscription_plans",
+		"events",
+		"gateway_states",
+		"applications",
+		"application_api_keys",
 	}
 
 	for _, table := range tables {
@@ -123,7 +127,7 @@ func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	// Reopen — should fail with unsupported version error
 	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
 	assert.Assert(t, err != nil)
-	assert.ErrorContains(t, err, "unsupported schema version 5")
+	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 1; delete the database to recreate")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -879,7 +883,6 @@ func createTestAPIKey() *models.APIKey {
 		APIKey:       fmt.Sprintf("apk_%d_%d", apiKeyCounter, time.Now().UnixNano()),
 		MaskedAPIKey: "apk_***",
 		ArtifactUUID: "0000-test-api-id-0000-000000000000",
-		Operations:   "*",
 		Status:       models.APIKeyStatusActive,
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",

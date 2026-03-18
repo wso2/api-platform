@@ -51,6 +51,16 @@ jobs:
           cd gateway
           make test-integration
 
+      - name: Run vhost integration tests (single-domain profile)
+        run: |
+          cd gateway/it
+          make test-vhosts-single
+
+      - name: Run vhost integration tests (multi-domain profile)
+        run: |
+          cd gateway/it
+          make test-vhosts-multi
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()

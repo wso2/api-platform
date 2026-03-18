@@ -134,48 +134,58 @@ Keep this connection open to receive real-time deployment events.
 **6. Create an API**
 
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/apis \
+curl -k -X POST 'https://localhost:9243/api/v1/rest-apis' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-oauth2-token>' \
   -d '{
-    "name": "Weather API",
-    "displayName": "Weather Information API",
-    "description": "API for retrieving weather information",
-    "context": "/weather",
-    "version": "v1.0",
-    "projectId": "<project-uuid>",
-    "type": "HTTP",
-    "transport": ["http", "https"],
-    "lifeCycleStatus": "CREATED"
-  }'
+      "id": "weather-api",
+      "name": "Weather API",
+      "description": "Weather API with main and sandbox upstreams",
+      "context": "/weather",
+      "version": "v1.0",
+      "projectId": "<project-uuid>",
+      "lifeCycleStatus": "CREATED",
+      "transport": ["http","https"],
+      "upstream": {
+         "main": { "url": "http://sample-backend:5000" },
+         "sandbox": { "url": "http://sample-backend:5000/sandbox" }
+       }
+    }'
 ```
 
 **7. Deploy API to Gateway**
 
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
+curl -k -X POST 'https://localhost:9243/api/v1/rest-apis/weather-api/deployments' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <your-oauth2-token>' \
-  -d '[{
+  -d '{
+    "name": "weather-v1-prod",
+    "base": "current",
     "gatewayId": "<gateway-uuid>",
-    "vhost": "mg.wso2.com"
-  }]'
+    "vhost": {
+      "main": "example.wso2.com",
+      "sandbox": "sand-example.wso2.com"
+    }
+}'
 ```
 
 Expected response:
 ```json
-[
-  {
-    "revisionId": "90d10e1c-8560-5c36-9d5a-124ecaa17485",
-    "gatewayId": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
-    "status": "CREATED",
-    "vhost": "mg.wso2.com",
-    "displayOnDevportal": false,
-    "deployedTime": "2025-10-21T16:15:18+05:30",
-    "successDeployedTime": "2025-10-21T16:15:18+05:30"
-  }
-]
+{
+  "deploymentId": "90d10e1c-8560-5c36-9d5a-124ecaa17485",
+  "name": "weather-v1-prod",
+  "gatewayId": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
+  "status": "DEPLOYED",
+  "vhost": {
+    "main": "example.wso2.com",
+    "sandbox": "sand-example.wso2.com"
+  },
+  "createdAt": "2025-10-21T16:15:18+05:30",
+  "updatedAt": "2025-10-21T16:15:18+05:30",
+  "baseDeploymentId": null
+}
 ```
 
 The connected gateway will receive a deployment event via WebSocket:

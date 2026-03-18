@@ -91,25 +91,24 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     name TEXT NOT NULL,
-    api_key TEXT NOT NULL UNIQUE,
+    api_key TEXT NOT NULL,
     masked_api_key TEXT NOT NULL,
     artifact_uuid TEXT NOT NULL,
-    operations TEXT NOT NULL DEFAULT '*',
     status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by TEXT NOT NULL DEFAULT 'system',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMPTZ NULL,
-    expires_in_unit TEXT NULL,
-    expires_in_duration INTEGER NULL,
     source TEXT NOT NULL DEFAULT 'local',
     external_ref_id TEXT NULL,
-    display_name TEXT NOT NULL DEFAULT '',
+    issuer TEXT NULL DEFAULT NULL,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE (artifact_uuid, name, gateway_id)
+    UNIQUE (artifact_uuid, name, gateway_id),
+    UNIQUE (uuid, gateway_id),
+    PRIMARY KEY (api_key, gateway_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
@@ -138,14 +137,12 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 );
 
 -- Subscriptions table (application-level subscriptions for REST APIs)
--- subscription_token: encrypted (AES-256-GCM) for GET display
--- subscription_token_hash: for xDS validation and uniqueness
+-- subscription_token_hash: for xDS validation and request validation (Platform-API stores original token)
 CREATE TABLE IF NOT EXISTS subscriptions (
     id TEXT PRIMARY KEY,
     gateway_id TEXT NOT NULL,
     api_id TEXT NOT NULL,
     application_id TEXT,
-    subscription_token TEXT NOT NULL,
     subscription_token_hash TEXT NOT NULL,
     subscription_plan_id TEXT,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',
@@ -159,3 +156,51 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_api_id ON subscriptions(api_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
+
+-- Table for gateway states (used by eventhub for multi-replica sync)
+CREATE TABLE IF NOT EXISTS gateway_states (
+    gateway_id TEXT PRIMARY KEY,
+    version_id TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table for events (used by eventhub for multi-replica sync)
+CREATE TABLE IF NOT EXISTS events (
+    gateway_id TEXT NOT NULL,
+    processed_timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    originated_timestamp TIMESTAMPTZ NOT NULL,
+    entity_type TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+    entity_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    event_data TEXT NOT NULL,
+    PRIMARY KEY (event_id),
+    FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
+-- Applications
+CREATE TABLE IF NOT EXISTS applications (
+    application_uuid TEXT PRIMARY KEY,
+    application_id TEXT NOT NULL,
+    application_name TEXT NOT NULL,
+    application_type TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_applications_application_id ON applications(application_id);
+
+-- Application to API key mappings
+CREATE TABLE IF NOT EXISTS application_api_keys (
+    application_uuid TEXT NOT NULL,
+    api_key_id TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_uuid, api_key_id, gateway_id),
+    FOREIGN KEY (application_uuid) REFERENCES applications(application_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (api_key_id, gateway_id) REFERENCES api_keys(uuid, gateway_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_api_keys_application_uuid ON application_api_keys(application_uuid, gateway_id);
+CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(api_key_id, gateway_id);

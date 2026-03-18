@@ -496,14 +496,13 @@ func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error 
 
 // APIDeploymentPush represents the request body for pushing API deployment details to the control plane
 type APIDeploymentPush struct {
-	ID                string               `json:"id" yaml:"id"`
-	Configuration     any                  `json:"configuration" yaml:"configuration"`
-	Status            string               `json:"status" yaml:"status"`
-	CreatedAt         time.Time            `json:"createdAt" yaml:"createdAt"`
-	UpdatedAt         time.Time            `json:"updatedAt" yaml:"updatedAt"`
-	DeployedAt        *time.Time           `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-	DeployedVersion   int64                `json:"deployedVersion" yaml:"deployedVersion"`
-	ProjectIdentifier string               `json:"projectIdentifier" yaml:"projectIdentifier"`
+	ID                string     `json:"id" yaml:"id"`
+	Configuration     any        `json:"configuration" yaml:"configuration"`
+	Status            string     `json:"status" yaml:"status"`
+	CreatedAt         time.Time  `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt" yaml:"updatedAt"`
+	DeployedAt        *time.Time `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
+	ProjectIdentifier string     `json:"projectIdentifier" yaml:"projectIdentifier"`
 }
 
 // PushAPIDeployment sends API deployment details to the control plane via a REST call
@@ -522,7 +521,6 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 		CreatedAt:         apiConfig.CreatedAt,
 		UpdatedAt:         apiConfig.UpdatedAt,
 		DeployedAt:        apiConfig.DeployedAt,
-		DeployedVersion:   apiConfig.DeployedVersion,
 		ProjectIdentifier: "default", // Set a default value or fetch from config if needed
 	}
 

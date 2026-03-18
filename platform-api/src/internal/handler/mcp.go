@@ -120,25 +120,17 @@ func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 		offset = 0
 	}
 
-	resp, err := h.service.List(orgID, limit, offset)
+	var resp *api.MCPProxyListResponse
+	if projectIDPtr != nil {
+		resp, err = h.service.ListByProject(orgID, *projectIDPtr, limit, offset)
+	} else {
+		resp, err = h.service.List(orgID, limit, offset)
+	}
+
 	if err != nil {
 		h.handleServiceError(c, err)
 		return
 	}
-
-	// Filter by project ID if provided
-	// TODO: Implement project ID filtering at the database level in the service/repository layer for better performance
-	if projectIDPtr != nil {
-		filtered := make([]api.MCPProxyListItem, 0)
-		for _, item := range resp.List {
-			if item.ProjectId != nil && *item.ProjectId == *projectIDPtr {
-				filtered = append(filtered, item)
-			}
-		}
-		resp.List = filtered
-		resp.Count = len(filtered)
-	}
-
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -221,7 +213,7 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.service.FetchServerInfo(&req)
+	resp, err := h.service.FetchServerInfo(orgID, &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrInvalidURL):
