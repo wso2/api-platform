@@ -21,6 +21,7 @@ package utils
 import (
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -668,4 +669,229 @@ func TestRegenerateAPIKey_Expiration_AllPaths(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "must be in the future")
 	})
+}
+
+func TestCreateAPIKey_ConfigLookup(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("db-fallback-create", "weather-api")
+
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+
+	service := NewAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	user := &commonmodels.AuthContext{
+		UserID: "creator-user",
+		Roles:  []string{"developer"},
+	}
+
+	result, err := service.CreateAPIKey(APIKeyCreationParams{
+		Handle:        cfg.Handle,
+		Request:       api.APIKeyCreationRequest{},
+		User:          user,
+		CorrelationID: "corr-create-db-fallback",
+		Logger:        logger,
+	})
+	if err != nil {
+		t.Fatalf("CreateAPIKey returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected create result")
+	}
+	if result.Response.ApiKey == nil {
+		t.Fatal("expected API key response")
+	}
+	if result.Response.ApiKey.ApiId != cfg.Handle {
+		t.Fatalf("expected response handle %q, got %q", cfg.Handle, result.Response.ApiKey.ApiId)
+	}
+
+	savedKeys, err := db.GetAPIKeysByAPI(cfg.UUID)
+	if err != nil {
+		t.Fatalf("failed to read saved API keys from database: %v", err)
+	}
+	if len(savedKeys) != 1 {
+		t.Fatalf("expected 1 saved API key, got %d", len(savedKeys))
+	}
+}
+
+func TestUpdateAPIKey_ConfigLookup(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("db-fallback-update", "orders-api")
+
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+
+	existingKey := newTestStoredAPIKey(cfg.UUID, "external-key", "creator-user", "external")
+	if err := db.SaveAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in database: %v", err)
+	}
+	if err := store.StoreAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in memory store: %v", err)
+	}
+
+	service := NewAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	user := &commonmodels.AuthContext{
+		UserID: "creator-user",
+		Roles:  []string{"developer"},
+	}
+	apiKeyValue := strings.Repeat("x", 40)
+
+	result, err := service.UpdateAPIKey(APIKeyUpdateParams{
+		Handle:     cfg.Handle,
+		APIKeyName: existingKey.Name,
+		Request: api.APIKeyCreationRequest{
+			ApiKey: &apiKeyValue,
+		},
+		User:          user,
+		CorrelationID: "corr-update-db-fallback",
+		Logger:        logger,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAPIKey returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected update result")
+	}
+	if result.Response.ApiKey == nil {
+		t.Fatal("expected API key response")
+	}
+	if result.Response.ApiKey.Name != existingKey.Name {
+		t.Fatalf("expected updated key name %q, got %+v", existingKey.Name, result.Response.ApiKey.Name)
+	}
+
+	updatedKey, err := db.GetAPIKeysByAPIAndName(cfg.UUID, existingKey.Name)
+	if err != nil {
+		t.Fatalf("failed to read updated API key from database: %v", err)
+	}
+	if updatedKey.Name != existingKey.Name {
+		t.Fatalf("expected database key name %q, got %q", existingKey.Name, updatedKey.Name)
+	}
+}
+
+func TestRegenerateAPIKey_ConfigLookup(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("db-fallback-regenerate", "inventory-api")
+
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+
+	existingKey := newTestStoredAPIKey(cfg.UUID, "local-key", "creator-user", "local")
+	if err := db.SaveAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in database: %v", err)
+	}
+	if err := store.StoreAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in memory store: %v", err)
+	}
+
+	service := NewAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	user := &commonmodels.AuthContext{
+		UserID: "creator-user",
+		Roles:  []string{"developer"},
+	}
+
+	result, err := service.RegenerateAPIKey(APIKeyRegenerationParams{
+		Handle:        cfg.Handle,
+		APIKeyName:    existingKey.Name,
+		Request:       api.APIKeyRegenerationRequest{},
+		User:          user,
+		CorrelationID: "corr-regenerate-db-fallback",
+		Logger:        logger,
+	})
+	if err != nil {
+		t.Fatalf("RegenerateAPIKey returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected regeneration result")
+	}
+	if result.Response.ApiKey == nil {
+		t.Fatal("expected API key response")
+	}
+	if result.Response.ApiKey.ApiId != cfg.Handle {
+		t.Fatalf("expected response handle %q, got %q", cfg.Handle, result.Response.ApiKey.ApiId)
+	}
+
+	regeneratedKey, err := db.GetAPIKeysByAPIAndName(cfg.UUID, existingKey.Name)
+	if err != nil {
+		t.Fatalf("failed to read regenerated API key from database: %v", err)
+	}
+	if regeneratedKey.APIKey == existingKey.APIKey {
+		t.Fatal("expected regenerated API key hash to change")
+	}
+}
+
+func newTestAPIKeyConfig() *config.APIKeyConfig {
+	return &config.APIKeyConfig{
+		APIKeysPerUserPerAPI: 10,
+		Algorithm:            constants.HashingAlgorithmSHA256,
+	}
+}
+
+func newTestSQLiteStorage(t *testing.T, logger *slog.Logger) storage.Storage {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "apikey.db")
+	db, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+	}, logger)
+	if err != nil {
+		t.Fatalf("failed to create sqlite storage: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+	return db
+}
+
+func newTestStoredRESTConfig(id, handle string) *models.StoredConfig {
+	now := time.Now()
+	restAPI := api.RestAPI{
+		ApiVersion: "1.0.0",
+		Kind:       api.RestAPIKind(models.KindRestApi),
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.APIConfigData{
+			DisplayName: handle + "-display",
+			Version:     "1.0.0",
+			Context:     "/" + handle,
+		},
+	}
+
+	return &models.StoredConfig{
+		UUID:                id,
+		Kind:                models.KindRestApi,
+		Handle:              handle,
+		DisplayName:         restAPI.Spec.DisplayName,
+		Version:             restAPI.Spec.Version,
+		Configuration:       restAPI,
+		SourceConfiguration: restAPI,
+		Status:              models.StatusDeployed,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+}
+
+func newTestStoredAPIKey(apiID, name, createdBy, source string) *models.APIKey {
+	now := time.Now()
+	return &models.APIKey{
+		UUID:         name + "-uuid",
+		Name:         name,
+		APIKey:       "$sha256$seed$hash-" + name,
+		MaskedAPIKey: "masked-" + name,
+		ArtifactUUID: apiID,
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    now.Add(-1 * time.Hour),
+		CreatedBy:    createdBy,
+		UpdatedAt:    now.Add(-1 * time.Hour),
+		Source:       source,
+	}
 }

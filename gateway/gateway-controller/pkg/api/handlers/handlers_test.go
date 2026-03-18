@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,10 +35,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -76,6 +80,55 @@ func NewMockStorage() *MockStorage {
 		subscriptions:     make(map[string]*models.Subscription),
 		subscriptionPlans: make(map[string]*models.SubscriptionPlan),
 	}
+}
+
+type publishedEvent struct {
+	gatewayID string
+	event     eventhub.Event
+}
+
+type mockEventHub struct {
+	publishedEvents []publishedEvent
+	publishErr      error
+}
+
+func (m *mockEventHub) Initialize() error {
+	return nil
+}
+
+func (m *mockEventHub) RegisterGateway(string) error {
+	return nil
+}
+
+func (m *mockEventHub) PublishEvent(gatewayID string, event eventhub.Event) error {
+	if m.publishErr != nil {
+		return m.publishErr
+	}
+	m.publishedEvents = append(m.publishedEvents, publishedEvent{
+		gatewayID: gatewayID,
+		event:     event,
+	})
+	return nil
+}
+
+func (m *mockEventHub) Subscribe(string) (<-chan eventhub.Event, error) {
+	return nil, nil
+}
+
+func (m *mockEventHub) Unsubscribe(string, <-chan eventhub.Event) error {
+	return nil
+}
+
+func (m *mockEventHub) UnsubscribeAll(string) error {
+	return nil
+}
+
+func (m *mockEventHub) CleanUpEvents() error {
+	return nil
+}
+
+func (m *mockEventHub) Close() error {
+	return nil
 }
 
 func (m *MockStorage) SaveConfig(cfg *models.StoredConfig) error {
@@ -620,6 +673,10 @@ func (m *MockStorage) DeleteCertificate(id string) error {
 	return errors.New("certificate not found")
 }
 
+func (m *MockStorage) GetDB() *sql.DB {
+	return nil
+}
+
 func (m *MockStorage) Close() error {
 	return nil
 }
@@ -678,9 +735,10 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 			VHosts:      *vhosts,
 		},
 		APIKey: config.APIKeyConfig{
-			Algorithm:    "sha256",
-			MinKeyLength: 32,
-			MaxKeyLength: 128,
+			APIKeysPerUserPerAPI: 10,
+			Algorithm:            "sha256",
+			MinKeyLength:         32,
+			MaxKeyLength:         128,
 		},
 	}
 
@@ -706,7 +764,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		policyDefs, &server.policyDefMu,
 		nil, nil, nil,
 		routerCfg, systemCfg,
-		httpClient, parser, validator, logger,
+		httpClient, parser, validator, logger, server.eventHub,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -778,6 +836,111 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 	}
 }
 
+func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, contextPath string) []byte {
+	t.Helper()
+
+	apiConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.RestApi,
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.APIConfigData{
+			DisplayName: displayName,
+			Version:     version,
+			Context:     contextPath,
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: stringPtr("http://backend.example.com"),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(apiConfig)
+	require.NoError(t, err)
+	return body
+}
+
+func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID string) {
+	server.eventHub = hub
+	server.gatewayID = gatewayID
+	if server.systemConfig != nil {
+		server.systemConfig.Controller.Server.GatewayID = gatewayID
+	}
+	if server.RestAPIHandler != nil {
+		restAPIService := restapi.NewRestAPIService(
+			server.store, server.db, nil, nil,
+			server.policyDefinitions, &server.policyDefMu,
+			nil, nil, nil,
+			server.routerConfig, server.systemConfig,
+			server.httpClient, server.parser, server.validator, server.logger, hub,
+		)
+		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
+	}
+	if server.apiKeyService != nil {
+		server.apiKeyService.SetEventHub(hub, gatewayID)
+	}
+}
+
+func seedAPIForAPIKeyHandlerTests(t *testing.T, server *APIServer, handle string) *models.StoredConfig {
+	t.Helper()
+
+	cfg := createTestStoredConfig("0000-test-api-id-0000-000000000000", "test-api", "v1.0.0", "/test")
+	cfg.Handle = handle
+	if restCfg, ok := cfg.Configuration.(api.RestAPI); ok {
+		restCfg.Metadata.Name = handle
+		cfg.Configuration = restCfg
+	}
+	if sourceCfg, ok := cfg.SourceConfiguration.(api.RestAPI); ok {
+		sourceCfg.Metadata.Name = handle
+		cfg.SourceConfiguration = sourceCfg
+	}
+
+	require.NoError(t, server.store.Add(cfg))
+	require.NoError(t, server.db.SaveConfig(cfg))
+
+	return cfg
+}
+
+func createTestAPIKeyRequestBody(t *testing.T, name, displayName, apiKeyValue string) []byte {
+	t.Helper()
+
+	request := api.APIKeyCreationRequest{
+		Name:   &name,
+		ApiKey: &apiKeyValue,
+	}
+
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+	return body
+}
+
+func createStoredExternalAPIKey(id, apiID, name, displayName, createdBy, maskedAPIKey string) *models.APIKey {
+	now := time.Now()
+	return &models.APIKey{
+		UUID:         id,
+		Name:         name,
+		APIKey:       "hashed-value",
+		MaskedAPIKey: maskedAPIKey,
+		ArtifactUUID: apiID,
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    now.Add(-1 * time.Hour),
+		CreatedBy:    createdBy,
+		UpdatedAt:    now.Add(-1 * time.Hour),
+		Source:       string(api.External),
+	}
+}
+
 // TestListAPIs tests listing all APIs
 func TestListRestAPIs(t *testing.T) {
 	server := createTestAPIServer()
@@ -785,8 +948,8 @@ func TestListRestAPIs(t *testing.T) {
 	// Add test configs to store
 	cfg1 := createTestStoredConfig("test-id-1", "0000-test-api-1-0000-000000000000", "v1.0.0", "/test1")
 	cfg2 := createTestStoredConfig("test-id-2", "test-api-2", "v2.0.0", "/test2")
-	_ = server.store.Add(cfg1)
-	_ = server.store.Add(cfg2)
+	_ = server.db.SaveConfig(cfg1)
+	_ = server.db.SaveConfig(cfg2)
 
 	c, w := createTestContext("GET", "/rest-apis", nil)
 	server.ListRestAPIs(c, api.ListRestAPIsParams{})
@@ -1139,13 +1302,12 @@ func TestHandleStatusUpdate(t *testing.T) {
 	_ = server.store.Add(cfg)
 
 	// Test successful deployment
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 
 	// Verify status updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
 	assert.NotNil(t, updatedCfg.DeployedAt)
-	assert.Equal(t, int64(1), updatedCfg.DeployedVersion)
 }
 
 // TestHandleStatusUpdateFailure tests status update for failed deployment
@@ -1157,7 +1319,7 @@ func TestHandleStatusUpdateFailure(t *testing.T) {
 	_ = server.store.Add(cfg)
 
 	// Test failed deployment
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", false, 0, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", false, "")
 
 	// Verify status updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
@@ -1170,7 +1332,7 @@ func TestHandleStatusUpdateNotFound(t *testing.T) {
 	server := createTestAPIServer()
 
 	// Should not panic
-	server.handleStatusUpdate("nonexistent", true, 1, "")
+	server.handleStatusUpdate("nonexistent", true, "")
 }
 
 // TestCreateRestAPIInvalidBody tests CreateRestAPI with invalid request body
@@ -1210,40 +1372,46 @@ func TestUpdateRestAPINotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// TestUpdateRestAPINoDB tests UpdateRestAPI when DB is not available
-func TestUpdateRestAPINoDB(t *testing.T) {
-	server := createTestAPIServerWithDB(nil)
-
-	body := []byte(`{
-		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-		"kind": "RestApi",
-		"metadata": {"name": "test"},
-		"spec": {
-			"displayName": "test",
-			"version": "v1",
-			"context": "/test",
-			"upstream": {"main": {"url": "http://backend.com"}},
-			"operations": [{"method": "GET", "path": "/"}]
-		}
-	}`)
-	c, w := createTestContextWithHeader("PUT", "/rest-apis/test", body, map[string]string{
-		"Content-Type": "application/json",
-	})
-	server.UpdateRestAPI(c, "test")
-
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-}
-
 // TestUpdateRestAPIHandleMismatch tests UpdateRestAPI with handle mismatch
 // Note: This test requires full parser/validator setup
 func TestUpdateRestAPIHandleMismatch(t *testing.T) {
 	t.Skip("Skipping test that requires full parser/validator setup")
 }
 
-// TestDeleteRestAPINoDB tests DeleteRestAPI when DB is not available
-// Note: This test requires full deployment service setup
-func TestDeleteRestAPINoDB(t *testing.T) {
-	t.Skip("Skipping test that requires full deployment service setup")
+// TestDeleteRestAPIWithDBAndEventHub tests DeleteRestAPI on the DB-backed event-driven path.
+func TestDeleteRestAPIWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "test-api", "v1.0.0", "/test")
+	cfg.Handle = "test-handle"
+	mockDB.SaveConfig(cfg)
+	mockDB.apiKeys["key-1"] = &models.APIKey{
+		UUID:         "key-1",
+		APIKey:       "secret-key",
+		ArtifactUUID: cfg.UUID,
+		Name:         "default",
+		Status:       models.APIKeyStatusActive,
+	}
+
+	c, w := createTestContext("DELETE", "/rest-apis/test-handle", nil)
+	c.Set(middleware.CorrelationIDKey, "corr-id-delete")
+
+	server.DeleteRestAPI(c, "test-handle")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeAPI, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-delete", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := mockDB.GetConfig(cfg.UUID)
+	require.Error(t, err)
+	assert.Empty(t, mockDB.apiKeys)
 }
 
 // TestDeleteRestAPINotFound tests DeleteRestAPI for non-existent API
@@ -1425,6 +1593,68 @@ func TestGenerateAPIKeyInvalidBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestCreateAPIKeyWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	cfg := seedAPIForAPIKeyHandlerTests(t, server, "test-handle")
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	body := createTestAPIKeyRequestBody(t, "test-key", "Test Key", "external-key-123456789012345678901234567890123456")
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+		UserID: "test-user",
+		Roles:  []string{"admin"},
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-create-key")
+
+	server.CreateAPIKey(c, "test-handle")
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+
+	createdKey, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
+	require.NoError(t, err)
+	assert.Equal(t, cfg.UUID, createdKey.ArtifactUUID)
+	assert.Equal(t, "test-user", createdKey.CreatedBy)
+	assert.Equal(t, string(api.External), createdKey.Source)
+
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeAPIKey, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, apikey.BuildAPIKeyEntityID(cfg.UUID, createdKey.UUID), mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-create-key", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
+}
+
+func TestCreateAPIKeyDBError(t *testing.T) {
+	server := createTestAPIServer()
+	cfg := seedAPIForAPIKeyHandlerTests(t, server, "test-handle")
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+	mockDB.saveErr = errors.New("db save error")
+
+	body := createTestAPIKeyRequestBody(t, "test-key", "Test Key", "external-key-123456789012345678901234567890123456")
+	c, w := createTestContextWithHeader("POST", "/rest-apis/test-handle/api-keys", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+		UserID: "test-user",
+		Roles:  []string{"admin"},
+	})
+
+	server.CreateAPIKey(c, "test-handle")
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, mockHub.publishedEvents)
+
+	_, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
+	require.Error(t, err)
+}
+
 // TestRevokeAPIKeyNoAuth tests RevokeAPIKey without authentication
 func TestRevokeAPIKeyNoAuth(t *testing.T) {
 	server := createTestAPIServer()
@@ -1433,6 +1663,69 @@ func TestRevokeAPIKeyNoAuth(t *testing.T) {
 	server.RevokeAPIKey(c, "0000-test-handle-0000-000000000000", "test-key")
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRevokeAPIKeyWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	cfg := seedAPIForAPIKeyHandlerTests(t, server, "test-handle")
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	storeKey := createStoredExternalAPIKey("0000-test-key-id-0000-000000000000", cfg.UUID, "test-key", "Test Key", "test-user", "apip_****old")
+	dbKey := *storeKey
+	require.NoError(t, server.store.StoreAPIKey(storeKey))
+	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
+
+	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
+	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+		UserID: "test-user",
+		Roles:  []string{"admin"},
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-revoke-key")
+
+	server.RevokeAPIKey(c, "test-handle", "test-key")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeAPIKey, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, apikey.BuildAPIKeyEntityID(cfg.UUID, storeKey.UUID), mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-revoke-key", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
+
+	_, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
+	require.Error(t, err)
+}
+
+func TestRevokeAPIKeyDBError(t *testing.T) {
+	server := createTestAPIServer()
+	cfg := seedAPIForAPIKeyHandlerTests(t, server, "test-handle")
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+	mockDB.updateErr = errors.New("db update error")
+
+	storeKey := createStoredExternalAPIKey("0000-test-key-id-0000-000000000000", cfg.UUID, "test-key", "Test Key", "test-user", "apip_****old")
+	dbKey := *storeKey
+	require.NoError(t, server.store.StoreAPIKey(storeKey))
+	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
+
+	c, w := createTestContext("DELETE", "/rest-apis/test-handle/api-keys/test-key", nil)
+	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+		UserID: "test-user",
+		Roles:  []string{"admin"},
+	})
+
+	server.RevokeAPIKey(c, "test-handle", "test-key")
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, mockHub.publishedEvents)
+
+	storedKey, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
+	require.NoError(t, err)
+	assert.Equal(t, models.APIKeyStatusActive, storedKey.Status)
 }
 
 // TestRegenerateAPIKeyNoAuth tests RegenerateAPIKey without authentication
@@ -1644,7 +1937,7 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 
 	case <-time.After(2 * time.Second):
 		// Trigger graceful exit by updating status to deployed
-		server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
+		server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 		require.NoError(t, <-done)
 
 		retrievedCfg, err := server.store.Get("0000-test-id-0000-000000000000")
@@ -1841,7 +2134,7 @@ func TestHandleStatusUpdateWithDB(t *testing.T) {
 	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	// Test successful deployment
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 
 	// Verify both store and DB are updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
@@ -1860,7 +2153,7 @@ func TestHandleStatusUpdateDBError(t *testing.T) {
 	mockDB.configs["0000-test-id-0000-000000000000"] = cfg
 
 	// Should not panic even with DB error
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "corr-id-1")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 }
 
 // TestBuildStoredPolicyFromAPIInvalidKind tests buildStoredPolicyFromAPI with invalid kind
@@ -2116,7 +2409,7 @@ func TestHandleStatusUpdateStoreError(t *testing.T) {
 
 	// Corrupt the store to cause an error on update
 	// Since we can't easily corrupt the store, just verify it doesn't panic
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
@@ -2403,7 +2696,7 @@ func TestHandleStatusUpdateEmptyCorrelationID(t *testing.T) {
 	_ = server.store.Add(cfg)
 
 	// Test with empty correlation ID
-	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, 1, "")
+	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
@@ -2544,16 +2837,50 @@ func TestGetMCPProxyByIdWithDeployedAt(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestDeleteRestAPIDBError tests DeleteRestAPI with database delete error
-// Note: This test requires full deployment service setup
+// TestDeleteRestAPIDBError tests DeleteRestAPI with a database delete failure.
 func TestDeleteRestAPIDBError(t *testing.T) {
-	t.Skip("Skipping test that requires full deployment service setup")
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "test-api", "v1.0.0", "/test")
+	cfg.Handle = "test-handle"
+	mockDB.SaveConfig(cfg)
+	mockDB.deleteErr = errors.New("db delete error")
+
+	c, w := createTestContext("DELETE", "/rest-apis/test-handle", nil)
+	server.DeleteRestAPI(c, "test-handle")
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, mockHub.publishedEvents)
+
+	stored, err := mockDB.GetConfig(cfg.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, cfg.UUID, stored.UUID)
 }
 
-// TestUpdateRestAPIDBError tests UpdateRestAPI with database update error
-// Note: This test requires full deployment service setup
+// TestUpdateRestAPIDBError tests UpdateRestAPI with a database update failure.
 func TestUpdateRestAPIDBError(t *testing.T) {
-	t.Skip("Skipping test that requires full deployment service setup")
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "original-display-name", "v1.0.0", "/original")
+	existing.Handle = "test-handle"
+	mockDB.SaveConfig(existing)
+	mockDB.updateErr = errors.New("db update error")
+
+	body := createTestRestAPIRequestBody(t, "test-handle", "updated-display-name", "v2.0.0", "/updated")
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	server.UpdateRestAPI(c, "test-handle")
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, mockHub.publishedEvents)
 }
 
 // TestGetMCPProxyByIdDBUnavailable tests GetMCPProxyById with DB unavailable
@@ -2652,6 +2979,78 @@ func TestUpdateAPIKeyMissingAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "error", response.Status)
 	assert.Equal(t, "apiKey is required", response.Message)
+}
+
+func TestUpdateAPIKeyWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	cfg := seedAPIForAPIKeyHandlerTests(t, server, "test-handle")
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	storeKey := createStoredExternalAPIKey("0000-test-key-id-0000-000000000000", cfg.UUID, "test-key", "Old Key", "test-user", "apip_****old")
+	dbKey := *storeKey
+	require.NoError(t, server.store.StoreAPIKey(storeKey))
+	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
+
+	body := createTestAPIKeyRequestBody(t, "test-key", "Updated Key", "external-key-abcdef1234567890abcdef1234567890abcdef")
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+		UserID: "test-user",
+		Roles:  []string{"admin"},
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-update-key")
+
+	server.UpdateAPIKey(c, "test-handle", "test-key")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeAPIKey, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, apikey.BuildAPIKeyEntityID(cfg.UUID, storeKey.UUID), mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-update-key", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
+
+	updatedKey, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
+	require.NoError(t, err)
+	assert.Equal(t, models.APIKeyStatusActive, updatedKey.Status)
+	assert.Equal(t, string(api.External), updatedKey.Source)
+	assert.NotEqual(t, "apip_****old", updatedKey.MaskedAPIKey)
+}
+
+func TestUpdateAPIKeyDBError(t *testing.T) {
+	server := createTestAPIServer()
+	cfg := seedAPIForAPIKeyHandlerTests(t, server, "test-handle")
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+	mockDB.updateErr = errors.New("db update error")
+
+	storeKey := createStoredExternalAPIKey("0000-test-key-id-0000-000000000000", cfg.UUID, "test-key", "Old Key", "test-user", "apip_****old")
+	dbKey := *storeKey
+	require.NoError(t, server.store.StoreAPIKey(storeKey))
+	require.NoError(t, mockDB.SaveAPIKey(&dbKey))
+
+	body := createTestAPIKeyRequestBody(t, "test-key", "Updated Key", "external-key-abcdef1234567890abcdef1234567890abcdef")
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle/api-keys/test-key", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(constants.AuthContextKey, commonmodels.AuthContext{
+		UserID: "test-user",
+		Roles:  []string{"admin"},
+	})
+
+	server.UpdateAPIKey(c, "test-handle", "test-key")
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, mockHub.publishedEvents)
+
+	storedKey, err := mockDB.GetAPIKeysByAPIAndName(cfg.UUID, "test-key")
+	require.NoError(t, err)
+	assert.Equal(t, "apip_****old", storedKey.MaskedAPIKey)
 }
 
 // TestRevokeAPIKeyNotFound tests revoking a non-existent API key

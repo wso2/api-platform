@@ -61,7 +61,6 @@ type StoredConfig struct {
 	CreatedAt           time.Time    `json:"createdAt"`
 	UpdatedAt           time.Time    `json:"updatedAt"`
 	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
-	DeployedVersion     int64        `json:"deployed_version"` // Runtime-only: xDS snapshot version, not persisted to DB
 }
 
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing

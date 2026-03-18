@@ -58,7 +58,7 @@ func (a *slogAdapter) Errorf(format string, args ...interface{}) {
 var _ xdslog.Logger = (*slogAdapter)(nil)
 
 // StatusUpdateCallback is called after xDS snapshot update completes
-type StatusUpdateCallback func(configID string, success bool, version int64, correlationID string)
+type StatusUpdateCallback func(configID string, success bool, correlationID string)
 
 // SnapshotManager manages xDS snapshots for Envoy
 type SnapshotManager struct {
@@ -125,7 +125,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.UUID, false, 0, correlationID)
+				sm.statusCallback(cfg.UUID, false, correlationID)
 			}
 		}
 		return fmt.Errorf("failed to translate configurations: %w", err)
@@ -157,7 +157,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.UUID, false, 0, correlationID)
+				sm.statusCallback(cfg.UUID, false, correlationID)
 			}
 		}
 		return fmt.Errorf("failed to create snapshot: %w", err)
@@ -171,7 +171,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.UUID, false, 0, correlationID)
+				sm.statusCallback(cfg.UUID, false, correlationID)
 			}
 		}
 		return fmt.Errorf("snapshot is inconsistent: %w", err)
@@ -185,7 +185,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.UUID, false, 0, correlationID)
+				sm.statusCallback(cfg.UUID, false, correlationID)
 			}
 		}
 		return fmt.Errorf("failed to set snapshot: %w", err)
@@ -219,7 +219,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	// Mark all successfully deployed configs
 	if sm.statusCallback != nil {
 		for _, cfg := range configs {
-			sm.statusCallback(cfg.UUID, true, version, correlationID)
+			sm.statusCallback(cfg.UUID, true, correlationID)
 		}
 	}
 

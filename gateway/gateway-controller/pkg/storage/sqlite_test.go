@@ -92,6 +92,8 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"api_keys",
 		"subscriptions",
 		"subscription_plans",
+		"events",
+		"gateway_states",
 		"applications",
 		"application_api_keys",
 	}
@@ -125,7 +127,7 @@ func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	// Reopen — should fail with unsupported version error
 	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
 	assert.Assert(t, err != nil)
-	assert.ErrorContains(t, err, "unsupported schema version 5")
+	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 1; delete the database to recreate")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {

@@ -104,7 +104,6 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI1-v1.0")
 		require.NoError(t, err)
 		cfg.Status = "deployed"
-		cfg.DeployedVersion = 5
 
 		require.NoError(t, db.UpdateConfig(cfg))
 		require.NoError(t, db.Close())
@@ -121,7 +120,6 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI1-v1.0")
 		assert.NoError(t, err)
 		assert.Equal(t, models.StatusDeployed, cfg.Status)
-		// DeployedVersion is runtime-only (not persisted to DB), so it resets to 0 after reload
 	}
 
 	// Phase 5: Delete a configuration and verify deletion persists

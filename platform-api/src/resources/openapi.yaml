@@ -7638,6 +7638,16 @@ components:
             List of capabilities supported by this proxy. This will be stored as-is and can be used in the future if we need
             this for governance purposes
           $ref: '#/components/schemas/MCPProxyCapabilities'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was created
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated
+          readOnly: true
 
     MCPProxyListItem:
       type: object

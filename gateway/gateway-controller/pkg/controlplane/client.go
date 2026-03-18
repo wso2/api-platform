@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 
 	"github.com/gorilla/websocket"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
@@ -120,6 +121,8 @@ type Client struct {
 	systemConfig                *config.Config
 	policyDefinitions           map[string]api.PolicyDefinition
 	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
+	eventHub                    eventhub.EventHub
+	gatewayID                   string
 }
 
 // NewClient creates a new control plane client
@@ -139,8 +142,19 @@ func NewClient(
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	subSnapshotManager *subscriptionxds.SnapshotManager,
+	eventHubInstance eventhub.EventHub,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig)
+
+	var gatewayID string
+	if eventHubInstance != nil {
+		gatewayID = systemConfig.Controller.Server.GatewayID
+		deploymentService.SetEventHub(eventHubInstance, gatewayID)
+		apiKeyService.SetEventHub(eventHubInstance, gatewayID)
+	}
 
 	client := &Client{
 		config:                      cfg,
@@ -150,14 +164,16 @@ func NewClient(
 		snapshotManager:             snapshotManager,
 		parser:                      config.NewParser(),
 		validator:                   validator,
-		deploymentService:           utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
-		apiKeyService:               utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig),
+		deploymentService:           deploymentService,
+		apiKeyService:               apiKeyService,
 		apiKeyXDSManager:            apiKeyXDSManager,
 		routerConfig:                routerConfig,
 		policyManager:               policyManager,
 		systemConfig:                systemConfig,
 		policyDefinitions:           policyDefinitions,
 		subscriptionSnapshotManager: subSnapshotManager,
+		eventHub:                    eventHubInstance,
+		gatewayID:                   gatewayID,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -1027,6 +1043,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	)
 
 	// Fetch API definition and deploy
+	// (deploymentService handles DB + event publishing when eventHub is set)
 	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.CorrelationID)
 	if err != nil {
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
@@ -1035,10 +1052,13 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Update policy engine xDS snapshot (best-effort)
-	if err := c.updatePolicyForDeployment(apiID, deployedEvent.CorrelationID, result); err != nil {
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
+	// Skip when eventHub is set — EventListener handles policy derivation
+	if c.eventHub == nil {
+		if err := c.updatePolicyForDeployment(apiID, deployedEvent.CorrelationID, result); err != nil {
+			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
+				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "success",
@@ -1129,19 +1149,35 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		}
 	}
 
-	// Update in-memory store
-	if err := c.store.Update(apiConfig); err != nil {
-		c.logger.Error("Failed to update config status in memory store",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
+	if c.eventHub != nil {
+		// Event-driven mode: publish event; EventListener handles store/xDS
+		evt := eventhub.Event{
+			EventType: eventhub.EventTypeAPI,
+			Action:    "UPDATE",
+			EntityID:  apiID,
+			EventID:   undeployedEvent.CorrelationID,
+		}
+		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+			c.logger.Error("Failed to publish API undeployment event", slog.Any("error", err))
+		}
+	} else {
+		// Update in-memory store
+		if err := c.store.Update(apiConfig); err != nil {
+			c.logger.Error("Failed to update config status in memory store",
+				slog.String("api_id", apiID),
+				slog.Any("error", err),
+			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
 
-	// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
-	c.updateXDSSnapshotAsync(apiID, undeployedEvent.CorrelationID, false, true)
+		// Note: We keep API keys and policies for potential redeploy
+		// They will be reused if the API is redeployed
+
+		// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
+		c.updateXDSSnapshotAsync(apiID, undeployedEvent.CorrelationID, false, true)
+	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "success",
 		undeployedEvent.Payload.PerformedAt, "")
@@ -1290,30 +1326,43 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 		}
 	}
 
-	// Check and clean up stale API keys from memory store
-	if err := c.store.RemoveAPIKeysByAPI(apiID); err != nil {
-		c.logger.Warn("Failed to remove stale API keys from memory store",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
+	if c.eventHub != nil {
+		// Event-driven mode: publish event; EventListener handles store/xDS/policy cleanup
+		evt := eventhub.Event{
+			EventType: eventhub.EventTypeAPI,
+			Action:    "DELETE",
+			EntityID:  apiID,
+			EventID:   correlationID,
+		}
+		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+			c.logger.Error("Failed to publish orphan cleanup event", slog.Any("error", err))
+		}
 	} else {
-		c.logger.Debug("Cleaned up any stale API keys from memory store",
+		// Check and clean up stale API keys from memory store
+		if err := c.store.RemoveAPIKeysByAPI(apiID); err != nil {
+			c.logger.Warn("Failed to remove stale API keys from memory store",
+				slog.String("api_id", apiID),
+				slog.Any("error", err),
+			)
+		} else {
+			c.logger.Debug("Cleaned up any stale API keys from memory store",
+				slog.String("api_id", apiID),
+			)
+		}
+
+		// Note: Cannot remove stale API keys from policy engine via xDS without API config
+		// (requires API name and version which are only available in the config)
+		// The xDS snapshot update below will help clean up stale routes
+		c.logger.Debug("Skipping API key removal from policy engine (requires API config metadata)",
 			slog.String("api_id", apiID),
 		)
+
+		// Check and clean up stale policy configuration
+		c.removePolicyConfiguration(apiID, correlationID, true)
+
+		// Update xDS snapshot to remove any stale routes
+		c.updateXDSSnapshotAsync(apiID, correlationID, true, false)
 	}
-
-	// Note: Cannot remove stale API keys from policy engine via xDS without API config
-	// (requires API name and version which are only available in the config)
-	// The xDS snapshot update below will help clean up stale routes
-	c.logger.Debug("Skipping API key removal from policy engine (requires API config metadata)",
-		slog.String("api_id", apiID),
-	)
-
-	// Check and clean up stale policy configuration
-	c.removePolicyConfiguration(apiID, correlationID, true)
-
-	// Update xDS snapshot to remove any stale routes
-	c.updateXDSSnapshotAsync(apiID, correlationID, true, false)
 
 	c.logger.Info("Successfully processed stale resource cleanup",
 		slog.String("api_id", apiID),
@@ -1356,62 +1405,73 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 		}
 	}
 
-	// 3. Remove API keys from in-memory ConfigStore
-	if err := c.store.RemoveAPIKeysByAPI(apiID); err != nil {
-		c.logger.Warn("Failed to remove API keys from ConfigStore",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
+	if c.eventHub != nil {
+		// Event-driven mode: publish event; EventListener handles store/xDS/policy cleanup
+		evt := eventhub.Event{
+			EventType: eventhub.EventTypeAPI,
+			Action:    "DELETE",
+			EntityID:  apiID,
+			EventID:   correlationID,
+		}
+		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+			c.logger.Error("Failed to publish API deletion event", slog.Any("error", err))
+		}
 	} else {
-		c.logger.Info("Successfully removed API keys from ConfigStore",
-			slog.String("api_id", apiID),
-		)
-	}
+		// 3. Remove API keys from in-memory ConfigStore
+		if err := c.store.RemoveAPIKeysByAPI(apiID); err != nil {
+			c.logger.Warn("Failed to remove API keys from ConfigStore",
+				slog.String("api_id", apiID),
+				slog.Any("error", err),
+			)
+		} else {
+			c.logger.Info("Successfully removed API keys from ConfigStore",
+				slog.String("api_id", apiID),
+			)
+		}
 
-	// 4. Remove API keys from policy engine via xDS (if we have the config)
-	if apiConfig != nil && c.apiKeyXDSManager != nil {
-		if restCfg, ok := apiConfig.Configuration.(api.RestAPI); ok {
-			apiName := restCfg.Spec.DisplayName
-			apiVersion := restCfg.Spec.Version
+		// 4. Remove API keys from policy engine via xDS (if we have the config)
+		if apiConfig != nil && c.apiKeyXDSManager != nil {
+			if restCfg, ok := apiConfig.Configuration.(api.RestAPI); ok {
+				apiName := restCfg.Spec.DisplayName
+				apiVersion := restCfg.Spec.Version
 
-			// Use apiKeyXDSManager directly to remove API keys from policy engine
-			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(apiID, apiName, apiVersion, correlationID); err != nil {
-				c.logger.Warn("Failed to remove API keys from policy engine",
-					slog.String("api_id", apiID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID),
-					slog.Any("error", err),
-				)
-			} else {
-				c.logger.Info("Successfully removed API keys from policy engine",
-					slog.String("api_id", apiID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID),
-				)
+				if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(apiID, apiName, apiVersion, correlationID); err != nil {
+					c.logger.Warn("Failed to remove API keys from policy engine",
+						slog.String("api_id", apiID),
+						slog.String("api_name", apiName),
+						slog.String("api_version", apiVersion),
+						slog.String("correlation_id", correlationID),
+						slog.Any("error", err),
+					)
+				} else {
+					c.logger.Info("Successfully removed API keys from policy engine",
+						slog.String("api_id", apiID),
+						slog.String("api_name", apiName),
+						slog.String("api_version", apiVersion),
+						slog.String("correlation_id", correlationID),
+					)
+				}
 			}
 		}
+
+		// 5. Delete from in-memory store
+		if err := c.store.Delete(apiID); err != nil {
+			c.logger.Error("Failed to delete API configuration from memory store",
+				slog.String("api_id", apiID),
+				slog.Any("error", err),
+			)
+		} else {
+			c.logger.Info("Successfully deleted API configuration from memory store",
+				slog.String("api_id", apiID),
+			)
+		}
+
+		// 6. Update xDS snapshot asynchronously (API will be removed from routes)
+		c.updateXDSSnapshotAsync(apiID, correlationID, false, false)
+
+		// 7. Remove derived policy configuration (after all other operations)
+		c.removePolicyConfiguration(apiID, correlationID, false)
 	}
-
-	// 5. Delete from in-memory store
-	if err := c.store.Delete(apiID); err != nil {
-		c.logger.Error("Failed to delete API configuration from memory store",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		// Continue even if in-memory deletion fails
-	} else {
-		c.logger.Info("Successfully deleted API configuration from memory store",
-			slog.String("api_id", apiID),
-		)
-	}
-
-	// 6. Update xDS snapshot asynchronously (API will be removed from routes)
-	c.updateXDSSnapshotAsync(apiID, correlationID, false, false)
-
-	// 7. Remove derived policy configuration (after all other operations)
-	c.removePolicyConfiguration(apiID, correlationID, false)
 
 	c.logger.Info("Successfully processed API deletion event",
 		slog.String("api_id", apiID),
@@ -1943,7 +2003,6 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 	// Set status to undeployed (preserve config, keys, and policies)
 	mcpConfig.Status = models.StatusUndeployed
 	mcpConfig.UpdatedAt = time.Now()
-	// Keep DeployedVersion as-is - it tracks when it was last deployed
 
 	// Update database (only if persistent mode)
 	if c.db != nil {

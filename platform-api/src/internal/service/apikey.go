@@ -359,7 +359,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyCreatedEvent{
 		UUID:          apiKeyUUID,
-		ApiId:         apiHandle,
+		ApiId:         apiId,
 		Name:          keyName,
 		ApiKeyHashes:  apiKeyHashesJSON,
 		MaskedApiKey:  maskedAPIKey,
@@ -475,7 +475,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 
 	// Build the API key updated event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyUpdatedEvent{
-		ApiId:        apiHandle,
+		ApiId:        apiId,
 		KeyName:      keyName,
 		ApiKeyHashes: apiKeyHashesJSON,
 		MaskedApiKey: maskedAPIKey,
@@ -565,7 +565,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 
 	// Build the API key revoked event
 	event := &model.APIKeyRevokedEvent{
-		ApiId:   apiHandle,
+		ApiId:   apiId,
 		KeyName: keyName,
 	}
 

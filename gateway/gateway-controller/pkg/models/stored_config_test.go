@@ -52,13 +52,12 @@ func TestStoredConfig_Fields(t *testing.T) {
 	deployedAt := now.Add(time.Hour)
 
 	config := &StoredConfig{
-		UUID:            "0000-test-id-123-0000-000000000000",
-		Kind:            "API",
-		Status:          StatusDeployed,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-		DeployedAt:      &deployedAt,
-		DeployedVersion: 5,
+		UUID:       "0000-test-id-123-0000-000000000000",
+		Kind:       "API",
+		Status:     StatusDeployed,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		DeployedAt: &deployedAt,
 	}
 
 	assert.Equal(t, "0000-test-id-123-0000-000000000000", config.UUID)
@@ -68,7 +67,6 @@ func TestStoredConfig_Fields(t *testing.T) {
 	assert.Equal(t, now, config.UpdatedAt)
 	assert.NotNil(t, config.DeployedAt)
 	assert.Equal(t, deployedAt, *config.DeployedAt)
-	assert.Equal(t, int64(5), config.DeployedVersion)
 }
 
 func TestStoredConfig_NilDeployedAt(t *testing.T) {

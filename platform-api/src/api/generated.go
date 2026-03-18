@@ -29,6 +29,11 @@ const (
 	APIKeySecurityInQuery  APIKeySecurityIn = "query"
 )
 
+// Defines values for ApplicationType.
+const (
+	Genai ApplicationType = "genai"
+)
+
 // Defines values for ChannelRequestMethod.
 const (
 	SUB ChannelRequestMethod = "SUB"
@@ -511,6 +516,20 @@ type APIKeyItem struct {
 // APIKeyItemStatus Current status of the key
 type APIKeyItemStatus string
 
+// APIKeyMappingAssociatedEntity defines model for APIKeyMappingAssociatedEntity.
+type APIKeyMappingAssociatedEntity struct {
+	// Id ID of the entity that owns the API key
+	Id string `binding:"required" json:"id" yaml:"id"`
+}
+
+// APIKeyMappingSelector defines model for APIKeyMappingSelector.
+type APIKeyMappingSelector struct {
+	AssociatedEntity APIKeyMappingAssociatedEntity `json:"associatedEntity" yaml:"associatedEntity"`
+
+	// KeyId API key name
+	KeyId string `binding:"required" json:"keyId" yaml:"keyId"`
+}
+
 // APIKeySecurity Configuration for API key based authentication
 type APIKeySecurity struct {
 	// Enabled Whether API key authentication is enabled
@@ -526,9 +545,59 @@ type APIKeySecurity struct {
 // APIKeySecurityIn Location of the API key (header or query)
 type APIKeySecurityIn string
 
+// AddApplicationAPIKeysRequest defines model for AddApplicationAPIKeysRequest.
+type AddApplicationAPIKeysRequest struct {
+	// ApiKeys List of API key selectors to add to the application mappings
+	ApiKeys []APIKeyMappingSelector `binding:"required" json:"apiKeys" yaml:"apiKeys"`
+}
+
 // AddGatewayToRESTAPIRequest defines model for AddGatewayToRESTAPIRequest.
 type AddGatewayToRESTAPIRequest struct {
 	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// Application defines model for Application.
+type Application struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy Creator identifier
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// Description Description of the application
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Id Application handle/identifier
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Name Name of the application
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// ProjectId UUID of the project this application belongs to
+	ProjectId *openapi_types.UUID `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+
+	// Type Type of the application
+	Type      ApplicationType `json:"type" yaml:"type"`
+	UpdatedAt *time.Time      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// ApplicationListResponse defines model for ApplicationListResponse.
+type ApplicationListResponse struct {
+	// Count Number of items in current response
+	Count      int           `binding:"required" json:"count" yaml:"count"`
+	List       []Application `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination    `json:"pagination" yaml:"pagination"`
+}
+
+// ApplicationType Type of the application
+type ApplicationType string
+
+// AssociatedEntity defines model for AssociatedEntity.
+type AssociatedEntity struct {
+	// Id ID of the associated entity
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Kind Type of the associated entity
+	Kind string `binding:"required" json:"kind" yaml:"kind"`
 }
 
 // Channel Defines a single channel within the Async API
@@ -617,6 +686,27 @@ type CreateAPIKeyResponse struct {
 
 // CreateAPIKeyResponseStatus Status of the operation
 type CreateAPIKeyResponseStatus string
+
+// CreateApplicationRequest Request body for creating an application.
+type CreateApplicationRequest struct {
+	// CreatedBy Creator identifier
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// Description Description of the application
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Id Unique handle/identifier for the application. Can be provided during creation or auto-generated.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Name Name of the application
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// ProjectId UUID of the project this application belongs to. If omitted, the application is not mapped to a project.
+	ProjectId *openapi_types.UUID `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+
+	// Type Type of the application
+	Type ApplicationType `json:"type" yaml:"type"`
+}
 
 // CreateDevPortalRequest defines model for CreateDevPortalRequest.
 type CreateDevPortalRequest struct {
@@ -1644,6 +1734,9 @@ type MCPProxy struct {
 	// Context Base path for all REST API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
+	// CreatedAt Timestamp when the resource was created
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
 	// CreatedBy Username of the creator
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
@@ -1667,6 +1760,9 @@ type MCPProxy struct {
 
 	// ProjectId UUID of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+
+	// UpdatedAt Timestamp when the resource was last updated
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
@@ -1743,6 +1839,37 @@ type MCPServerInfoFetchResponse struct {
 	Resources  *[]map[string]interface{} `json:"resources,omitempty" yaml:"resources,omitempty"`
 	ServerInfo *map[string]interface{}   `json:"serverInfo,omitempty" yaml:"serverInfo,omitempty"`
 	Tools      *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
+}
+
+// MappedAPIKey defines model for MappedAPIKey.
+type MappedAPIKey struct {
+	AssociatedEntity AssociatedEntity `json:"associatedEntity" yaml:"associatedEntity"`
+
+	// CreatedAt Timestamp when the API key was created
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// ExpiresAt Expiration timestamp of the API key
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+
+	// KeyId Name of the API key
+	KeyId string `binding:"required" json:"keyId" yaml:"keyId"`
+
+	// Status Status of the API key
+	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// UpdatedAt Timestamp when the API key was updated
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UserId User id of the key creator
+	UserId *string `json:"userId,omitempty" yaml:"userId,omitempty"`
+}
+
+// MappedAPIKeyListResponse defines model for MappedAPIKeyListResponse.
+type MappedAPIKeyListResponse struct {
+	// Count Number of items in current response
+	Count      int            `binding:"required" json:"count" yaml:"count"`
+	List       []MappedAPIKey `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination     `json:"pagination" yaml:"pagination"`
 }
 
 // OpenAPIValidationResponse defines model for OpenAPIValidationResponse.
@@ -2510,6 +2637,18 @@ type UpdateAPIKeyResponse struct {
 // UpdateAPIKeyResponseStatus Status of the operation
 type UpdateAPIKeyResponseStatus string
 
+// UpdateApplicationRequest defines model for UpdateApplicationRequest.
+type UpdateApplicationRequest struct {
+	// Description Description of the application
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Name Name of the application
+	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Type Type of the application
+	Type *ApplicationType `json:"type,omitempty" yaml:"type,omitempty"`
+}
+
 // UpdateDevPortalRequest defines model for UpdateDevPortalRequest.
 type UpdateDevPortalRequest struct {
 	// ApiKey API key for authentication with the DevPortal
@@ -2750,6 +2889,9 @@ type ApiVersionQ = string
 // ApiId defines model for apiId.
 type ApiId = string
 
+// AppId defines model for appId.
+type AppId = string
+
 // DeploymentId defines model for deploymentId.
 type DeploymentId = openapi_types.UUID
 
@@ -2759,8 +2901,14 @@ type DeploymentStatusQ string
 // DepthQ defines model for depth-Q.
 type DepthQ = int
 
+// EntityIDQ defines model for entityID-Q.
+type EntityIDQ = string
+
 // GatewayIdQ defines model for gatewayId-Q.
 type GatewayIdQ = string
+
+// MappedKeyId defines model for mappedKeyId.
+type MappedKeyId = string
 
 // OrganizationId defines model for organizationId.
 type OrganizationId = openapi_types.UUID
@@ -2774,6 +2922,9 @@ type BadRequest = Error
 // Conflict defines model for Conflict.
 type Conflict = Error
 
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
+
 // InternalServerError defines model for InternalServerError.
 type InternalServerError = Error
 
@@ -2782,6 +2933,18 @@ type NotFound = Error
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
+
+// ListApplicationsParams defines parameters for ListApplications.
+type ListApplicationsParams struct {
+	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
+}
+
+// RemoveApplicationAPIKeyParams defines parameters for RemoveApplicationAPIKey.
+type RemoveApplicationAPIKeyParams struct {
+	// EntityID **Entity ID** of the artifact associated with the API key mapping.
+	EntityID EntityIDQ `form:"entityID" json:"entityID" yaml:"entityID"`
+}
 
 // ListDevPortalsParams defines parameters for ListDevPortals.
 type ListDevPortalsParams struct {
@@ -3048,6 +3211,15 @@ type ListSubscriptionsParams struct {
 
 // ListSubscriptionsParamsStatus defines parameters for ListSubscriptions.
 type ListSubscriptionsParamsStatus string
+
+// CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
+type CreateApplicationJSONRequestBody = CreateApplicationRequest
+
+// UpdateApplicationJSONRequestBody defines body for UpdateApplication for application/json ContentType.
+type UpdateApplicationJSONRequestBody = UpdateApplicationRequest
+
+// AddApplicationAPIKeysJSONRequestBody defines body for AddApplicationAPIKeys for application/json ContentType.
+type AddApplicationAPIKeysJSONRequestBody = AddApplicationAPIKeysRequest
 
 // CreateDevPortalJSONRequestBody defines body for CreateDevPortal for application/json ContentType.
 type CreateDevPortalJSONRequestBody = CreateDevPortalRequest

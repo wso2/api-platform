@@ -33,7 +33,7 @@ func NewArtifactRepo(db *database.DB) *ArtifactRepo {
 }
 
 func (r *ArtifactRepo) Create(tx *sql.Tx, artifact *model.Artifact) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	query := `
 		INSERT INTO artifacts (uuid, handle, name, version, kind, organization_uuid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
