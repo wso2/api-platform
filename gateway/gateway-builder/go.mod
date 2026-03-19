@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/stretchr/testify v1.11.1
-	github.com/wso2/api-platform/sdk v0.4.1
+	github.com/wso2/api-platform/sdk v0.5.3
 	golang.org/x/mod v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
 )
