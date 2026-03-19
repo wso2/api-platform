@@ -404,6 +404,22 @@ func TestClient_restUsesWellKnownDerivedBaseURL(t *testing.T) {
 	}
 }
 
+func TestClient_discoverGatewayPath_InvalidRestBase(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"gatewayPath":"ws"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	_, err := client.discoverGatewayPath()
+	if err == nil {
+		t.Fatal("discoverGatewayPath() want error for gatewayPath that yields empty REST base")
+	}
+}
+
 func TestClient_discoverGatewayPath_SnakeCaseJSON(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

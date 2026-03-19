@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -44,6 +45,7 @@ type PlatformAPIConfig struct {
 
 // APIUtilsService provides utilities for API operations
 type APIUtilsService struct {
+	mu     sync.RWMutex
 	config PlatformAPIConfig
 	logger *slog.Logger
 	client *http.Client
@@ -80,10 +82,23 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 	}
 }
 
+func (s *APIUtilsService) baseURL() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config.BaseURL
+}
+
+// SetBaseURL updates the control plane REST base URL (e.g. after well-known discovery succeeds post-startup).
+func (s *APIUtilsService) SetBaseURL(baseURL string) {
+	s.mu.Lock()
+	s.config.BaseURL = baseURL
+	s.mu.Unlock()
+}
+
 // FetchAPIDefinition downloads the API definition as a zip file from the control plane
 func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 	// Construct the API URL by appending the resource path
-	apiURL := s.config.BaseURL + "/apis/" + apiID
+	apiURL := s.baseURL() + "/apis/" + apiID
 
 	s.logger.Info("Fetching API definition",
 		slog.String("api_id", apiID),
@@ -130,7 +145,7 @@ func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 // FetchLLMProviderDefinition downloads the LLM provider definition as a zip file from the control plane
 func (s *APIUtilsService) FetchLLMProviderDefinition(providerID string) ([]byte, error) {
 	// Construct the LLM provider URL by appending the resource path
-	providerURL := s.config.BaseURL + "/llm-providers/" + providerID
+	providerURL := s.baseURL() + "/llm-providers/" + providerID
 
 	s.logger.Info("Fetching LLM provider definition",
 		slog.String("provider_id", providerID),
@@ -177,7 +192,7 @@ func (s *APIUtilsService) FetchLLMProviderDefinition(providerID string) ([]byte,
 // FetchLLMProxyDefinition downloads the LLM proxy definition as a zip file from the control plane
 func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error) {
 	// Construct the LLM proxy URL by appending the resource path
-	proxyURL := s.config.BaseURL + "/llm-proxies/" + proxyID
+	proxyURL := s.baseURL() + "/llm-proxies/" + proxyID
 
 	s.logger.Info("Fetching LLM proxy definition",
 		slog.String("proxy_id", proxyID),
@@ -223,7 +238,7 @@ func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error
 
 // FetchSubscriptionsForAPI fetches subscriptions for the given API from the control plane.
 func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subscription, error) {
-	subURL := s.config.BaseURL + "/apis/" + apiID + "/subscriptions"
+	subURL := s.baseURL() + "/apis/" + apiID + "/subscriptions"
 
 	s.logger.Info("Fetching subscriptions for API",
 		slog.String("api_id", apiID),
@@ -272,7 +287,7 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 
 // FetchSubscriptionPlans fetches all subscription plans from the control plane for the organization.
 func (s *APIUtilsService) FetchSubscriptionPlans() ([]models.SubscriptionPlan, error) {
-	planURL := s.config.BaseURL + "/subscription-plans"
+	planURL := s.baseURL() + "/subscription-plans"
 
 	s.logger.Info("Fetching subscription plans", slog.String("url", planURL))
 
@@ -409,7 +424,7 @@ func (s *APIUtilsService) CreateLLMProxyFromYAML(yamlData []byte, proxyID string
 // FetchMCPProxyDefinition downloads the MCP proxy definition as a zip file from the control plane
 func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error) {
 	// Construct the MCP proxy URL by appending the resource path
-	proxyURL := s.config.BaseURL + "/mcp-proxies/" + proxyID
+	proxyURL := s.baseURL() + "/mcp-proxies/" + proxyID
 
 	s.logger.Debug("Fetching MCP proxy definition",
 		slog.String("proxy_id", proxyID),
@@ -508,7 +523,7 @@ type APIDeploymentPush struct {
 // PushAPIDeployment sends API deployment details to the control plane via a REST call
 func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
 	// Construct the deployment URL
-	deployURL := s.config.BaseURL + "/apis/" + apiID + "/gateway-deployments"
+	deployURL := s.baseURL() + "/apis/" + apiID + "/gateway-deployments"
 	if deploymentID != "" {
 		deployURL += "?deploymentId=" + deploymentID
 	}

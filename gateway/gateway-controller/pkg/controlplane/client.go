@@ -233,7 +233,7 @@ func (c *Client) Start() error {
 
 	c.logger.Info("Starting control plane client",
 		slog.String("host", c.config.Host),
-		slog.String("websocket_url", c.resolveWebSocketConnectURL()),
+		slog.String("websocket_url", c.getWebSocketConnectURL()),
 	)
 
 	// Start connection in background
@@ -378,8 +378,8 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1/ws"}.
-// Extra fields from the server are ignored. gateway_path is accepted as a legacy alias.
+// gatewayWellKnownResponse matches APIM well-known JSON: gatewayPath is the internal REST base (optional /ws suffix).
+// Extra fields from the server are ignored. gateway_path is a legacy snake_case alias for the same field.
 type gatewayWellKnownResponse struct {
 	GatewayPath      string `json:"gatewayPath"`
 	GatewayPathSnake string `json:"gateway_path"`
@@ -402,6 +402,10 @@ func (c *Client) resolveGatewayPathWithCache() (string, error) {
 	c.gatewayPathMu.Lock()
 	c.resolvedGatewayPath = p
 	c.gatewayPathMu.Unlock()
+
+	if c.apiUtilsService != nil && c.config.Token != "" {
+		c.apiUtilsService.SetBaseURL(fmt.Sprintf("https://%s%s", c.config.Host, restAPIBasePathFromGatewayWebSocketPath(p)))
+	}
 	return p, nil
 }
 
@@ -473,6 +477,10 @@ func (c *Client) discoverGatewayPath() (string, error) {
 	}
 	gatewayPath := normalizeGatewayPath(rawPath)
 	if gatewayPath == "" {
+		return "", fmt.Errorf("well-known response missing gatewayPath")
+	}
+	restBase := strings.TrimSuffix(gatewayPath, "/ws")
+	if restBase == "" {
 		return "", fmt.Errorf("well-known response missing gatewayPath")
 	}
 
