@@ -254,7 +254,8 @@ func TestListLLMProvidersWithData(t *testing.T) {
 	provider := &models.StoredConfig{
 		UUID:   "0000-provider1-0000-000000000000",
 		Kind:   "LlmProvider",
-		Status: "active",
+		DesiredState: "active",
+		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProvider,
@@ -316,7 +317,8 @@ func TestListLLMProxiesWithData(t *testing.T) {
 	proxy := &models.StoredConfig{
 		UUID:   "0000-proxy1-0000-000000000000",
 		Kind:   "LlmProxy",
-		Status: "active",
+		DesiredState: "active",
+		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProxy,

@@ -52,7 +52,8 @@ spec:
 		DisplayName:   "testapi",
 		Version:       "v1",
 		Configuration: apiCfg,
-		Status:        models.StatusPending,
+		DesiredState:  models.StateDeployed,
+		Origin:        models.OriginGatewayAPI,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		DeployedAt:    nil,
@@ -104,7 +105,8 @@ spec:
 		DisplayName:   "testapi",
 		Version:       "v1",
 		Configuration: apiCfg,
-		Status:        models.StatusPending,
+		DesiredState:  models.StateDeployed,
+		Origin:        models.OriginGatewayAPI,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		DeployedAt:    nil,
@@ -145,7 +147,7 @@ spec:
 	cfg.Configuration = apiCfg
 	cfg.CreatedAt = time.Now()
 	cfg.UpdatedAt = time.Now()
-	cfg.Status = models.StatusPending
+	cfg.DesiredState = models.StateDeployed
 	cfg.DeployedAt = nil
 
 	err = service.store.Update(cfg)
@@ -210,7 +212,8 @@ spec:
 		DisplayName:   "testapiA",
 		Version:       "v1",
 		Configuration: apiCfgA,
-		Status:        models.StatusPending,
+		DesiredState:  models.StateDeployed,
+		Origin:        models.OriginGatewayAPI,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		DeployedAt:    nil,
@@ -223,7 +226,8 @@ spec:
 		DisplayName:   "testapiB",
 		Version:       "v1",
 		Configuration: apiCfgB,
-		Status:        models.StatusPending,
+		DesiredState:  models.StateDeployed,
+		Origin:        models.OriginGatewayAPI,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		DeployedAt:    nil,
@@ -302,7 +306,8 @@ spec:
 		DisplayName:   "testapi",
 		Version:       "v1",
 		Configuration: apiCfg,
-		Status:        models.StatusPending,
+		DesiredState:  models.StateDeployed,
+		Origin:        models.OriginGatewayAPI,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		DeployedAt:    nil,

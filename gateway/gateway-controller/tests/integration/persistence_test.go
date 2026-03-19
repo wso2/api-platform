@@ -103,7 +103,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		// Get and update a configuration
 		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI1-v1.0")
 		require.NoError(t, err)
-		cfg.Status = "deployed"
+		cfg.DesiredState = "deployed"
 
 		require.NoError(t, db.UpdateConfig(cfg))
 		require.NoError(t, db.Close())
@@ -119,7 +119,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 
 		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI1-v1.0")
 		assert.NoError(t, err)
-		assert.Equal(t, models.StatusDeployed, cfg.Status)
+		assert.Equal(t, models.StateDeployed, cfg.DesiredState)
 	}
 
 	// Phase 5: Delete a configuration and verify deletion persists
@@ -254,7 +254,7 @@ func TestZeroDataLoss(t *testing.T) {
 		assert.True(t, exists, "Configuration should exist in both before and after")
 		assert.Equal(t, cfgBefore.DisplayName, cfgAfter.DisplayName)
 		assert.Equal(t, cfgBefore.Version, cfgAfter.Version)
-		assert.Equal(t, cfgBefore.Status, cfgAfter.Status)
+		assert.Equal(t, cfgBefore.DesiredState, cfgAfter.DesiredState)
 	}
 
 	t.Log("Zero data loss verified successfully")

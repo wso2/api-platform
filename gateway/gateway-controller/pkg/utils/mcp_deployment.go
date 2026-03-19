@@ -38,11 +38,12 @@ const (
 )
 
 type MCPDeploymentParams struct {
-	Data          []byte       // Raw configuration data (YAML/JSON)
-	ContentType   string       // Content type for parsing
-	ID            string       // ID (if provided, used for updates; if empty, generates new UUID)
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	Data          []byte        // Raw configuration data (YAML/JSON)
+	ContentType   string        // Content type for parsing
+	ID            string        // ID (if provided, used for updates; if empty, generates new UUID)
+	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
+	CorrelationID string        // Correlation ID for tracking
+	Logger        *slog.Logger  // Logger instance
 }
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
@@ -136,7 +137,8 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		Version:             mcpConfig.Spec.Version,
 		Configuration:       *apiConfig,
 		SourceConfiguration: *mcpConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
@@ -241,7 +243,8 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	now := time.Now()
 	existing.Configuration = newConfig.Configuration
 	existing.SourceConfiguration = newConfig.SourceConfiguration
-	existing.Status = models.StatusPending
+	existing.DesiredState = models.StateDeployed
+	existing.Origin = newConfig.Origin
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
 

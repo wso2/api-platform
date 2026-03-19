@@ -40,12 +40,13 @@ import (
 
 // APIDeploymentParams contains parameters for API deployment operations
 type APIDeploymentParams struct {
-	Data          []byte       // Raw configuration data (YAML/JSON)
-	ContentType   string       // Content type for parsing
-	Kind          string       // API kind: "RestApi" or "WebSubApi"
-	APIID         string       // API ID (if provided, used for updates; if empty, generates new UUID)
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	Data          []byte        // Raw configuration data (YAML/JSON)
+	ContentType   string        // Content type for parsing
+	Kind          string        // API kind: "RestApi" or "WebSubApi"
+	APIID         string        // API ID (if provided, used for updates; if empty, generates new UUID)
+	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
+	CorrelationID string        // Correlation ID for tracking
+	Logger        *slog.Logger  // Logger instance
 }
 
 // APIDeploymentResult contains the result of API deployment
@@ -238,7 +239,8 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		Version:             apiVersion,
 		Configuration:       parsedConfig,
 		SourceConfiguration: parsedConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
@@ -511,7 +513,8 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	existing.Version = newConfig.Version
 	existing.Configuration = newConfig.Configuration
 	existing.SourceConfiguration = newConfig.SourceConfiguration
-	existing.Status = models.StatusPending
+	existing.DesiredState = models.StateDeployed
+	existing.Origin = newConfig.Origin
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
 

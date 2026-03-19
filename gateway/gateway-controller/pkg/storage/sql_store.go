@@ -201,8 +201,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	query := `
 		INSERT INTO artifacts (
 			uuid, gateway_id, display_name, version, kind, handle,
-			status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			desired_state, deployment_id, origin, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := s.begin()
@@ -230,7 +230,9 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		cfg.Version,
 		cfg.Kind,
 		cfg.Handle,
-		cfg.Status,
+		cfg.DesiredState,
+		cfg.DeploymentID,
+		cfg.Origin,
 		now,
 		now,
 	)
@@ -288,7 +290,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	query := `
 		UPDATE artifacts
 		SET display_name = ?, version = ?, kind = ?, handle = ?,
-			status = ?, updated_at = ?
+			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
@@ -318,7 +320,9 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		cfg.Version,
 		cfg.Kind,
 		cfg.Handle,
-		cfg.Status,
+		cfg.DesiredState,
+		cfg.DeploymentID,
+		cfg.Origin,
 		time.Now(),
 		cfg.UUID,
 		s.gatewayId,
@@ -411,13 +415,14 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 
 	// Step 1: Get artifact base record
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
+		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at
 		FROM artifacts
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
 	var cfg models.StoredConfig
 	var deployedAt sql.NullTime
+	var deploymentID sql.NullString
 
 	err := s.queryRow(artifactQuery, id, s.gatewayId).Scan(
 		&cfg.UUID,
@@ -425,7 +430,9 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
-		&cfg.Status,
+		&cfg.DesiredState,
+		&deploymentID,
+		&cfg.Origin,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
 		&deployedAt,
@@ -445,6 +452,9 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	if deployedAt.Valid {
 		cfg.DeployedAt = &deployedAt.Time
 	}
+	if deploymentID.Valid {
+		cfg.DeploymentID = deploymentID.String
+	}
 
 	// Step 2: Get configuration from the correct type table
 	if err := s.loadResourceConfig(&cfg); err != nil {
@@ -463,13 +473,14 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 // GetConfigByKindAndHandle retrieves a deployment configuration by kind and handle (metadata.name)
 func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
+		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at
 		FROM artifacts
 		WHERE kind = ? AND handle = ? AND gateway_id = ?
 	`
 
 	var cfg models.StoredConfig
 	var deployedAt sql.NullTime
+	var deploymentID sql.NullString
 
 	err := s.queryRow(artifactQuery, kind, handle, s.gatewayId).Scan(
 		&cfg.UUID,
@@ -477,7 +488,9 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
-		&cfg.Status,
+		&cfg.DesiredState,
+		&deploymentID,
+		&cfg.Origin,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
 		&deployedAt,
@@ -493,6 +506,9 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 	if deployedAt.Valid {
 		cfg.DeployedAt = &deployedAt.Time
 	}
+	if deploymentID.Valid {
+		cfg.DeploymentID = deploymentID.String
+	}
 
 	if err := s.loadResourceConfig(&cfg); err != nil {
 		return nil, err
@@ -506,32 +522,32 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	// Use UNION ALL across all type tables joined with artifacts
 	query := `
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN rest_apis r ON a.uuid = r.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN websub_apis w ON a.uuid = w.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_providers lp ON a.uuid = lp.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_proxies lx ON a.uuid = lx.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN mcp_proxies m ON a.uuid = m.uuid
 		WHERE a.gateway_id = ?
@@ -555,8 +571,8 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	}
 
 	query := fmt.Sprintf(`
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN %s r ON a.uuid = r.uuid
 		WHERE a.kind = ? AND a.gateway_id = ?
@@ -572,7 +588,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	return s.scanConfigRows(rows)
 }
 
-// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, status, created_at, updated_at, deployed_at)
+// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at)
 func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 
@@ -580,6 +596,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		var cfg models.StoredConfig
 		var configJSON sql.NullString
 		var deployedAt sql.NullTime
+		var deploymentID sql.NullString
 
 		err := rows.Scan(
 			&cfg.UUID,
@@ -588,7 +605,9 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 			&cfg.DisplayName,
 			&cfg.Version,
 			&configJSON,
-			&cfg.Status,
+			&cfg.DesiredState,
+			&deploymentID,
+			&cfg.Origin,
 			&cfg.CreatedAt,
 			&cfg.UpdatedAt,
 			&deployedAt,
@@ -600,6 +619,9 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 
 		if deployedAt.Valid {
 			cfg.DeployedAt = &deployedAt.Time
+		}
+		if deploymentID.Valid {
+			cfg.DeploymentID = deploymentID.String
 		}
 
 		if configJSON.Valid && configJSON.String != "" {

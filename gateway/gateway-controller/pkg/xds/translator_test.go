@@ -691,6 +691,7 @@ func TestTranslator_ExtractTemplateHandle_NilSourceConfig(t *testing.T) {
 
 	storedCfg := &models.StoredConfig{
 		SourceConfiguration: nil,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := translator.extractTemplateHandle(storedCfg, nil)
@@ -705,6 +706,7 @@ func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
 
 	storedCfg := &models.StoredConfig{
 		SourceConfiguration: nil,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := translator.extractProviderName(storedCfg, nil)
@@ -1011,6 +1013,7 @@ func TestTranslator_ExtractTemplateHandle_InvalidKind(t *testing.T) {
 		SourceConfiguration: map[string]interface{}{
 			"kind": 123, // Invalid type
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractTemplateHandle(storedCfg, nil)
@@ -1027,6 +1030,7 @@ func TestTranslator_ExtractProviderName_InvalidKind(t *testing.T) {
 		SourceConfiguration: map[string]interface{}{
 			"kind": 123, // Invalid type
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractProviderName(storedCfg, nil)
@@ -1390,6 +1394,7 @@ func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {
 				"template": "openai-template",
 			},
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractTemplateHandle(storedCfg, nil)
@@ -1410,6 +1415,7 @@ func TestTranslator_ExtractProviderName_ValidLLMProvider(t *testing.T) {
 				"name": "openai-provider",
 			},
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractProviderName(storedCfg, nil)
@@ -1422,8 +1428,9 @@ func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
 
 	// Create invalid WebSub API config that will cause translation error
 	invalidConfig := &models.StoredConfig{
-		UUID: "0000-test-websub-invalid-0000-000000000000",
-		Kind: "WebSubApi",
+		UUID:   "0000-test-websub-invalid-0000-000000000000",
+		Kind:   "WebSubApi",
+		Origin: models.OriginGatewayAPI,
 		// Use a non-WebSubAPI type so the type assertion in translateAsyncAPIConfig fails
 		Configuration: "invalid-configuration",
 	}
@@ -1640,6 +1647,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					},
 				},
 			},
+			Origin: models.OriginGatewayAPI,
 		}
 
 		routes, clusters, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})
@@ -1676,6 +1684,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
 				},
 			},
+			Origin: models.OriginGatewayAPI,
 		}
 
 		_, _, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})

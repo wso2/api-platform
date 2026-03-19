@@ -357,6 +357,7 @@ func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, corre
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		APIID:         apiID, // Use the API ID from the deployment event
+		Origin:        models.OriginControlPlane,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
 	})
@@ -376,6 +377,7 @@ func (s *APIUtilsService) CreateLLMProviderFromYAML(yamlData []byte, providerID 
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		ID:            providerID,
+		Origin:        models.OriginControlPlane,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
 	})
@@ -395,6 +397,7 @@ func (s *APIUtilsService) CreateLLMProxyFromYAML(yamlData []byte, proxyID string
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		ID:            proxyID,
+		Origin:        models.OriginControlPlane,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
 	})
@@ -517,7 +520,7 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 	requestBody := APIDeploymentPush{
 		ID:                apiConfig.UUID,
 		Configuration:     apiConfig.Configuration,
-		Status:            string(apiConfig.Status),
+		Status:            string(apiConfig.DesiredState),
 		CreatedAt:         apiConfig.CreatedAt,
 		UpdatedAt:         apiConfig.UpdatedAt,
 		DeployedAt:        apiConfig.DeployedAt,

@@ -95,7 +95,8 @@ func createTestConfig(name, version string) *models.StoredConfig {
 		Version:             version,
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 	}
 }
 
@@ -130,14 +131,14 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update the configuration
-		cfg.Status = "deployed"
+		cfg.DesiredState = "deployed"
 		err = db.UpdateConfig(cfg)
 		assert.NoError(t, err, "UpdateConfig should succeed")
 
 		// Verify update
 		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
-		assert.Equal(t, models.StatusDeployed, retrieved.Status)
+		assert.Equal(t, models.StateDeployed, retrieved.DesiredState)
 	})
 
 	// Test DeleteConfig
@@ -336,7 +337,8 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 		Version:             version,
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 	}
 }
 
@@ -544,7 +546,8 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 			Version:             cfg.Version,
 			Configuration:       newApiConfig,
 			SourceConfiguration: newApiConfig,
-			Status:              cfg.Status,
+			DesiredState:        cfg.DesiredState,
+			Origin:              models.OriginGatewayAPI,
 		}
 		newHandle := updatedCfg.Handle
 
@@ -630,7 +633,8 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 			Version:             "v1.0",
 			Configuration:       asyncApiConfig,
 			SourceConfiguration: asyncApiConfig,
-			Status:              models.StatusPending,
+			DesiredState:        models.StateDeployed,
+			Origin:              models.OriginGatewayAPI,
 		}
 
 		err := configStore.Add(cfg)

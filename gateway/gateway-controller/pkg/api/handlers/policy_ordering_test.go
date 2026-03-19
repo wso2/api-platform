@@ -205,6 +205,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			cfg := &models.StoredConfig{
 				Configuration:       apiCfg,
 				SourceConfiguration: apiCfg,
+				Origin:              models.OriginGatewayAPI,
 			}
 
 			// Call the function
@@ -323,6 +324,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 	cfg := &models.StoredConfig{
 		Configuration:       apiCfg,
 		SourceConfiguration: apiCfg,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	server := newTestAPIServer()
@@ -448,6 +450,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 	cfg := &models.StoredConfig{
 		Configuration:       apiCfg,
 		SourceConfiguration: apiCfg,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	// Run 100 times to catch any non-deterministic behavior
