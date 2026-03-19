@@ -372,8 +372,8 @@ func TestDerivePolicyFromAPIConfig_InvalidConfig(t *testing.T) {
 
 // testPolicyDefinitions returns policy definitions used by derivation tests.
 // Enables resolving major-only (v0, v1, v2) to full semver for cors, rate-limit, MultiVersionPolicy.
-func testPolicyDefinitions() map[string]api.PolicyDefinition {
-	return map[string]api.PolicyDefinition{
+func testPolicyDefinitions() map[string]models.PolicyDefinition {
+	return map[string]models.PolicyDefinition{
 		"cors|v0.1.0":               {Name: "cors", Version: "v0.1.0"},
 		"rate-limit|v1.0.0":         {Name: "rate-limit", Version: "v1.0.0"},
 		"MultiVersionPolicy|v1.0.0": {Name: "MultiVersionPolicy", Version: "v1.0.0"},

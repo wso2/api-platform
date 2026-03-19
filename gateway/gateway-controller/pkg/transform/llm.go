@@ -42,7 +42,7 @@ func NewLLMTransformer(
 	store *storage.ConfigStore,
 	routerConfig *config.RouterConfig,
 	systemConfig *config.Config,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 	policyVersionResolver utils.PolicyVersionResolver,
 ) *LLMTransformer {
 	return &LLMTransformer{

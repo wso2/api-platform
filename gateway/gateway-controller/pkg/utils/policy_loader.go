@@ -27,7 +27,7 @@ import (
 	"regexp"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,8 +45,8 @@ func NewPolicyLoader(logger *slog.Logger) *PolicyLoader {
 
 // LoadPoliciesFromDirectory loads all policy definition files from a directory
 // Supports both JSON and YAML files
-func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]api.PolicyDefinition, error) {
-	policies := make(map[string]api.PolicyDefinition)
+func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]models.PolicyDefinition, error) {
+	policies := make(map[string]models.PolicyDefinition)
 
 	// Check if directory exists
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
@@ -115,7 +115,7 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 }
 
 // loadPolicyFile loads a single policy definition file
-func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, error) {
+func (pl *PolicyLoader) loadPolicyFile(filePath string) (*models.PolicyDefinition, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
@@ -123,7 +123,7 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 
 	ext := strings.ToLower(filepath.Ext(filePath))
 
-	var policyDef api.PolicyDefinition
+	var policyDef models.PolicyDefinition
 
 	if ext == ".json" {
 		if err := json.Unmarshal(data, &policyDef); err != nil {
@@ -164,7 +164,7 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 }
 
 // validatePolicy validates a policy definition
-func (pl *PolicyLoader) validatePolicy(policy *api.PolicyDefinition) error {
+func (pl *PolicyLoader) validatePolicy(policy *models.PolicyDefinition) error {
 	if strings.TrimSpace(policy.Name) == "" {
 		return fmt.Errorf("policy name is required")
 	}

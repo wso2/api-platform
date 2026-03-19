@@ -1316,30 +1316,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /policies:
-    get:
-      summary: List all registered policy definitions
-      description: |
-        Retrieve all currently loaded policy definitions from the controller.
-        Policy definitions are loaded from files in the policies directory at
-        controller startup and stored in memory.
-      operationId: listPolicies
-      tags:
-        - Policy Management
-      responses:
-        "200":
-          description: List of policy definitions
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PolicyListResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /mcp-proxies:
     post:
       summary: Create a new MCPProxy
@@ -2593,52 +2569,6 @@ components:
           type: object
           description: Arbitrary parameters for the policy (free-form key/value structure)
           additionalProperties: true
-    # Reusable policy definition (catalog entry)
-    PolicyDefinition:
-      type: object
-      required:
-        - name
-        - version
-        - flows
-      properties:
-        name:
-          type: string
-          description: Unique policy name
-          minLength: 1
-          maxLength: 200
-          example: APIKeyValidation
-        version:
-          type: string
-          description: Semantic version of the policy definition
-          pattern: '^v\d+\.\d+\.\d+$'
-          example: v1.0.0
-        description:
-          type: string
-          description: Human readable description of the policy's purpose
-          maxLength: 2000
-        parameters:
-          type: object
-          description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
-          additionalProperties: true
-        systemParameters:
-          type: object
-          description: JSON Schema describing any initialization parameters for this policy. This itself is a JSON Schema document.
-          additionalProperties: true
-
-    PolicyListResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        count:
-          type: integer
-          example: 2
-        policies:
-          type: array
-          items:
-            $ref: "#/components/schemas/PolicyDefinition"
-
 
     # -----------------------
     # Webhook (Async) API schema
@@ -2697,71 +2627,6 @@ components:
           description: List of API-level policies applied to all operations unless overridden
           items:
             $ref: '#/components/schemas/Policy'
-
-    # AsyncAPI-inspired server definition used when kind is async/* or http/websub.
-    # Simplified mapping of AsyncAPI 2.x Server Object into OpenAPI.
-    Server:
-      type: object
-      description: Server definition for async or WebSub APIs.
-      required:
-        - url
-        - protocol
-      properties:
-        url:
-          type: string
-          format: uri
-          description: Base URL or connection string for the server (variables may be denoted by {name}).
-          example: https://websub-hub.internal:9098
-        protocol:
-          type: string
-          description: Transport protocol used by the server.
-          enum:
-            - websub
-            - websocket
-            - sse
-            - mqtt
-            - kafka
-          example: websub
-        protocolVersion:
-          type: string
-          description: Version of the selected protocol (if applicable).
-          example: '1.0'
-        description:
-          type: string
-          description: Human-readable description of this server.
-          example: Internal WebSub Hub instance.
-        variables:
-          type: object
-          description: Templated variables contained in the server URL.
-          additionalProperties:
-            type: object
-            required:
-              - default
-            properties:
-              enum:
-                type: array
-                items:
-                  type: string
-                description: Allowed values.
-              default:
-                type: string
-                description: Default value for the variable.
-              description:
-                type: string
-                description: Description of the variable.
-        security:
-          type: array
-          description: Security requirements for this server (each item maps scheme name to optional scopes array).
-          items:
-            type: object
-            additionalProperties:
-              type: array
-              items:
-                type: string
-        bindings:
-          type: object
-          description: Protocol-specific server bindings (arbitrary key/value structure).
-          additionalProperties: true
 
     # Simplified AsyncAPI Channel object represented as an OpenAPI schema.
     Channel:
@@ -2831,37 +2696,6 @@ components:
         #   additionalProperties: true
 
     # Message schema used within Channel publish/subscribe operations.
-    ChannelMessage:
-      type: object
-      description: Event/message definition transported over a channel.
-      required:
-        - name
-        - payload
-      properties:
-        name:
-          type: string
-          description: Logical message name.
-          example: IssueEvent
-        contentType:
-          type: string
-          description: Content type of the payload.
-          example: application/json
-        summary:
-          type: string
-          description: Short description of the message.
-          example: Event emitted when an issue is created.
-        payload:
-          type: object
-          description: JSON Schema representation of the message body.
-          additionalProperties: true
-          example:
-            type: object
-            properties:
-              action:
-                type: string
-              issue:
-                type: object
-
     RestAPICreateResponse:
       type: object
       properties:
@@ -2949,7 +2783,7 @@ components:
             The key will be hashed before storage. The key can be in any format
             (minimum 36 characters). Use this for injecting externally generated
             API keys.
-          example: "cloud-apim-key-abc123xyz789"
+          example: "xxxxxx-cloud-apim-key-xxxxxx-xxxxxxx"
         maskedApiKey:
           type: string
           description: |
