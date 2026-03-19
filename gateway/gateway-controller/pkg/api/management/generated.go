@@ -210,6 +210,12 @@ const (
 	OperationMethodPUT     OperationMethod = "PUT"
 )
 
+// Defines values for PolicyDefinitionManagedBy.
+const (
+	Customer PolicyDefinitionManagedBy = "customer"
+	Wso2     PolicyDefinitionManagedBy = "wso2"
+)
+
 // Defines values for RestAPIApiVersion.
 const (
 	RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 RestAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
@@ -1194,7 +1200,7 @@ type PolicyDefinition struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// ManagedBy Indicates who manages this policy. 'customer' for locally developed custom policies as determined by build-lock.yaml, 'wso2' for built-in WSO2 policies.
-	ManagedBy *string `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	ManagedBy *PolicyDefinitionManagedBy `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 
 	// Name Unique policy name
 	Name string `json:"name" yaml:"name"`
@@ -1208,6 +1214,9 @@ type PolicyDefinition struct {
 	// Version Semantic version of the policy definition
 	Version string `json:"version" yaml:"version"`
 }
+
+// PolicyDefinitionManagedBy Indicates who manages this policy. 'customer' for locally developed custom policies as determined by build-lock.yaml, 'wso2' for built-in WSO2 policies.
+type PolicyDefinitionManagedBy string
 
 // PolicyListResponse defines model for PolicyListResponse.
 type PolicyListResponse struct {
