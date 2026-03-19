@@ -3041,5 +3041,8 @@ func (c *Client) getWebSocketConnectURL() string {
 
 // getRestAPIBaseURL constructs the base REST API URL from configuration.
 func (c *Client) getRestAPIBaseURL() string {
-	return fmt.Sprintf("https://%s%s", c.config.Host, c.gatewayPath)
+	if c.gatewayPath != "" {
+		fmt.Sprintf("https://%s%s", c.config.Host, c.gatewayPath)
+	}
+	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
 }
