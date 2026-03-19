@@ -51,7 +51,6 @@ type ConnectionAckMessage struct {
 type APIDeployedEventPayload struct {
 	APIID        string    `json:"apiId"`
 	DeploymentID string    `json:"deploymentId"`
-	VHost        string    `json:"vhost"`
 	PerformedAt  time.Time `json:"performedAt"`
 }
 
@@ -66,9 +65,7 @@ type APIDeployedEvent struct {
 // LLMProviderDeployedEventPayload represents the payload of an LLM provider deployment event
 type LLMProviderDeployedEventPayload struct {
 	ProviderID   string    `json:"providerId"`
-	Environment  string    `json:"environment"`
 	DeploymentID string    `json:"deploymentId"`
-	VHost        string    `json:"vhost"`
 	PerformedAt  time.Time `json:"performedAt"`
 }
 
@@ -84,8 +81,6 @@ type LLMProviderDeployedEvent struct {
 type LLMProviderUndeployedEventPayload struct {
 	ProviderID   string    `json:"providerId"`
 	DeploymentID string    `json:"deploymentId"`
-	Environment  string    `json:"environment"`
-	VHost        string    `json:"vhost"`
 	PerformedAt  time.Time `json:"performedAt"`
 }
 
@@ -100,9 +95,7 @@ type LLMProviderUndeployedEvent struct {
 // LLMProxyDeployedEventPayload represents the payload of an LLM proxy deployment event
 type LLMProxyDeployedEventPayload struct {
 	ProxyID      string    `json:"proxyId"`
-	Environment  string    `json:"environment"`
 	DeploymentID string    `json:"deploymentId"`
-	VHost        string    `json:"vhost"`
 	PerformedAt  time.Time `json:"performedAt"`
 }
 
@@ -118,8 +111,6 @@ type LLMProxyDeployedEvent struct {
 type LLMProxyUndeployedEventPayload struct {
 	ProxyID      string    `json:"proxyId"`
 	DeploymentID string    `json:"deploymentId"`
-	Environment  string    `json:"environment"`
-	VHost        string    `json:"vhost"`
 	PerformedAt  time.Time `json:"performedAt"`
 }
 
@@ -135,8 +126,6 @@ type LLMProxyUndeployedEvent struct {
 type APIUndeployedEventPayload struct {
 	APIID        string    `json:"apiId"`
 	DeploymentID string    `json:"deploymentId"`
-	Environment  string    `json:"environment"`
-	VHost        string    `json:"vhost"`
 	PerformedAt  time.Time `json:"performedAt"`
 }
 
@@ -151,7 +140,6 @@ type APIUndeployedEvent struct {
 // APIDeletedEventPayload represents the payload of an API deletion event
 type APIDeletedEventPayload struct {
 	APIID string `json:"apiId"`
-	VHost string `json:"vhost"`
 }
 
 // APIDeletedEvent represents the complete API deletion event
@@ -228,9 +216,7 @@ type APIKeyRevokedEvent struct {
 // MCPProxyDeployedEventPayload represents the payload of an MCP proxy deployment event
 type MCPProxyDeployedEventPayload struct {
 	ProxyID      string    `json:"proxyId"`
-	Environment  string    `json:"environment"`
 	DeploymentID string    `json:"deploymentId"`
-	VHost        string    `json:"vhost"`
 	PerformedAt  time.Time `json:"performedAt"`
 }
 
@@ -244,9 +230,7 @@ type MCPProxyDeployedEvent struct {
 
 // MCPProxyUndeployedEventPayload represents the payload of an MCP proxy undeployment event
 type MCPProxyUndeployedEventPayload struct {
-	ProxyID     string `json:"proxyId"`
-	Environment string `json:"environment"`
-	VHost       string `json:"vhost"`
+	ProxyID string `json:"proxyId"`
 }
 
 // MCPProxyUndeployedEvent represents the complete MCP proxy undeployment event
@@ -260,7 +244,6 @@ type MCPProxyUndeployedEvent struct {
 // MCPProxyDeletedEventPayload represents the payload of an MCP proxy deletion event
 type MCPProxyDeletedEventPayload struct {
 	ProxyID string `json:"proxyId"`
-	VHost   string `json:"vhost"`
 }
 
 // MCPProxyDeletedEvent represents the complete MCP proxy deletion event

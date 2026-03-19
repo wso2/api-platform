@@ -262,7 +262,6 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		deploymentEvent := &model.MCPProxyDeploymentEvent{
 			ProxyId:      proxyUUID,
 			DeploymentID: deploymentID,
-			Vhost:        gateway.Vhost,
 		}
 
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
@@ -348,7 +347,6 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	if s.gatewayEventsService != nil {
 		undeploymentEvent := &model.MCPProxyUndeploymentEvent{
 			ProxyId: proxyUUID,
-			Vhost:   gateway.Vhost,
 		}
 
 		if err := s.gatewayEventsService.BroadcastMCPProxyUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
@@ -414,7 +412,6 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		deploymentEvent := &model.MCPProxyDeploymentEvent{
 			ProxyId:      proxyUUID,
 			DeploymentID: *deploymentId,
-			Vhost:        gateway.Vhost,
 		}
 
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {

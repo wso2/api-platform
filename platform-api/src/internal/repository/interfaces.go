@@ -119,7 +119,7 @@ type DeploymentRepository interface {
 	UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID, gatewayID string, newStatus model.DeploymentStatus, statusReason string, performedAt time.Time, requireCurrentStatus []model.DeploymentStatus) (rowsAffected int64, err error)
 	GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
-	GetArtifactUUIDByDeploymentID(deploymentID, orgUUID string) (string, error)
+	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 
 	// Gateway deployment methods
 	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)

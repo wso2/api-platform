@@ -13,95 +13,16 @@ info:
     url: http://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: https://localhost:9243
+  - url: https://localhost:9243/api/internal/v1
     description: Development server
-  - url: https://api-platform.wso2.com
+  - url: https://api-platform.wso2.com/api/internal/v1
     description: Production server
 
 security:
   - ApiKeyAuth: []
 
 paths:
-  /api/internal/v1/apis:
-    get:
-      summary: Get all APIs for organization
-      description: |
-        Retrieves all API configurations for the authenticated gateway's organization.
-        Returns a ZIP file containing YAML definitions for all APIs in the organization.
-      operationId: getAPIsByOrganization
-      tags:
-        - Gateway Internal APIs
-      responses:
-        '200':
-          description: Successfully retrieved APIs
-          content:
-            application/zip:
-              schema:
-                type: string
-                format: binary
-              example: |
-                Binary ZIP file containing API YAML configurations
-          headers:
-            Content-Disposition:
-              description: Attachment filename for the ZIP file
-              schema:
-                type: string
-                example: 'attachment; filename="apis-org-12345.zip"'
-            Content-Length:
-              description: Size of the ZIP file in bytes
-              schema:
-                type: integer
-                example: 4096
-        '401':
-          description: Unauthorized - Invalid or missing API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                missing_api_key:
-                  summary: Missing API key
-                  value:
-                    code: 401
-                    message: "Unauthorized"
-                    description: "API key is required. Provide 'api-key' header."
-                invalid_api_key:
-                  summary: Invalid API key
-                  value:
-                    code: 401
-                    message: "Unauthorized"
-                    description: "Invalid or expired API key"
-        '404':
-          description: Organization not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: 404
-                message: "Not Found"
-                description: "Organization not found"
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                get_apis_failed:
-                  summary: Failed to retrieve APIs
-                  value:
-                    code: 500
-                    message: "Internal Server Error"
-                    description: "Failed to get apis"
-                zip_creation_failed:
-                  summary: Failed to create ZIP package
-                  value:
-                    code: 500
-                    message: "Internal Server Error"
-                    description: "Failed to create API package"
-
-  /api/internal/v1/apis/{apiId}:
+  /apis/{apiId}:
     get:
       summary: Get specific API by ID
       description: |
@@ -199,7 +120,7 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create API package"
 
-  /api/internal/v1/apis/{apiId}/gateway-deployments:
+  /apis/{apiId}/gateway-deployments:
     post:
       summary: Create API and Deployment entities for a API deployment in the gateway
       description: |
@@ -281,7 +202,7 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to get API"
   
-  /api/internal/v1/llm-providers/{providerId}:
+  /llm-providers/{providerId}:
     get:
       summary: Get specific LLM Provider by ID
       description: |
@@ -379,7 +300,7 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create LLM Provider package"
 
-  /api/internal/v1/llm-proxies/{proxyId}:
+  /llm-proxies/{proxyId}:
     get:
       summary: Get specific LLM Proxy by ID
       description: |
@@ -477,7 +398,7 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create LLM Proxy package"
 
-  /api/internal/v1/mcp-proxies/{proxyId}:
+  /mcp-proxies/{proxyId}:
     get:
       summary: Get specific MCP Proxy by ID
       description: |
@@ -579,7 +500,7 @@ paths:
   # Gateway Deployment Sync Endpoints
   # ==========================================
 
-  /api/internal/v1/deployments:
+  /deployments:
     get:
       summary: List deployments for a gateway
       description: |
@@ -666,7 +587,7 @@ paths:
                 message: "Internal Server Error"
                 description: "Failed to get deployments"
 
-  /api/internal/v1/deployments/fetch-batch:
+  /deployments/fetch-batch:
     post:
       summary: Batch fetch deployment content
       description: |

@@ -55,9 +55,6 @@ type DeploymentEvent struct {
 	// DeploymentID identifies the specific API deployment
 	DeploymentID string `json:"deploymentId"`
 
-	// Vhost specifies the virtual host where the API is deployed
-	Vhost string `json:"vhost"`
-
 	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
 }
@@ -71,9 +68,6 @@ type APIUndeploymentEvent struct {
 	// DeploymentID identifies the specific deployment being undeployed
 	DeploymentID string `json:"deploymentId"`
 
-	// Vhost specifies the virtual host from which the API is undeployed
-	Vhost string `json:"vhost"`
-
 	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
 }
@@ -83,9 +77,6 @@ type APIUndeploymentEvent struct {
 type APIDeletionEvent struct {
 	// ApiId identifies the deleted API
 	ApiId string `json:"apiId"`
-
-	// Vhost specifies the virtual host from which the API should be removed
-	Vhost string `json:"vhost"`
 }
 
 // LLMProviderDeploymentEvent contains payload data for "llmprovider.deployed" event type.
@@ -96,12 +87,6 @@ type LLMProviderDeploymentEvent struct {
 
 	// DeploymentID identifies the specific deployment artifact
 	DeploymentID string `json:"deploymentId"`
-
-	// Vhost specifies the virtual host where the provider is deployed
-	Vhost string `json:"vhost"`
-
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
 
 	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
@@ -116,12 +101,6 @@ type LLMProviderUndeploymentEvent struct {
 	// DeploymentID identifies the specific deployment being undeployed
 	DeploymentID string `json:"deploymentId"`
 
-	// Vhost specifies the virtual host from which the provider is undeployed
-	Vhost string `json:"vhost"`
-
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
-
 	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
 }
@@ -135,12 +114,6 @@ type LLMProxyDeploymentEvent struct {
 	// DeploymentID identifies the specific deployment artifact
 	DeploymentID string `json:"deploymentId"`
 
-	// Vhost specifies the virtual host where the proxy is deployed
-	Vhost string `json:"vhost"`
-
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
-
 	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
 }
@@ -153,12 +126,6 @@ type LLMProxyUndeploymentEvent struct {
 
 	// DeploymentID identifies the specific deployment being undeployed
 	DeploymentID string `json:"deploymentId"`
-
-	// Vhost specifies the virtual host from which the proxy is undeployed
-	Vhost string `json:"vhost"`
-
-	// Environment specifies the deployment environment
-	Environment string `json:"environment"`
 
 	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
 	PerformedAt time.Time `json:"performedAt"`
@@ -182,9 +149,6 @@ type MCPProxyDeploymentEvent struct {
 
 	// DeploymentID identifies the specific deployment artifact
 	DeploymentID string `json:"deploymentId"`
-
-	// Vhost specifies the virtual host where the proxy is deployed
-	Vhost string `json:"vhost"`
 }
 
 // MCPProxyUndeploymentEvent contains payload data for "mcpproxy.undeployed" event type.
@@ -192,9 +156,6 @@ type MCPProxyDeploymentEvent struct {
 type MCPProxyUndeploymentEvent struct {
 	// ProxyId identifies the undeployed MCP proxy (handle)
 	ProxyId string `json:"proxyId"`
-
-	// Vhost specifies the virtual host from which the proxy is undeployed
-	Vhost string `json:"vhost"`
 }
 
 // MCPProxyDeletionEvent contains payload data for "mcpproxy.deleted" event type.
@@ -202,7 +163,18 @@ type MCPProxyUndeploymentEvent struct {
 type MCPProxyDeletionEvent struct {
 	// ProxyId identifies the deleted MCP proxy
 	ProxyId string `json:"proxyId"`
+}
 
-	// Vhost specifies the virtual host from which the proxy should be removed
-	Vhost string `json:"vhost"`
+// LLMProviderDeletionEvent contains payload data for "llmprovider.deleted" event type.
+// This event is sent when an LLM provider is permanently deleted from the platform.
+type LLMProviderDeletionEvent struct {
+	// ProviderId identifies the deleted LLM provider
+	ProviderId string `json:"providerId"`
+}
+
+// LLMProxyDeletionEvent contains payload data for "llmproxy.deleted" event type.
+// This event is sent when an LLM proxy is permanently deleted from the platform.
+type LLMProxyDeletionEvent struct {
+	// ProxyId identifies the deleted LLM proxy
+	ProxyId string `json:"proxyId"`
 }

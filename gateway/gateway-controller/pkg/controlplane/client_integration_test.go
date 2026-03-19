@@ -169,9 +169,7 @@ func TestClient_handleMessage_APIDeployedEvent(t *testing.T) {
 		"type": "api.deployed",
 		"payload": map[string]interface{}{
 			"apiId":        "test-api-123",
-			"environment":  "production",
 			"deploymentId": "rev-1",
-			"vhost":        "api.example.com",
 		},
 		"timestamp":     time.Now().Format(time.RFC3339),
 		"correlationId": "corr-12345",
@@ -189,8 +187,7 @@ func TestClient_handleMessage_APIDeployedEvent_EmptyAPIID(t *testing.T) {
 	event := map[string]interface{}{
 		"type": "api.deployed",
 		"payload": map[string]interface{}{
-			"apiId":       "", // Empty API ID
-			"environment": "production",
+			"apiId": "", // Empty API ID
 		},
 		"timestamp":     time.Now().Format(time.RFC3339),
 		"correlationId": "corr-12345",
@@ -353,7 +350,7 @@ func TestClient_handleMessage_AllEventTypes(t *testing.T) {
 		},
 		{
 			name:    "api.deployed",
-			message: `{"type": "api.deployed", "payload": {"apiId": "api-1", "environment": "prod"}, "timestamp": "2025-01-30T12:00:00Z", "correlationId": "corr-1"}`,
+			message: `{"type": "api.deployed", "payload": {"apiId": "api-1"}, "timestamp": "2025-01-30T12:00:00Z", "correlationId": "corr-1"}`,
 		},
 		{
 			name:    "api.undeployed",
@@ -361,7 +358,7 @@ func TestClient_handleMessage_AllEventTypes(t *testing.T) {
 		},
 		{
 			name:    "api.deleted",
-			message: `{"type": "api.deleted", "payload": {"apiId": "api-1", "vhost": "example.com", "environment": "production"}, "timestamp": "2025-01-30T12:00:00Z", "correlationId": "corr-1"}`,
+			message: `{"type": "api.deleted", "payload": {"apiId": "api-1"}, "timestamp": "2025-01-30T12:00:00Z", "correlationId": "corr-1"}`,
 		},
 		{
 			name:    "unknown.event",
@@ -491,9 +488,7 @@ func TestAPIDeployedEvent_JSONParsing(t *testing.T) {
 		"type": "api.deployed",
 		"payload": {
 			"apiId": "api-123",
-			"environment": "production",
-			"deploymentId": "rev-1",
-			"vhost": "api.example.com"
+			"deploymentId": "rev-1"
 		},
 		"timestamp": "2025-01-30T12:00:00Z",
 		"correlationId": "corr-789"
