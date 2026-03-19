@@ -249,6 +249,9 @@ func (h *MCPProxyHandler) handleServiceError(c *gin.Context, err error) {
 	case errors.Is(err, constants.ErrProjectNotFound):
 		h.slogger.Error("MCP request validation failed", "reason", "Project not found")
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
+	case errors.Is(err, constants.ErrMCPProxyLimitReached):
+		h.slogger.Error("MCP proxy limit reached", "reason", err.Error())
+		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "MCP proxy limit reached for the organization"))
 	default:
 		h.slogger.Error("MCP proxy service error", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))

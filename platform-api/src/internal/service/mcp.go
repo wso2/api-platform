@@ -20,11 +20,12 @@
 package service
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -368,8 +369,14 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 
 		// Use stored URL from proxy configuration
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.URL != "" {
-			url = proxy.Configuration.Upstream.Main.URL + "/mcp"
+			url = proxy.Configuration.Upstream.Main.URL
 		}
+
+		normalizedURL, err := ensureMCPEndpointURL(url)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
+		}
+		url = normalizedURL
 
 		// Use stored auth from proxy configuration
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.Auth != nil {
@@ -390,15 +397,36 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 		}
 	}
 
-	if err := utils.ValidateURL(context.Background(), url); err != nil {
+	if err := utils.ValidateURL(url); err != nil {
 		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
 	}
 
-	if err := utils.CheckURLReachability(context.Background(), url, 10*time.Second); err != nil {
+	if err := utils.CheckURLReachability(url, 10*time.Second); err != nil {
 		return nil, fmt.Errorf("%w: %v", constants.ErrURLUnreachable, err)
 	}
 
 	return utils.FetchMCPServerInfo(url, headerName, headerValue)
+}
+
+func ensureMCPEndpointURL(rawURL string) (string, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+
+	path := strings.TrimRight(parsedURL.Path, "/")
+	if path == "" {
+		parsedURL.Path = "/mcp"
+		return parsedURL.String(), nil
+	}
+
+	if strings.HasSuffix(path, "/mcp") {
+		parsedURL.Path = path
+		return parsedURL.String(), nil
+	}
+
+	parsedURL.Path = path + "/mcp"
+	return parsedURL.String(), nil
 }
 
 // Helper functions

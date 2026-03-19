@@ -352,7 +352,7 @@ func GenerateUUID() (string, error) {
 }
 
 // ValidateURL validates a URL with additional checks
-func ValidateURL(ctx context.Context, rawURL string) error {
+func ValidateURL(rawURL string) error {
 	if rawURL == "" {
 		return errors.New("URL is required")
 	}
@@ -394,7 +394,7 @@ func ValidateURL(ctx context.Context, rawURL string) error {
 
 // CheckURLReachability verifies that the given URL is reachable by sending an HTTP HEAD request.
 // It returns an error if the request fails or cannot complete within the given timeout.
-func CheckURLReachability(ctx context.Context, rawURL string, timeout time.Duration) error {
+func CheckURLReachability(rawURL string, timeout time.Duration) error {
 	client := &http.Client{
 		Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -405,7 +405,7 @@ func CheckURLReachability(ctx context.Context, rawURL string, timeout time.Durat
 		},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, rawURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request")
 	}
