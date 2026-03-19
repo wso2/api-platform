@@ -141,8 +141,6 @@ type Deployments struct {
 	TimeoutEnabled  bool `envconfig:"TIMEOUT_ENABLED" default:"true"`
 	TimeoutInterval int  `envconfig:"TIMEOUT_INTERVAL" default:"20"` // seconds between checks
 	TimeoutDuration int  `envconfig:"TIMEOUT_DURATION" default:"60"` // seconds before a status is considered stale
-	ManifestSyncTimeoutSecs int `envconfig:"MANIFEST_SYNC_TIMEOUT_SECS" default:"30"`   // seconds; pending → failed if exceeded
-	ManifestReadyTTLSecs    int `envconfig:"MANIFEST_READY_TTL_SECS" default:"60"`  // seconds; ready → re-trigger if exceeded
 }
 
 // APIKey holds API key-specific configuration
