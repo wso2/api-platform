@@ -64,6 +64,10 @@ type ApplicationRepository interface {
 	GetArtifactByUUID(artifactUUID, orgID string) (*model.Artifact, error)
 	GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error)
 	GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error)
+	GetApplicationsByProjectIDPaginated(projectID, orgID string, limit, offset int) ([]*model.Application, error)
+	GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error)
+	CountApplicationsByProjectID(projectID, orgID string) (int, error)
+	CountApplicationsByOrganizationID(orgID string) (int, error)
 	GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error)
 	CheckApplicationHandleExists(handle, orgID string) (bool, error)
 	UpdateApplication(app *model.Application) error

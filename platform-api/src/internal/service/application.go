@@ -22,8 +22,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"platform-api/src/api"
 	"platform-api/src/internal/constants"
-	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
@@ -58,11 +58,11 @@ func NewApplicationService(
 	}
 }
 
-func (s *ApplicationService) CreateApplication(req *dto.CreateApplicationRequest, orgID string) (*dto.ApplicationResponse, error) {
+func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID string) (*api.Application, error) {
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, constants.ErrInvalidApplicationName
 	}
-	appType, err := normalizeApplicationType(req.Type)
+	appType, err := normalizeApplicationType(string(req.Type))
 	if err != nil {
 		return nil, err
 	}
@@ -75,15 +75,17 @@ func (s *ApplicationService) CreateApplication(req *dto.CreateApplicationRequest
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	projectID := strings.TrimSpace(req.ProjectId)
-	if projectID != "" {
-		project, err := s.projectRepo.GetProjectByUUID(projectID)
-		if err != nil {
-			return nil, err
-		}
-		if project == nil || project.OrganizationID != orgID {
-			return nil, constants.ErrProjectNotFound
-		}
+	projectID := strings.TrimSpace(utils.OpenAPIUUIDToString(req.ProjectId))
+	if projectID == "" {
+		return nil, constants.ErrProjectNotFound
+	}
+
+	project, err := s.projectRepo.GetProjectByUUID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil || project.OrganizationID != orgID {
+		return nil, constants.ErrProjectNotFound
 	}
 
 	existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.Name), projectID, orgID)
@@ -94,7 +96,7 @@ func (s *ApplicationService) CreateApplication(req *dto.CreateApplicationRequest
 		return nil, constants.ErrApplicationExists
 	}
 
-	handle := strings.TrimSpace(req.Id)
+	handle := strings.TrimSpace(valueOrEmptyApplication(req.Id))
 	if handle == "" {
 		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgID))
 		if err != nil {
@@ -131,7 +133,7 @@ func (s *ApplicationService) CreateApplication(req *dto.CreateApplicationRequest
 	return s.modelToApplicationResponse(app), nil
 }
 
-func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*dto.ApplicationResponse, error) {
+func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*api.Application, error) {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -143,7 +145,7 @@ func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*d
 	return s.modelToApplicationResponse(app), nil
 }
 
-func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID string) (*dto.ApplicationListResponse, error) {
+func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID string, limit, offset int) (*api.ApplicationListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
 		return nil, err
@@ -152,45 +154,57 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	var apps []*model.Application
-	if projectID != "" {
-		project, err := s.projectRepo.GetProjectByUUID(projectID)
-		if err != nil {
-			return nil, err
-		}
-		if project == nil || project.OrganizationID != orgID {
-			return nil, constants.ErrProjectNotFound
-		}
-
-		apps, err = s.appRepo.GetApplicationsByProjectID(projectID, orgID)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		apps, err = s.appRepo.GetApplicationsByOrganizationID(orgID)
-		if err != nil {
-			return nil, err
-		}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if strings.TrimSpace(projectID) == "" {
+		return nil, constants.ErrProjectNotFound
 	}
 
-	response := &dto.ApplicationListResponse{
+	project, err := s.projectRepo.GetProjectByUUID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil || project.OrganizationID != orgID {
+		return nil, constants.ErrProjectNotFound
+	}
+
+	apps, err := s.appRepo.GetApplicationsByProjectIDPaginated(projectID, orgID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	totalCount, err := s.appRepo.CountApplicationsByProjectID(projectID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &api.ApplicationListResponse{
 		Count: len(apps),
-		List:  make([]*dto.ApplicationResponse, 0, len(apps)),
-		Pagination: dto.Pagination{
-			Total:  len(apps),
-			Offset: 0,
-			Limit:  len(apps),
+		List:  make([]api.Application, 0, len(apps)),
+		Pagination: api.Pagination{
+			Total:  totalCount,
+			Offset: offset,
+			Limit:  limit,
 		},
 	}
 
 	for _, app := range apps {
-		response.List = append(response.List, s.modelToApplicationResponse(app))
+		mapped := s.modelToApplicationResponse(app)
+		if mapped != nil {
+			response.List = append(response.List, *mapped)
+		}
 	}
 
 	return response, nil
 }
 
-func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *dto.UpdateApplicationRequest, orgID, userID string) (*dto.ApplicationResponse, error) {
+func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.UpdateApplicationRequest, orgID, userID string) (*api.Application, error) {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -221,7 +235,7 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *dto.Up
 	}
 
 	if req.Type != nil {
-		appType, err := normalizeApplicationType(*req.Type)
+		appType, err := normalizeApplicationType(string(*req.Type))
 		if err != nil {
 			return nil, err
 		}
@@ -232,12 +246,12 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *dto.Up
 		return nil, err
 	}
 
-	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil && s.slogger != nil {
+	if err := s.broadcastApplicationMappingUpdate(app, userID, broadcastKeys); err != nil && s.slogger != nil {
 		s.slogger.Warn("Application update succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
@@ -256,13 +270,13 @@ func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID string) erro
 	return s.appRepo.DeleteApplication(app.UUID, orgID)
 }
 
-func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string) (*dto.MappedAPIKeyListResponse, error) {
+func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
 	}
 
-	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	keys, err := s.buildMappedAPIKeyListPaginated(app.UUID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -270,13 +284,13 @@ func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string) (*dt
 	return keys, nil
 }
 
-func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.AddApplicationAPIKeysRequest, orgID, userID string) (*dto.MappedAPIKeyListResponse, error) {
+func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.AddApplicationAPIKeysRequest, orgID, userID string) (*api.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
 	}
 
-	apiKeyIDs, err := s.resolveAPIKeyIDs(req.APIKeys, orgID, userID)
+	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeys, orgID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -289,8 +303,12 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *dto.Add
 	if err != nil {
 		return nil, err
 	}
+	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
+	if err != nil {
+		return nil, err
+	}
 
-	if err := s.broadcastApplicationMappingUpdate(app, userID, keys); err != nil && s.slogger != nil {
+	if err := s.broadcastApplicationMappingUpdate(app, userID, broadcastKeys); err != nil && s.slogger != nil {
 		s.slogger.Warn("Add mapped API keys succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
@@ -303,10 +321,10 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, 
 		return err
 	}
 
-	key, err := s.resolveAPIKey(dto.APIKeyMappingSelectorRequest{
-		KeyID: keyID,
-		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
-			ID: entityID,
+	key, err := s.resolveAPIKey(api.APIKeyMappingSelector{
+		KeyId: keyID,
+		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
+			Id: entityID,
 		},
 	}, orgID)
 	if err != nil {
@@ -317,12 +335,12 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, 
 		return err
 	}
 
-	keys, err := s.buildMappedAPIKeyList(app.UUID)
+	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
 	if err != nil {
 		return err
 	}
 
-	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, []string{key.ArtifactID}); err != nil && s.slogger != nil {
+	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, broadcastKeys, []string{key.ArtifactID}); err != nil && s.slogger != nil {
 		s.slogger.Warn("Remove mapped API key succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
@@ -350,7 +368,7 @@ func (s *ApplicationService) getApplication(appIDOrHandle, orgID string) (*model
 	return app, nil
 }
 
-func (s *ApplicationService) resolveAPIKeyIDs(selectors []dto.APIKeyMappingSelectorRequest, orgID, userID string) ([]string, error) {
+func (s *ApplicationService) resolveAPIKeyIDs(selectors []api.APIKeyMappingSelector, orgID, userID string) ([]string, error) {
 	keys, err := s.resolveAPIKeys(selectors, orgID)
 	if err != nil {
 		return nil, err
@@ -367,7 +385,7 @@ func (s *ApplicationService) resolveAPIKeyIDs(selectors []dto.APIKeyMappingSelec
 	return result, nil
 }
 
-func (s *ApplicationService) resolveAPIKeys(selectors []dto.APIKeyMappingSelectorRequest, orgID string) ([]*model.ApplicationAPIKey, error) {
+func (s *ApplicationService) resolveAPIKeys(selectors []api.APIKeyMappingSelector, orgID string) ([]*model.ApplicationAPIKey, error) {
 	seen := make(map[string]struct{})
 	result := make([]*model.ApplicationAPIKey, 0, len(selectors))
 
@@ -388,9 +406,9 @@ func (s *ApplicationService) resolveAPIKeys(selectors []dto.APIKeyMappingSelecto
 	return result, nil
 }
 
-func (s *ApplicationService) resolveAPIKey(selector dto.APIKeyMappingSelectorRequest, orgID string) (*model.ApplicationAPIKey, error) {
-	keyID := strings.TrimSpace(selector.KeyID)
-	entityID := strings.TrimSpace(selector.AssociatedEntity.ID)
+func (s *ApplicationService) resolveAPIKey(selector api.APIKeyMappingSelector, orgID string) (*model.ApplicationAPIKey, error) {
+	keyID := strings.TrimSpace(selector.KeyId)
+	entityID := strings.TrimSpace(selector.AssociatedEntity.Id)
 
 	if keyID == "" || entityID == "" {
 		return nil, constants.ErrInvalidAPIKey
@@ -426,39 +444,64 @@ func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.Applicat
 	return nil
 }
 
-func (s *ApplicationService) buildMappedAPIKeyList(applicationUUID string) (*dto.MappedAPIKeyListResponse, error) {
+func (s *ApplicationService) buildMappedAPIKeyList(applicationUUID string) (*api.MappedAPIKeyListResponse, error) {
+	return s.buildMappedAPIKeyListPaginated(applicationUUID, -1, 0)
+}
+
+func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID string, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
 	keys, err := s.appRepo.ListMappedAPIKeys(applicationUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	response := &dto.MappedAPIKeyListResponse{
-		Count: len(keys),
-		List:  make([]*dto.MappedAPIKeyResponse, 0, len(keys)),
-		Pagination: dto.Pagination{
-			Total:  len(keys),
-			Offset: 0,
-			Limit:  len(keys),
+	if offset < 0 {
+		offset = 0
+	}
+
+	total := len(keys)
+	if offset > total {
+		offset = total
+	}
+
+	pagedKeys := keys
+	effectiveLimit := len(keys)
+	if limit > 0 {
+		effectiveLimit = limit
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		pagedKeys = keys[offset:end]
+	}
+
+	response := &api.MappedAPIKeyListResponse{
+		Count: len(pagedKeys),
+		List:  make([]api.MappedAPIKey, 0, len(pagedKeys)),
+		Pagination: api.Pagination{
+			Total:  total,
+			Offset: offset,
+			Limit:  effectiveLimit,
 		},
 	}
 
-	for _, key := range keys {
+	for _, key := range pagedKeys {
 		response.List = append(response.List, s.modelToMappedAPIKeyResponse(key))
 	}
 
 	return response, nil
 }
 
-func (s *ApplicationService) modelToApplicationResponse(app *model.Application) *dto.ApplicationResponse {
+func (s *ApplicationService) modelToApplicationResponse(app *model.Application) *api.Application {
 	if app == nil {
 		return nil
 	}
+	projectID := utils.ParseOpenAPIUUIDOrZero(app.ProjectUUID)
 
-	return &dto.ApplicationResponse{
+	return &api.Application{
 		Id:          app.Handle,
 		Name:        app.Name,
-		ProjectId:   app.ProjectUUID,
-		Type:        app.Type,
+		ProjectId:   projectID,
+		Type:        api.ApplicationType(app.Type),
 		Description: utils.StringPtrIfNotEmpty(app.Description),
 		CreatedBy:   utils.StringPtrIfNotEmpty(app.CreatedBy),
 		CreatedAt:   utils.TimePtrIfNotZero(app.CreatedAt),
@@ -466,25 +509,27 @@ func (s *ApplicationService) modelToApplicationResponse(app *model.Application) 
 	}
 }
 
-func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationAPIKey) *dto.MappedAPIKeyResponse {
+func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationAPIKey) api.MappedAPIKey {
 	if key == nil {
-		return nil
+		return api.MappedAPIKey{}
 	}
 
-	return &dto.MappedAPIKeyResponse{
+	return api.MappedAPIKey{
 		KeyId: key.Name,
-		AssociatedEntity: dto.AssociatedEntityResponse{
-			ID:   key.ArtifactHandle,
+		AssociatedEntity: api.AssociatedEntity{
+			Id:   key.ArtifactHandle,
 			Kind: key.ArtifactKind,
 		},
-		ApiKeyUuid: key.APIKeyUUID,
-		ArtifactId: key.ArtifactID,
-		Status:     utils.StringPtrIfNotEmpty(key.Status),
-		UserId:     utils.StringPtrIfNotEmpty(key.CreatedBy),
-		CreatedAt:  utils.TimePtrIfNotZero(key.CreatedAt),
-		UpdatedAt:  utils.TimePtrIfNotZero(key.UpdatedAt),
-		ExpiresAt:  key.ExpiresAt,
+		Status:    utils.StringPtrIfNotEmpty(key.Status),
+		UserId:    utils.StringPtrIfNotEmpty(key.CreatedBy),
+		CreatedAt: utils.TimePtrIfNotZero(key.CreatedAt),
+		UpdatedAt: utils.TimePtrIfNotZero(key.UpdatedAt),
+		ExpiresAt: key.ExpiresAt,
 	}
+}
+
+func (s *ApplicationService) listMappedAPIKeysForBroadcast(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
+	return s.appRepo.ListMappedAPIKeys(applicationUUID)
 }
 
 func valueOrEmptyApplication(value *string) string {
@@ -505,11 +550,11 @@ func normalizeApplicationType(appType string) (string, error) {
 	return "", constants.ErrUnsupportedApplicationType
 }
 
-func (s *ApplicationService) broadcastApplicationMappingUpdate(app *model.Application, userID string, keys *dto.MappedAPIKeyListResponse) error {
+func (s *ApplicationService) broadcastApplicationMappingUpdate(app *model.Application, userID string, keys []*model.ApplicationAPIKey) error {
 	return s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, nil)
 }
 
-func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(app *model.Application, userID string, keys *dto.MappedAPIKeyListResponse, artifactHints []string) error {
+func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(app *model.Application, userID string, keys []*model.ApplicationAPIKey, artifactHints []string) error {
 	if s.appRepo == nil || s.gatewayEventsService == nil {
 		return nil
 	}
@@ -518,21 +563,21 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 	affectedArtifactIDs := make(map[string]struct{})
 	gatewayIDs := make(map[string]struct{})
 
-	for _, key := range keys.List {
+	for _, key := range keys {
 		if key == nil {
 			continue
 		}
 
-		if key.ApiKeyUuid == "" {
-			return fmt.Errorf("mapped API key is missing UUID for artifact id %s", key.ArtifactId)
+		if key.APIKeyUUID == "" {
+			return fmt.Errorf("mapped API key is missing UUID for artifact id %s", key.ArtifactID)
 		}
-		if strings.TrimSpace(key.ArtifactId) == "" {
+		if strings.TrimSpace(key.ArtifactID) == "" {
 			continue
 		}
 
-		entry := model.ApplicationKeyMapping{ApiKeyUuid: key.ApiKeyUuid}
+		entry := model.ApplicationKeyMapping{ApiKeyUuid: key.APIKeyUUID}
 		entryByKey[entry.ApiKeyUuid] = entry
-		affectedArtifactIDs[key.ArtifactId] = struct{}{}
+		affectedArtifactIDs[key.ArtifactID] = struct{}{}
 	}
 
 	for _, artifactID := range artifactHints {
@@ -620,29 +665,4 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 	}
 
 	return nil
-}
-
-func collectArtifactIDsFromMappedKeys(keys *dto.MappedAPIKeyListResponse) []string {
-	if keys == nil {
-		return nil
-	}
-
-	seen := make(map[string]struct{})
-	artifactIDs := make([]string, 0, len(keys.List))
-	for _, key := range keys.List {
-		if key == nil {
-			continue
-		}
-		artifactID := strings.TrimSpace(key.ArtifactId)
-		if artifactID == "" {
-			continue
-		}
-		if _, exists := seen[artifactID]; exists {
-			continue
-		}
-		seen[artifactID] = struct{}{}
-		artifactIDs = append(artifactIDs, artifactID)
-	}
-
-	return artifactIDs
 }

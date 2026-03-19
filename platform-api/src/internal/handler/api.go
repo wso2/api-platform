@@ -200,7 +200,7 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, apiResponse)
 }
 
-// ListAPIs handles GET /api/v1/rest-apis and lists APIs for an organization with optional project filter
+// ListAPIs handles GET /api/v1/rest-apis and lists APIs for an organization filtered by project
 func (h *APIHandler) ListAPIs(c *gin.Context) {
 	// Get organization from JWT token
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -210,15 +210,10 @@ func (h *APIHandler) ListAPIs(c *gin.Context) {
 		return
 	}
 
-	var params api.ListRESTAPIsParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	projectId := strings.TrimSpace(c.Query("projectId"))
+	if projectId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
 		return
-	}
-
-	var projectId string
-	if params.ProjectId != nil {
-		projectId = string(*params.ProjectId)
 	}
 
 	apis, err := h.apiService.GetAPIsByOrganization(orgId, projectId)

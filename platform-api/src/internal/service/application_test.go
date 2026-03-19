@@ -22,38 +22,90 @@ import (
 	"testing"
 	"time"
 
+	"platform-api/src/api"
 	"platform-api/src/internal/constants"
-	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+
+	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 type mockApplicationRepository struct {
 	repository.ApplicationRepository
-	app                 *model.Application
-	mappedKeys          []*model.ApplicationAPIKey
-	apiKeysByLookupKey  map[string]*model.ApplicationAPIKey
-	artifactByID        map[string]*model.Artifact
-	deployedGatewayIDs  map[string][]string
-	existingByName      *model.Application
-	appErr              error
-	mappedErr           error
-	artifactErr         error
-	deployedGatewayErr  error
-	existingByNameErr   error
-	handleExists        bool
-	handleExistsErr     error
-	createErr           error
-	addMappedCalled     bool
-	removeMappedCalled  bool
-	createCalled        bool
-	createdApplication  *model.Application
-	addedAPIKeyIDs      []string
-	removedAPIKeyID     string
+	app                *model.Application
+	applications       []*model.Application
+	mappedKeys         []*model.ApplicationAPIKey
+	apiKeysByLookupKey map[string]*model.ApplicationAPIKey
+	artifactByID       map[string]*model.Artifact
+	deployedGatewayIDs map[string][]string
+	existingByName     *model.Application
+	appErr             error
+	mappedErr          error
+	artifactErr        error
+	deployedGatewayErr error
+	existingByNameErr  error
+	handleExists       bool
+	handleExistsErr    error
+	createErr          error
+	addMappedCalled    bool
+	removeMappedCalled bool
+	createCalled       bool
+	createdApplication *model.Application
+	addedAPIKeyIDs     []string
+	removedAPIKeyID    string
 }
 
 func (m *mockApplicationRepository) GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error) {
 	return m.app, m.appErr
+}
+
+func (m *mockApplicationRepository) GetApplicationsByProjectIDPaginated(projectID, orgID string, limit, offset int) ([]*model.Application, error) {
+	if m.appErr != nil {
+		return nil, m.appErr
+	}
+
+	end := offset + limit
+	if offset > len(m.applications) {
+		return []*model.Application{}, nil
+	}
+	if end > len(m.applications) {
+		end = len(m.applications)
+	}
+
+	return m.applications[offset:end], nil
+}
+
+func (m *mockApplicationRepository) GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error) {
+	if m.appErr != nil {
+		return nil, m.appErr
+	}
+
+	end := offset + limit
+	if offset > len(m.applications) {
+		return []*model.Application{}, nil
+	}
+	if end > len(m.applications) {
+		end = len(m.applications)
+	}
+
+	return m.applications[offset:end], nil
+}
+
+func (m *mockApplicationRepository) CountApplicationsByProjectID(projectID, orgID string) (int, error) {
+	if m.appErr != nil {
+		return 0, m.appErr
+	}
+
+	return len(m.applications), nil
+}
+
+func (m *mockApplicationRepository) CountApplicationsByOrganizationID(orgID string) (int, error) {
+	if m.appErr != nil {
+		return 0, m.appErr
+	}
+
+	return len(m.applications), nil
 }
 
 func (m *mockApplicationRepository) ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
@@ -173,7 +225,7 @@ func TestListMappedAPIKeys_ReturnsUnifiedMappingsWithMetadata(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	resp, err := svc.ListMappedAPIKeys("my-app", "org-1")
+	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 20, 0)
 	if err != nil {
 		t.Fatalf("ListMappedAPIKeys returned error: %v", err)
 	}
@@ -201,8 +253,127 @@ func TestListMappedAPIKeys_ReturnsUnifiedMappingsWithMetadata(t *testing.T) {
 	if resp.List[1].UserId == nil || *resp.List[1].UserId != "user-2" {
 		t.Fatalf("expected second mapping userId user-2")
 	}
-	if resp.List[0].AssociatedEntity.ID != "orders-api" {
-		t.Fatalf("expected first mapping associated entity id orders-api, got %s", resp.List[0].AssociatedEntity.ID)
+	if resp.List[0].AssociatedEntity.Id != "orders-api" {
+		t.Fatalf("expected first mapping associated entity id orders-api, got %s", resp.List[0].AssociatedEntity.Id)
+	}
+}
+
+func TestListMappedAPIKeys_AppliesPagination(t *testing.T) {
+	createdAt := time.Now().Add(-time.Hour)
+	updatedAt := time.Now()
+
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
+		mappedKeys: []*model.ApplicationAPIKey{
+			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "api-1", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "api-2", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-3", APIKeyUUID: "uuid-3", Name: "key-3", ArtifactID: "artifact-3", ArtifactHandle: "api-3", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 1, 1)
+	if err != nil {
+		t.Fatalf("ListMappedAPIKeys returned error: %v", err)
+	}
+
+	if resp.Count != 1 {
+		t.Fatalf("expected count 1, got %d", resp.Count)
+	}
+	if len(resp.List) != 1 {
+		t.Fatalf("expected 1 mapping, got %d", len(resp.List))
+	}
+	if resp.List[0].KeyId != "key-2" {
+		t.Fatalf("expected paginated keyId key-2, got %s", resp.List[0].KeyId)
+	}
+	if resp.Pagination.Total != 3 {
+		t.Fatalf("expected total 3, got %d", resp.Pagination.Total)
+	}
+	if resp.Pagination.Limit != 1 {
+		t.Fatalf("expected limit 1, got %d", resp.Pagination.Limit)
+	}
+	if resp.Pagination.Offset != 1 {
+		t.Fatalf("expected offset 1, got %d", resp.Pagination.Offset)
+	}
+}
+
+func TestListMappedAPIKeys_LimitZeroReturnsAll(t *testing.T) {
+	createdAt := time.Now().Add(-time.Hour)
+	updatedAt := time.Now()
+
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
+		mappedKeys: []*model.ApplicationAPIKey{
+			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "api-1", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "api-2", ArtifactKind: "RestApi", CreatedAt: createdAt, UpdatedAt: updatedAt},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 0, 0)
+	if err != nil {
+		t.Fatalf("ListMappedAPIKeys returned error: %v", err)
+	}
+
+	if resp.Count != 2 {
+		t.Fatalf("expected count 2, got %d", resp.Count)
+	}
+	if len(resp.List) != 2 {
+		t.Fatalf("expected 2 mappings, got %d", len(resp.List))
+	}
+	if resp.Pagination.Total != 2 {
+		t.Fatalf("expected total 2, got %d", resp.Pagination.Total)
+	}
+}
+
+func TestGetApplicationsByOrganization_AppliesPagination(t *testing.T) {
+	orgID := "org-1"
+	projectID := "11111111-1111-1111-1111-111111111111"
+
+	appRepo := &mockApplicationRepository{
+		applications: []*model.Application{
+			{UUID: "app-1", Handle: "app-1", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "App 1", Type: "genai"},
+			{UUID: "app-2", Handle: "app-2", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "App 2", Type: "genai"},
+			{UUID: "app-3", Handle: "app-3", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "App 3", Type: "genai"},
+		},
+	}
+	projectRepo := &mockProjectRepository{
+		projectByUUID: &model.Project{ID: projectID, OrganizationID: orgID},
+	}
+	orgRepo := &mockApplicationOrganizationRepository{
+		org: &model.Organization{ID: orgID},
+	}
+
+	svc := &ApplicationService{
+		appRepo:     appRepo,
+		projectRepo: projectRepo,
+		orgRepo:     orgRepo,
+	}
+
+	resp, err := svc.GetApplicationsByOrganization(orgID, projectID, 1, 1)
+	if err != nil {
+		t.Fatalf("GetApplicationsByOrganization returned error: %v", err)
+	}
+
+	if resp.Count != 1 {
+		t.Fatalf("expected count 1, got %d", resp.Count)
+	}
+	if len(resp.List) != 1 {
+		t.Fatalf("expected list length 1, got %d", len(resp.List))
+	}
+	if resp.List[0].Id != "app-2" {
+		t.Fatalf("expected app id app-2, got %s", resp.List[0].Id)
+	}
+	if resp.Pagination.Total != 3 {
+		t.Fatalf("expected total 3, got %d", resp.Pagination.Total)
+	}
+	if resp.Pagination.Limit != 1 {
+		t.Fatalf("expected limit 1, got %d", resp.Pagination.Limit)
+	}
+	if resp.Pagination.Offset != 1 {
+		t.Fatalf("expected offset 1, got %d", resp.Pagination.Offset)
 	}
 }
 
@@ -220,10 +391,10 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	_, err := svc.AddMappedAPIKeys("my-app", &dto.AddApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
-		KeyID: "key-1",
-		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
-			ID: "orders-api",
+	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
+		KeyId: "key-1",
+		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
+			Id: "orders-api",
 		},
 	}}}, "org-1", "different-user")
 	if !errors.Is(err, constants.ErrAPIKeyForbidden) {
@@ -233,7 +404,6 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 		t.Fatalf("expected AddApplicationAPIKeys not to be called when requester is not creator")
 	}
 }
-
 
 func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 	appRepo := &mockApplicationRepository{
@@ -277,10 +447,10 @@ func TestAddMappedAPIKeys_ResolvesByAssociatedEntityID(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	_, err := svc.AddMappedAPIKeys("my-app", &dto.AddApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
-		KeyID: "shared-key",
-		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
-			ID: "entity-b",
+	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
+		KeyId: "shared-key",
+		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
+			Id: "entity-b",
 		},
 	}}}, "org-1", "creator-user")
 	if err != nil {
@@ -309,10 +479,10 @@ func TestAddMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) 
 
 	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
 
-	_, err := svc.AddMappedAPIKeys("my-app", &dto.AddApplicationAPIKeysRequest{APIKeys: []dto.APIKeyMappingSelectorRequest{{
-		KeyID: "key-1",
-		AssociatedEntity: dto.APIKeyAssociatedEntityIDRequest{
-			ID: "orders-api",
+	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
+		KeyId: "key-1",
+		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
+			Id: "orders-api",
 		},
 	}}}, "org-1", "creator-user")
 	if err != nil {
@@ -349,7 +519,7 @@ func TestRemoveMappedAPIKey_DoesNotFailWhenBroadcastResolutionFails(t *testing.T
 	}
 }
 
-func TestCreateApplication_LeavesProjectUnmappedWhenProjectIDMissing(t *testing.T) {
+func TestCreateApplication_RequiresProjectID(t *testing.T) {
 	orgID := "org-1"
 
 	appRepo := &mockApplicationRepository{}
@@ -364,29 +534,18 @@ func TestCreateApplication_LeavesProjectUnmappedWhenProjectIDMissing(t *testing.
 		orgRepo:     orgRepo,
 	}
 
-	resp, err := svc.CreateApplication(&dto.CreateApplicationRequest{
-		Name:      "Sample App",
-		ProjectId: "",
-		Type:      "genai",
+	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
+		Name: "Sample App",
+		Type: api.ApplicationType("genai"),
 	}, orgID)
-	if err != nil {
-		t.Fatalf("CreateApplication returned error: %v", err)
+	if !errors.Is(err, constants.ErrProjectNotFound) {
+		t.Fatalf("expected ErrProjectNotFound, got %v", err)
 	}
-
-	if !appRepo.createCalled {
-		t.Fatalf("expected CreateApplication repository method to be called")
+	if resp != nil {
+		t.Fatalf("expected nil response when project id is missing")
 	}
-	if appRepo.createdApplication == nil {
-		t.Fatalf("expected created application to be captured")
-	}
-	if appRepo.createdApplication.ProjectUUID != "" {
-		t.Fatalf("expected application project UUID to be empty, got %s", appRepo.createdApplication.ProjectUUID)
-	}
-	if resp == nil {
-		t.Fatalf("expected non-nil response")
-	}
-	if resp.ProjectId != "" {
-		t.Fatalf("expected response projectId to be empty, got %s", resp.ProjectId)
+	if appRepo.createCalled {
+		t.Fatalf("expected repository create not to be called when project id is missing")
 	}
 }
 
@@ -405,10 +564,11 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 		orgRepo:     orgRepo,
 	}
 
-	_, err := svc.CreateApplication(&dto.CreateApplicationRequest{
+	projectUUID := openapi_types.UUID(uuid.MustParse("11111111-1111-1111-1111-111111111111"))
+	_, err := svc.CreateApplication(&api.CreateApplicationRequest{
 		Name:      "Sample App",
-		ProjectId: "project-123",
-		Type:      "genai",
+		ProjectId: projectUUID,
+		Type:      api.ApplicationType("genai"),
 	}, orgID)
 	if !errors.Is(err, constants.ErrProjectNotFound) {
 		t.Fatalf("expected ErrProjectNotFound, got %v", err)

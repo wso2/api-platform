@@ -39,13 +39,6 @@ func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
 	app.CreatedAt = now
 	app.UpdatedAt = now
 
-	var projectUUID interface{}
-	if app.ProjectUUID == "" {
-		projectUUID = nil
-	} else {
-		projectUUID = app.ProjectUUID
-	}
-
 	query := `
 		INSERT INTO applications (
 			uuid, handle, project_uuid, organization_uuid, created_by,
@@ -56,7 +49,7 @@ func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
 
 	_, err := r.db.Exec(
 		r.db.Rebind(query),
-		app.UUID, app.Handle, projectUUID, app.OrganizationUUID, app.CreatedBy,
+		app.UUID, app.Handle, app.ProjectUUID, app.OrganizationUUID, app.CreatedBy,
 		app.Name, app.Description, app.Type, app.CreatedAt, app.UpdatedAt,
 	)
 	return err
@@ -150,21 +143,72 @@ func (r *ApplicationRepo) GetApplicationsByOrganizationID(orgID string) ([]*mode
 	return scanApplications(rows)
 }
 
-func (r *ApplicationRepo) GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error) {
-	var row *sql.Row
-	if projectID == "" {
-		row = r.db.QueryRow(r.db.Rebind(`
-			SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
-			FROM applications
-			WHERE name = ? AND project_uuid IS NULL AND organization_uuid = ?
-		`), name, orgID)
-	} else {
-		row = r.db.QueryRow(r.db.Rebind(`
-			SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
-			FROM applications
-			WHERE name = ? AND project_uuid = ? AND organization_uuid = ?
-		`), name, projectID, orgID)
+func (r *ApplicationRepo) GetApplicationsByProjectIDPaginated(projectID, orgID string, limit, offset int) ([]*model.Application, error) {
+	rows, err := r.db.Query(r.db.Rebind(`
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		FROM applications
+		WHERE project_uuid = ? AND organization_uuid = ?
+		ORDER BY created_at DESC, name ASC
+		LIMIT ? OFFSET ?
+	`), projectID, orgID, limit, offset)
+	if err != nil {
+		return nil, err
 	}
+	defer rows.Close()
+
+	return scanApplications(rows)
+}
+
+func (r *ApplicationRepo) GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error) {
+	rows, err := r.db.Query(r.db.Rebind(`
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		FROM applications
+		WHERE organization_uuid = ?
+		ORDER BY created_at DESC, name ASC
+		LIMIT ? OFFSET ?
+	`), orgID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanApplications(rows)
+}
+
+func (r *ApplicationRepo) CountApplicationsByProjectID(projectID, orgID string) (int, error) {
+	var count int
+	err := r.db.QueryRow(r.db.Rebind(`
+		SELECT COUNT(*)
+		FROM applications
+		WHERE project_uuid = ? AND organization_uuid = ?
+	`), projectID, orgID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (r *ApplicationRepo) CountApplicationsByOrganizationID(orgID string) (int, error) {
+	var count int
+	err := r.db.QueryRow(r.db.Rebind(`
+		SELECT COUNT(*)
+		FROM applications
+		WHERE organization_uuid = ?
+	`), orgID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (r *ApplicationRepo) GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error) {
+	row := r.db.QueryRow(r.db.Rebind(`
+		SELECT uuid, handle, project_uuid, organization_uuid, created_by, name, description, type, created_at, updated_at
+		FROM applications
+		WHERE name = ? AND project_uuid = ? AND organization_uuid = ?
+	`), name, projectID, orgID)
 
 	app, err := scanApplication(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -329,14 +373,13 @@ type rowScanner interface {
 
 func scanApplication(scanner rowScanner) (*model.Application, error) {
 	var app model.Application
-	var projectUUID sql.NullString
 	var createdBy sql.NullString
 	var description sql.NullString
 
 	err := scanner.Scan(
 		&app.UUID,
 		&app.Handle,
-		&projectUUID,
+		&app.ProjectUUID,
 		&app.OrganizationUUID,
 		&createdBy,
 		&app.Name,
@@ -347,10 +390,6 @@ func scanApplication(scanner rowScanner) (*model.Application, error) {
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	if projectUUID.Valid {
-		app.ProjectUUID = projectUUID.String
 	}
 
 	if createdBy.Valid {
