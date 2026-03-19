@@ -131,6 +131,8 @@ const (
 	MaxLLMProvidersPerOrganization = 5
 	// MaxLLMProxiesPerOrganization is the maximum number of LLM proxies allowed per organization.
 	MaxLLMProxiesPerOrganization = 5
+	// MaxMCPProxiesPerOrganization is the maximum number of MCP proxies allowed per organization.
+	MaxMCPProxiesPerOrganization = 5
 )
 
 const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"

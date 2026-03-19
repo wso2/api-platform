@@ -20,11 +20,13 @@
 package service
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
+	"time"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -97,6 +99,15 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 	if exists {
 		return nil, constants.ErrMCPProxyExists
+	}
+
+	// Temporary check for maximum MCP proxy limit per organization before creation
+	proxyCount, err := s.repo.Count(orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count existing MCP proxies: %w", err)
+	}
+	if proxyCount >= constants.MaxMCPProxiesPerOrganization {
+		return nil, constants.ErrMCPProxyLimitReached
 	}
 
 	// Create MCP proxy model
@@ -361,6 +372,12 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			url = proxy.Configuration.Upstream.Main.URL
 		}
 
+		normalizedURL, err := ensureMCPEndpointURL(url)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
+		}
+		url = normalizedURL
+
 		// Use stored auth from proxy configuration
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.Auth != nil {
 			headerName = proxy.Configuration.Upstream.Main.Auth.Header
@@ -380,11 +397,36 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 		}
 	}
 
-	if err := utils.ValidateURL(context.Background(), url); err != nil {
+	if err := utils.ValidateURL(url); err != nil {
 		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
 	}
 
+	if err := utils.CheckURLReachability(url, 10*time.Second); err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrURLUnreachable, err)
+	}
+
 	return utils.FetchMCPServerInfo(url, headerName, headerValue)
+}
+
+func ensureMCPEndpointURL(rawURL string) (string, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+
+	path := strings.TrimRight(parsedURL.Path, "/")
+	if path == "" {
+		parsedURL.Path = "/mcp"
+		return parsedURL.String(), nil
+	}
+
+	if strings.HasSuffix(path, "/mcp") {
+		parsedURL.Path = path
+		return parsedURL.String(), nil
+	}
+
+	parsedURL.Path = path + "/mcp"
+	return parsedURL.String(), nil
 }
 
 // Helper functions
