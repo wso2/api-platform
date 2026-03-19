@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -97,6 +98,15 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 	if exists {
 		return nil, constants.ErrMCPProxyExists
+	}
+
+	// Temporary check for maximum MCP proxy limit per organization before creation
+	proxyCount, err := s.repo.Count(orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count existing MCP proxies: %w", err)
+	}
+	if proxyCount >= constants.MaxMCPProxiesPerOrganization {
+		return nil, constants.ErrMCPProxyLimitReached
 	}
 
 	// Create MCP proxy model
@@ -358,7 +368,7 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 
 		// Use stored URL from proxy configuration
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.URL != "" {
-			url = proxy.Configuration.Upstream.Main.URL
+			url = proxy.Configuration.Upstream.Main.URL + "/mcp"
 		}
 
 		// Use stored auth from proxy configuration
@@ -382,6 +392,10 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 
 	if err := utils.ValidateURL(context.Background(), url); err != nil {
 		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidURL, err)
+	}
+
+	if err := utils.CheckURLReachability(context.Background(), url, 10*time.Second); err != nil {
+		return nil, fmt.Errorf("%w: %v", constants.ErrURLUnreachable, err)
 	}
 
 	return utils.FetchMCPServerInfo(url, headerName, headerValue)

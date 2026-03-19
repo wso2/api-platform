@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -219,6 +220,10 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 		case errors.Is(err, constants.ErrInvalidURL):
 			h.slogger.Error("Invalid URL provided for MCP server info fetch", "error", err, "inputUrl", req.Url)
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+			return
+		case errors.Is(err, constants.ErrURLUnreachable):
+			h.slogger.Error("MCP server URL is unreachable", "error", err, "inputUrl", req.Url)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", strings.Split(err.Error(), ":")[0]))
 			return
 		default:
 			h.handleServiceError(c, err)

@@ -25,6 +25,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -387,6 +388,33 @@ func ValidateURL(ctx context.Context, rawURL string) error {
 	if hasTraversalSegments(parsedURL.EscapedPath()) {
 		return errors.New("URL path must not contain traversal segments")
 	}
+
+	return nil
+}
+
+// CheckURLReachability verifies that the given URL is reachable by sending an HTTP HEAD request.
+// It returns an error if the request fails or cannot complete within the given timeout.
+func CheckURLReachability(ctx context.Context, rawURL string, timeout time.Duration) error {
+	client := &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("too many redirects")
+			}
+			return nil
+		},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("URL is not reachable")
+	}
+	defer resp.Body.Close() //nolint:errcheck
 
 	return nil
 }
