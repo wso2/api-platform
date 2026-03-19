@@ -75,4 +75,3 @@ jobs:
         with:
           sarif_file: gateway/gateway-builder/results.sarif
           category: gateway-builder
-          category: gateway-builder
