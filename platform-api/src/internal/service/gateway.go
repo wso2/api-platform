@@ -39,14 +39,14 @@ import (
 )
 
 // GatewayPolicyInput is the raw policy data received from the gateway controller.
-// IsCustomPolicy is used only for filtering and is not stored or returned.
+// ManagedBy is used only for filtering and is not stored or returned.
 type GatewayPolicyInput struct {
 	Name             string                 `json:"name"`
 	Version          string                 `json:"version"`
 	Description      *string                `json:"description,omitempty"`
 	Parameters       map[string]interface{} `json:"parameters,omitempty"`
 	SystemParameters map[string]interface{} `json:"systemParameters,omitempty"`
-	IsCustomPolicy   bool                   `json:"isCustomPolicy"`
+	ManagedBy        string                 `json:"managedBy"`
 }
 
 // GatewayPolicyDefinition is the cleaned policy data stored in memory and returned to APIM.
@@ -55,7 +55,7 @@ type GatewayPolicyDefinition struct {
 	Name             string                 `json:"name"`
 	Version          string                 `json:"version"`
 	Description      *string                `json:"description,omitempty"`
-	IsCustomPolicy   bool                   `json:"isCustomPolicy"`
+	ManagedBy        string                 `json:"managedBy"`
 	PolicyDefinition map[string]interface{} `json:"policyDefinition,omitempty"`
 }
 
@@ -89,11 +89,14 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 // the manifest that was pushed by the gateway controller on connect.
 func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, error) {
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
-	if err != nil || gateway == nil {
-		return nil, errors.New("gateway not found")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
 	}
 	if gateway.OrganizationID != orgID {
-		return nil, errors.New("gateway not found")
+		return nil, constants.ErrGatewayNotFound
 	}
 
 	raw, err := s.gatewayRepo.GetGatewayManifest(gatewayID)
@@ -105,17 +108,17 @@ func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, 
 }
 
 // ReceiveGatewayManifest stores the manifest posted by the gateway controller on connect.
-// All policies are stored with name and version; custom policies also include policy_definition.
-func (s *GatewayService) ReceiveGatewayManifest(gatewayID string, policies []GatewayPolicyInput) error {
+// All policies are stored with name and version; customer-managed policies include policy_definition.
+func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policies []GatewayPolicyInput) error {
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
 	for _, p := range policies {
 		entry := GatewayPolicyDefinition{
-			Name:           p.Name,
-			Version:        p.Version,
-			Description:    p.Description,
-			IsCustomPolicy: p.IsCustomPolicy,
+			Name:        p.Name,
+			Version:     p.Version,
+			Description: p.Description,
+			ManagedBy:   p.ManagedBy,
 		}
-		if p.IsCustomPolicy {
+		if p.ManagedBy == "customer" {
 			policyDef := map[string]interface{}{}
 			if p.Parameters != nil {
 				policyDef["parameters"] = p.Parameters
@@ -136,16 +139,17 @@ func (s *GatewayService) ReceiveGatewayManifest(gatewayID string, policies []Gat
 		return fmt.Errorf("failed to store gateway manifest: %w", err)
 	}
 
-	customCount := 0
+	customerCount := 0
 	for _, p := range policies {
-		if p.IsCustomPolicy {
-			customCount++
+		if p.ManagedBy == "customer" {
+			customerCount++
 		}
 	}
 	s.slogger.Info("Gateway manifest received and stored",
+		slog.String("org_id", orgID),
 		slog.String("gateway_id", gatewayID),
 		slog.Int("total_policy_count", len(entries)),
-		slog.Int("custom_policy_count", customCount),
+		slog.Int("customer_policy_count", customerCount),
 	)
 	return nil
 }

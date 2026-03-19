@@ -716,7 +716,7 @@ paths:
                 message: "Internal Server Error"
                 description: "Failed to fetch deployment content"
 
-  /api/internal/v1/gateways/{gatewayId}/manifest:
+  /gateways/{gatewayId}/manifest:
     post:
       summary: Push gateway policy manifest
       description: |
@@ -750,6 +750,7 @@ paths:
                 policies:
                   type: array
                   description: All policies installed on the gateway.
+                  maxItems: 1000
                   items:
                     type: object
                     required:
@@ -774,10 +775,12 @@ paths:
                       parameters:
                         type: object
                         description: JSON Schema for the policy's user-configurable parameters. Present for custom policies.
+                        maxProperties: 200
                         additionalProperties: true
                       systemParameters:
                         type: object
                         description: JSON Schema for the policy's system-level parameters. Present for custom policies.
+                        maxProperties: 200
                         additionalProperties: true
       responses:
         '204':

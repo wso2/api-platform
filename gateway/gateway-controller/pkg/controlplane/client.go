@@ -3112,7 +3112,14 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 			slog.Any("error", pushErr),
 		)
 		if attempt < maxRetries {
-			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+			select {
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			case <-c.ctx.Done():
+				c.logger.Info("Context cancelled, aborting gateway manifest push retries",
+					slog.String("gateway_id", gatewayID))
+				return
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
 		}
 	}
 	if pushErr != nil {

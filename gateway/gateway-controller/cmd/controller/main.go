@@ -272,7 +272,7 @@ func main() {
 	}
 	for key, def := range policyDefinitions {
 		managedBy := "wso2"
-		if localPolicies[def.Name] {
+		if localPolicies[def.Name+"|"+def.Version] {
 			managedBy = "customer"
 		}
 		def.ManagedBy = &managedBy

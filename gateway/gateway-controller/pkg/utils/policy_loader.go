@@ -200,13 +200,13 @@ func (pl *PolicyLoader) LocalPolicyNames(buildLockPath string) (map[string]bool,
 
 	for _, entry := range lock.Policies {
 		if entry.FilePath != "" {
-			customPolicies[entry.Name] = true
+			customPolicies[entry.Name+"|"+entry.Version] = true
 			pl.logger.Debug("Detected locally developed policy via filePath",
 				slog.String("name", entry.Name),
 				slog.String("version", entry.Version),
 				slog.String("filePath", entry.FilePath))
 		} else if entry.Gomodule != "" && !strings.HasPrefix(entry.Gomodule, "github.com/wso2") {
-			customPolicies[entry.Name] = true
+			customPolicies[entry.Name+"|"+entry.Version] = true
 			pl.logger.Debug("Detected third-party custom policy via gomodule",
 				slog.String("name", entry.Name),
 				slog.String("version", entry.Version),

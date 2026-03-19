@@ -497,13 +497,18 @@ func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 
 	dataFromDb, err := h.gatewayService.GetStoredManifest(gatewayId, orgId)
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid UUID") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid gateway ID format"))
+			return
+		}
 		if strings.Contains(err.Error(), "gateway not found") {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"Gateway not found"))
 			return
 		}
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to sync gateway manifest"))
+			"Failed to retrieve gateway manifest"))
 		return
 	}
 
