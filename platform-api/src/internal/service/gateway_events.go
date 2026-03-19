@@ -183,7 +183,7 @@ func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID, userId str
 		}
 	}
 	s.slogger.Error("API key updated event delivery failed", "gatewayID", gatewayID, "error", lastError)
-	return fmt.Errorf("failed to deliver API key update event: %w", lastError)
+	return fmt.Errorf("failed to deliver API key updated event: %w", lastError)
 }
 
 // BroadcastApplicationUpdatedEvent sends an application updated event to target gateway.
