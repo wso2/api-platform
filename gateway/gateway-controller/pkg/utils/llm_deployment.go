@@ -42,7 +42,9 @@ type LLMDeploymentParams struct {
 	Data          []byte        // Raw configuration data (YAML/JSON)
 	ContentType   string        // Content type for parsing
 	ID            string        // Optional ID; if empty, generated
+	DeploymentID  string        // Platform deployment ID (empty for gateway-api origin)
 	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
+	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
 	CorrelationID string        // Correlation ID for tracking
 	Logger        *slog.Logger  // Logger
 }
@@ -159,10 +161,11 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		Configuration:       apiConfig,
 		SourceConfiguration: providerConfig,
 		DesiredState:        models.StateDeployed,
+		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          nil,
+		DeployedAt:          params.DeployedAt,
 	}
 
 	// Save or update
@@ -283,10 +286,11 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		Configuration:       apiConfig,
 		SourceConfiguration: proxyConfig,
 		DesiredState:        models.StateDeployed,
+		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          nil,
+		DeployedAt:          params.DeployedAt,
 	}
 
 	// Save or update

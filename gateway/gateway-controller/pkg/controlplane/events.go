@@ -227,10 +227,11 @@ type APIKeyRevokedEvent struct {
 
 // MCPProxyDeployedEventPayload represents the payload of an MCP proxy deployment event
 type MCPProxyDeployedEventPayload struct {
-	ProxyID      string `json:"proxyId"`
-	Environment  string `json:"environment"`
-	DeploymentID string `json:"deploymentId"`
-	VHost        string `json:"vhost"`
+	ProxyID      string    `json:"proxyId"`
+	Environment  string    `json:"environment"`
+	DeploymentID string    `json:"deploymentId"`
+	VHost        string    `json:"vhost"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // MCPProxyDeployedEvent represents the complete MCP proxy deployment event

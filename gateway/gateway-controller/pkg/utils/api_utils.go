@@ -350,14 +350,17 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 }
 
 // CreateAPIFromYAML creates an API configuration from YAML data using the deployment service
-func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, correlationID string,
+func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, deploymentID string,
+	deployedAt *time.Time, correlationID string,
 	deploymentService *APIDeploymentService) (*APIDeploymentResult, error) {
 	// Use the deployment service to handle the API configuration deployment
 	result, err := deploymentService.DeployAPIConfiguration(APIDeploymentParams{
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		APIID:         apiID, // Use the API ID from the deployment event
+		DeploymentID:  deploymentID,
 		Origin:        models.OriginControlPlane,
+		DeployedAt:    deployedAt,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
 	})
@@ -370,14 +373,17 @@ func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, corre
 }
 
 // CreateLLMProviderFromYAML creates an LLM provider configuration from YAML data using the LLM deployment service
-func (s *APIUtilsService) CreateLLMProviderFromYAML(yamlData []byte, providerID string, correlationID string,
+func (s *APIUtilsService) CreateLLMProviderFromYAML(yamlData []byte, providerID string, deploymentID string,
+	deployedAt *time.Time, correlationID string,
 	llmDeploymentService *LLMDeploymentService) (*APIDeploymentResult, error) {
 	// Use the LLM deployment service to handle the provider configuration deployment
 	result, err := llmDeploymentService.DeployLLMProviderConfiguration(LLMDeploymentParams{
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		ID:            providerID,
+		DeploymentID:  deploymentID,
 		Origin:        models.OriginControlPlane,
+		DeployedAt:    deployedAt,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
 	})
@@ -390,14 +396,17 @@ func (s *APIUtilsService) CreateLLMProviderFromYAML(yamlData []byte, providerID 
 }
 
 // CreateLLMProxyFromYAML creates an LLM proxy configuration from YAML data using the LLM deployment service
-func (s *APIUtilsService) CreateLLMProxyFromYAML(yamlData []byte, proxyID string, correlationID string,
+func (s *APIUtilsService) CreateLLMProxyFromYAML(yamlData []byte, proxyID string, deploymentID string,
+	deployedAt *time.Time, correlationID string,
 	llmDeploymentService *LLMDeploymentService) (*APIDeploymentResult, error) {
 	// Use the LLM deployment service to handle the proxy configuration deployment
 	result, err := llmDeploymentService.DeployLLMProxyConfiguration(LLMDeploymentParams{
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		ID:            proxyID,
+		DeploymentID:  deploymentID,
 		Origin:        models.OriginControlPlane,
+		DeployedAt:    deployedAt,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
 	})
@@ -457,13 +466,17 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 }
 
 // CreateMCPProxyFromYAML creates an MCP proxy configuration from YAML data using the MCP deployment service
-func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string, correlationID string,
+func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string, deploymentID string,
+	deployedAt *time.Time, correlationID string,
 	mcpDeploymentService *MCPDeploymentService) (*APIDeploymentResult, error) {
 	// Use the MCP deployment service to handle the proxy configuration deployment
 	result, err := mcpDeploymentService.DeployMCPConfiguration(MCPDeploymentParams{
 		Data:          yamlData,
 		ContentType:   "application/yaml",
 		ID:            proxyID,
+		DeploymentID:  deploymentID,
+		Origin:        models.OriginControlPlane,
+		DeployedAt:    deployedAt,
 		CorrelationID: correlationID,
 		Logger:        s.logger,
 	})

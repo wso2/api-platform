@@ -966,7 +966,7 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 }
 
 // fetchAndDeployAPI fetches API definition and deploys it
-func (c *Client) fetchAndDeployAPI(apiID, correlationID string) (*utils.APIDeploymentResult, error) {
+func (c *Client) fetchAndDeployAPI(apiID, deploymentID string, deployedAt *time.Time, correlationID string) (*utils.APIDeploymentResult, error) {
 	// Fetch API definition from control plane
 	zipData, err := c.apiUtilsService.FetchAPIDefinition(apiID)
 	if err != nil {
@@ -998,7 +998,7 @@ func (c *Client) fetchAndDeployAPI(apiID, correlationID string) (*utils.APIDeplo
 	}
 
 	// Create API configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, correlationID, c.deploymentService)
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deploymentID, deployedAt, correlationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create API from YAML",
 			slog.String("api_id", apiID),
@@ -1118,7 +1118,8 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 
 	// Fetch API definition and deploy
 	// (deploymentService handles DB + event publishing when eventHub is set)
-	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.CorrelationID)
+	performedAt := deployedEvent.Payload.PerformedAt
+	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
 	if err != nil {
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
@@ -1687,7 +1688,8 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM proxy configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.CorrelationID, c.llmDeploymentService)
+	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt
+	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM proxy from YAML",
 			slog.String("proxy_id", proxyID),
@@ -1788,7 +1790,8 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM provider configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.CorrelationID, c.llmDeploymentService)
+	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt
+	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM provider from YAML",
 			slog.String("provider_id", providerID),
@@ -2004,7 +2007,8 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 	}
 
 	// Create MCP proxy configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.CorrelationID, c.mcpDeploymentService)
+	mcpPerformedAt := deployedEvent.Payload.PerformedAt
+	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create MCP proxy from YAML",
 			slog.String("proxy_id", proxyID),
