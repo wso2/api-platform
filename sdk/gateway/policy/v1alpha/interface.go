@@ -1,5 +1,7 @@
 package policyv1alpha
 
+import core "github.com/wso2/api-platform/sdk/core/policy"
+
 // Policy is the interface all policies must implement.
 // It uses a monolithic style: Mode() declares processing requirements, and
 // OnRequest/OnResponse are called by the kernel for the respective phases.
@@ -23,22 +25,7 @@ type Policy interface {
 }
 
 // PolicyMetadata contains metadata passed to GetPolicy for instance creation.
-type PolicyMetadata struct {
-	// RouteName is the unique identifier for the route this policy is attached to.
-	RouteName string
-
-	// APIId is the unique identifier of the API this policy belongs to.
-	APIId string
-
-	// APIName is the name of the API this policy belongs to.
-	APIName string
-
-	// APIVersion is the version of the API this policy belongs to.
-	APIVersion string
-
-	// AttachedTo indicates where the policy is attached (e.g., LevelAPI, LevelRoute).
-	AttachedTo Level
-}
+type PolicyMetadata = core.PolicyMetadata
 
 // PolicyFactory is the function signature for creating policy instances.
 // Policy implementations must export a GetPolicy function with this signature:
@@ -47,11 +34,11 @@ type PolicyMetadata struct {
 type PolicyFactory func(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)
 
 // Level defines the attachment level of a policy.
-type Level string
+type Level = core.Level
 
 const (
-	LevelAPI   Level = "api"
-	LevelRoute Level = "route"
+	LevelAPI   = core.LevelAPI
+	LevelRoute = core.LevelRoute
 )
 
 // ─── Processing mode ─────────────────────────────────────────────────────────
@@ -59,35 +46,30 @@ const (
 // ProcessingMode declares a policy's processing requirements for each phase.
 // The kernel uses this at chain-build time to decide whether to buffer bodies
 // and which Envoy ext_proc modes to request.
-type ProcessingMode struct {
-	RequestHeaderMode  HeaderProcessingMode
-	RequestBodyMode    BodyProcessingMode
-	ResponseHeaderMode HeaderProcessingMode
-	ResponseBodyMode   BodyProcessingMode
-}
+type ProcessingMode = core.ProcessingMode
 
 // HeaderProcessingMode defines how a policy processes headers.
-type HeaderProcessingMode string
+type HeaderProcessingMode = core.HeaderProcessingMode
 
 const (
 	// HeaderModeSkip — don't process headers; the phase method is not called.
-	HeaderModeSkip HeaderProcessingMode = "SKIP"
+	HeaderModeSkip = core.HeaderModeSkip
 
 	// HeaderModeProcess — process headers.
-	HeaderModeProcess HeaderProcessingMode = "PROCESS"
+	HeaderModeProcess = core.HeaderModeProcess
 )
 
 // BodyProcessingMode defines how a policy processes body content.
-type BodyProcessingMode string
+type BodyProcessingMode = core.BodyProcessingMode
 
 const (
 	// BodyModeSkip — don't process body; the phase method is not called.
-	BodyModeSkip BodyProcessingMode = "SKIP"
+	BodyModeSkip = core.BodyModeSkip
 
 	// BodyModeBuffer — buffer the complete body before invoking OnRequest/OnResponse.
-	BodyModeBuffer BodyProcessingMode = "BUFFER"
+	BodyModeBuffer = core.BodyModeBuffer
 
 	// BodyModeStream — process body in streaming chunks.
 	// Deprecated: Use policyv2alpha.StreamingRequestPolicy / StreamingResponsePolicy instead.
-	BodyModeStream BodyProcessingMode = "STREAM"
+	BodyModeStream = core.BodyModeStream
 )
