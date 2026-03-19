@@ -120,7 +120,7 @@ type Client struct {
 	routerConfig                *config.RouterConfig
 	policyManager               *policyxds.PolicyManager
 	systemConfig                *config.Config
-	policyDefinitions           map[string]api.PolicyDefinition
+	policyDefinitions           map[string]models.PolicyDefinition
 	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
@@ -139,7 +139,7 @@ func NewClient(
 	apiKeyConfig *config.APIKeyConfig,
 	policyManager *policyxds.PolicyManager,
 	systemConfig *config.Config,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	subSnapshotManager *subscriptionxds.SnapshotManager,

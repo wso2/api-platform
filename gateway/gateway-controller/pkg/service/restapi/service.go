@@ -73,7 +73,7 @@ type RestAPIService struct {
 	db                 storage.Storage
 	snapshotManager    *xds.SnapshotManager
 	policyManager      *policyxds.PolicyManager
-	policyDefinitions  map[string]api.PolicyDefinition
+	policyDefinitions  map[string]models.PolicyDefinition
 	policyDefMu        *sync.RWMutex
 	deploymentService  *utils.APIDeploymentService
 	apiKeyXDSManager   *apikeyxds.APIKeyStateManager
@@ -93,7 +93,7 @@ func NewRestAPIService(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 	policyDefMu *sync.RWMutex,
 	deploymentService *utils.APIDeploymentService,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
@@ -374,7 +374,7 @@ func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, isUpdat
 // buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config.
 func (s *RestAPIService) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
 	s.policyDefMu.RLock()
-	defsCopy := make(map[string]api.PolicyDefinition, len(s.policyDefinitions))
+	defsCopy := make(map[string]models.PolicyDefinition, len(s.policyDefinitions))
 	for k, v := range s.policyDefinitions {
 		defsCopy[k] = v
 	}

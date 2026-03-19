@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	versionutil "github.com/wso2/api-platform/common/version"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // PolicyDefinitionMissingUserMessage is returned to clients when a required policy definition is missing.
@@ -69,7 +69,7 @@ func NewStaticPolicyVersionResolver(versions map[string]string) *StaticPolicyVer
 // The highest semantic version per policy name is selected, then converted to
 // a major-only version (e.g., v0) for compatibility with policy version
 // validation rules.
-func NewLoadedPolicyVersionResolver(policyDefinitions map[string]api.PolicyDefinition) *StaticPolicyVersionResolver {
+func NewLoadedPolicyVersionResolver(policyDefinitions map[string]models.PolicyDefinition) *StaticPolicyVersionResolver {
 	versions := make(map[string]string)
 	for _, def := range policyDefinitions {
 		existing, ok := versions[def.Name]
