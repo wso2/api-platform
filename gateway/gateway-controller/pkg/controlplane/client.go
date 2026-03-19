@@ -124,6 +124,7 @@ type Client struct {
 	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
+	gatewayPath                 string // cached gateway path from well-known discovery
 }
 
 // NewClient creates a new control plane client
@@ -375,7 +376,7 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1/ws"}.
+// gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1"}.
 // Extra fields from the server are ignored.
 type gatewayWellKnownResponse struct {
 	GatewayPath string `json:"gatewayPath"`
@@ -383,7 +384,18 @@ type gatewayWellKnownResponse struct {
 
 // resolveWebSocketConnectURL resolves the registration URL using the control plane well-known endpoint.
 // Falls back to the default configured URL when discovery fails.
+// The discovered gateway path is cached for reuse within the file.
 func (c *Client) resolveWebSocketConnectURL() string {
+	// Use cached gateway path if available
+	if c.gatewayPath != "" {
+		resolvedURL := fmt.Sprintf("wss://%s%s/ws/gateways/connect", c.config.Host, c.gatewayPath)
+		c.logger.Debug("Using cached gateway path for WebSocket connect URL",
+			slog.String("gateway_path", c.gatewayPath),
+			slog.String("resolved_url", resolvedURL),
+		)
+		return resolvedURL
+	}
+
 	gatewayPath, err := c.discoverGatewayPath()
 	if err != nil {
 		c.logger.Debug("Failed to resolve gateway path from well-known endpoint, falling back to configured URL",
@@ -392,13 +404,22 @@ func (c *Client) resolveWebSocketConnectURL() string {
 		return c.getWebSocketConnectURL()
 	}
 
-	resolvedURL := fmt.Sprintf("wss://%s%s/gateways/connect", c.config.Host, gatewayPath)
+	// Cache the discovered gateway path for future use
+	c.gatewayPath = gatewayPath
+
+	resolvedURL := fmt.Sprintf("wss://%s%s/ws/gateways/connect", c.config.Host, gatewayPath)
 	c.logger.Debug("Resolved WebSocket connect URL from well-known endpoint",
 		slog.String("gateway_path", gatewayPath),
 		slog.String("resolved_url", resolvedURL),
 	)
 
 	return resolvedURL
+}
+
+// GetgatewayPath returns the cached gateway path discovered from the well-known endpoint.
+// Returns an empty string if the path has not been discovered yet.
+func (c *Client) GetgatewayPath() string {
+	return c.gatewayPath
 }
 
 // discoverGatewayPath fetches the gateway websocket base path from the control plane well-known endpoint.
@@ -3020,5 +3041,5 @@ func (c *Client) getWebSocketConnectURL() string {
 
 // getRestAPIBaseURL constructs the base REST API URL from configuration.
 func (c *Client) getRestAPIBaseURL() string {
-	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
+	return fmt.Sprintf("https://%s%s", c.config.Host, c.gatewayPath)
 }
