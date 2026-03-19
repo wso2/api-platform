@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
+    defaults:
+      run:
+        working-directory: gateway/gateway-controller
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -15,11 +18,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+      - name: Install Gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec
-        uses: securego/gosec@master
-        with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
-        working-directory: gateway/gateway-controller
+        run: gosec -no-fail -fmt sarif -out results.sarif ./...
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -30,6 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
+    defaults:
+      run:
+        working-directory: gateway/gateway-runtime/policy-engine
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -37,11 +42,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+      - name: Install Gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec
-        uses: securego/gosec@master
-        with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
-        working-directory: gateway/gateway-runtime/policy-engine
+        run: gosec -no-fail -fmt sarif -out results.sarif ./...
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -52,6 +56,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
+    defaults:
+      run:
+        working-directory: gateway/gateway-builder
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -59,13 +66,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+      - name: Install Gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec
-        uses: securego/gosec@master
-        with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
-        working-directory: gateway/gateway-builder
+        run: gosec -no-fail -fmt sarif -out results.sarif ./...
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gateway/gateway-builder/results.sarif
+          category: gateway-builder
           category: gateway-builder
