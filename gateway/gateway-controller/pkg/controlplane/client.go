@@ -124,6 +124,10 @@ type Client struct {
 	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
+
+	// resolvedGatewayPath is the WebSocket base path from well-known (e.g. /internal/data/v1/ws), set after discovery.
+	gatewayPathMu       sync.Mutex
+	resolvedGatewayPath string
 }
 
 // NewClient creates a new control plane client
@@ -209,7 +213,6 @@ func NewClient(
 		policyManager,
 	)
 
-	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
 		BaseURL:            client.getRestAPIBaseURL(),
 		Token:              cfg.Token,
@@ -230,7 +233,7 @@ func (c *Client) Start() error {
 
 	c.logger.Info("Starting control plane client",
 		slog.String("host", c.config.Host),
-		slog.String("websocket_url", c.getWebSocketConnectURL()),
+		slog.String("websocket_url", c.resolveWebSocketConnectURL()),
 	)
 
 	// Start connection in background
@@ -376,15 +379,47 @@ func (c *Client) Connect() error {
 }
 
 // gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1/ws"}.
-// Extra fields from the server are ignored.
+// Extra fields from the server are ignored. gateway_path is accepted as a legacy alias.
 type gatewayWellKnownResponse struct {
-	GatewayPath string `json:"gatewayPath"`
+	GatewayPath      string `json:"gatewayPath"`
+	GatewayPathSnake string `json:"gateway_path"`
+}
+
+// resolveGatewayPathWithCache returns the WebSocket base path from well-known, caching a successful result.
+func (c *Client) resolveGatewayPathWithCache() (string, error) {
+	c.gatewayPathMu.Lock()
+	cached := c.resolvedGatewayPath
+	c.gatewayPathMu.Unlock()
+	if cached != "" {
+		return cached, nil
+	}
+
+	p, err := c.discoverGatewayPath()
+	if err != nil {
+		return "", err
+	}
+
+	c.gatewayPathMu.Lock()
+	c.resolvedGatewayPath = p
+	c.gatewayPathMu.Unlock()
+	return p, nil
+}
+
+// restAPIBasePathFromGatewayWebSocketPath maps the WS base path to the internal REST API base path
+// (same rule as legacy OnPrem vs cloud: strip trailing "/ws").
+// e.g. /api/internal/v1/ws -> /api/internal/v1 ; /internal/data/v1/ws -> /internal/data/v1
+func restAPIBasePathFromGatewayWebSocketPath(gatewayWSPath string) string {
+	p := normalizeGatewayPath(gatewayWSPath)
+	if p == "" {
+		return "/api/internal/v1"
+	}
+	return strings.TrimSuffix(p, "/ws")
 }
 
 // resolveWebSocketConnectURL resolves the registration URL using the control plane well-known endpoint.
-// Falls back to the default configured URL when discovery fails.
+// Falls back to the default configured URL when discovery fails (same discovery cache as getRestAPIBaseURL).
 func (c *Client) resolveWebSocketConnectURL() string {
-	gatewayPath, err := c.discoverGatewayPath()
+	gatewayPath, err := c.resolveGatewayPathWithCache()
 	if err != nil {
 		c.logger.Debug("Failed to resolve gateway path from well-known endpoint, falling back to configured URL",
 			slog.Any("error", err),
@@ -432,7 +467,11 @@ func (c *Client) discoverGatewayPath() (string, error) {
 		return "", fmt.Errorf("failed to decode well-known response: %w", err)
 	}
 
-	gatewayPath := normalizeGatewayPath(wellKnownResp.GatewayPath)
+	rawPath := strings.TrimSpace(wellKnownResp.GatewayPath)
+	if rawPath == "" {
+		rawPath = strings.TrimSpace(wellKnownResp.GatewayPathSnake)
+	}
+	gatewayPath := normalizeGatewayPath(rawPath)
 	if gatewayPath == "" {
 		return "", fmt.Errorf("well-known response missing gatewayPath")
 	}
@@ -3028,7 +3067,14 @@ func (c *Client) getWebSocketConnectURL() string {
 	return c.getWebSocketURL() + "/gateways/connect"
 }
 
-// getRestAPIBaseURL constructs the base REST API URL from configuration.
+// getRestAPIBaseURL returns the internal REST base URL using the same well-known discovery as WebSocket
+// (gateway path with trailing "/ws" removed). Falls back to https://{host}/api/internal/v1 when discovery fails.
+// When no registration token is configured, skips discovery and uses the default (no control plane calls expected).
 func (c *Client) getRestAPIBaseURL() string {
+	if c.config.Token != "" {
+		if p, err := c.resolveGatewayPathWithCache(); err == nil {
+			return fmt.Sprintf("https://%s%s", c.config.Host, restAPIBasePathFromGatewayWebSocketPath(p))
+		}
+	}
 	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
 }

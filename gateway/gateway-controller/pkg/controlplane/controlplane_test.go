@@ -189,13 +189,17 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 	}
 }
 
+// testControlPlaneHost is a closed local address so well-known discovery in NewClient fails fast (connection refused).
+const testControlPlaneHost = "127.0.0.1:65432"
+
 func createTestClient(t *testing.T) *Client {
 	t.Helper()
 	return createTestClientWithConfig(t, config.ControlPlaneConfig{
-		Host:             "control-plane.example.com",
-		Token:            "test-token",
-		ReconnectInitial: 1 * time.Second,
-		ReconnectMax:     30 * time.Second,
+		Host:               testControlPlaneHost,
+		Token:              "test-token",
+		ReconnectInitial:   1 * time.Second,
+		ReconnectMax:       30 * time.Second,
+		InsecureSkipVerify: true,
 	})
 }
 
@@ -314,7 +318,7 @@ func TestClient_getWebSocketURL(t *testing.T) {
 	client := createTestClient(t)
 
 	url := client.getWebSocketURL()
-	expected := "wss://control-plane.example.com/api/internal/v1/ws"
+	expected := "wss://" + testControlPlaneHost + "/api/internal/v1/ws"
 	if url != expected {
 		t.Errorf("getWebSocketURL() = %q, want %q", url, expected)
 	}
@@ -324,7 +328,7 @@ func TestClient_getRestAPIBaseURL(t *testing.T) {
 	client := createTestClient(t)
 
 	url := client.getRestAPIBaseURL()
-	expected := "https://control-plane.example.com/api/internal/v1"
+	expected := "https://" + testControlPlaneHost + "/api/internal/v1"
 	if url != expected {
 		t.Errorf("getRestAPIBaseURL() = %q, want %q", url, expected)
 	}
@@ -357,6 +361,66 @@ func TestClient_discoverGatewayPath_Success(t *testing.T) {
 	if resolved != expected {
 		t.Errorf("resolveWebSocketConnectURL() = %q, want %q", resolved, expected)
 	}
+
+	restWant := "https://" + host + "/internal/data/v1"
+	if got := client.getRestAPIBaseURL(); got != restWant {
+		t.Errorf("getRestAPIBaseURL() = %q, want %q", got, restWant)
+	}
+}
+
+// TestClient_restUsesWellKnownDerivedBaseURL checks that APIUtilsService (configured during NewClient)
+// issues REST requests against the base path derived from well-known (not the cloud default).
+func TestClient_restUsesWellKnownDerivedBaseURL(t *testing.T) {
+	const apiID = "test-api-id"
+	var apiRequestPath string
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/internal/gateway/.well-known":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"gatewayPath":"internal/data/v1/ws"}`))
+		case "/internal/data/v1/apis/" + apiID:
+			apiRequestPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("not-a-real-zip")) // FetchAPIDefinition only checks status + body
+		default:
+			t.Errorf("unexpected request path %q (REST base may still be cloud default)", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	_, err := client.apiUtilsService.FetchAPIDefinition(apiID)
+	if err != nil {
+		t.Fatalf("FetchAPIDefinition: %v", err)
+	}
+
+	wantPath := "/internal/data/v1/apis/" + apiID
+	if apiRequestPath != wantPath {
+		t.Fatalf("REST request path = %q, want %q (if empty, request never reached handler)", apiRequestPath, wantPath)
+	}
+}
+
+func TestClient_discoverGatewayPath_SnakeCaseJSON(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"gateway_path":"internal/data/v1/ws"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	gatewayPath, err := client.discoverGatewayPath()
+	if err != nil {
+		t.Fatalf("discoverGatewayPath() error = %v", err)
+	}
+	if gatewayPath != "/internal/data/v1/ws" {
+		t.Errorf("discoverGatewayPath() = %q, want %q", gatewayPath, "/internal/data/v1/ws")
+	}
 }
 
 func TestClient_resolveWebSocketConnectURL_FallbackOnWellKnownError(t *testing.T) {
@@ -374,6 +438,25 @@ func TestClient_resolveWebSocketConnectURL_FallbackOnWellKnownError(t *testing.T
 
 	if resolved != fallback {
 		t.Errorf("resolveWebSocketConnectURL() = %q, want fallback %q", resolved, fallback)
+	}
+}
+
+func TestRestAPIBasePathFromGatewayWebSocketPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "cloud style", input: "/api/internal/v1/ws", expected: "/api/internal/v1"},
+		{name: "on-prem style", input: "/internal/data/v1/ws", expected: "/internal/data/v1"},
+		{name: "empty falls back", input: "", expected: "/api/internal/v1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := restAPIBasePathFromGatewayWebSocketPath(tt.input); got != tt.expected {
+				t.Errorf("restAPIBasePathFromGatewayWebSocketPath(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
 	}
 }
 
@@ -416,10 +499,11 @@ func TestClient_isShuttingDown(t *testing.T) {
 
 func TestClient_isShuttingDown_ContextCancelled(t *testing.T) {
 	cfg := config.ControlPlaneConfig{
-		Host:             "control-plane.example.com",
-		Token:            "test-token",
-		ReconnectInitial: 1 * time.Second,
-		ReconnectMax:     30 * time.Second,
+		Host:               testControlPlaneHost,
+		Token:              "test-token",
+		ReconnectInitial:   1 * time.Second,
+		ReconnectMax:       30 * time.Second,
+		InsecureSkipVerify: true,
 	}
 	client := createTestClientWithConfig(t, cfg)
 
