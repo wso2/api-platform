@@ -112,10 +112,13 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			// Be tolerant to concurrent startup / repeated seeding.
 			exists, existsErr := s.repo.Exists(tpl.ID, orgUUID)
 			if existsErr == nil && exists {
+				existingByID[tpl.ID] = struct{}{}
 				continue
 			}
 			return fmt.Errorf("failed to create template %s: %w", tpl.ID, err)
 		}
+		existingByID[tpl.ID] = struct{}{}
+		existingByHandle[tpl.ID] = toCreate
 	}
 
 	return nil
