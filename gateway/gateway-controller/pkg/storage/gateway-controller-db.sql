@@ -1,28 +1,44 @@
--- SQLite Schema for Gateway-Controller API Configurations
--- Version: 1
+-- Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+--
+-- WSO2 LLC. licenses this file to you under the Apache License,
+-- Version 2.0 (the "License"); you may not use this file except
+-- in compliance with the License.
+-- You may obtain a copy of the License at
+--
+-- http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing,
+-- software distributed under the License is distributed on an
+-- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+-- KIND, either express or implied.  See the License for the
+-- specific language governing permissions and limitations
+-- under the License.
+
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
 CREATE TABLE IF NOT EXISTS artifacts (
     uuid TEXT PRIMARY KEY,
     gateway_id TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    version TEXT NOT NULL,
     kind TEXT NOT NULL,
     handle TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    version TEXT NOT NULL,
     desired_state TEXT NOT NULL CHECK(desired_state IN ('deployed', 'undeployed')),
     deployment_id TEXT,
     origin TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deployed_at TIMESTAMP, -- NULL until first deployment
-    UNIQUE(gateway_id, kind, display_name, version),
-    UNIQUE(gateway_id, kind, handle)
+    UNIQUE(gateway_id, kind, handle),
+    UNIQUE(gateway_id, kind, display_name, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_artifacts_desired_state ON artifacts(desired_state);
-CREATE INDEX IF NOT EXISTS idx_artifacts_deployment_id ON artifacts(deployment_id);
-CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind);
-CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
+-- No explicit index needed for gateway_id or kind: both UNIQUE(gateway_id, kind, display_name, version)
+-- and UNIQUE(gateway_id, kind, handle) create implicit B-tree indexes whose leading columns cover
+-- prefix queries on (gateway_id) and (gateway_id, kind).
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id_desired_state ON artifacts(gateway_id, desired_state);
+CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id_deployment_id ON artifacts(gateway_id, deployment_id);
 
 -- Per-resource-type tables (each stores source configuration as JSON)
 
@@ -58,136 +74,72 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
 );
 
--- Note: Policy definitions are no longer stored in the database.
--- They are loaded from files at controller startup (see policies/ directory).
--- The policy_definitions table has been removed as of schema version 3.
-
 -- Table for custom TLS certificates
 CREATE TABLE IF NOT EXISTS certificates (
-    -- Primary identifier (UUID)
     uuid TEXT PRIMARY KEY,
-
-    -- Gateway identifier
     gateway_id TEXT NOT NULL,
-
-    -- Human-readable name for the certificate
     name TEXT NOT NULL,
-
-    -- PEM-encoded certificate(s) as BLOB
     certificate BLOB NOT NULL,
-
-    -- Certificate metadata (extracted from first cert in bundle)
     subject TEXT NOT NULL,
     issuer TEXT NOT NULL,
     not_before TIMESTAMP NOT NULL,
     not_after TIMESTAMP NOT NULL,
     cert_count INTEGER NOT NULL DEFAULT 1,
-
-    -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    -- Certificate names must be unique per gateway
-    UNIQUE(name, gateway_id)
+    UNIQUE(gateway_id, name)
 );
 
--- Index for fast name lookups
-CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);
+-- No explicit index needed for gateway_id: UNIQUE(gateway_id, name) creates an implicit index
+-- whose leading column covers prefix queries on (gateway_id).
 
 -- Index for expiry tracking
-CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
+CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id_expiry ON certificates(gateway_id, not_after);
 
--- Filter by gateway
-CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);
 
--- LLM Provider Templates table (added in schema version 4)
+-- LLM Provider Templates table
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
-    -- Primary identifier (UUID)
     uuid TEXT PRIMARY KEY,
-
-    -- Gateway identifier
     gateway_id TEXT NOT NULL,
-
-    -- Template handle (must be unique within a gateway)
     handle TEXT NOT NULL,
-
-    -- Full template configuration as JSON
     configuration TEXT NOT NULL,
-
-    -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    -- Template handles must be unique per gateway
-    UNIQUE(handle, gateway_id)
+    UNIQUE(gateway_id, handle)
 );
 
--- Index for fast name lookups
-CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);
-
--- Filter by gateway
-CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider_templates(gateway_id);
+-- No explicit index needed for gateway_id: UNIQUE(gateway_id, handle) creates an implicit index
+-- whose leading column covers prefix queries on (gateway_id).
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
-    -- UUID v7 from platform API, or locally generated if not provided
     uuid TEXT NOT NULL,
-
-    -- Gateway identifier
     gateway_id TEXT NOT NULL,
-
-    -- Human-readable name for the API key
-    name TEXT NOT NULL,
-
-    -- The generated API key (hashed)
-    api_key TEXT NOT NULL,
-
-    -- Masked version of the API key for display purposes
-    masked_api_key TEXT NOT NULL,
-
-    -- Artifact reference
+    name TEXT NOT NULL, -- Human-readable name for the API key
     artifact_uuid TEXT NOT NULL,
-
-    -- Key status
+    api_key TEXT NOT NULL, -- The generated API key (hashed)
+    masked_api_key TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
-
-    -- Timestamps
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    -- User who generated the API key
     created_by TEXT NOT NULL DEFAULT 'system',
-
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NULL,  -- NULL means no expiration
-
-    -- External API key support (added in schema version 6)
+    expires_at TIMESTAMP NULL, -- NULL means no expiration
     source TEXT NOT NULL DEFAULT 'local',  -- 'local' or 'external'
-    external_ref_id TEXT NULL,  -- external reference
+    external_ref_id TEXT NULL,
+    issuer TEXT NULL DEFAULT NULL, -- developer portal identifier; NULL means not specified
 
-    -- Portal and target tracking
-    issuer TEXT NULL DEFAULT NULL,               -- developer portal identifier; NULL means not specified
-
-    -- Foreign key relationship to artifacts
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-
-    -- Composite unique constraint (artifact + api key name must be unique)
-    UNIQUE (artifact_uuid, name, gateway_id),
-
-    -- API key UUID must be unique within a gateway for cross-table references
-    UNIQUE (uuid, gateway_id),
-
-    -- Composite primary key
-    PRIMARY KEY (api_key, gateway_id)
+    UNIQUE (gateway_id, artifact_uuid, name),
+    UNIQUE (gateway_id, artifact_uuid, api_key),
+    PRIMARY KEY (uuid)
 );
 
 -- Indexes for API key lookups
-CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
-CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(artifact_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
-CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
-CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
-CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
-CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
+-- No explicit index needed for artifact_uuid or api_key: UNIQUE(gateway_id, artifact_uuid, name) and
+-- UNIQUE(gateway_id, artifact_uuid, api_key) create implicit indexes whose leading columns cover
+-- prefix queries on (gateway_id) and (gateway_id, artifact_uuid).
+CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id_status ON api_keys(gateway_id, status);
+CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id_created_by ON api_keys(gateway_id, created_by);
 
 -- Subscription plans table (organization-scoped rate/billing plans)
 CREATE TABLE IF NOT EXISTS subscription_plans (
