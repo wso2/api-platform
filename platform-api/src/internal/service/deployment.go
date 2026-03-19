@@ -324,7 +324,6 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		deploymentEvent := &model.DeploymentEvent{
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
-			Vhost:        gateway.Vhost,
 			PerformedAt:  performedAt,
 		}
 
@@ -400,7 +399,6 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		deploymentEvent := &model.DeploymentEvent{
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
-			Vhost:        gateway.Vhost,
 			PerformedAt:  performedAt,
 		}
 
@@ -472,7 +470,6 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 		undeploymentEvent := &model.APIUndeploymentEvent{
 			ApiId:        apiUUID,
 			DeploymentID: deploymentID,
-			Vhost:        gateway.Vhost,
 			PerformedAt:  performedAt,
 		}
 
@@ -534,13 +531,7 @@ func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *mo
 		"deploymentID", ack.DeploymentID, "action", ack.Action,
 		"status", ack.Status, "performedAt", ack.PerformedAt)
 
-	// Resolve the artifact UUID from the deployment ID. Acks from LLM provider/proxy handlers
-	// send the human-readable string ID (e.g. "ct-openai-provider") as artifactId, not the UUID.
-	artifactUUID, err := s.deploymentRepo.GetArtifactUUIDByDeploymentID(ack.DeploymentID, orgID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve artifact UUID for ack: %w", err)
-	}
-	if artifactUUID == "" {
+	if ack.ArtifactID == "" {
 		s.slogger.Info("Ack received for unknown deployment, discarding",
 			"gatewayID", gatewayID, "deploymentID", ack.DeploymentID)
 		return nil
@@ -550,7 +541,7 @@ func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *mo
 		// Failure ack: overwrite any status (DEPLOYING, DEPLOYED, UNDEPLOYING) to FAILED
 		// as long as performed_at matches
 		rowsAffected, err := s.deploymentRepo.UpdateStatusWithPerformedAtGuard(
-			artifactUUID, orgID, gatewayID,
+			ack.ArtifactID, orgID, gatewayID,
 			model.DeploymentStatusFailed, ack.ErrorCode,
 			ack.PerformedAt, nil,
 		)
@@ -580,7 +571,7 @@ func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *mo
 		}
 
 		rowsAffected, err := s.deploymentRepo.UpdateStatusWithPerformedAtGuard(
-			artifactUUID, orgID, gatewayID,
+			ack.ArtifactID, orgID, gatewayID,
 			newStatus, "",
 			ack.PerformedAt, requiredStatuses,
 		)

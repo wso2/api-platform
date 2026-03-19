@@ -169,7 +169,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
-	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, devPortalRepo, publicationRepo,
+	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo, devPortalRepo, publicationRepo,
 		subscriptionPlanRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, slogger)
 	subscriptionService := service.NewSubscriptionService(apiRepo, subscriptionRepo, gatewayEventsService, slogger)
@@ -179,9 +179,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gitService := service.NewGitService()
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, apiUtil, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
-	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder)
-	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo)
-	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, gatewayRepo, deploymentRepo, gatewayEventsService, slogger)
+	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayEventsService, slogger)
+	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayEventsService, slogger)
+	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayEventsService, slogger)
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,

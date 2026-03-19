@@ -81,43 +81,6 @@ func (h *GatewayInternalAPIHandler) authenticateRequest(c *gin.Context) (orgID, 
 	return gateway.OrganizationID, gateway.ID, true
 }
 
-// GetAPIsByOrganization handles GET /api/internal/v1/apis
-func (h *GatewayInternalAPIHandler) GetAPIsByOrganization(c *gin.Context) {
-	orgID, _, ok := h.authenticateRequest(c)
-	if !ok {
-		return
-	}
-
-	apis, err := h.gatewayInternalService.GetAPIsByOrganization(orgID)
-	if err != nil {
-		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Organization not found"))
-			return
-		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get apis"))
-		return
-	}
-
-	// Create ZIP file from API YAML file
-	zipData, err := utils.CreateAPIYamlZip(apis)
-	if err != nil {
-		h.slogger.Error("Failed to create ZIP file", "orgID", orgID, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to create API package"))
-		return
-	}
-
-	// Set headers for ZIP file download
-	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"apis-org-%s.zip\"", orgID))
-	c.Header("Content-Length", fmt.Sprintf("%d", len(zipData)))
-
-	// Return ZIP file
-	c.Data(http.StatusOK, "application/zip", zipData)
-}
-
 // GetAPI handles GET /api/internal/v1/apis/:apiId
 func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
 	orgID, gatewayID, ok := h.authenticateRequest(c)
@@ -573,7 +536,6 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
-		orgGroup.GET("", h.GetAPIsByOrganization)
 		orgGroup.GET("/:apiId", h.GetAPI)
 		orgGroup.POST("/:apiId/gateway-deployments", h.CreateGatewayDeployment)
 		orgGroup.GET("/:apiId/subscriptions", h.GetSubscriptions)

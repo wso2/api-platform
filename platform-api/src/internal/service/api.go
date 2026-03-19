@@ -42,22 +42,24 @@ import (
 
 // APIService handles business logic for API operations
 type APIService struct {
-	apiRepo               repository.APIRepository
-	projectRepo           repository.ProjectRepository
-	orgRepo               repository.OrganizationRepository
-	gatewayRepo           repository.GatewayRepository
-	devPortalRepo         repository.DevPortalRepository
-	publicationRepo       repository.APIPublicationRepository
-	subscriptionPlanRepo  repository.SubscriptionPlanRepository
-	gatewayEventsService  *GatewayEventsService
-	devPortalService      *DevPortalService
-	apiUtil               *utils.APIUtil
-	slogger               *slog.Logger
+	apiRepo              repository.APIRepository
+	projectRepo          repository.ProjectRepository
+	orgRepo              repository.OrganizationRepository
+	gatewayRepo          repository.GatewayRepository
+	deploymentRepo       repository.DeploymentRepository
+	devPortalRepo        repository.DevPortalRepository
+	publicationRepo      repository.APIPublicationRepository
+	subscriptionPlanRepo repository.SubscriptionPlanRepository
+	gatewayEventsService *GatewayEventsService
+	devPortalService     *DevPortalService
+	apiUtil              *utils.APIUtil
+	slogger              *slog.Logger
 }
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
 	orgRepo repository.OrganizationRepository, gatewayRepo repository.GatewayRepository,
+	deploymentRepo repository.DeploymentRepository,
 	devPortalRepo repository.DevPortalRepository, publicationRepo repository.APIPublicationRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil,
@@ -67,9 +69,10 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 		projectRepo:          projectRepo,
 		orgRepo:              orgRepo,
 		gatewayRepo:          gatewayRepo,
+		deploymentRepo:       deploymentRepo,
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
-		subscriptionPlanRepo:  subscriptionPlanRepo,
+		subscriptionPlanRepo: subscriptionPlanRepo,
 		gatewayEventsService: gatewayEventsService,
 		devPortalService:     devPortalService,
 		apiUtil:              apiUtil,
@@ -300,10 +303,16 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 		return constants.ErrAPINotFound
 	}
 
-	// Get all gateway associations BEFORE deletion (associations will be cascade deleted)
-	gatewayAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get gateway associations for api deletion: %w", err)
+	// Get all gateway IDs where this API has an active deployment BEFORE deletion
+	// (deployments will be cascade deleted with the API)
+	var gatewayIDs []string
+	if s.deploymentRepo != nil {
+		ids, err := s.deploymentRepo.GetDeployedGatewayIDs(apiUUID, orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to get gateway IDs for API deletion", "apiUUID", apiUUID, "error", err)
+		} else {
+			gatewayIDs = ids
+		}
 	}
 
 	// Delete API from repository (this also deletes associations)
@@ -311,30 +320,17 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 		return fmt.Errorf("failed to delete api: %w", err)
 	}
 
-	// Send deletion events to all associated gateways
-	if s.gatewayEventsService != nil && gatewayAssociations != nil {
-		for _, assoc := range gatewayAssociations {
-			// Get gateway details to retrieve vhost
-			gateway, err := s.gatewayRepo.GetByUUID(assoc.ResourceID)
-			if err != nil {
-				s.slogger.Warn("Failed to get gateway for deletion event", "gatewayID", assoc.ResourceID, "error", err)
-				continue
-			}
-			if gateway == nil {
-				s.slogger.Warn("Gateway not found for deletion event", "gatewayID", assoc.ResourceID)
-				continue
-			}
-
-			// Create and send API deletion event
+	// Send deletion events to all gateways where this API was deployed
+	if s.gatewayEventsService != nil && len(gatewayIDs) > 0 {
+		for _, gatewayID := range gatewayIDs {
 			deletionEvent := &model.APIDeletionEvent{
 				ApiId: apiUUID,
-				Vhost: gateway.Vhost,
 			}
 
-			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(assoc.ResourceID, deletionEvent); err != nil {
-				s.slogger.Warn("Failed to broadcast API deletion event", "gatewayID", assoc.ResourceID, "apiUUID", apiUUID, "error", err)
+			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(gatewayID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast API deletion event", "gatewayID", gatewayID, "apiUUID", apiUUID, "error", err)
 			} else {
-				s.slogger.Info("API deletion event sent", "gatewayID", assoc.ResourceID, "apiUUID", apiUUID, "vhost", gateway.Vhost)
+				s.slogger.Info("API deletion event sent", "gatewayID", gatewayID, "apiUUID", apiUUID)
 			}
 		}
 	}
