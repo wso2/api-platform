@@ -109,5 +109,5 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v0
     - name: subscription-validation
-      version: v0.1.0
+      version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0

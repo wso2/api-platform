@@ -1,5 +1,5 @@
 name: subscription-validation
-version: v0.1.0
+version: v0.2.0
 description: |
   Validates that the request has an active subscription to the
   requested API. Checks the Subscription-Key header first; if not found,
@@ -15,18 +15,21 @@ parameters:
     enabled:
       type: boolean
       default: true
+      x-wso2-policy-advanced-param: false
       description: >
         When false, the subscription validation check is disabled and the
         policy is effectively a no-op.
     subscriptionKeyHeader:
       type: string
       default: Subscription-Key
+      x-wso2-policy-advanced-param: false
       description: >
         Request header name containing the subscription token.
         Checked first before cookie or applicationId fallback.
     subscriptionKeyCookie:
       type: string
       default: ""
+      x-wso2-policy-advanced-param: true
       description: >
         Optional cookie name containing the subscription token.
         When set, checked after the header if no token was found.
