@@ -1,6 +1,6 @@
 post:
-  summary: Create chat completion
-  operationId: createChatCompletion
+  summary: Create Mistral chat completion
+  operationId: createMistralChatCompletion
   requestBody:
     required: true
     content:
@@ -23,7 +23,6 @@ post:
                 properties:
                   role:
                     type: string
-                    enum: ["system", "user", "assistant"]
                   content:
                     type: string
 
@@ -33,29 +32,18 @@ post:
       content:
         application/json:
           example:
-            id: chatcmpl-B9MBs8CjcvOU2jLn4n570S5qMJKcT
+            id: cmpl-e5cc70bb28c444948073e77776eb30ef
             object: chat.completion
-            created: 1741569952
-            model: gpt-4.1-2025-04-14
+            created: 1702256327
+            model: mistral-small-latest
             choices:
               - index: 0
                 message:
                   role: assistant
                   content: "Hello! How can I assist you today?"
-                  refusal: null
-                  annotations: []
-                logprobs: null
                 finish_reason: stop
             usage:
-              prompt_tokens: 19
-              completion_tokens: 10
-              total_tokens: 29
-              prompt_tokens_details:
-                cached_tokens: 0
-                audio_tokens: 0
-              completion_tokens_details:
-                reasoning_tokens: 0
-                audio_tokens: 0
-                accepted_prediction_tokens: 0
-                rejected_prediction_tokens: 0
-            service_tier: default
+              prompt_tokens: 100
+              completion_tokens: 50
+              total_tokens: 150
+              prompt_audio_seconds: null

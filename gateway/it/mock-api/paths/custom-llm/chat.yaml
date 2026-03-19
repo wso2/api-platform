@@ -1,0 +1,39 @@
+post:
+  summary: Chat with custom enterprise LLM
+  operationId: customLLMChat
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response
+      content:
+        application/json:
+          # New model only in custom pricing DB: input=1e-5/token, output=2e-5/token
+          # Usage: 80 prompt + 40 completion = (80*1e-5) + (40*2e-5) = 8e-4 + 8e-4 = 0.0016000000
+          example:
+            id: resp-custom-001
+            object: chat.completion
+            created: 1741569952
+            model: my-enterprise-llm-v1
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Hello from the custom enterprise LLM!"
+                finish_reason: stop
+            usage:
+              prompt_tokens: 80
+              completion_tokens: 40
+              total_tokens: 120

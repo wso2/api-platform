@@ -111,3 +111,9 @@ policies:
     - name: subscription-validation
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0
+    - name: llm-cost
+      version: v0.1.0
+      gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
+    - name: llm-cost-based-ratelimit
+      version: v0.1.0
+      gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0

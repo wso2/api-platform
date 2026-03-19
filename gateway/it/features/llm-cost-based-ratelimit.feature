@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
@@ -20,848 +20,1904 @@
 Feature: LLM Cost-Based Rate Limiting
   As an API developer
   I want to rate limit LLM APIs based on monetary budgets
-  So that I can control costs by setting spending limits while accounting for different token costs
+  So that I can control costs by setting spending limits
 
   Background:
     Given the gateway services are running
+    And I authenticate using basic auth as "admin"
 
   Scenario: Enforce cost-based rate limit on LLM API
-    Given I authenticate using basic auth as "admin"
-
-    # Create LLM provider template with token extraction paths
+    # mock-openai returns gpt-4.1-2025-04-14: 19 prompt × $2/1M + 10 completion × $8/1M = $0.0001180000
+    # Budget: $0.000236 = exactly 2 requests worth
+    # Request 1: allowed (remaining $0.000118), request 2: allowed (remaining $0), request 3: blocked
     When I create this LLM provider template:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProviderTemplate
       metadata:
-        name: cost-test-openai-template
+        name: cbl-enforce-template
       spec:
-        displayName: Cost Test OpenAI Template
-        promptTokens:
-          location: payload
-          identifier: $.json.usage.prompt_tokens
-        completionTokens:
-          location: payload
-          identifier: $.json.usage.completion_tokens
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
+        displayName: CBL Enforce Template
       """
     Then the response status code should be 201
-    And the JSON response field "status" should be "success"
-
-    # Create LLM provider with llm-cost-based-ratelimit policy attached
-    # System parameters define cost per token (set by admin)
-    # User parameters define budget limits (set by API consumer)
-    Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProvider
       metadata:
-        name: cost-test-openai-provider
+        name: cbl-enforce-provider
       spec:
-        displayName: Cost Test OpenAI Provider
+        displayName: CBL Enforce Provider
         version: v1.0
-        context: /cost-ratelimit
-        template: cost-test-openai-template
+        context: /cbl-enforce
+        template: cbl-enforce-template
         upstream:
-          url: http://echo-backend-multi-arch:8080/anything
+          url: http://mock-openapi:4010
           auth:
             type: api-key
             header: Authorization
-            value: test-api-key
+            value: test-key
         accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
+          mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
-              - path: /chat/completions
-                methods: [POST]
+              - path: /*
+                methods:
+                  - '*'
                 params:
-                  # User-defined budget limits (API consumer sets these)
                   budgetLimits:
-                    - amount: 1.0      # $1.00 budget
-                      duration: "1h"   # per hour
+                    - amount: 0.000236
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
       """
     Then the response status code should be 201
-    And the JSON response field "status" should be "success"
-    And I wait for the endpoint "http://localhost:8080/cost-ratelimit/chat/completions" to be ready
+    And I wait for policy snapshot sync
 
-    # Send requests and verify rate limiting based on cost consumption
-    # Cost calculation: costs are per 1,000,000 tokens (default costPerNTokens)
-    # promptCost = tokens × ($0.01/1000000) = tokens × $0.00000001
-    # completionCost = tokens × ($0.02/1000000) = tokens × $0.00000002
-    #
-    # IMPORTANT: For post-response cost extraction (LLM APIs), the gateway cannot predict
-    # the cost before the response since token usage is only known after the LLM responds.
-    # Requests are blocked only when the budget is fully exhausted (remaining <= 0).
     Given I set header "Content-Type" to "application/json"
 
-    # First request: 20M prompt + 10M completion = (20M×$0.00000001) + (10M×$0.00000002) = $0.20 + $0.20 = $0.40
-    # Budget: $1.00, Consumed: $0.40, Remaining: $0.60
-    When I send a POST request to "http://localhost:8080/cost-ratelimit/chat/completions" with body:
-      """
-      {
-        "model": "gpt-4",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "usage": {
-          "prompt_tokens": 20000000,
-          "completion_tokens": 10000000,
-          "total_tokens": 30000000
-        }
-      }
+    # Request 1: allowed — budget remaining drops to $0.000118
+    When I send a POST request to "http://localhost:8080/cbl-enforce/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 200
-    And the response header "X-Ratelimit-Remaining" should exist
     And the response header "x-ratelimit-cost-limit-dollars" should exist
     And the response header "x-ratelimit-cost-remaining-dollars" should exist
 
-    # Second request: 30M prompt + 20M completion = (30M×$0.00000001) + (20M×$0.00000002) = $0.30 + $0.40 = $0.70
-    # Budget: $1.00, Previously consumed: $0.40, This request: $0.70, Total: $1.10 (overage)
-    # NOTE: With post-response cost extraction, this request is allowed because remaining > 0.
-    # The cost is only consumed after the response is received. This causes an overage.
-    When I send a POST request to "http://localhost:8080/cost-ratelimit/chat/completions" with body:
-      """
-      {
-        "model": "gpt-4",
-        "messages": [{"role": "user", "content": "World"}],
-        "usage": {
-          "prompt_tokens": 30000000,
-          "completion_tokens": 20000000,
-          "total_tokens": 50000000
-        }
-      }
+    # Request 2: allowed — budget reaches exactly $0
+    When I send a POST request to "http://localhost:8080/cbl-enforce/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 200
-    And the response header "X-Ratelimit-Remaining" should exist
 
-    # Third request: Budget is now exhausted (consumed $1.10 > limit $1.00)
-    # This request should be blocked because remaining <= 0
-    When I send a POST request to "http://localhost:8080/cost-ratelimit/chat/completions" with body:
-      """
-      {
-        "model": "gpt-4",
-        "messages": [{"role": "user", "content": "Test"}],
-        "usage": {
-          "prompt_tokens": 1000000,
-          "completion_tokens": 500000,
-          "total_tokens": 1500000
-        }
-      }
+    # Request 3: blocked — budget exhausted
+    When I send a POST request to "http://localhost:8080/cbl-enforce/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "cost-test-openai-provider"
+    When I delete the LLM provider "cbl-enforce-provider"
     Then the response status code should be 200
-    When I delete the LLM provider template "cost-test-openai-template"
+    When I delete the LLM provider template "cbl-enforce-template"
     Then the response status code should be 200
 
   Scenario: Cost-based rate limit with multiple budget time windows
-    Given I authenticate using basic auth as "admin"
-
-    # Create LLM provider template
+    # Budget: $0.000236/1m (minute) AND $0.001180/1h (hourly — 10× per-request cost)
+    # 2 requests exhaust the minute window ($0.000236) even though hourly budget still has room
+    # The tighter per-minute window triggers the 429
     When I create this LLM provider template:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProviderTemplate
       metadata:
-        name: multi-window-cost-template
+        name: cbl-multiwin-template
       spec:
-        displayName: Multi Window Cost Template
-        promptTokens:
-          location: payload
-          identifier: $.json.usage.prompt_tokens
-        completionTokens:
-          location: payload
-          identifier: $.json.usage.completion_tokens
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
+        displayName: CBL Multi-Window Template
       """
     Then the response status code should be 201
-
-    # Create LLM provider with multiple budget limits
-    Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProvider
       metadata:
-        name: multi-window-cost-provider
+        name: cbl-multiwin-provider
       spec:
-        displayName: Multi Window Cost Provider
+        displayName: CBL Multi-Window Provider
         version: v1.0
-        context: /multi-window-cost
-        template: multi-window-cost-template
+        context: /cbl-multiwin
+        template: cbl-multiwin-template
         upstream:
-          url: http://echo-backend-multi-arch:8080/anything
+          url: http://mock-openapi:4010
           auth:
             type: api-key
             header: Authorization
-            value: test-api-key
+            value: test-key
         accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
+          mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
-              - path: /chat/completions
-                methods: [POST]
-                params:
-                  # Multiple budget limits: $5/hour AND $10/day
-                  budgetLimits:
-                    - amount: 5.0       # $5 per hour
-                      duration: "1h"
-                    - amount: 10.0      # $10 per day
-                      duration: "24h"
-      """
-    Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/multi-window-cost/chat/completions" to be ready
-
-    # Must use application/json content-type for the echo backend to parse the body
-    # NOTE: For post-response cost extraction, requests are blocked only when budget is exhausted.
-    Given I set header "Content-Type" to "application/json"
-
-    # Request 1: 10M prompt + 5M completion = (10M×$0.0000001) + (5M×$0.0000002) = $1.00 + $1.00 = $2.00
-    # Hourly: Consumed $2.00, Remaining $3.00 | Daily: Consumed $2.00, Remaining $8.00
-    When I send a POST request to "http://localhost:8080/multi-window-cost/chat/completions" with body:
-      """
-      {
-        "usage": {
-          "prompt_tokens": 10000000,
-          "completion_tokens": 5000000,
-          "total_tokens": 15000000
-        }
-      }
-      """
-    Then the response status code should be 200
-
-    # Request 2: 20M prompt + 10M completion = (20M×$0.0000001) + (10M×$0.0000002) = $2.00 + $2.00 = $4.00
-    # Hourly: Consumed $6.00 (overage), Remaining $0.00 | Daily: Consumed $6.00, Remaining $4.00
-    # NOTE: With post-response cost extraction, this request is allowed because remaining > 0.
-    When I send a POST request to "http://localhost:8080/multi-window-cost/chat/completions" with body:
-      """
-      {
-        "usage": {
-          "prompt_tokens": 20000000,
-          "completion_tokens": 10000000,
-          "total_tokens": 30000000
-        }
-      }
-      """
-    Then the response status code should be 200
-
-    # Request 3: Any request should be blocked because hourly budget is now exhausted
-    When I send a POST request to "http://localhost:8080/multi-window-cost/chat/completions" with body:
-      """
-      {
-        "usage": {
-          "prompt_tokens": 1000000,
-          "completion_tokens": 500000,
-          "total_tokens": 1500000
-        }
-      }
-      """
-    Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "multi-window-cost-provider"
-    Then the response status code should be 200
-    When I delete the LLM provider template "multi-window-cost-template"
-    Then the response status code should be 200
-
-  Scenario: Cost calculation with different token types
-    Given I authenticate using basic auth as "admin"
-
-    # Create LLM provider template
-    When I create this LLM provider template:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProviderTemplate
-      metadata:
-        name: token-type-cost-template
-      spec:
-        displayName: Token Type Cost Template
-        promptTokens:
-          location: payload
-          identifier: $.json.usage.prompt_tokens
-        completionTokens:
-          location: payload
-          identifier: $.json.usage.completion_tokens
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
-      """
-    Then the response status code should be 201
-
-    # Create LLM provider with different costs for prompt vs completion tokens
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProvider
-      metadata:
-        name: token-type-cost-provider
-      spec:
-        displayName: Token Type Cost Provider
-        version: v1.0
-        context: /token-type-cost
-        template: token-type-cost-template
-        upstream:
-          url: http://echo-backend-multi-arch:8080/anything
-          auth:
-            type: api-key
-            header: Authorization
-            value: test-api-key
-        accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
-        policies:
-          - name: llm-cost-based-ratelimit
-            version: v0.1.0
-            paths:
-              - path: /chat/completions
-                methods: [POST]
+              - path: /*
+                methods:
+                  - '*'
                 params:
                   budgetLimits:
-                    - amount: 2.0       # $2 budget
+                    - amount: 0.000236
+                      duration: "1m"
+                    - amount: 0.001180
                       duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
       """
     Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/token-type-cost/chat/completions" to be ready
+    And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
 
-    # Request 1: 50M prompt + 10M completion = (50M×$0.00000001) + (10M×$0.00000005) = $0.50 + $0.50 = $1.00
-    When I send a POST request to "http://localhost:8080/token-type-cost/chat/completions" with body:
-      """
-      {
-        "usage": {
-          "prompt_tokens": 50000000,
-          "completion_tokens": 10000000,
-          "total_tokens": 60000000
-        }
-      }
+    # Request 1: allowed — both windows have budget remaining
+    When I send a POST request to "http://localhost:8080/cbl-multiwin/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 200
 
-    # Request 2: 10M prompt + 20M completion = (10M×$0.00000001) + (20M×$0.00000005) = $0.10 + $1.00 = $1.10
-    # Total consumed: $1.00 + $1.10 = $2.10 (exceeds $2.00 budget)
-    When I send a POST request to "http://localhost:8080/token-type-cost/chat/completions" with body:
+    # Request 2: allowed — minute budget reaches $0, hourly still has $0.000944 remaining
+    When I send a POST request to "http://localhost:8080/cbl-multiwin/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
-      {
-        "usage": {
-          "prompt_tokens": 10000000,
-          "completion_tokens": 20000000,
-          "total_tokens": 30000000
-        }
-      }
+    Then the response status code should be 200
+
+    # Request 3: blocked — minute budget exhausted (hourly still has room, but minute wins)
+    When I send a POST request to "http://localhost:8080/cbl-multiwin/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 429
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "token-type-cost-provider"
+    When I delete the LLM provider "cbl-multiwin-provider"
     Then the response status code should be 200
-    When I delete the LLM provider template "token-type-cost-template"
+    When I delete the LLM provider template "cbl-multiwin-template"
     Then the response status code should be 200
 
-  Scenario: Cost-based rate limit returns proper headers
-    Given I authenticate using basic auth as "admin"
-
-    # Create LLM provider template
+  Scenario: Cost accumulates correctly across real LLM responses
+    # Uses Anthropic mock: claude-3-5-haiku-20241022
+    # 50 input × $0.80/1M + 25 output × $4.00/1M = $0.0000400000 + $0.0001000000 = $0.0001400000 per request
+    # Budget: $0.000280 = exactly 2 requests worth
     When I create this LLM provider template:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProviderTemplate
       metadata:
-        name: cost-headers-template
+        name: cbl-anthropic-template
       spec:
-        displayName: Cost Headers Test Template
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
+        displayName: CBL Anthropic Template
       """
     Then the response status code should be 201
-
-    # Create LLM provider using total token cost (simpler calculation)
-    Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProvider
       metadata:
-        name: cost-headers-provider
+        name: cbl-anthropic-provider
       spec:
-        displayName: Cost Headers Test Provider
+        displayName: CBL Anthropic Provider
         version: v1.0
-        context: /cost-headers
-        template: cost-headers-template
+        context: /cbl-anthropic
+        template: cbl-anthropic-template
         upstream:
-          url: http://echo-backend-multi-arch:8080/anything
+          url: http://mock-openapi:4010
           auth:
             type: api-key
             header: Authorization
-            value: test-api-key
+            value: test-key
         accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
+          mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
-              - path: /chat/completions
-                methods: [POST]
+              - path: /*
+                methods:
+                  - '*'
                 params:
                   budgetLimits:
-                    - amount: 10.0      # $10 budget
+                    - amount: 0.000280
                       duration: "1h"
-                  totalTokenCost: 0.10    # $0.10 per total token
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
       """
     Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/cost-headers/chat/completions" to be ready
+    And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
 
-    # Send request and check rate limit headers
-    # 50M tokens × $0.0000001 = $5.00 cost (costPerNTokens=1000000)
-    When I send a POST request to "http://localhost:8080/cost-headers/chat/completions" with body:
-      """
-      {
-        "usage": {
-          "total_tokens": 50000000
-        }
-      }
-      """
-    Then the response status code should be 200
-    And the response header "X-RateLimit-Limit" should exist
-    And the response header "X-RateLimit-Remaining" should exist
-    And the response header "X-RateLimit-Reset" should exist
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "cost-headers-provider"
-    Then the response status code should be 200
-    When I delete the LLM provider template "cost-headers-template"
-    Then the response status code should be 200
-
-  Scenario: Per-provider cost rate limiting isolation
-    Given I authenticate using basic auth as "admin"
-
-    # Create two LLM provider templates
-    When I create this LLM provider template:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProviderTemplate
-      metadata:
-        name: cost-provider-a-template
-      spec:
-        displayName: Cost Provider A Template
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
-      """
-    Then the response status code should be 201
-
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider template:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProviderTemplate
-      metadata:
-        name: cost-provider-b-template
-      spec:
-        displayName: Cost Provider B Template
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
-      """
-    Then the response status code should be 201
-
-    # Create two LLM providers with cost rate limit policies
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProvider
-      metadata:
-        name: cost-provider-a
-      spec:
-        displayName: Cost Provider A
-        version: v1.0
-        context: /cost-provider-a
-        template: cost-provider-a-template
-        upstream:
-          url: http://echo-backend-multi-arch:8080/anything
-          auth:
-            type: api-key
-            header: Authorization
-            value: key-a
-        accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
-        policies:
-          - name: llm-cost-based-ratelimit
-            version: v0.1.0
-            paths:
-              - path: /chat/completions
-                methods: [POST]
-                params:
-                  budgetLimits:
-                    - amount: 5.0       # $5 budget
-                      duration: "1h"
-                  totalTokenCost: 1.0     # $1.00 per token
-      """
-    Then the response status code should be 201
-
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProvider
-      metadata:
-        name: cost-provider-b
-      spec:
-        displayName: Cost Provider B
-        version: v1.0
-        context: /cost-provider-b
-        template: cost-provider-b-template
-        upstream:
-          url: http://echo-backend-multi-arch:8080/anything
-          auth:
-            type: api-key
-            header: Authorization
-            value: key-b
-        accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
-        policies:
-          - name: llm-cost-based-ratelimit
-            version: v0.1.0
-            paths:
-              - path: /chat/completions
-                methods: [POST]
-                params:
-                  budgetLimits:
-                    - amount: 5.0       # $5 budget
-                      duration: "1h"
-                  totalTokenCost: 1.0     # $1.00 per token
-      """
-    Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/cost-provider-a/chat/completions" to be ready
-    And I wait for the endpoint "http://localhost:8080/cost-provider-b/chat/completions" to be ready
-
-    Given I set header "Content-Type" to "application/json"
-
-    # Exhaust Provider A's budget (limit is $5)
-    # 3M tokens × $0.000001 = $3.00 (costPerNTokens=1000000)
-    When I send a POST request to "http://localhost:8080/cost-provider-a/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 3000000}
-      }
+    # Request 1: allowed — cost $0.000140 deducted, remaining $0.000140
+    When I send a POST request to "http://localhost:8080/cbl-anthropic/anthropic/v1/messages" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
       """
     Then the response status code should be 200
 
-    # 2M more tokens × $0.000001 = $2.00 (total: $5.00)
-    When I send a POST request to "http://localhost:8080/cost-provider-a/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 2000000}
-      }
+    # Request 2: allowed — cost $0.000140 deducted, remaining $0
+    When I send a POST request to "http://localhost:8080/cbl-anthropic/anthropic/v1/messages" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
       """
     Then the response status code should be 200
 
-    # Provider A should be rate limited (budget exhausted)
-    When I send a POST request to "http://localhost:8080/cost-provider-a/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 1000000}
-      }
-      """
-    Then the response status code should be 429
-
-    # Provider B should still work (independent budget)
-    When I send a POST request to "http://localhost:8080/cost-provider-b/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 3000000}
-      }
-      """
-    Then the response status code should be 200
-
-    # Cleanup
-    Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "cost-provider-a"
-    Then the response status code should be 200
-    When I delete the LLM provider "cost-provider-b"
-    Then the response status code should be 200
-    When I delete the LLM provider template "cost-provider-a-template"
-    Then the response status code should be 200
-    When I delete the LLM provider template "cost-provider-b-template"
-    Then the response status code should be 200
-
-  Scenario: Zero cost usage should not consume budget
-    Given I authenticate using basic auth as "admin"
-
-    When I create this LLM provider template:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProviderTemplate
-      metadata:
-        name: zero-cost-template
-      spec:
-        displayName: Zero Cost Test Template
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
-      """
-    Then the response status code should be 201
-
-    Given I authenticate using basic auth as "admin"
-    When I create this LLM provider:
-      """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
-      kind: LlmProvider
-      metadata:
-        name: zero-cost-provider
-      spec:
-        displayName: Zero Cost Test Provider
-        version: v1.0
-        context: /zero-cost-test
-        template: zero-cost-template
-        upstream:
-          url: http://echo-backend-multi-arch:8080/anything
-          auth:
-            type: api-key
-            header: Authorization
-            value: test-api-key
-        accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
-        policies:
-          - name: llm-cost-based-ratelimit
-            version: v0.1.0
-            paths:
-              - path: /chat/completions
-                methods: [POST]
-                params:
-                  budgetLimits:
-                    - amount: 5.0       # $5 budget
-                      duration: "1h"
-                  totalTokenCost: 1.0     # $1.00 per token
-      """
-    Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/zero-cost-test/chat/completions" to be ready
-
-    Given I set header "Content-Type" to "application/json"
-
-    # First request: 2M tokens × $0.000001 = $2.00 (costPerNTokens=1000000)
-    When I send a POST request to "http://localhost:8080/zero-cost-test/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 2000000}
-      }
-      """
-    Then the response status code should be 200
-
-    # Second request: 0 tokens = $0 cost (should not consume budget)
-    When I send a POST request to "http://localhost:8080/zero-cost-test/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 0}
-      }
-      """
-    Then the response status code should be 200
-
-    # Third request: 2M tokens × $0.000001 = $2.00 (total: $4.00, still within $5 budget)
-    When I send a POST request to "http://localhost:8080/zero-cost-test/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 2000000}
-      }
-      """
-    Then the response status code should be 200
-
-    # Fourth request: 2M tokens × $0.000001 = $2.00 (would exceed $5 budget)
-    When I send a POST request to "http://localhost:8080/zero-cost-test/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 2000000}
-      }
+    # Request 3: blocked — budget exhausted
+    When I send a POST request to "http://localhost:8080/cbl-anthropic/anthropic/v1/messages" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
       """
     Then the response status code should be 429
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "zero-cost-provider"
+    When I delete the LLM provider "cbl-anthropic-provider"
     Then the response status code should be 200
-    When I delete the LLM provider template "zero-cost-template"
+    When I delete the LLM provider template "cbl-anthropic-template"
+    Then the response status code should be 200
+
+  Scenario: Cost-based rate limit returns proper rate limit headers
+    # Budget $0.001 — large enough that a single request does not exhaust it
+    # Verifies that x-ratelimit-cost-limit-dollars and x-ratelimit-cost-remaining-dollars
+    # are present in the response after the llm-cost policy stores cost in shared context
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-headers-template
+      spec:
+        displayName: CBL Headers Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-headers-provider
+      spec:
+        displayName: CBL Headers Provider
+        version: v1.0
+        context: /cbl-headers
+        template: cbl-headers-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.001
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-headers/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-ratelimit-cost-limit-dollars" should exist
+    And the response header "x-ratelimit-cost-remaining-dollars" should exist
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-headers-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-headers-template"
+    Then the response status code should be 200
+
+  Scenario: Per-provider cost rate limiting is isolated
+    # Two separate providers each with a $0.000236 budget (2 requests each)
+    # Exhausting Provider A's budget does not affect Provider B's budget
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-prov-a-template
+      spec:
+        displayName: CBL Provider A Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-prov-b-template
+      spec:
+        displayName: CBL Provider B Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-prov-a
+      spec:
+        displayName: CBL Provider A
+        version: v1.0
+        context: /cbl-prov-a
+        template: cbl-prov-a-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-prov-b
+      spec:
+        displayName: CBL Provider B
+        version: v1.0
+        context: /cbl-prov-b
+        template: cbl-prov-b-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Exhaust Provider A's budget (2 requests × $0.000118 = $0.000236)
+    When I send a POST request to "http://localhost:8080/cbl-prov-a/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a POST request to "http://localhost:8080/cbl-prov-a/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Provider A budget exhausted
+    When I send a POST request to "http://localhost:8080/cbl-prov-a/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Provider B is unaffected — its budget is independent
+    When I send a POST request to "http://localhost:8080/cbl-prov-b/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-prov-a"
+    Then the response status code should be 200
+    When I delete the LLM provider "cbl-prov-b"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-prov-a-template"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-prov-b-template"
+    Then the response status code should be 200
+
+  Scenario: Zero cost requests do not consume budget
+    # Requests for an unknown model return cost=0 (not_calculated) in shared context
+    # These should not consume budget, leaving it intact for subsequent known-model requests
+    # Budget: $0.000236 (2 OpenAI requests worth)
+    # - 2 unknown-model requests → cost=0 (not_calculated), no budget consumed
+    # - 2 OpenAI requests → cost=0.0001180000 each, budget consumed
+    # - 3rd OpenAI request → 429
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-zero-template
+      spec:
+        displayName: CBL Zero Cost Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-zero-provider
+      spec:
+        displayName: CBL Zero Cost Provider
+        version: v1.0
+        context: /cbl-zero
+        template: cbl-zero-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Unknown model — cost=0 (not_calculated), budget not consumed
+    When I send a POST request to "http://localhost:8080/cbl-zero/unknown-llm/v1/chat" with body:
+      """ json
+      {"model": "my-unknown-model-xyz", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-zero/unknown-llm/v1/chat" with body:
+      """ json
+      {"model": "my-unknown-model-xyz", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Known model — budget now starts being consumed (full $0.000236 still available)
+    When I send a POST request to "http://localhost:8080/cbl-zero/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-zero/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Budget now exhausted — the zero-cost requests did not eat into it
+    When I send a POST request to "http://localhost:8080/cbl-zero/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-zero-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-zero-template"
     Then the response status code should be 200
 
   Scenario: Rate limit window resets after time window expires
-    Given I authenticate using basic auth as "admin"
-
-    # Create provider with short 10-second window for testing
+    # Budget: $0.000236 with a 10-second window
+    # After exhaustion and window expiry, new requests are allowed
     When I create this LLM provider template:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProviderTemplate
       metadata:
-        name: cost-window-test-template
+        name: cbl-reset-template
       spec:
-        displayName: Cost Window Test Template
-        totalTokens:
-          location: payload
-          identifier: $.json.usage.total_tokens
-        requestModel:
-          location: payload
-          identifier: $.json.model
-        responseModel:
-          location: payload
-          identifier: $.json.model
+        displayName: CBL Reset Template
       """
     Then the response status code should be 201
-
-    Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProvider
       metadata:
-        name: cost-window-test-provider
+        name: cbl-reset-provider
       spec:
-        displayName: Cost Window Test Provider
+        displayName: CBL Reset Provider
         version: v1.0
-        context: /cost-window-test
-        template: cost-window-test-template
+        context: /cbl-reset
+        template: cbl-reset-template
         upstream:
-          url: http://echo-backend-multi-arch:8080/anything
+          url: http://mock-openapi:4010
           auth:
             type: api-key
             header: Authorization
-            value: test-api-key
+            value: test-key
         accessControl:
-          mode: deny_all
-          exceptions:
-            - path: /chat/completions
-              methods: [POST, GET]
+          mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0.1.0
+            version: v0
             paths:
-              - path: /chat/completions
-                methods: [POST]
+              - path: /*
+                methods:
+                  - '*'
                 params:
                   budgetLimits:
-                    - amount: 5.0       # $5 budget
-                      duration: "10s"   # Short window for testing
-                  totalTokenCost: 1.0     # $1.00 per token
+                    - amount: 0.000236
+                      duration: "10s"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
       """
     Then the response status code should be 201
-    And I wait for the endpoint "http://localhost:8080/cost-window-test/chat/completions" to be ready
+    And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
 
-    # Exhaust the budget (5M tokens in 10 seconds = $5.00, costPerNTokens=1000000)
-    When I send a POST request to "http://localhost:8080/cost-window-test/chat/completions" with body:
+    # Exhaust the budget (2 requests × $0.000118 = $0.000236)
+    When I send a POST request to "http://localhost:8080/cbl-reset/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
-      {
-        "usage": {"total_tokens": 5000000}
-      }
+    Then the response status code should be 200
+    When I send a POST request to "http://localhost:8080/cbl-reset/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 200
 
-    # Immediate next request should be rate limited
-    When I send a POST request to "http://localhost:8080/cost-window-test/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 1000000}
-      }
+    # Budget exhausted
+    When I send a POST request to "http://localhost:8080/cbl-reset/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 429
 
-    # Wait for window to reset (10 seconds + small buffer)
+    # Wait for the 10-second window to reset
     When I wait for 11 seconds
 
-    # After window reset, request should succeed
-    When I send a POST request to "http://localhost:8080/cost-window-test/chat/completions" with body:
-      """
-      {
-        "usage": {"total_tokens": 1000000}
-      }
+    # After window reset, budget is restored and requests are allowed
+    When I send a POST request to "http://localhost:8080/cbl-reset/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 200
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
-    When I delete the LLM provider "cost-window-test-provider"
+    When I delete the LLM provider "cbl-reset-provider"
     Then the response status code should be 200
-    When I delete the LLM provider template "cost-window-test-template"
+    When I delete the LLM provider template "cbl-reset-template"
     Then the response status code should be 200
 
+  Scenario: Gemini cost calculation triggers rate limit at correct token count
+    # Model: gemini-1.5-flash-002 — input=7.5e-8/token, output=3e-7/token
+    # Usage: 100 prompt + 100 completion = (100*7.5e-8) + (100*3e-7) = 7.5e-6 + 3e-5 = 0.0000375000
+    # Budget: $0.000075 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-gemini-template
+      spec:
+        displayName: CBL Gemini Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-gemini-provider
+      spec:
+        displayName: CBL Gemini Provider
+        version: v1.0
+        context: /cbl-gemini
+        template: cbl-gemini-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000075
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Request 1: allowed — cost $0.0000375 deducted, remaining $0.0000375
+    When I send a POST request to "http://localhost:8080/cbl-gemini/gemini/v1/models/gemini-1.5-flash-002:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+
+    # Request 2: allowed — budget reaches exactly $0
+    When I send a POST request to "http://localhost:8080/cbl-gemini/gemini/v1/models/gemini-1.5-flash-002:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+
+    # Request 3: blocked — budget exhausted
+    When I send a POST request to "http://localhost:8080/cbl-gemini/gemini/v1/models/gemini-1.5-flash-002:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-gemini-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-gemini-template"
+    Then the response status code should be 200
+
+  Scenario: Anthropic geo and speed multipliers inflate cost correctly
+    # Model: claude-opus-4-6 — input=5e-6/token, output=2.5e-5/token
+    # PSE: {us: 1.1, fast: 6.0} — speed=fast, inference_geo=us echoed in response
+    # Usage: 20 input + 10 output
+    # baseCost = 20*5e-6 + 10*2.5e-5 = 1e-4 + 2.5e-4 = 3.5e-4
+    # multiplier = 1.1 (us) × 6.0 (fast) = 6.6
+    # finalCost = 3.5e-4 × 6.6 = 0.0023100000
+    # Budget: $0.004620 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-anthropic-geo-speed-template
+      spec:
+        displayName: CBL Anthropic Geo Speed Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-anthropic-geo-speed-provider
+      spec:
+        displayName: CBL Anthropic Geo Speed Provider
+        version: v1.0
+        context: /cbl-anthropic-geo-speed
+        template: cbl-anthropic-geo-speed-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.004620
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-geo-speed/anthropic/v1/messages-geo-speed" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100, "speed": "fast"}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-geo-speed/anthropic/v1/messages-geo-speed" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100, "speed": "fast"}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-geo-speed/anthropic/v1/messages-geo-speed" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100, "speed": "fast"}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-anthropic-geo-speed-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-anthropic-geo-speed-template"
+    Then the response status code should be 200
+
+  Scenario: Anthropic 1-hour TTL cache writes billed at higher rate
+    # Model: claude-opus-4-6 — 5m_write=6.25e-6, 1hr_write=1e-5, input=5e-6, output=2.5e-5
+    # Usage: 10 regular input + 5 output + 100 5m-write + 500 1hr-write
+    # cost = 10*5e-6 + 5*2.5e-5 + 100*6.25e-6 + 500*1e-5
+    #      = 0.00005 + 0.000125 + 0.000625 + 0.005 = 0.0058000000
+    # Budget: $0.011600 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-anthropic-cache1hr-template
+      spec:
+        displayName: CBL Anthropic Cache 1hr Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-anthropic-cache1hr-provider
+      spec:
+        displayName: CBL Anthropic Cache 1hr Provider
+        version: v1.0
+        context: /cbl-anthropic-cache1hr
+        template: cbl-anthropic-cache1hr-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.011600
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-cache1hr/anthropic/v1/messages-cache-1hr" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-cache1hr/anthropic/v1/messages-cache-1hr" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-cache1hr/anthropic/v1/messages-cache-1hr" with body:
+      """ json
+      {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-anthropic-cache1hr-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-anthropic-cache1hr-template"
+    Then the response status code should be 200
+
+  Scenario: Anthropic web search tool per-query cost added to token cost
+    # Model: claude-3-5-haiku-20241022 — input=8e-7/token, output=4e-6/token, web_search=0.01/query (medium)
+    # Usage: 50 input + 25 output + 2 web search queries
+    # cost = 50*8e-7 + 25*4e-6 + 2*0.01 = 0.00004 + 0.00010 + 0.02 = 0.0201400000
+    # Budget: $0.040280 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-anthropic-websearch-template
+      spec:
+        displayName: CBL Anthropic Web Search Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-anthropic-websearch-provider
+      spec:
+        displayName: CBL Anthropic Web Search Provider
+        version: v1.0
+        context: /cbl-anthropic-websearch
+        template: cbl-anthropic-websearch-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.040280
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-websearch/anthropic/v1/messages-web-search" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Search the web"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-websearch/anthropic/v1/messages-web-search" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Search the web"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-websearch/anthropic/v1/messages-web-search" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Search the web"}], "max_tokens": 100}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-anthropic-websearch-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-anthropic-websearch-template"
+    Then the response status code should be 200
+
+  Scenario: Gemini context caching — cached tokens billed at reduced rate
+    # Model: gemini-2.0-flash — input=1e-7/token, output=4e-7/token, cache_read=2.5e-8/token
+    # Usage: 500 prompt (200 cached) + 100 completion
+    # cost = (500-200)*1e-7 + 200*2.5e-8 + 100*4e-7
+    #      = 3e-5 + 5e-6 + 4e-5 = 0.0000750000
+    # Budget: $0.000150 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-gemini-cached-template
+      spec:
+        displayName: CBL Gemini Cached Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-gemini-cached-provider
+      spec:
+        displayName: CBL Gemini Cached Provider
+        version: v1.0
+        context: /cbl-gemini-cached
+        template: cbl-gemini-cached-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000150
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-gemini-cached/gemini/v1/cached/gemini-2.0-flash:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-gemini-cached/gemini/v1/cached/gemini-2.0-flash:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-gemini-cached/gemini/v1/cached/gemini-2.0-flash:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-gemini-cached-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-gemini-cached-template"
+    Then the response status code should be 200
+
+  Scenario: Gemini thinking model — thinking tokens billed at reasoning rate
+    # Model: gemini-2.5-flash-preview-04-17 — input=1.5e-7, output=6e-7, reasoning=3.5e-6
+    # Usage: 100 prompt + 50 candidates + 30 thoughts (exclusive mode)
+    # cost = 100*1.5e-7 + (80-30)*6e-7 + 30*3.5e-6
+    #      = 1.5e-5 + 3e-5 + 1.05e-4 = 0.0001500000
+    # Budget: $0.000300 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-gemini-thinking-template
+      spec:
+        displayName: CBL Gemini Thinking Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-gemini-thinking-provider
+      spec:
+        displayName: CBL Gemini Thinking Provider
+        version: v1.0
+        context: /cbl-gemini-thinking
+        template: cbl-gemini-thinking-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000300
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-gemini-thinking/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-gemini-thinking/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-gemini-thinking/gemini/v1/thinking/gemini-2.5-flash-preview-04-17:generateContent" with body:
+      """ json
+      {"contents": [{"role": "user", "parts": [{"text": "Hello"}]}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-gemini-thinking-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-gemini-thinking-template"
+    Then the response status code should be 200
+
+  Scenario: Anthropic cache reads billed at reduced cache read rate
+    # Model: claude-3-5-haiku-20241022 — input=8e-7/token, output=4e-6/token, cache_read=8e-8/token
+    # Usage: 50 regular input + 200 cache_read + 25 output
+    # cost = 50*8e-7 + 200*8e-8 + 25*4e-6
+    #      = 4e-5 + 1.6e-5 + 1e-4 = 0.0001560000
+    # Budget: $0.000312 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-anthropic-cache-read-template
+      spec:
+        displayName: CBL Anthropic Cache Read Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-anthropic-cache-read-provider
+      spec:
+        displayName: CBL Anthropic Cache Read Provider
+        version: v1.0
+        context: /cbl-anthropic-cache-read
+        template: cbl-anthropic-cache-read-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000312
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-cache-read/anthropic/v1/messages-cache-read" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-cache-read/anthropic/v1/messages-cache-read" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-anthropic-cache-read/anthropic/v1/messages-cache-read" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-anthropic-cache-read-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-anthropic-cache-read-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI prompt caching — cached tokens billed at reduced rate
+    # Model: gpt-4.1-2025-04-14 — input=2e-6/token, output=8e-6/token, cache_read=5e-7/token
+    # Usage: 200 prompt (100 cached) + 50 completion
+    # cost = (200-100)*2e-6 + 100*5e-7 + 50*8e-6
+    #      = 2e-4 + 5e-5 + 4e-4 = 0.0006500000
+    # Budget: $0.001300 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-openai-cached-template
+      spec:
+        displayName: CBL OpenAI Cached Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-openai-cached-provider
+      spec:
+        displayName: CBL OpenAI Cached Provider
+        version: v1.0
+        context: /cbl-openai-cached
+        template: cbl-openai-cached-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.001300
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-cached/openai/v1/chat-cached" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-cached/openai/v1/chat-cached" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-cached/openai/v1/chat-cached" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-openai-cached-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-openai-cached-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI flex service tier — lower rates applied for flex tier
+    # Model: gpt-5.4 — input_flex=1.25e-6/token, output_flex=7.5e-6/token
+    # Usage: 100 prompt + 50 completion, service_tier=flex
+    # cost = 100*1.25e-6 + 50*7.5e-6 = 1.25e-4 + 3.75e-4 = 0.0005000000
+    # Budget: $0.001000 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-openai-flex-template
+      spec:
+        displayName: CBL OpenAI Flex Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-openai-flex-provider
+      spec:
+        displayName: CBL OpenAI Flex Provider
+        version: v1.0
+        context: /cbl-openai-flex
+        template: cbl-openai-flex-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.001000
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-flex/openai/v1/chat-flex" with body:
+      """ json
+      {"model": "gpt-5.4", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-flex/openai/v1/chat-flex" with body:
+      """ json
+      {"model": "gpt-5.4", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-flex/openai/v1/chat-flex" with body:
+      """ json
+      {"model": "gpt-5.4", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-openai-flex-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-openai-flex-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI priority service tier — higher rates applied for priority tier
+    # Model: gpt-4.1 — input_priority=3.5e-6/token, output_priority=1.4e-5/token
+    # Usage: 100 prompt + 50 completion, service_tier=priority
+    # cost = 100*3.5e-6 + 50*1.4e-5 = 3.5e-4 + 7.0e-4 = 0.0010500000
+    # Budget: $0.002100 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-openai-priority-template
+      spec:
+        displayName: CBL OpenAI Priority Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-openai-priority-provider
+      spec:
+        displayName: CBL OpenAI Priority Provider
+        version: v1.0
+        context: /cbl-openai-priority
+        template: cbl-openai-priority-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.002100
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-priority/openai/v1/chat-priority" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-priority/openai/v1/chat-priority" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-priority/openai/v1/chat-priority" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-openai-priority-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-openai-priority-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI batch service tier — batch rates applied for batch tier
+    # Model: gpt-4.1 — input_batches=1e-6/token, output_batches=4e-6/token
+    # Usage: 100 prompt + 50 completion, service_tier=batch
+    # cost = 100*1e-6 + 50*4e-6 = 1e-4 + 2e-4 = 0.0003000000
+    # Budget: $0.000600 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-openai-batch-template
+      spec:
+        displayName: CBL OpenAI Batch Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-openai-batch-provider
+      spec:
+        displayName: CBL OpenAI Batch Provider
+        version: v1.0
+        context: /cbl-openai-batch
+        template: cbl-openai-batch-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000600
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-batch/openai/v1/chat-batch" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-batch/openai/v1/chat-batch" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-batch/openai/v1/chat-batch" with body:
+      """ json
+      {"model": "gpt-4.1", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-openai-batch-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-openai-batch-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI reasoning tokens billed at standard output rate
+    # Model: o4-mini-2025-04-16 — input=1.1e-6/token, output=4.4e-6/token
+    # Usage: 100 prompt + 80 completion (includes 30 reasoning tokens billed at output rate)
+    # cost = 100*1.1e-6 + 80*4.4e-6 = 1.1e-4 + 3.52e-4 = 0.0004620000
+    # Budget: $0.000924 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-openai-reasoning-template
+      spec:
+        displayName: CBL OpenAI Reasoning Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-openai-reasoning-provider
+      spec:
+        displayName: CBL OpenAI Reasoning Provider
+        version: v1.0
+        context: /cbl-openai-reasoning
+        template: cbl-openai-reasoning-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000924
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-reasoning/openai/v1/chat-reasoning" with body:
+      """ json
+      {"model": "o4-mini-2025-04-16", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-reasoning/openai/v1/chat-reasoning" with body:
+      """ json
+      {"model": "o4-mini-2025-04-16", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-reasoning/openai/v1/chat-reasoning" with body:
+      """ json
+      {"model": "o4-mini-2025-04-16", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-openai-reasoning-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-openai-reasoning-template"
+    Then the response status code should be 200
+
+  Scenario: OpenAI web search tool — url_citation annotation adds flat per-call fee
+    # Model: gpt-4.1-2025-04-14 — input=2e-6/token, output=8e-6/token, web_search=0.01/call
+    # Usage: 50 prompt + 25 completion + 1 web search call (url_citation annotation present)
+    # cost = 50*2e-6 + 25*8e-6 + 0.01 = 1e-4 + 2e-4 + 0.01 = 0.0103000000
+    # Budget: $0.020600 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-openai-web-search-template
+      spec:
+        displayName: CBL OpenAI Web Search Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-openai-web-search-provider
+      spec:
+        displayName: CBL OpenAI Web Search Provider
+        version: v1.0
+        context: /cbl-openai-web-search
+        template: cbl-openai-web-search-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.020600
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-web-search/openai/v1/chat-web-search" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-web-search/openai/v1/chat-web-search" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-openai-web-search/openai/v1/chat-web-search" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-openai-web-search-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-openai-web-search-template"
+    Then the response status code should be 200
+
+  Scenario: Mistral — bare model name resolved and cost calculated correctly
+    # Model: mistral-small-latest — input=1e-7/token, output=3e-7/token
+    # Usage: 100 prompt + 50 completion = (100*1e-7) + (50*3e-7) = 1e-5 + 1.5e-5 = 0.0000250000
+    # Budget: $0.000050 = exactly 2 requests worth
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-mistral-template
+      spec:
+        displayName: CBL Mistral Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-mistral-provider
+      spec:
+        displayName: CBL Mistral Provider
+        version: v1.0
+        context: /cbl-mistral
+        template: cbl-mistral-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000050
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-mistral/mistral/v1/chat/completions" with body:
+      """ json
+      {"model": "mistral-small-latest", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-mistral/mistral/v1/chat/completions" with body:
+      """ json
+      {"model": "mistral-small-latest", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-mistral/mistral/v1/chat/completions" with body:
+      """ json
+      {"model": "mistral-small-latest", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-mistral-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-mistral-template"
+    Then the response status code should be 200
+
+  Scenario: No model field in response — zero cost never triggers rate limit
+    # The upstream response contains no model field — cost calculation returns 0
+    # With a very tight budget ($0.000001), 3 requests still all pass because cost=0
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-no-model-template
+      spec:
+        displayName: CBL No Model Template
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: cbl-no-model-provider
+      spec:
+        displayName: CBL No Model Provider
+        version: v1.0
+        context: /cbl-no-model
+        template: cbl-no-model-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000001
+                      duration: "1h"
+          - name: llm-cost
+            version: v0
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # All 3 requests pass — zero cost never consumes the budget
+    When I send a POST request to "http://localhost:8080/cbl-no-model/unknown-llm/v1/no-model-field" with body:
+      """ json
+      {"messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-no-model/unknown-llm/v1/no-model-field" with body:
+      """ json
+      {"messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-no-model/unknown-llm/v1/no-model-field" with body:
+      """ json
+      {"messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-no-model-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-no-model-template"
+    Then the response status code should be 200
