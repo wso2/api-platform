@@ -80,6 +80,15 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 	}
 }
 
+// SetBaseURL updates the base URL used for API requests.
+// This is used to update the URL after gateway path discovery.
+func (s *APIUtilsService) SetBaseURL(baseURL string) {
+	s.config.BaseURL = baseURL
+	s.logger.Debug("Updated API utils service base URL",
+		slog.String("base_url", baseURL),
+	)
+}
+
 // FetchAPIDefinition downloads the API definition as a zip file from the control plane
 func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 	// Construct the API URL by appending the resource path

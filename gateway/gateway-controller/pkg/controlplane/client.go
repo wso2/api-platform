@@ -386,11 +386,15 @@ type gatewayWellKnownResponse struct {
 // Falls back to the default configured URL when discovery fails.
 // The discovered gateway path is cached for reuse within the file.
 func (c *Client) resolveWebSocketConnectURL() string {
-	// Use cached gateway path if available
-	if c.gatewayPath != "" {
-		resolvedURL := fmt.Sprintf("wss://%s%s/ws/gateways/connect", c.config.Host, c.gatewayPath)
+	// Use cached gateway path if available (read under lock)
+	c.state.mu.RLock()
+	cachedPath := c.gatewayPath
+	c.state.mu.RUnlock()
+
+	if cachedPath != "" {
+		resolvedURL := fmt.Sprintf("wss://%s%s/ws/gateways/connect", c.config.Host, cachedPath)
 		c.logger.Debug("Using cached gateway path for WebSocket connect URL",
-			slog.String("gateway_path", c.gatewayPath),
+			slog.String("gateway_path", cachedPath),
 			slog.String("resolved_url", resolvedURL),
 		)
 		return resolvedURL
@@ -404,8 +408,13 @@ func (c *Client) resolveWebSocketConnectURL() string {
 		return c.getWebSocketConnectURL()
 	}
 
-	// Cache the discovered gateway path for future use
+	// Cache the discovered gateway path for future use (write under lock)
+	c.state.mu.Lock()
 	c.gatewayPath = gatewayPath
+	c.state.mu.Unlock()
+
+	// Update apiUtilsService base URL to use the discovered gateway path
+	c.apiUtilsService.SetBaseURL(c.getRestAPIBaseURL())
 
 	resolvedURL := fmt.Sprintf("wss://%s%s/ws/gateways/connect", c.config.Host, gatewayPath)
 	c.logger.Debug("Resolved WebSocket connect URL from well-known endpoint",
@@ -416,9 +425,11 @@ func (c *Client) resolveWebSocketConnectURL() string {
 	return resolvedURL
 }
 
-// GetgatewayPath returns the cached gateway path discovered from the well-known endpoint.
+// GetGatewayPath returns the cached gateway path discovered from the well-known endpoint.
 // Returns an empty string if the path has not been discovered yet.
-func (c *Client) GetgatewayPath() string {
+func (c *Client) GetGatewayPath() string {
+	c.state.mu.RLock()
+	defer c.state.mu.RUnlock()
 	return c.gatewayPath
 }
 
@@ -3040,9 +3051,14 @@ func (c *Client) getWebSocketConnectURL() string {
 }
 
 // getRestAPIBaseURL constructs the base REST API URL from configuration.
+// Uses the discovered gateway path if available, otherwise falls back to default.
 func (c *Client) getRestAPIBaseURL() string {
-	if c.gatewayPath != "" {
-		fmt.Sprintf("https://%s%s", c.config.Host, c.gatewayPath)
+	c.state.mu.RLock()
+	path := c.gatewayPath
+	c.state.mu.RUnlock()
+
+	if path != "" {
+		return fmt.Sprintf("https://%s%s", c.config.Host, path)
 	}
 	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
 }
