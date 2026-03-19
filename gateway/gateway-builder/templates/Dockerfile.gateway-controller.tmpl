@@ -22,6 +22,9 @@ FROM {{ .BaseImage }}
 RUN rm -rf /app/policies
 COPY policies /app/policies
 
+# Copy build lock file for custom policy detection
+COPY build-lock.yaml /app/build-lock.yaml
+
 # Set environment variable for policy directory
 ENV APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH=/app/policies
 

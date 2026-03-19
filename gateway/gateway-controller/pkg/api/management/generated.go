@@ -1193,8 +1193,8 @@ type PolicyDefinition struct {
 	// Description Human readable description of the policy's purpose
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// IsCustomPolicy Indicates whether this policy is a user-installed custom policy. Set in policy-definition.yaml by the policy author.
-	IsCustomPolicy *bool `json:"isCustomPolicy,omitempty" yaml:"isCustomPolicy,omitempty"`
+	// ManagedBy Indicates who manages this policy. 'customer' for locally developed custom policies as determined by build-lock.yaml, 'wso2' for built-in WSO2 policies.
+	ManagedBy *string `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 
 	// Name Unique policy name
 	Name string `json:"name" yaml:"name"`
