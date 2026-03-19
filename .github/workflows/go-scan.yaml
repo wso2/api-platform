@@ -4,15 +4,68 @@ on:
   schedule:
     - cron: "0 20 * * *"
 jobs:
-  tests:
+  gateway-controller:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v2
-      - name: Run Gosec Security Scanner
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Run Gosec
         uses: securego/gosec@master
         with:
-          # we let the report trigger content trigger a failure using the GitHub Security features.
-          args: '-no-fail ./...'
+          args: '-no-fail -fmt sarif -out results.sarif ./...'
+        working-directory: gateway/gateway-controller
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gateway/gateway-controller/results.sarif
+          category: gateway-controller
+
+  policy-engine:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Run Gosec
+        uses: securego/gosec@master
+        with:
+          args: '-no-fail -fmt sarif -out results.sarif ./...'
+        working-directory: gateway/gateway-runtime/policy-engine
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gateway/gateway-runtime/policy-engine/results.sarif
+          category: policy-engine
+
+  gateway-builder:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Run Gosec
+        uses: securego/gosec@master
+        with:
+          args: '-no-fail -fmt sarif -out results.sarif ./...'
+        working-directory: gateway/gateway-builder
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gateway/gateway-builder/results.sarif
+          category: gateway-builder
