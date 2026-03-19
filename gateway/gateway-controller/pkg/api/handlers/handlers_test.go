@@ -2494,6 +2494,59 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := &models.StoredConfig{
+		UUID:        "0000-llm-proxy-id-0000-000000000000",
+		Kind:        string(api.LlmProxy),
+		Handle:      "test-llm-proxy",
+		DisplayName: "test-llm-proxy",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProxy,
+			Metadata: api.Metadata{
+				Name: "test-llm-proxy",
+			},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "test-llm-proxy",
+				Version:     "v1.0.0",
+				Provider: api.LLMProxyProvider{
+					Id: "provider-a",
+				},
+			},
+		},
+		Status:    models.StatusPending,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mockDB.SaveConfig(cfg)
+	require.NoError(t, server.store.Add(cfg))
+
+	c, w := createTestContext("DELETE", "/llm-proxies/test-llm-proxy", nil)
+	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-proxy")
+
+	server.DeleteLLMProxy(c, "test-llm-proxy")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMProxy, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-delete-llm-proxy", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := mockDB.GetConfig(cfg.UUID)
+	require.Error(t, err)
+
+	_, err = server.store.Get(cfg.UUID)
+	require.NoError(t, err)
+}
+
 // TestDeleteLLMProxyInternalError tests DeleteLLMProxy with internal error
 // Note: This test requires full deployment service setup
 func TestDeleteLLMProxyInternalError(t *testing.T) {

@@ -137,7 +137,7 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 
 func isReplicaSyncedKind(kind string) bool {
 	switch kind {
-	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider:
+	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy:
 		return true
 	default:
 		return false
@@ -225,7 +225,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// TODO: (VirajSalaka) Revisit the logic to do these validations from the gateway itself
 
 	// Check for conflicts with other configurations
-	
+
 	if s.store != nil {
 		existingConfig, _ = s.store.Get(apiID)
 		isUpdate = existingConfig != nil

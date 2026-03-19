@@ -116,6 +116,13 @@ func (s *LLMDeploymentService) publishLLMProviderEvent(action, entityID, correla
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMProvider, action, entityID, correlationID, logger)
 }
 
+func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlationID string, logger *slog.Logger) {
+	if s.deploymentService == nil {
+		return
+	}
+	s.deploymentService.publishEvent(eventhub.EventTypeLLMProxy, action, entityID, correlationID, logger)
+}
+
 // LLM configs are persisted as their original management payloads. The derived
 // RestAPI form is rebuilt on demand because it depends on in-memory template and
 // policy state that is not stored in SQL.
@@ -403,17 +410,25 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			params.Logger.Error("Failed to update xDS snapshot",
-				slog.Any("error", err),
-				slog.String("api_id", apiID),
-				slog.String("correlation_id", params.CorrelationID))
+	if s.isEventDriven() {
+		action := "CREATE"
+		if isUpdate {
+			action = "UPDATE"
 		}
-	}()
+		s.publishLLMProxyEvent(action, apiID, params.CorrelationID, params.Logger)
+	} else {
+		// Update xDS snapshot asynchronously
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot",
+					slog.Any("error", err),
+					slog.String("api_id", apiID),
+					slog.String("correlation_id", params.CorrelationID))
+			}
+		}()
+	}
 
 	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
 }
@@ -1088,6 +1103,13 @@ func (s *LLMDeploymentService) GetLLMProviderByHandle(handle string) (*models.St
 // ListLLMProxies returns all stored LLM proxy configurations
 func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) []*models.StoredConfig {
 	configs := s.store.GetAllByKind(string(api.LlmProxy))
+	if s.db != nil {
+		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProxy)); err == nil {
+			if len(storedConfigs) > 0 || len(configs) == 0 {
+				configs = storedConfigs
+			}
+		}
+	}
 
 	// If no filters are provided, return all configs
 	if params.DisplayName == nil && params.Version == nil &&
@@ -1119,7 +1141,7 @@ func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*mode
 
 // UpdateLLMProxy updates an existing provider identified by name+version using DeployLLMProxyConfiguration
 func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	existing, err := s.GetLLMProxyByHandle(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
 	}
@@ -1135,9 +1157,29 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	return res.StoredConfig, nil
 }
 
+func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {
+	if s.db != nil {
+		cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)
+		if err == nil {
+			_ = s.hydrateStoredLLMConfig(cfg)
+			return cfg, nil
+		}
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return nil, err
+		}
+	}
+
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.hydrateStoredLLMConfig(cfg)
+	return cfg, nil
+}
+
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	cfg, err := s.GetLLMProxyByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
 	}
@@ -1145,9 +1187,19 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
 	}
 	if s.db != nil {
+		if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+			return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)
+		}
 		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
+	}
+	if s.isEventDriven() {
+		s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
+		return cfg, nil
+	}
+	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil && !storage.IsNotFoundError(err) {
+		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from memory store: %w", err)
 	}
 	if err := s.store.Delete(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)

@@ -32,6 +32,8 @@ const (
 	EventTypeCertificate EventType = "CERTIFICATE"
 	// EventTypeLLMProvider represents an LLM provider change event
 	EventTypeLLMProvider EventType = "LLM_PROVIDER"
+	// EventTypeLLMProxy represents an LLM proxy change event
+	EventTypeLLMProxy EventType = "LLM_PROXY"
 	// EventTypeLLMTemplate represents an LLM template change event
 	EventTypeLLMTemplate EventType = "LLM_TEMPLATE"
 

@@ -955,9 +955,10 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	// Delegate to service which parses/validates/transforms and persists
 	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM proxy", slog.Any("error", err))
@@ -985,8 +986,9 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Message: stringPtr("LLM proxy created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the proxy event, so the writer should not mutate local policies inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -1005,18 +1007,19 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	cfg, err := s.llmDeploymentService.GetLLMProxyByHandle(id)
 	if err != nil {
-		log.Error("Failed to look up LLM proxy", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to look up LLM proxy",
-		})
-		return
-	}
-	if cfg == nil {
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			log.Error("Failed to look up LLM proxy", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to look up LLM proxy",
+			})
+			return
+		}
 		log.Warn("LLM proxy configuration not found",
-			slog.String("handle", id))
+			slog.String("handle", id),
+			slog.Any("error", err))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
@@ -1090,8 +1093,9 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the proxy event, so the writer should not mutate local policies inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -1145,8 +1149,22 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
-	// Remove derived policy configuration
-	if s.policyManager != nil {
+	if s.eventHub == nil && s.apiKeyXDSManager != nil {
+		apiName, apiVersion := cfg.DisplayName, cfg.Version
+		if apiName != "" {
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove LLM proxy API keys from policy engine",
+					slog.Any("error", err),
+					slog.String("api_id", cfg.UUID),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion))
+			}
+		}
+	}
+
+	// In EventHub mode the listener removes local policy state after replaying
+	// the delete event, so the writer should not race that cleanup inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))

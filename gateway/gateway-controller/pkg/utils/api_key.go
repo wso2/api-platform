@@ -171,15 +171,32 @@ func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string
 	s.gatewayID = gatewayID
 }
 
-// getAPIConfigByHandle resolves a REST API configuration by handle.
+// getAPIConfigByHandle resolves an artifact configuration by kind and handle.
 func (s *APIKeyService) getAPIConfigByHandle(kind models.ArtifactKind, handle string) (*models.StoredConfig, error) {
+	if s.db != nil {
+		cfg, err := s.db.GetConfigByKindAndHandle(kind, handle)
+		if err != nil {
+			if storage.IsNotFoundError(err) {
+				return nil, storage.ErrNotFound
+			}
+			return nil, fmt.Errorf("database error while fetching config: %w", err)
+		}
+		if cfg == nil {
+			return nil, storage.ErrNotFound
+		}
+		return cfg, nil
+	}
 
-	cfg, err := s.db.GetConfigByKindAndHandle(kind, handle)
+	if s.store == nil {
+		return nil, storage.ErrNotFound
+	}
+
+	cfg, err := s.store.GetByKindAndHandle(kind, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, fmt.Errorf("database error while fetching config: %w", err)
+		return nil, fmt.Errorf("memory store error while fetching config: %w", err)
 	}
 	if cfg == nil {
 		return nil, storage.ErrNotFound
@@ -415,14 +432,6 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
-	// Validate config type before any storage mutations to fail fast
-	restCfg, ok := config.Configuration.(api.RestAPI)
-	if !ok {
-		logger.Error("Configuration is not a RestAPI")
-		return nil, fmt.Errorf("configuration is not a RestAPI")
-	}
-	apiConfig := restCfg.Spec
-
 	var apiKey *models.APIKey
 
 	existingAPIKey, err := s.store.GetAPIKeyByName(config.UUID, apiKeyName)
@@ -485,8 +494,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		}
 
 		apiId := config.UUID
-		apiName := apiConfig.DisplayName
-		apiVersion := apiConfig.Version
+		apiName := config.DisplayName
+		apiVersion := config.Version
 
 		if s.eventHub != nil {
 			// Event-driven mode: publish event for async processing by EventListener
@@ -572,14 +581,6 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
-	// Validate config type before any storage mutations to fail fast
-	restCfg, ok := config.Configuration.(api.RestAPI)
-	if !ok {
-		logger.Error("Configuration is not a RestAPI")
-		return nil, fmt.Errorf("configuration is not a RestAPI")
-	}
-	apiConfig := restCfg.Spec
-
 	// Get the existing API key by name
 	existingKey, err := s.store.GetAPIKeyByName(config.UUID, params.APIKeyName)
 	if err != nil {
@@ -596,6 +597,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 
 			// Create the new API key using the provided request
 			creationParams := APIKeyCreationParams{
+				Kind:          kind,
 				Handle:        params.Handle,
 				Request:       params.Request,
 				User:          user,
@@ -671,8 +673,8 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	apiId := config.UUID
-	apiName := apiConfig.DisplayName
-	apiVersion := apiConfig.Version
+	apiName := config.DisplayName
+	apiVersion := config.Version
 
 	if s.eventHub != nil {
 		// Event-driven mode: publish event for async processing by EventListener
@@ -771,16 +773,6 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
-	// Validate config type before any storage mutations to fail fast
-	restCfg, ok := config.Configuration.(api.RestAPI)
-	if !ok {
-		logger.Error("Configuration is not a RestAPI",
-			slog.String("handle", params.Handle),
-			slog.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("configuration is not a RestAPI")
-	}
-	apiConfig := restCfg.Spec
-
 	// Get the existing API key by name
 	existingKey, err := s.store.GetAPIKeyByName(config.UUID, params.APIKeyName)
 	if err != nil {
@@ -878,8 +870,8 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	regeneratedKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
 
 	apiId := config.UUID
-	apiName := apiConfig.DisplayName
-	apiVersion := apiConfig.Version
+	apiName := config.DisplayName
+	apiVersion := config.Version
 
 	if s.eventHub != nil {
 		// Event-driven mode: publish event for async processing by EventListener
@@ -1855,8 +1847,8 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 		return nil, fmt.Errorf("nil APIKeyCreationRequest for artifact %s", artifactUUID)
 	}
 
-	// Resolve artifact UUID to kind and handle
-	storedConfig, err := s.store.Get(artifactUUID)
+	// Resolve artifact UUID to kind and handle.
+	storedConfig, err := s.getArtifactConfigByID(artifactUUID)
 	if err != nil || storedConfig == nil {
 		logger.Error("artifact not found for UUID",
 			slog.String("artifact_uuid", artifactUUID),
@@ -1904,8 +1896,8 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 	correlationID string,
 	logger *slog.Logger,
 ) error {
-	// Resolve artifact UUID to kind and handle
-	storedConfig, err := s.store.Get(artifactUUID)
+	// Resolve artifact UUID to kind and handle.
+	storedConfig, err := s.getArtifactConfigByID(artifactUUID)
 	if err != nil || storedConfig == nil {
 		logger.Error("artifact not found for UUID",
 			slog.String("artifact_uuid", artifactUUID),
@@ -1956,8 +1948,8 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 		return fmt.Errorf("nil APIKeyCreationRequest for artifact %s", artifactUUID)
 	}
 
-	// Resolve artifact UUID to kind and handle
-	storedConfig, err := s.store.Get(artifactUUID)
+	// Resolve artifact UUID to kind and handle.
+	storedConfig, err := s.getArtifactConfigByID(artifactUUID)
 	if err != nil || storedConfig == nil {
 		logger.Error("artifact not found for UUID",
 			slog.String("artifact_uuid", artifactUUID),
@@ -1992,4 +1984,29 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 	logger.Info("Successfully updated external API key")
 
 	return nil
+}
+
+func (s *APIKeyService) getArtifactConfigByID(artifactUUID string) (*models.StoredConfig, error) {
+	if s.db != nil {
+		cfg, err := s.db.GetConfig(artifactUUID)
+		if err == nil {
+			return cfg, nil
+		}
+		if !storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("database error while fetching artifact %s: %w", artifactUUID, err)
+		}
+	}
+
+	if s.store == nil {
+		return nil, storage.ErrNotFound
+	}
+
+	cfg, err := s.store.Get(artifactUUID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			return nil, storage.ErrNotFound
+		}
+		return nil, fmt.Errorf("memory store error while fetching artifact %s: %w", artifactUUID, err)
+	}
+	return cfg, nil
 }
