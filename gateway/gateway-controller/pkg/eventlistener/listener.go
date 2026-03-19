@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -43,16 +44,17 @@ type APIKeyXDSManager interface {
 // EventListener listens for events from EventHub and processes them
 // to keep the local replica synchronized with other replicas.
 type EventListener struct {
-	eventHub          eventhub.EventHub
-	store             *storage.ConfigStore
-	db                storage.Storage
-	snapshotManager   *xds.SnapshotManager
-	apiKeyXDSManager  APIKeyXDSManager
-	policyManager     *policyxds.PolicyManager
-	routerConfig      *config.RouterConfig
-	logger            *slog.Logger
-	systemConfig      *config.Config
-	policyDefinitions map[string]models.PolicyDefinition
+	eventHub            eventhub.EventHub
+	store               *storage.ConfigStore
+	db                  storage.Storage
+	snapshotManager     *xds.SnapshotManager
+	apiKeyXDSManager    APIKeyXDSManager
+	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
+	policyManager       *policyxds.PolicyManager
+	routerConfig        *config.RouterConfig
+	logger              *slog.Logger
+	systemConfig        *config.Config
+	policyDefinitions   map[string]models.PolicyDefinition
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -66,6 +68,7 @@ func NewEventListener(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	apiKeyXDSManager APIKeyXDSManager,
+	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	policyManager *policyxds.PolicyManager,
 	routerConfig *config.RouterConfig,
 	logger *slog.Logger,
@@ -74,18 +77,19 @@ func NewEventListener(
 ) *EventListener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventListener{
-		eventHub:          eventHub,
-		store:             store,
-		db:                db,
-		snapshotManager:   snapshotManager,
-		apiKeyXDSManager:  apiKeyXDSManager,
-		policyManager:     policyManager,
-		routerConfig:      routerConfig,
-		logger:            logger,
-		systemConfig:      systemConfig,
-		policyDefinitions: policyDefinitions,
-		ctx:               ctx,
-		cancel:            cancel,
+		eventHub:            eventHub,
+		store:               store,
+		db:                  db,
+		snapshotManager:     snapshotManager,
+		apiKeyXDSManager:    apiKeyXDSManager,
+		lazyResourceManager: lazyResourceManager,
+		policyManager:       policyManager,
+		routerConfig:        routerConfig,
+		logger:              logger,
+		systemConfig:        systemConfig,
+		policyDefinitions:   policyDefinitions,
+		ctx:                 ctx,
+		cancel:              cancel,
 	}
 }
 
@@ -179,6 +183,8 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeCertificate:
 		l.logger.Info("Certificate event received (processing not yet implemented)",
 			slog.String("entity_id", event.EntityID))
+	case eventhub.EventTypeLLMProvider:
+		l.processLLMProviderEvent(event)
 	case eventhub.EventTypeLLMTemplate:
 		l.logger.Info("LLM template event received (processing not yet implemented)",
 			slog.String("entity_id", event.EntityID))

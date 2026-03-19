@@ -275,6 +275,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		newTestLogger(),
 		&config.Config{
 			Controller: config.Controller{
