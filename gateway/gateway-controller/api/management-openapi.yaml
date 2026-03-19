@@ -1,19 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Gateway Controller API
+  title: Gateway Controller Management API
   description: |
     REST API for managing API configurations in the WSO2 API Platform Gateway.
-
-    The Gateway Controller accepts API configurations in YAML or JSON format and dynamically
-    configures the Router (Envoy Proxy) via xDS protocol. Supports full CRUD lifecycle
-    for API configurations with real-time updates to the Router.
-
-    **Key Features:**
-    - Submit API configurations in YAML or JSON
-    - Real-time validation and error reporting
-    - Zero-downtime configuration updates
-    - Persistent storage with SQLite
-    - Query deployed API configurations
   version: 1.0.0
   contact:
     name: WSO2 API Platform Team
@@ -39,7 +28,7 @@ paths:
         - For same API name, context must be consistent across versions
       operationId: createRestAPI
       tags:
-        - API Management
+        - Rest API Management
       requestBody:
         required: true
         content:
@@ -49,49 +38,6 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RestAPI"
-            example:
-              version: gateway.api-platform.wso2.com/v1alpha1
-              kind: RestApi
-              spec:
-                name: PetStore API
-                version: v1.0
-                context: /petstore
-                upstreams:
-                  - url: http://petstore.swagger.io/v2
-                policies:
-                  - name: apiKeyValidation
-                    version: v1
-                    executionCondition: "request.metadata[authenticated] != true"
-                    params:
-                      header: X-API-Key
-                      mandatory: true
-                  - name: setHeaders
-                    version: v1
-                    params:
-                      requestHeaders:
-                        - X-Request-Source: WSO2 API Manager
-                      responseHeaders:
-                        - X-Response-Source: WSO2 API Manager
-                operations:
-                  - method: GET
-                    path: /pet/{petId}
-                    policies:
-                      - name: apiKeyValidation
-                        version: v1
-                        executionCondition: "request.metadata[authenticated] != true"
-                        params:
-                          header: X-API-Key
-                          mandatory: true
-                  - method: POST
-                    path: /pet
-                  - method: PUT
-                    path: /pet
-                  - method: DELETE
-                    path: /pet/{petId}
-                  - method: GET
-                    path: /store/inventory
-                  - method: POST
-                    path: /store/order
       responses:
         "201":
           description: RestAPI created successfully
@@ -125,7 +71,7 @@ paths:
         Returns basic information about each API (name, version, context, deployment time).
       operationId: listRestAPIs
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: displayName
           in: query
@@ -189,7 +135,7 @@ paths:
         The id is a unique string identifier (not a UUID).
       operationId: getRestAPIById
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -232,7 +178,7 @@ paths:
         **Important:** If validation fails, the existing configuration remains active.
       operationId: updateRestAPI
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -285,7 +231,7 @@ paths:
         successfully; new requests receive 404 Not Found.
       operationId: deleteRestAPI
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -335,7 +281,7 @@ paths:
         If you are using an external API key, you may provide it directly without modification.
       operationId: createAPIKey
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -387,7 +333,7 @@ paths:
         active API keys for the API.
       operationId: listAPIKeys
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -427,7 +373,7 @@ paths:
         and prefixed with "apip_".
       operationId: regenerateAPIKey
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -489,7 +435,7 @@ paths:
         The new key must be at least 20 characters long.
       operationId: updateAPIKey
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -548,7 +494,7 @@ paths:
         the key can no longer be used to authenticate requests.
       operationId: revokeAPIKey
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: id
           in: path
@@ -597,7 +543,7 @@ paths:
       summary: Create a subscription plan
       operationId: createSubscriptionPlan
       tags:
-        - API Management
+        - Rest API Management
       requestBody:
         required: true
         content:
@@ -633,7 +579,7 @@ paths:
       summary: List subscription plans
       operationId: listSubscriptionPlans
       tags:
-        - API Management
+        - Rest API Management
       responses:
         '200':
           description: List of subscription plans
@@ -653,7 +599,7 @@ paths:
       summary: Get a subscription plan by ID
       operationId: getSubscriptionPlan
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: planId
           in: path
@@ -683,7 +629,7 @@ paths:
       summary: Update a subscription plan
       operationId: updateSubscriptionPlan
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: planId
           in: path
@@ -718,7 +664,7 @@ paths:
       summary: Delete a subscription plan
       operationId: deleteSubscriptionPlan
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: planId
           in: path
@@ -749,7 +695,7 @@ paths:
         Used by control plane sync and admin. applicationId references applications in DevPortal/STS.
       operationId: createSubscription
       tags:
-        - API Management
+        - Rest API Management
       requestBody:
         required: true
         content:
@@ -786,7 +732,7 @@ paths:
       description: Returns application-level subscriptions filtered by API and/or application.
       operationId: listSubscriptions
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: apiId
           in: query
@@ -824,7 +770,7 @@ paths:
       summary: Get a subscription by ID
       operationId: getSubscription
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: subscriptionId
           in: path
@@ -854,7 +800,7 @@ paths:
       summary: Update a subscription
       operationId: updateSubscription
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: subscriptionId
           in: path
@@ -889,7 +835,7 @@ paths:
       summary: Delete a subscription
       operationId: deleteSubscription
       tags:
-        - API Management
+        - Rest API Management
       parameters:
         - name: subscriptionId
           in: path
@@ -4270,10 +4216,8 @@ components:
           example: success
 
 tags:
-  - name: System
-    description: System health and status endpoints
-  - name: API Management
-    description: CRUD operations for RestAPIs
+  - name: Rest API Management
+    description: CRUD operations for Rest APIs
   - name: MCP Proxy Management
     description: CRUD operations for MCPProxies
   - name: Policy Management
