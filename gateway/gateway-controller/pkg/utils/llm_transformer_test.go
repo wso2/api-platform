@@ -312,7 +312,7 @@ func TestExpandPolicyTargetPaths(t *testing.T) {
 		}
 
 		targets := expandPolicyTargetPaths("/*", templateSpec)
-		assert.ElementsMatch(t, []string{"/responses", "/chat/*"}, targets)
+		assert.ElementsMatch(t, []string{"/responses", "/chat/*", "/*"}, targets)
 	})
 
 	t.Run("Wildcard operation falls back when mappings are missing", func(t *testing.T) {
@@ -399,6 +399,56 @@ func TestHasDenyPolicy(t *testing.T) {
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.True(t, result)
+	})
+}
+
+func TestDenyAppliesToTarget(t *testing.T) {
+	t.Run("Exact deny policy matches target path", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/completions", method: "GET"}: {
+				Path:     "/chat/completions",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "GET", testRespondVersion, registry)
+		assert.True(t, result)
+	})
+
+	t.Run("Wildcard deny policy matches concrete target path", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/*", method: "GET"}: {
+				Path:     "/chat/*",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "GET", testRespondVersion, registry)
+		assert.True(t, result)
+	})
+
+	t.Run("Different method does not match wildcard deny policy", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/*", method: "GET"}: {
+				Path:     "/chat/*",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "POST", testRespondVersion, registry)
+		assert.False(t, result)
 	})
 }
 
@@ -792,11 +842,24 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 	assert.Equal(t, responsesModel, reqModel["identifier"])
 	assert.Equal(t, "value", (*responsesPolicy.Params)["userParam"])
 
-	if wildcardPostOp != nil && wildcardPostOp.Policies != nil {
-		for _, pol := range *wildcardPostOp.Policies {
-			assert.NotEqual(t, "request-transformer", pol.Name)
+	require.NotNil(t, wildcardPostOp)
+	require.NotNil(t, wildcardPostOp.Policies)
+
+	var wildcardPolicy *api.Policy
+	for i := range *wildcardPostOp.Policies {
+		pol := &(*wildcardPostOp.Policies)[i]
+		if pol.Name == "request-transformer" {
+			wildcardPolicy = pol
+			break
 		}
 	}
+	require.NotNil(t, wildcardPolicy)
+	require.NotNil(t, wildcardPolicy.Params)
+
+	wildcardReqModel, ok := (*wildcardPolicy.Params)["requestModel"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, defaultModel, wildcardReqModel["identifier"])
+	assert.Equal(t, "value", (*wildcardPolicy.Params)["userParam"])
 }
 
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {

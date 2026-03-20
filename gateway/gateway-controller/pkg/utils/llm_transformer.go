@@ -464,7 +464,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 										operationRegistry[targetKey] = targetOp
 									}
 
-									if denyPolicyVersion != "" && hasDenyPolicy(targetOp, denyPolicyVersion) {
+									if denyAppliesToTarget(targetPath, policyMethod, denyPolicyVersion, operationRegistry) {
 										continue
 									}
 
@@ -780,6 +780,7 @@ func expandPolicyTargetPaths(opPath string, templateSpec *api.LLMProviderTemplat
 
 	seen := make(map[string]bool)
 	expanded := make([]string, 0)
+	seen[opPath] = true
 	for i := range *templateSpec.ResourceMappings.Resources {
 		resource := (*templateSpec.ResourceMappings.Resources)[i].Resource
 		candidatePath := resource
@@ -803,6 +804,7 @@ func expandPolicyTargetPaths(opPath string, templateSpec *api.LLMProviderTemplat
 	if len(expanded) == 0 {
 		return []string{opPath}
 	}
+	expanded = append(expanded, opPath)
 	return expanded
 }
 
@@ -847,6 +849,29 @@ func hasDenyPolicy(op *api.Operation, denyPolicyVersion string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// denyAppliesToTarget checks if a deny policy applies to a target path for a specific method.
+// It considers both exact deny paths and wildcard deny paths present in the operation registry.
+func denyAppliesToTarget(targetPath, policyMethod, denyPolicyVersion string,
+	operationRegistry map[pathMethodKey]*api.Operation) bool {
+	if denyPolicyVersion == "" {
+		return false
+	}
+
+	for key, op := range operationRegistry {
+		if key.method != policyMethod {
+			continue
+		}
+		if !hasDenyPolicy(op, denyPolicyVersion) {
+			continue
+		}
+		if pathsMatch(targetPath, key.path) {
+			return true
+		}
+	}
+
 	return false
 }
 

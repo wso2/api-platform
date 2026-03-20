@@ -44,7 +44,7 @@ func NewLLMValidator() *LLMValidator {
 	return &LLMValidator{
 		versionRegex:      regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		metadataNameRegex: regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`),
-		resourcePathRegex: regexp.MustCompile(`^/[A-Za-z0-9_.\-/:]*$`),
+		resourcePathRegex: regexp.MustCompile(`^/(?:[A-Za-z0-9._~-]+|\*|\{[A-Za-z0-9._~-]+\})(?:/(?:[A-Za-z0-9._~-]+|\*|\{[A-Za-z0-9._~-]+\}))*$|^/$`),
 	}
 }
 
