@@ -130,6 +130,10 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var (
 		parsedConfig any
 		apiName      string

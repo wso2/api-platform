@@ -230,7 +230,9 @@ type MCPProxyDeployedEvent struct {
 
 // MCPProxyUndeployedEventPayload represents the payload of an MCP proxy undeployment event
 type MCPProxyUndeployedEventPayload struct {
-	ProxyID string `json:"proxyId"`
+	ProxyID      string    `json:"proxyId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
 }
 
 // MCPProxyUndeployedEvent represents the complete MCP proxy undeployment event

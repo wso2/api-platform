@@ -80,6 +80,10 @@ func NewMCPDeploymentService(
 
 // DeployMCPConfiguration handles the complete MCP configuration deployment process
 func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var existingConfig *models.StoredConfig
 	var isUpdate bool
 

@@ -55,6 +55,11 @@ const (
 	OriginGatewayAPI   Origin = "gateway_api"   // Created directly via gateway REST API
 )
 
+// IsValidOrigin returns true if the origin value is a recognized enum value.
+func IsValidOrigin(o Origin) bool {
+	return o == OriginControlPlane || o == OriginGatewayAPI
+}
+
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
 	UUID                string       `json:"uuid"`

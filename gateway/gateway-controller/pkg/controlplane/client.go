@@ -1160,6 +1160,9 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	// Fetch API definition and deploy
 	// (deploymentService handles DB + event publishing when eventHub is set)
 	performedAt := deployedEvent.Payload.PerformedAt
+	if performedAt.IsZero() {
+		performedAt = time.Now()
+	}
 	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
 	if err != nil {
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
@@ -1247,7 +1250,13 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	}
 
 	// Set status to undeployed (preserve config, keys, and policies)
+	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
+	apiUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
+	if apiUndeployPerformedAt.IsZero() {
+		apiUndeployPerformedAt = time.Now()
+	}
 	apiConfig.DesiredState = models.StateUndeployed
+	apiConfig.DeployedAt = &apiUndeployPerformedAt
 	apiConfig.UpdatedAt = time.Now()
 
 	// Update database (only if persistent mode)
@@ -1725,6 +1734,9 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 
 	// Create LLM proxy configuration from YAML using the deployment service
 	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt
+	if llmProxyPerformedAt.IsZero() {
+		llmProxyPerformedAt = time.Now()
+	}
 	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM proxy from YAML",
@@ -1825,6 +1837,9 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 
 	// Create LLM provider configuration from YAML using the deployment service
 	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt
+	if llmProviderPerformedAt.IsZero() {
+		llmProviderPerformedAt = time.Now()
+	}
 	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM provider from YAML",
@@ -2040,6 +2055,9 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 
 	// Create MCP proxy configuration from YAML using the deployment service
 	mcpPerformedAt := deployedEvent.Payload.PerformedAt
+	if mcpPerformedAt.IsZero() {
+		mcpPerformedAt = time.Now()
+	}
 	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create MCP proxy from YAML",
@@ -2111,7 +2129,13 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 	}
 
 	// Set status to undeployed (preserve config, keys, and policies)
+	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
+	mcpUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
+	if mcpUndeployPerformedAt.IsZero() {
+		mcpUndeployPerformedAt = time.Now()
+	}
 	mcpConfig.DesiredState = models.StateUndeployed
+	mcpConfig.DeployedAt = &mcpUndeployPerformedAt
 	mcpConfig.UpdatedAt = time.Now()
 
 	// Update database (only if persistent mode)

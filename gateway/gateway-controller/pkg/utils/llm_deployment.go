@@ -97,6 +97,10 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 
 // DeployLLMProviderConfiguration parses, validates, transforms and persists the provider, then triggers xDS
 func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var providerConfig api.LLMProviderConfiguration
 	var apiConfig api.RestAPI
 
@@ -222,6 +226,10 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 
 // DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
 func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var proxyConfig api.LLMProxyConfiguration
 	var apiConfig api.RestAPI
 
