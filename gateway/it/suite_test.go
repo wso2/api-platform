@@ -91,6 +91,7 @@ func getFeaturePaths() []string {
 		"features/metrics.feature",
 		"features/api_deploy.feature",
 		"features/mcp_deploy.feature",
+		"features/mcp_policies.feature",
 		"features/ratelimit.feature",
 		"features/jwt-auth.feature",
 		"features/cors.feature",

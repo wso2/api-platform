@@ -136,12 +136,12 @@ Feature: The how MCP Proxies behave when various policies are applied.
                           type: "tool"
                           name: "add"
                         requiredScopes:
-                          - "mcp:tools:add"
+                          - "add-scope"
                       - attribute:
                           type: "tool"
                           name: "echo"
                         requiredScopes:
-                          - "mcp:tools:echo"
+                          - "echo-scope"
             """
         
         Then the response should be successful
@@ -156,7 +156,7 @@ Feature: The how MCP Proxies behave when various policies are applied.
         And I use the MCP Client to send a tools/call request to "http://localhost:8080/mcpauthz/mcp" with the JWT token
         Then the response status code should be 403
         And the response header "WWW-Authenticate" should contain "http://localhost:8080/mcpauthz/.well-known/oauth-protected-resource"
-        And the response header "WWW-Authenticate" should contain "mcp:tools:add"
+        And the response header "WWW-Authenticate" should contain "add-scope"
 
         And I send a GET request to "http://localhost:8080/mcpauthz/.well-known/oauth-protected-resource"
         Then the response should be successful
@@ -167,4 +167,59 @@ Feature: The how MCP Proxies behave when various policies are applied.
         And I clear all headers
         Given I authenticate using basic auth as "admin"
         When I delete the MCP proxy "mcp-authz-test"
+        Then the response should be successful
+
+    Scenario: Deploy an MCP Proxy with mcp-authz and verify access with a valid token having required scopes
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-authz-valid-token-test
+            spec:
+              displayName: MCP AuthZ Valid Token Test
+              version: v1.0
+              context: /mcpauthzvalidtoken
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: mcp-auth
+                  version: v0
+                  params:
+                    issuers:
+                      - mock-jwks
+                - name: mcp-authz
+                  version: v0
+                  params:
+                    rules:
+                      - attribute:
+                          type: "tool"
+                          name: "add"
+                        requiredScopes:
+                          - "add-scope"
+                      - attribute:
+                          type: "tool"
+                          name: "echo"
+                        requiredScopes:
+                          - "echo-scope"
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "add-scope"
+        And I use the MCP Client to send an initialize request to "http://localhost:8080/mcpauthzvalidtoken/mcp" with the JWT token
+        Then the response should be successful
+
+        And I use the MCP Client to send a tools/call request to "http://localhost:8080/mcpauthzvalidtoken/mcp" with the JWT token
+        Then the response should be successful
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-authz-valid-token-test"
         Then the response should be successful
