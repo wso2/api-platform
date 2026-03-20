@@ -40,10 +40,10 @@ type llmProviderTemplateAuthYAML struct {
 }
 
 type llmProviderTemplateMetadataYAML struct {
-	EndpointURL string                       `yaml:"endpointUrl"`
-	Auth        *llmProviderTemplateAuthYAML `yaml:"auth"`
-	LogoURL     string                       `yaml:"logoUrl"`
-	OpenapiSpecURL string                    `yaml:"openapiSpecUrl"`
+	EndpointURL    string                       `yaml:"endpointUrl"`
+	Auth           *llmProviderTemplateAuthYAML `yaml:"auth"`
+	LogoURL        string                       `yaml:"logoUrl"`
+	OpenapiSpecURL string                       `yaml:"openapiSpecUrl"`
 }
 
 type llmProviderTemplateYAML struct {
@@ -53,14 +53,14 @@ type llmProviderTemplateYAML struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
 	Spec struct {
-		DisplayName      string                           `yaml:"displayName"`
-		Metadata         *llmProviderTemplateMetadataYAML `yaml:"metadata"`
-		PromptTokens     *extractionIdentifierYAML        `yaml:"promptTokens"`
-		CompletionTokens *extractionIdentifierYAML        `yaml:"completionTokens"`
-		TotalTokens      *extractionIdentifierYAML        `yaml:"totalTokens"`
-		RemainingTokens  *extractionIdentifierYAML        `yaml:"remainingTokens"`
-		RequestModel     *extractionIdentifierYAML        `yaml:"requestModel"`
-		ResponseModel    *extractionIdentifierYAML        `yaml:"responseModel"`
+		DisplayName      string                                   `yaml:"displayName"`
+		Metadata         *llmProviderTemplateMetadataYAML         `yaml:"metadata"`
+		PromptTokens     *extractionIdentifierYAML                `yaml:"promptTokens"`
+		CompletionTokens *extractionIdentifierYAML                `yaml:"completionTokens"`
+		TotalTokens      *extractionIdentifierYAML                `yaml:"totalTokens"`
+		RemainingTokens  *extractionIdentifierYAML                `yaml:"remainingTokens"`
+		RequestModel     *extractionIdentifierYAML                `yaml:"requestModel"`
+		ResponseModel    *extractionIdentifierYAML                `yaml:"responseModel"`
 		ResourceMappings *llmProviderTemplateResourceMappingsYAML `yaml:"resourceMappings"`
 	} `yaml:"spec"`
 }
@@ -128,8 +128,14 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 			RemainingTokens:  mapExtractionIdentifier(doc.Spec.RemainingTokens),
 			RequestModel:     mapExtractionIdentifier(doc.Spec.RequestModel),
 			ResponseModel:    mapExtractionIdentifier(doc.Spec.ResponseModel),
-			ResourceMappings: mapTemplateResourceMappings(doc.Spec.ResourceMappings),
+			ResourceMappings: nil,
 		})
+
+		resourceMappings, mapErr := mapTemplateResourceMappings(doc.Spec.ResourceMappings)
+		if mapErr != nil {
+			return nil, fmt.Errorf("template file %s has invalid spec.resourceMappings: %w", filePath, mapErr)
+		}
+		res[len(res)-1].ResourceMappings = resourceMappings
 	}
 
 	return res, nil
@@ -158,9 +164,9 @@ func mapTemplateMetadata(in *llmProviderTemplateMetadataYAML) *model.LLMProvider
 		}
 	}
 	out := &model.LLMProviderTemplateMetadata{
-		EndpointURL: strings.TrimSpace(in.EndpointURL),
-		Auth:        auth,
-		LogoURL:     strings.TrimSpace(in.LogoURL),
+		EndpointURL:    strings.TrimSpace(in.EndpointURL),
+		Auth:           auth,
+		LogoURL:        strings.TrimSpace(in.LogoURL),
 		OpenapiSpecURL: strings.TrimSpace(in.OpenapiSpecURL),
 	}
 	if out.EndpointURL == "" && out.LogoURL == "" && out.Auth == nil && out.OpenapiSpecURL == "" {
@@ -169,15 +175,18 @@ func mapTemplateMetadata(in *llmProviderTemplateMetadataYAML) *model.LLMProvider
 	return out
 }
 
-func mapTemplateResourceMappings(in *llmProviderTemplateResourceMappingsYAML) *model.LLMProviderTemplateResourceMappings {
+func mapTemplateResourceMappings(in *llmProviderTemplateResourceMappingsYAML) (*model.LLMProviderTemplateResourceMappings, error) {
 	if in == nil {
-		return nil
+		return nil, nil
 	}
 	out := &model.LLMProviderTemplateResourceMappings{}
 	if len(in.Resources) > 0 {
 		resources := make([]model.LLMProviderTemplateResourceMapping, 0, len(in.Resources))
 		for _, r := range in.Resources {
-			mapped := mapTemplateResourceMapping(&r)
+			mapped, err := mapTemplateResourceMapping(&r)
+			if err != nil {
+				return nil, err
+			}
 			if mapped != nil {
 				resources = append(resources, *mapped)
 			}
@@ -185,17 +194,21 @@ func mapTemplateResourceMappings(in *llmProviderTemplateResourceMappingsYAML) *m
 		out.Resources = resources
 	}
 	if len(out.Resources) == 0 {
-		return nil
+		return nil, nil
 	}
-	return out
+	return out, nil
 }
 
-func mapTemplateResourceMapping(in *llmProviderTemplateResourceMappingYAML) *model.LLMProviderTemplateResourceMapping {
+func mapTemplateResourceMapping(in *llmProviderTemplateResourceMappingYAML) (*model.LLMProviderTemplateResourceMapping, error) {
 	if in == nil {
-		return nil
+		return nil, nil
+	}
+	resource, isValid := NormalizeAndValidateLLMResourcePath(in.Resource)
+	if !isValid {
+		return nil, fmt.Errorf("resource mapping resource must be a valid path pattern")
 	}
 	return &model.LLMProviderTemplateResourceMapping{
-		Resource: strings.TrimSpace(in.Resource),
+		Resource: resource,
 		LLMProviderTemplateExtractionFields: model.LLMProviderTemplateExtractionFields{
 			PromptTokens:     mapExtractionIdentifier(in.PromptTokens),
 			CompletionTokens: mapExtractionIdentifier(in.CompletionTokens),
@@ -204,5 +217,5 @@ func mapTemplateResourceMapping(in *llmProviderTemplateResourceMappingYAML) *mod
 			RequestModel:     mapExtractionIdentifier(in.RequestModel),
 			ResponseModel:    mapExtractionIdentifier(in.ResponseModel),
 		},
-	}
+	}, nil
 }

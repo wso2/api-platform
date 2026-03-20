@@ -3475,9 +3475,12 @@ components:
 
     LLMProviderTemplateResourceMapping:
       type: object
+      required:
+        - resource
       properties:
         resource:
           type: string
+          minLength: 1
           description: Resource path pattern for this mapping
           example: /responses
         promptTokens:

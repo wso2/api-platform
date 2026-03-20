@@ -131,8 +131,13 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
-		ResourceMappings: mapTemplateResourceMappingsAPI(req.ResourceMappings),
 	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
+
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, constants.ErrLLMProviderTemplateExists
@@ -215,8 +220,12 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		RemainingTokens:  mapExtractionIdentifierAPI(req.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
-		ResourceMappings: mapTemplateResourceMappingsAPI(req.ResourceMappings),
 	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1320,15 +1329,18 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 	}
 }
 
-func mapTemplateResourceMappingsAPI(in *api.LLMProviderTemplateResourceMappings) *model.LLMProviderTemplateResourceMappings {
+func mapTemplateResourceMappingsAPI(in *api.LLMProviderTemplateResourceMappings) (*model.LLMProviderTemplateResourceMappings, error) {
 	if in == nil {
-		return nil
+		return nil, nil
 	}
 	out := &model.LLMProviderTemplateResourceMappings{}
 	if in.Resources != nil {
 		resources := make([]model.LLMProviderTemplateResourceMapping, 0, len(*in.Resources))
 		for _, r := range *in.Resources {
-			mapped := mapTemplateResourceMappingAPI(&r)
+			mapped, err := mapTemplateResourceMappingAPI(&r)
+			if err != nil {
+				return nil, err
+			}
 			if mapped != nil {
 				resources = append(resources, *mapped)
 			}
@@ -1336,17 +1348,21 @@ func mapTemplateResourceMappingsAPI(in *api.LLMProviderTemplateResourceMappings)
 		out.Resources = resources
 	}
 	if len(out.Resources) == 0 {
-		return nil
+		return nil, nil
 	}
-	return out
+	return out, nil
 }
 
-func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) *model.LLMProviderTemplateResourceMapping {
+func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) (*model.LLMProviderTemplateResourceMapping, error) {
 	if in == nil {
-		return nil
+		return nil, nil
+	}
+	resource, isValid := utils.NormalizeAndValidateLLMResourcePath(in.Resource)
+	if !isValid {
+		return nil, fmt.Errorf("%w: resource mapping resource must be a valid path pattern", constants.ErrInvalidInput)
 	}
 	return &model.LLMProviderTemplateResourceMapping{
-		Resource: strings.TrimSpace(in.Resource),
+		Resource: resource,
 		LLMProviderTemplateExtractionFields: model.LLMProviderTemplateExtractionFields{
 			PromptTokens:     mapExtractionIdentifierAPI(in.PromptTokens),
 			CompletionTokens: mapExtractionIdentifierAPI(in.CompletionTokens),
@@ -1355,7 +1371,7 @@ func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) *
 			RequestModel:     mapExtractionIdentifierAPI(in.RequestModel),
 			ResponseModel:    mapExtractionIdentifierAPI(in.ResponseModel),
 		},
-	}
+	}, nil
 }
 
 func mapTemplateResourceMappingsModelToAPI(in *model.LLMProviderTemplateResourceMappings) *api.LLMProviderTemplateResourceMappings {

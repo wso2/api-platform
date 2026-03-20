@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
@@ -34,6 +35,8 @@ type LLMValidator struct {
 	versionRegex *regexp.Regexp
 	// metadataNameRegex matches URL-safe characters for Metadata.Name
 	metadataNameRegex *regexp.Regexp
+	// resourcePathRegex matches safe absolute resource paths
+	resourcePathRegex *regexp.Regexp
 }
 
 // NewLLMValidator creates a new LLM configuration validator
@@ -41,6 +44,7 @@ func NewLLMValidator() *LLMValidator {
 	return &LLMValidator{
 		versionRegex:      regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		metadataNameRegex: regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`),
+		resourcePathRegex: regexp.MustCompile(`^/[A-Za-z0-9_.\-/:]*$`),
 	}
 }
 
@@ -193,11 +197,18 @@ func (v *LLMValidator) validateTemplateResourceMappings(fieldPrefix string,
 	}
 
 	if mappings.Resources != nil {
-		for i := range *mappings.Resources {
-			errors = append(errors, v.validateTemplateResourceMapping(
-				fmt.Sprintf("%s.resources[%d]", fieldPrefix, i),
-				&(*mappings.Resources)[i],
-			)...)
+		if len(*mappings.Resources) == 0 {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.resources", fieldPrefix),
+				Message: "resources must be non-empty",
+			})
+		} else {
+			for i := range *mappings.Resources {
+				errors = append(errors, v.validateTemplateResourceMapping(
+					fmt.Sprintf("%s.resources[%d]", fieldPrefix, i),
+					&(*mappings.Resources)[i],
+				)...)
+			}
 		}
 	}
 
@@ -212,14 +223,13 @@ func (v *LLMValidator) validateTemplateResourceMapping(fieldPrefix string,
 		return errors
 	}
 
-	resource := ""
-	if mapping.Resource != nil {
-		resource = strings.TrimSpace(*mapping.Resource)
-	}
-	if resource == "" {
+	resource := strings.TrimSpace(mapping.Resource)
+	hasSurroundingWhitespace := resource != mapping.Resource
+	if resource == "" || hasSurroundingWhitespace || !strings.HasPrefix(resource, "/") ||
+		strings.IndexFunc(resource, unicode.IsSpace) >= 0 || !v.resourcePathRegex.MatchString(resource) {
 		errors = append(errors, ValidationError{
 			Field:   fieldPrefix + ".resource",
-			Message: "resource is required",
+			Message: "resource must be an absolute path starting with '/' and contain no spaces",
 		})
 	}
 

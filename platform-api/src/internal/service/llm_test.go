@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"platform-api/src/api"
@@ -11,6 +12,37 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+func TestMapTemplateResourceMappingAPI_RejectsEmptyResource(t *testing.T) {
+	mapped, err := mapTemplateResourceMappingAPI(&api.LLMProviderTemplateResourceMapping{Resource: "   "})
+	if err == nil {
+		t.Fatal("expected error for empty resource")
+	}
+	if mapped != nil {
+		t.Fatal("expected mapped resource to be nil when validation fails")
+	}
+	if !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	}
+}
+
+func TestMapTemplateResourceMappingsAPI_StopsOnInvalidResource(t *testing.T) {
+	resources := []api.LLMProviderTemplateResourceMapping{
+		{Resource: "chat.completions"},
+		{Resource: "\t\n"},
+	}
+
+	mapped, err := mapTemplateResourceMappingsAPI(&api.LLMProviderTemplateResourceMappings{Resources: &resources})
+	if err == nil {
+		t.Fatal("expected error for invalid resource in mappings")
+	}
+	if mapped != nil {
+		t.Fatal("expected mapped resources to be nil when validation fails")
+	}
+	if !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	}
+}
 
 func TestNormalizeUpstreamAuthType(t *testing.T) {
 	tests := []struct {

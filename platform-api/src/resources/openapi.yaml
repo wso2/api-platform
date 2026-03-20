@@ -6826,6 +6826,7 @@ components:
       properties:
         resource:
           type: string
+          minLength: 1
           description: Resource path pattern this mapping applies to (for example /responses or /chat/*)
           example: /responses
         promptTokens:
