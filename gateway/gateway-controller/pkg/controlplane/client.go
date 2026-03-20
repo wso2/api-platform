@@ -1972,6 +1972,8 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1982,6 +1984,8 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -1990,6 +1994,8 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			slog.String("proxy_id", proxyID),
 			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -2000,14 +2006,21 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
 	// Update policy engine xDS snapshot (best-effort)
 	if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
 		// Error already logged in updatePolicyForDeployment
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+
+	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "success",
+		deployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed MCP proxy deployment event",
 		slog.String("proxy_id", proxyID),
@@ -2053,6 +2066,8 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 				slog.String("proxy_id", proxyID),
 			)
 			// Not an error - the MCP proxy might already be undeployed or deleted
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
 			return
 		}
 		// Real storage error - log and abort
@@ -2061,6 +2076,8 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -2075,6 +2092,8 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 				slog.String("proxy_id", proxyID),
 				slog.Any("error", err),
 			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 			return
 		}
 	}
@@ -2085,11 +2104,16 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
 	// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
 	c.updateXDSSnapshotAsync(proxyID, undeployedEvent.CorrelationID, false, true)
+
+	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "success",
+		undeployedEvent.Payload.PerformedAt, "")
 
 	c.logger.Info("Successfully processed MCP proxy undeployment event",
 		slog.String("proxy_id", proxyID),
