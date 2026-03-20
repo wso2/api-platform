@@ -20,6 +20,7 @@ package it
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -34,7 +35,7 @@ type JsonRPCRequest struct {
 }
 
 // RegisterMCPSteps registers all MCP related step definitions
-func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
+func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps, jwtSteps *JWTSteps) {
 	ctx.Step(`^I deploy this MCP configuration:$`, func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		err := httpSteps.SendPOSTToService("gateway-controller", "/mcp-proxies", body)
@@ -86,6 +87,30 @@ func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 	ctx.Step(`^I get the MCP proxy "([^"]*)"$`, func(name string) error {
 		return httpSteps.SendGETToService("gateway-controller", "/mcp-proxies/"+name)
+	})
+
+	ctx.Step(`^I use the MCP Client to send an initialize request to "([^"]*)" with the JWT token$`, func(url string) error {
+		if jwtSteps == nil || jwtSteps.currentToken == "" {
+			return fmt.Errorf("no JWT token available - call 'I get a JWT token from the mock JWKS server' first")
+		}
+		httpSteps.SetHeader("Content-Type", "application/json")
+		httpSteps.SetHeader("Authorization", "Bearer "+jwtSteps.currentToken)
+		payload := generateMcpPayload("initialize")
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
+	})
+
+	ctx.Step(`^I use the MCP Client to send a tools/call request to "([^"]*)" with the JWT token$`, func(url string) error {
+		if jwtSteps == nil || jwtSteps.currentToken == "" {
+			return fmt.Errorf("no JWT token available - call 'I get a JWT token from the mock JWKS server' first")
+		}
+		httpSteps.SetHeader("Content-Type", "application/json")
+		httpSteps.SetHeader("Authorization", "Bearer "+jwtSteps.currentToken)
+		payload := generateMcpPayload("tools/call")
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
 	})
 }
 
