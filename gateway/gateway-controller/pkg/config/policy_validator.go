@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"strings"
 
+	versionutil "github.com/wso2/api-platform/common/version"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/xeipuuv/gojsonschema"
@@ -145,7 +146,20 @@ func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, e
 func ResolvePolicyVersion(definitions map[string]models.PolicyDefinition, name, version string) (string, error) {
 	trimmed := strings.TrimSpace(version)
 	if trimmed == "" {
-		return "", fmt.Errorf("policy '%s' version is required", name)
+		// No version specified: resolve to the latest available full version for this policy.
+		var latestFull string
+		for _, def := range definitions {
+			if def.Name != name || !fullSemverPattern.MatchString(def.Version) {
+				continue
+			}
+			if latestFull == "" || versionutil.CompareSemver(def.Version, latestFull) > 0 {
+				latestFull = def.Version
+			}
+		}
+		if latestFull == "" {
+			return "", fmt.Errorf("policy '%s' not found in loaded policy definitions", name)
+		}
+		return latestFull, nil
 	}
 
 	// Full semantic version (e.g., v1.0.0) – reject; only major-only is allowed

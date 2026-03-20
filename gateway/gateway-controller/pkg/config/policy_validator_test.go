@@ -726,6 +726,89 @@ func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 	}
 }
 
+// TestPolicyValidator_EmptyVersion_ResolvesToLatest ensures that an empty version
+// string resolves to the latest available policy version.
+func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"MyPolicy|v0.1.0": {Name: "MyPolicy", Version: "v0.1.0"},
+		"MyPolicy|v0.2.0": {Name: "MyPolicy", Version: "v0.2.0"},
+		"MyPolicy|v1.0.0": {Name: "MyPolicy", Version: "v1.0.0"},
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "MyPolicy",
+					Version: "", // empty — should resolve to v1.0.0
+				},
+			},
+			Operations: []api.Operation{{Method: "GET", Path: "/resource"}},
+		},
+	}
+
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
+	if len(errors) > 0 {
+		t.Errorf("Expected no validation errors for empty version, got %d: %v", len(errors), errors)
+	}
+}
+
+// TestPolicyValidator_EmptyVersion_PolicyNotFound ensures an error is returned
+// when the policy name does not exist in definitions and version is empty.
+func TestPolicyValidator_EmptyVersion_PolicyNotFound(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "NonExistentPolicy",
+					Version: "",
+				},
+			},
+			Operations: []api.Operation{{Method: "GET", Path: "/resource"}},
+		},
+	}
+
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
+	if len(errors) == 0 {
+		t.Error("Expected validation error when policy not found and version is empty")
+	}
+	if len(errors) > 0 && !contains(errors[0].Message, "not found") {
+		t.Errorf("Expected 'not found' error, got: %s", errors[0].Message)
+	}
+}
+
 // Helper functions
 func boolPtr(b bool) *bool {
 	return &b
