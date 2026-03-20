@@ -175,26 +175,39 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectID stri
 		return nil, constants.ErrProjectNotFound
 	}
 
-	apps, err := s.appRepo.GetApplicationsByProjectIDPaginated(projectID, orgID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	totalCount, err := s.appRepo.CountApplicationsByProjectID(projectID, orgID)
+	apps, err := s.appRepo.GetApplicationsByProjectID(projectID, orgID)
 	if err != nil {
 		return nil, err
 	}
 
+	totalCount := len(apps)
+	if offset > totalCount {
+		offset = totalCount
+	}
+
+	end := totalCount
+	effectiveLimit := totalCount
+	if limit > 0 {
+		effectiveLimit = limit
+		end = offset + limit
+		if end > totalCount {
+			end = totalCount
+		}
+	}
+
+	pagedApps := apps[offset:end]
+
 	response := &api.ApplicationListResponse{
-		Count: len(apps),
-		List:  make([]api.Application, 0, len(apps)),
+		Count: len(pagedApps),
+		List:  make([]api.Application, 0, len(pagedApps)),
 		Pagination: api.Pagination{
 			Total:  totalCount,
 			Offset: offset,
-			Limit:  limit,
+			Limit:  effectiveLimit,
 		},
 	}
 
-	for _, app := range apps {
+	for _, app := range pagedApps {
 		mapped := s.modelToApplicationResponse(app)
 		if mapped != nil {
 			response.List = append(response.List, *mapped)
@@ -449,6 +462,8 @@ func (s *ApplicationService) buildMappedAPIKeyList(applicationUUID string) (*api
 }
 
 func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID string, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
+	// TODO: Keep pagination at service layer for now. Re-enable DB-level pagination
+	// once query compatibility is validated across all supported database drivers.
 	keys, err := s.appRepo.ListMappedAPIKeys(applicationUUID)
 	if err != nil {
 		return nil, err

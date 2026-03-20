@@ -60,6 +60,20 @@ func (m *mockApplicationRepository) GetApplicationByIDOrHandle(appIDOrHandle, or
 	return m.app, m.appErr
 }
 
+func (m *mockApplicationRepository) GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error) {
+	if m.appErr != nil {
+		return nil, m.appErr
+	}
+	return m.applications, nil
+}
+
+func (m *mockApplicationRepository) GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error) {
+	if m.appErr != nil {
+		return nil, m.appErr
+	}
+	return m.applications, nil
+}
+
 func (m *mockApplicationRepository) GetApplicationsByProjectIDPaginated(projectID, orgID string, limit, offset int) ([]*model.Application, error) {
 	if m.appErr != nil {
 		return nil, m.appErr
@@ -298,7 +312,7 @@ func TestListMappedAPIKeys_AppliesPagination(t *testing.T) {
 	}
 }
 
-func TestListMappedAPIKeys_LimitZeroReturnsAll(t *testing.T) {
+func TestListMappedAPIKeys_LimitOneReturnsFirstPage(t *testing.T) {
 	createdAt := time.Now().Add(-time.Hour)
 	updatedAt := time.Now()
 
@@ -312,19 +326,28 @@ func TestListMappedAPIKeys_LimitZeroReturnsAll(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo}
 
-	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 0, 0)
+	resp, err := svc.ListMappedAPIKeys("my-app", "org-1", 1, 0)
 	if err != nil {
 		t.Fatalf("ListMappedAPIKeys returned error: %v", err)
 	}
 
-	if resp.Count != 2 {
-		t.Fatalf("expected count 2, got %d", resp.Count)
+	if resp.Count != 1 {
+		t.Fatalf("expected count 1, got %d", resp.Count)
 	}
-	if len(resp.List) != 2 {
-		t.Fatalf("expected 2 mappings, got %d", len(resp.List))
+	if len(resp.List) != 1 {
+		t.Fatalf("expected 1 mapping, got %d", len(resp.List))
+	}
+	if resp.List[0].KeyId != "key-1" {
+		t.Fatalf("expected first page keyId key-1, got %s", resp.List[0].KeyId)
 	}
 	if resp.Pagination.Total != 2 {
 		t.Fatalf("expected total 2, got %d", resp.Pagination.Total)
+	}
+	if resp.Pagination.Limit != 1 {
+		t.Fatalf("expected limit 1, got %d", resp.Pagination.Limit)
+	}
+	if resp.Pagination.Offset != 0 {
+		t.Fatalf("expected offset 0, got %d", resp.Pagination.Offset)
 	}
 }
 
