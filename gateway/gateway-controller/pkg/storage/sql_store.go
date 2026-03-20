@@ -50,12 +50,7 @@ type sqlStore struct {
 
 	rebindQuery func(string) string
 
-	isConfigUniqueViolation           func(error) bool
-	isCertificateUniqueViolation      func(error) bool
-	isTemplateUniqueViolation         func(error) bool
-	isAPIKeyUniqueViolation           func(error) bool
-	isSubscriptionUniqueViolation     func(error) bool
-	isSubscriptionPlanUniqueViolation func(error) bool
+	isUniqueViolation func(error) bool
 
 	backendName string
 }
@@ -68,12 +63,7 @@ func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId 
 		backendName: backendName,
 		// Defaults are identity/false; backends can override.
 		rebindQuery:                       func(query string) string { return query },
-		isConfigUniqueViolation:           func(error) bool { return false },
-		isCertificateUniqueViolation:      func(error) bool { return false },
-		isTemplateUniqueViolation:         func(error) bool { return false },
-		isAPIKeyUniqueViolation:           func(error) bool { return false },
-		isSubscriptionUniqueViolation:     func(error) bool { return false },
-		isSubscriptionPlanUniqueViolation: func(error) bool { return false },
+		isUniqueViolation: func(error) bool { return false },
 	}
 }
 
@@ -237,7 +227,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 
 	if err != nil {
 		// Check for unique constraint violation
-		if s.isConfigUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists", ErrConflict, cfg.DisplayName, cfg.Version)
 		}
 		return fmt.Errorf("failed to insert configuration: %w", err)
@@ -787,7 +777,7 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 
 	if err != nil {
 		// Check for unique constraint violation
-		if s.isTemplateUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
@@ -834,7 +824,7 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 	)
 
 	if err != nil {
-		if s.isTemplateUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to update template: %w", err)
@@ -984,7 +974,7 @@ func (s *sqlStore) SaveCertificate(cert *models.StoredCertificate) error {
 
 	if err != nil {
 		// Check for unique constraint violation
-		if s.isCertificateUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: certificate with name '%s' already exists", ErrConflict, cert.Name)
 		}
 		return fmt.Errorf("failed to save certificate: %w", err)
@@ -1186,7 +1176,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 		if err != nil {
 			tx.Rollback()
 			// Check for unique constraint violation on api_key field
-			if s.isAPIKeyUniqueViolation(err) {
+			if s.isUniqueViolation(err) {
 				return fmt.Errorf("%w: API key value already exists", ErrConflict)
 			}
 			return fmt.Errorf("failed to insert API key: %w", err)
@@ -1486,7 +1476,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	if err != nil {
 		tx.Rollback()
 		// Check for unique constraint violation on api_key field
-		if s.isAPIKeyUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: API key value already exists", ErrConflict)
 		}
 		return fmt.Errorf("failed to update API key: %w", err)
@@ -1776,7 +1766,7 @@ func (s *sqlStore) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
 		plan.StopOnQuotaReach, plan.ThrottleLimitCount, plan.ThrottleLimitUnit,
 		plan.ExpiryTime, string(plan.Status), plan.CreatedAt, plan.UpdatedAt)
 	if err != nil {
-		if s.isSubscriptionPlanUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: subscription plan already exists", ErrConflict)
 		}
 		return fmt.Errorf("failed to insert subscription plan: %w", err)
@@ -1938,7 +1928,7 @@ func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
 	_, err := s.exec(query, sub.ID, s.gatewayId, sub.APIID, sub.ApplicationID,
 		tokenHash, sub.SubscriptionPlanID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
 	if err != nil {
-		if s.isSubscriptionUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: subscription token already exists for this API", ErrConflict)
 		}
 		return fmt.Errorf("failed to insert subscription: %w", err)

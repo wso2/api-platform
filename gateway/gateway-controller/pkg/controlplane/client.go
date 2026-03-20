@@ -19,12 +19,14 @@
 package controlplane
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -120,10 +122,11 @@ type Client struct {
 	routerConfig                *config.RouterConfig
 	policyManager               *policyxds.PolicyManager
 	systemConfig                *config.Config
-	policyDefinitions           map[string]api.PolicyDefinition
+	policyDefinitions           map[string]models.PolicyDefinition
 	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
+	gatewayPath                 string // cached gateway path from well-known discovery
 }
 
 // NewClient creates a new control plane client
@@ -139,7 +142,7 @@ func NewClient(
 	apiKeyConfig *config.APIKeyConfig,
 	policyManager *policyxds.PolicyManager,
 	systemConfig *config.Config,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	subSnapshotManager *subscriptionxds.SnapshotManager,
@@ -207,6 +210,7 @@ func NewClient(
 		db,
 		snapshotManager,
 		policyManager,
+		policyValidator,
 	)
 
 	// Initialize API utils service with the proper base URL using the method
@@ -368,6 +372,13 @@ func (c *Client) Connect() error {
 		c.syncSubscriptionsForExistingAPIs(gwID)
 	}(gatewayID)
 
+	// Push gateway manifest to the control plane on connect
+	c.wg.Add(1)
+	go func(gwID string) {
+		defer c.wg.Done()
+		c.pushGatewayManifestOnConnect(gwID)
+	}(gatewayID)
+
 	// Start heartbeat monitor
 	c.wg.Add(1)
 	go c.heartbeatMonitor()
@@ -375,7 +386,7 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1/ws"}.
+// gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1"}.
 // Extra fields from the server are ignored.
 type gatewayWellKnownResponse struct {
 	GatewayPath string `json:"gatewayPath"`
@@ -383,7 +394,22 @@ type gatewayWellKnownResponse struct {
 
 // resolveWebSocketConnectURL resolves the registration URL using the control plane well-known endpoint.
 // Falls back to the default configured URL when discovery fails.
+// The discovered gateway path is cached for reuse within the file.
 func (c *Client) resolveWebSocketConnectURL() string {
+	// Use cached gateway path if available (read under lock)
+	c.state.mu.RLock()
+	cachedPath := c.gatewayPath
+	c.state.mu.RUnlock()
+
+	if cachedPath != "" {
+		resolvedURL := fmt.Sprintf("wss://%s%s/ws/gateways/connect", c.config.Host, cachedPath)
+		c.logger.Debug("Using cached gateway path for WebSocket connect URL",
+			slog.String("gateway_path", cachedPath),
+			slog.String("resolved_url", resolvedURL),
+		)
+		return resolvedURL
+	}
+
 	gatewayPath, err := c.discoverGatewayPath()
 	if err != nil {
 		c.logger.Debug("Failed to resolve gateway path from well-known endpoint, falling back to configured URL",
@@ -392,13 +418,29 @@ func (c *Client) resolveWebSocketConnectURL() string {
 		return c.getWebSocketConnectURL()
 	}
 
-	resolvedURL := fmt.Sprintf("wss://%s%s/gateways/connect", c.config.Host, gatewayPath)
+	// Cache the discovered gateway path for future use (write under lock)
+	c.state.mu.Lock()
+	c.gatewayPath = gatewayPath
+	c.state.mu.Unlock()
+
+	// Update apiUtilsService base URL to use the discovered gateway path
+	c.apiUtilsService.SetBaseURL(c.getRestAPIBaseURL())
+
+	resolvedURL := fmt.Sprintf("wss://%s%s/ws/gateways/connect", c.config.Host, gatewayPath)
 	c.logger.Debug("Resolved WebSocket connect URL from well-known endpoint",
 		slog.String("gateway_path", gatewayPath),
 		slog.String("resolved_url", resolvedURL),
 	)
 
 	return resolvedURL
+}
+
+// GetGatewayPath returns the cached gateway path discovered from the well-known endpoint.
+// Returns an empty string if the path has not been discovered yet.
+func (c *Client) GetGatewayPath() string {
+	c.state.mu.RLock()
+	defer c.state.mu.RUnlock()
+	return c.gatewayPath
 }
 
 // discoverGatewayPath fetches the gateway websocket base path from the control plane well-known endpoint.
@@ -3019,6 +3061,106 @@ func (c *Client) getWebSocketConnectURL() string {
 }
 
 // getRestAPIBaseURL constructs the base REST API URL from configuration.
+// Uses the discovered gateway path if available, otherwise falls back to default.
 func (c *Client) getRestAPIBaseURL() string {
+	c.state.mu.RLock()
+	path := c.gatewayPath
+	c.state.mu.RUnlock()
+
+	if path != "" {
+		return fmt.Sprintf("https://%s%s", c.config.Host, path)
+	}
 	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
+}
+
+// pushGatewayManifest POSTs the gateway's installed policy manifest to the control plane.
+func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyDefinition) error {
+	url := c.getRestAPIBaseURL() + "/gateways/" + gatewayID + "/manifest"
+
+	body := struct {
+		Policies []models.PolicyDefinition `json:"policies"`
+	}{Policies: policies}
+
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest payload: %w", err)
+	}
+
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: c.config.InsecureSkipVerify,
+			},
+		},
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create manifest request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", c.config.Token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send gateway manifest: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("gateway manifest push failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
+
+// pushGatewayManifestOnConnect collects all loaded policy definitions and POSTs
+// them to the control plane immediately after the connection is established.
+func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
+	c.logger.Info("Pushing gateway manifest on connect",
+		slog.String("gateway_id", gatewayID),
+	)
+
+	policies := make([]models.PolicyDefinition, 0, len(c.policyDefinitions))
+	for _, def := range c.policyDefinitions {
+		policies = append(policies, def)
+	}
+
+	const maxRetries = 3
+	var pushErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		pushErr = c.pushGatewayManifest(gatewayID, policies)
+		if pushErr == nil {
+			break
+		}
+		c.logger.Warn("Failed to push gateway manifest, retrying",
+			slog.String("gateway_id", gatewayID),
+			slog.Int("attempt", attempt),
+			slog.Int("max_retries", maxRetries),
+			slog.Any("error", pushErr),
+		)
+		if attempt < maxRetries {
+			select {
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			case <-c.ctx.Done():
+				c.logger.Warn("Context cancelled, aborting gateway manifest push retries",
+					slog.String("gateway_id", gatewayID))
+				return
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
+		}
+	}
+	if pushErr != nil {
+		c.logger.Error("Failed to push gateway manifest after all retries",
+			slog.String("gateway_id", gatewayID),
+			slog.Any("error", pushErr),
+		)
+		return
+	}
+
+	c.logger.Info("Successfully pushed gateway manifest to control plane",
+		slog.String("gateway_id", gatewayID),
+		slog.Int("policy_count", len(policies)),
+	)
 }

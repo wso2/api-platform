@@ -37,6 +37,8 @@ type MCPValidator struct {
 	urlFriendlyNameRegex *regexp.Regexp
 	// supported MCP specification version
 	supportedSpecVersions []string
+	// policyValidator validates policies referenced in the MCP configuration
+	policyValidator *PolicyValidator
 }
 
 // NewMCPValidator creates a new API configuration validator
@@ -45,6 +47,12 @@ func NewMCPValidator() *MCPValidator {
 		versionRegex:          regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		urlFriendlyNameRegex:  regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
 		supportedSpecVersions: []string{constants.SPEC_VERSION_2025_JUNE, constants.SPEC_VERSION_2025_NOVEMBER}}
+}
+
+// WithPolicyValidator sets the policy validator on the MCPValidator and returns it for chaining
+func (v *MCPValidator) WithPolicyValidator(pv *PolicyValidator) *MCPValidator {
+	v.policyValidator = pv
+	return v
 }
 
 // Validate performs comprehensive validation on a configuration
@@ -90,6 +98,11 @@ func (v *MCPValidator) validateMCPConfiguration(config *api.MCPProxyConfiguratio
 
 	// Validate data section
 	errors = append(errors, v.validateSpec(&config.Spec)...)
+
+	// Validate policies if a policy validator is configured
+	if v.policyValidator != nil {
+		errors = append(errors, v.policyValidator.ValidateMCPProxyPolicies(config)...)
+	}
 
 	return errors
 }

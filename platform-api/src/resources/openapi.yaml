@@ -1967,6 +1967,32 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateways/{gatewayId}/manifest:
+    get:
+      summary: Get gateway policy manifest
+      description: |
+        Returns the policy manifest for the specified gateway. The manifest is populated by the gateway
+        controller when it connects to the platform API, and contains all installed policies. Custom
+        policies additionally include their full policy definition schema.
+      operationId: GetGatewayManifest
+      tags:
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/GatewayID'
+      responses:
+        '200':
+          description: Gateway policy manifest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManifestSyncResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /status/gateways:
     get:
       summary: Get gateway status
@@ -5047,6 +5073,49 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
+
+    GatewayPolicyDefinition:
+      type: object
+      description: A policy installed on a gateway controller.
+      required:
+        - name
+        - version
+        - isCustomPolicy
+      properties:
+        name:
+          type: string
+          description: Unique policy name
+          example: "set-wso2-headers"
+        version:
+          type: string
+          description: Semantic version of the policy
+          example: "v0.8.0"
+        description:
+          type: string
+          description: Human-readable description of the policy
+          example: "Sets WSO2-specific headers in the request and response."
+        isCustomPolicy:
+          type: boolean
+          description: Whether this is a user-installed custom policy.
+          example: true
+        policyDefinition:
+          type: object
+          description: |
+            The full policy schema as declared in the policy's policy-definition.yaml.
+            Contains `parameters` and `systemParameters` JSON Schema documents.
+            Only present for custom policies.
+          additionalProperties: true
+
+    ManifestSyncResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          description: |
+            All policies installed on the gateway. Each entry includes name, version, and isCustomPolicy.
+            Custom policies additionally include policyDefinition with their parameters and systemParameters schemas.
+          items:
+            $ref: '#/components/schemas/GatewayPolicyDefinition'
 
     GatewayResponse:
       type: object

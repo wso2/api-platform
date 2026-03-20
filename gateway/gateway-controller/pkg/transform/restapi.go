@@ -38,14 +38,14 @@ import (
 type RestAPITransformer struct {
 	routerConfig      *config.RouterConfig
 	systemConfig      *config.Config
-	policyDefinitions map[string]api.PolicyDefinition
+	policyDefinitions map[string]models.PolicyDefinition
 }
 
 // NewRestAPITransformer creates a new RestAPITransformer.
 func NewRestAPITransformer(
 	routerConfig *config.RouterConfig,
 	systemConfig *config.Config,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 ) *RestAPITransformer {
 	return &RestAPITransformer{
 		routerConfig:      routerConfig,
