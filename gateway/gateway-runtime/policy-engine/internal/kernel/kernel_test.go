@@ -19,8 +19,6 @@
 package kernel
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,166 +35,50 @@ func TestNewKernel(t *testing.T) {
 	kernel := NewKernel()
 
 	require.NotNil(t, kernel)
-	assert.NotNil(t, kernel.Routes)
-	assert.Empty(t, kernel.Routes)
+	assert.NotNil(t, kernel.PolicyChains)
+	assert.Empty(t, kernel.PolicyChains)
+	assert.NotNil(t, kernel.RouteConfigs)
+	assert.Empty(t, kernel.RouteConfigs)
 }
 
 // =============================================================================
-// Route Registration Tests
+// GetPolicyChain Tests
 // =============================================================================
 
-func TestRegisterRoute(t *testing.T) {
+func TestGetPolicyChain_Exists(t *testing.T) {
 	kernel := NewKernel()
 	chain := &registry.PolicyChain{}
+	kernel.PolicyChains["my-route"] = chain
 
-	kernel.RegisterRoute("test-route", chain)
-
-	assert.Len(t, kernel.Routes, 1)
-	assert.Equal(t, chain, kernel.Routes["test-route"])
-}
-
-func TestRegisterRoute_Multiple(t *testing.T) {
-	kernel := NewKernel()
-	chain1 := &registry.PolicyChain{}
-	chain2 := &registry.PolicyChain{}
-
-	kernel.RegisterRoute("route-1", chain1)
-	kernel.RegisterRoute("route-2", chain2)
-
-	assert.Len(t, kernel.Routes, 2)
-	assert.Equal(t, chain1, kernel.Routes["route-1"])
-	assert.Equal(t, chain2, kernel.Routes["route-2"])
-}
-
-func TestRegisterRoute_OverwriteExisting(t *testing.T) {
-	kernel := NewKernel()
-	chain1 := &registry.PolicyChain{}
-	chain2 := &registry.PolicyChain{}
-
-	kernel.RegisterRoute("test-route", chain1)
-	kernel.RegisterRoute("test-route", chain2)
-
-	assert.Len(t, kernel.Routes, 1)
-	assert.Equal(t, chain2, kernel.Routes["test-route"])
-}
-
-// =============================================================================
-// GetPolicyChainForKey Tests
-// =============================================================================
-
-func TestGetPolicyChainForKey_Exists(t *testing.T) {
-	kernel := NewKernel()
-	chain := &registry.PolicyChain{}
-
-	kernel.RegisterRoute("my-route", chain)
-
-	result := kernel.GetPolicyChainForKey("my-route")
+	result := kernel.GetPolicyChain("my-route")
 
 	assert.Equal(t, chain, result)
 }
 
-func TestGetPolicyChainForKey_NotExists(t *testing.T) {
+func TestGetPolicyChain_NotExists(t *testing.T) {
 	kernel := NewKernel()
 
-	result := kernel.GetPolicyChainForKey("nonexistent")
-
-	assert.Nil(t, result)
-}
-
-func TestGetPolicyChainForKey_EmptyKey(t *testing.T) {
-	kernel := NewKernel()
-
-	result := kernel.GetPolicyChainForKey("")
+	result := kernel.GetPolicyChain("nonexistent")
 
 	assert.Nil(t, result)
 }
 
 // =============================================================================
-// UnregisterRoute Tests
+// ApplyWholePolicyChains Tests
 // =============================================================================
 
-func TestUnregisterRoute(t *testing.T) {
+func TestApplyWholePolicyChains_ReplaceAll(t *testing.T) {
 	kernel := NewKernel()
-	chain := &registry.PolicyChain{}
-
-	kernel.RegisterRoute("test-route", chain)
-	assert.Len(t, kernel.Routes, 1)
-
-	kernel.UnregisterRoute("test-route")
-	assert.Empty(t, kernel.Routes)
-}
-
-func TestUnregisterRoute_NonExistent(t *testing.T) {
-	kernel := NewKernel()
-
-	// Should not panic
-	kernel.UnregisterRoute("nonexistent")
-
-	assert.Empty(t, kernel.Routes)
-}
-
-func TestUnregisterRoute_PreservesOthers(t *testing.T) {
-	kernel := NewKernel()
-	chain1 := &registry.PolicyChain{}
-	chain2 := &registry.PolicyChain{}
-
-	kernel.RegisterRoute("route-1", chain1)
-	kernel.RegisterRoute("route-2", chain2)
-
-	kernel.UnregisterRoute("route-1")
-
-	assert.Len(t, kernel.Routes, 1)
-	assert.Nil(t, kernel.Routes["route-1"])
-	assert.Equal(t, chain2, kernel.Routes["route-2"])
-}
-
-// =============================================================================
-// ApplyWholeRoutes Tests
-// =============================================================================
-
-func TestApplyWholeRoutes_Empty(t *testing.T) {
-	kernel := NewKernel()
-	chain := &registry.PolicyChain{}
-	kernel.RegisterRoute("existing", chain)
-
-	kernel.ApplyWholeRoutes(map[string]*registry.PolicyChain{})
-
-	assert.Empty(t, kernel.Routes)
-}
-
-func TestApplyWholeRoutes_ReplaceAll(t *testing.T) {
-	kernel := NewKernel()
-	oldChain := &registry.PolicyChain{}
-	kernel.RegisterRoute("old-route", oldChain)
+	kernel.PolicyChains["old-route"] = &registry.PolicyChain{}
 
 	newChain := &registry.PolicyChain{}
-	newRoutes := map[string]*registry.PolicyChain{
+	kernel.ApplyWholePolicyChains(map[string]*registry.PolicyChain{
 		"new-route": newChain,
-	}
+	})
 
-	kernel.ApplyWholeRoutes(newRoutes)
-
-	assert.Len(t, kernel.Routes, 1)
-	assert.Nil(t, kernel.Routes["old-route"])
-	assert.Equal(t, newChain, kernel.Routes["new-route"])
-}
-
-func TestApplyWholeRoutes_MultipleRoutes(t *testing.T) {
-	kernel := NewKernel()
-
-	chain1 := &registry.PolicyChain{}
-	chain2 := &registry.PolicyChain{}
-	chain3 := &registry.PolicyChain{}
-
-	newRoutes := map[string]*registry.PolicyChain{
-		"route-1": chain1,
-		"route-2": chain2,
-		"route-3": chain3,
-	}
-
-	kernel.ApplyWholeRoutes(newRoutes)
-
-	assert.Len(t, kernel.Routes, 3)
+	assert.Len(t, kernel.PolicyChains, 1)
+	assert.Nil(t, kernel.PolicyChains["old-route"])
+	assert.Equal(t, newChain, kernel.PolicyChains["new-route"])
 }
 
 // =============================================================================
@@ -217,8 +99,8 @@ func TestDumpRoutes_ReturnsAllRoutes(t *testing.T) {
 	chain1 := &registry.PolicyChain{}
 	chain2 := &registry.PolicyChain{}
 
-	kernel.RegisterRoute("route-1", chain1)
-	kernel.RegisterRoute("route-2", chain2)
+	kernel.PolicyChains["route-1"] = chain1
+	kernel.PolicyChains["route-2"] = chain2
 
 	dump := kernel.DumpRoutes()
 
@@ -230,7 +112,7 @@ func TestDumpRoutes_ReturnsAllRoutes(t *testing.T) {
 func TestDumpRoutes_ReturnsCopy(t *testing.T) {
 	kernel := NewKernel()
 	chain := &registry.PolicyChain{}
-	kernel.RegisterRoute("route", chain)
+	kernel.PolicyChains["route"] = chain
 
 	dump := kernel.DumpRoutes()
 
@@ -238,8 +120,8 @@ func TestDumpRoutes_ReturnsCopy(t *testing.T) {
 	dump["new-route"] = &registry.PolicyChain{}
 
 	// Original should be unchanged
-	assert.Len(t, kernel.Routes, 1)
-	assert.Nil(t, kernel.Routes["new-route"])
+	assert.Len(t, kernel.PolicyChains, 1)
+	assert.Nil(t, kernel.PolicyChains["new-route"])
 }
 
 // =============================================================================
@@ -291,7 +173,7 @@ func TestGetRequestBodyMode_RouteExists(t *testing.T) {
 	chain := &registry.PolicyChain{
 		RequiresRequestBody: true,
 	}
-	kernel.RegisterRoute("test-route", chain)
+	kernel.PolicyChains["test-route"] = chain
 
 	mode := kernel.GetRequestBodyMode("test-route")
 
@@ -311,7 +193,7 @@ func TestGetResponseBodyMode_RouteExists(t *testing.T) {
 	chain := &registry.PolicyChain{
 		RequiresResponseBody: true,
 	}
-	kernel.RegisterRoute("test-route", chain)
+	kernel.PolicyChains["test-route"] = chain
 
 	mode := kernel.GetResponseBodyMode("test-route")
 
@@ -700,243 +582,3 @@ func TestExtractMetadataFromRouteMetadata_WithProjectID(t *testing.T) {
 	assert.Equal(t, "project-123", result[ProjectIDKey])
 }
 
-// =============================================================================
-// ConfigLoader Creation Tests
-// =============================================================================
-
-func TestNewConfigLoader(t *testing.T) {
-	// Create a minimal kernel for testing
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-
-	loader := NewConfigLoader(kernel, reg)
-
-	require.NotNil(t, loader)
-}
-
-func TestLoadFromFile_FileNotFound(t *testing.T) {
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err := loader.LoadFromFile("/nonexistent/path/config.yaml")
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read config file")
-}
-
-func TestLoadFromFile_InvalidYAML(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "invalid.yaml")
-
-	// Write invalid YAML that will fail to unmarshal into []policyenginev1.PolicyChain
-	invalidYaml := `
-this is not valid yaml as a list
-  - broken structure
-    missing: proper formatting
-  invalid: [unclosed bracket
-`
-	err := os.WriteFile(configPath, []byte(invalidYaml), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to parse config file")
-}
-
-func TestLoadFromFile_EmptyFile(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "empty.yaml")
-
-	err := os.WriteFile(configPath, []byte(""), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	// Empty file should be parsed successfully with no routes to add
-	assert.NoError(t, err)
-}
-
-func TestLoadFromFile_EmptyList(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "empty-list.yaml")
-
-	// Empty list
-	err := os.WriteFile(configPath, []byte("[]"), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	assert.NoError(t, err)
-}
-
-func TestLoadFromFile_ValidationError_EmptyRouteKey(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "invalid-route-key.yaml")
-
-	// Valid YAML but empty route_key should fail validation
-	yamlContent := `
-- route_key: ""
-  policies: []
-`
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "route_key is required")
-}
-
-func TestLoadFromFile_ValidationError_EmptyPolicyName(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "empty-policy-name.yaml")
-
-	// Valid route_key but policy with empty name
-	yamlContent := `
-- route_key: "test-route"
-  policies:
-    - name: ""
-      version: "v1.0.0"
-`
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "name is required")
-}
-
-func TestLoadFromFile_ValidationError_EmptyPolicyVersion(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "empty-policy-version.yaml")
-
-	// Valid route_key but policy with empty version
-	yamlContent := `
-- route_key: "test-route"
-  policies:
-    - name: "test-policy"
-      version: ""
-`
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "version is required")
-}
-
-func TestLoadFromFile_ValidationError_PolicyNotInRegistry(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "unknown-policy.yaml")
-
-	// Valid config but policy not registered
-	yamlContent := `
-- route_key: "test-route"
-  policies:
-    - name: "unknown-policy"
-      version: "v1.0.0"
-`
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown-policy")
-}
-
-func TestLoadFromFile_ValidationError_PolicyNotRegistered(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "not-registered.yaml")
-
-	// Valid config with policy name and version
-	yamlContent := `
-- route_key: "test-route"
-  policies:
-    - name: "test-policy"
-      version: "v1.0.0"
-`
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
-	require.NoError(t, err)
-
-	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
-	}
-	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
-	}
-	loader := NewConfigLoader(kernel, reg)
-
-	err = loader.LoadFromFile(configPath)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "policy not found")
-}

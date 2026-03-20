@@ -48,7 +48,6 @@ func TestNewResourceHandler(t *testing.T) {
 	require.NotNil(t, handler)
 	assert.NotNil(t, handler.kernel)
 	assert.NotNil(t, handler.registry)
-	assert.NotNil(t, handler.configLoader)
 	assert.NotNil(t, handler.apiKeyHandler)
 	assert.NotNil(t, handler.lazyResourceHandler)
 }

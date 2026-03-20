@@ -138,7 +138,7 @@ func TestGetRequestBodyMode_WithChainRequiringBody(t *testing.T) {
 		RequiresRequestBody: true,
 	}
 
-	kernel.RegisterRoute("test-route", chain)
+	kernel.PolicyChains["test-route"] = chain
 
 	mode := kernel.GetRequestBodyMode("test-route")
 
@@ -154,7 +154,7 @@ func TestGetRequestBodyMode_WithChainNotRequiringBody(t *testing.T) {
 		RequiresRequestBody: false,
 	}
 
-	kernel.RegisterRoute("test-route", chain)
+	kernel.PolicyChains["test-route"] = chain
 
 	mode := kernel.GetRequestBodyMode("test-route")
 
@@ -182,7 +182,7 @@ func TestGetResponseBodyMode_WithChainRequiringBody(t *testing.T) {
 		RequiresResponseBody: true,
 	}
 
-	kernel.RegisterRoute("test-route", chain)
+	kernel.PolicyChains["test-route"] = chain
 
 	mode := kernel.GetResponseBodyMode("test-route")
 
@@ -198,7 +198,7 @@ func TestGetResponseBodyMode_WithChainNotRequiringBody(t *testing.T) {
 		RequiresResponseBody: false,
 	}
 
-	kernel.RegisterRoute("test-route", chain)
+	kernel.PolicyChains["test-route"] = chain
 
 	mode := kernel.GetResponseBodyMode("test-route")
 

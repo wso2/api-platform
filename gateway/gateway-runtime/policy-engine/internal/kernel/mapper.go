@@ -52,11 +52,6 @@ type Kernel struct {
 	// PolicyChains maps policyChainKey → PolicyChain (executable chain).
 	// Populated from the PolicyChainTypeURL xDS cache.
 	PolicyChains map[string]*registry.PolicyChain
-
-	// Routes is kept for backward compatibility during migration.
-	// Once migration is complete, this can be removed.
-	// Deprecated: Use RouteConfigs + PolicyChains instead.
-	Routes map[string]*registry.PolicyChain
 }
 
 // NewKernel creates a new Kernel instance
@@ -64,7 +59,6 @@ func NewKernel() *Kernel {
 	return &Kernel{
 		RouteConfigs: make(map[string]*RouteConfig),
 		PolicyChains: make(map[string]*registry.PolicyChain),
-		Routes:       make(map[string]*registry.PolicyChain),
 	}
 }
 
@@ -82,34 +76,6 @@ func (k *Kernel) GetPolicyChain(policyChainKey string) *registry.PolicyChain {
 	return k.PolicyChains[policyChainKey]
 }
 
-// GetPolicyChainForKey retrieves the policy chain for a given metadata key (backward compatible).
-// Returns nil when no policy chain exists for the route (not an error condition).
-func (k *Kernel) GetPolicyChainForKey(key string) *registry.PolicyChain {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
-
-	// Try new PolicyChains map first
-	if chain, ok := k.PolicyChains[key]; ok {
-		return chain
-	}
-	// Fall back to legacy Routes map
-	return k.Routes[key]
-}
-
-// RegisterRoute registers a policy chain for a route (backward compatible)
-func (k *Kernel) RegisterRoute(metadataKey string, chain *registry.PolicyChain) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.Routes[metadataKey] = chain
-}
-
-// UnregisterRoute removes a route mapping (backward compatible)
-func (k *Kernel) UnregisterRoute(metadataKey string) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	delete(k.Routes, metadataKey)
-}
-
 // ApplyWholeRouteConfigs atomically replaces all route configs.
 func (k *Kernel) ApplyWholeRouteConfigs(newConfigs map[string]*RouteConfig) {
 	k.mu.Lock()
@@ -124,23 +90,12 @@ func (k *Kernel) ApplyWholePolicyChains(newChains map[string]*registry.PolicyCha
 	k.PolicyChains = newChains
 }
 
-// ApplyWholeRoutes replaces all existing route mappings with the provided set (backward compatible)
-func (k *Kernel) ApplyWholeRoutes(newRoutes map[string]*registry.PolicyChain) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.Routes = newRoutes
-}
-
-// DumpRoutes returns a copy of all route mappings for debugging
+// DumpRoutes returns a copy of all policy chain mappings for debugging.
 func (k *Kernel) DumpRoutes() map[string]*registry.PolicyChain {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
-	// Merge both maps for debugging visibility
-	dump := make(map[string]*registry.PolicyChain, len(k.Routes)+len(k.PolicyChains))
-	for key, chain := range k.Routes {
-		dump[key] = chain
-	}
+	dump := make(map[string]*registry.PolicyChain, len(k.PolicyChains))
 	for key, chain := range k.PolicyChains {
 		dump[key] = chain
 	}

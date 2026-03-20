@@ -114,7 +114,7 @@ func determineResponseBodyMode(chain *registry.PolicyChain) BodyMode {
 
 // GetRequestBodyMode returns the body mode for request phase
 func (k *Kernel) GetRequestBodyMode(routeKey string) BodyMode {
-	chain := k.GetPolicyChainForKey(routeKey)
+	chain := k.GetPolicyChain(routeKey)
 	if chain == nil {
 		return BodyModeSkip
 	}
@@ -123,7 +123,7 @@ func (k *Kernel) GetRequestBodyMode(routeKey string) BodyMode {
 
 // GetResponseBodyMode returns the body mode for response phase
 func (k *Kernel) GetResponseBodyMode(routeKey string) BodyMode {
-	chain := k.GetPolicyChainForKey(routeKey)
+	chain := k.GetPolicyChain(routeKey)
 	if chain == nil {
 		return BodyModeSkip
 	}

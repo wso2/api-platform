@@ -50,7 +50,6 @@ type StoredPolicyConfig struct {
 type ResourceHandler struct {
 	kernel              *kernel.Kernel
 	registry            *registry.PolicyRegistry
-	configLoader        *kernel.ConfigLoader
 	apiKeyHandler       *APIKeyOperationHandler
 	lazyResourceHandler *LazyResourceHandler
 	subscriptionStore   *policyenginev1.SubscriptionStore
@@ -65,7 +64,6 @@ func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *Resourc
 	return &ResourceHandler{
 		kernel:              k,
 		registry:            reg,
-		configLoader:        kernel.NewConfigLoader(k, reg),
 		apiKeyHandler:       NewAPIKeyOperationHandler(apiKeyStore, slog.Default()),
 		lazyResourceHandler: NewLazyResourceHandler(lazyResourceStore, slog.Default()),
 		subscriptionStore:   subStore,
@@ -165,7 +163,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 
 	// Apply changes atomically
 	// This replaces ALL routes with the new set from xDS (State of the World)
-	h.kernel.ApplyWholeRoutes(chains)
+	h.kernel.ApplyWholePolicyChains(chains)
 
 	// Record metrics for policy chains loaded
 	metrics.PolicyChainsLoaded.WithLabelValues("ads").Set(float64(len(chains)))

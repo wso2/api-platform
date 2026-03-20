@@ -87,7 +87,7 @@ func TestDumpConfig_WithRoutes(t *testing.T) {
 			{Name: "policy-1", Version: "v1.0.0", Enabled: true},
 		},
 	}
-	k.RegisterRoute("test-route", chain)
+	k.PolicyChains["test-route"] = chain
 
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -184,7 +184,7 @@ func TestDumpRoutes_SingleRoute(t *testing.T) {
 			},
 		},
 	}
-	k.RegisterRoute("api-route-1", chain)
+	k.PolicyChains["api-route-1"] = chain
 
 	result := dumpRoutes(k)
 
@@ -216,8 +216,8 @@ func TestDumpRoutes_MultipleRoutes(t *testing.T) {
 		PolicySpecs: []policy.PolicySpec{{Name: "p2", Version: "v2"}, {Name: "p3", Version: "v3"}},
 	}
 
-	k.RegisterRoute("route-1", chain1)
-	k.RegisterRoute("route-2", chain2)
+	k.PolicyChains["route-1"] = chain1
+	k.PolicyChains["route-2"] = chain2
 
 	result := dumpRoutes(k)
 

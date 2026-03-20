@@ -180,7 +180,13 @@ func (p *shortCircuitPolicy) OnResponse(*policy.ResponseContext, map[string]inte
 func newBenchServer(routes map[string]*registry.PolicyChain) *ExternalProcessorServer {
 	// Create kernel with route mappings
 	kernel := NewKernel()
-	kernel.ApplyWholeRoutes(routes)
+	kernel.ApplyWholePolicyChains(routes)
+	// Also populate RouteConfigs so initializeExecutionContext finds them
+	routeConfigs := make(map[string]*RouteConfig, len(routes))
+	for key := range routes {
+		routeConfigs[key] = &RouteConfig{}
+	}
+	kernel.ApplyWholeRouteConfigs(routeConfigs)
 
 	// Create executor with no CEL evaluator and noop tracer.
 	// nil CELEvaluator means no condition evaluation overhead.
@@ -420,18 +426,6 @@ func BenchmarkProcess_HeaderModification(b *testing.B) {
 // Component Benchmarks
 // =============================================================================
 
-// BenchmarkExtractRouteMetadata benchmarks protobuf text parsing for route metadata.
-func BenchmarkExtractRouteMetadata(b *testing.B) {
-	server := &ExternalProcessorServer{}
-	req := buildRequestHeadersProcessingRequest("bench-route")
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = server.extractRouteMetadata(req)
-	}
-}
-
 // BenchmarkBuildRequestContext benchmarks RequestContext construction.
 func BenchmarkBuildRequestContext(b *testing.B) {
 	b.Run("WithRequestID", func(b *testing.B) {
@@ -583,21 +577,21 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 	}
 }
 
-// BenchmarkGetPolicyChainForKey benchmarks kernel route lookup (RWMutex contention).
-func BenchmarkGetPolicyChainForKey(b *testing.B) {
+// BenchmarkGetPolicyChain benchmarks kernel route lookup (RWMutex contention).
+func BenchmarkGetPolicyChain(b *testing.B) {
 	kernel := NewKernel()
 	chain := buildPolicyChain(nil, nil)
 
 	// Register 100 routes to simulate realistic workload
 	for i := 0; i < 100; i++ {
-		kernel.RegisterRoute(fmt.Sprintf("route-%d", i), chain)
+		kernel.PolicyChains[fmt.Sprintf("route-%d", i)] = chain
 	}
 
 	b.Run("Serial", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = kernel.GetPolicyChainForKey("route-50")
+			_ = kernel.GetPolicyChain("route-50")
 		}
 	})
 
@@ -606,24 +600,7 @@ func BenchmarkGetPolicyChainForKey(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				_ = kernel.GetPolicyChainForKey("route-50")
-			}
-		})
-	})
-
-	b.Run("ParallelWithWrites", func(b *testing.B) {
-		// Simulates scenario with occasional route updates
-		var writeCounter int64
-		b.ReportAllocs()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				// Every 1000th operation is a write
-				if writeCounter%1000 == 0 {
-					kernel.RegisterRoute("dynamic-route", chain)
-				}
-				_ = kernel.GetPolicyChainForKey("route-50")
-				writeCounter++
+				_ = kernel.GetPolicyChain("route-50")
 			}
 		})
 	})

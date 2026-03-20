@@ -54,9 +54,8 @@ var (
 )
 
 var (
-	configFile       = flag.String("config", "", "Path to configuration file (required)")
-	policyChainsFile = flag.String("policy-chains-file", "", "Path to policy chains file (enables file mode)")
-	xdsServerAddr    = flag.String("xds-server", "", "xDS server address (e.g., localhost:18000)")
+	configFile    = flag.String("config", "", "Path to configuration file (required)")
+	xdsServerAddr = flag.String("xds-server", "", "xDS server address (e.g., localhost:18000)")
 )
 
 type noOpXDSSyncStatusProvider struct{}
@@ -93,9 +92,6 @@ func main() {
 	metrics.SetEnabled(cfg.PolicyEngine.Metrics.Enabled)
 	metrics.Init() // Initialize metrics immediately so they're available throughout the codebase
 
-	// Apply flag overrides
-	applyFlagOverrides(cfg)
-
 	// Set up structured logging based on configuration
 	logger := setupLogger(cfg)
 	slog.SetDefault(logger)
@@ -112,7 +108,6 @@ func main() {
 			"git_commit", GitCommit,
 			"build_date", BuildDate,
 			"config_file", *configFile,
-			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
 			"server_mode", serverMode,
 			"extproc_socket", constants.DefaultPolicyEngineSocketPath)
 	} else {
@@ -121,7 +116,6 @@ func main() {
 			"git_commit", GitCommit,
 			"build_date", BuildDate,
 			"config_file", *configFile,
-			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
 			"server_mode", serverMode,
 			"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
 	}
@@ -164,37 +158,22 @@ func main() {
 	// Policy registration happens automatically via Builder-generated plugin_registry.go
 	slog.InfoContext(ctx, "Policies registered via Builder-generated code")
 
-	// Initialize configuration source based on mode
-	var xdsClient *xdsclient.Client
-	var xdsSyncStatusProvider admin.XDSSyncStatusProvider = noOpXDSSyncStatusProvider{}
-	var healthProvider admin.HealthProvider = alwaysHealthyProvider{}
-	switch cfg.PolicyEngine.ConfigMode.Mode {
-	case "xds":
-		if *xdsServerAddr == "" {
-			slog.ErrorContext(ctx, "Error: -xds-server flag is required when config mode is 'xds'")
-			os.Exit(1)
-		}
-		xdsClient, err = initializeXDSClient(ctx, cfg, *xdsServerAddr, k, reg)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to initialize xDS client", "error", err)
-			os.Exit(1)
-		}
-		xdsSyncStatusProvider = xdsClient
-		healthProvider = xdsClient
-		defer xdsClient.Stop()
-		slog.InfoContext(ctx, "xDS client started successfully")
-
-	case "file":
-		if err := initializeFileConfig(ctx, cfg, k, reg); err != nil {
-			slog.ErrorContext(ctx, "Failed to load file configuration", "error", err)
-			os.Exit(1)
-		}
-		slog.InfoContext(ctx, "File configuration loaded successfully")
-
-	default:
-		slog.ErrorContext(ctx, "Invalid config mode", "mode", cfg.PolicyEngine.ConfigMode.Mode)
+	// Initialize xDS client
+	if *xdsServerAddr == "" {
+		slog.ErrorContext(ctx, "Error: -xds-server flag is required")
 		os.Exit(1)
 	}
+	var xdsSyncStatusProvider admin.XDSSyncStatusProvider = noOpXDSSyncStatusProvider{}
+	var healthProvider admin.HealthProvider = alwaysHealthyProvider{}
+	xdsClient, err := initializeXDSClient(ctx, cfg, *xdsServerAddr, k, reg)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to initialize xDS client", "error", err)
+		os.Exit(1)
+	}
+	xdsSyncStatusProvider = xdsClient
+	healthProvider = xdsClient
+	defer xdsClient.Stop()
+	slog.InfoContext(ctx, "xDS client started successfully")
 
 	// Create and start ext_proc gRPC server
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName)
@@ -329,15 +308,6 @@ func main() {
 	slog.InfoContext(ctx, "Policy Engine shut down successfully")
 }
 
-// applyFlagOverrides applies command-line flag overrides to the configuration
-func applyFlagOverrides(cfg *config.Config) {
-	// If policy-chains-file is provided, switch to file mode
-	if *policyChainsFile != "" {
-		cfg.PolicyEngine.ConfigMode.Mode = "file"
-		cfg.PolicyEngine.FileConfig.Path = *policyChainsFile
-	}
-}
-
 // setupLogger creates a logger based on configuration
 func setupLogger(cfg *config.Config) *slog.Logger {
 	var level slog.Level
@@ -395,14 +365,3 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 	return client, nil
 }
 
-// initializeFileConfig loads policy chains from a static YAML file
-func initializeFileConfig(ctx context.Context, cfg *config.Config, k *kernel.Kernel, reg *registry.PolicyRegistry) error {
-	slog.InfoContext(ctx, "Loading file-based configuration", "path", cfg.PolicyEngine.FileConfig.Path)
-
-	configLoader := kernel.NewConfigLoader(k, reg)
-	if err := configLoader.LoadFromFile(cfg.PolicyEngine.FileConfig.Path); err != nil {
-		return fmt.Errorf("failed to load configuration from file: %w", err)
-	}
-
-	return nil
-}

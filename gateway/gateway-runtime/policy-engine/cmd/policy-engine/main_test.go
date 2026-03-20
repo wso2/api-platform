@@ -21,8 +21,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -33,56 +31,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 )
-
-// =============================================================================
-// applyFlagOverrides Tests
-// =============================================================================
-
-func TestApplyFlagOverrides_PolicyChainsFile(t *testing.T) {
-	cfg := &config.Config{
-		PolicyEngine: config.PolicyEngine{
-			ConfigMode: config.ConfigModeConfig{
-				Mode: "xds",
-			},
-		},
-	}
-
-	// Set flag value
-	testFile := "/path/to/chains.yaml"
-	oldPolicyChainsFile := *policyChainsFile
-	*policyChainsFile = testFile
-	defer func() { *policyChainsFile = oldPolicyChainsFile }()
-
-	applyFlagOverrides(cfg)
-
-	assert.Equal(t, "file", cfg.PolicyEngine.ConfigMode.Mode)
-	assert.Equal(t, testFile, cfg.PolicyEngine.FileConfig.Path)
-}
-
-func TestApplyFlagOverrides_NoFlags(t *testing.T) {
-	cfg := &config.Config{
-		PolicyEngine: config.PolicyEngine{
-			ConfigMode: config.ConfigModeConfig{
-				Mode: "xds",
-			},
-		},
-	}
-
-	// Clear all flags
-	oldPolicyChainsFile := *policyChainsFile
-	oldXdsServerAddr := *xdsServerAddr
-	*policyChainsFile = ""
-	*xdsServerAddr = ""
-	defer func() {
-		*policyChainsFile = oldPolicyChainsFile
-		*xdsServerAddr = oldXdsServerAddr
-	}()
-
-	applyFlagOverrides(cfg)
-
-	// Config should remain unchanged
-	assert.Equal(t, "xds", cfg.PolicyEngine.ConfigMode.Mode)
-}
 
 // =============================================================================
 // setupLogger Tests
@@ -204,76 +152,6 @@ func TestSetupLogger_TextFormat(t *testing.T) {
 	require.NotNil(t, logger)
 	// Logger should be created successfully with text format
 	assert.NotNil(t, logger)
-}
-
-// =============================================================================
-// initializeFileConfig Tests
-// =============================================================================
-
-func TestInitializeFileConfig_EmptyFile(t *testing.T) {
-	k := kernel.NewKernel()
-	reg := registry.GetRegistry()
-
-	// Create temp empty config file
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "chains.yaml")
-	yamlContent := `[]`
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
-	require.NoError(t, err)
-
-	cfg := &config.Config{
-		PolicyEngine: config.PolicyEngine{
-			FileConfig: config.FileConfigConfig{
-				Path: configPath,
-			},
-		},
-	}
-
-	err = initializeFileConfig(context.Background(), cfg, k, reg)
-
-	// Empty file should load successfully
-	assert.NoError(t, err)
-}
-
-func TestInitializeFileConfig_FileNotFound(t *testing.T) {
-	k := kernel.NewKernel()
-	reg := registry.GetRegistry()
-
-	cfg := &config.Config{
-		PolicyEngine: config.PolicyEngine{
-			FileConfig: config.FileConfigConfig{
-				Path: "/nonexistent/path/chains.yaml",
-			},
-		},
-	}
-
-	err := initializeFileConfig(context.Background(), cfg, k, reg)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to load configuration from file")
-}
-
-func TestInitializeFileConfig_InvalidYAML(t *testing.T) {
-	k := kernel.NewKernel()
-	reg := registry.GetRegistry()
-
-	// Create temp config file with invalid YAML
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "invalid.yaml")
-	err := os.WriteFile(configPath, []byte("invalid: yaml: ["), 0644)
-	require.NoError(t, err)
-
-	cfg := &config.Config{
-		PolicyEngine: config.PolicyEngine{
-			FileConfig: config.FileConfigConfig{
-				Path: configPath,
-			},
-		},
-	}
-
-	err = initializeFileConfig(context.Background(), cfg, k, reg)
-
-	assert.Error(t, err)
 }
 
 // =============================================================================

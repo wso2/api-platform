@@ -76,10 +76,8 @@ type PolicyEngine struct {
 	Server     ServerConfig     `koanf:"server"`
 	Admin      AdminConfig      `koanf:"admin"`
 	Metrics    MetricsConfig    `koanf:"metrics"`
-	ConfigMode ConfigModeConfig `koanf:"config_mode"`
-	XDS        XDSConfig        `koanf:"xds"`
-	FileConfig FileConfigConfig `koanf:"file_config"`
-	Logging    LoggingConfig    `koanf:"logging"`
+	XDS     XDSConfig     `koanf:"xds"`
+	Logging LoggingConfig `koanf:"logging"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
@@ -147,12 +145,6 @@ type AdminConfig struct {
 	AllowedIPs []string `koanf:"allowed_ips"`
 }
 
-// ConfigModeConfig specifies how policy chains are configured
-type ConfigModeConfig struct {
-	// Mode can be "file" or "xds"
-	Mode string `koanf:"mode"`
-}
-
 // XDSConfig holds xDS client configuration
 type XDSConfig struct {
 	// ConnectTimeout is the timeout for establishing initial connection
@@ -184,12 +176,6 @@ type XDSTLSConfig struct {
 
 	// CAPath is the path to the CA certificate for server verification
 	CAPath string `koanf:"ca_path"`
-}
-
-// FileConfigConfig holds file-based configuration settings
-type FileConfigConfig struct {
-	// Path is the path to the policy chains YAML file
-	Path string `koanf:"path"`
 }
 
 // LoggingConfig holds logging configuration
@@ -289,9 +275,6 @@ func defaultConfig() *Config {
 				Enabled: false,
 				Port:    9003,
 			},
-			ConfigMode: ConfigModeConfig{
-				Mode: "xds",
-			},
 			XDS: XDSConfig{
 				ConnectTimeout:        10 * time.Second,
 				RequestTimeout:        5 * time.Second,
@@ -300,9 +283,6 @@ func defaultConfig() *Config {
 				TLS: XDSTLSConfig{
 					Enabled: false,
 				},
-			},
-			FileConfig: FileConfigConfig{
-				Path: "",
 			},
 			Logging: LoggingConfig{
 				Level:  "info",
@@ -396,20 +376,9 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Validate config mode
-	if c.PolicyEngine.ConfigMode.Mode != "file" && c.PolicyEngine.ConfigMode.Mode != "xds" {
-		return fmt.Errorf("invalid config_mode.mode: %s (must be 'file' or 'xds')", c.PolicyEngine.ConfigMode.Mode)
-	}
-
-	// Validate based on config mode
-	if c.PolicyEngine.ConfigMode.Mode == "xds" {
-		if err := c.validateXDSConfig(); err != nil {
-			return err
-		}
-	} else if c.PolicyEngine.ConfigMode.Mode == "file" {
-		if c.PolicyEngine.FileConfig.Path == "" {
-			return fmt.Errorf("file_config.path is required when config_mode.mode is 'file'")
-		}
+	// Validate xDS config
+	if err := c.validateXDSConfig(); err != nil {
+		return err
 	}
 
 	// Validate logging

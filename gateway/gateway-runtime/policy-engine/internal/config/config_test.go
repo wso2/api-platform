@@ -44,17 +44,11 @@ func validConfig() *Config {
 				Enabled: false,
 				Port:    9003,
 			},
-			ConfigMode: ConfigModeConfig{
-				Mode: "file",
-			},
 			XDS: XDSConfig{
 				ConnectTimeout:        10 * time.Second,
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
-			},
-			FileConfig: FileConfigConfig{
-				Path: "configs/policy-chains.yaml",
 			},
 			Logging: LoggingConfig{
 				Level:  "info",
@@ -398,73 +392,6 @@ func TestValidate_MetricsConfig(t *testing.T) {
 	}
 }
 
-// TestValidate_ConfigMode tests config mode validation
-func TestValidate_ConfigMode(t *testing.T) {
-	tests := []struct {
-		name      string
-		mode      string
-		expectErr bool
-		errMsg    string
-	}{
-		{
-			name:      "valid file mode",
-			mode:      "file",
-			expectErr: false,
-		},
-		{
-			name:      "valid xds mode",
-			mode:      "xds",
-			expectErr: false,
-		},
-		{
-			name:      "invalid mode",
-			mode:      "invalid",
-			expectErr: true,
-			errMsg:    "invalid config_mode.mode",
-		},
-		{
-			name:      "empty mode",
-			mode:      "",
-			expectErr: true,
-			errMsg:    "invalid config_mode.mode",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			cfg.PolicyEngine.ConfigMode.Mode = tt.mode
-
-			// For xds mode, set valid config
-			if tt.mode == "xds" {
-				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
-				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
-				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
-				cfg.PolicyEngine.XDS.MaxReconnectDelay = 60 * time.Second
-			}
-
-			err := cfg.Validate()
-			if tt.expectErr {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// TestValidate_FileConfig tests file config validation
-func TestValidate_FileConfig(t *testing.T) {
-	cfg := validConfig()
-	cfg.PolicyEngine.ConfigMode.Mode = "file"
-	cfg.PolicyEngine.FileConfig.Path = ""
-
-	err := cfg.Validate()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "file_config.path is required")
-}
-
 // TestValidate_XDSConfig tests xDS configuration validation
 func TestValidate_XDSConfig(t *testing.T) {
 	tests := []struct {
@@ -476,7 +403,7 @@ func TestValidate_XDSConfig(t *testing.T) {
 		{
 			name: "xds enabled - invalid connect timeout",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 0
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -488,7 +415,7 @@ func TestValidate_XDSConfig(t *testing.T) {
 		{
 			name: "xds enabled - invalid request timeout",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 0
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -500,7 +427,7 @@ func TestValidate_XDSConfig(t *testing.T) {
 		{
 			name: "xds enabled - invalid initial reconnect delay",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 0
@@ -512,7 +439,7 @@ func TestValidate_XDSConfig(t *testing.T) {
 		{
 			name: "xds enabled - invalid max reconnect delay",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -550,7 +477,7 @@ func TestValidate_XDSTLSConfig(t *testing.T) {
 		{
 			name: "TLS disabled - no validation",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -562,7 +489,7 @@ func TestValidate_XDSTLSConfig(t *testing.T) {
 		{
 			name: "TLS enabled - missing cert path",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -578,7 +505,7 @@ func TestValidate_XDSTLSConfig(t *testing.T) {
 		{
 			name: "TLS enabled - missing key path",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -594,7 +521,7 @@ func TestValidate_XDSTLSConfig(t *testing.T) {
 		{
 			name: "TLS enabled - missing CA path",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -610,7 +537,7 @@ func TestValidate_XDSTLSConfig(t *testing.T) {
 		{
 			name: "TLS enabled - valid config",
 			setup: func(cfg *Config) {
-				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				
 				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
 				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
 				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
@@ -1113,12 +1040,6 @@ enabled = true
 port = 9002
 allowed_ips = ["127.0.0.1"]
 
-[policy_engine.config_mode]
-mode = "file"
-
-[policy_engine.file_config]
-path = "configs/policy-chains.yaml"
-
 [policy_engine.logging]
 level = "info"
 format = "json"
@@ -1142,7 +1063,6 @@ func TestLoad_EmptyPath(t *testing.T) {
 	// Should have default values
 	assert.Equal(t, 9001, cfg.PolicyEngine.Server.ExtProcPort)
 	assert.Equal(t, 9002, cfg.PolicyEngine.Admin.Port)
-	assert.Equal(t, "xds", cfg.PolicyEngine.ConfigMode.Mode)
 }
 
 // TestLoad_NonExistentFile tests loading a non-existent file
@@ -1188,12 +1108,6 @@ enabled = true
 port = 9002
 allowed_ips = ["127.0.0.1"]
 
-[policy_engine.config_mode]
-mode = "file"
-
-[policy_engine.file_config]
-path = "configs/policy-chains.yaml"
-
 [policy_engine.logging]
 level = "info"
 format = "json"
@@ -1220,12 +1134,6 @@ extproc_port = 9001
 enabled = true
 port = 9002
 allowed_ips = ["127.0.0.1"]
-
-[policy_engine.config_mode]
-mode = "file"
-
-[policy_engine.file_config]
-path = "configs/policy-chains.yaml"
 
 [policy_engine.logging]
 level = "info"
