@@ -5,10 +5,14 @@
 // at chain-build time — once at startup, with zero per-request overhead.
 package policy
 
-// Policy is the marker interface all policies must implement.
+// Policy is the base interface all policies must implement.
+// Mode declares the policy's processing requirements for each phase; the kernel
+// uses this at chain-build time to configure buffering and ext_proc modes.
 // Capabilities are declared by additionally implementing the phase-specific
 // sub-interfaces below.
-type Policy interface{}
+type Policy interface {
+	Mode() ProcessingMode
+}
 
 // PolicyFactory is the function signature for creating policy instances.
 // Policy implementations must export a GetPolicy function with this signature:
