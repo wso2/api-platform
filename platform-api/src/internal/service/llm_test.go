@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -1089,7 +1090,7 @@ func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(
 			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", CreatedAt: now, UpdatedAt: now}, nil
 		},
 	}
-	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil)
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, slog.Default())
 
 	request := validProviderRequest("openai")
 	request.ModelProviders = &[]api.LLMModelProvider{
@@ -1125,7 +1126,7 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 		},
 	}
 	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
-	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil)
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, slog.Default())
 
 	request := validProviderRequest("awsbedrock")
 	request.ModelProviders = &[]api.LLMModelProvider{
@@ -1152,7 +1153,7 @@ func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T)
 			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
 		},
 	}
-	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil)
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, slog.Default())
 
 	_, err := service.Create("org-1", "alice", validProviderRequest("openai"))
 	if err != constants.ErrLLMProviderExists {
@@ -1194,7 +1195,7 @@ func TestLLMProviderServiceUpdatePreservesUpstreamAuthValue(t *testing.T) {
 			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
 		},
 	}
-	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil)
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, slog.Default())
 
 	request := validProviderRequest("openai")
 	request.Name = "Updated Provider"
@@ -1224,7 +1225,7 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 		},
 	}
 	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", OrganizationID: "org-1"}}
-	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo)
+	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, slog.Default())
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if err != constants.ErrLLMProviderNotFound {
@@ -1239,7 +1240,7 @@ func TestLLMProxyServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil)
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, slog.Default())
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if err != constants.ErrLLMProxyExists {
@@ -1271,7 +1272,7 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil)
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, slog.Default())
 
 	resp, err := service.ListByProvider("org-1", "provider-1", 10, 0)
 	if err != nil {
@@ -1316,7 +1317,7 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil)
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, slog.Default())
 
 	request := validProxyRequest("provider-1", "project-1")
 	request.Name = "Updated Proxy"
