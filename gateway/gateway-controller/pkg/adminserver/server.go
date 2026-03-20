@@ -42,9 +42,8 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.
 	})
 
 	s.httpSrv = &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
+		Addr:    fmt.Sprintf(":%d", cfg.Port),
+		Handler: handler,
 	}
 
 	return s

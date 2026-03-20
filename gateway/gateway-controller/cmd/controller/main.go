@@ -466,9 +466,8 @@ func main() {
 
 	// Setup graceful shutdown
 	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
-		Handler:           router,
-		ReadHeaderTimeout: 10 * time.Second,
+		Addr:    fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
+		Handler: router,
 	}
 
 	// Start server in a goroutine
