@@ -159,7 +159,7 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 			},
 		},
 		systemConfig: &config.Config{},
-		policyDefinitions: map[string]api.PolicyDefinition{
+		policyDefinitions: map[string]models.PolicyDefinition{
 			"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
 		},
 		logger: newTestLogger(),
@@ -289,7 +289,7 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 			},
 		},
 		systemConfig: &config.Config{},
-		policyDefinitions: map[string]api.PolicyDefinition{
+		policyDefinitions: map[string]models.PolicyDefinition{
 			"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
 		},
 		logger: newTestLogger(),
