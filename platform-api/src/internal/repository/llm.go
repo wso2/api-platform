@@ -43,6 +43,7 @@ type llmProviderTemplateConfig struct {
 	RemainingTokens  *model.ExtractionIdentifier        `json:"remainingTokens,omitempty"`
 	RequestModel     *model.ExtractionIdentifier        `json:"requestModel,omitempty"`
 	ResponseModel    *model.ExtractionIdentifier        `json:"responseModel,omitempty"`
+	ResourceMappings *model.LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty"`
 }
 
 func NewLLMProviderTemplateRepo(db *database.DB) LLMProviderTemplateRepository {
@@ -66,6 +67,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 		RemainingTokens:  t.RemainingTokens,
 		RequestModel:     t.RequestModel,
 		ResponseModel:    t.ResponseModel,
+		ResourceMappings: t.ResourceMappings,
 	})
 	if err != nil {
 		return err
@@ -117,6 +119,7 @@ func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LL
 		t.RemainingTokens = cfg.RemainingTokens
 		t.RequestModel = cfg.RequestModel
 		t.ResponseModel = cfg.ResponseModel
+		t.ResourceMappings = cfg.ResourceMappings
 	}
 
 	return &t, nil
@@ -153,6 +156,7 @@ func (r *LLMProviderTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMPro
 		t.RemainingTokens = cfg.RemainingTokens
 		t.RequestModel = cfg.RequestModel
 		t.ResponseModel = cfg.ResponseModel
+		t.ResourceMappings = cfg.ResourceMappings
 	}
 
 	return &t, nil
@@ -194,6 +198,7 @@ func (r *LLMProviderTemplateRepo) List(orgUUID string, limit, offset int) ([]*mo
 			t.RemainingTokens = cfg.RemainingTokens
 			t.RequestModel = cfg.RequestModel
 			t.ResponseModel = cfg.ResponseModel
+			t.ResourceMappings = cfg.ResourceMappings
 		}
 		res = append(res, &t)
 	}
@@ -211,6 +216,7 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 		RemainingTokens:  t.RemainingTokens,
 		RequestModel:     t.RequestModel,
 		ResponseModel:    t.ResponseModel,
+		ResourceMappings: t.ResourceMappings,
 	})
 	if err != nil {
 		return err
