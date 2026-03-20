@@ -209,9 +209,6 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 	for _, rdc := range rdcs {
 		// Build policy chain resources (one per chain)
 		for routeKey, chain := range rdc.PolicyChains {
-			if len(chain.Policies) == 0 {
-				continue
-			}
 			resource, err := t.createPolicyChainResource(routeKey, chain, rdc.Metadata)
 			if err != nil {
 				t.logger.Error("Failed to create policy chain resource",

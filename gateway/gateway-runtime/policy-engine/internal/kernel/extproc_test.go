@@ -27,6 +27,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -372,9 +373,11 @@ func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 	assert.NoError(t, err)
 	require.Len(t, stream.responses, 1)
 
-	// Should skip all processing when no chain found
+	// Should reject with 500 when no policy chain found
 	resp := stream.responses[0]
-	require.NotNil(t, resp.ModeOverride)
+	immediateResp := resp.GetImmediateResponse()
+	require.NotNil(t, immediateResp)
+	assert.Equal(t, typev3.StatusCode_InternalServerError, immediateResp.Status.Code)
 }
 
 func TestProcess_UnknownRequestType(t *testing.T) {
@@ -574,8 +577,9 @@ func TestInitializeExecutionContext_NoPolicyChain(t *testing.T) {
 
 	var execCtx *PolicyExecutionContext
 
-	routeMeta := server.initializeExecutionContext(context.Background(), req, &execCtx)
+	routeMeta, err := server.initializeExecutionContext(req, &execCtx)
 
+	assert.ErrorIs(t, err, errNoPolicyChain)
 	assert.Nil(t, execCtx)
 	assert.Equal(t, "nonexistent-route", routeMeta.RouteName)
 }
@@ -617,8 +621,9 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 
 	var execCtx *PolicyExecutionContext
 
-	routeMeta := server.initializeExecutionContext(context.Background(), req, &execCtx)
+	routeMeta, err := server.initializeExecutionContext(req, &execCtx)
 
+	require.NoError(t, err)
 	require.NotNil(t, execCtx)
 	assert.Equal(t, "test-route", routeMeta.RouteName)
 	assert.Equal(t, "test-route", execCtx.routeKey)

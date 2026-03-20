@@ -158,6 +158,53 @@ func TestTranslator_TranslateRuntimeConfigs(t *testing.T) {
 			t.Errorf("Expected 1 route config resource, got %d", len(resources[RouteConfigTypeURL]))
 		}
 	})
+
+	// Test that empty policy chains are still sent as xDS resources (not skipped)
+	t.Run("empty policy chain is sent", func(t *testing.T) {
+		rdcs := []*models.RuntimeDeployConfig{
+			{
+				Metadata: models.Metadata{
+					Kind:        "RestApi",
+					Handle:      "test-handle",
+					Name:        "TestAPI",
+					Version:     "v1",
+					DisplayName: "TestAPI",
+				},
+				Context:             "/api",
+				PolicyChainResolver: "route-key",
+				Routes: map[string]*models.Route{
+					"GET|/api/v1/pets|localhost": {
+						Method:        "GET",
+						Path:          "/api/v1/pets",
+						OperationPath: "/pets",
+						Vhost:         "localhost",
+						Upstream: models.RouteUpstream{
+							ClusterKey: "upstream_main_localhost_8080",
+						},
+					},
+				},
+				PolicyChains: map[string]*models.PolicyChain{
+					"GET|/api/v1/pets|localhost": {
+						Policies: []models.Policy{}, // empty policy chain
+					},
+				},
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"upstream_main_localhost_8080": {
+						BasePath:  "/",
+						Endpoints: []models.Endpoint{{Host: "localhost", Port: 8080}},
+					},
+				},
+			},
+		}
+
+		resources, err := translator.TranslateRuntimeConfigs(rdcs)
+		if err != nil {
+			t.Fatalf("TranslateRuntimeConfigs failed: %v", err)
+		}
+		if len(resources[PolicyChainTypeURL]) != 1 {
+			t.Errorf("Expected 1 policy resource for empty chain, got %d", len(resources[PolicyChainTypeURL]))
+		}
+	})
 }
 
 func TestSnapshotManager_UpdateSnapshotLegacy(t *testing.T) {

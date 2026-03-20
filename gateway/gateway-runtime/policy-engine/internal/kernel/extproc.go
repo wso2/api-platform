@@ -48,6 +48,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 )
 
+// errNoPolicyChain is returned when no policy chain is found for a route key.
+var errNoPolicyChain = errors.New("no policy chain found for route")
+
 // ExternalProcessorServer implements the Envoy external processor service
 // T059: ExternalProcessorServer gRPC service struct
 type ExternalProcessorServer struct {
@@ -146,8 +149,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		defer span.End()
 
 		// Initialize execution context for this request
-		routeMetadata := s.extractRouteMetadata(req)
-		rm := s.initializeExecutionContext(ctx, req, execCtx)
+		rm, err := s.initializeExecutionContext(req, execCtx)
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
 				attribute.String(constants.AttrRouteName, rm.RouteName),
@@ -161,14 +163,24 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// Track request metrics
 		metrics.RequestsTotal.WithLabelValues("request_headers", rm.RouteName, rm.APIName, rm.APIVersion).Inc()
 
-		// If no execution context (no policy chain), skip processing
-		if *execCtx == nil {
+		// If no policy chain found, reject the request with 500
+		if err != nil {
+			slog.ErrorContext(ctx, "No policy chain found for route, rejecting request",
+				"route", rm.RouteName,
+				"api_name", rm.APIName,
+				"api_version", rm.APIVersion)
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Int(constants.AttrPolicyCount, 0))
 			}
 			metrics.RouteLookupFailuresTotal.Inc()
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
-			return s.skipAllProcessing(routeMetadata), nil
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
+					},
+				},
+			}, nil
 		}
 		if span.IsRecording() {
 			span.SetAttributes(attribute.Int(constants.AttrPolicyCount, len((*execCtx).policyChain.Policies)))
@@ -332,7 +344,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 // initializeExecutionContext sets up the execution context for a request by retrieving the policy chain.
 // It first tries the new RouteConfigs path (metadata pre-loaded via xDS), then falls back to the
 // legacy extractRouteMetadata path (metadata parsed from Envoy route metadata at request time).
-func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) *RouteMetadata {
+func (s *ExternalProcessorServer) initializeExecutionContext(req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) (*RouteMetadata, error) {
 	// Extract route key from Envoy attributes (just xds.route_name, lightweight)
 	routeKey := s.extractRouteKey(req)
 
@@ -350,11 +362,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 
 		chain := s.kernel.GetPolicyChain(policyChainKey)
 		if chain == nil {
-			slog.InfoContext(ctx, "No policy chain found for route (new path), skipping all processing",
-				"route", routeKey,
-				"api_name", routeMetadata.APIName)
-			*execCtx = nil
-			return &routeMetadata
+			return &routeMetadata, errNoPolicyChain
 		}
 
 		*execCtx = newPolicyExecutionContext(s, routeKey, chain)
@@ -363,7 +371,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		(*execCtx).apiContext = routeMetadata.Context
 		(*execCtx).upstreamDefinitionPaths = rc.UpstreamDefinitionPaths
 		(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
-		return &routeMetadata
+		return &routeMetadata, nil
 	}
 
 	// Fallback: legacy path using extractRouteMetadata (prototext.Unmarshal from Envoy route metadata)
@@ -371,14 +379,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 
 	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
 	if chain == nil {
-		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
-			"route", routeMetadata.RouteName,
-			"api_id", routeMetadata.APIId,
-			"api_name", routeMetadata.APIName,
-			"api_version", routeMetadata.APIVersion,
-			"context", routeMetadata.Context)
-		*execCtx = nil
-		return &routeMetadata
+		return &routeMetadata, errNoPolicyChain
 	}
 
 	*execCtx = newPolicyExecutionContext(s, routeMetadata.RouteName, chain)
@@ -387,7 +388,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	(*execCtx).apiContext = routeMetadata.Context
 	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
 	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
-	return &routeMetadata
+	return &routeMetadata, nil
 }
 
 // extractRouteKey extracts just the route key (xds.route_name) from the request attributes.
