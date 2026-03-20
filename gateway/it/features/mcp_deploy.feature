@@ -244,6 +244,48 @@ Feature: Test MCP CRUD and connectivity
         And the response should be valid JSON
         And the JSON response field "status" should be "error"
 
+    Scenario: Deploy MCP proxy with invalid spec version returns 400
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: invalid-spec-version-mcp-v1.0
+            spec:
+              displayName: Invalid Spec Version MCP
+              version: v1.0
+              context: /missing-upstream-mcp
+              specVersion: "2025-03-18"
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response status should be 400
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+
+    Scenario: Deploy MCP proxy without upstream returns 400
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: missing-upstream-mcp-v1.0
+            spec:
+              displayName: Missing Upstream MCP
+              version: v1.0
+              context: /missing-upstream-mcp
+              specVersion: "2025-06-18"
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response status should be 400
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+
     Scenario: Deploy duplicate MCP proxy returns conflict
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
