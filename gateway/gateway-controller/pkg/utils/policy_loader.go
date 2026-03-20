@@ -195,17 +195,18 @@ func (pl *PolicyLoader) GetCustomPolicyNames(buildLockPath string) (map[string]b
 
 	for _, entry := range lock.Policies {
 		if entry.FilePath != "" {
+			customPolicies[entry.Name+"|"+entry.Version] = true
 			pl.logger.Debug("Detected locally developed policy via filePath",
 				slog.String("name", entry.Name),
 				slog.String("version", entry.Version),
 				slog.String("filePath", entry.FilePath))
 		} else if entry.Gomodule != "" && !strings.HasPrefix(entry.Gomodule, "github.com/wso2") {
+			customPolicies[entry.Name+"|"+entry.Version] = true
 			pl.logger.Debug("Detected third-party custom policy via gomodule",
 				slog.String("name", entry.Name),
 				slog.String("version", entry.Version),
 				slog.String("gomodule", entry.Gomodule))
 		}
-		customPolicies[entry.Name+"|"+entry.Version] = true
 	}
 
 	pl.logger.Info("Parsed build-lock.yaml for custom policy detection",
