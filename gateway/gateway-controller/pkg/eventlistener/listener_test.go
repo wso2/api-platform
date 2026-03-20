@@ -293,7 +293,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 	listener.Stop()
 }
 
-func TestHandleEvent_AcceptsKnownNoopTypesAndUnknown(t *testing.T) {
+func TestHandleEvent_AcceptsKnownTypesAndUnknown(t *testing.T) {
 	var logBuf bytes.Buffer
 	listener := &EventListener{
 		logger: slog.New(slog.NewTextHandler(&logBuf, nil)),
@@ -314,7 +314,7 @@ func TestHandleEvent_AcceptsKnownNoopTypesAndUnknown(t *testing.T) {
 
 	logs := logBuf.String()
 	assert.Contains(t, logs, "Certificate event received")
-	assert.Contains(t, logs, "LLM template event received")
+	assert.Contains(t, logs, "Unknown LLM template event action")
 	assert.Contains(t, logs, "Unknown event type received")
 }
 

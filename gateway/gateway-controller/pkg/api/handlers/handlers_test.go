@@ -850,6 +850,25 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 	}
 }
 
+func createLLMTemplateBody(t *testing.T, handle, displayName string) []byte {
+	t.Helper()
+
+	template := api.LLMProviderTemplate{
+		ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProviderTemplate,
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.LLMProviderTemplateData{
+			DisplayName: displayName,
+		},
+	}
+
+	body, err := json.Marshal(template)
+	require.NoError(t, err)
+	return body
+}
+
 func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, contextPath string) []byte {
 	t.Helper()
 
@@ -1425,6 +1444,133 @@ func TestUpdateLLMProviderTemplateInvalidBody(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteLLMProviderTemplateNotFound(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+func TestCreateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	body := createLLMTemplateBody(t, "openai", "OpenAI Template")
+	c, w := createTestContextWithHeader("POST", "/llm-provider-templates", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-create-llm-template")
+
+	server.CreateLLMProviderTemplate(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	require.Len(t, mockDB.templates, 1)
+	require.Len(t, mockHub.publishedEvents, 1)
+
+	var storedTemplate *models.StoredLLMProviderTemplate
+	for _, template := range mockDB.templates {
+		storedTemplate = template
+	}
+	require.NotNil(t, storedTemplate)
+
+	assert.Equal(t, "openai", storedTemplate.GetHandle())
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, storedTemplate.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-create-llm-template", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := server.store.GetTemplate(storedTemplate.UUID)
+	require.Error(t, err)
+}
+
+func TestUpdateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "template-update-id",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata: api.Metadata{
+				Name: "openai",
+			},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "OpenAI Template",
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, mockDB.SaveLLMProviderTemplate(template))
+	require.NoError(t, server.store.AddTemplate(template))
+
+	body := createLLMTemplateBody(t, "openai", "Updated OpenAI Template")
+	c, w := createTestContextWithHeader("PUT", "/llm-provider-templates/openai", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-update-llm-template")
+
+	server.UpdateLLMProviderTemplate(c, "openai")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, template.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-update-llm-template", mockHub.publishedEvents[0].event.EventID)
+
+	storedInDB, err := mockDB.GetLLMProviderTemplate(template.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated OpenAI Template", storedInDB.Configuration.Spec.DisplayName)
+
+	storedInMemory, err := server.store.GetTemplate(template.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "OpenAI Template", storedInMemory.Configuration.Spec.DisplayName)
+}
+
+func TestDeleteLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "template-delete-id",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata: api.Metadata{
+				Name: "openai",
+			},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "OpenAI Template",
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, mockDB.SaveLLMProviderTemplate(template))
+
+	c, w := createTestContext("DELETE", "/llm-provider-templates/openai", nil)
+	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-template")
+
+	server.DeleteLLMProviderTemplate(c, "openai")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, template.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-delete-llm-template", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := mockDB.GetLLMProviderTemplate(template.UUID)
+	require.Error(t, err)
+
+	_, err = server.store.GetTemplate(template.UUID)
+	require.EqualError(t, err, fmt.Sprintf("template with ID '%s' not found", template.UUID))
 }
 
 // TestListLLMProviders tests listing LLM providers

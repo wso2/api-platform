@@ -188,8 +188,7 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeLLMProxy:
 		l.processLLMProxyEvent(event)
 	case eventhub.EventTypeLLMTemplate:
-		l.logger.Info("LLM template event received (processing not yet implemented)",
-			slog.String("entity_id", event.EntityID))
+		l.processLLMTemplateEvent(event)
 	default:
 		l.logger.Warn("Unknown event type received",
 			slog.String("event_type", string(event.EventType)),

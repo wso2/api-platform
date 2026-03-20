@@ -475,6 +475,7 @@ func (s *APIServer) DeleteWebSubAPI(c *gin.Context, id string) {
 // (POST /llm-provider-templates)
 func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -488,9 +489,10 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	storedTemplate, err := s.llmDeploymentService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 
 	if err != nil {
@@ -571,6 +573,7 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 // (PUT /llm-provider-templates/{id})
 func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -584,9 +587,10 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(id, utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to parse template configuration", slog.Any("error", err))
@@ -613,8 +617,9 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 // (DELETE /llm-provider-templates/{id})
 func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
-	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
+	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, log)
 	if err != nil {
 		log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{

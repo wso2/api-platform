@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -99,14 +100,46 @@ func TestLLMDeploymentParams(t *testing.T) {
 func TestLLMTemplateParams(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	params := LLMTemplateParams{
-		Spec:        []byte("test spec"),
-		ContentType: "application/yaml",
-		Logger:      logger,
+		Spec:          []byte("test spec"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-template",
+		Logger:        logger,
 	}
 
 	assert.Equal(t, "test spec", string(params.Spec))
 	assert.Equal(t, "application/yaml", params.ContentType)
+	assert.Equal(t, "corr-template", params.CorrelationID)
 	assert.NotNil(t, params.Logger)
+}
+
+func testLLMTemplateYAML(handle, displayName string) []byte {
+	return []byte(fmt.Sprintf(`
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProviderTemplate
+metadata:
+  name: %s
+spec:
+  displayName: %s
+`, handle, displayName))
+}
+
+func testStoredLLMTemplate(uuid, handle, displayName string) *models.StoredLLMProviderTemplate {
+	now := time.Now()
+	return &models.StoredLLMProviderTemplate{
+		UUID: uuid,
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata: api.Metadata{
+				Name: handle,
+			},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: displayName,
+			},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
 }
 
 func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
@@ -445,8 +478,9 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	apiDeploymentService := NewAPIDeploymentService(store, nil, nil, nil, nil)
 	service := NewLLMDeploymentService(store, nil, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteLLMProviderTemplate("0000-non-existent-0000-000000000000")
+	_, err := service.DeleteLLMProviderTemplate("0000-non-existent-0000-000000000000", "corr-delete-template", logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -470,7 +504,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 	store.AddTemplate(template)
 
 	// Delete it
-	deleted, err := service.DeleteLLMProviderTemplate("delete-me")
+	deleted, err := service.DeleteLLMProviderTemplate("delete-me", "corr-delete-template", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	assert.NoError(t, err)
 	assert.NotNil(t, deleted)
 	assert.Equal(t, "delete-me", deleted.Configuration.Metadata.Name)
@@ -478,6 +512,115 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 	// Verify it's gone
 	_, err = store.GetTemplateByHandle("delete-me")
 	assert.Error(t, err)
+}
+
+func TestLLMDeploymentService_CreateLLMProviderTemplate_WithDBAndEventHubPublishesCreate(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	mockHub := &mockLLMEventHub{}
+	service.SetEventHub(mockHub, "test-gateway")
+
+	created, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
+		Spec:          testLLMTemplateYAML("openai", "OpenAI Template"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-llm-template-create",
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, created.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-llm-template-create", mockHub.publishedEvents[0].event.EventID)
+
+	_, err = db.GetLLMProviderTemplate(created.UUID)
+	require.NoError(t, err)
+
+	_, err = store.GetTemplate(created.UUID)
+	require.Error(t, err)
+}
+
+func TestLLMDeploymentService_UpdateLLMProviderTemplate_WithDBAndEventHubPublishesUpdate(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	existing := testStoredLLMTemplate("template-update-id", "openai", "OpenAI Template")
+	require.NoError(t, db.SaveLLMProviderTemplate(existing))
+	require.NoError(t, store.AddTemplate(existing))
+
+	mockHub := &mockLLMEventHub{}
+	service.SetEventHub(mockHub, "test-gateway")
+
+	updated, err := service.UpdateLLMProviderTemplate("openai", LLMTemplateParams{
+		Spec:          testLLMTemplateYAML("openai", "Updated OpenAI Template"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-llm-template-update",
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, existing.UUID, updated.UUID)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, existing.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-llm-template-update", mockHub.publishedEvents[0].event.EventID)
+
+	storedInDB, err := db.GetLLMProviderTemplate(existing.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated OpenAI Template", storedInDB.Configuration.Spec.DisplayName)
+
+	storedInMemory, err := store.GetTemplate(existing.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "OpenAI Template", storedInMemory.Configuration.Spec.DisplayName)
+}
+
+func TestLLMDeploymentService_DeleteLLMProviderTemplate_WithDBAndEventHubPublishesDelete(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	template := testStoredLLMTemplate("template-delete-id", "openai", "OpenAI Template")
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+	require.NoError(t, store.AddTemplate(template))
+
+	mockHub := &mockLLMEventHub{}
+	service.SetEventHub(mockHub, "test-gateway")
+
+	deleted, err := service.DeleteLLMProviderTemplate("openai", "corr-llm-template-delete", logger)
+	require.NoError(t, err)
+	require.NotNil(t, deleted)
+	assert.Equal(t, template.UUID, deleted.UUID)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, template.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-llm-template-delete", mockHub.publishedEvents[0].event.EventID)
+
+	_, err = db.GetLLMProviderTemplate(template.UUID)
+	require.Error(t, err)
+
+	_, err = store.GetTemplate(template.UUID)
+	require.NoError(t, err)
 }
 
 func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testing.T) {

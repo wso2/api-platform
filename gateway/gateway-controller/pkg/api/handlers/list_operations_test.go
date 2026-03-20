@@ -176,8 +176,8 @@ func TestListLLMProviderTemplatesWithData(t *testing.T) {
 	}
 
 	// Add templates to store
-	server.store.AddTemplate(template1)
-	server.store.AddTemplate(template2)
+	require.NoError(t, server.db.SaveLLMProviderTemplate(template1))
+	require.NoError(t, server.db.SaveLLMProviderTemplate(template2))
 
 	c, w := createTestContext("GET", "/llm-provider-templates", nil)
 	server.ListLLMProviderTemplates(c, api.ListLLMProviderTemplatesParams{})
@@ -213,7 +213,8 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	server.store.AddTemplate(template)
+	require.NoError(t, server.db.SaveLLMProviderTemplate(template))
+	require.NoError(t, server.store.AddTemplate(template))
 
 	c, w := createTestContext("GET", "/llm-provider-templates/template1", nil)
 	server.GetLLMProviderTemplateById(c, "0000-template1-0000-000000000000")

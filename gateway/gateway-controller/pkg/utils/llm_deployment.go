@@ -123,6 +123,13 @@ func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlatio
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMProxy, action, entityID, correlationID, logger)
 }
 
+func (s *LLMDeploymentService) publishLLMTemplateEvent(action, entityID, correlationID string, logger *slog.Logger) {
+	if s.deploymentService == nil {
+		return
+	}
+	s.deploymentService.publishEvent(eventhub.EventTypeLLMTemplate, action, entityID, correlationID, logger)
+}
+
 // LLM configs are persisted as their original management payloads. The derived
 // RestAPI form is rebuilt on demand because it depends on in-memory template and
 // policy state that is not stored in SQL.
@@ -435,9 +442,10 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 
 // LLMTemplateParams Template params for CRUD
 type LLMTemplateParams struct {
-	Spec        []byte
-	ContentType string
-	Logger      *slog.Logger
+	Spec          []byte
+	ContentType   string
+	CorrelationID string
+	Logger        *slog.Logger
 }
 
 // parseAndValidateLLMTemplate parses the raw spec and validates it, returning the typed template.
@@ -490,6 +498,11 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 			}
 			return nil, fmt.Errorf("failed to save template to database: %w", err)
 		}
+	}
+
+	if s.isEventDriven() && s.db != nil {
+		s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
+		return stored, nil
 	}
 
 	// Add to memory store (with rollback if it fails)
@@ -676,7 +689,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 
 // UpdateLLMProviderTemplate validates and updates existing template by handle
 func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
-	existing, err := s.store.GetTemplateByHandle(handle)
+	existing, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
@@ -706,6 +719,11 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
 			return nil, fmt.Errorf("failed to update template in database: %w", err)
 		}
+	}
+
+	if s.isEventDriven() && s.db != nil {
+		s.publishLLMTemplateEvent("UPDATE", updated.UUID, params.CorrelationID, params.Logger)
+		return updated, nil
 	}
 
 	// Update memory store (with rollback if it fails)
@@ -754,10 +772,18 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 }
 
 // DeleteLLMProviderTemplate deletes a template by name
-func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models.StoredLLMProviderTemplate, error) {
-	tmpl, err := s.store.GetTemplateByHandle(handle)
+func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID string, logger *slog.Logger) (*models.StoredLLMProviderTemplate, error) {
+	tmpl, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
+	}
+
+	if s.isEventDriven() && s.db != nil {
+		if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
+			return nil, fmt.Errorf("failed to delete template from database: %w", err)
+		}
+		s.publishLLMTemplateEvent("DELETE", tmpl.UUID, correlationID, logger)
+		return tmpl, nil
 	}
 
 	// Remove from policy engine via lazy resource xDS (ID = handle)
@@ -812,6 +838,11 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 // If displayName is nil or empty, all templates are returned.
 func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*models.StoredLLMProviderTemplate {
 	templates := s.store.GetAllTemplates()
+	if s.db != nil {
+		if storedTemplates, err := s.db.GetAllLLMProviderTemplates(); err == nil {
+			templates = storedTemplates
+		}
+	}
 
 	// Return all templates if no filter is specified
 	if displayName == nil || *displayName == "" {
@@ -831,6 +862,21 @@ func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*
 
 // GetLLMProviderTemplateByHandle returns template by handle
 func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	if s.db != nil {
+		templates, err := s.db.GetAllLLMProviderTemplates()
+		if err == nil {
+			for _, template := range templates {
+				if template.GetHandle() == handle {
+					return template, nil
+				}
+			}
+			return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+		}
+		if !storage.IsDatabaseUnavailableError(err) {
+			return nil, err
+		}
+	}
+
 	return s.store.GetTemplateByHandle(handle)
 }
 
