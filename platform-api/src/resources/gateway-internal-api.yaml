@@ -727,7 +727,7 @@ paths:
 
         **Authentication**: Requires `api-key` header with a valid gateway token. The gateway
         ID in the path must match the gateway associated with the token.
-      operationId: ReceiveGatewayManifest
+      operationId: PushGatewayManifest
       tags:
         - Gateway Internal APIs
       parameters:

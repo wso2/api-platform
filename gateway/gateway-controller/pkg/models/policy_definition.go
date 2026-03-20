@@ -25,5 +25,5 @@ type PolicyDefinition struct {
 	Description      *string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	Parameters       *map[string]interface{} `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 	SystemParameters *map[string]interface{} `json:"systemParameters,omitempty" yaml:"systemParameters,omitempty"`
-	ManagedBy        string                  `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+	ManagedBy        string                  `json:"managedBy" yaml:"managedBy,omitempty"`
 }

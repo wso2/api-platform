@@ -177,19 +177,14 @@ type buildLockFile struct {
 	Policies []buildLockEntry `yaml:"policies"`
 }
 
-// LocalPolicyNames parses build-lock.yaml and returns a set of policy names
+// GetCustomPolicyNames parses build-lock.yaml and returns a set of policy names
 // that are locally developed (have a filePath entry rather than a gomodule).
 // Returns an empty set without error if the file does not exist.
-func (pl *PolicyLoader) LocalPolicyNames(buildLockPath string) (map[string]bool, error) {
+func (pl *PolicyLoader) GetCustomPolicyNames(buildLockPath string) (map[string]bool, error) {
 	customPolicies := make(map[string]bool)
 
 	data, err := os.ReadFile(buildLockPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			pl.logger.Debug("build-lock.yaml not found, could not detect custom policies",
-				slog.String("path", buildLockPath))
-			return customPolicies, nil
-		}
 		return nil, fmt.Errorf("failed to read build-lock.yaml: %w", err)
 	}
 
@@ -200,18 +195,17 @@ func (pl *PolicyLoader) LocalPolicyNames(buildLockPath string) (map[string]bool,
 
 	for _, entry := range lock.Policies {
 		if entry.FilePath != "" {
-			customPolicies[entry.Name+"|"+entry.Version] = true
 			pl.logger.Debug("Detected locally developed policy via filePath",
 				slog.String("name", entry.Name),
 				slog.String("version", entry.Version),
 				slog.String("filePath", entry.FilePath))
 		} else if entry.Gomodule != "" && !strings.HasPrefix(entry.Gomodule, "github.com/wso2") {
-			customPolicies[entry.Name+"|"+entry.Version] = true
 			pl.logger.Debug("Detected third-party custom policy via gomodule",
 				slog.String("name", entry.Name),
 				slog.String("version", entry.Version),
 				slog.String("gomodule", entry.Gomodule))
 		}
+		customPolicies[entry.Name+"|"+entry.Version] = true
 	}
 
 	pl.logger.Info("Parsed build-lock.yaml for custom policy detection",

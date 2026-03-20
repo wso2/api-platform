@@ -264,11 +264,12 @@ func main() {
 	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
 	// detect custom policies from build-lock.yaml
-	localPolicies, err := policyLoader.LocalPolicyNames(cfg.Controller.Policies.BuildLockPath)
+	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
 	if err != nil {
-		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
+		log.Warn("Could not read build-lock.yaml. Terminating gateway startup...",
 			slog.String("path", cfg.Controller.Policies.BuildLockPath),
 			slog.Any("error", err))
+		os.Exit(1)
 	}
 	for key, def := range policyDefinitions {
 		def.ManagedBy = "wso2"
