@@ -735,6 +735,14 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 		"MyPolicy|v1.0.0": {Name: "MyPolicy", Version: "v1.0.0"},
 	}
 
+	resolved, err := ResolvePolicyVersion(policyDefs, "MyPolicy", "")
+	if err != nil {
+		t.Fatalf("Expected empty version to resolve, got error: %v", err)
+	}
+	if resolved != "v1.0.0" {
+		t.Fatalf("Expected latest resolved version v1.0.0, got %s", resolved)
+	}
+
 	validator := NewPolicyValidator(policyDefs)
 
 	apiConfig := &api.RestAPI{
