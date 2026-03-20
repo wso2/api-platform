@@ -40,6 +40,7 @@ func TestLLMDeploymentParams(t *testing.T) {
 		ID:            "test-llm-id",
 		CorrelationID: "corr-123",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	assert.Equal(t, "test data", string(params.Data))
@@ -449,6 +450,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testi
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.DeployLLMProviderConfiguration(params)
@@ -468,6 +470,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.DeployLLMProxyConfiguration(params)
@@ -487,6 +490,7 @@ func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.UpdateLLMProvider("0000-non-existent-0000-000000000000", params)
@@ -506,6 +510,7 @@ func TestLLMDeploymentService_UpdateLLMProxy_NotFound(t *testing.T) {
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.UpdateLLMProxy("0000-non-existent-0000-000000000000", params)

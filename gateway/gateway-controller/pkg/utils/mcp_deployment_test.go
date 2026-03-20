@@ -135,6 +135,7 @@ func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 	params := MCPDeploymentParams{
 		Data:          []byte("invalid yaml: ["),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -162,6 +163,7 @@ spec:
 	params := MCPDeploymentParams{
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}

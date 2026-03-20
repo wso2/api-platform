@@ -55,6 +55,7 @@ func TestAPIDeploymentParams(t *testing.T) {
 		ContentType:   "application/yaml",
 		APIID:         "0000-test-api-id-0000-000000000000",
 		CorrelationID: "corr-123",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -334,6 +335,7 @@ func TestDeployAPIConfiguration_ParseError(t *testing.T) {
 		Data:          []byte("invalid yaml: ["),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -364,6 +366,7 @@ spec:
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -383,6 +386,7 @@ func TestDeployAPIConfiguration_UnsupportedKind(t *testing.T) {
 		ContentType:   "application/yaml",
 		Kind:          "UnknownKind",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -416,6 +420,7 @@ spec:
 			Data:          []byte(yamlData),
 			ContentType:   "application/yaml",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
@@ -441,6 +446,7 @@ spec:
 			Data:          []byte(yamlData),
 			ContentType:   "application/yaml",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
@@ -470,6 +476,7 @@ spec:
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -513,6 +520,7 @@ spec:
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -569,6 +577,7 @@ spec:
 			ContentType:   "application/yaml",
 			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
@@ -639,6 +648,7 @@ spec:
 			ContentType:   "application/yaml",
 			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
