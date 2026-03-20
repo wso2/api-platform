@@ -2,12 +2,15 @@ package service
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
+	"time"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
+	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
 	"gopkg.in/yaml.v3"
@@ -957,4 +960,415 @@ func findPath(policy *api.LLMPolicy, path string) *api.LLMPolicyPath {
 		}
 	}
 	return nil
+}
+
+type mockLLMProviderRepo struct {
+	repository.LLMProviderRepository
+	existsResult bool
+	countResult  int
+	getByIDFunc  func(providerID, orgUUID string) (*model.LLMProvider, error)
+	createCalled bool
+	created      *model.LLMProvider
+	updated      *model.LLMProvider
+}
+
+func (m *mockLLMProviderRepo) Exists(providerID, orgUUID string) (bool, error) {
+	return m.existsResult, nil
+}
+
+func (m *mockLLMProviderRepo) Count(orgUUID string) (int, error) {
+	return m.countResult, nil
+}
+
+func (m *mockLLMProviderRepo) Create(p *model.LLMProvider) error {
+	m.createCalled = true
+	m.created = p
+	return nil
+}
+
+func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(providerID, orgUUID)
+	}
+	return nil, nil
+}
+
+func (m *mockLLMProviderRepo) Update(p *model.LLMProvider) error {
+	m.updated = p
+	return nil
+}
+
+type mockLLMTemplateRepo struct {
+	repository.LLMProviderTemplateRepository
+	getByIDFunc   func(templateID, orgUUID string) (*model.LLMProviderTemplate, error)
+	getByUUIDFunc func(uuid, orgUUID string) (*model.LLMProviderTemplate, error)
+}
+
+func (m *mockLLMTemplateRepo) GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(templateID, orgUUID)
+	}
+	return nil, nil
+}
+
+func (m *mockLLMTemplateRepo) GetByUUID(uuid, orgUUID string) (*model.LLMProviderTemplate, error) {
+	if m.getByUUIDFunc != nil {
+		return m.getByUUIDFunc(uuid, orgUUID)
+	}
+	return nil, nil
+}
+
+type mockOrganizationRepo struct {
+	repository.OrganizationRepository
+	org *model.Organization
+}
+
+func (m *mockOrganizationRepo) GetOrganizationByUUID(orgID string) (*model.Organization, error) {
+	return m.org, nil
+}
+
+type mockLLMProxyRepo struct {
+	repository.LLMProxyRepository
+	existsResult         bool
+	countResult          int
+	countByProviderValue int
+	listByProviderItems  []*model.LLMProxy
+	lastListProviderUUID string
+	getByIDFunc          func(proxyID, orgUUID string) (*model.LLMProxy, error)
+	created              *model.LLMProxy
+	updated              *model.LLMProxy
+}
+
+func (m *mockLLMProxyRepo) Exists(proxyID, orgUUID string) (bool, error) {
+	return m.existsResult, nil
+}
+
+func (m *mockLLMProxyRepo) Count(orgUUID string) (int, error) {
+	return m.countResult, nil
+}
+
+func (m *mockLLMProxyRepo) Create(p *model.LLMProxy) error {
+	m.created = p
+	return nil
+}
+
+func (m *mockLLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(proxyID, orgUUID)
+	}
+	return nil, nil
+}
+
+func (m *mockLLMProxyRepo) Update(p *model.LLMProxy) error {
+	m.updated = p
+	return nil
+}
+
+func (m *mockLLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	m.lastListProviderUUID = providerUUID
+	return m.listByProviderItems, nil
+}
+
+func (m *mockLLMProxyRepo) CountByProvider(orgUUID, providerUUID string) (int, error) {
+	return m.countByProviderValue, nil
+}
+
+type mockProjectRepo struct {
+	repository.ProjectRepository
+	project *model.Project
+}
+
+func (m *mockProjectRepo) GetProjectByUUID(projectID string) (*model.Project, error) {
+	return m.project, nil
+}
+
+func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", CreatedAt: now, UpdatedAt: now}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, slog.Default())
+
+	request := validProviderRequest("openai")
+	request.ModelProviders = &[]api.LLMModelProvider{
+		{Id: "openai", Models: &[]api.LLMModel{{Id: "gpt-4o"}}},
+		{Id: "anthropic", Models: &[]api.LLMModel{{Id: "claude-3-5-sonnet"}}},
+	}
+
+	_, err := service.Create("org-1", "alice", request)
+	if err != constants.ErrInvalidInput {
+		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	}
+	if providerRepo.createCalled {
+		t.Fatalf("did not expect repository create to be called")
+	}
+}
+
+func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	providerRepo.getByIDFunc = func(providerID, orgUUID string) (*model.LLMProvider, error) {
+		if providerRepo.created == nil {
+			return nil, nil
+		}
+		created := *providerRepo.created
+		created.UUID = "prov-uuid"
+		created.CreatedAt = now
+		created.UpdatedAt = now
+		return &created, nil
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-agg", ID: "awsbedrock", CreatedAt: now, UpdatedAt: now}, nil
+		},
+	}
+	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, slog.Default())
+
+	request := validProviderRequest("awsbedrock")
+	request.ModelProviders = &[]api.LLMModelProvider{
+		{Id: "claude", Models: &[]api.LLMModel{{Id: "claude-3-5-sonnet"}}},
+		{Id: "deepseek", Models: &[]api.LLMModel{{Id: "deepseek-r1"}}},
+	}
+
+	response, err := service.Create("org-1", "alice", request)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if response == nil || response.ModelProviders == nil || len(*response.ModelProviders) != 2 {
+		t.Fatalf("expected two model providers in response, got: %#v", response)
+	}
+	if providerRepo.created == nil || providerRepo.created.TemplateUUID != "tpl-agg" {
+		t.Fatalf("expected created provider to reference aggregator template UUID")
+	}
+}
+
+func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{existsResult: true}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, slog.Default())
+
+	_, err := service.Create("org-1", "alice", validProviderRequest("openai"))
+	if err != constants.ErrLLMProviderExists {
+		t.Fatalf("expected ErrLLMProviderExists, got: %v", err)
+	}
+}
+
+func TestLLMProviderServiceUpdatePreservesUpstreamAuthValue(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	providerRepo.getByIDFunc = func(providerID, orgUUID string) (*model.LLMProvider, error) {
+		if providerRepo.updated == nil {
+			return &model.LLMProvider{
+				UUID:         "prov-uuid",
+				ID:           providerID,
+				Name:         "Old Provider",
+				Version:      "v1.0",
+				TemplateUUID: "tpl-openai",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				Configuration: model.LLMProviderConfig{
+					Upstream: &model.UpstreamConfig{
+						Main: &model.UpstreamEndpoint{
+							URL:  "https://example.com/openai/v1",
+							Auth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "Bearer old-secret"},
+						},
+					},
+				},
+			}, nil
+		}
+		updated := *providerRepo.updated
+		updated.UUID = "prov-uuid"
+		updated.CreatedAt = now
+		updated.UpdatedAt = now
+		return &updated, nil
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, slog.Default())
+
+	request := validProviderRequest("openai")
+	request.Name = "Updated Provider"
+	request.Upstream.Main.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(""),
+	}
+
+	_, err := service.Update("org-1", "provider-1", request)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if providerRepo.updated == nil || providerRepo.updated.Configuration.Upstream == nil || providerRepo.updated.Configuration.Upstream.Main == nil || providerRepo.updated.Configuration.Upstream.Main.Auth == nil {
+		t.Fatalf("expected updated provider upstream auth to be set")
+	}
+	if providerRepo.updated.Configuration.Upstream.Main.Auth.Value != "Bearer old-secret" {
+		t.Fatalf("expected upstream auth value to be preserved, got %q", providerRepo.updated.Configuration.Upstream.Main.Auth.Value)
+	}
+}
+
+func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return nil, nil
+		},
+	}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", OrganizationID: "org-1"}}
+	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, slog.Default())
+
+	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
+	if err != constants.ErrLLMProviderNotFound {
+		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{existsResult: true}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, slog.Default())
+
+	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
+	if err != constants.ErrLLMProxyExists {
+		t.Fatalf("expected ErrLLMProxyExists, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{
+		listByProviderItems: []*model.LLMProxy{{
+			UUID:        "proxy-uuid",
+			ID:          "proxy-1",
+			Name:        "Proxy One",
+			Version:     "v1.0",
+			ProjectUUID: "project-1",
+			Status:      "pending",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			Configuration: model.LLMProxyConfig{
+				Provider: "provider-1",
+				Context:  stringPtr("/assistant"),
+			},
+		}},
+		countByProviderValue: 1,
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, slog.Default())
+
+	resp, err := service.ListByProvider("org-1", "provider-1", 10, 0)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if proxyRepo.lastListProviderUUID != "provider-uuid" {
+		t.Fatalf("expected list by provider to use provider UUID, got: %q", proxyRepo.lastListProviderUUID)
+	}
+	if resp == nil || resp.Count != 1 || len(resp.List) != 1 {
+		t.Fatalf("expected one proxy in response, got: %#v", resp)
+	}
+}
+
+func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		if proxyRepo.updated == nil {
+			return &model.LLMProxy{
+				UUID:         "proxy-uuid",
+				ID:           proxyID,
+				Name:         "Old Proxy",
+				Version:      "v1.0",
+				ProjectUUID:  "project-1",
+				ProviderUUID: "provider-uuid",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				Configuration: model.LLMProxyConfig{
+					Provider:     "provider-1",
+					UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "Bearer old-secret"},
+				},
+			}, nil
+		}
+		updated := *proxyRepo.updated
+		updated.UUID = "proxy-uuid"
+		updated.CreatedAt = now
+		updated.UpdatedAt = now
+		return &updated, nil
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, slog.Default())
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.Name = "Updated Proxy"
+	request.Provider.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(""),
+	}
+
+	_, err := service.Update("org-1", "proxy-1", request)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if proxyRepo.updated == nil || proxyRepo.updated.Configuration.UpstreamAuth == nil {
+		t.Fatalf("expected updated proxy auth to be set")
+	}
+	if proxyRepo.updated.Configuration.UpstreamAuth.Value != "Bearer old-secret" {
+		t.Fatalf("expected proxy auth value to be preserved, got %q", proxyRepo.updated.Configuration.UpstreamAuth.Value)
+	}
+}
+
+func validProviderRequest(template string) *api.LLMProvider {
+	return &api.LLMProvider{
+		Id:       "provider-1",
+		Name:     "Test Provider",
+		Version:  "v1.0",
+		Template: template,
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{Url: stringPtr("https://example.com/openai/v1")},
+		},
+		AccessControl: api.LLMAccessControl{Mode: "allow_all"},
+	}
+}
+
+func validProxyRequest(providerID, projectID string) *api.LLMProxy {
+	return &api.LLMProxy{
+		Id:        "proxy-1",
+		Name:      "Test Proxy",
+		Version:   "v1.0",
+		ProjectId: projectID,
+		Provider: api.LLMProxyProvider{
+			Id: providerID,
+		},
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
+}
+
+func upstreamAuthTypePtr(v string) *api.UpstreamAuthType {
+	t := api.UpstreamAuthType(v)
+	return &t
 }
