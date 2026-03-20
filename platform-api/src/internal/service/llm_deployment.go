@@ -44,8 +44,6 @@ const (
 	apiKeyAuthPolicyName            = "api-key-auth"
 	llmCostPolicyName               = "llm-cost"
 	llmCostBasedRateLimitPolicyName = "llm-cost-based-ratelimit"
-	rateLimitPolicyVersion          = "v0"
-	apiKeyAuthPolicyVersion         = "v0"
 )
 
 // LLMProviderDeploymentService handles business logic for LLM provider deployment operations
@@ -589,7 +587,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 				return "", fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
 			}
 
-			addOrAppendPolicyPath(&policies, apiKeyAuthPolicyName, apiKeyAuthPolicyVersion, api.LLMPolicyPath{
+			addOrAppendPolicyPath(&policies, apiKeyAuthPolicyName, "", api.LLMPolicyPath{
 				Path:    "/*",
 				Methods: []api.LLMPolicyPathMethods{"*"},
 				Params: map[string]interface{}{
@@ -620,7 +618,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					policies = append(policies, api.LLMPolicy{
 						// TODO: This should be taken from config
 						Name:    tokenBasedRateLimitPolicyName,
-						Version: rateLimitPolicyVersion,
+						Version: "",
 						Paths: []api.LLMPolicyPath{
 							{
 								Path:    "/*",
@@ -646,7 +644,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					policies = append(policies, api.LLMPolicy{
 						// TODO: This should be taken from config
 						Name:    advancedRateLimitPolicyName,
-						Version: rateLimitPolicyVersion,
+						Version: "",
 						Paths: []api.LLMPolicyPath{
 							{
 								Path:    "/*",
@@ -684,7 +682,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					policies = append(policies, api.LLMPolicy{
 						// TODO: This should be taken from config
 						Name:    tokenBasedRateLimitPolicyName,
-						Version: rateLimitPolicyVersion,
+						Version: "",
 						Paths: []api.LLMPolicyPath{
 							{
 								Path:    "/*",
@@ -711,7 +709,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					policies = append(policies, api.LLMPolicy{
 						// TODO: This should be taken from config
 						Name:    advancedRateLimitPolicyName,
-						Version: rateLimitPolicyVersion,
+						Version: "",
 						Paths: []api.LLMPolicyPath{
 							{
 								Path:    "/*",
@@ -743,7 +741,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 							return "", fmt.Errorf("invalid token reset window for resource %s: %w", r.Resource, err)
 						}
 						// TODO: the methods should be coming as input
-						addOrAppendPolicyPath(&policies, tokenBasedRateLimitPolicyName, rateLimitPolicyVersion, api.LLMPolicyPath{
+						addOrAppendPolicyPath(&policies, tokenBasedRateLimitPolicyName, "", api.LLMPolicyPath{
 							Path:    r.Resource,
 							Methods: []api.LLMPolicyPathMethods{"*"},
 							Params: map[string]interface{}{
@@ -763,7 +761,7 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 							return "", fmt.Errorf("invalid request reset window for resource %s: %w", r.Resource, err)
 						}
 						// TODO: the methods should be coming as input
-						addOrAppendPolicyPath(&policies, advancedRateLimitPolicyName, rateLimitPolicyVersion, api.LLMPolicyPath{
+						addOrAppendPolicyPath(&policies, advancedRateLimitPolicyName, "", api.LLMPolicyPath{
 							Path:    r.Resource,
 							Methods: []api.LLMPolicyPathMethods{"*"},
 							Params: map[string]interface{}{
@@ -1355,7 +1353,7 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
 				return "", fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
 			}
 
-			addOrAppendPolicyPath(&policies, apiKeyAuthPolicyName, apiKeyAuthPolicyVersion, api.LLMPolicyPath{
+			addOrAppendPolicyPath(&policies, apiKeyAuthPolicyName, "", api.LLMPolicyPath{
 				Path:    "/*",
 				Methods: []api.LLMPolicyPathMethods{"*"},
 				Params: map[string]interface{}{
