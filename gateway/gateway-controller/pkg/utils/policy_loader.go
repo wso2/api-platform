@@ -163,6 +163,60 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*models.PolicyDefinitio
 	return &policyDef, nil
 }
 
+// buildLockEntry is a single entry in build-lock.yaml
+type buildLockEntry struct {
+	Name     string `yaml:"name"`
+	Version  string `yaml:"version,omitempty"`
+	FilePath string `yaml:"filePath,omitempty"`
+	Gomodule string `yaml:"gomodule,omitempty"`
+}
+
+// buildLockFile represents the structure of build-lock.yaml
+type buildLockFile struct {
+	Version  string           `yaml:"version"`
+	Policies []buildLockEntry `yaml:"policies"`
+}
+
+// GetCustomPolicyNames parses build-lock.yaml and returns a set of policy names
+// that are locally developed (have a filePath entry rather than a gomodule).
+// Returns an empty set without error if the file does not exist.
+func (pl *PolicyLoader) GetCustomPolicyNames(buildLockPath string) (map[string]bool, error) {
+	customPolicies := make(map[string]bool)
+
+	data, err := os.ReadFile(buildLockPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read build-lock.yaml: %w", err)
+	}
+
+	var lock buildLockFile
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return nil, fmt.Errorf("failed to parse build-lock.yaml: %w", err)
+	}
+
+	for _, entry := range lock.Policies {
+		if entry.FilePath != "" {
+			customPolicies[entry.Name+"|"+entry.Version] = true
+			pl.logger.Debug("Detected locally developed custom policy via filePath",
+				slog.String("name", entry.Name),
+				slog.String("version", entry.Version),
+				slog.String("filePath", entry.FilePath))
+		} else if entry.Gomodule != "" && !strings.HasPrefix(entry.Gomodule, "github.com/wso2") {
+			customPolicies[entry.Name+"|"+entry.Version] = true
+			pl.logger.Debug("Detected third-party custom policy via gomodule",
+				slog.String("name", entry.Name),
+				slog.String("version", entry.Version),
+				slog.String("gomodule", entry.Gomodule))
+		}
+	}
+
+	pl.logger.Info("Parsed build-lock.yaml for custom policy detection",
+		slog.String("path", buildLockPath),
+		slog.Int("localCount", len(customPolicies)),
+		slog.Int("totalCount", len(lock.Policies)))
+
+	return customPolicies, nil
+}
+
 // validatePolicy validates a policy definition
 func (pl *PolicyLoader) validatePolicy(policy *models.PolicyDefinition) error {
 	if strings.TrimSpace(policy.Name) == "" {

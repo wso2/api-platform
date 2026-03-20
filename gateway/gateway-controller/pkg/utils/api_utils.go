@@ -594,6 +594,8 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 
 	return nil
 }
+
+
 func MapToStruct(data map[string]interface{}, out interface{}) error {
 	// Convert map -> JSON bytes
 	jsonBytes, err := json.Marshal(data)

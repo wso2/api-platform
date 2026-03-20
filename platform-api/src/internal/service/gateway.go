@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -37,23 +38,120 @@ import (
 	"github.com/google/uuid"
 )
 
+// GatewayPolicyInput is the raw policy data received from the gateway controller.
+// ManagedBy is used only for filtering and is not stored or returned.
+type GatewayPolicyInput struct {
+	Name             string                 `json:"name"`
+	Version          string                 `json:"version"`
+	Description      *string                `json:"description,omitempty"`
+	Parameters       map[string]interface{} `json:"parameters,omitempty"`
+	SystemParameters map[string]interface{} `json:"systemParameters,omitempty"`
+	ManagedBy        string                 `json:"managedBy"`
+}
+
+// GatewayPolicyDefinition is the cleaned policy data stored in memory and returned to APIM.
+// PolicyDefinition holds the full policy schema (parameters + systemParameters) as received from the gateway controller.
+type GatewayPolicyDefinition struct {
+	Name             string                 `json:"name"`
+	Version          string                 `json:"version"`
+	Description      *string                `json:"description,omitempty"`
+	ManagedBy        string                 `json:"managedBy"`
+	PolicyDefinition map[string]interface{} `json:"policyDefinition,omitempty"`
+}
+
+// Manifest holds the gateway manifest returned to APIM.
+type Manifest struct {
+	Policies json.RawMessage
+}
+
 // GatewayService handles gateway business logic
 type GatewayService struct {
-	gatewayRepo repository.GatewayRepository
-	orgRepo     repository.OrganizationRepository
-	apiRepo     repository.APIRepository
-	slogger     *slog.Logger
+	gatewayRepo          repository.GatewayRepository
+	orgRepo              repository.OrganizationRepository
+	apiRepo              repository.APIRepository
+	gatewayEventsService *GatewayEventsService
+	slogger              *slog.Logger
 }
 
 // NewGatewayService creates a new gateway service
 func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
-	apiRepo repository.APIRepository, slogger *slog.Logger) *GatewayService {
+	apiRepo repository.APIRepository, gatewayEventsService *GatewayEventsService, slogger *slog.Logger) *GatewayService {
 	return &GatewayService{
-		gatewayRepo: gatewayRepo,
-		orgRepo:     orgRepo,
-		apiRepo:     apiRepo,
-		slogger:     slogger,
+		gatewayRepo:          gatewayRepo,
+		orgRepo:              orgRepo,
+		apiRepo:              apiRepo,
+		gatewayEventsService: gatewayEventsService,
+		slogger:              slogger,
 	}
+}
+
+// GetStoredManifest returns the latest gateway manifest. Called by APIM to retrieve
+// the manifest that was pushed by the gateway controller on connect.
+func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, error) {
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	if gateway.OrganizationID != orgID {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	raw, err := s.gatewayRepo.GetGatewayManifest(gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gateway manifest: %w", err)
+	}
+
+	return &Manifest{Policies: json.RawMessage(raw)}, nil
+}
+
+// ReceiveGatewayManifest stores the manifest posted by the gateway controller on connect.
+// All policies are stored with name and version; customer-managed policies include policy_definition.
+func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policies []GatewayPolicyInput) error {
+	entries := make([]GatewayPolicyDefinition, 0, len(policies))
+	for _, p := range policies {
+		entry := GatewayPolicyDefinition{
+			Name:        p.Name,
+			Version:     p.Version,
+			Description: p.Description,
+			ManagedBy:   p.ManagedBy,
+		}
+		if p.ManagedBy == "customer" {
+			policyDef := map[string]interface{}{}
+			if p.Parameters != nil {
+				policyDef["parameters"] = p.Parameters
+			}
+			if p.SystemParameters != nil {
+				policyDef["systemParameters"] = p.SystemParameters
+			}
+			entry.PolicyDefinition = policyDef
+		}
+		entries = append(entries, entry)
+	}
+
+	raw, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("failed to marshal gateway manifest: %w", err)
+	}
+	if err := s.gatewayRepo.UpdateGatewayManifest(gatewayID, raw); err != nil {
+		return fmt.Errorf("failed to store gateway manifest: %w", err)
+	}
+
+	customerCount := 0
+	for _, p := range policies {
+		if p.ManagedBy == "customer" {
+			customerCount++
+		}
+	}
+	s.slogger.Info("Gateway manifest received and stored",
+		slog.String("org_id", orgID),
+		slog.String("gateway_id", gatewayID),
+		slog.Int("total_policy_count", len(entries)),
+		slog.Int("customer_policy_count", customerCount),
+	)
+	return nil
 }
 
 // RegisterGateway registers a new gateway with organization validation

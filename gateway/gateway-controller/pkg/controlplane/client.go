@@ -19,12 +19,14 @@
 package controlplane
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -368,6 +370,13 @@ func (c *Client) Connect() error {
 		defer c.wg.Done()
 		c.syncSubscriptionPlans(gwID)
 		c.syncSubscriptionsForExistingAPIs(gwID)
+	}(gatewayID)
+
+	// Push gateway manifest to the control plane on connect
+	c.wg.Add(1)
+	go func(gwID string) {
+		defer c.wg.Done()
+		c.pushGatewayManifestOnConnect(gwID)
 	}(gatewayID)
 
 	// Start heartbeat monitor
@@ -3062,4 +3071,96 @@ func (c *Client) getRestAPIBaseURL() string {
 		return fmt.Sprintf("https://%s%s", c.config.Host, path)
 	}
 	return fmt.Sprintf("https://%s/api/internal/v1", c.config.Host)
+}
+
+// pushGatewayManifest POSTs the gateway's installed policy manifest to the control plane.
+func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyDefinition) error {
+	url := c.getRestAPIBaseURL() + "/gateways/" + gatewayID + "/manifest"
+
+	body := struct {
+		Policies []models.PolicyDefinition `json:"policies"`
+	}{Policies: policies}
+
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest payload: %w", err)
+	}
+
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: c.config.InsecureSkipVerify,
+			},
+		},
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create manifest request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", c.config.Token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send gateway manifest: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("gateway manifest push failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
+
+// pushGatewayManifestOnConnect collects all loaded policy definitions and POSTs
+// them to the control plane immediately after the connection is established.
+func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
+	c.logger.Info("Pushing gateway manifest on connect",
+		slog.String("gateway_id", gatewayID),
+	)
+
+	policies := make([]models.PolicyDefinition, 0, len(c.policyDefinitions))
+	for _, def := range c.policyDefinitions {
+		policies = append(policies, def)
+	}
+
+	const maxRetries = 3
+	var pushErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		pushErr = c.pushGatewayManifest(gatewayID, policies)
+		if pushErr == nil {
+			break
+		}
+		c.logger.Warn("Failed to push gateway manifest, retrying",
+			slog.String("gateway_id", gatewayID),
+			slog.Int("attempt", attempt),
+			slog.Int("max_retries", maxRetries),
+			slog.Any("error", pushErr),
+		)
+		if attempt < maxRetries {
+			select {
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			case <-c.ctx.Done():
+				c.logger.Warn("Context cancelled, aborting gateway manifest push retries",
+					slog.String("gateway_id", gatewayID))
+				return
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
+		}
+	}
+	if pushErr != nil {
+		c.logger.Error("Failed to push gateway manifest after all retries",
+			slog.String("gateway_id", gatewayID),
+			slog.Any("error", pushErr),
+		)
+		return
+	}
+
+	c.logger.Info("Successfully pushed gateway manifest to control plane",
+		slog.String("gateway_id", gatewayID),
+		slog.Int("policy_count", len(policies)),
+	)
 }
