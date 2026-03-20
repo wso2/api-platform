@@ -196,7 +196,7 @@ func (pl *PolicyLoader) GetCustomPolicyNames(buildLockPath string) (map[string]b
 	for _, entry := range lock.Policies {
 		if entry.FilePath != "" {
 			customPolicies[entry.Name+"|"+entry.Version] = true
-			pl.logger.Debug("Detected locally developed policy via filePath",
+			pl.logger.Debug("Detected locally developed custom policy via filePath",
 				slog.String("name", entry.Name),
 				slog.String("version", entry.Version),
 				slog.String("filePath", entry.FilePath))
