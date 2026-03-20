@@ -40,6 +40,22 @@ func NewPolicyValidator(policyDefinitions map[string]models.PolicyDefinition) *P
 	}
 }
 
+// ValidateMCPProxyPolicies validates all policies in an MCP proxy configuration
+func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfiguration) []ValidationError {
+	var errors []ValidationError
+
+	if mcpConfig.Spec.Policies == nil {
+		return errors
+	}
+
+	for i, policy := range *mcpConfig.Spec.Policies {
+		errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
+		errors = append(errors, errs...)
+	}
+
+	return errors
+}
+
 // ValidateRestAPIPolicies validates all policies in a REST API configuration
 func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []ValidationError {
 	var errors []ValidationError

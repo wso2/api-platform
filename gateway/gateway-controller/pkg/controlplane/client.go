@@ -208,6 +208,7 @@ func NewClient(
 		db,
 		snapshotManager,
 		policyManager,
+		policyValidator,
 	)
 
 	// Initialize API utils service with the proper base URL using the method

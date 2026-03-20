@@ -32,7 +32,7 @@ import (
 
 func TestNewMCPDeploymentService(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 
 	assert.NotNil(t, service)
 	assert.NotNil(t, service.store)
@@ -60,7 +60,7 @@ func TestMCPDeploymentParams(t *testing.T) {
 
 func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 
 	t.Run("Empty store returns empty list", func(t *testing.T) {
 		proxies := service.ListMCPProxies()
@@ -118,7 +118,7 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 
 func TestMCPDeploymentService_GetMCPProxyByHandle_NoDatabase(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 
 	_, err := service.GetMCPProxyByHandle("0000-test-handle-0000-000000000000")
 	assert.Error(t, err)
@@ -127,7 +127,7 @@ func TestMCPDeploymentService_GetMCPProxyByHandle_NoDatabase(t *testing.T) {
 
 func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	params := MCPDeploymentParams{
@@ -144,7 +144,7 @@ func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 
 func TestMCPDeploymentService_CreateMCPProxy_ValidationError(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Invalid MCP config that will fail validation
@@ -170,7 +170,7 @@ spec:
 
 func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// First, add an existing config with the same name/version
@@ -225,7 +225,7 @@ spec:
 
 func TestMCPDeploymentService_DeleteMCPProxy_NoDatabase(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	_, err := service.DeleteMCPProxy("0000-test-handle-0000-000000000000", "corr-id", logger)
@@ -235,7 +235,7 @@ func TestMCPDeploymentService_DeleteMCPProxy_NoDatabase(t *testing.T) {
 
 func TestMCPDeploymentService_UpdateMCPProxy_NoDatabase(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	params := MCPDeploymentParams{
@@ -255,7 +255,7 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 
 	t.Run("Save new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil)
+		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test MCP",
@@ -295,7 +295,7 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 	t.Run("Updates existing config", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil)
+		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original MCP",
@@ -349,7 +349,7 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 	t.Run("Error when config not found", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil)
+		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Non-existent MCP",
@@ -378,7 +378,7 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 func TestMCPDeploymentService_ParseValidateAndTransform(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil)
+	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Valid MCP config", func(t *testing.T) {

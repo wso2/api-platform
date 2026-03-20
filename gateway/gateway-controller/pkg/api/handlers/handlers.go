@@ -124,7 +124,7 @@ func NewAPIServer(
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
+		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
 		apiKeyService:      apiKeyService,
