@@ -30,7 +30,13 @@ import (
 func CompareSemver(a, b string) int {
 	aMajor, aMinor, aPatch, okA := parseSemver(a)
 	bMajor, bMinor, bPatch, okB := parseSemver(b)
-	if !okA || !okB {
+	if okA && !okB {
+		return 1
+	}
+	if !okA && okB {
+		return -1
+	}
+	if !okA && !okB {
 		switch {
 		case a > b:
 			return 1
