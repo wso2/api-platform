@@ -271,11 +271,10 @@ func main() {
 			slog.Any("error", err))
 	}
 	for key, def := range policyDefinitions {
-		managedBy := "wso2"
+		def.ManagedBy = "wso2"
 		if localPolicies[def.Name+"|"+def.Version] {
-			managedBy = "customer"
+			def.ManagedBy = "customer"
 		}
-		def.ManagedBy = &managedBy
 		policyDefinitions[key] = def
 	}
 

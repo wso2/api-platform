@@ -3079,15 +3079,11 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 
 	policies := make([]utils.ManifestPolicyEntry, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {
-		managedBy := "wso2"
-		if def.ManagedBy != nil {
-			managedBy = *def.ManagedBy
-		}
 		entry := utils.ManifestPolicyEntry{
 			Name:        def.Name,
 			Version:     def.Version,
 			Description: def.Description,
-			ManagedBy:   managedBy,
+			ManagedBy:   def.ManagedBy,
 		}
 		if def.Parameters != nil {
 			entry.Parameters = *def.Parameters
