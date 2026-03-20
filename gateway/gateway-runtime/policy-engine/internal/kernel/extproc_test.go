@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/assert"
@@ -294,41 +293,6 @@ func TestGenerateRequestID(t *testing.T) {
 	assert.Len(t, id2, 36)
 	// Should be unique
 	assert.NotEqual(t, id1, id2)
-}
-
-// =============================================================================
-// skipAllProcessing Tests
-// =============================================================================
-
-func TestSkipAllProcessing(t *testing.T) {
-	kernel := NewKernel()
-	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
-	routeMetadata := RouteMetadata{
-		RouteName:  "test-route",
-		APIName:    "TestAPI",
-		APIVersion: "v1.0",
-	}
-
-	resp := server.skipAllProcessing(routeMetadata)
-
-	require.NotNil(t, resp)
-
-	// Check response type
-	reqHeaders := resp.GetRequestHeaders()
-	require.NotNil(t, reqHeaders)
-
-	// Check mode override
-	require.NotNil(t, resp.ModeOverride)
-	assert.Equal(t, extprocconfigv3.ProcessingMode_SKIP, resp.ModeOverride.ResponseHeaderMode)
-	assert.Equal(t, extprocconfigv3.ProcessingMode_SKIP, resp.ModeOverride.RequestTrailerMode)
-	assert.Equal(t, extprocconfigv3.ProcessingMode_SKIP, resp.ModeOverride.ResponseTrailerMode)
-	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, resp.ModeOverride.RequestBodyMode)
-	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, resp.ModeOverride.ResponseBodyMode)
-
-	// Check dynamic metadata
-	require.NotNil(t, resp.DynamicMetadata)
 }
 
 // =============================================================================

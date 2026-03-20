@@ -629,25 +629,6 @@ func BenchmarkGetPolicyChainForKey(b *testing.B) {
 	})
 }
 
-// BenchmarkSkipAllProcessing benchmarks the skip-all path (no policy chain found).
-func BenchmarkSkipAllProcessing(b *testing.B) {
-	server := &ExternalProcessorServer{}
-	routeMetadata := RouteMetadata{
-		RouteName:     "bench-route",
-		APIName:       "PetStore",
-		APIVersion:    "v1.0",
-		Context:       "/petstore",
-		OperationPath: "/pets/{id}",
-		APIKind:       "rest",
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = server.skipAllProcessing(routeMetadata)
-	}
-}
-
 // BenchmarkNewPolicyExecutionContext benchmarks context allocation.
 func BenchmarkNewPolicyExecutionContext(b *testing.B) {
 	server := newBenchServer(nil)

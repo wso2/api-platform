@@ -28,7 +28,6 @@ import (
 	"time"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
@@ -39,7 +38,6 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
@@ -407,37 +405,6 @@ func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingReque
 		}
 	}
 	return "default"
-}
-
-// skipAllProcessing returns a response that skips all processing phases
-func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata) *extprocv3.ProcessingResponse {
-	// Build analytics metadata using route metadataeven when skipping policy processing
-	analyticsData := extractMetadataFromRouteMetadata(routeMetadata)
-
-	// Build the analytics struct
-	analyticsStruct, err := structpb.NewStruct(analyticsData)
-	if err != nil {
-		// Log error but continue
-		slog.Warn("Failed to build analytics struct for skip processing", "error", err)
-		analyticsStruct = &structpb.Struct{Fields: make(map[string]*structpb.Value)}
-	}
-
-	// Build dynamic metadata structure
-	dynamicMetadata := buildDynamicMetadata(analyticsStruct, nil, nil, nil)
-
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestHeaders{
-			RequestHeaders: &extprocv3.HeadersResponse{},
-		},
-		ModeOverride: &extprocconfigv3.ProcessingMode{
-			ResponseHeaderMode:  extprocconfigv3.ProcessingMode_SKIP,
-			RequestTrailerMode:  extprocconfigv3.ProcessingMode_SKIP,
-			ResponseTrailerMode: extprocconfigv3.ProcessingMode_SKIP,
-			RequestBodyMode:     extprocconfigv3.ProcessingMode_NONE,
-			ResponseBodyMode:    extprocconfigv3.ProcessingMode_NONE,
-		},
-		DynamicMetadata: dynamicMetadata,
-	}
 }
 
 // RouteMetadata contains metadata about the route
