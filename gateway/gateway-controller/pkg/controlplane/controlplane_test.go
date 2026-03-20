@@ -328,7 +328,7 @@ func TestClient_discoverGatewayPath_Success(t *testing.T) {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"gatewayPath":"internal/data/v1/ws"}`))
+		_, _ = w.Write([]byte(`{"gatewayPath":"internal/data/v1"}`))
 	}))
 	defer server.Close()
 
@@ -340,8 +340,8 @@ func TestClient_discoverGatewayPath_Success(t *testing.T) {
 		t.Fatalf("discoverGatewayPath() error = %v", err)
 	}
 
-	if gatewayPath != "/internal/data/v1/ws" {
-		t.Errorf("discoverGatewayPath() = %q, want %q", gatewayPath, "/internal/data/v1/ws")
+	if gatewayPath != "/internal/data/v1" {
+		t.Errorf("discoverGatewayPath() = %q, want %q", gatewayPath, "/internal/data/v1")
 	}
 
 	resolved := client.resolveWebSocketConnectURL()
@@ -375,10 +375,10 @@ func TestNormalizeGatewayPath(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{name: "plain", input: "internal/data/v1/ws", expected: "/internal/data/v1/ws"},
-		{name: "leading slash", input: "/internal/data/v1/ws", expected: "/internal/data/v1/ws"},
-		{name: "trailing slash", input: "internal/data/v1/ws/", expected: "/internal/data/v1/ws"},
-		{name: "surrounded spaces", input: "  /internal/data/v1/ws/  ", expected: "/internal/data/v1/ws"},
+		{name: "plain", input: "internal/data/v1", expected: "/internal/data/v1"},
+		{name: "leading slash", input: "/internal/data/v1", expected: "/internal/data/v1"},
+		{name: "trailing slash", input: "internal/data/v1/", expected: "/internal/data/v1"},
+		{name: "surrounded spaces", input: "  /internal/data/v1/  ", expected: "/internal/data/v1"},
 		{name: "empty", input: "", expected: ""},
 	}
 
