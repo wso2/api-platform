@@ -131,14 +131,14 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update the configuration
-		cfg.DesiredState = "deployed"
+		cfg.DesiredState = "undeployed"
 		err = db.UpdateConfig(cfg)
 		assert.NoError(t, err, "UpdateConfig should succeed")
 
 		// Verify update
 		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
-		assert.Equal(t, models.StateDeployed, retrieved.DesiredState)
+		assert.Equal(t, models.StateUndeployed, retrieved.DesiredState)
 	})
 
 	// Test DeleteConfig
