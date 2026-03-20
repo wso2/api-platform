@@ -223,6 +223,10 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	defer stmt.Close()
 
 	now := time.Now()
+	var deploymentID interface{}
+	if cfg.DeploymentID != "" {
+		deploymentID = cfg.DeploymentID
+	}
 	_, err = stmt.Exec(
 		cfg.UUID,
 		s.gatewayId,
@@ -231,7 +235,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		cfg.Kind,
 		cfg.Handle,
 		cfg.DesiredState,
-		cfg.DeploymentID,
+		deploymentID,
 		cfg.Origin,
 		now,
 		now,
@@ -315,13 +319,17 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	}
 	defer stmt.Close()
 
+	var updateDeploymentID interface{}
+	if cfg.DeploymentID != "" {
+		updateDeploymentID = cfg.DeploymentID
+	}
 	result, err := stmt.Exec(
 		cfg.DisplayName,
 		cfg.Version,
 		cfg.Kind,
 		cfg.Handle,
 		cfg.DesiredState,
-		cfg.DeploymentID,
+		updateDeploymentID,
 		cfg.Origin,
 		time.Now(),
 		cfg.UUID,
