@@ -1,0 +1,43 @@
+post:
+  summary: Generate content with Gemini
+  operationId: generateContent
+  parameters:
+    - name: model
+      in: path
+      required: true
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - contents
+          properties:
+            contents:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response
+      content:
+        application/json:
+          # gemini-1.5-flash-002: input=7.5e-8, output=3e-7
+          # 100 prompt + 100 completion = 0.0000375000
+          example:
+            candidates:
+              - content:
+                  parts:
+                    - text: "Hello! How can I assist you today?"
+                  role: model
+                finishReason: STOP
+                index: 0
+            modelVersion: gemini-1.5-flash-002
+            usageMetadata:
+              promptTokenCount: 100
+              candidatesTokenCount: 100
+              totalTokenCount: 200

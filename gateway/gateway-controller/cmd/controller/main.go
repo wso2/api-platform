@@ -263,6 +263,21 @@ func main() {
 	}
 	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
+	// detect custom policies from build-lock.yaml
+	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
+	if err != nil {
+		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
+			slog.String("path", cfg.Controller.Policies.BuildLockPath),
+			slog.Any("error", err))
+	}
+	for key, def := range policyDefinitions {
+		def.ManagedBy = "wso2"
+		if localPolicies[def.Name+"|"+def.Version] {
+			def.ManagedBy = "customer"
+		}
+		policyDefinitions[key] = def
+	}
+
 	// Initialize policy store and policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 

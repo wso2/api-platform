@@ -85,7 +85,7 @@ func testRouterConfig() *config.RouterConfig {
 }
 
 // policyDefs contains the single policy definition used across all test cases.
-var policyDefs = map[string]api.PolicyDefinition{
+var policyDefs = map[string]models.PolicyDefinition{
 	"header-mutate|v1.0.0": {Name: "header-mutate", Version: "v1.0.0"},
 }
 

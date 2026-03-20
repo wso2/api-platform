@@ -65,13 +65,14 @@ func NewMCPDeploymentService(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
+	policyValidator *config.PolicyValidator,
 ) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		store:           store,
 		db:              db,
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
-		validator:       config.NewMCPValidator(),
+		validator:       config.NewMCPValidator().WithPolicyValidator(policyValidator),
 		transformer:     NewMCPTransformer(),
 		policyManager:   policyManager,
 	}

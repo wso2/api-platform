@@ -1,0 +1,55 @@
+post:
+  summary: Create Anthropic message with cache read tokens
+  operationId: createAnthropicMessageCacheRead
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+            - max_tokens
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+            max_tokens:
+              type: integer
+
+  responses:
+    "200":
+      description: Successful response with cache read tokens
+      content:
+        application/json:
+          # claude-3-5-haiku-20241022: input=8e-7, output=4e-6, cache_read=8e-8
+          # input_tokens=50 (regular), cache_read_input_tokens=200, output_tokens=25
+          # PromptTokens = 50+200 = 250; regularPrompt = 250-200 = 50
+          # cost = 50*8e-7 + 200*8e-8 + 25*4e-6
+          #      = 4e-5 + 1.6e-5 + 1e-4 = 0.0001560000
+          example:
+            id: msg_01CachReadTest
+            type: message
+            role: assistant
+            model: claude-3-5-haiku-20241022
+            content:
+              - type: text
+                text: "Response using cached context."
+            stop_reason: end_turn
+            stop_sequence: null
+            usage:
+              input_tokens: 50
+              output_tokens: 25
+              cache_creation_input_tokens: 0
+              cache_read_input_tokens: 200
+              cache_creation:
+                ephemeral_5m_input_tokens: 0
+                ephemeral_1h_input_tokens: 0
+              server_tool_use:
+                web_search_requests: 0
+                web_fetch_requests: 0
+              service_tier: standard

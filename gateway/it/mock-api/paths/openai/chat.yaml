@@ -1,9 +1,6 @@
 post:
   summary: Create chat completion
   operationId: createChatCompletion
-  security:
-    - AuthorizationHeader: []
-
   requestBody:
     required: true
     content:

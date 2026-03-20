@@ -1,0 +1,149 @@
+name: llm-cost-based-ratelimit
+version: v0.1.0
+description: |
+  A specialized rate limiting policy for LLMs that limits usage based on monetary budgets.
+  The policy reads costs from SharedContext.Metadata under "x-llm-cost" (set by the llm-cost
+  system policy) and enforces per-consumer spending limits (e.g., $10 per hour, $100 per day).
+  It delegates the actual rate limiting to the advanced-ratelimit engine.
+
+parameters:
+  type: object
+  additionalProperties: false
+  required: ["budgetLimits"]
+  properties:
+    budgetLimits:
+      type: array
+      x-wso2-policy-advanced-param: false
+      description: |
+        Budget limits define the maximum amount of money the user is willing to spend
+        within specific time windows. Multiple limits can be configured for different
+        time granularities (e.g., per hour, per day, per month).
+      minItems: 1
+      maxItems: 10
+      items:
+        type: object
+        x-wso2-policy-advanced-param: false
+        additionalProperties: false
+        required: ["amount", "duration"]
+        properties:
+          amount:
+            type: number
+            x-wso2-policy-advanced-param: false
+            description: |
+              Maximum monetary budget allowed in the specified time window.
+              This is the spending cap that the user defines (e.g., 10 for $10).
+            minimum: 0.000001
+            maximum: 1000000
+          duration:
+            type: string
+            x-wso2-policy-advanced-param: false
+            description: |
+              Time window for the budget limit (Go duration string format).
+              Examples: "1h" (1 hour), "24h" (1 day), "168h" (1 week), "720h" (30 days)
+            pattern: "^(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties:
+    costScaleFactor:
+      type: integer
+      description: |
+        Scale factor for converting dollar amounts to internal units for precision.
+        The underlying rate limiter uses int64 counters, so costs less than 1 would be
+        truncated to 0 without scaling. This factor scales both the budget limits and
+        the cost multipliers to preserve precision.
+
+        Example values:
+        - 1000000000 (default): Nano-dollars. $1.00 = 1,000,000,000 units. Precision to 9 decimal places.
+          Recommended for high-volume LLM APIs where per-token costs are very small.
+        - 1000000: Micro-dollars. $1.00 = 1,000,000 units. Precision to 6 decimal places.
+        - 1000: Milli-dollars. $1.00 = 1,000 units. Precision to 3 decimal places.
+        - 100: Cents. $1.00 = 100 units. Precision to 2 decimal places.
+
+        The response headers will include both the raw scaled values and human-readable
+        dollar amounts (x-ratelimit-cost-limit-dollars, x-ratelimit-cost-remaining-dollars).
+      minimum: 1
+      default: 1000000000
+      "wso2/defaultValue": "${config.policy_configurations.llm_cost_ratelimit_v0.cost_scale_factor}"
+
+    # Rate limiting algorithm and backend - inherited from advanced-ratelimit
+    algorithm:
+      type: string
+      description: |
+        Rate limiting algorithm to use:
+        - gcra: Generic Cell Rate Algorithm (default). Provides smooth rate limiting
+          with burst support and token bucket semantics.
+        - fixed-window: Simple fixed time window counter. Lower computational overhead
+          but can allow up to 2x burst at window boundaries.
+      enum: ["gcra", "fixed-window"]
+      default: "gcra"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.algorithm}"
+
+    backend:
+      type: string
+      description: |
+        Rate limit storage backend. 'memory' for in-memory storage (single-instance),
+        'redis' for distributed rate limiting across multiple gateway instances.
+      enum: ["memory", "redis"]
+      default: "memory"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.backend}"
+
+    redis:
+      type: object
+      description: Redis configuration (only used when backend=redis)
+      additionalProperties: false
+      properties:
+        host:
+          type: string
+          default: "localhost"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.host}"
+        port:
+          type: integer
+          default: 6379
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.port}"
+        password:
+          type: string
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.password}"
+        username:
+          type: string
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.username}"
+        db:
+          type: integer
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.db}"
+        keyPrefix:
+          type: string
+          default: "ratelimit:v1:"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.key_prefix}"
+        failureMode:
+          type: string
+          enum: ["open", "closed"]
+          default: "open"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.failure_mode}"
+        connectionTimeout:
+          type: string
+          default: "5s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connection_timeout}"
+        readTimeout:
+          type: string
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.read_timeout}"
+        writeTimeout:
+          type: string
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.write_timeout}"
+
+    memory:
+      type: object
+      description: In-memory storage configuration (only used when backend=memory)
+      additionalProperties: false
+      properties:
+        maxEntries:
+          type: integer
+          default: 10000
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.max_entries}"
+        cleanupInterval:
+          type: string
+          default: "5m"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanup_interval}"

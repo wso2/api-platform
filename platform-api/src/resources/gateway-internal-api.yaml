@@ -716,6 +716,101 @@ paths:
                 message: "Internal Server Error"
                 description: "Failed to fetch deployment content"
 
+  /gateways/{gatewayId}/manifest:
+    post:
+      summary: Push gateway policy manifest
+      description: |
+        Called by the gateway controller immediately after connecting to the platform API.
+        Stores the full list of policies installed on the gateway. All policies are recorded
+        with name, version, and isCustomPolicy. Custom policies additionally include their
+        full policy definition schema (parameters and systemParameters).
+
+        **Authentication**: Requires `api-key` header with a valid gateway token. The gateway
+        ID in the path must match the gateway associated with the token.
+      operationId: PushGatewayManifest
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: gatewayId
+          in: path
+          required: true
+          description: UUID of the gateway pushing the manifest
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - policies
+              properties:
+                policies:
+                  type: array
+                  description: All policies installed on the gateway.
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - version
+                    properties:
+                      name:
+                        type: string
+                        description: Unique policy name
+                        example: "set-wso2-headers"
+                      version:
+                        type: string
+                        description: Semantic version of the policy
+                        example: "v0.8.0"
+                      description:
+                        type: string
+                        description: Human-readable description of the policy
+                      isCustomPolicy:
+                        type: boolean
+                        description: Whether this is a user-installed custom policy
+                        example: true
+                      parameters:
+                        type: object
+                        description: JSON Schema for the policy's user-configurable parameters. Present for custom policies.
+                        maxProperties: 200
+                        additionalProperties: true
+                      systemParameters:
+                        type: object
+                        description: JSON Schema for the policy's system-level parameters. Present for custom policies.
+                        maxProperties: 200
+                        additionalProperties: true
+      responses:
+        '204':
+          description: Manifest stored successfully
+        '400':
+          description: Bad request - invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Gateway ID mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
 components:
   securitySchemes:
     ApiKeyAuth:

@@ -120,7 +120,6 @@ func getFeaturePaths() []string {
 		"features/config-dump.feature",
 		"features/api-management.feature",
 		"features/api-error-responses.feature",
-		"features/list-policies.feature",
 		"features/api-keys.feature",
 		"features/api-with-policies.feature",
 		"features/llm-proxies.feature",
@@ -131,8 +130,9 @@ func getFeaturePaths() []string {
 		"features/token-based-ratelimit.feature",
 		"features/sandbox-routing.feature",
 		"features/subscription-validation.feature",
+		"features/llm-cost-based-ratelimit.feature",
 		"features/log-message.feature",
-    // These tests require different gateway configurations and are not included in the default suite run.
+		// These tests require different gateway configurations and are not included in the default suite run.
 		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
 		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
 	}

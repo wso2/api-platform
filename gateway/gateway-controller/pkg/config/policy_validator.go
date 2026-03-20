@@ -24,19 +24,36 @@ import (
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/xeipuuv/gojsonschema"
 )
 
 // PolicyValidator validates policies referenced in API configurations
 type PolicyValidator struct {
-	policyDefinitions map[string]api.PolicyDefinition
+	policyDefinitions map[string]models.PolicyDefinition
 }
 
 // NewPolicyValidator creates a new policy validator
-func NewPolicyValidator(policyDefinitions map[string]api.PolicyDefinition) *PolicyValidator {
+func NewPolicyValidator(policyDefinitions map[string]models.PolicyDefinition) *PolicyValidator {
 	return &PolicyValidator{
 		policyDefinitions: policyDefinitions,
 	}
+}
+
+// ValidateMCPProxyPolicies validates all policies in an MCP proxy configuration
+func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfiguration) []ValidationError {
+	var errors []ValidationError
+
+	if mcpConfig.Spec.Policies == nil {
+		return errors
+	}
+
+	for i, policy := range *mcpConfig.Spec.Policies {
+		errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
+		errors = append(errors, errs...)
+	}
+
+	return errors
 }
 
 // ValidateRestAPIPolicies validates all policies in a REST API configuration
@@ -125,7 +142,7 @@ func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, e
 // Only major-only versions (e.g., v1) are accepted; they are resolved to the
 // unique full version (vX.Y.Z) for that policy name. Full semantic version
 // (e.g., v1.0.0) is rejected. Used by both the validator and the derivation path.
-func ResolvePolicyVersion(definitions map[string]api.PolicyDefinition, name, version string) (string, error) {
+func ResolvePolicyVersion(definitions map[string]models.PolicyDefinition, name, version string) (string, error) {
 	trimmed := strings.TrimSpace(version)
 	if trimmed == "" {
 		return "", fmt.Errorf("policy '%s' version is required", name)

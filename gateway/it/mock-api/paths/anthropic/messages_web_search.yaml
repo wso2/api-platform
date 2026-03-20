@@ -1,0 +1,53 @@
+post:
+  summary: Create Anthropic message with web search tool use
+  operationId: createAnthropicMessageWebSearch
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+            - max_tokens
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+            max_tokens:
+              type: integer
+
+  responses:
+    "200":
+      description: Successful response
+      content:
+        application/json:
+          # claude-3-5-haiku-20241022: input=8e-7, output=4e-6, web_search=0.01/query (medium)
+          # 50 input + 25 output + 2 web search queries (no search_context_size → defaults to medium)
+          # cost = 50*8e-7 + 25*4e-6 + 2*0.01 = 0.00014 + 0.02 = 0.0201400000
+          example:
+            id: msg_websearch_example
+            type: message
+            role: assistant
+            model: claude-3-5-haiku-20241022
+            content:
+              - type: text
+                text: "Here are the search results."
+            stop_reason: end_turn
+            stop_sequence: null
+            usage:
+              input_tokens: 50
+              output_tokens: 25
+              cache_creation_input_tokens: 0
+              cache_read_input_tokens: 0
+              cache_creation:
+                ephemeral_5m_input_tokens: 0
+                ephemeral_1h_input_tokens: 0
+              server_tool_use:
+                web_search_requests: 2
+                web_fetch_requests: 0
+              service_tier: standard

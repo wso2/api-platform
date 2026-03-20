@@ -1,0 +1,48 @@
+post:
+  summary: Generate content with Gemini (thinking model, exclusive mode)
+  operationId: generateContentThinking
+  parameters:
+    - name: model
+      in: path
+      required: true
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - contents
+          properties:
+            contents:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response with thinking tokens (exclusive mode)
+      content:
+        application/json:
+          # gemini-2.5-flash-preview-04-17: input=1.5e-7, output=6e-7, reasoning=3.5e-6
+          # EXCLUSIVE mode: totalTokenCount = prompt + candidates + thoughts
+          # prompt=100, candidates=50 (text only), thoughts=30, total=180
+          # After normalize: CompletionTokens=80 (50+30), ReasoningTokens=30
+          # cost = 100*1.5e-7 + (80-30)*6e-7 + 30*3.5e-6
+          #      = 1.5e-5 + 3e-5 + 1.05e-4 = 0.0001500000
+          example:
+            candidates:
+              - content:
+                  parts:
+                    - text: "The answer is 42."
+                  role: model
+                finishReason: STOP
+                index: 0
+            modelVersion: gemini-2.5-flash-preview-04-17
+            usageMetadata:
+              promptTokenCount: 100
+              candidatesTokenCount: 50
+              thoughtsTokenCount: 30
+              totalTokenCount: 180

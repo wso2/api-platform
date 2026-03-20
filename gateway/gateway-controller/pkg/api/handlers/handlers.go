@@ -64,7 +64,7 @@ type APIServer struct {
 	db                   storage.Storage
 	snapshotManager      *xds.SnapshotManager
 	policyManager        *policyxds.PolicyManager
-	policyDefinitions    map[string]api.PolicyDefinition // key name|version
+	policyDefinitions    map[string]models.PolicyDefinition // key name|version
 	policyDefMu          sync.RWMutex
 	parser               *config.Parser
 	validator            config.Validator
@@ -91,7 +91,7 @@ func NewAPIServer(
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
@@ -124,7 +124,7 @@ func NewAPIServer(
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager),
+		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
 		apiKeyService:      apiKeyService,
@@ -1148,33 +1148,6 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 	}
 }
 
-// ListPolicies implements ServerInterface.ListPolicies
-// (GET /policies)
-func (s *APIServer) ListPolicies(c *gin.Context) {
-	// Collect and sort policies loaded from files at startup (excluding system policies)
-	s.policyDefMu.RLock()
-	list := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
-	for _, d := range s.policyDefinitions {
-		list = append(list, d)
-	}
-	s.policyDefMu.RUnlock()
-
-	sort.Slice(list, func(i, j int) bool {
-		if list[i].Name == list[j].Name {
-			return list[i].Version < list[j].Version
-		}
-		return list[i].Name < list[j].Name
-	})
-
-	count := len(list)
-	resp := struct {
-		Status   string                 `json:"status"`
-		Count    int                    `json:"count"`
-		Policies []api.PolicyDefinition `json:"policies"`
-	}{Status: "success", Count: count, Policies: list}
-	c.JSON(http.StatusOK, resp)
-}
-
 // buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config.
 // This is a thread-safe wrapper around policybuilder.DerivePolicyFromAPIConfig that handles
 // locking for the policyDefinitions map.
@@ -1185,7 +1158,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	// Copy policy definitions under lock to ensure thread safety
 	// (safe if map is ever mutated from another goroutine)
 	s.policyDefMu.RLock()
-	defsCopy := make(map[string]api.PolicyDefinition, len(s.policyDefinitions))
+	defsCopy := make(map[string]models.PolicyDefinition, len(s.policyDefinitions))
 	for k, v := range s.policyDefinitions {
 		defsCopy[k] = v
 	}
