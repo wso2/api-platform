@@ -331,8 +331,8 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 	if policy.Name != "api-key-auth" {
 		t.Fatalf("expected policy name api-key-auth, got: %s", policy.Name)
 	}
-	if policy.Version != "v0" {
-		t.Fatalf("expected policy version v0, got: %s", policy.Version)
+	if policy.Version != "" {
+		t.Fatalf("expected policy version empty, got: %s", policy.Version)
 	}
 	if len(policy.Paths) != 1 {
 		t.Fatalf("expected 1 policy path, got: %d", len(policy.Paths))
@@ -429,7 +429,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAndAdditionalPolicy(t *te
 		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
 	}
 
-	apiKeyPolicy := findPolicy(out.Spec.Policies, "api-key-auth", "v0")
+	apiKeyPolicy := findPolicy(out.Spec.Policies, "api-key-auth", "")
 	if apiKeyPolicy == nil {
 		t.Fatalf("expected api-key-auth policy to exist")
 	}
@@ -568,7 +568,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderGlobalRateLimit(t *testin
 		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
 	}
 
-	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "v0")
+	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "")
 	if tokenPolicy == nil {
 		t.Fatalf("expected token-based-ratelimit policy to exist")
 	}
@@ -594,7 +594,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderGlobalRateLimit(t *testin
 		t.Fatalf("expected token duration 1h, got: %#v", firstTokenLimit["duration"])
 	}
 
-	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "v0")
+	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "")
 	if requestPolicy == nil {
 		t.Fatalf("expected advanced-ratelimit policy to exist")
 	}
@@ -698,7 +698,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
 	}
 
-	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "v0")
+	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "")
 	if tokenPolicy == nil {
 		t.Fatalf("expected token-based-ratelimit policy to exist")
 	}
@@ -715,7 +715,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 		t.Fatalf("expected token policy path /audio/speech")
 	}
 
-	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "v0")
+	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "")
 	if requestPolicy == nil {
 		t.Fatalf("expected advanced-ratelimit policy to exist")
 	}
@@ -844,7 +844,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 		t.Fatalf("expected 2 policies, got: %d", len(out.Spec.Policies))
 	}
 
-	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "v0")
+	tokenPolicy := findPolicy(out.Spec.Policies, "token-based-ratelimit", "")
 	if tokenPolicy == nil {
 		t.Fatalf("expected token-based-ratelimit policy to exist")
 	}
@@ -852,7 +852,7 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 		t.Fatalf("expected 3 token policy paths (default + 2 unique resources), got: %d", len(tokenPolicy.Paths))
 	}
 
-	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "v0")
+	requestPolicy := findPolicy(out.Spec.Policies, "advanced-ratelimit", "")
 	if requestPolicy == nil {
 		t.Fatalf("expected advanced-ratelimit policy to exist")
 	}
