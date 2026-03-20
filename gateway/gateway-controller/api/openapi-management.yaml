@@ -1421,8 +1421,8 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [ pending, deployed, failed ]
-          example: pending
+            enum: [ deployed, undeployed ]
+          example: deployed
       responses:
         "200":
           description: List of MCPProxies
@@ -3642,6 +3642,7 @@ components:
             - pending
             - deployed
             - failed
+            - undeployed
           example: deployed
         createdAt:
           type: string
@@ -3957,6 +3958,7 @@ components:
             - pending
             - deployed
             - failed
+            - undeployed
           example: deployed
         createdAt:
           type: string
@@ -3989,6 +3991,7 @@ components:
             - pending
             - deployed
             - failed
+            - undeployed
           example: deployed
         createdAt:
           type: string

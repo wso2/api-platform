@@ -119,7 +119,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 
 		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI1-v1.0")
 		assert.NoError(t, err)
-		assert.Equal(t, models.StateDeployed, cfg.DesiredState)
+		assert.Equal(t, models.StateUndeployed, cfg.DesiredState)
 	}
 
 	// Phase 5: Delete a configuration and verify deletion persists
