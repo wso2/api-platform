@@ -223,3 +223,152 @@ Feature: The how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I delete the MCP proxy "mcp-authz-valid-token-test"
         Then the response should be successful
+
+    Scenario: Deploy an MCP Proxy with mcp-acl-list policy and verify modes with exceptions
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-acl-test
+            spec:
+              displayName: MCP ACL Test
+              version: v1.0
+              context: /mcpacl
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: mcp-acl-list
+                  version: v0
+                  params:
+                    tools:
+                      mode: deny
+                      exceptions:
+                        - add
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcpacl/mcp"
+        Then the response should be successful
+        When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcpacl/mcp"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response should have field "result"
+        And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
+
+        When I use the MCP Client to send "echo" tools/call request to "http://127.0.0.1:8080/mcpacl/mcp"
+        Then the response status code should be 400
+
+        Given I authenticate using basic auth as "admin"
+        When I update the MCP proxy "mcp-acl-test" with:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-acl-test
+            spec:
+              displayName: MCP ACL Test
+              version: v1.0
+              context: /mcpacl
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: mcp-acl-list
+                  version: v0
+                  params:
+                    tools:
+                      mode: allow
+                      exceptions:
+                        - add
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send "echo" tools/call request to "http://localhost:8080/mcpacl/mcp"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response should have field "result"
+        And the JSON response field "result.content[0].text" should contain "Hello, World!"
+
+        When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcpacl/mcp"
+        Then the response status code should be 400
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-acl-test"
+        Then the response should be successful
+
+    Scenario: Deploy an MCP Proxy with mcp-rewrite policy and verify the behaviour
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-rewrite-test
+            spec:
+              displayName: MCP Rewrite Test
+              version: v1.0
+              context: /mcprewrite
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: mcp-rewrite
+                  version: v0
+                  params:
+                    tools:
+                      - name: sum
+                        description: Take the sum of two numbers
+                        target: add
+                        inputSchema: |
+                          {
+                            "$schema": "http://json-schema.org/draft-07/schema#",
+                            "additionalProperties": false,
+                            "properties": {
+                              "a": {
+                                "description": "First number",
+                                "type": "number"
+                              },
+                              "b": {
+                                "description": "Second number",
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "a",
+                              "b"
+                            ],
+                            "type": "object"
+                          }
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcprewrite/mcp"
+        Then the response should be successful
+        When I use the MCP Client to send "sum" tools/call request to "http://127.0.0.1:8080/mcprewrite/mcp"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response should have field "result"
+        And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"   
+        When I delete the MCP proxy "mcp-rewrite-test"
+        Then the response should be successful
