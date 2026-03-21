@@ -219,6 +219,7 @@ spec:
 	params := MCPDeploymentParams{
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -246,6 +247,7 @@ func TestMCPDeploymentService_UpdateMCPProxy_NoDatabase(t *testing.T) {
 	params := MCPDeploymentParams{
 		Data:          []byte("test data"),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "corr-id",
 		Logger:        logger,
 	}
