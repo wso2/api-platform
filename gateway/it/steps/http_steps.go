@@ -505,7 +505,7 @@ func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 
 	// Check for JSON-RPC error in response (skip for HTTP-level auth/conflict errors
 	// so tests can assert on the status code and headers directly)
-	skipJSONRPCCheck := resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 409
+	skipJSONRPCCheck := resp.StatusCode == 400 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 409
 	if !skipJSONRPCCheck {
 		var initResponse map[string]interface{}
 		if err := json.Unmarshal(h.lastBody, &initResponse); err == nil {
