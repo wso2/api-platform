@@ -1,21 +1,22 @@
 name: dynamic-endpoint
-version: v0.1.0
+version: v0.2.0
 description: |
   Routes requests to a dynamically specified upstream definition.
   This policy reads an upstream name from parameters and routes the request to that upstream.
-  Demonstrates the UpstreamName functionality for dynamic upstream routing.
-  
   The targetUpstream must match the name of an entry in the API's upstreamDefinitions section.
 
 parameters:
   type: object
+  additionalProperties: false
   properties:
     targetUpstream:
       type: string
+      x-wso2-policy-advanced-param: true
       description: The name of the upstream definition to route requests to (must match an entry in upstreamDefinitions)
   required:
     - targetUpstream
 
 systemParameters:
   type: object
+  additionalProperties: false
   properties: {}

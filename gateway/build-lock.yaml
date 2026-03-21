@@ -1,8 +1,5 @@
 version: v1
 policies:
-    - name: add-headers
-      version: v0.2.0
-      gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
     - name: token-based-ratelimit
       version: v0.8.3
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
@@ -34,7 +31,7 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/cors@v0
     - name: dynamic-endpoint
-      version: v0.1.0
+      version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
     - name: json-schema-guardrail
       version: v0.2.1
@@ -79,7 +76,7 @@ policies:
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/remove-headers@v0
     - name: request-rewrite
-      version: v0.2.2
+      version: v0.2.3
       gomodule: github.com/wso2/gateway-controllers/policies/request-rewrite@v0
     - name: respond
       version: v0.2.1

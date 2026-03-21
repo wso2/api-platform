@@ -2,8 +2,6 @@ version: v1
 gateway:
   version: 0.12.0-SNAPSHOT
 policies:
-  - name: add-headers
-    gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
   - name: token-based-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
   - name: advanced-ratelimit
