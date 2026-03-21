@@ -399,6 +399,9 @@ func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, deplo
 func (s *APIUtilsService) CreateLLMProviderFromYAML(yamlData []byte, providerID string, deploymentID string,
 	deployedAt *time.Time, correlationID string,
 	llmDeploymentService *LLMDeploymentService) (*APIDeploymentResult, error) {
+	if deploymentID == "" || deployedAt == nil || deployedAt.IsZero() {
+		return nil, fmt.Errorf("control-plane deployments require non-empty deploymentID and deployedAt")
+	}
 	// Use the LLM deployment service to handle the provider configuration deployment
 	result, err := llmDeploymentService.DeployLLMProviderConfiguration(LLMDeploymentParams{
 		Data:          yamlData,
@@ -422,6 +425,9 @@ func (s *APIUtilsService) CreateLLMProviderFromYAML(yamlData []byte, providerID 
 func (s *APIUtilsService) CreateLLMProxyFromYAML(yamlData []byte, proxyID string, deploymentID string,
 	deployedAt *time.Time, correlationID string,
 	llmDeploymentService *LLMDeploymentService) (*APIDeploymentResult, error) {
+	if deploymentID == "" || deployedAt == nil || deployedAt.IsZero() {
+		return nil, fmt.Errorf("control-plane deployments require non-empty deploymentID and deployedAt")
+	}
 	// Use the LLM deployment service to handle the proxy configuration deployment
 	result, err := llmDeploymentService.DeployLLMProxyConfiguration(LLMDeploymentParams{
 		Data:          yamlData,
@@ -492,6 +498,9 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string, deploymentID string,
 	deployedAt *time.Time, correlationID string,
 	mcpDeploymentService *MCPDeploymentService) (*APIDeploymentResult, error) {
+	if deploymentID == "" || deployedAt == nil || deployedAt.IsZero() {
+		return nil, fmt.Errorf("control-plane deployments require non-empty deploymentID and deployedAt")
+	}
 	// Use the MCP deployment service to handle the proxy configuration deployment
 	result, err := mcpDeploymentService.DeployMCPConfiguration(MCPDeploymentParams{
 		Data:          yamlData,
