@@ -1249,6 +1249,20 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	// This prevents stale undeploy events from affecting a newer deployment.
+	if apiConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		apiConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale API undeploy event: deployment ID mismatch",
+			slog.String("api_id", apiID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", apiConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
 	// Set status to undeployed (preserve config, keys, and policies)
 	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
 	apiUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
@@ -1256,6 +1270,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		apiUndeployPerformedAt = time.Now()
 	}
 	apiConfig.DesiredState = models.StateUndeployed
+	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
 	apiConfig.DeployedAt = &apiUndeployPerformedAt
 	apiConfig.UpdatedAt = time.Now()
 
@@ -2145,6 +2160,20 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 		return
 	}
 
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	// This prevents stale undeploy events from affecting a newer deployment.
+	if mcpConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		mcpConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale MCP proxy undeploy event: deployment ID mismatch",
+			slog.String("proxy_id", proxyID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", mcpConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
 	// Set status to undeployed (preserve config, keys, and policies)
 	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
 	mcpUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
@@ -2152,6 +2181,7 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 		mcpUndeployPerformedAt = time.Now()
 	}
 	mcpConfig.DesiredState = models.StateUndeployed
+	mcpConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
 	mcpConfig.DeployedAt = &mcpUndeployPerformedAt
 	mcpConfig.UpdatedAt = time.Now()
 

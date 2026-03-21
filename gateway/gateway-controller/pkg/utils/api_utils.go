@@ -373,6 +373,9 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, deploymentID string,
 	deployedAt *time.Time, correlationID string,
 	deploymentService *APIDeploymentService) (*APIDeploymentResult, error) {
+	if deploymentID == "" || deployedAt == nil || deployedAt.IsZero() {
+		return nil, fmt.Errorf("control-plane deployments require non-empty deploymentID and deployedAt")
+	}
 	// Use the deployment service to handle the API configuration deployment
 	result, err := deploymentService.DeployAPIConfiguration(APIDeploymentParams{
 		Data:          yamlData,
@@ -610,7 +613,6 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 
 	return nil
 }
-
 
 func MapToStruct(data map[string]interface{}, out interface{}) error {
 	// Convert map -> JSON bytes
