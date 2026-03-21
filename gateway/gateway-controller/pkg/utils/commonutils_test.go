@@ -81,15 +81,16 @@ parent:
 			wantErr: false,
 		},
 		{
-			name:      "Valid MODIFY_HEADERS_POLICY_PARAMS",
-			policyDef: constants.MODIFY_HEADERS_POLICY_PARAMS,
+			name:      "Valid SET_HEADERS_POLICY_PARAMS",
+			policyDef: constants.SET_HEADERS_POLICY_PARAMS,
 			params:    []string{"Authorization", "Bearer token"},
 			expected: map[string]any{
-				"requestHeaders": []any{
-					map[string]any{
-						"action": "SET",
-						"name":   "Authorization",
-						"value":  "Bearer token",
+				"request": map[string]any{
+					"headers": []any{
+						map[string]any{
+							"name":  "Authorization",
+							"value": "Bearer token",
+						},
 					},
 				},
 			},

@@ -362,15 +362,16 @@ Feature: LLM Provider Management
           accessControl:
             mode: allow_all
           policies:
-            - name: modify-headers
+            - name: set-headers
               version: v1
               paths:
                 - path: /chat/completions
                   methods: [POST]
                   params:
                     request:
-                      add:
-                        x-custom-header: "test-value"
+                      headers:
+                        - name: x-custom-header
+                          value: "test-value"
         """
     Then the response status code should be 201
 
@@ -378,7 +379,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "policy-provider"
     Then the response status code should be 200
-    And the JSON response field "provider.configuration.spec.policies[0].name" should be "modify-headers"
+    And the JSON response field "provider.configuration.spec.policies[0].name" should be "set-headers"
     And the JSON response field "provider.configuration.spec.policies[0].version" should be "v1"
 
     # Cleanup

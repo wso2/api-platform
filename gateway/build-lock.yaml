@@ -63,9 +63,6 @@ policies:
     - name: model-weighted-round-robin
       version: v0.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v0
-    - name: modify-headers
-      version: v0.2.0
-      gomodule: github.com/wso2/gateway-controllers/policies/modify-headers@v0
     - name: pii-masking-regex
       version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0

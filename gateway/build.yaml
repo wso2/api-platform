@@ -44,8 +44,6 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v0
   - name: model-weighted-round-robin
     gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v0
-  - name: modify-headers
-    gomodule: github.com/wso2/gateway-controllers/policies/modify-headers@v0
   - name: pii-masking-regex
     gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0
   - name: prompt-decorator
@@ -80,4 +78,3 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
   - name: llm-cost-based-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0
-

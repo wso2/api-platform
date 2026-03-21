@@ -69,7 +69,7 @@ func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
 		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearer token123")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "request")
 	})
 
 	t.Run("Empty header name", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestGetHostAdditionPolicyParams(t *testing.T) {
 		params, err := GetHostAdditionPolicyParams("api.example.com")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "request")
 	})
 
 	t.Run("Empty host value", func(t *testing.T) {
