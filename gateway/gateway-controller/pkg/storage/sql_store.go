@@ -62,7 +62,7 @@ func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId 
 		gatewayId:   gatewayId,
 		backendName: backendName,
 		// Defaults are identity/false; backends can override.
-		rebindQuery:                       func(query string) string { return query },
+		rebindQuery:       func(query string) string { return query },
 		isUniqueViolation: func(error) bool { return false },
 	}
 }
@@ -121,6 +121,14 @@ func (t *sqlStoreTx) Commit() error {
 
 func (t *sqlStoreTx) Rollback() error {
 	return t.tx.Rollback()
+}
+
+func (s *sqlStore) rollbackTx(tx *sqlStoreTx, reason string) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		s.logger.Warn("Failed to rollback transaction",
+			slog.String("reason", reason),
+			slog.Any("error", err))
+	}
 }
 
 // kindToResourceTable maps a kind string to its per-type table name.
@@ -1131,7 +1139,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 	// Ensure transaction is properly handled
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			s.rollbackTx(tx, "panic while saving API key")
 			panic(p) // Re-throw panic after rollback
 		}
 	}()
@@ -1142,7 +1150,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 	err = tx.QueryRowQ(checkQuery, apiKey.ArtifactUUID, apiKey.Name, s.gatewayId).Scan(&existingUUID)
 
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		tx.Rollback()
+		s.rollbackTx(tx, "failed to check existing API key")
 		return fmt.Errorf("failed to check existing API key: %w", err)
 	}
 
@@ -1174,7 +1182,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 		)
 
 		if err != nil {
-			tx.Rollback()
+			s.rollbackTx(tx, "failed to insert API key")
 			// Check for unique constraint violation on api_key field
 			if s.isUniqueViolation(err) {
 				return fmt.Errorf("%w: API key value already exists", ErrConflict)
@@ -1184,7 +1192,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 
 	} else {
 		// Existing record found, return conflict error that API Key name already exists
-		tx.Rollback()
+		s.rollbackTx(tx, "api key name already exists for API")
 		s.logger.Error("API key name already exists for the API",
 			slog.String("name", apiKey.Name),
 			slog.String("artifact_uuid", apiKey.ArtifactUUID),
@@ -1447,7 +1455,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	// Ensure transaction is properly handled
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			s.rollbackTx(tx, "panic while updating API key")
 			panic(p) // Re-throw panic after rollback
 		}
 	}()
@@ -1474,7 +1482,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	)
 
 	if err != nil {
-		tx.Rollback()
+		s.rollbackTx(tx, "failed to update API key")
 		// Check for unique constraint violation on api_key field
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: API key value already exists", ErrConflict)
