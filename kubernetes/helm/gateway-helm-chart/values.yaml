@@ -297,7 +297,7 @@ gateway:
   controller:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-controller
-      tag: "0.10.0"
+      tag: "0.11.0"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -438,7 +438,7 @@ gateway:
   gatewayRuntime:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-runtime
-      tag: "0.10.0"
+      tag: "0.11.0"
       pullPolicy: Always
     imagePullSecrets: []
     service:
