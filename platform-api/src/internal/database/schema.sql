@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policy_usages (
     policy_uuid VARCHAR(40) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
     PRIMARY KEY (policy_uuid, api_uuid),
-    FOREIGN KEY (policy_uuid) REFERENCES custom_policies(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (policy_uuid) REFERENCES gateway_custom_policies(uuid) ON DELETE CASCADE,
     FOREIGN KEY (api_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
 );
 
