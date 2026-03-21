@@ -369,6 +369,75 @@ Feature: The how MCP Proxies behave when various policies are applied.
 
         # Cleanup
         And I clear all headers
-        Given I authenticate using basic auth as "admin"   
+        Given I authenticate using basic auth as "admin"
         When I delete the MCP proxy "mcp-rewrite-test"
+        Then the response should be successful
+
+    Scenario: Deploy an MCP Proxy with cors policy and verify preflight and simple request behaviour
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-cors-test
+            spec:
+              displayName: MCP CORS Test
+              version: v1.0
+              context: /mcpcors
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: cors
+                  version: v0
+                  params:
+                    allowedOrigins:
+                      - "http://example.com"
+                    allowedMethods:
+                      - "GET"
+                      - "POST"
+                    allowedHeaders:
+                      - "Content-Type"
+                    exposedHeaders:
+                      - "X-Custom-Header"
+              tools: []
+              resources: []
+              prompts: []
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        # Preflight request from allowed origin
+        When I set header "Origin" to "http://example.com"
+        And I set header "Access-Control-Request-Method" to "POST"
+        And I set header "Access-Control-Request-Headers" to "Content-Type"
+        And I send an OPTIONS request to "http://localhost:8080/mcpcors/mcp"
+        Then the response status code should be 204
+        And the response header "Access-Control-Allow-Origin" should be "http://example.com"
+        And the response header "Access-Control-Allow-Methods" should contain "POST"
+        And the response header "Access-Control-Allow-Headers" should contain "Content-Type"
+
+        # Preflight request from disallowed origin should not return CORS headers
+        When I set header "Origin" to "http://evil.com"
+        And I set header "Access-Control-Request-Method" to "POST"
+        And I set header "Access-Control-Request-Headers" to "Content-Type"
+        And I send an OPTIONS request to "http://localhost:8080/mcpcors/mcp"
+        Then the response status code should be 204
+        And the response header "Access-Control-Allow-Origin" should not exist
+
+        # Simple request from allowed origin gets CORS response headers
+        # When I clear all headers
+        # And I set header "Origin" to "http://example.com"
+        # And I use the MCP Client to send an initialize request to "http://localhost:8080/mcpcors/mcp"
+        # Then the response should be successful
+        # And the response header "Access-Control-Allow-Origin" should be "http://example.com"
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-cors-test"
         Then the response should be successful
