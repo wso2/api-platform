@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS gateways (
 );
 
 -- Custom Policies table (org-scoped custom policies synced from gateway manifests)
-CREATE TABLE IF NOT EXISTS custom_policies (
+CREATE TABLE IF NOT EXISTS gateway_custom_policies (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS custom_policies (
 );
 
 -- Custom Policy Usages table (tracks which APIs use each custom policy)
-CREATE TABLE IF NOT EXISTS custom_policy_usages (
+CREATE TABLE IF NOT EXISTS gateway_custom_policy_usages (
     policy_uuid VARCHAR(40) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
     PRIMARY KEY (policy_uuid, api_uuid),
