@@ -239,7 +239,7 @@ func TestTransform_FullProvider(t *testing.T) {
 		}
 
 		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.Method, op.Path)
-		assert.Equal(t, testModifyHeadersVersion, authPolicy.Version)
+		assert.Equal(t, testSetHeadersVersion, authPolicy.Version)
 		assert.NotNil(t, authPolicy.Params)
 	}
 }
@@ -513,12 +513,12 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 		}
 
 		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.Method, op.Path)
-		assert.Equal(t, testModifyHeadersVersion, authPolicy.Version)
+		assert.Equal(t, testSetHeadersVersion, authPolicy.Version)
 		require.NotNil(t, authPolicy.Params)
 
 		// Verify policy params contain header and value
 		params := *authPolicy.Params
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "request")
 	}
 }
 
@@ -1420,15 +1420,17 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "modify-headers",
+			Name:    "set-headers",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
 					Path:    "/v1/chat/completions",
 					Methods: []api.LLMPolicyPathMethods{"*"}, // Wildcard method
 					Params: map[string]interface{}{
-						"requestHeaders": []map[string]string{
-							{"action": "SET", "name": "X-Custom", "value": "test"},
+						"request": map[string]any{
+							"headers": []map[string]string{
+								{"name": "X-Custom", "value": "test"},
+							},
 						},
 					},
 				},
@@ -1477,14 +1479,14 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
 		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
 
-		// The policy should be modify-headers
+		// The policy should be set-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
+		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.Method, op.Path)
 		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
 		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)
-		assert.Contains(t, *policy.Params, "requestHeaders", "Operation %s %s policy should have requestHeaders param", op.Method, op.Path)
+		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.Method, op.Path)
 	}
 }
 
@@ -1494,15 +1496,17 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "modify-headers",
+			Name:    "set-headers",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
 					Path:    "/v1/chat/completions",
 					Methods: []api.LLMPolicyPathMethods{"*"}, // Wildcard method
 					Params: map[string]interface{}{
-						"requestHeaders": []map[string]string{
-							{"action": "SET", "name": "X-Custom", "value": "test"},
+						"request": map[string]any{
+							"headers": []map[string]string{
+								{"name": "X-Custom", "value": "test"},
+							},
 						},
 					},
 				},
@@ -1558,14 +1562,14 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
 		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
 
-		// The policy should be modify-headers
+		// The policy should be set-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
+		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.Method, op.Path)
 		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
 		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)
-		assert.Contains(t, *policy.Params, "requestHeaders", "Operation %s %s policy should have requestHeaders param", op.Method, op.Path)
+		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.Method, op.Path)
 	}
 }
 
@@ -1746,16 +1750,18 @@ func TestGetUpstreamAuthApikeyPolicyParams(t *testing.T) {
 			require.NotNil(t, params)
 
 			// Verify structure
-			assert.Contains(t, params, "requestHeaders")
+			assert.Contains(t, params, "request")
 
-			requestHeaders, ok := params["requestHeaders"].([]interface{})
-			require.True(t, ok, "requestHeaders should be an array")
+			requestConfig, ok := params["request"].(map[string]interface{})
+			require.True(t, ok, "request should be a map")
+
+			requestHeaders, ok := requestConfig["headers"].([]interface{})
+			require.True(t, ok, "request.headers should be an array")
 			require.Len(t, requestHeaders, 1)
 
 			headerMap, ok := requestHeaders[0].(map[string]interface{})
 			require.True(t, ok, "Header should be a map")
 
-			assert.Equal(t, "SET", headerMap["action"])
 			assert.Equal(t, tt.header, headerMap["name"])
 			assert.Equal(t, tt.value, headerMap["value"])
 		})

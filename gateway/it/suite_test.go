@@ -112,7 +112,6 @@ func getFeaturePaths() []string {
 		"features/aws-bedrock-guardrail.feature",
 		"features/semantic-cache.feature",
 		"features/semantic-prompt-guard.feature",
-		"features/modify-headers.feature",
 		"features/request-rewrite.feature",
 		"features/respond.feature",
 		"features/llm-provider.feature",

@@ -322,7 +322,7 @@ Feature: Log Message Policy Integration Tests
   # Combined with Other Policies
   # ========================================
 
-  Scenario: Log message policy combined with modify-headers
+  Scenario: Log message policy combined with set-headers
     When I deploy an API with the following configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -340,13 +340,13 @@ Feature: Log Message Policy Integration Tests
           - method: GET
             path: /test
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Custom-Header
-                      value: CustomValue
+                  request:
+                    headers:
+                      - name: X-Custom-Header
+                        value: CustomValue
               - name: log-message
                 version: v0
                 params:

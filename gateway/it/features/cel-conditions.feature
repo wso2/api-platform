@@ -50,25 +50,25 @@ Feature: CEL Execution Conditions
           - method: GET
             path: /resource
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Method == "POST"'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Cel-Executed
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Cel-Executed
+                        value: "true"
           - method: POST
             path: /resource
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Method == "POST"'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Cel-Executed
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Cel-Executed
+                        value: "true"
       """
     And I wait for the endpoint "http://localhost:8080/cel-method-test/v1.0.0/health" to be ready
     # GET request - condition is false, policy should NOT execute
@@ -104,36 +104,36 @@ Feature: CEL Execution Conditions
           - method: GET
             path: /data
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Method in ["POST", "PUT", "DELETE"]'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Write-Operation
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Write-Operation
+                        value: "true"
           - method: POST
             path: /data
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Method in ["POST", "PUT", "DELETE"]'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Write-Operation
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Write-Operation
+                        value: "true"
           - method: PUT
             path: /data
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Method in ["POST", "PUT", "DELETE"]'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Write-Operation
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Write-Operation
+                        value: "true"
       """
     And I wait for the endpoint "http://localhost:8080/cel-multi-method/v1.0.0/health" to be ready
     # GET request - not in list, policy should NOT execute
@@ -180,14 +180,14 @@ Feature: CEL Execution Conditions
           - method: GET
             path: /check
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: '"x-special-token" in request.Headers'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Token-Validated
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Token-Validated
+                        value: "true"
       """
     And I wait for the endpoint "http://localhost:8080/cel-header-presence/v1.0.0/health" to be ready
     # Request without header - condition is false, policy should NOT execute
@@ -220,14 +220,14 @@ Feature: CEL Execution Conditions
           - method: GET
             path: /premium
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: '"x-tier" in request.Headers && request.Headers["x-tier"][0] == "premium"'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Premium-Access
-                      value: "granted"
+                  request:
+                    headers:
+                      - name: X-Premium-Access
+                        value: "granted"
       """
     And I wait for the endpoint "http://localhost:8080/cel-header-value/v1.0.0/health" to be ready
     # Request with wrong tier value - condition is false
@@ -264,25 +264,25 @@ Feature: CEL Execution Conditions
           - method: GET
             path: /public/info
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Path.startsWith("/cel-path-prefix/v1.0.0/admin")'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Admin-Request
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Admin-Request
+                        value: "true"
           - method: GET
             path: /admin/settings
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Path.startsWith("/cel-path-prefix/v1.0.0/admin")'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Admin-Request
-                      value: "true"
+                  request:
+                    headers:
+                      - name: X-Admin-Request
+                        value: "true"
       """
     And I wait for the endpoint "http://localhost:8080/cel-path-prefix/v1.0.0/health" to be ready
     # Public path - condition is false, policy should NOT execute
@@ -319,25 +319,25 @@ Feature: CEL Execution Conditions
           - method: GET
             path: /secure
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Method == "POST" && "x-auth-token" in request.Headers'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Secure-Write
-                      value: "authorized"
+                  request:
+                    headers:
+                      - name: X-Secure-Write
+                        value: "authorized"
           - method: POST
             path: /secure
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 executionCondition: 'request.Method == "POST" && "x-auth-token" in request.Headers'
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Secure-Write
-                      value: "authorized"
+                  request:
+                    headers:
+                      - name: X-Secure-Write
+                        value: "authorized"
       """
     And I wait for the endpoint "http://localhost:8080/cel-combined/v1.0.0/health" to be ready
     # GET request - method condition false
