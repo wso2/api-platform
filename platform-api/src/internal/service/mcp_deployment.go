@@ -29,6 +29,7 @@ import (
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -257,11 +258,26 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	if _, err := s.deploymentRepo.SetCurrentWithDetails(
+		proxyUUID, orgId, gatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	); err != nil {
+		return nil, fmt.Errorf("failed to set deployment status for MCP proxy: %w", err)
+	}
+
 	// Send deployment event to gateway
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.MCPProxyDeploymentEvent{
 			ProxyId:      proxyUUID,
 			DeploymentID: deploymentID,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
@@ -269,12 +285,12 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		}
 	}
 
-	// Return deployment response (status and updatedAt are set by CreateDeploymentWithLimitEnforcement)
+	// Return deployment response
 	return toAPIDeploymentResponse(
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
@@ -337,8 +353,17 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	// Update status to UNDEPLOYED using SetCurrent
-	newUpdatedAt, err := s.deploymentRepo.SetCurrent(proxyUUID, orgId, deployment.GatewayID, deployment.DeploymentID, model.DeploymentStatusUndeployed)
+	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusUndeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusUndeploying
+	}
+	performedAt := time.Now()
+	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		proxyUUID, orgId, deployment.GatewayID, deployment.DeploymentID,
+		initialStatus, string(model.DeploymentStatusUndeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
@@ -346,7 +371,9 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	// Send undeployment event to gateway
 	if s.gatewayEventsService != nil {
 		undeploymentEvent := &model.MCPProxyUndeploymentEvent{
-			ProxyId: proxyUUID,
+			ProxyId:      proxyUUID,
+			DeploymentID: deployment.DeploymentID,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastMCPProxyUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
@@ -358,7 +385,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusUndeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
@@ -401,8 +428,17 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	// Use SetCurrentDeployment to activate the target deployment with status='DEPLOYED'
-	updatedAt, err := s.deploymentRepo.SetCurrent(proxyUUID, orgId, targetDeployment.GatewayID, *deploymentId, model.DeploymentStatusDeployed)
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		proxyUUID, orgId, targetDeployment.GatewayID, *deploymentId,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
@@ -412,6 +448,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		deploymentEvent := &model.MCPProxyDeploymentEvent{
 			ProxyId:      proxyUUID,
 			DeploymentID: *deploymentId,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
@@ -423,7 +460,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
 		targetDeployment.CreatedAt,
@@ -479,9 +516,12 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 	// Validate status parameter
 	if status != nil {
 		validStatuses := map[string]bool{
-			string(model.DeploymentStatusDeployed):   true,
-			string(model.DeploymentStatusUndeployed): true,
-			string(model.DeploymentStatusArchived):   true,
+			string(model.DeploymentStatusDeployed):    true,
+			string(model.DeploymentStatusUndeployed):  true,
+			string(model.DeploymentStatusArchived):    true,
+			string(model.DeploymentStatusDeploying):   true,
+			string(model.DeploymentStatusUndeploying): true,
+			string(model.DeploymentStatusFailed):      true,
 		}
 		if !validStatuses[*status] {
 			return nil, constants.ErrInvalidDeploymentStatus

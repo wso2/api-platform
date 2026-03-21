@@ -57,13 +57,13 @@ func (g *GatewayControllerGenerator) Generate() (string, error) {
 
 	// Create output directory
 	gcDir := filepath.Join(g.outputDir, "gateway-controller")
-	if err := os.MkdirAll(gcDir, 0755); err != nil {
+	if err := os.MkdirAll(gcDir, 0750); err != nil {
 		return "", fmt.Errorf("failed to create gateway-controller directory: %w", err)
 	}
 
 	// Create policies directory within gateway-controller
 	policiesDir := filepath.Join(gcDir, "policies")
-	if err := os.MkdirAll(policiesDir, 0755); err != nil {
+	if err := os.MkdirAll(policiesDir, 0750); err != nil {
 		return "", fmt.Errorf("failed to create policies directory: %w", err)
 	}
 
@@ -148,7 +148,7 @@ func (g *GatewayControllerGenerator) generateDockerfile(path string) error {
 	}
 
 	// Write Dockerfile
-	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), 0600); err != nil {
 		return fmt.Errorf("failed to write Dockerfile: %w", err)
 	}
 

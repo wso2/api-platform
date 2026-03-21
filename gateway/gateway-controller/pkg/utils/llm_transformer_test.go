@@ -69,7 +69,7 @@ func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
 		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearer token123")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "request")
 	})
 
 	t.Run("Empty header name", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestGetHostAdditionPolicyParams(t *testing.T) {
 		params, err := GetHostAdditionPolicyParams("api.example.com")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "request")
 	})
 
 	t.Run("Empty host value", func(t *testing.T) {
@@ -96,7 +96,7 @@ func TestGetHostAdditionPolicyParams(t *testing.T) {
 
 func TestBuildTemplateParams(t *testing.T) {
 	t.Run("Nil template returns error", func(t *testing.T) {
-		params, err := buildTemplateParams(nil)
+		params, err := buildTemplateParams(nil, "/*")
 		assert.Error(t, err)
 		assert.Nil(t, params)
 	})
@@ -107,7 +107,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				Spec: api.LLMProviderTemplateData{},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
 		assert.Empty(t, params)
@@ -124,7 +124,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "requestModel")
 
@@ -144,7 +144,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "responseModel")
 	})
@@ -160,7 +160,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "promptTokens")
 	})
@@ -176,7 +176,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "completionTokens")
 	})
@@ -192,7 +192,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "totalTokens")
 	})
@@ -208,7 +208,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "remainingTokens")
 	})
@@ -226,9 +226,37 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Len(t, params, 6)
+	})
+
+	t.Run("Resource mapping override is selected", func(t *testing.T) {
+		defaultModel := "$.model"
+		responsesModel := "$.response.model"
+		template := &models.StoredLLMProviderTemplate{
+			Configuration: api.LLMProviderTemplate{
+				Spec: api.LLMProviderTemplateData{
+					RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
+					ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+						Resources: &[]api.LLMProviderTemplateResourceMapping{
+							{
+								Resource:     "/responses",
+								RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: responsesModel},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		responsesParams, err := buildTemplateParams(template, "/responses")
+		assert.NoError(t, err)
+		assert.Equal(t, responsesModel, responsesParams["requestModel"].(map[string]interface{})["identifier"])
+
+		defaultParams, err := buildTemplateParams(template, "/chat/completions")
+		assert.NoError(t, err)
+		assert.Equal(t, defaultModel, defaultParams["requestModel"].(map[string]interface{})["identifier"])
 	})
 }
 
@@ -269,6 +297,32 @@ func TestMergeParams(t *testing.T) {
 		result := mergeParams(base, extra)
 		assert.Equal(t, "value1", (*result)["0000-key1-0000-000000000000"])
 		assert.Equal(t, "value2", (*result)["0000-key2-0000-000000000000"])
+	})
+}
+
+func TestExpandPolicyTargetPaths(t *testing.T) {
+	t.Run("Wildcard operation expands to mapped resources", func(t *testing.T) {
+		templateSpec := &api.LLMProviderTemplateData{
+			ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+				Resources: &[]api.LLMProviderTemplateResourceMapping{
+					{Resource: "/responses"},
+					{Resource: "/chat/*"},
+				},
+			},
+		}
+
+		targets := expandPolicyTargetPaths("/*", templateSpec)
+		assert.ElementsMatch(t, []string{"/responses", "/chat/*", "/*"}, targets)
+	})
+
+	t.Run("Wildcard operation falls back when mappings are missing", func(t *testing.T) {
+		targets := expandPolicyTargetPaths("/*", &api.LLMProviderTemplateData{})
+		assert.Equal(t, []string{"/*"}, targets)
+	})
+
+	t.Run("Explicit operation path is not expanded", func(t *testing.T) {
+		targets := expandPolicyTargetPaths("/responses", &api.LLMProviderTemplateData{})
+		assert.Equal(t, []string{"/responses"}, targets)
 	})
 }
 
@@ -345,6 +399,56 @@ func TestHasDenyPolicy(t *testing.T) {
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.True(t, result)
+	})
+}
+
+func TestDenyAppliesToTarget(t *testing.T) {
+	t.Run("Exact deny policy matches target path", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/completions", method: "GET"}: {
+				Path:     "/chat/completions",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "GET", testRespondVersion, registry)
+		assert.True(t, result)
+	})
+
+	t.Run("Wildcard deny policy matches concrete target path", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/*", method: "GET"}: {
+				Path:     "/chat/*",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "GET", testRespondVersion, registry)
+		assert.True(t, result)
+	})
+
+	t.Run("Different method does not match wildcard deny policy", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/*", method: "GET"}: {
+				Path:     "/chat/*",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "POST", testRespondVersion, registry)
+		assert.False(t, result)
 	})
 }
 
@@ -646,6 +750,116 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, api.RestApi, result.Kind)
+}
+
+func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+
+	defaultModel := "$.model"
+	responsesModel := "$.response.model"
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderTemplateData{
+				RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
+				ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+					Resources: &[]api.LLMProviderTemplateResourceMapping{
+						{
+							Resource:     "/responses",
+							RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: responsesModel},
+						},
+					},
+				},
+			},
+		},
+	}
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			Policies: &[]api.LLMPolicy{
+				{
+					Name:    "request-transformer",
+					Version: "v1.0.0",
+					Paths: []api.LLMPolicyPath{
+						{
+							Path:    "/*",
+							Methods: []api.LLMPolicyPathMethods{"POST"},
+							Params:  map[string]interface{}{"userParam": "value"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(provider, output)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var responsesOp *api.Operation
+	var wildcardPostOp *api.Operation
+	for i := range result.Spec.Operations {
+		op := &result.Spec.Operations[i]
+		if op.Method == "POST" && op.Path == "/responses" {
+			responsesOp = op
+		}
+		if op.Method == "POST" && op.Path == "/*" {
+			wildcardPostOp = op
+		}
+	}
+
+	require.NotNil(t, responsesOp)
+	require.NotNil(t, responsesOp.Policies)
+
+	var responsesPolicy *api.Policy
+	for i := range *responsesOp.Policies {
+		pol := &(*responsesOp.Policies)[i]
+		if pol.Name == "request-transformer" {
+			responsesPolicy = pol
+			break
+		}
+	}
+	require.NotNil(t, responsesPolicy)
+	require.NotNil(t, responsesPolicy.Params)
+
+	reqModel, ok := (*responsesPolicy.Params)["requestModel"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, responsesModel, reqModel["identifier"])
+	assert.Equal(t, "value", (*responsesPolicy.Params)["userParam"])
+
+	require.NotNil(t, wildcardPostOp)
+	require.NotNil(t, wildcardPostOp.Policies)
+
+	var wildcardPolicy *api.Policy
+	for i := range *wildcardPostOp.Policies {
+		pol := &(*wildcardPostOp.Policies)[i]
+		if pol.Name == "request-transformer" {
+			wildcardPolicy = pol
+			break
+		}
+	}
+	require.NotNil(t, wildcardPolicy)
+	require.NotNil(t, wildcardPolicy.Params)
+
+	wildcardReqModel, ok := (*wildcardPolicy.Params)["requestModel"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, defaultModel, wildcardReqModel["identifier"])
+	assert.Equal(t, "value", (*wildcardPolicy.Params)["userParam"])
 }
 
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {

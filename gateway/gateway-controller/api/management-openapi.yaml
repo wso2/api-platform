@@ -3454,6 +3454,39 @@ components:
           $ref: '#/components/schemas/ExtractionIdentifier'
         responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        resourceMappings:
+          $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
+
+    LLMProviderTemplateResourceMappings:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProviderTemplateResourceMapping'
+
+    LLMProviderTemplateResourceMapping:
+      type: object
+      required:
+        - resource
+      properties:
+        resource:
+          type: string
+          minLength: 1
+          description: Resource path pattern for this mapping
+          example: /responses
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
 
     ExtractionIdentifier:
       type: object
