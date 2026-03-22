@@ -82,10 +82,10 @@ func TestHandlePolicyError(t *testing.T) {
 	assert.NotNil(t, immResp.Headers)
 	assert.NotNil(t, immResp.Body)
 
-	// Body should contain error ID
+	// Body should contain correlation ID
 	bodyStr := string(immResp.Body)
 	assert.Contains(t, bodyStr, "Internal Server Error")
-	assert.Contains(t, bodyStr, "error_id")
+	assert.Contains(t, bodyStr, "correlation_id")
 }
 
 // =============================================================================

@@ -11,7 +11,7 @@ RUN go mod download
 COPY main.go ./
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o mock-analytics-collector main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o mock-analytics-collector .
 
 # Final stage
 FROM alpine:latest

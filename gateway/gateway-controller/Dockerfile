@@ -63,11 +63,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         go build $COVER_FLAG \
         -gcflags "all=-N -l" \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
-        -o controller cmd/controller/main.go; \
+        -o controller ./cmd/controller/; \
     else \
         go build $COVER_FLAG \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
-        -o controller cmd/controller/main.go; \
+        -o controller ./cmd/controller/; \
     fi
 
 # Stage: debug (select with --target debug; NOT part of the default build)

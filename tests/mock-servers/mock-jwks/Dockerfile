@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o mock-jwks main.go
+RUN go build -o mock-jwks .
 
 FROM alpine:latest
 

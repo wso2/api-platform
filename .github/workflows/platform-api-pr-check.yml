@@ -26,7 +26,7 @@ jobs:
           go-version: '1.25.7'
 
       - name: Go build
-        run: go build ./cmd/main.go
+        run: go build -o platform-api ./cmd/
         working-directory: platform-api/src
 
       - name: Run tests
