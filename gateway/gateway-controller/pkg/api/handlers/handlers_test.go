@@ -373,6 +373,10 @@ func (m *MockStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
 	return errors.New("API key not found")
 }
 
+func (m *MockStorage) DeleteAPIKeysForArtifactNotIn(artifactUUID string, uuids []string) error {
+	return nil
+}
+
 func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
 	if m.getErr != nil {
 		return 0, m.getErr

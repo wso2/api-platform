@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -268,6 +269,120 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 	)
 
 	return subs, nil
+}
+
+// controlPlaneAPIKey is the API key response from the control plane REST API.
+// The APIKeyHashes field holds a map of hash algorithm → hash value (e.g. {"sha256": "abc123..."}).
+type controlPlaneAPIKey struct {
+	UUID         string            `json:"uuid"`
+	Name         string            `json:"name"`
+	MaskedAPIKey string            `json:"maskedApiKey"`
+	APIKeyHashes map[string]string `json:"apiKeyHashes"`
+	ArtifactUUID string            `json:"artifactUuid"`
+	Status       string            `json:"status"`
+	CreatedAt    time.Time         `json:"createdAt"`
+	CreatedBy    string            `json:"createdBy"`
+	UpdatedAt    time.Time         `json:"updatedAt"`
+	ExpiresAt    *time.Time        `json:"expiresAt"`
+	Source       string            `json:"source"`
+	ExternalRefId *string          `json:"externalRefId"`
+	Issuer       *string           `json:"issuer,omitempty"`
+}
+
+// FetchAPIKeysForArtifact fetches API keys for the given artifact from the control plane.
+// Supported artifact kinds: KindLlmProvider, KindLlmProxy, KindRestApi.
+// Only active keys that carry a sha256 hash are returned; others are skipped.
+func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, artifactName string) ([]models.APIKey, error) {
+	var endpoint string
+	switch artifactKind {
+	case models.KindLlmProvider:
+		endpoint = s.config.BaseURL + "/llm-providers/" + artifactID + "/api-keys"
+	case models.KindLlmProxy:
+		endpoint = s.config.BaseURL + "/llm-proxies/" + artifactID + "/api-keys"
+	case models.KindRestApi:
+		endpoint = s.config.BaseURL + "/apis/" + artifactID + "/api-keys"
+	default:
+		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
+	}
+
+	s.logger.Info("Fetching API keys for artifact",
+		slog.String("kind", artifactKind),
+		slog.String("artifact_name", artifactName),
+	)
+
+	client := &http.Client{
+		Timeout: s.config.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: s.config.InsecureSkipVerify,
+			},
+		},
+	}
+
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API keys request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch API keys: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API keys request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var cpKeys []controlPlaneAPIKey
+	if err := json.NewDecoder(resp.Body).Decode(&cpKeys); err != nil {
+		return nil, fmt.Errorf("failed to decode API keys response: %w", err)
+	}
+
+	keys := make([]models.APIKey, 0, len(cpKeys))
+	for _, ck := range cpKeys {
+		if models.APIKeyStatus(ck.Status) != models.APIKeyStatusActive {
+			s.logger.Debug("Skipping non-active API key during bulk sync",
+				slog.String("artifact_name", artifactName),
+				slog.String("key_name", ck.Name),
+				slog.String("status", ck.Status),
+			)
+			continue
+		}
+		sha256Hash, ok := ck.APIKeyHashes[constants.HashingAlgorithmSHA256]
+		if !ok || sha256Hash == "" {
+			s.logger.Warn("Skipping API key without sha256 hash during bulk sync",
+				slog.String("artifact_name", artifactName),
+				slog.String("key_name", ck.Name),
+			)
+			continue
+		}
+		keys = append(keys, models.APIKey{
+			UUID:          ck.UUID,
+			Name:          ck.Name,
+			APIKey:        sha256Hash,
+			MaskedAPIKey:  ck.MaskedAPIKey,
+			ArtifactUUID:  ck.ArtifactUUID,
+			Status:        models.APIKeyStatus(ck.Status),
+			CreatedAt:     ck.CreatedAt,
+			CreatedBy:     ck.CreatedBy,
+			UpdatedAt:     ck.UpdatedAt,
+			ExpiresAt:     ck.ExpiresAt,
+			Source:        ck.Source,
+			ExternalRefId: ck.ExternalRefId,
+			Issuer:        ck.Issuer,
+		})
+	}
+
+	s.logger.Info("Successfully fetched API keys for artifact",
+		slog.String("artifact_name", artifactName),
+		slog.Int("count", len(keys)),
+	)
+
+	return keys, nil
 }
 
 // FetchSubscriptionPlans fetches all subscription plans from the control plane for the organization.

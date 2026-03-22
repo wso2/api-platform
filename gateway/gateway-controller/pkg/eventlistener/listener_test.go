@@ -141,6 +141,10 @@ func (m *mockAPIKeyXDSManager) RemoveAPIKeysByAPI(apiID, apiName, apiVersion, co
 	return nil
 }
 
+func (m *mockAPIKeyXDSManager) RefreshSnapshot() error {
+	return nil
+}
+
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

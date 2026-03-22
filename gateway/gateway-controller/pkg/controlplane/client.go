@@ -115,6 +115,7 @@ type Client struct {
 	llmDeploymentService        *utils.LLMDeploymentService
 	mcpDeploymentService        *utils.MCPDeploymentService
 	apiKeyXDSManager            utils.XDSManager
+	apiKeyStore                 *storage.APIKeyStore
 	routerConfig                *config.RouterConfig
 	policyManager               *policyxds.PolicyManager
 	systemConfig                *config.Config
@@ -134,6 +135,7 @@ func NewClient(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	apiKeyXDSManager utils.XDSManager,
+	apiKeyStore *storage.APIKeyStore,
 	apiKeyConfig *config.APIKeyConfig,
 	policyManager *policyxds.PolicyManager,
 	systemConfig *config.Config,
@@ -166,6 +168,7 @@ func NewClient(
 		deploymentService:           deploymentService,
 		apiKeyService:               apiKeyService,
 		apiKeyXDSManager:            apiKeyXDSManager,
+		apiKeyStore:                 apiKeyStore,
 		routerConfig:                routerConfig,
 		policyManager:               policyManager,
 		systemConfig:                systemConfig,
@@ -359,6 +362,8 @@ func (c *Client) Connect() error {
 		defer c.wg.Done()
 		c.syncSubscriptionPlans(gwID)
 		c.syncSubscriptionsForExistingAPIs(gwID)
+		// Sync API keys for LlmProvider and LlmProxy artifacts.
+		c.syncAPIKeysForExistingArtifacts(gwID)
 	}(gatewayID)
 
 	// Start heartbeat monitor
@@ -401,6 +406,17 @@ func (c *Client) waitForConnectionAck(conn *websocket.Conn) error {
 	)
 
 	return nil
+}
+
+// refreshAPIKeySnapshot triggers an xDS snapshot rebuild so the policy engine
+// picks up the latest API key state from the in-memory store.
+func (c *Client) refreshAPIKeySnapshot() {
+	if c.apiKeyXDSManager == nil {
+		return
+	}
+	if err := c.apiKeyXDSManager.RefreshSnapshot(); err != nil {
+		c.logger.Warn("Failed to refresh API key xDS snapshot after bulk sync", slog.Any("error", err))
+	}
 }
 
 // refreshSubscriptionSnapshot triggers an xDS snapshot rebuild so the policy
@@ -563,6 +579,103 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	}
 
 	c.refreshSubscriptionSnapshot()
+}
+
+// syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
+// currently known LlmProvider and LlmProxy artifacts after the WebSocket connection
+// is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
+// then reloads the in-memory store and refreshes the xDS snapshot once.
+func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
+	if c.apiUtilsService == nil || c.db == nil || c.store == nil || c.apiKeyStore == nil {
+		return
+	}
+
+	c.logger.Info("Starting API key sync at gateway startup")
+	configs := c.store.GetAll()
+	for _, cfg := range configs {
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
+			return
+		case <-c.stopChan:
+			c.logger.Info("Stopping API key bulk sync due to stop signal")
+			return
+		default:
+		}
+
+		if cfg == nil {
+			continue
+		}
+		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
+			continue
+		}
+
+		artifactID := cfg.UUID
+		keys, err := c.apiUtilsService.FetchAPIKeysForArtifact(cfg.Kind, artifactID, cfg.Handle)
+		if err != nil {
+			c.logger.Warn("Failed to bulk-sync API keys for artifact",
+				slog.String("artifact_name", cfg.Handle),
+				slog.String("kind", cfg.Kind),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		fetchedUUIDs := make([]string, 0, len(keys))
+		for i := range keys {
+			select {
+			case <-c.ctx.Done():
+				c.logger.Info("Stopping API key bulk sync during key processing due to client context cancellation")
+				return
+			case <-c.stopChan:
+				c.logger.Info("Stopping API key bulk sync during key processing due to stop signal")
+				return
+			default:
+			}
+
+			key := keys[i]
+			if key.UUID == "" {
+				continue
+			}
+
+			if err := c.db.SaveAPIKey(&key); err != nil {
+				if storage.IsConflictError(err) {
+					if existing, fetchErr := c.db.GetAPIKeysByAPIAndName(key.ArtifactUUID, key.Name); fetchErr == nil && existing != nil {
+						if existing.Source != "" {
+							key.Source = existing.Source
+						}
+						if key.ExternalRefId == nil && existing.ExternalRefId != nil {
+							key.ExternalRefId = existing.ExternalRefId
+						}
+					}
+					if err := c.db.UpdateAPIKey(&key); err != nil {
+						c.logger.Warn("Failed to update existing API key during bulk sync",
+							slog.String("key_uuid", key.UUID),
+							slog.String("artifact_id", artifactID),
+							slog.Any("error", err))
+					}
+				} else {
+					c.logger.Warn("Failed to save API key during bulk sync",
+						slog.String("key_uuid", key.UUID),
+						slog.String("artifact_id", artifactID),
+						slog.Any("error", err))
+				}
+			}
+			fetchedUUIDs = append(fetchedUUIDs, key.UUID)
+		}
+
+		if err := c.db.DeleteAPIKeysForArtifactNotIn(artifactID, fetchedUUIDs); err != nil {
+			c.logger.Warn("Failed to reconcile deleted API keys for artifact during bulk sync",
+				slog.String("artifact_id", artifactID), slog.Any("error", err))
+		}
+	}
+
+	// Reload in-memory store from the now-reconciled DB state and push a single xDS refresh.
+	c.apiKeyStore.Clear()
+	if err := storage.LoadAPIKeysFromDatabase(c.db, c.store, c.apiKeyStore); err != nil {
+		c.logger.Warn("Failed to reload API keys from database after bulk sync", slog.Any("error", err))
+	}
+	c.refreshAPIKeySnapshot()
 }
 
 // Close closes the WebSocket connection

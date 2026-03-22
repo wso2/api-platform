@@ -141,6 +141,7 @@ type XDSManager interface {
 	StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error
 	RevokeAPIKey(apiId, apiName, apiVersion, apiKeyName, correlationID string) error
 	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
+	RefreshSnapshot() error
 }
 
 // APIKeyService provides utilities for API configuration deployment
@@ -376,6 +377,33 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	return result, nil
 }
 
+// extractConfigDisplayNameVersion extracts DisplayName and Version from the stored configuration
+// based on the artifact kind. Supports RestApi, LlmProxy, and LlmProvider.
+func extractConfigDisplayNameVersion(kind string, configuration any) (string, string, error) {
+	switch kind {
+	case models.KindRestApi:
+		restCfg, ok := configuration.(api.RestAPI)
+		if !ok {
+			return "", "", fmt.Errorf("configuration is not a RestAPI (kind: %s)", kind)
+		}
+		return restCfg.Spec.DisplayName, restCfg.Spec.Version, nil
+	case models.KindLlmProxy:
+		proxyCfg, ok := configuration.(api.LLMProxyConfiguration)
+		if !ok {
+			return "", "", fmt.Errorf("configuration is not a LLMProxyConfiguration (kind: %s)", kind)
+		}
+		return proxyCfg.Spec.DisplayName, proxyCfg.Spec.Version, nil
+	case models.KindLlmProvider:
+		providerCfg, ok := configuration.(api.LLMProviderConfiguration)
+		if !ok {
+			return "", "", fmt.Errorf("configuration is not a LLMProviderConfiguration (kind: %s)", kind)
+		}
+		return providerCfg.Spec.DisplayName, providerCfg.Spec.Version, nil
+	default:
+		return "", "", fmt.Errorf("unsupported kind for API key operation: '%s'", kind)
+	}
+}
+
 // RevokeAPIKey handles the API key revocation process
 // TODO: checks if the index created in policy engine is removed
 func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevocationResult, error) {
@@ -415,13 +443,11 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
-	// Validate config type before any storage mutations to fail fast
-	restCfg, ok := config.Configuration.(api.RestAPI)
-	if !ok {
-		logger.Error("Configuration is not a RestAPI")
-		return nil, fmt.Errorf("configuration is not a RestAPI")
+	displayName, version, err := extractConfigDisplayNameVersion(kind, config.Configuration)
+	if err != nil {
+		logger.Error("Failed to extract config details for API key revocation", slog.Any("error", err))
+		return nil, err
 	}
-	apiConfig := restCfg.Spec
 
 	var apiKey *models.APIKey
 
@@ -485,8 +511,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		}
 
 		apiId := config.UUID
-		apiName := apiConfig.DisplayName
-		apiVersion := apiConfig.Version
+		apiName := displayName
+		apiVersion := version
 
 		if s.eventHub != nil {
 			// Event-driven mode: publish event for async processing by EventListener

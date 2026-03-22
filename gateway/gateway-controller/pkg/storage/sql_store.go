@@ -175,12 +175,14 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	case "LlmProxy":
 		var config api.LLMProxyConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	case "Mcp":
 		var config api.MCPProxyConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
@@ -1208,9 +1210,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Info("API key inserted successfully",
-		slog.String("uuid", apiKey.UUID),
 		slog.String("name", apiKey.Name),
-		slog.String("artifact_uuid", apiKey.ArtifactUUID),
 		slog.String("created_by", apiKey.CreatedBy))
 
 	return nil
@@ -2119,6 +2119,36 @@ func (s *sqlStore) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) er
 	_, err := s.exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscriptions for API not in set: %w", err)
+	}
+	return nil
+}
+
+// DeleteAPIKeysForArtifactNotIn removes API keys for the given artifact whose UUIDs are not in the set.
+// Used for bulk-sync reconciliation when API keys were deleted on the control plane during downtime.
+func (s *sqlStore) DeleteAPIKeysForArtifactNotIn(artifactUUID string, uuids []string) error {
+	if artifactUUID == "" {
+		return fmt.Errorf("artifactUUID is required for DeleteAPIKeysForArtifactNotIn")
+	}
+	if len(uuids) == 0 {
+		query := `DELETE FROM api_keys WHERE gateway_id = ? AND artifact_uuid = ?`
+		_, err := s.exec(query, s.gatewayId, artifactUUID)
+		if err != nil {
+			return fmt.Errorf("failed to delete API keys for artifact not in set: %w", err)
+		}
+		return nil
+	}
+	placeholders := make([]string, len(uuids))
+	args := make([]interface{}, 0, len(uuids)+2)
+	args = append(args, s.gatewayId, artifactUUID)
+	for i := range uuids {
+		placeholders[i] = "?"
+		args = append(args, uuids[i])
+	}
+	query := fmt.Sprintf(`DELETE FROM api_keys WHERE gateway_id = ? AND artifact_uuid = ? AND uuid NOT IN (%s)`,
+		strings.Join(placeholders, ","))
+	_, err := s.exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete API keys for artifact not in set: %w", err)
 	}
 	return nil
 }

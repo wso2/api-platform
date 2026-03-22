@@ -226,7 +226,7 @@ func createTestClientWithConfig(t *testing.T, cfg config.ControlPlaneConfig) *Cl
 		APIKey: *apiKeyConfig,
 	}
 
-	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub)
+	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub)
 }
 
 func TestNewClient(t *testing.T) {

@@ -18,6 +18,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// InternalAPIKeyItem is the response shape for the internal API key listing endpoints.
+type InternalAPIKeyItem struct {
+	UUID          string            `json:"uuid"`
+	Name          string            `json:"name"`
+	MaskedAPIKey  string            `json:"maskedApiKey"`
+	APIKeyHashes  map[string]string `json:"apiKeyHashes"`
+	ArtifactUUID  string            `json:"artifactUuid"`
+	Status        string            `json:"status"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	CreatedBy     string            `json:"createdBy"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	ExpiresAt     *time.Time        `json:"expiresAt"`
+	Source        string            `json:"source"`        // always "external"
+	ExternalRefId *string           `json:"externalRefId"` // always null
+	Issuer        *string           `json:"issuer,omitempty"`
+}
+
 // GatewayInternalAPIService handles internal gateway API operations
 type GatewayInternalAPIService struct {
 	apiRepo              repository.APIRepository
@@ -44,6 +62,7 @@ type GatewayInternalAPIService struct {
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
 	projectRepo          repository.ProjectRepository
+	apiKeyRepo           repository.APIKeyRepository
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -53,7 +72,7 @@ type GatewayInternalAPIService struct {
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
+	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
 		apiRepo:              apiRepo,
 		subscriptionRepo:     subscriptionRepo,
@@ -65,6 +84,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
 		projectRepo:          projectRepo,
+		apiKeyRepo:           apiKeyRepo,
 		apiUtil:              &utils.APIUtil{},
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -495,4 +515,41 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 		return nil, fmt.Errorf("failed to get deployment content: %w", err)
 	}
 	return contentMap, nil
+}
+
+// GetAPIKeysForArtifact returns the API keys for the given artifact UUID, with hashes and fixed metadata.
+// source is always "external" and externalRefId is always null.
+func (s *GatewayInternalAPIService) GetAPIKeysForArtifact(artifactUUID string) ([]InternalAPIKeyItem, error) {
+	keys, err := s.apiKeyRepo.ListByArtifact(artifactUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list API keys for artifact: %w", err)
+	}
+
+	items := make([]InternalAPIKeyItem, 0, len(keys))
+	for _, k := range keys {
+		var hashes map[string]string
+		if k.APIKeyHashes != "" {
+			if err := json.Unmarshal([]byte(k.APIKeyHashes), &hashes); err != nil {
+				s.slogger.Warn("Failed to unmarshal API key hashes, skipping key",
+					"keyUUID", k.UUID, "artifactUUID", artifactUUID, "error", err)
+				continue
+			}
+		}
+		items = append(items, InternalAPIKeyItem{
+			UUID:          k.UUID,
+			Name:          k.Name,
+			MaskedAPIKey:  k.MaskedAPIKey,
+			APIKeyHashes:  hashes,
+			ArtifactUUID:  k.ArtifactUUID,
+			Status:        k.Status,
+			CreatedAt:     k.CreatedAt,
+			CreatedBy:     k.CreatedBy,
+			UpdatedAt:     k.UpdatedAt,
+			ExpiresAt:     k.ExpiresAt,
+			Source:        "external",
+			ExternalRefId: nil,
+			Issuer:        k.Issuer,
+		})
+	}
+	return items, nil
 }

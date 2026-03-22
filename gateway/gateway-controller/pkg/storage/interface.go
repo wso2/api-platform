@@ -208,6 +208,11 @@ type Storage interface {
 	// Returns the count of active API keys and an error if the operation fails.
 	CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error)
 
+	// DeleteAPIKeysForArtifactNotIn removes API keys for the given artifact whose UUIDs are not in the set.
+	// Used for bulk-sync reconciliation when API keys were deleted on the control plane during downtime.
+	// When uuids is empty, all keys for the artifact are deleted.
+	DeleteAPIKeysForArtifactNotIn(artifactUUID string, uuids []string) error
+
 	// ========================================
 	// Subscription Plan Methods
 	// ========================================

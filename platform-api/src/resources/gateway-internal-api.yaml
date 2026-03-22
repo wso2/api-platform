@@ -379,6 +379,138 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create LLM Provider package"
 
+  /api/internal/v1/apis/{apiId}/api-keys:
+    get:
+      summary: Get API keys for a specific REST API
+      description: |
+        Retrieves all API keys associated with the given REST API artifact.
+      operationId: getRestAPIAPIKeys
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the REST API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalAPIKeyItem'
+        '400':
+          description: Bad request - Invalid API ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "API ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get API keys"
+
+  /api/internal/v1/llm-providers/{providerId}/api-keys:
+    get:
+      summary: Get API keys for a specific LLM Provider
+      description: |
+        Retrieves all API keys associated with the given LLM Provider artifact.
+      operationId: getLLMProviderAPIKeys
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the LLM Provider
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalAPIKeyItem'
+        '400':
+          description: Bad request - Invalid LLM Provider ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Provider ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get API keys"
+
   /api/internal/v1/llm-proxies/{proxyId}:
     get:
       summary: Get specific LLM Proxy by ID
@@ -476,6 +608,72 @@ paths:
                     code: 500
                     message: "Internal Server Error"
                     description: "Failed to create LLM Proxy package"
+
+  /api/internal/v1/llm-proxies/{proxyId}/api-keys:
+    get:
+      summary: Get API keys for a specific LLM Proxy
+      description: |
+        Retrieves all API keys associated with the given LLM Proxy artifact.
+      operationId: getLLMProxyAPIKeys
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: proxyId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the LLM Proxy
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalAPIKeyItem'
+        '400':
+          description: Bad request - Invalid LLM Proxy ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Proxy ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get API keys"
 
   /api/internal/v1/mcp-proxies/{proxyId}:
     get:
@@ -1054,6 +1252,83 @@ components:
           description: Route path with optional {param} placeholders
           pattern: '^\/.*$'
           example: /{country_code}/{city}
+
+    InternalAPIKeyItem:
+      type: object
+      description: API key associated with an LLM Provider or LLM Proxy artifact
+      required:
+        - uuid
+        - name
+        - maskedApiKey
+        - apiKeyHashes
+        - artifactUuid
+        - status
+        - createdAt
+        - createdBy
+        - updatedAt
+        - source
+      properties:
+        uuid:
+          type: string
+          description: Unique identifier of the API key
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        name:
+          type: string
+          description: Human-readable name of the API key
+          example: "my-api-key"
+        maskedApiKey:
+          type: string
+          description: Masked version of the API key for display purposes
+          example: "sk-****************************abcd"
+        apiKeyHashes:
+          type: object
+          description: Map of algorithm name to hash value for the API key
+          additionalProperties:
+            type: string
+          example:
+            sha256: "abc123..."
+        artifactUuid:
+          type: string
+          description: UUID of the artifact (LLM Provider or LLM Proxy) this key belongs to
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          type: string
+          description: Status of the API key
+          example: "active"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was created
+          example: "2026-01-01T10:00:00Z"
+        createdBy:
+          type: string
+          description: Identifier of the user who created the API key
+          example: "user@example.com"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was last updated
+          example: "2026-01-02T10:00:00Z"
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Expiry timestamp of the API key, or null if it does not expire
+          example: "2027-01-01T00:00:00Z"
+        source:
+          type: string
+          description: Source of the API key (always "external")
+          example: "external"
+        externalRefId:
+          type: string
+          nullable: true
+          description: External reference ID (always null)
+          example: null
+        issuer:
+          type: string
+          nullable: true
+          description: Issuer of the API key, if applicable
+          example: "https://issuer.example.com"
 
     ErrorResponse:
       type: object
