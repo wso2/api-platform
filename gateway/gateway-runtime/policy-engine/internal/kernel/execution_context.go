@@ -25,8 +25,9 @@ import (
 
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
+
+	commonerrors "github.com/wso2/api-platform/common/errors"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -113,24 +114,7 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 		"error", err,
 	)
 
-	// Build generic error response body (JSON format)
-	errorBody := fmt.Sprintf(`{"error":"Internal Server Error","error_id":"%s"}`, errorID)
-
-	// Return generic 500 response with correlation ID
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-			ImmediateResponse: &extprocv3.ImmediateResponse{
-				Status: &typev3.HttpStatus{
-					Code: typev3.StatusCode_InternalServerError,
-				},
-				Headers: buildHeaderValueOptions(map[string]string{
-					"content-type": "application/json",
-					"x-error-id":   errorID,
-				}),
-				Body: []byte(errorBody),
-			},
-		},
-	}
+	return buildImmediateErrorResponse(commonerrors.ErrCodePolicyExecutionFailed, errorID)
 }
 
 // getModeOverride returns the ProcessingMode override for this execution context

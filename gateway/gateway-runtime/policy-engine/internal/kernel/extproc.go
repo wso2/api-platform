@@ -36,6 +36,7 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	commonerrors "github.com/wso2/api-platform/common/errors"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -165,13 +166,8 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			}
 			metrics.RouteLookupFailuresTotal.Inc()
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
-					},
-				},
-			}, nil
+			// TODO: pass correlation ID once correlation ID propagation is implemented
+			return buildImmediateErrorResponse(commonerrors.ErrCodeRouteNotFound, ""), nil
 		}
 		if span.IsRecording() {
 			span.SetAttributes(attribute.Int(constants.AttrPolicyCount, len((*execCtx).policyChain.Policies)))
@@ -322,13 +318,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	default:
 		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", req.Request))
 		metrics.RequestErrorsTotal.WithLabelValues("unknown", "unknown_type", "unknown").Inc()
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-				ImmediateResponse: &extprocv3.ImmediateResponse{
-					Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
-				},
-			},
-		}, nil
+		return buildImmediateErrorResponse(commonerrors.ErrCodeUnknownRequestType, ""), nil
 	}
 }
 
@@ -403,4 +393,19 @@ type RouteMetadata struct {
 // generateRequestID generates a unique request identifier
 func (s *ExternalProcessorServer) generateRequestID() string {
 	return uuid.New().String()
+}
+
+// buildImmediateErrorResponse constructs a ProcessingResponse that immediately
+// terminates the request with the HTTP status and JSON body from the given ErrorCode.
+// If correlationID is empty it is omitted from the response body.
+func buildImmediateErrorResponse(errCode commonerrors.ErrorCode, correlationID string) *extprocv3.ProcessingResponse {
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status:  &typev3.HttpStatus{Code: typev3.StatusCode(errCode.HTTPStatus)},
+				Headers: buildHeaderValueOptions(map[string]string{"content-type": "application/json"}),
+				Body:    commonerrors.BuildErrorBody(errCode, correlationID),
+			},
+		},
+	}
 }
