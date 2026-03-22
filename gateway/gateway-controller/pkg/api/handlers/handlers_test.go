@@ -2354,6 +2354,7 @@ func TestValidationErrorsInUpdateRestAPI(t *testing.T) {
 // TestGetLLMProviderByIdFound tests getting an existing LLM provider
 func TestGetLLMProviderByIdFound(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	providerConfig := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
@@ -2382,7 +2383,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
 	server.GetLLMProviderById(c, "test-llm-provider")
@@ -2432,6 +2433,7 @@ func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
 // TestGetLLMProxyByIdFound tests getting an existing LLM proxy
 func TestGetLLMProxyByIdFound(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	proxyConfig := api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
@@ -2458,7 +2460,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
 	server.GetLLMProxyById(c, "test-llm-proxy-handle")
@@ -2469,6 +2471,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 // TestGetLLMProviderByIdWithDeployedAt tests GetLLMProviderById with deployedAt
 func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	deployedAt := time.Now()
 	providerConfig := api.LLMProviderConfiguration{
@@ -2499,7 +2502,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
 	server.GetLLMProviderById(c, "test-llm-provider")
@@ -2517,6 +2520,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 // TestGetLLMProxyByIdWithDeployedAt tests GetLLMProxyById with deployedAt
 func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	deployedAt := time.Now()
 	proxyConfig := api.LLMProxyConfiguration{
@@ -2545,7 +2549,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
 	server.GetLLMProxyById(c, "test-llm-proxy-handle")

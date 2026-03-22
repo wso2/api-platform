@@ -1131,17 +1131,14 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 }
 
 func (s *LLMDeploymentService) GetLLMProviderByHandle(handle string) (*models.StoredConfig, error) {
-	// In EventHub mode the database is the source of truth. Reading from it first
-	// avoids false 404s while the local store is still catching up with an event.
+	// In EventHub mode the database is the source of truth.
 	if s.db != nil {
 		cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
 		if err == nil {
 			_ = s.hydrateStoredLLMConfig(cfg)
 			return cfg, nil
 		}
-		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
@@ -1216,9 +1213,7 @@ func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.Store
 			_ = s.hydrateStoredLLMConfig(cfg)
 			return cfg, nil
 		}
-		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
