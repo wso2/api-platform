@@ -971,7 +971,8 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		Version:             "v1.0",
 		Configuration:       *providerAPI,
 		SourceConfiguration: *provider,
-		Status:              models.StatusDeployed,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 	}
 	err = store.Add(storedProvider)
 	require.NoError(t, err)

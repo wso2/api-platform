@@ -179,7 +179,7 @@ func TestSQLiteStorage_GetConfig_Success(t *testing.T) {
 	assert.Assert(t, retrievedConfig != nil)
 	assert.Equal(t, retrievedConfig.UUID, originalConfig.UUID)
 	assert.Equal(t, retrievedConfig.Kind, originalConfig.Kind)
-	assert.Equal(t, retrievedConfig.Status, originalConfig.Status)
+	assert.Equal(t, retrievedConfig.DesiredState, originalConfig.DesiredState)
 }
 
 func TestSQLiteStorage_GetConfig_JSONUnmarshalError(t *testing.T) {
@@ -189,9 +189,9 @@ func TestSQLiteStorage_GetConfig_JSONUnmarshalError(t *testing.T) {
 	// Insert invalid JSON manually
 	// Provide all NOT NULL fields for artifacts table
 	_, err := storage.db.Exec(`
-		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"0000-test-id-0000-000000000000", "platform-gateway-id", "test-api-name", "v1.0.0", "RestApi", "0000-test-handle-0000-000000000000", "pending", time.Now(), time.Now())
+		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, desired_state, origin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"0000-test-id-0000-000000000000", "platform-gateway-id", "test-api-name", "v1.0.0", "RestApi", "0000-test-handle-0000-000000000000", "deployed", "gateway_api", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
@@ -262,9 +262,9 @@ func TestSQLiteStorage_GetAllConfigs_JSONUnmarshalError(t *testing.T) {
 	// Insert invalid JSON manually
 	// Provide all NOT NULL fields for artifacts table
 	_, err := storage.db.Exec(`
-		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"invalid-json-config", "platform-gateway-id", "invalid-api-name", "v1.0.0", "RestApi", "invalid-handle", "pending", time.Now(), time.Now())
+		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, desired_state, origin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"invalid-json-config", "platform-gateway-id", "invalid-api-name", "v1.0.0", "RestApi", "invalid-handle", "deployed", "gateway_api", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
@@ -360,9 +360,9 @@ func TestSQLiteStorage_GetAllConfigsByKind_JSONError(t *testing.T) {
 	// Insert config with invalid JSON
 	// Provide all NOT NULL fields for artifacts table
 	_, err := storage.db.Exec(`
-		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"invalid-config", "platform-gateway-id", "invalid-api-name-kind", "v1.0.0", "RestApi", "invalid-handle-kind", "pending", time.Now(), time.Now())
+		INSERT INTO artifacts (uuid, gateway_id, display_name, version, kind, handle, desired_state, origin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"invalid-config", "platform-gateway-id", "invalid-api-name-kind", "v1.0.0", "RestApi", "invalid-handle-kind", "deployed", "gateway_api", time.Now(), time.Now())
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
@@ -837,7 +837,8 @@ func createTestStoredConfig() *models.StoredConfig {
 		Version:             "v1.0.0",
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}

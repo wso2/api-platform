@@ -165,7 +165,7 @@ func setupSQLiteDBForEventListenerTests(t *testing.T) storage.Storage {
 	return db
 }
 
-func testRestStoredConfig(uuid, handle, displayName, version string, status models.ConfigStatus) *models.StoredConfig {
+func testRestStoredConfig(uuid, handle, displayName, version string, status models.DesiredState) *models.StoredConfig {
 	restAPI := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.RestApi,
@@ -200,7 +200,8 @@ func testRestStoredConfig(uuid, handle, displayName, version string, status mode
 		Version:             version,
 		Configuration:       restAPI,
 		SourceConfiguration: restAPI,
-		Status:              status,
+		DesiredState:        status,
+		Origin:              models.OriginGatewayAPI,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
@@ -208,7 +209,7 @@ func testRestStoredConfig(uuid, handle, displayName, version string, status mode
 
 func testRestStoredConfigWithPolicies(
 	uuid, handle, displayName, version string,
-	status models.ConfigStatus,
+	status models.DesiredState,
 	policies []api.Policy,
 ) *models.StoredConfig {
 	cfg := testRestStoredConfig(uuid, handle, displayName, version, status)

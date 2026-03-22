@@ -89,8 +89,8 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [ pending, deployed, failed ]
-          example: pending
+            enum: [ deployed, undeployed ]
+          example: undeployed
       responses:
         "200":
           description: List of RestAPIs
@@ -904,8 +904,8 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [ pending, deployed, failed ]
-          example: pending
+            enum: [ deployed, undeployed ]
+          example: undeployed
       responses:
         "200":
           description: List of WebSubAPIs
@@ -1280,8 +1280,8 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [ pending, deployed, failed ]
-          example: pending
+            enum: [ deployed, undeployed ]
+          example: deployed
       responses:
         "200":
           description: List of MCPProxies
@@ -1730,8 +1730,8 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [ pending, deployed, failed ]
-          example: pending
+            enum: [ deployed, undeployed ]
+          example: undeployed
         - name: vhost
           in: query
           required: false
@@ -1973,8 +1973,8 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [ pending, deployed, failed ]
-          example: pending
+            enum: [ deployed, undeployed ]
+          example: deployed
         - name: vhost
           in: query
           required: false
@@ -2988,9 +2988,7 @@ components:
         status:
           type: string
           enum:
-            - pending
             - deployed
-            - failed
             - undeployed
           example: deployed
         createdAt:
@@ -3019,9 +3017,7 @@ components:
         status:
           type: string
           enum:
-            - pending
             - deployed
-            - failed
             - undeployed
           example: deployed
         createdAt:
@@ -3053,9 +3049,8 @@ components:
                 status:
                   type: string
                   enum:
-                    - pending
                     - deployed
-                    - failed
+                    - undeployed
                   example: deployed
                 createdAt:
                   type: string
@@ -3091,9 +3086,8 @@ components:
                 status:
                   type: string
                   enum:
-                    - pending
                     - deployed
-                    - failed
+                    - undeployed
                   example: deployed
                 createdAt:
                   type: string
@@ -3332,9 +3326,8 @@ components:
         status:
           type: string
           enum:
-            - pending
             - deployed
-            - failed
+            - undeployed
           example: deployed
         createdAt:
           type: string
@@ -3366,9 +3359,8 @@ components:
                 status:
                   type: string
                   enum:
-                    - pending
                     - deployed
-                    - failed
+                    - undeployed
                   example: deployed
                 createdAt:
                   type: string
@@ -3680,9 +3672,8 @@ components:
         status:
           type: string
           enum:
-            - pending
             - deployed
-            - failed
+            - undeployed
           example: deployed
         createdAt:
           type: string
@@ -3712,9 +3703,8 @@ components:
         status:
           type: string
           enum:
-            - pending
             - deployed
-            - failed
+            - undeployed
           example: deployed
         createdAt:
           type: string
@@ -3742,9 +3732,8 @@ components:
             deploymentStatus:
               type: string
               enum:
-                - pending
                 - deployed
-                - failed
+                - undeployed
               example: deployed
             metadata:
               type: object
@@ -3779,9 +3768,8 @@ components:
             deploymentStatus:
               type: string
               enum:
-                - pending
                 - deployed
-                - failed
+                - undeployed
               example: deployed
             metadata:
               type: object

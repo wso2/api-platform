@@ -176,7 +176,7 @@ func TestHandleAPIKeyUpsert_StoreConflictStopsBeforeXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("api-1", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("api-1", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	conflicting := testAPIKey("existing-key", "test-key", "Existing Key", cfg.UUID)
 	current := testAPIKey("incoming-key", "test-key", "Incoming Key", cfg.UUID)
 
@@ -205,7 +205,7 @@ func TestHandleAPIKeyUpsert_StoreConflictStopsBeforeXDS(t *testing.T) {
 
 func TestSyncAPIConfigForAPIKeyEvent_UsesStoreConfigWithoutDB(t *testing.T) {
 	store := storage.NewConfigStore()
-	cfg := testRestStoredConfig("api-1", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("api-1", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	require.NoError(t, store.Add(cfg))
 
 	listener := &EventListener{
@@ -223,8 +223,8 @@ func TestSyncAPIConfigForAPIKeyEvent_LogsWarningWhenMemorySyncFails(t *testing.T
 	var logBuf bytes.Buffer
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
-	conflicting := testRestStoredConfig("existing-api", "test-api", "Test API", "v1.0.0", models.StatusPending)
-	target := testRestStoredConfig("target-api", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	conflicting := testRestStoredConfig("existing-api", "test-api", "Test API", "v1.0.0", models.StateDeployed)
+	target := testRestStoredConfig("target-api", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 
 	require.NoError(t, store.Add(conflicting))
 	require.NoError(t, db.SaveConfig(target))

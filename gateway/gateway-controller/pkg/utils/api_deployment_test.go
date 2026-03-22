@@ -55,6 +55,7 @@ func TestAPIDeploymentParams(t *testing.T) {
 		ContentType:   "application/yaml",
 		APIID:         "0000-test-api-id-0000-000000000000",
 		CorrelationID: "corr-123",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -70,7 +71,8 @@ func TestAPIDeploymentResult(t *testing.T) {
 	storedCfg := &models.StoredConfig{
 		UUID:      "0000-test-id-0000-000000000000",
 		Kind:      "RestApi",
-		Status:    models.StatusPending,
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -91,8 +93,9 @@ func TestGetTopicsForUpdate(t *testing.T) {
 	t.Run("Empty config returns empty lists", func(t *testing.T) {
 		// Create a config with invalid spec (will fail parsing)
 		storedCfg := models.StoredConfig{
-			UUID: "0000-test-api-1-0000-000000000000",
-			Kind: string(api.WebSubApi),
+			UUID:   "0000-test-api-1-0000-000000000000",
+			Kind:   string(api.WebSubApi),
+			Origin: models.OriginGatewayAPI,
 		}
 		// Set up an empty spec that will fail to parse
 		storedCfg.Configuration = api.WebSubAPI{
@@ -117,8 +120,9 @@ func TestGetTopicsForUpdate(t *testing.T) {
 		}
 
 		storedCfg := models.StoredConfig{
-			UUID: "0000-websub-api-1-0000-000000000000",
-			Kind: string(api.WebSubApi),
+			UUID:   "0000-websub-api-1-0000-000000000000",
+			Kind:   string(api.WebSubApi),
+			Origin: models.OriginGatewayAPI,
 			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
 				Spec: webhookData,
@@ -138,8 +142,9 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns topics from topic manager", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			UUID: "0000-test-api-1-0000-000000000000",
-			Kind: string(api.WebSubApi),
+			UUID:   "0000-test-api-1-0000-000000000000",
+			Kind:   string(api.WebSubApi),
+			Origin: models.OriginGatewayAPI,
 		}
 
 		// Add some topics to the topic manager
@@ -154,8 +159,9 @@ func TestGetTopicsForDelete(t *testing.T) {
 
 	t.Run("Returns empty for non-existent config", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
-			UUID: "0000-non-existent-api-0000-000000000000",
-			Kind: string(api.WebSubApi),
+			UUID:   "0000-non-existent-api-0000-000000000000",
+			Kind:   string(api.WebSubApi),
+			Origin: models.OriginGatewayAPI,
 		}
 
 		topics := service.GetTopicsForDelete(storedCfg)
@@ -200,7 +206,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -233,7 +240,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -253,7 +261,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: newApiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -285,7 +294,8 @@ func TestUpdateExistingConfig(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -305,7 +315,8 @@ func TestUpdateExistingConfig(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: newApiData,
 			},
-			Status: models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 		}
 
 		isUpdate, err := service.updateExistingConfig(newConfig, original, logger)
@@ -324,6 +335,7 @@ func TestDeployAPIConfiguration_ParseError(t *testing.T) {
 		Data:          []byte("invalid yaml: ["),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -354,6 +366,7 @@ spec:
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -373,6 +386,7 @@ func TestDeployAPIConfiguration_UnsupportedKind(t *testing.T) {
 		ContentType:   "application/yaml",
 		Kind:          "UnknownKind",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -406,6 +420,7 @@ spec:
 			Data:          []byte(yamlData),
 			ContentType:   "application/yaml",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
@@ -431,6 +446,7 @@ spec:
 			Data:          []byte(yamlData),
 			ContentType:   "application/yaml",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
@@ -460,6 +476,7 @@ spec:
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -503,6 +520,7 @@ spec:
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
+		Origin:        models.OriginGatewayAPI,
 		Logger:        logger,
 	}
 
@@ -559,6 +577,7 @@ spec:
 			ContentType:   "application/yaml",
 			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
@@ -602,7 +621,8 @@ spec:
 				Kind: api.WebSubApi,
 				Spec: webhookData,
 			},
-			Status:    models.StatusDeployed,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -628,6 +648,7 @@ spec:
 			ContentType:   "application/yaml",
 			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
 			Logger:        logger,
 		}
 
@@ -658,7 +679,8 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -691,7 +713,8 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -707,7 +730,8 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -739,7 +763,8 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -761,7 +786,8 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: newApiData,
 			},
-			Status: models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 		}
 
 		isUpdate, err := service.updateExistingConfig(newConfig, original, logger)

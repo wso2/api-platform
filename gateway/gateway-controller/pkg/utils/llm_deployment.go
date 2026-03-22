@@ -39,11 +39,14 @@ const lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
-	Data          []byte       // Raw configuration data (YAML/JSON)
-	ContentType   string       // Content type for parsing
-	ID            string       // Optional ID; if empty, generated
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger
+	Data          []byte        // Raw configuration data (YAML/JSON)
+	ContentType   string        // Content type for parsing
+	ID            string        // Optional ID; if empty, generated
+	DeploymentID  string        // Platform deployment ID (empty for gateway-api origin)
+	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
+	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
+	CorrelationID string        // Correlation ID for tracking
+	Logger        *slog.Logger  // Logger
 }
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
@@ -94,6 +97,10 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 
 // DeployLLMProviderConfiguration parses, validates, transforms and persists the provider, then triggers xDS
 func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var providerConfig api.LLMProviderConfiguration
 	var apiConfig api.RestAPI
 
@@ -157,10 +164,12 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		Version:             providerConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: providerConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		DeploymentID:        params.DeploymentID,
+		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          nil,
+		DeployedAt:          params.DeployedAt,
 	}
 
 	// Save or update
@@ -217,6 +226,10 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 
 // DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
 func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var proxyConfig api.LLMProxyConfiguration
 	var apiConfig api.RestAPI
 
@@ -280,10 +293,12 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		Version:             proxyConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: proxyConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		DeploymentID:        params.DeploymentID,
+		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          nil,
+		DeployedAt:          params.DeployedAt,
 	}
 
 	// Save or update
@@ -857,7 +872,7 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 	}
 
 	// Check Status filter
-	if status != nil && string(config.Status) != string(*status) {
+	if status != nil && string(config.DesiredState) != string(*status) {
 		return false
 	}
 

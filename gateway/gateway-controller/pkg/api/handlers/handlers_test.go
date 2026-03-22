@@ -830,7 +830,8 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 		Version:             version,
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
@@ -1259,7 +1260,7 @@ func TestHandleStatusUpdate(t *testing.T) {
 
 	// Verify status updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
-	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
+	assert.Equal(t, models.StateDeployed, updatedCfg.DesiredState)
 	assert.NotNil(t, updatedCfg.DeployedAt)
 }
 
@@ -1276,7 +1277,7 @@ func TestHandleStatusUpdateFailure(t *testing.T) {
 
 	// Verify status updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
-	assert.Equal(t, models.StatusFailed, updatedCfg.Status)
+	assert.Equal(t, models.StateDeployed, updatedCfg.DesiredState)
 	assert.Nil(t, updatedCfg.DeployedAt)
 }
 
@@ -1805,6 +1806,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 		Kind:                string(api.RestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -1866,7 +1868,7 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 
 	// Add config that starts pending and will be updated to deployed
 	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
-	cfg.Status = models.StatusPending
+	cfg.DesiredState = models.StateDeployed
 	_ = server.store.Add(cfg)
 
 	done := make(chan error, 1)
@@ -1895,7 +1897,7 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 
 		retrievedCfg, err := server.store.Get("0000-test-id-0000-000000000000")
 		require.NoError(t, err)
-		assert.Equal(t, models.StatusDeployed, retrievedCfg.Status)
+		assert.Equal(t, models.StateDeployed, retrievedCfg.DesiredState)
 	}
 }
 
@@ -1963,11 +1965,11 @@ func TestNewAPIServer(t *testing.T) {
 func TestSearchDeploymentsFilters(t *testing.T) {
 	server := createTestAPIServer()
 
-	// Add test configs with different statuses
+	// Add test configs with different desired states
 	cfg1 := createTestStoredConfig("test-id-1", "api-one", "v1.0.0", "/ctx1")
-	cfg1.Status = models.StatusDeployed
+	cfg1.DesiredState = models.StateDeployed
 	cfg2 := createTestStoredConfig("test-id-2", "api-two", "v2.0.0", "/ctx2")
-	cfg2.Status = models.StatusPending
+	cfg2.DesiredState = models.StateUndeployed
 	_ = server.store.Add(cfg1)
 	_ = server.store.Add(cfg2)
 
@@ -2091,7 +2093,7 @@ func TestHandleStatusUpdateWithDB(t *testing.T) {
 
 	// Verify both store and DB are updated
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
-	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
+	assert.Equal(t, models.StateDeployed, updatedCfg.DesiredState)
 }
 
 // TestHandleStatusUpdateDBError tests handleStatusUpdate with DB error
@@ -2121,6 +2123,7 @@ func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 		Kind:                "InvalidKind",
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2133,11 +2136,9 @@ func TestConfigDumpAPIStatusConversion(t *testing.T) {
 
 	testCases := []struct {
 		name   string
-		status models.ConfigStatus
+		status models.DesiredState
 	}{
-		{"deployed", models.StatusDeployed},
-		{"failed", models.StatusFailed},
-		{"pending", models.StatusPending},
+		{"deployed", models.StateDeployed},
 	}
 
 	for _, tc := range testCases {
@@ -2146,7 +2147,7 @@ func TestConfigDumpAPIStatusConversion(t *testing.T) {
 			server.store = storage.NewConfigStore()
 
 			cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
-			cfg.Status = tc.status
+			cfg.DesiredState = tc.status
 			_ = server.store.Add(cfg)
 
 			c, w := createTestContext("GET", "/config_dump", nil)
@@ -2212,7 +2213,8 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
 		SourceConfiguration: providerConfig,
-		Status:              models.StatusDeployed,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
@@ -2249,7 +2251,8 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
 		SourceConfiguration: proxyConfig,
-		Status:              models.StatusDeployed,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
@@ -2289,7 +2292,8 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
 		SourceConfiguration: providerConfig,
-		Status:              models.StatusDeployed,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 		DeployedAt:          &deployedAt,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
@@ -2335,7 +2339,8 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
 		SourceConfiguration: proxyConfig,
-		Status:              models.StatusDeployed,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 		DeployedAt:          &deployedAt,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
@@ -2365,7 +2370,7 @@ func TestHandleStatusUpdateStoreError(t *testing.T) {
 	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
-	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
+	assert.Equal(t, models.StateDeployed, updatedCfg.DesiredState)
 }
 
 // TestCreateRestAPIMissingContentType tests CreateRestAPI with missing content type
@@ -2429,6 +2434,7 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 		Kind:                string(api.WebSubApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2464,6 +2470,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 		Kind:                string(api.RestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
@@ -2490,7 +2497,8 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 				Name: "test-mcp",
 			},
 		},
-		Status:    models.StatusDeployed,
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -2553,6 +2561,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 		Kind:                string(api.RestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2604,6 +2613,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 		Kind:                string(api.RestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2624,7 +2634,7 @@ func TestHandleStatusUpdateEmptyCorrelationID(t *testing.T) {
 	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
-	assert.Equal(t, models.StatusDeployed, updatedCfg.Status)
+	assert.Equal(t, models.StateDeployed, updatedCfg.DesiredState)
 }
 
 // TestAPIKeyServiceNotConfigured tests API key operations when service is not configured
@@ -2673,6 +2683,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 		Kind:                string(api.WebSubApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := server.buildStoredPolicyFromAPI(cfg)
@@ -2700,6 +2711,7 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 			Kind:     api.RestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
 		},
+		Origin:    models.OriginGatewayAPI,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
