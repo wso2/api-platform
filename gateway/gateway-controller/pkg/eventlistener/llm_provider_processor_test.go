@@ -194,12 +194,15 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 	assert.Equal(t, 1, policyRoutes)
 }
 
-func TestHandleEvent_LLMProviderDelete_RemovesLocalState(t *testing.T) {
+func TestHandleEvent_LLMProviderDelete_RemovesLocalStateAndAPIKeys(t *testing.T) {
 	store := storage.NewConfigStore()
+	xdsManager := &mockAPIKeyXDSManager{}
 	require.NoError(t, store.AddTemplate(testLLMProviderTemplate("tmpl-1", "openai")))
 
 	cfg := testLLMProviderStoredConfig("llm-provider-delete-id", "provider-a", "openai", nil)
+	apiKey := testAPIKey("provider-key-id-1", "provider-key", "Provider Key", cfg.UUID)
 	require.NoError(t, store.Add(cfg))
+	require.NoError(t, store.StoreAPIKey(apiKey))
 
 	lazyStore := storage.NewLazyResourceStore(newTestLogger())
 	lazySnapshot := lazyresourcexds.NewLazyResourceSnapshotManager(lazyStore, newTestLogger())
@@ -228,6 +231,7 @@ func TestHandleEvent_LLMProviderDelete_RemovesLocalState(t *testing.T) {
 
 	listener := &EventListener{
 		store:               store,
+		apiKeyXDSManager:    xdsManager,
 		lazyResourceManager: lazyManager,
 		policyManager:       policyManager,
 		logger:              newTestLogger(),
@@ -242,6 +246,16 @@ func TestHandleEvent_LLMProviderDelete_RemovesLocalState(t *testing.T) {
 
 	_, err := store.Get(cfg.UUID)
 	require.ErrorIs(t, err, storage.ErrNotFound)
+
+	_, err = store.GetAPIKeyByName(cfg.UUID, apiKey.Name)
+	require.ErrorIs(t, err, storage.ErrNotFound)
+
+	if assert.Len(t, xdsManager.removeCalls, 1) {
+		assert.Equal(t, cfg.UUID, xdsManager.removeCalls[0].apiID)
+		assert.Equal(t, cfg.DisplayName, xdsManager.removeCalls[0].apiName)
+		assert.Equal(t, cfg.Version, xdsManager.removeCalls[0].apiVersion)
+		assert.Equal(t, "corr-llm-provider-delete", xdsManager.removeCalls[0].correlationID)
+	}
 
 	_, exists := lazyManager.GetResourceByIDAndType(cfg.Handle, utils.LazyResourceTypeProviderTemplateMapping)
 	assert.False(t, exists)

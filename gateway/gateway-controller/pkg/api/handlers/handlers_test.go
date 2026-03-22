@@ -2617,7 +2617,20 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+	apiKey := &models.APIKey{
+		UUID:         "provider-key-id",
+		Name:         "provider-key",
+		APIKey:       "hashed-provider-key",
+		MaskedAPIKey: "***provider-key",
+		ArtifactUUID: cfg.UUID,
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    time.Now(),
+		CreatedBy:    "test-user",
+		UpdatedAt:    time.Now(),
+		Source:       "external",
+	}
 	mockDB.SaveConfig(cfg)
+	mockDB.SaveAPIKey(apiKey)
 	require.NoError(t, server.store.Add(cfg))
 
 	c, w := createTestContext("DELETE", "/llm-providers/test-llm-provider", nil)
@@ -2634,6 +2647,9 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	assert.Equal(t, "corr-id-delete-llm-provider", mockHub.publishedEvents[0].event.EventID)
 
 	_, err := mockDB.GetConfig(cfg.UUID)
+	require.Error(t, err)
+
+	_, err = mockDB.GetAPIKeysByAPIAndName(cfg.UUID, apiKey.Name)
 	require.Error(t, err)
 
 	_, err = server.store.Get(cfg.UUID)

@@ -892,6 +892,19 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
+	if s.eventHub == nil && s.apiKeyXDSManager != nil {
+		apiName, apiVersion := cfg.DisplayName, cfg.Version
+		if apiName != "" {
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove LLM provider API keys from policy engine",
+					slog.Any("error", err),
+					slog.String("api_id", cfg.UUID),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion))
+			}
+		}
+	}
+
 	// In EventHub mode the listener removes local policy state after replaying
 	// the delete event, so the writer should not race that cleanup inline.
 	if s.policyManager != nil && s.eventHub == nil {

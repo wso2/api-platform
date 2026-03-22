@@ -711,6 +711,72 @@ func TestLLMDeploymentService_DeleteLLMProvider_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
+func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDeleteAndRemovesDBKeys(t *testing.T) {
+	metrics.Init()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	mockHub := &mockLLMEventHub{}
+	service.SetEventHub(mockHub, "test-gateway")
+
+	cfg := &models.StoredConfig{
+		UUID:        "llm-provider-delete-id",
+		Kind:        string(api.LlmProvider),
+		Handle:      "llm-provider-delete",
+		DisplayName: "LLM Provider Delete",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProvider,
+			Metadata: api.Metadata{
+				Name: "llm-provider-delete",
+			},
+			Spec: api.LLMProviderConfigData{
+				DisplayName: "LLM Provider Delete",
+				Version:     "v1.0.0",
+				Template:    "openai",
+				Upstream: api.LLMProviderConfigData_Upstream{
+					Url: stringPtr("https://example.com"),
+				},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		},
+		Status:    models.StatusPending,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	key := newTestStoredAPIKey(cfg.UUID, "provider-key", "user-a", "external")
+
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, db.SaveAPIKey(key))
+	require.NoError(t, store.Add(cfg))
+
+	deleted, err := service.DeleteLLMProvider(cfg.Handle, "corr-llm-provider-delete", logger)
+	require.NoError(t, err)
+	require.NotNil(t, deleted)
+	assert.Equal(t, cfg.UUID, deleted.UUID)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMProvider, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-llm-provider-delete", mockHub.publishedEvents[0].event.EventID)
+
+	_, err = db.GetConfig(cfg.UUID)
+	require.Error(t, err)
+
+	_, err = db.GetAPIKeysByAPIAndName(cfg.UUID, key.Name)
+	require.Error(t, err)
+
+	_, err = store.Get(cfg.UUID)
+	require.NoError(t, err)
+}
+
 func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}

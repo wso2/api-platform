@@ -207,6 +207,26 @@ func (l *EventListener) handleLLMProviderDelete(event eventhub.Event) {
 		return
 	}
 
+	if err := l.store.RemoveAPIKeysByAPI(entityID); err != nil && !storage.IsNotFoundError(err) {
+		l.logger.Warn("Failed to remove LLM provider API keys from memory store after deletion",
+			slog.String("provider_id", entityID),
+			slog.Any("error", err))
+	}
+
+	if existingConfig != nil && l.apiKeyXDSManager != nil {
+		apiName, apiVersion := extractAPINameVersion(existingConfig)
+		if apiName != "" {
+			if err := l.apiKeyXDSManager.RemoveAPIKeysByAPI(entityID, apiName, apiVersion, event.EventID); err != nil {
+				l.logger.Warn("Failed to remove LLM provider API keys from policy engine after deletion",
+					slog.String("provider_id", entityID),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion),
+					slog.String("event_id", event.EventID),
+					slog.Any("error", err))
+			}
+		}
+	}
+
 	if existingConfig != nil {
 		if err := l.removeProviderTemplateMapping(existingConfig.Handle, event.EventID); err != nil {
 			l.logger.Warn("Failed to remove provider-template mapping",

@@ -1897,7 +1897,7 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		return
 	}
 
-	_, err = c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
+	cfg, err := c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM provider configuration",
 			slog.String("provider_id", providerID),
@@ -1906,6 +1906,19 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
 			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
+	}
+
+	if c.eventHub == nil {
+		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
+			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
+				c.logger.Warn("Failed to remove LLM provider API keys from policy engine",
+					slog.String("provider_id", providerID),
+					slog.Any("error", err))
+			}
+		}
+		if cfg != nil {
+			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		}
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",

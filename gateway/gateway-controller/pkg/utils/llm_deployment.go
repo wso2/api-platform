@@ -1093,6 +1093,9 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	// Remove the canonical row first so every replica observes the same delete
 	// via the follow-up event, instead of each writer mutating local state inline.
 	if s.db != nil {
+		if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+			return cfg, fmt.Errorf("failed to delete LLM provider API keys from database: %w", err)
+		}
 		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
@@ -1100,6 +1103,9 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	if s.isEventDriven() {
 		s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
 		return cfg, nil
+	}
+	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil && !storage.IsNotFoundError(err) {
+		return cfg, fmt.Errorf("failed to delete LLM provider API keys from memory store: %w", err)
 	}
 	if err := s.store.Delete(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
