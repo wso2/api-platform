@@ -552,8 +552,14 @@ func (c *Client) sendDeploymentAck(deploymentID, artifactID, resourceType, actio
 // waitForConnectionAck waits for the connection.ack message from the server
 func (c *Client) waitForConnectionAck(conn *websocket.Conn) error {
 	// Set read deadline for ack message
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetReadDeadline(time.Time{}) // Clear deadline
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return fmt.Errorf("failed to set read deadline for connection ack: %w", err)
+	}
+	defer func() {
+		if err := conn.SetReadDeadline(time.Time{}); err != nil {
+			c.logger.Warn("Failed to clear read deadline after connection ack", slog.Any("error", err))
+		}
+	}()
 
 	_, message, err := conn.ReadMessage()
 	if err != nil {
@@ -760,9 +766,19 @@ func (c *Client) Close() error {
 	if conn != nil {
 		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Client closing connection")
 		c.writeMu.Lock()
-		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		writeErr := conn.WriteMessage(websocket.CloseMessage, closeMsg)
 		c.writeMu.Unlock()
-		return conn.Close()
+		closeErr := conn.Close()
+		if writeErr != nil && closeErr != nil {
+			return fmt.Errorf("failed to write close frame: %w; additionally failed to close connection: %v", writeErr, closeErr)
+		}
+		if writeErr != nil {
+			return fmt.Errorf("failed to write close frame: %w", writeErr)
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		return nil
 	}
 
 	return nil
@@ -790,7 +806,9 @@ func (c *Client) heartbeatMonitor() {
 				// Trigger reconnection
 				c.state.mu.Lock()
 				if c.state.Conn != nil {
-					c.state.Conn.Close()
+					if err := c.state.Conn.Close(); err != nil {
+						c.logger.Warn("Failed to close connection after heartbeat timeout", slog.Any("error", err))
+					}
 					c.state.Conn = nil
 				}
 				c.state.mu.Unlock()
@@ -878,7 +896,9 @@ func (c *Client) waitForDisconnection() {
 
 			c.state.mu.Lock()
 			if c.state.Conn != nil {
-				c.state.Conn.Close()
+				if closeErr := c.state.Conn.Close(); closeErr != nil {
+					c.logger.Warn("Failed to close lost connection", slog.Any("error", closeErr))
+				}
 				c.state.Conn = nil
 			}
 			c.state.mu.Unlock()
