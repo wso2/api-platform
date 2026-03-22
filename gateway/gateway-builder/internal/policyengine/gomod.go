@@ -113,7 +113,7 @@ func UpdateGoMod(srcDir string, policies []*types.DiscoveredPolicy) error {
 		return fmt.Errorf("failed to format go.mod: %w", err)
 	}
 
-	if err := os.WriteFile(goModPath, formattedData, 0644); err != nil {
+	if err := os.WriteFile(goModPath, formattedData, 0600); err != nil {
 		return fmt.Errorf("failed to write go.mod: %w", err)
 	}
 

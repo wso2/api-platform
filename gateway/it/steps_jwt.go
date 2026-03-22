@@ -31,10 +31,10 @@ import (
 
 // JWTSteps provides JWT authentication specific step definitions
 type JWTSteps struct {
-	state         *TestState
-	httpSteps     *steps.HTTPSteps
-	currentToken  string
-	mockJWKSURL   string
+	state        *TestState
+	httpSteps    *steps.HTTPSteps
+	currentToken string
+	mockJWKSURL  string
 }
 
 // NewJWTSteps creates a new JWTSteps instance
@@ -53,6 +53,7 @@ func (j *JWTSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I send a GET request to "([^"]*)" with the JWT token$`, j.iSendGETRequestWithJWTToken)
 	ctx.Step(`^I send a POST request to "([^"]*)" with the JWT token$`, j.iSendPOSTRequestWithJWTToken)
 	ctx.Step(`^I send a GET request to "([^"]*)" with JWT in header "([^"]*)"$`, j.iSendGETRequestWithJWTInHeader)
+	ctx.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and scope "([^"]*)"$`, j.iGetJWTTokenWithIssuerAndScope)
 }
 
 // Reset clears JWT state between scenarios
@@ -70,6 +71,44 @@ func (j *JWTSteps) iGetJWTTokenWithIssuer(issuer string) error {
 	tokenURL := j.mockJWKSURL + "/token"
 	if issuer != "" {
 		tokenURL = tokenURL + "?issuer=" + url.QueryEscape(issuer)
+	}
+
+	log.Printf("DEBUG: Fetching JWT token from %s", tokenURL)
+
+	resp, err := j.state.HTTPClient.Get(tokenURL)
+	if err != nil {
+		return fmt.Errorf("failed to get JWT token from mock JWKS server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("mock JWKS server returned status %d", resp.StatusCode)
+	}
+
+	tokenBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read token response: %w", err)
+	}
+
+	j.currentToken = string(tokenBytes)
+	log.Printf("DEBUG: Obtained JWT token (length: %d)", len(j.currentToken))
+
+	return nil
+}
+
+// iGetJWTTokenWithIssuerAndScope fetches a JWT token from the mock JWKS server with specific issuer and scope
+func (j *JWTSteps) iGetJWTTokenWithIssuerAndScope(issuer, scope string) error {
+	tokenURL := j.mockJWKSURL + "/token"
+	if issuer != "" {
+		tokenURL = tokenURL + "?issuer=" + url.QueryEscape(issuer)
+	}
+	if scope != "" {
+		if issuer != "" {
+			tokenURL = tokenURL + "&"
+		} else {
+			tokenURL = tokenURL + "?"
+		}
+		tokenURL = tokenURL + "scope=" + url.QueryEscape(scope)
 	}
 
 	log.Printf("DEBUG: Fetching JWT token from %s", tokenURL)

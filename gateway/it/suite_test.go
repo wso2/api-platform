@@ -91,6 +91,7 @@ func getFeaturePaths() []string {
 		"features/metrics.feature",
 		"features/api_deploy.feature",
 		"features/mcp_deploy.feature",
+		"features/mcp_policies.feature",
 		"features/ratelimit.feature",
 		"features/jwt-auth.feature",
 		"features/cors.feature",
@@ -112,7 +113,6 @@ func getFeaturePaths() []string {
 		"features/aws-bedrock-guardrail.feature",
 		"features/semantic-cache.feature",
 		"features/semantic-prompt-guard.feature",
-		"features/modify-headers.feature",
 		"features/request-rewrite.feature",
 		"features/respond.feature",
 		"features/llm-provider.feature",
@@ -314,7 +314,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterBackendTimeoutSteps(ctx, testState)
-		RegisterMCPSteps(ctx, testState, httpSteps)
+		RegisterMCPSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)

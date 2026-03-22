@@ -57,7 +57,7 @@ Feature: Test MCP CRUD and connectivity
     
         When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/everything/mcp"
         Then the response should be successful
-        When I use the MCP Client to send a tools/call request to "http://127.0.0.1:8080/everything/mcp"
+        When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/everything/mcp"
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response should have field "result"
@@ -95,6 +95,38 @@ Feature: Test MCP CRUD and connectivity
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
         And the JSON response field "count" should be 0
+
+    Scenario: Deploy an MCP Proxy and send an invalid tools/call request
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: invalid-tools-mcp-v1.0
+            spec:
+              displayName: Invalid Tools
+              version: v1.0
+              context: /invalid-tools
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send a tools/call request with invalid params to "http://127.0.0.1:8080/invalid-tools/mcp"
+        Then the response status code should be 400
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "invalid-tools-mcp-v1.0"
+        Then the response should be successful
 
     # ==================== MCP PROXY ERROR CASES ====================
     
@@ -241,6 +273,48 @@ Feature: Test MCP CRUD and connectivity
               displayName: Incomplete MCP
             """
         Then the response should be a client error
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+
+    Scenario: Deploy MCP proxy with invalid spec version returns 400
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: invalid-spec-version-mcp-v1.0
+            spec:
+              displayName: Invalid Spec Version MCP
+              version: v1.0
+              context: /missing-upstream-mcp
+              specVersion: "2025-03-18"
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response status should be 400
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+
+    Scenario: Deploy MCP proxy without upstream returns 400
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: missing-upstream-mcp-v1.0
+            spec:
+              displayName: Missing Upstream MCP
+              version: v1.0
+              context: /missing-upstream-mcp
+              specVersion: "2025-06-18"
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response status should be 400
         And the response should be valid JSON
         And the JSON response field "status" should be "error"
 

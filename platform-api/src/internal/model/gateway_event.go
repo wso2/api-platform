@@ -149,6 +149,9 @@ type MCPProxyDeploymentEvent struct {
 
 	// DeploymentID identifies the specific deployment artifact
 	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
 }
 
 // MCPProxyUndeploymentEvent contains payload data for "mcpproxy.undeployed" event type.
@@ -156,6 +159,12 @@ type MCPProxyDeploymentEvent struct {
 type MCPProxyUndeploymentEvent struct {
 	// ProxyId identifies the undeployed MCP proxy (handle)
 	ProxyId string `json:"proxyId"`
+
+	// DeploymentID identifies the specific deployment being undeployed
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
 }
 
 // MCPProxyDeletionEvent contains payload data for "mcpproxy.deleted" event type.

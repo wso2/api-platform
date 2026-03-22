@@ -24,10 +24,10 @@ spec:
   displayName: Azure OpenAI
   promptTokens:
     location: payload
-    identifier: $.usage.input_tokens
+    identifier: $.usage.prompt_tokens
   completionTokens:
     location: payload
-    identifier: $.usage.output_tokens
+    identifier: $.usage.completion_tokens
   totalTokens:
     location: payload
     identifier: $.usage.total_tokens
@@ -40,3 +40,12 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+  resourceMappings:
+    resources:
+      - resource: /responses
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens

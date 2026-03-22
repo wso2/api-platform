@@ -120,6 +120,24 @@ type LLMProviderTemplateMetadata struct {
 	OpenapiSpecURL string                   `json:"openapiSpecUrl,omitempty" db:"-"`
 }
 
+type LLMProviderTemplateExtractionFields struct {
+	PromptTokens     *ExtractionIdentifier `json:"promptTokens,omitempty" db:"-"`
+	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" db:"-"`
+	TotalTokens      *ExtractionIdentifier `json:"totalTokens,omitempty" db:"-"`
+	RemainingTokens  *ExtractionIdentifier `json:"remainingTokens,omitempty" db:"-"`
+	RequestModel     *ExtractionIdentifier `json:"requestModel,omitempty" db:"-"`
+	ResponseModel    *ExtractionIdentifier `json:"responseModel,omitempty" db:"-"`
+}
+
+type LLMProviderTemplateResourceMapping struct {
+	Resource string `json:"resource" db:"-"`
+	LLMProviderTemplateExtractionFields
+}
+
+type LLMProviderTemplateResourceMappings struct {
+	Resources []LLMProviderTemplateResourceMapping `json:"resources,omitempty" db:"-"`
+}
+
 type LLMProviderTemplate struct {
 	UUID             string                       `json:"uuid" db:"uuid"`
 	OrganizationUUID string                       `json:"organizationId" db:"organization_uuid"`
@@ -134,6 +152,7 @@ type LLMProviderTemplate struct {
 	RemainingTokens  *ExtractionIdentifier        `json:"remainingTokens,omitempty" db:"-"`
 	RequestModel     *ExtractionIdentifier        `json:"requestModel,omitempty" db:"-"`
 	ResponseModel    *ExtractionIdentifier        `json:"responseModel,omitempty" db:"-"`
+	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" db:"-"`
 	CreatedAt        time.Time                    `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time                    `json:"updatedAt" db:"updated_at"`
 }

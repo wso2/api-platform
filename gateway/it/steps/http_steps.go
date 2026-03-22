@@ -459,9 +459,9 @@ func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
 
 	for name, value := range h.headers {
-		if name == "mcp-session-id" {
+		if strings.EqualFold(name, "Authorization") || strings.EqualFold(name, "mcp-session-id") {
+			log.Printf("DEBUG: Adding header %s: %s", name, value)
 			httpReq.Header.Set(name, value)
-			break
 		}
 	}
 
@@ -503,16 +503,20 @@ func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 		}
 	}
 
-	// Check for JSON-RPC error in response
-	var initResponse map[string]interface{}
-	if err := json.Unmarshal(h.lastBody, &initResponse); err == nil {
-		if errObj, hasError := initResponse["error"]; hasError {
-			if errMap, ok := errObj.(map[string]interface{}); ok {
-				if msg, ok := errMap["message"].(string); ok {
-					return fmt.Errorf("initialize request returned an error: %s", msg)
+	// Check for JSON-RPC error in response (skip for HTTP-level auth/conflict errors
+	// so tests can assert on the status code and headers directly)
+	skipJSONRPCCheck := resp.StatusCode == 400 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 409
+	if !skipJSONRPCCheck {
+		var initResponse map[string]interface{}
+		if err := json.Unmarshal(h.lastBody, &initResponse); err == nil {
+			if errObj, hasError := initResponse["error"]; hasError {
+				if errMap, ok := errObj.(map[string]interface{}); ok {
+					if msg, ok := errMap["message"].(string); ok {
+						return fmt.Errorf("initialize request returned an error: %s", msg)
+					}
 				}
+				return fmt.Errorf("initialize request returned an error: %v", errObj)
 			}
-			return fmt.Errorf("initialize request returned an error: %v", errObj)
 		}
 	}
 	h.headers["mcp-session-id"] = resp.Header.Get("mcp-session-id")

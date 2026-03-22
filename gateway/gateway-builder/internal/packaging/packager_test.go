@@ -346,10 +346,10 @@ func TestGenerateDockerfile_FilePermissions(t *testing.T) {
 	// Check Dockerfile permissions
 	info, err := os.Stat(filepath.Join(tmpDir, "Dockerfile"))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0644), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 
 	// Check BUILD.md permissions
 	info, err = os.Stat(filepath.Join(tmpDir, "BUILD.md"))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0644), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 }

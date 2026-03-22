@@ -496,13 +496,13 @@ func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string
 func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error {
 	// Create data directory if it doesn't exist
 	dataDir := "data/apis"
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	// Save zip file
 	filename := filepath.Join(dataDir, fmt.Sprintf("%s.zip", apiID))
-	if err := os.WriteFile(filename, zipData, 0644); err != nil {
+	if err := os.WriteFile(filename, zipData, 0600); err != nil {
 		return fmt.Errorf("failed to save API definition: %w", err)
 	}
 
