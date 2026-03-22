@@ -241,7 +241,12 @@ func (t *Translator) TranslateConfigs(
 		// Sort routes by priority (highest priority first) before adding to vhost
 		routes = SortRoutesByPriority(routes)
 
-		// Append the catch-all 404 route as the last route for each vhost (lowest priority)
+		// Append the catch-all 404 route as the last route for each vhost (lowest priority).
+		// Disable ext_proc for this route: it has no policy chain and the policy engine
+		// would otherwise return 500 (ErrCodeRouteNotFound) for all unmatched requests.
+		extProcDisabled, _ := anypb.New(&extproc.ExtProcPerRoute{
+			Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
+		})
 		routes = append(routes, &route.Route{
 			Match: &route.RouteMatch{
 				PathSpecifier: &route.RouteMatch_Prefix{
@@ -252,6 +257,9 @@ func (t *Translator) TranslateConfigs(
 				DirectResponse: &route.DirectResponseAction{
 					Status: 404,
 				},
+			},
+			TypedPerFilterConfig: map[string]*anypb.Any{
+				constants.ExtProcFilterName: extProcDisabled,
 			},
 		})
 		virtualHost := &route.VirtualHost{
