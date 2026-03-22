@@ -16,13 +16,40 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: The how MCP Proxies behave when various policies are applied.
+Feature: Test how MCP Proxies behave when various policies are applied.
     As an API developer
     I want to deploy an MCP Proxy configuration with policies attached to it
     So that I can verify that the proxy behaves according to the policy.
 
     Background:
         Given the gateway services are running
+
+    Scenario: Deploy an MCP Proxy with non-existing policy and verify whether the deployment fails
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-non-existing-policy-test
+            spec:
+              displayName: MCP Non-Existing Policy Test
+              version: v1.0
+              context: /mcpnonexistingpolicy
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: non-existing-policy
+                  version: v0
+                  params: {}
+              tools: []
+              resources: []
+              prompts: []
+            """
+
+        Then the response status code should be 400
+        And the response should be valid JSON
 
     Scenario: Deploy an MCP Proxy with mcp-auth policy
         Given I authenticate using basic auth as "admin"
