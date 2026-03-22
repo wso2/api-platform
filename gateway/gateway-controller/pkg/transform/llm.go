@@ -40,13 +40,14 @@ type LLMTransformer struct {
 // NewLLMTransformer creates a new LLMTransformer.
 func NewLLMTransformer(
 	store *storage.ConfigStore,
+	db storage.Storage,
 	routerConfig *config.RouterConfig,
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
 	policyVersionResolver utils.PolicyVersionResolver,
 ) *LLMTransformer {
 	return &LLMTransformer{
-		llmTransformer:  utils.NewLLMProviderTransformer(store, routerConfig, policyVersionResolver),
+		llmTransformer:  utils.NewLLMProviderTransformer(store, db, routerConfig, policyVersionResolver),
 		restTransformer: NewRestAPITransformer(routerConfig, systemConfig, policyDefinitions),
 		store:           store,
 	}

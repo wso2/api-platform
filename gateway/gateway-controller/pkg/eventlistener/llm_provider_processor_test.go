@@ -122,9 +122,11 @@ func testLLMProxyStoredConfig(uuid, handle, provider string, policies *[]api.LLM
 
 func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testing.T) {
 	store := storage.NewConfigStore()
-	require.NoError(t, store.AddTemplate(testLLMProviderTemplate("tmpl-1", "openai")))
+	template := testLLMProviderTemplate("tmpl-1", "openai")
+	require.NoError(t, store.AddTemplate(template))
 
 	db := setupSQLiteDBForEventListenerTests(t)
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
 	policies := &[]api.LLMPolicy{
 		{
 			Name:    "rate-limit",
@@ -266,12 +268,14 @@ func TestHandleEvent_LLMProviderDelete_RemovesLocalStateAndAPIKeys(t *testing.T)
 
 func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T) {
 	store := storage.NewConfigStore()
-	require.NoError(t, store.AddTemplate(testLLMProviderTemplate("tmpl-1", "openai")))
+	template := testLLMProviderTemplate("tmpl-1", "openai")
+	require.NoError(t, store.AddTemplate(template))
 
 	providerCfg := testLLMProviderStoredConfig("provider-1", "provider-a", "openai", nil)
 	require.NoError(t, store.Add(providerCfg))
 
 	db := setupSQLiteDBForEventListenerTests(t)
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
 	require.NoError(t, db.SaveConfig(providerCfg))
 	policies := &[]api.LLMPolicy{
 		{

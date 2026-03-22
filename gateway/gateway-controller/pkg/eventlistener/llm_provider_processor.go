@@ -320,6 +320,7 @@ func (l *EventListener) hydrateLLMConfig(cfg *models.StoredConfig) error {
 
 	transformer := utils.NewLLMProviderTransformer(
 		l.store,
+		l.db,
 		l.routerConfig,
 		utils.NewLoadedPolicyVersionResolver(l.policyDefinitions),
 	)

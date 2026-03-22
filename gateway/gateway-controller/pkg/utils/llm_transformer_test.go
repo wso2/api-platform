@@ -19,7 +19,10 @@
 package utils
 
 import (
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,7 +40,7 @@ func TestNewLLMProviderTransformer_Basic(t *testing.T) {
 		HTTPSEnabled: false,
 	}
 
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 	assert.NotNil(t, transformer)
 	assert.Equal(t, store, transformer.store)
 	assert.Equal(t, routerConfig, transformer.routerConfig)
@@ -48,7 +51,7 @@ func TestLLMProviderTransformer_Transform_InvalidInput(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 
 	t.Run("Invalid input type returns error", func(t *testing.T) {
 		output := &api.RestAPI{}
@@ -62,6 +65,137 @@ func TestLLMProviderTransformer_Transform_InvalidInput(t *testing.T) {
 		_, err := transformer.Transform(nil, output)
 		assert.Error(t, err)
 	})
+}
+
+func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "openai",
+			},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	routerConfig := &config.RouterConfig{
+		ListenerPort: 8080,
+	}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata:   api.Metadata{Name: "db-backed-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "db-backed-provider",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("https://api.openai.com"),
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	assert.Equal(t, "db-backed-provider", result.Spec.DisplayName)
+}
+
+func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000001",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "openai",
+			},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	now := time.Now()
+	providerSourceConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata:   api.Metadata{Name: "db-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "db-provider",
+			Version:     "v1.0",
+			Context:     stringPtr("/db-provider"),
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("https://api.openai.com"),
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+	providerRuntimeConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: "db-provider"},
+		Spec: api.APIConfigData{
+			DisplayName: "db-provider",
+			Version:     "v1.0",
+			Context:     "/db-provider",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{Url: stringPtr("https://api.openai.com")},
+			},
+		},
+	}
+	provider := &models.StoredConfig{
+		UUID:                "0000-db-provider-id-0000-000000000000",
+		Kind:                string(api.LlmProvider),
+		Handle:              "db-provider",
+		DisplayName:         "db-provider",
+		Version:             "v1.0",
+		Configuration:       providerRuntimeConfig,
+		SourceConfiguration: providerSourceConfig,
+		Status:              models.StatusDeployed,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	require.NoError(t, db.SaveConfig(provider))
+
+	routerConfig := &config.RouterConfig{
+		ListenerPort: 8080,
+	}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProxy,
+		Metadata:   api.Metadata{Name: "db-proxy"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "db-proxy",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "db-provider",
+			},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result.Spec.Upstream.Main.Url)
+	assert.Equal(t, "http://127.0.0.1:8080/db-provider", *result.Spec.Upstream.Main.Url)
 }
 
 func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
@@ -543,7 +677,7 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 
 	provider := &api.LLMProviderConfiguration{
 		Metadata: api.Metadata{Name: "test-provider"},
@@ -568,7 +702,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -609,7 +743,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -653,7 +787,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -716,7 +850,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store (required for proxy transform to resolve provider template params)
 	template := &models.StoredLLMProviderTemplate{
@@ -807,7 +941,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{

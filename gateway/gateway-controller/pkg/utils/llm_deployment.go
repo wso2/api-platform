@@ -84,7 +84,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 		parser:              config.NewParser(),
 		validator:           config.NewLLMValidator(),
 		policyValidator:     policyValidator,
-		transformer:         NewLLMProviderTransformer(store, routerConfig, policyVersionResolver),
+		transformer:         NewLLMProviderTransformer(store, db, routerConfig, policyVersionResolver),
 	}
 
 	// Initialize OOB templates
@@ -962,9 +962,7 @@ func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParam
 	// the local store briefly behind the canonical state right after a write.
 	if s.db != nil {
 		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProvider)); err == nil {
-			if len(storedConfigs) > 0 || len(configs) == 0 {
-				configs = storedConfigs
-			}
+			configs = storedConfigs
 		}
 	}
 

@@ -253,9 +253,12 @@ func TestListLLMProvidersWithData(t *testing.T) {
 
 	now := time.Now()
 	provider := &models.StoredConfig{
-		UUID:   "0000-provider1-0000-000000000000",
-		Kind:   "LlmProvider",
-		Status: "active",
+		UUID:        "0000-provider1-0000-000000000000",
+		Kind:        "LlmProvider",
+		Handle:      "openai-provider",
+		DisplayName: "OpenAI Provider",
+		Version:     "1.0.0",
+		Status:      "active",
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProvider,
@@ -276,7 +279,8 @@ func TestListLLMProvidersWithData(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	server.store.Add(provider)
+	require.NoError(t, server.store.Add(provider))
+	require.NoError(t, server.db.SaveConfig(provider))
 
 	c, w := createTestContext("GET", "/llm-providers", nil)
 	server.ListLLMProviders(c, api.ListLLMProvidersParams{})
@@ -315,9 +319,12 @@ func TestListLLMProxiesWithData(t *testing.T) {
 
 	now := time.Now()
 	proxy := &models.StoredConfig{
-		UUID:   "0000-proxy1-0000-000000000000",
-		Kind:   "LlmProxy",
-		Status: "active",
+		UUID:        "0000-proxy1-0000-000000000000",
+		Kind:        "LlmProxy",
+		Handle:      "0000-llm-proxy-1-0000-000000000000",
+		DisplayName: "LLM Proxy 1",
+		Version:     "1.0.0",
+		Status:      "active",
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProxy,
@@ -336,7 +343,8 @@ func TestListLLMProxiesWithData(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	server.store.Add(proxy)
+	require.NoError(t, server.store.Add(proxy))
+	require.NoError(t, server.db.SaveConfig(proxy))
 
 	c, w := createTestContext("GET", "/llm-proxies", nil)
 	server.ListLLMProxies(c, api.ListLLMProxiesParams{})
