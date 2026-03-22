@@ -40,6 +40,7 @@ func TestLLMDeploymentParams(t *testing.T) {
 		ID:            "test-llm-id",
 		CorrelationID: "corr-123",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	assert.Equal(t, "test data", string(params.Data))
@@ -97,7 +98,8 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 				Metadata: api.Metadata{Name: "0000-llm-provider-1-0000-000000000000"},
 				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -132,7 +134,8 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 				Metadata: api.Metadata{Name: "first-provider"},
 				Spec:     apiData1,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -156,7 +159,8 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 				Metadata: api.Metadata{Name: "filtered-provider"},
 				Spec:     apiData2,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -199,7 +203,8 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -445,6 +450,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testi
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.DeployLLMProviderConfiguration(params)
@@ -464,6 +470,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.DeployLLMProxyConfiguration(params)
@@ -483,6 +490,7 @@ func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.UpdateLLMProvider("0000-non-existent-0000-000000000000", params)
@@ -502,6 +510,7 @@ func TestLLMDeploymentService_UpdateLLMProxy_NotFound(t *testing.T) {
 		ContentType:   "application/yaml",
 		CorrelationID: "test-corr",
 		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
 	}
 
 	_, err := service.UpdateLLMProxy("0000-non-existent-0000-000000000000", params)
@@ -541,6 +550,7 @@ func TestMatchesFilters(t *testing.T) {
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test Config",
 			Version:     "1.0.0",
+			Origin:      models.OriginGatewayAPI,
 			// No valid spec
 		}
 		result := matchesFilters(config, api.ListLLMProvidersParams{})
@@ -564,6 +574,7 @@ func TestMatchesFilters(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
+			Origin: models.OriginGatewayAPI,
 		}
 		result := matchesFilters(config, "unsupported type")
 		assert.False(t, result)
@@ -593,13 +604,14 @@ func TestMatchesFilters(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
-			Status: models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 		}
 
 		displayName := "Test Provider"
 		version := "1.0.0"
 		context := "/test"
-		status := api.ListLLMProvidersParamsStatusPending
+		status := api.ListLLMProvidersParamsStatusDeployed
 
 		result := matchesFilters(config, api.ListLLMProvidersParams{
 			DisplayName: &displayName,
@@ -628,6 +640,7 @@ func TestMatchesFilters(t *testing.T) {
 				Kind: api.RestApi,
 				Spec: apiData,
 			},
+			Origin: models.OriginGatewayAPI,
 		}
 
 		wrongName := "Wrong Name"

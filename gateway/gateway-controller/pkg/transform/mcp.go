@@ -69,7 +69,7 @@ func (t *MCPKindTransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		Version:             cfg.Version,
 		Configuration:       restAPI,
 		SourceConfiguration: cfg.SourceConfiguration,
-		Status:              cfg.Status,
+		DesiredState:        cfg.DesiredState,
 		CreatedAt:           cfg.CreatedAt,
 		UpdatedAt:           cfg.UpdatedAt,
 	}

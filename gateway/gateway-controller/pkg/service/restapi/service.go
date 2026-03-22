@@ -143,6 +143,7 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		ContentType:   params.ContentType,
 		Kind:          "RestApi",
 		APIID:         "",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: params.CorrelationID,
 		Logger:        log,
 	})
@@ -192,11 +193,11 @@ func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error
 		if params.Context != nil && *params.Context != "" && cfgContext != *params.Context {
 			continue
 		}
-		if params.Status != nil && *params.Status != "" && string(cfg.Status) != string(*params.Status) {
+		if params.Status != nil && *params.Status != "" && string(cfg.DesiredState) != string(*params.Status) {
 			continue
 		}
 
-		status := string(cfg.Status)
+		status := string(cfg.DesiredState)
 		items = append(items, api.RestAPIListItem{
 			Id:          stringPtr(cfg.Handle),
 			DisplayName: stringPtr(cfg.DisplayName),
@@ -272,7 +273,7 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	now := time.Now()
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
-	existing.Status = models.StatusPending
+	existing.DesiredState = models.StateDeployed
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
 
@@ -391,13 +392,13 @@ func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID
 				return
 			}
 
-			if cfg.Status == models.StatusDeployed {
+			if cfg.DeployedAt != nil {
 				log.Info("API deployed successfully, pushing to control plane",
 					slog.String("config_id", configID),
 					slog.String("displayName", cfg.DisplayName))
 
 				apiID := configID
-				deploymentID := ""
+				deploymentID := cfg.DeploymentID
 
 				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
 					log.Error("Failed to push deployment to control plane",
@@ -407,12 +408,6 @@ func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID
 					log.Info("Successfully pushed deployment to control plane",
 						slog.String("api_id", apiID))
 				}
-				return
-
-			} else if cfg.Status == models.StatusFailed {
-				log.Warn("API deployment failed, skipping control plane push",
-					slog.String("config_id", configID),
-					slog.String("displayName", cfg.DisplayName))
 				return
 			}
 		}

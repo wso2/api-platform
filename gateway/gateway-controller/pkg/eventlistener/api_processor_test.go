@@ -31,7 +31,7 @@ import (
 func TestHandleEvent_APICreate_AddsConfigFromDB(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
-	cfg := testRestStoredConfig("api-create-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("api-create-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	require.NoError(t, db.SaveConfig(cfg))
 
 	listener := &EventListener{
@@ -49,7 +49,7 @@ func TestHandleEvent_APICreate_AddsConfigFromDB(t *testing.T) {
 
 	stored, err := store.Get(cfg.UUID)
 	require.NoError(t, err)
-	assert.Equal(t, models.StatusPending, stored.Status)
+	assert.Equal(t, models.StateDeployed, stored.DesiredState)
 	assert.Equal(t, cfg.DisplayName, stored.DisplayName)
 }
 
@@ -57,10 +57,10 @@ func TestHandleEvent_APIUpdate_RefreshesExistingConfigFromDB(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
 
-	stale := testRestStoredConfig("api-update-id", "test-api", "Test API", "v1.0.0", models.StatusDeployed)
+	stale := testRestStoredConfig("api-update-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	require.NoError(t, store.Add(stale))
 
-	latest := testRestStoredConfig("api-update-id", "test-api", "Test API", "v1.0.0", models.StatusUndeployed)
+	latest := testRestStoredConfig("api-update-id", "test-api", "Test API", "v1.0.0", models.StateUndeployed)
 	require.NoError(t, db.SaveConfig(latest))
 
 	listener := &EventListener{
@@ -78,13 +78,13 @@ func TestHandleEvent_APIUpdate_RefreshesExistingConfigFromDB(t *testing.T) {
 
 	stored, err := store.Get(latest.UUID)
 	require.NoError(t, err)
-	assert.Equal(t, models.StatusUndeployed, stored.Status)
+	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
 }
 
 func TestHandleEvent_APIDelete_RemovesAPIKeysFromMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("api-delete-id", "delete-api", "Delete API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("api-delete-id", "delete-api", "Delete API", "v1.0.0", models.StateDeployed)
 	require.NoError(t, store.Add(cfg))
 
 	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)

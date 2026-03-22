@@ -554,8 +554,14 @@ func (c *Client) sendDeploymentAck(deploymentID, artifactID, resourceType, actio
 // waitForConnectionAck waits for the connection.ack message from the server
 func (c *Client) waitForConnectionAck(conn *websocket.Conn) error {
 	// Set read deadline for ack message
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetReadDeadline(time.Time{}) // Clear deadline
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return fmt.Errorf("failed to set read deadline for connection ack: %w", err)
+	}
+	defer func() {
+		if err := conn.SetReadDeadline(time.Time{}); err != nil {
+			c.logger.Warn("Failed to clear read deadline after connection ack", slog.Any("error", err))
+		}
+	}()
 
 	_, message, err := conn.ReadMessage()
 	if err != nil {
@@ -762,9 +768,19 @@ func (c *Client) Close() error {
 	if conn != nil {
 		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Client closing connection")
 		c.writeMu.Lock()
-		_ = conn.WriteMessage(websocket.CloseMessage, closeMsg)
+		writeErr := conn.WriteMessage(websocket.CloseMessage, closeMsg)
 		c.writeMu.Unlock()
-		return conn.Close()
+		closeErr := conn.Close()
+		if writeErr != nil && closeErr != nil {
+			return fmt.Errorf("failed to write close frame: %w; additionally failed to close connection: %v", writeErr, closeErr)
+		}
+		if writeErr != nil {
+			return fmt.Errorf("failed to write close frame: %w", writeErr)
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		return nil
 	}
 
 	return nil
@@ -792,7 +808,9 @@ func (c *Client) heartbeatMonitor() {
 				// Trigger reconnection
 				c.state.mu.Lock()
 				if c.state.Conn != nil {
-					c.state.Conn.Close()
+					if err := c.state.Conn.Close(); err != nil {
+						c.logger.Warn("Failed to close connection after heartbeat timeout", slog.Any("error", err))
+					}
 					c.state.Conn = nil
 				}
 				c.state.mu.Unlock()
@@ -880,7 +898,9 @@ func (c *Client) waitForDisconnection() {
 
 			c.state.mu.Lock()
 			if c.state.Conn != nil {
-				c.state.Conn.Close()
+				if closeErr := c.state.Conn.Close(); closeErr != nil {
+					c.logger.Warn("Failed to close lost connection", slog.Any("error", closeErr))
+				}
 				c.state.Conn = nil
 			}
 			c.state.mu.Unlock()
@@ -1010,7 +1030,7 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 }
 
 // fetchAndDeployAPI fetches API definition and deploys it
-func (c *Client) fetchAndDeployAPI(apiID, correlationID string) (*utils.APIDeploymentResult, error) {
+func (c *Client) fetchAndDeployAPI(apiID, deploymentID string, deployedAt *time.Time, correlationID string) (*utils.APIDeploymentResult, error) {
 	// Fetch API definition from control plane
 	zipData, err := c.apiUtilsService.FetchAPIDefinition(apiID)
 	if err != nil {
@@ -1042,7 +1062,7 @@ func (c *Client) fetchAndDeployAPI(apiID, correlationID string) (*utils.APIDeplo
 	}
 
 	// Create API configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, correlationID, c.deploymentService)
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deploymentID, deployedAt, correlationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create API from YAML",
 			slog.String("api_id", apiID),
@@ -1094,7 +1114,11 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 
 	// Fetch API definition and deploy
 	// (deploymentService handles DB + event publishing when eventHub is set)
-	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.CorrelationID)
+	performedAt := deployedEvent.Payload.PerformedAt
+	if performedAt.IsZero() {
+		performedAt = time.Now()
+	}
+	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
 	if err != nil {
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
@@ -1180,8 +1204,29 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	// This prevents stale undeploy events from affecting a newer deployment.
+	if apiConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		apiConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale API undeploy event: deployment ID mismatch",
+			slog.String("api_id", apiID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", apiConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
 	// Set status to undeployed (preserve config, keys, and policies)
-	apiConfig.Status = models.StatusUndeployed
+	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
+	apiUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
+	if apiUndeployPerformedAt.IsZero() {
+		apiUndeployPerformedAt = time.Now()
+	}
+	apiConfig.DesiredState = models.StateUndeployed
+	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	apiConfig.DeployedAt = &apiUndeployPerformedAt
 	apiConfig.UpdatedAt = time.Now()
 
 	// Update database (only if persistent mode)
@@ -1623,7 +1668,11 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM proxy configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.CorrelationID, c.llmDeploymentService)
+	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt
+	if llmProxyPerformedAt.IsZero() {
+		llmProxyPerformedAt = time.Now()
+	}
+	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM proxy from YAML",
 			slog.String("proxy_id", proxyID),
@@ -1722,7 +1771,11 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM provider configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.CorrelationID, c.llmDeploymentService)
+	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt
+	if llmProviderPerformedAt.IsZero() {
+		llmProviderPerformedAt = time.Now()
+	}
+	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM provider from YAML",
 			slog.String("provider_id", providerID),
@@ -1942,7 +1995,11 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 	}
 
 	// Create MCP proxy configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.CorrelationID, c.mcpDeploymentService)
+	mcpPerformedAt := deployedEvent.Payload.PerformedAt
+	if mcpPerformedAt.IsZero() {
+		mcpPerformedAt = time.Now()
+	}
+	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create MCP proxy from YAML",
 			slog.String("proxy_id", proxyID),
@@ -2023,8 +2080,29 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 		return
 	}
 
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	// This prevents stale undeploy events from affecting a newer deployment.
+	if mcpConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		mcpConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale MCP proxy undeploy event: deployment ID mismatch",
+			slog.String("proxy_id", proxyID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", mcpConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
 	// Set status to undeployed (preserve config, keys, and policies)
-	mcpConfig.Status = models.StatusUndeployed
+	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
+	mcpUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
+	if mcpUndeployPerformedAt.IsZero() {
+		mcpUndeployPerformedAt = time.Now()
+	}
+	mcpConfig.DesiredState = models.StateUndeployed
+	mcpConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	mcpConfig.DeployedAt = &mcpUndeployPerformedAt
 	mcpConfig.UpdatedAt = time.Now()
 
 	// Update database (only if persistent mode)

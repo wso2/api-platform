@@ -90,6 +90,7 @@ spec:
 			Data:        makeYAML("no-vhosts", ""),
 			ContentType: "application/yaml",
 			Logger:      logger,
+			Origin:      models.OriginGatewayAPI,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, result)
@@ -121,6 +122,7 @@ spec:
 			Data:        makeYAML("sentinel-vhosts", vhostBlock),
 			ContentType: "application/yaml",
 			Logger:      logger,
+			Origin:      models.OriginGatewayAPI,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, result)
@@ -151,6 +153,7 @@ spec:
 			Data:        makeYAML("explicit-vhosts", vhostBlock),
 			ContentType: "application/yaml",
 			Logger:      logger,
+			Origin:      models.OriginGatewayAPI,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, result)
@@ -183,6 +186,7 @@ spec:
 			Data:        makeYAML("no-sandbox-default", ""),
 			ContentType: "application/yaml",
 			Logger:      logger,
+			Origin:      models.OriginGatewayAPI,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, result)

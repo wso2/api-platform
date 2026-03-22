@@ -78,7 +78,7 @@ func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDep
 		Version:             cfg.Version,
 		Configuration:       restAPI,
 		SourceConfiguration: cfg.SourceConfiguration,
-		Status:              cfg.Status,
+		DesiredState:        cfg.DesiredState,
 		CreatedAt:           cfg.CreatedAt,
 		UpdatedAt:           cfg.UpdatedAt,
 	}

@@ -210,7 +210,7 @@ func TestConcurrentMixedOperations(t *testing.T) {
 				return
 			}
 
-			cfg.Status = models.StatusDeployed
+			cfg.DesiredState = models.StateDeployed
 			if err := db.UpdateConfig(cfg); err != nil {
 				errors <- fmt.Errorf("updater %d failed to update: %w", id, err)
 			}

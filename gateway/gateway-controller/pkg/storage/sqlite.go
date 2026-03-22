@@ -21,6 +21,7 @@ package storage
 import (
 	"database/sql"
 	_ "embed"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -30,7 +31,6 @@ import (
 
 //go:embed gateway-controller-db.sql
 var schemaSQL string
-
 
 // SQLiteStorage implements the Storage interface using SQLite
 type SQLiteStorage struct {
@@ -60,7 +60,9 @@ func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error
 
 	// Initialize schema if needed
 	if err := storage.initSchema(); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to initialize schema: %w", errors.Join(err, closeErr))
+		}
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
