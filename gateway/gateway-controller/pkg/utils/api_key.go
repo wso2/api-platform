@@ -1995,6 +1995,7 @@ func (s *APIKeyService) getArtifactConfigByID(artifactUUID string) (*models.Stor
 		if !storage.IsNotFoundError(err) {
 			return nil, fmt.Errorf("database error while fetching artifact %s: %w", artifactUUID, err)
 		}
+		return nil, fmt.Errorf("database error while fetching artifact %s: %w", artifactUUID, err)
 	}
 
 	if s.store == nil {
