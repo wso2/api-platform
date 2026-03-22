@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -45,6 +46,7 @@ type PlatformAPIConfig struct {
 
 // APIUtilsService provides utilities for API operations
 type APIUtilsService struct {
+	mu     sync.RWMutex
 	config PlatformAPIConfig
 	logger *slog.Logger
 	client *http.Client
@@ -81,10 +83,28 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 	}
 }
 
+// SetBaseURL updates the base URL used for API requests.
+// This is used to update the URL after gateway path discovery.
+func (s *APIUtilsService) SetBaseURL(baseURL string) {
+	s.mu.Lock()
+	s.config.BaseURL = baseURL
+	s.mu.Unlock()
+	s.logger.Debug("Updated API utils service base URL",
+		slog.String("base_url", baseURL),
+	)
+}
+
+// getBaseURL returns the current base URL in a thread-safe manner.
+func (s *APIUtilsService) getBaseURL() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config.BaseURL
+}
+
 // FetchAPIDefinition downloads the API definition as a zip file from the control plane
 func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 	// Construct the API URL by appending the resource path
-	apiURL := s.config.BaseURL + "/apis/" + apiID
+	apiURL := s.getBaseURL() + "/apis/" + apiID
 
 	s.logger.Info("Fetching API definition",
 		slog.String("api_id", apiID),
@@ -131,7 +151,7 @@ func (s *APIUtilsService) FetchAPIDefinition(apiID string) ([]byte, error) {
 // FetchLLMProviderDefinition downloads the LLM provider definition as a zip file from the control plane
 func (s *APIUtilsService) FetchLLMProviderDefinition(providerID string) ([]byte, error) {
 	// Construct the LLM provider URL by appending the resource path
-	providerURL := s.config.BaseURL + "/llm-providers/" + providerID
+	providerURL := s.getBaseURL() + "/llm-providers/" + providerID
 
 	s.logger.Info("Fetching LLM provider definition",
 		slog.String("provider_id", providerID),
@@ -178,7 +198,7 @@ func (s *APIUtilsService) FetchLLMProviderDefinition(providerID string) ([]byte,
 // FetchLLMProxyDefinition downloads the LLM proxy definition as a zip file from the control plane
 func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error) {
 	// Construct the LLM proxy URL by appending the resource path
-	proxyURL := s.config.BaseURL + "/llm-proxies/" + proxyID
+	proxyURL := s.getBaseURL() + "/llm-proxies/" + proxyID
 
 	s.logger.Info("Fetching LLM proxy definition",
 		slog.String("proxy_id", proxyID),
@@ -224,7 +244,7 @@ func (s *APIUtilsService) FetchLLMProxyDefinition(proxyID string) ([]byte, error
 
 // FetchSubscriptionsForAPI fetches subscriptions for the given API from the control plane.
 func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subscription, error) {
-	subURL := s.config.BaseURL + "/apis/" + apiID + "/subscriptions"
+	subURL := s.getBaseURL() + "/apis/" + apiID + "/subscriptions"
 
 	s.logger.Info("Fetching subscriptions for API",
 		slog.String("api_id", apiID),
@@ -387,7 +407,7 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 
 // FetchSubscriptionPlans fetches all subscription plans from the control plane for the organization.
 func (s *APIUtilsService) FetchSubscriptionPlans() ([]models.SubscriptionPlan, error) {
-	planURL := s.config.BaseURL + "/subscription-plans"
+	planURL := s.getBaseURL() + "/subscription-plans"
 
 	s.logger.Info("Fetching subscription plans", slog.String("url", planURL))
 
@@ -524,7 +544,7 @@ func (s *APIUtilsService) CreateLLMProxyFromYAML(yamlData []byte, proxyID string
 // FetchMCPProxyDefinition downloads the MCP proxy definition as a zip file from the control plane
 func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error) {
 	// Construct the MCP proxy URL by appending the resource path
-	proxyURL := s.config.BaseURL + "/mcp-proxies/" + proxyID
+	proxyURL := s.getBaseURL() + "/mcp-proxies/" + proxyID
 
 	s.logger.Debug("Fetching MCP proxy definition",
 		slog.String("proxy_id", proxyID),
@@ -591,13 +611,13 @@ func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string
 func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error {
 	// Create data directory if it doesn't exist
 	dataDir := "data/apis"
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	// Save zip file
 	filename := filepath.Join(dataDir, fmt.Sprintf("%s.zip", apiID))
-	if err := os.WriteFile(filename, zipData, 0644); err != nil {
+	if err := os.WriteFile(filename, zipData, 0600); err != nil {
 		return fmt.Errorf("failed to save API definition: %w", err)
 	}
 
@@ -623,7 +643,7 @@ type APIDeploymentPush struct {
 // PushAPIDeployment sends API deployment details to the control plane via a REST call
 func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
 	// Construct the deployment URL
-	deployURL := s.config.BaseURL + "/apis/" + apiID + "/gateway-deployments"
+	deployURL := s.getBaseURL() + "/apis/" + apiID + "/gateway-deployments"
 	if deploymentID != "" {
 		deployURL += "?deploymentId=" + deploymentID
 	}
@@ -689,6 +709,8 @@ func (s *APIUtilsService) PushAPIDeployment(apiID string, apiConfig *models.Stor
 
 	return nil
 }
+
+
 func MapToStruct(data map[string]interface{}, out interface{}) error {
 	// Convert map -> JSON bytes
 	jsonBytes, err := json.Marshal(data)

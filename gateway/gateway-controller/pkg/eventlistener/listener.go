@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -53,7 +52,7 @@ type EventListener struct {
 	routerConfig      *config.RouterConfig
 	logger            *slog.Logger
 	systemConfig      *config.Config
-	policyDefinitions map[string]api.PolicyDefinition
+	policyDefinitions map[string]models.PolicyDefinition
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -71,7 +70,7 @@ func NewEventListener(
 	routerConfig *config.RouterConfig,
 	logger *slog.Logger,
 	systemConfig *config.Config,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 ) *EventListener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventListener{

@@ -47,7 +47,7 @@ func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
 	}
 
 	registryPath := filepath.Join(mainPkgDir, "plugin_registry.go")
-	if err := os.WriteFile(registryPath, []byte(registryCode), 0644); err != nil {
+	if err := os.WriteFile(registryPath, []byte(registryCode), 0600); err != nil {
 		return errors.NewGenerationError("failed to write plugin_registry.go", err)
 	}
 
@@ -63,7 +63,7 @@ func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
 	}
 
 	buildInfoPath := filepath.Join(mainPkgDir, "build_info.go")
-	if err := os.WriteFile(buildInfoPath, []byte(buildInfoCode), 0644); err != nil {
+	if err := os.WriteFile(buildInfoPath, []byte(buildInfoCode), 0600); err != nil {
 		return errors.NewGenerationError("failed to write build_info.go", err)
 	}
 

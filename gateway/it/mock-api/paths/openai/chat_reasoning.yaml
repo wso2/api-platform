@@ -1,0 +1,56 @@
+post:
+  summary: Create chat completion with reasoning tokens (o-series model)
+  operationId: createChatCompletionReasoning
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response with reasoning tokens
+      content:
+        application/json:
+          # o4-mini-2025-04-16: input=1.1e-6, output=4.4e-6
+          # prompt=100, completion=80 (includes 30 reasoning_tokens)
+          # Reasoning tokens bill at the standard output rate (no separate rate).
+          # cost = 100*1.1e-6 + 80*4.4e-6 = 1.1e-4 + 3.52e-4 = 0.0004620000
+          example:
+            id: chatcmpl-ReasoningTokenTest
+            object: chat.completion
+            created: 1741569952
+            model: o4-mini-2025-04-16
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "The answer is 42."
+                  refusal: null
+                  annotations: []
+                logprobs: null
+                finish_reason: stop
+            usage:
+              prompt_tokens: 100
+              completion_tokens: 80
+              total_tokens: 180
+              prompt_tokens_details:
+                cached_tokens: 0
+                audio_tokens: 0
+              completion_tokens_details:
+                reasoning_tokens: 30
+                audio_tokens: 0
+                accepted_prediction_tokens: 0
+                rejected_prediction_tokens: 0
+            service_tier: default

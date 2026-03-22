@@ -48,6 +48,7 @@ func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps
 	ctx.Step(`^the response should indicate healthy status$`, h.theResponseShouldIndicateHealthyStatus)
 	ctx.Step(`^I check the health of all gateway services$`, h.iCheckHealthOfAllGatewayServices)
 	ctx.Step(`^all services should report healthy status$`, h.allServicesShouldReportHealthyStatus)
+	ctx.Step(`^I wait for policy snapshot sync$`, h.iWaitForPolicySnapshotSync)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready$`, h.iWaitForEndpointToBeReady)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with host "([^"]*)"$`, h.iWaitForEndpointToBeReadyWithHost)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with method "([^"]*)" and body '([^']*)'$`, h.iWaitForEndpointToBeReadyWithMethodAndBody)
@@ -153,6 +154,11 @@ func (h *HealthSteps) allServicesShouldReportHealthyStatus() error {
 	}
 
 	return nil
+}
+
+// iWaitForPolicySnapshotSync waits until controller and policy-engine policy snapshot versions match.
+func (h *HealthSteps) iWaitForPolicySnapshotSync() error {
+	return h.waitForPolicySnapshotSync()
 }
 
 // iWaitForEndpointToBeReady polls an endpoint until it returns 200 or times out

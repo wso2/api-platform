@@ -154,6 +154,7 @@ COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint-debug.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
+COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
 
 RUN chmod +x /app/policy-engine /usr/local/bin/dlv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
@@ -193,13 +194,15 @@ COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
+COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
 
 RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
 RUN groupadd -r -g 10001 wso2 && \
     useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
-    chown -R wso2:wso2 /app /var/run/api-platform /coverage && \
-    chmod -R 755 /app /var/run/api-platform /coverage
+    mkdir -p /home/wso2/conf/llm-pricing && \
+    chown -R wso2:wso2 /app /var/run/api-platform /coverage /home/wso2 && \
+    chmod -R 755 /app /var/run/api-platform /coverage /home/wso2
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage

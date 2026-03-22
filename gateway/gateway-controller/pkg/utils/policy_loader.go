@@ -27,7 +27,7 @@ import (
 	"regexp"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,8 +45,8 @@ func NewPolicyLoader(logger *slog.Logger) *PolicyLoader {
 
 // LoadPoliciesFromDirectory loads all policy definition files from a directory
 // Supports both JSON and YAML files
-func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]api.PolicyDefinition, error) {
-	policies := make(map[string]api.PolicyDefinition)
+func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]models.PolicyDefinition, error) {
+	policies := make(map[string]models.PolicyDefinition)
 
 	// Check if directory exists
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
@@ -115,7 +115,7 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 }
 
 // loadPolicyFile loads a single policy definition file
-func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, error) {
+func (pl *PolicyLoader) loadPolicyFile(filePath string) (*models.PolicyDefinition, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
@@ -123,7 +123,7 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 
 	ext := strings.ToLower(filepath.Ext(filePath))
 
-	var policyDef api.PolicyDefinition
+	var policyDef models.PolicyDefinition
 
 	if ext == ".json" {
 		if err := json.Unmarshal(data, &policyDef); err != nil {
@@ -163,8 +163,62 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 	return &policyDef, nil
 }
 
+// buildLockEntry is a single entry in build-lock.yaml
+type buildLockEntry struct {
+	Name     string `yaml:"name"`
+	Version  string `yaml:"version,omitempty"`
+	FilePath string `yaml:"filePath,omitempty"`
+	Gomodule string `yaml:"gomodule,omitempty"`
+}
+
+// buildLockFile represents the structure of build-lock.yaml
+type buildLockFile struct {
+	Version  string           `yaml:"version"`
+	Policies []buildLockEntry `yaml:"policies"`
+}
+
+// GetCustomPolicyNames parses build-lock.yaml and returns a set of policy names
+// that are locally developed (have a filePath entry rather than a gomodule).
+// Returns an empty set without error if the file does not exist.
+func (pl *PolicyLoader) GetCustomPolicyNames(buildLockPath string) (map[string]bool, error) {
+	customPolicies := make(map[string]bool)
+
+	data, err := os.ReadFile(buildLockPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read build-lock.yaml: %w", err)
+	}
+
+	var lock buildLockFile
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return nil, fmt.Errorf("failed to parse build-lock.yaml: %w", err)
+	}
+
+	for _, entry := range lock.Policies {
+		if entry.FilePath != "" {
+			customPolicies[entry.Name+"|"+entry.Version] = true
+			pl.logger.Debug("Detected locally developed custom policy via filePath",
+				slog.String("name", entry.Name),
+				slog.String("version", entry.Version),
+				slog.String("filePath", entry.FilePath))
+		} else if entry.Gomodule != "" && !strings.HasPrefix(entry.Gomodule, "github.com/wso2") {
+			customPolicies[entry.Name+"|"+entry.Version] = true
+			pl.logger.Debug("Detected third-party custom policy via gomodule",
+				slog.String("name", entry.Name),
+				slog.String("version", entry.Version),
+				slog.String("gomodule", entry.Gomodule))
+		}
+	}
+
+	pl.logger.Info("Parsed build-lock.yaml for custom policy detection",
+		slog.String("path", buildLockPath),
+		slog.Int("localCount", len(customPolicies)),
+		slog.Int("totalCount", len(lock.Policies)))
+
+	return customPolicies, nil
+}
+
 // validatePolicy validates a policy definition
-func (pl *PolicyLoader) validatePolicy(policy *api.PolicyDefinition) error {
+func (pl *PolicyLoader) validatePolicy(policy *models.PolicyDefinition) error {
 	if strings.TrimSpace(policy.Name) == "" {
 		return fmt.Errorf("policy name is required")
 	}

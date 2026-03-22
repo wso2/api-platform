@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"platform-api/src/internal/constants"
@@ -144,6 +145,40 @@ func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	}
 
 	return api, nil
+}
+
+// GetAPIsByUUIDs returns a map of API UUID to handle for the given UUIDs in the organization.
+// Used for bulk lookup to avoid N+1 queries. Returns empty map for empty input.
+func (r *APIRepo) GetAPIsByUUIDs(uuids []string, orgUUID string) (map[string]string, error) {
+	if len(uuids) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(uuids))
+	args := make([]interface{}, 0, len(uuids)+1)
+	for i, u := range uuids {
+		placeholders[i] = "?"
+		args = append(args, u)
+	}
+	args = append(args, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT art.uuid, art.handle
+		FROM rest_apis r INNER JOIN artifacts art ON r.uuid = art.uuid
+		WHERE art.uuid IN (%s) AND art.organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var uuid, handle string
+		if err := rows.Scan(&uuid, &handle); err != nil {
+			return nil, err
+		}
+		m[uuid] = handle
+	}
+	return m, rows.Err()
 }
 
 // GetAPIMetadataByHandle retrieves minimal API information by handle and organization ID

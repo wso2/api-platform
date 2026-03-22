@@ -91,9 +91,12 @@ const (
 
 // Defines values for DeploymentResponseStatus.
 const (
-	DeploymentResponseStatusARCHIVED   DeploymentResponseStatus = "ARCHIVED"
-	DeploymentResponseStatusDEPLOYED   DeploymentResponseStatus = "DEPLOYED"
-	DeploymentResponseStatusUNDEPLOYED DeploymentResponseStatus = "UNDEPLOYED"
+	DeploymentResponseStatusARCHIVED    DeploymentResponseStatus = "ARCHIVED"
+	DeploymentResponseStatusDEPLOYED    DeploymentResponseStatus = "DEPLOYED"
+	DeploymentResponseStatusDEPLOYING   DeploymentResponseStatus = "DEPLOYING"
+	DeploymentResponseStatusFAILED      DeploymentResponseStatus = "FAILED"
+	DeploymentResponseStatusUNDEPLOYED  DeploymentResponseStatus = "UNDEPLOYED"
+	DeploymentResponseStatusUNDEPLOYING DeploymentResponseStatus = "UNDEPLOYING"
 )
 
 // Defines values for DevPortalResponseVisibility.
@@ -411,9 +414,12 @@ const (
 
 // Defines values for DeploymentStatusQ.
 const (
-	DeploymentStatusQARCHIVED   DeploymentStatusQ = "ARCHIVED"
-	DeploymentStatusQDEPLOYED   DeploymentStatusQ = "DEPLOYED"
-	DeploymentStatusQUNDEPLOYED DeploymentStatusQ = "UNDEPLOYED"
+	DeploymentStatusQARCHIVED    DeploymentStatusQ = "ARCHIVED"
+	DeploymentStatusQDEPLOYED    DeploymentStatusQ = "DEPLOYED"
+	DeploymentStatusQDEPLOYING   DeploymentStatusQ = "DEPLOYING"
+	DeploymentStatusQFAILED      DeploymentStatusQ = "FAILED"
+	DeploymentStatusQUNDEPLOYED  DeploymentStatusQ = "UNDEPLOYED"
+	DeploymentStatusQUNDEPLOYING DeploymentStatusQ = "UNDEPLOYING"
 )
 
 // Defines values for GetGatewayArtifactsParamsArtifactType.
@@ -425,23 +431,32 @@ const (
 
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
-	GetLLMProviderDeploymentsParamsStatusARCHIVED   GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
-	GetLLMProviderDeploymentsParamsStatusDEPLOYED   GetLLMProviderDeploymentsParamsStatus = "DEPLOYED"
-	GetLLMProviderDeploymentsParamsStatusUNDEPLOYED GetLLMProviderDeploymentsParamsStatus = "UNDEPLOYED"
+	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
+	GetLLMProviderDeploymentsParamsStatusDEPLOYED    GetLLMProviderDeploymentsParamsStatus = "DEPLOYED"
+	GetLLMProviderDeploymentsParamsStatusDEPLOYING   GetLLMProviderDeploymentsParamsStatus = "DEPLOYING"
+	GetLLMProviderDeploymentsParamsStatusFAILED      GetLLMProviderDeploymentsParamsStatus = "FAILED"
+	GetLLMProviderDeploymentsParamsStatusUNDEPLOYED  GetLLMProviderDeploymentsParamsStatus = "UNDEPLOYED"
+	GetLLMProviderDeploymentsParamsStatusUNDEPLOYING GetLLMProviderDeploymentsParamsStatus = "UNDEPLOYING"
 )
 
 // Defines values for GetLLMProxyDeploymentsParamsStatus.
 const (
-	GetLLMProxyDeploymentsParamsStatusARCHIVED   GetLLMProxyDeploymentsParamsStatus = "ARCHIVED"
-	GetLLMProxyDeploymentsParamsStatusDEPLOYED   GetLLMProxyDeploymentsParamsStatus = "DEPLOYED"
-	GetLLMProxyDeploymentsParamsStatusUNDEPLOYED GetLLMProxyDeploymentsParamsStatus = "UNDEPLOYED"
+	GetLLMProxyDeploymentsParamsStatusARCHIVED    GetLLMProxyDeploymentsParamsStatus = "ARCHIVED"
+	GetLLMProxyDeploymentsParamsStatusDEPLOYED    GetLLMProxyDeploymentsParamsStatus = "DEPLOYED"
+	GetLLMProxyDeploymentsParamsStatusDEPLOYING   GetLLMProxyDeploymentsParamsStatus = "DEPLOYING"
+	GetLLMProxyDeploymentsParamsStatusFAILED      GetLLMProxyDeploymentsParamsStatus = "FAILED"
+	GetLLMProxyDeploymentsParamsStatusUNDEPLOYED  GetLLMProxyDeploymentsParamsStatus = "UNDEPLOYED"
+	GetLLMProxyDeploymentsParamsStatusUNDEPLOYING GetLLMProxyDeploymentsParamsStatus = "UNDEPLOYING"
 )
 
 // Defines values for GetMCPProxyDeploymentsParamsStatus.
 const (
-	GetMCPProxyDeploymentsParamsStatusARCHIVED   GetMCPProxyDeploymentsParamsStatus = "ARCHIVED"
-	GetMCPProxyDeploymentsParamsStatusDEPLOYED   GetMCPProxyDeploymentsParamsStatus = "DEPLOYED"
-	GetMCPProxyDeploymentsParamsStatusUNDEPLOYED GetMCPProxyDeploymentsParamsStatus = "UNDEPLOYED"
+	GetMCPProxyDeploymentsParamsStatusARCHIVED    GetMCPProxyDeploymentsParamsStatus = "ARCHIVED"
+	GetMCPProxyDeploymentsParamsStatusDEPLOYED    GetMCPProxyDeploymentsParamsStatus = "DEPLOYED"
+	GetMCPProxyDeploymentsParamsStatusDEPLOYING   GetMCPProxyDeploymentsParamsStatus = "DEPLOYING"
+	GetMCPProxyDeploymentsParamsStatusFAILED      GetMCPProxyDeploymentsParamsStatus = "FAILED"
+	GetMCPProxyDeploymentsParamsStatusUNDEPLOYED  GetMCPProxyDeploymentsParamsStatus = "UNDEPLOYED"
+	GetMCPProxyDeploymentsParamsStatusUNDEPLOYING GetMCPProxyDeploymentsParamsStatus = "UNDEPLOYING"
 )
 
 // Defines values for ListUserAPIKeysParamsType.
@@ -453,9 +468,12 @@ const (
 
 // Defines values for GetDeploymentsParamsStatus.
 const (
-	GetDeploymentsParamsStatusARCHIVED   GetDeploymentsParamsStatus = "ARCHIVED"
-	GetDeploymentsParamsStatusDEPLOYED   GetDeploymentsParamsStatus = "DEPLOYED"
-	GetDeploymentsParamsStatusUNDEPLOYED GetDeploymentsParamsStatus = "UNDEPLOYED"
+	GetDeploymentsParamsStatusARCHIVED    GetDeploymentsParamsStatus = "ARCHIVED"
+	GetDeploymentsParamsStatusDEPLOYED    GetDeploymentsParamsStatus = "DEPLOYED"
+	GetDeploymentsParamsStatusDEPLOYING   GetDeploymentsParamsStatus = "DEPLOYING"
+	GetDeploymentsParamsStatusFAILED      GetDeploymentsParamsStatus = "FAILED"
+	GetDeploymentsParamsStatusUNDEPLOYED  GetDeploymentsParamsStatus = "UNDEPLOYED"
+	GetDeploymentsParamsStatusUNDEPLOYING GetDeploymentsParamsStatus = "UNDEPLOYING"
 )
 
 // Defines values for ListSubscriptionsParamsStatus.
@@ -974,8 +992,14 @@ type DeploymentResponse struct {
 	// Status Current deployment lifecycle state:
 	// - DEPLOYED: Currently active on the gateway
 	// - UNDEPLOYED: Suspended but can be rolled back
+	// - DEPLOYING: Deployment in progress, waiting for gateway acknowledgement
+	// - UNDEPLOYING: Undeployment in progress, waiting for gateway acknowledgement
+	// - FAILED: Deployment or undeployment failed (see statusReason for error code)
 	// - ARCHIVED: Historical deployment, can be rolled back
 	Status DeploymentResponseStatus `binding:"required" json:"status" yaml:"status"`
+
+	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR)
+	StatusReason *string `json:"statusReason" yaml:"statusReason"`
 
 	// UpdatedAt Timestamp when the deployment status last changed (null for ARCHIVED deployments)
 	UpdatedAt *time.Time `json:"updatedAt" yaml:"updatedAt"`
@@ -984,6 +1008,9 @@ type DeploymentResponse struct {
 // DeploymentResponseStatus Current deployment lifecycle state:
 // - DEPLOYED: Currently active on the gateway
 // - UNDEPLOYED: Suspended but can be rolled back
+// - DEPLOYING: Deployment in progress, waiting for gateway acknowledgement
+// - UNDEPLOYING: Undeployment in progress, waiting for gateway acknowledgement
+// - FAILED: Deployment or undeployment failed (see statusReason for error code)
 // - ARCHIVED: Historical deployment, can be rolled back
 type DeploymentResponseStatus string
 
@@ -1546,12 +1573,13 @@ type LLMProviderTemplate struct {
 	Metadata *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Human-readable LLM Template name
-	Name            string                `binding:"required" json:"name" yaml:"name"`
-	PromptTokens    *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	RemainingTokens *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
-	RequestModel    *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
-	ResponseModel   *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
-	TotalTokens     *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+	Name             string                               `binding:"required" json:"name" yaml:"name"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
+	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -1584,6 +1612,24 @@ type LLMProviderTemplateListResponse struct {
 	Count      int                           `binding:"required" json:"count" yaml:"count"`
 	List       []LLMProviderTemplateListItem `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination                    `json:"pagination" yaml:"pagination"`
+}
+
+// LLMProviderTemplateResourceMapping defines model for LLMProviderTemplateResourceMapping.
+type LLMProviderTemplateResourceMapping struct {
+	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
+	PromptTokens     *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens  *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel     *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+
+	// Resource Resource path pattern this mapping applies to (for example /responses or /chat/*)
+	Resource      string                `binding:"required" json:"resource" yaml:"resource"`
+	ResponseModel *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens   *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+}
+
+// LLMProviderTemplateResourceMappings defines model for LLMProviderTemplateResourceMappings.
+type LLMProviderTemplateResourceMappings struct {
+	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
 }
 
 // LLMProviderTemplateMetadata defines model for LLMProviderTemplateMetadata.
@@ -2976,7 +3022,7 @@ type GetLLMProviderDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
-	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetLLMProviderDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
@@ -3027,7 +3073,7 @@ type GetLLMProxyDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
-	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetLLMProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
@@ -3069,7 +3115,7 @@ type GetMCPProxyDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
-	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetMCPProxyDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 
@@ -3130,7 +3176,7 @@ type GetDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
-	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 	Status *GetDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
 

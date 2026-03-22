@@ -420,3 +420,29 @@ func (r *GatewayRepo) HasGatewayAssociationsOrDeployments(gatewayID, organizatio
 	// Check associations
 	return r.HasGatewayAssociations(gatewayID, organizationID)
 }
+
+// UpdateGatewayManifest persists the gateway manifest JSON to the gateway row.
+func (r *GatewayRepo) UpdateGatewayManifest(gatewayID string, manifest []byte) error {
+	query := `UPDATE gateways SET manifest = ? WHERE uuid = ?`
+	_, err := r.db.Exec(r.db.Rebind(query), string(manifest), gatewayID)
+	return err
+}
+
+// GetGatewayManifest returns the raw manifest JSON stored for the gateway.
+// Returns nil data (no error) if the gateway exists but has no manifest yet.
+// Returns an error if the gateway row does not exist.
+func (r *GatewayRepo) GetGatewayManifest(gatewayID string) ([]byte, error) {
+	query := `SELECT manifest FROM gateways WHERE uuid = ?`
+	var raw *string
+	err := r.db.QueryRow(r.db.Rebind(query), gatewayID).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("gateway not found: %s", gatewayID)
+		}
+		return nil, err
+	}
+	if raw == nil {
+		return nil, nil
+	}
+	return []byte(*raw), nil
+}

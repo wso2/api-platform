@@ -1,0 +1,42 @@
+post:
+  summary: Chat with GPT-3.5-turbo (price-overridden)
+  operationId: gpt35Chat
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response
+      content:
+        application/json:
+          # gpt-3.5-turbo embedded price: input=5e-7, output=1.5e-6
+          # Custom override: input=2e-7, output=5e-7 (~60% negotiated discount)
+          # Usage: 100 prompt + 50 completion
+          # WITH override: (100*2e-7) + (50*5e-7) = 2e-5 + 2.5e-5 = 0.0000450000
+          # WITHOUT override (embedded): (100*5e-7) + (50*1.5e-6) = 5e-5 + 7.5e-5 = 0.0001250000
+          example:
+            id: resp-gpt35-001
+            object: chat.completion
+            created: 1741569952
+            model: gpt-3.5-turbo
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Hello from GPT-3.5 Turbo!"
+                finish_reason: stop
+            usage:
+              prompt_tokens: 100
+              completion_tokens: 50
+              total_tokens: 150

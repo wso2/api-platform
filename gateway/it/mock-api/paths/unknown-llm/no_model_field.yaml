@@ -1,0 +1,34 @@
+post:
+  summary: Response without a model field
+  operationId: unknownLLMNoModelField
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response — intentionally omits model/modelVersion field
+      content:
+        application/json:
+          # No model or modelVersion field — cost calculation must fail gracefully.
+          # Expected: x-llm-cost=0.0000000000, x-llm-cost-status=not_calculated
+          example:
+            id: resp-no-model-001
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Hello!"
+                finish_reason: stop
+            usage:
+              prompt_tokens: 10
+              completion_tokens: 5
+              total_tokens: 15

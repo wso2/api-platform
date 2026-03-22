@@ -143,13 +143,13 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
 	if upstream.Auth != nil {
-		params, err := GetParamsOfPolicy(constants.MODIFY_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
+		params, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 		}
 		pol := api.Policy{
-			Name:    constants.MODIFY_HEADERS_POLICY_NAME,
-			Version: constants.MODIFY_HEADERS_POLICY_VERSION, Params: &params}
+			Name:    constants.SET_HEADERS_POLICY_NAME,
+			Version: constants.SET_HEADERS_POLICY_VERSION, Params: &params}
 		policies = append(policies, pol)
 	}
 

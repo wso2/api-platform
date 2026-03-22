@@ -122,7 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
 
 -- Subscription plans table (organization-scoped rate/billing plans)
 CREATE TABLE IF NOT EXISTS subscription_plans (
-    id TEXT PRIMARY KEY,
+    uuid TEXT PRIMARY KEY,
     gateway_id TEXT NOT NULL,
     plan_name TEXT NOT NULL,
     billing_plan TEXT,
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 -- Subscriptions table (application-level subscriptions for REST APIs)
 -- subscription_token_hash: for xDS validation and request validation (Platform-API stores original token)
 CREATE TABLE IF NOT EXISTS subscriptions (
-    id TEXT PRIMARY KEY,
+    uuid TEXT PRIMARY KEY,
     gateway_id TEXT NOT NULL,
     api_id TEXT NOT NULL,
     application_id TEXT,
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_id) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_id) REFERENCES subscription_plans(id) ON DELETE SET NULL,
+    FOREIGN KEY (subscription_plan_id) REFERENCES subscription_plans(uuid) ON DELETE SET NULL,
     UNIQUE(api_id, subscription_token_hash, gateway_id)
 );
 CREATE INDEX IF NOT EXISTS idx_subscriptions_api_id ON subscriptions(api_id);

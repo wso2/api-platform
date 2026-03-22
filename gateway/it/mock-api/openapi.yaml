@@ -19,6 +19,54 @@ paths:
     $ref: ./paths/openai/chat.yaml
   /openai/v1/embeddings:
     $ref: ./paths/openai/embeddings.yaml
+  # Mock Anthropic
+  /anthropic/v1/messages:
+    $ref: ./paths/anthropic/messages.yaml
+  /anthropic/v1/messages-geo-speed:
+    $ref: ./paths/anthropic/messages_geo_speed.yaml
+  /anthropic/v1/messages-cache-1hr:
+    $ref: ./paths/anthropic/messages_cache_1hr.yaml
+  /anthropic/v1/messages-web-search:
+    $ref: ./paths/anthropic/messages_web_search.yaml
+  /anthropic/v1/messages-cache-read:
+    $ref: ./paths/anthropic/messages_cache_read.yaml
+  # Mock Gemini native
+  /gemini/v1/models/{model}:generateContent:
+    $ref: ./paths/gemini/generate_content.yaml
+  /gemini/v1/cached/{model}:generateContent:
+    $ref: ./paths/gemini/generate_content_cached.yaml
+  /gemini/v1/thinking/{model}:generateContent:
+    $ref: ./paths/gemini/generate_content_thinking.yaml
+  # Mock OpenAI with prompt caching
+  /openai/v1/chat-cached:
+    $ref: ./paths/openai/chat_cached.yaml
+  # Mock OpenAI service tier variants
+  /openai/v1/chat-flex:
+    $ref: ./paths/openai/chat_flex.yaml
+  /openai/v1/chat-priority:
+    $ref: ./paths/openai/chat_priority.yaml
+  /openai/v1/chat-batch:
+    $ref: ./paths/openai/chat_batch.yaml
+  # Mock OpenAI reasoning tokens (o-series)
+  /openai/v1/chat-reasoning:
+    $ref: ./paths/openai/chat_reasoning.yaml
+  # Mock OpenAI web search (url_citation annotation)
+  /openai/v1/chat-web-search:
+    $ref: ./paths/openai/chat_web_search.yaml
+  # Mock Mistral
+  /mistral/v1/chat/completions:
+    $ref: ./paths/mistral/chat.yaml
+  # Mock unknown LLM (no pricing data)
+  /unknown-llm/v1/chat:
+    $ref: ./paths/unknown-llm/chat.yaml
+  # Mock response with no model/modelVersion field (cost cannot be calculated)
+  /unknown-llm/v1/no-model-field:
+    $ref: ./paths/unknown-llm/no_model_field.yaml
+  # Mock custom-priced LLMs (for custom pricing file tests)
+  /custom-llm/v1/chat:
+    $ref: ./paths/custom-llm/chat.yaml
+  /custom-llm/v1/gpt35:
+    $ref: ./paths/custom-llm/gpt35.yaml
 
 components:
   schemas:

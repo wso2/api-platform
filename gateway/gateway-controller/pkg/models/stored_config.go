@@ -95,7 +95,7 @@ func (c *StoredConfig) GetContext() (string, error) {
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if sc, ok := c.SourceConfiguration.(api.RestAPI); ok {
+	if sc, ok := c.Configuration.(api.RestAPI); ok {
 		return sc.Spec.Policies
 	}
 	// TODO: enable when policies are supported for WebSubHub

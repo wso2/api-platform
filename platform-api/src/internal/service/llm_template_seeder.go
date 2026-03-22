@@ -28,7 +28,8 @@ import (
 // for a given organization. This is used to avoid "template not found" when
 // creating LLM providers.
 //
-// Seeding is idempotent: existing templates are not overwritten.
+// Seeding is idempotent and convergent: existing templates are updated to
+// match the seeded defaults on every run.
 type LLMTemplateSeeder struct {
 	repo      repository.LLMProviderTemplateRepository
 	templates []*model.LLMProviderTemplate
@@ -73,23 +74,20 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 		}
 		if _, ok := existingByID[tpl.ID]; ok {
 			current := existingByHandle[tpl.ID]
-			if current != nil && tpl.Metadata != nil {
-				updated := false
-				if current.Metadata == nil {
-					current.Metadata = tpl.Metadata
-					updated = true
-				} else if current.Metadata.OpenapiSpecURL == "" && tpl.Metadata.OpenapiSpecURL != "" {
-					current.Metadata.OpenapiSpecURL = tpl.Metadata.OpenapiSpecURL
-					updated = true
-				}
-				if current.Name == "" && tpl.Name != "" {
-					current.Name = tpl.Name
-					updated = true
-				}
-				if updated {
-					if err := s.repo.Update(current); err != nil {
-						return fmt.Errorf("failed to update template metadata for %s: %w", tpl.ID, err)
-					}
+			if current != nil {
+				current.Name = tpl.Name
+				current.Description = tpl.Description
+				current.Metadata = tpl.Metadata
+				current.PromptTokens = tpl.PromptTokens
+				current.CompletionTokens = tpl.CompletionTokens
+				current.TotalTokens = tpl.TotalTokens
+				current.RemainingTokens = tpl.RemainingTokens
+				current.RequestModel = tpl.RequestModel
+				current.ResponseModel = tpl.ResponseModel
+				current.ResourceMappings = tpl.ResourceMappings
+
+				if err := s.repo.Update(current); err != nil {
+					return fmt.Errorf("failed to sync template %s from defaults: %w", tpl.ID, err)
 				}
 			}
 			continue
@@ -108,6 +106,7 @@ func (s *LLMTemplateSeeder) SeedForOrg(orgUUID string) error {
 			RemainingTokens:  tpl.RemainingTokens,
 			RequestModel:     tpl.RequestModel,
 			ResponseModel:    tpl.ResponseModel,
+			ResourceMappings: tpl.ResourceMappings,
 		}
 		if err := s.repo.Create(toCreate); err != nil {
 			// Be tolerant to concurrent startup / repeated seeding.

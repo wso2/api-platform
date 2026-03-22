@@ -1,0 +1,55 @@
+post:
+  summary: Create chat completion with batch service tier
+  operationId: createChatCompletionBatch
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response with batch service tier
+      content:
+        application/json:
+          # gpt-4.1: input_batches=1e-6, output_batches=4e-6
+          # prompt=100, completion=50, service_tier=batch
+          # cost = 100*1e-6 + 50*4e-6 = 1e-4 + 2e-4 = 0.0003000000
+          example:
+            id: chatcmpl-BatchTierTest
+            object: chat.completion
+            created: 1741569952
+            model: gpt-4.1
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Batch tier response."
+                  refusal: null
+                  annotations: []
+                logprobs: null
+                finish_reason: stop
+            usage:
+              prompt_tokens: 100
+              completion_tokens: 50
+              total_tokens: 150
+              prompt_tokens_details:
+                cached_tokens: 0
+                audio_tokens: 0
+              completion_tokens_details:
+                reasoning_tokens: 0
+                audio_tokens: 0
+                accepted_prediction_tokens: 0
+                rejected_prediction_tokens: 0
+            service_tier: batch

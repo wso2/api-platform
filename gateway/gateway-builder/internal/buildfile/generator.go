@@ -92,7 +92,7 @@ func (m *BuildInfo) WriteToFile(path string) error {
 
 	slog.Info("Writing build info to file", "path", path)
 
-	if err := os.WriteFile(path, jsonData, 0644); err != nil {
+	if err := os.WriteFile(path, jsonData, 0600); err != nil {
 		return fmt.Errorf("failed to write build info file: %w", err)
 	}
 
@@ -199,7 +199,7 @@ func WriteBuildLockWithVersions(buildFilePath string, discovered []*types.Discov
 	}
 
 	slog.Info("Writing build lock with versions", "path", outPath)
-	if err := os.WriteFile(outPath, ydata, 0644); err != nil {
+	if err := os.WriteFile(outPath, ydata, 0600); err != nil {
 		return fmt.Errorf("failed to write build lock file '%s': %w", outPath, err)
 	}
 

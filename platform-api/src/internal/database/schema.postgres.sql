@@ -148,11 +148,35 @@ CREATE TABLE IF NOT EXISTS gateways (
     is_critical BOOLEAN DEFAULT FALSE,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,
+    manifest JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, name),
     CHECK (gateway_functionality_type IN ('regular', 'ai', 'event'))
+);
+
+-- Gateway Custom Policies table (org-scoped custom policies synced from gateway manifests)
+CREATE TABLE IF NOT EXISTS gateway_custom_policies (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    version VARCHAR(15) NOT NULL,
+    description TEXT,
+    policy_definition JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, name, version)
+);
+
+-- Gateway Custom Policy Usages table (tracks which APIs use each custom policy)
+CREATE TABLE IF NOT EXISTS gateway_custom_policy_usages (
+    policy_uuid VARCHAR(40) NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
+    PRIMARY KEY (policy_uuid, api_uuid),
+    FOREIGN KEY (policy_uuid) REFERENCES gateway_custom_policies(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (api_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
 );
 
 -- Gateway Tokens table
@@ -193,13 +217,15 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     gateway_uuid VARCHAR(40) NOT NULL,
     deployment_id VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
+    status_desired VARCHAR(20),
+    performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status_reason VARCHAR(50),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (artifact_uuid, organization_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE,
-    CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
+    FOREIGN KEY (deployment_id) REFERENCES deployments(deployment_id) ON DELETE CASCADE
 );
 
 -- Artifact Associations table (for both gateways and dev portals)

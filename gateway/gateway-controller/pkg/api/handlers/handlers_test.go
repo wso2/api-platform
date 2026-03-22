@@ -723,7 +723,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 
 	parser := config.NewParser()
 	validator := config.NewAPIValidator()
-	policyDefs := make(map[string]api.PolicyDefinition)
+	policyDefs := make(map[string]models.PolicyDefinition)
 	routerCfg := &config.RouterConfig{
 		GatewayHost: "localhost",
 		VHosts:      *vhosts,
@@ -1138,53 +1138,6 @@ func TestSearchDeploymentsMCP(t *testing.T) {
 	assert.Contains(t, response, "mcpProxies")
 }
 
-// TestListPolicies tests listing all policies
-func TestListPolicies(t *testing.T) {
-	server := createTestAPIServer()
-	server.policyDefinitions["policy1|v1"] = api.PolicyDefinition{
-		Name:    "policy1",
-		Version: "v1",
-	}
-	server.policyDefinitions["policy2|v1"] = api.PolicyDefinition{
-		Name:    "policy2",
-		Version: "v1",
-	}
-
-	c, w := createTestContext("GET", "/policies", nil)
-	server.ListPolicies(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response struct {
-		Status   string                 `json:"status"`
-		Count    int                    `json:"count"`
-		Policies []api.PolicyDefinition `json:"policies"`
-	}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "success", response.Status)
-	assert.Equal(t, 2, response.Count)
-}
-
-// TestListPoliciesEmpty tests listing policies when none exist
-func TestListPoliciesEmpty(t *testing.T) {
-	server := createTestAPIServer()
-
-	c, w := createTestContext("GET", "/policies", nil)
-	server.ListPolicies(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response struct {
-		Status   string `json:"status"`
-		Count    int    `json:"count"`
-		Policies []api.PolicyDefinition
-	}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, 0, response.Count)
-}
-
 // TestGetConfigDump tests the config dump endpoint
 func TestGetConfigDump(t *testing.T) {
 	server := createTestAPIServer()
@@ -1194,7 +1147,7 @@ func TestGetConfigDump(t *testing.T) {
 	_ = server.store.Add(cfg)
 
 	// Add test policy
-	server.policyDefinitions["policy1|v1"] = api.PolicyDefinition{
+	server.policyDefinitions["policy1|v1"] = models.PolicyDefinition{
 		Name:    "policy1",
 		Version: "v1",
 	}
@@ -1955,7 +1908,7 @@ func TestNewAPIServer(t *testing.T) {
 	store := storage.NewConfigStore()
 	mockDB := NewMockStorage()
 
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"test|v1": {Name: "test", Version: "v1"},
 	}
 
@@ -2487,34 +2440,6 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-// Test that policies are sorted in ListPolicies
-func TestListPoliciesSorted(t *testing.T) {
-	server := createTestAPIServer()
-
-	// Add policies in unsorted order
-	server.policyDefinitions["z-policy|v1"] = api.PolicyDefinition{Name: "z-policy", Version: "v1"}
-	server.policyDefinitions["a-policy|v2"] = api.PolicyDefinition{Name: "a-policy", Version: "v2"}
-	server.policyDefinitions["a-policy|v1"] = api.PolicyDefinition{Name: "a-policy", Version: "v1"}
-	server.policyDefinitions["m-policy|v1"] = api.PolicyDefinition{Name: "m-policy", Version: "v1"}
-
-	c, w := createTestContext("GET", "/policies", nil)
-	server.ListPolicies(c)
-
-	var response struct {
-		Policies []api.PolicyDefinition `json:"policies"`
-	}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-
-	// Verify sorted order: first by name, then by version
-	assert.Equal(t, "a-policy", response.Policies[0].Name)
-	assert.Equal(t, "v1", response.Policies[0].Version)
-	assert.Equal(t, "a-policy", response.Policies[1].Name)
-	assert.Equal(t, "v2", response.Policies[1].Version)
-	assert.Equal(t, "m-policy", response.Policies[2].Name)
-	assert.Equal(t, "z-policy", response.Policies[3].Name)
-}
-
 // Test GetConfigDump with config missing handle
 func TestGetConfigDumpMissingHandle(t *testing.T) {
 	server := createTestAPIServer()
@@ -2586,7 +2511,7 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 // TestBuildStoredPolicyFromAPIWithVhosts tests buildStoredPolicyFromAPI with custom vhosts
 func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 	server := createTestAPIServer()
-	server.policyDefinitions["test-policy|v1.0.0"] = api.PolicyDefinition{Name: "test-policy", Version: "v1.0.0"}
+	server.policyDefinitions["test-policy|v1.0.0"] = models.PolicyDefinition{Name: "test-policy", Version: "v1.0.0"}
 
 	policies := []api.Policy{
 		{Name: "test-policy", Version: "v1"},
@@ -2643,8 +2568,8 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 // TestBuildStoredPolicyFromAPIOperationPolicies tests operation-level policy merging
 func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 	server := createTestAPIServer()
-	server.policyDefinitions["api-policy|v1.0.0"] = api.PolicyDefinition{Name: "api-policy", Version: "v1.0.0"}
-	server.policyDefinitions["op-policy|v1.0.0"] = api.PolicyDefinition{Name: "op-policy", Version: "v1.0.0"}
+	server.policyDefinitions["api-policy|v1.0.0"] = models.PolicyDefinition{Name: "api-policy", Version: "v1.0.0"}
+	server.policyDefinitions["op-policy|v1.0.0"] = models.PolicyDefinition{Name: "op-policy", Version: "v1.0.0"}
 
 	apiPolicies := []api.Policy{
 		{Name: "api-policy", Version: "v1"},

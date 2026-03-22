@@ -206,15 +206,7 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 
 // Count returns the total number of MCP proxies for an organization
 func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
-	var count int
-	query := `
-		SELECT COUNT(*) FROM artifacts a
-		JOIN mcp_proxies p ON a.uuid = p.uuid
-		WHERE a.organization_uuid = ? AND a.kind = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, constants.MCPProxy).Scan(&count); err != nil {
-		return 0, err
-	}
-	return count, nil
+	return r.artifactRepo.CountByKindAndOrg(constants.MCPProxy, orgUUID)
 }
 
 // ListByProject retrieves all MCP proxies for a specific project

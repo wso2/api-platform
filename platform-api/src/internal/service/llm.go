@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"platform-api/src/api"
@@ -41,28 +42,64 @@ type LLMProviderTemplateService struct {
 }
 
 type LLMProviderService struct {
-	repo           repository.LLMProviderRepository
-	templateRepo   repository.LLMProviderTemplateRepository
-	orgRepo        repository.OrganizationRepository
-	templateSeeder *LLMTemplateSeeder
+	repo                 repository.LLMProviderRepository
+	templateRepo         repository.LLMProviderTemplateRepository
+	orgRepo              repository.OrganizationRepository
+	templateSeeder       *LLMTemplateSeeder
+	deploymentRepo       repository.DeploymentRepository
+	gatewayEventsService *GatewayEventsService
+	slogger              *slog.Logger
 }
 
 type LLMProxyService struct {
-	repo         repository.LLMProxyRepository
-	providerRepo repository.LLMProviderRepository
-	projectRepo  repository.ProjectRepository
+	repo                 repository.LLMProxyRepository
+	providerRepo         repository.LLMProviderRepository
+	projectRepo          repository.ProjectRepository
+	deploymentRepo       repository.DeploymentRepository
+	gatewayEventsService *GatewayEventsService
+	slogger              *slog.Logger
 }
 
 func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository) *LLMProviderTemplateService {
 	return &LLMProviderTemplateService{repo: repo}
 }
 
-func NewLLMProviderService(repo repository.LLMProviderRepository, templateRepo repository.LLMProviderTemplateRepository, orgRepo repository.OrganizationRepository, templateSeeder *LLMTemplateSeeder) *LLMProviderService {
-	return &LLMProviderService{repo: repo, templateRepo: templateRepo, orgRepo: orgRepo, templateSeeder: templateSeeder}
+func NewLLMProviderService(
+	repo repository.LLMProviderRepository,
+	templateRepo repository.LLMProviderTemplateRepository,
+	orgRepo repository.OrganizationRepository,
+	templateSeeder *LLMTemplateSeeder,
+	deploymentRepo repository.DeploymentRepository,
+	gatewayEventsService *GatewayEventsService,
+	slogger *slog.Logger,
+) *LLMProviderService {
+	return &LLMProviderService{
+		repo:                 repo,
+		templateRepo:         templateRepo,
+		orgRepo:              orgRepo,
+		templateSeeder:       templateSeeder,
+		deploymentRepo:       deploymentRepo,
+		gatewayEventsService: gatewayEventsService,
+		slogger:              slogger,
+	}
 }
 
-func NewLLMProxyService(repo repository.LLMProxyRepository, providerRepo repository.LLMProviderRepository, projectRepo repository.ProjectRepository) *LLMProxyService {
-	return &LLMProxyService{repo: repo, providerRepo: providerRepo, projectRepo: projectRepo}
+func NewLLMProxyService(
+	repo repository.LLMProxyRepository,
+	providerRepo repository.LLMProviderRepository,
+	projectRepo repository.ProjectRepository,
+	deploymentRepo repository.DeploymentRepository,
+	gatewayEventsService *GatewayEventsService,
+	slogger *slog.Logger,
+) *LLMProxyService {
+	return &LLMProxyService{
+		repo:                 repo,
+		providerRepo:         providerRepo,
+		projectRepo:          projectRepo,
+		deploymentRepo:       deploymentRepo,
+		gatewayEventsService: gatewayEventsService,
+		slogger:              slogger,
+	}
 }
 
 func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
@@ -95,6 +132,12 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
 	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
+
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, constants.ErrLLMProviderTemplateExists
@@ -178,6 +221,11 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
 	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -472,12 +520,50 @@ func (s *LLMProviderService) Delete(orgUUID, handle string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
+
+	// Get the provider UUID before deletion (needed for deployment lookup)
+	provider, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get LLM provider: %w", err)
+	}
+	if provider == nil {
+		return constants.ErrLLMProviderNotFound
+	}
+
+	// Get all gateway IDs where this provider has an active deployment BEFORE deletion
+	// (deployments will be cascade deleted with the artifact)
+	var gatewayIDs []string
+	if s.deploymentRepo != nil {
+		ids, err := s.deploymentRepo.GetDeployedGatewayIDs(provider.UUID, orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to get gateway IDs for LLM provider deletion", "error", err, "providerUUID", provider.UUID)
+		} else {
+			gatewayIDs = ids
+		}
+	}
+
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrLLMProviderNotFound
 		}
 		return fmt.Errorf("failed to delete provider: %w", err)
 	}
+
+	// Send deletion events to all gateways where this provider was deployed
+	if s.gatewayEventsService != nil && len(gatewayIDs) > 0 {
+		for _, gatewayID := range gatewayIDs {
+			deletionEvent := &model.LLMProviderDeletionEvent{
+				ProviderId: provider.UUID,
+			}
+
+			if err := s.gatewayEventsService.BroadcastLLMProviderDeletionEvent(gatewayID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast LLM provider deletion event", "error", err, "gatewayID", gatewayID, "providerUUID", provider.UUID)
+			} else {
+				s.slogger.Info("LLM provider deletion event sent", "gatewayID", gatewayID, "providerUUID", provider.UUID)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -780,12 +866,50 @@ func (s *LLMProxyService) Delete(orgUUID, handle string) error {
 	if handle == "" {
 		return constants.ErrInvalidInput
 	}
+
+	// Get the proxy UUID before deletion (needed for deployment lookup)
+	proxy, err := s.repo.GetByID(handle, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get LLM proxy: %w", err)
+	}
+	if proxy == nil {
+		return constants.ErrLLMProxyNotFound
+	}
+
+	// Get all gateway IDs where this proxy has an active deployment BEFORE deletion
+	// (deployments will be cascade deleted with the artifact)
+	var gatewayIDs []string
+	if s.deploymentRepo != nil {
+		ids, err := s.deploymentRepo.GetDeployedGatewayIDs(proxy.UUID, orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to get gateway IDs for LLM proxy deletion", "error", err, "proxyUUID", proxy.UUID)
+		} else {
+			gatewayIDs = ids
+		}
+	}
+
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return constants.ErrLLMProxyNotFound
 		}
 		return fmt.Errorf("failed to delete proxy: %w", err)
 	}
+
+	// Send deletion events to all gateways where this proxy was deployed
+	if s.gatewayEventsService != nil && len(gatewayIDs) > 0 {
+		for _, gatewayID := range gatewayIDs {
+			deletionEvent := &model.LLMProxyDeletionEvent{
+				ProxyId: proxy.UUID,
+			}
+
+			if err := s.gatewayEventsService.BroadcastLLMProxyDeletionEvent(gatewayID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast LLM proxy deletion event", "error", err, "gatewayID", gatewayID, "proxyUUID", proxy.UUID)
+			} else {
+				s.slogger.Info("LLM proxy deletion event sent", "gatewayID", gatewayID, "proxyUUID", proxy.UUID)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1199,8 +1323,90 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		RemainingTokens:  mapExtractionIdentifierModelToAPI(m.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierModelToAPI(m.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(m.ResponseModel),
+		ResourceMappings: mapTemplateResourceMappingsModelToAPI(m.ResourceMappings),
 		CreatedAt:        utils.TimePtr(m.CreatedAt),
 		UpdatedAt:        utils.TimePtr(m.UpdatedAt),
+	}
+}
+
+func mapTemplateResourceMappingsAPI(in *api.LLMProviderTemplateResourceMappings) (*model.LLMProviderTemplateResourceMappings, error) {
+	if in == nil {
+		return nil, nil
+	}
+	out := &model.LLMProviderTemplateResourceMappings{}
+	if in.Resources != nil {
+		resources := make([]model.LLMProviderTemplateResourceMapping, 0, len(*in.Resources))
+		for _, r := range *in.Resources {
+			mapped, err := mapTemplateResourceMappingAPI(&r)
+			if err != nil {
+				return nil, err
+			}
+			if mapped != nil {
+				resources = append(resources, *mapped)
+			}
+		}
+		out.Resources = resources
+	}
+	if len(out.Resources) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) (*model.LLMProviderTemplateResourceMapping, error) {
+	if in == nil {
+		return nil, nil
+	}
+	resource, isValid := utils.NormalizeAndValidateLLMResourcePath(in.Resource)
+	if !isValid {
+		return nil, fmt.Errorf("%w: resource mapping resource must be a valid path pattern", constants.ErrInvalidInput)
+	}
+	return &model.LLMProviderTemplateResourceMapping{
+		Resource: resource,
+		LLMProviderTemplateExtractionFields: model.LLMProviderTemplateExtractionFields{
+			PromptTokens:     mapExtractionIdentifierAPI(in.PromptTokens),
+			CompletionTokens: mapExtractionIdentifierAPI(in.CompletionTokens),
+			TotalTokens:      mapExtractionIdentifierAPI(in.TotalTokens),
+			RemainingTokens:  mapExtractionIdentifierAPI(in.RemainingTokens),
+			RequestModel:     mapExtractionIdentifierAPI(in.RequestModel),
+			ResponseModel:    mapExtractionIdentifierAPI(in.ResponseModel),
+		},
+	}, nil
+}
+
+func mapTemplateResourceMappingsModelToAPI(in *model.LLMProviderTemplateResourceMappings) *api.LLMProviderTemplateResourceMappings {
+	if in == nil {
+		return nil
+	}
+	out := &api.LLMProviderTemplateResourceMappings{}
+	if len(in.Resources) > 0 {
+		resources := make([]api.LLMProviderTemplateResourceMapping, 0, len(in.Resources))
+		for _, r := range in.Resources {
+			mapped := mapTemplateResourceMappingModelToAPI(&r)
+			if mapped != nil {
+				resources = append(resources, *mapped)
+			}
+		}
+		out.Resources = &resources
+	}
+	if out.Resources == nil || len(*out.Resources) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceMapping) *api.LLMProviderTemplateResourceMapping {
+	if in == nil {
+		return nil
+	}
+	return &api.LLMProviderTemplateResourceMapping{
+		Resource:         strings.TrimSpace(in.Resource),
+		PromptTokens:     mapExtractionIdentifierModelToAPI(in.PromptTokens),
+		CompletionTokens: mapExtractionIdentifierModelToAPI(in.CompletionTokens),
+		TotalTokens:      mapExtractionIdentifierModelToAPI(in.TotalTokens),
+		RemainingTokens:  mapExtractionIdentifierModelToAPI(in.RemainingTokens),
+		RequestModel:     mapExtractionIdentifierModelToAPI(in.RequestModel),
+		ResponseModel:    mapExtractionIdentifierModelToAPI(in.ResponseModel),
 	}
 }
 

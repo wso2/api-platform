@@ -20,6 +20,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"platform-api/src/internal/database"
@@ -104,6 +105,40 @@ func (r *SubscriptionPlanRepo) GetByID(planID, orgUUID string) (*model.Subscript
 		return nil, err
 	}
 	return plan, nil
+}
+
+// GetByIDs returns a map of plan UUID to plan name for the given IDs in the organization.
+// Used for bulk lookup to avoid N+1 queries. Returns empty map for empty input.
+func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[string]string, error) {
+	if len(planIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(planIDs))
+	args := make([]interface{}, 0, len(planIDs)+1)
+	for i, id := range planIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT uuid, plan_name
+		FROM subscription_plans
+		WHERE uuid IN (%s) AND organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plans by IDs: %w", err)
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var id, planName string
+		if err := rows.Scan(&id, &planName); err != nil {
+			return nil, err
+		}
+		m[id] = planName
+	}
+	return m, rows.Err()
 }
 
 // ListByOrganization returns subscription plans for an organization with pagination

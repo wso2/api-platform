@@ -20,7 +20,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.10.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller:0.12.0-SNAPSHOT
     mem_limit: 60m
     mem_reservation: 60m
     cpus: 0.025
@@ -49,7 +49,7 @@ services:
       - gateway-network
 
   gateway-runtime:
-    image: ghcr.io/wso2/api-platform/gateway-runtime:0.10.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-runtime:0.12.0-SNAPSHOT
     mem_limit: 180m
     mem_reservation: 180m
     cpus: 0.175

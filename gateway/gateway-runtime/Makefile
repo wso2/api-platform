@@ -36,7 +36,7 @@ help: ## Show this help message
 
 build: ## Build Gateway Runtime Docker image using buildx
 	@echo "Building Gateway Runtime Docker image ($(IMAGE_NAME):$(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
@@ -59,7 +59,7 @@ build: ## Build Gateway Runtime Docker image using buildx
 
 build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv (VS Code attach on port 2346)
 	@echo "Building Gateway Runtime debug image ($(IMAGE_NAME)-debug:$(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
@@ -82,7 +82,7 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 
 build-coverage-image: test ## Build Gateway Runtime Docker image with coverage instrumentation
 	@echo "Building Gateway Runtime coverage image ($(IMAGE_NAME)-coverage:$(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
@@ -106,7 +106,7 @@ push: ## Push Docker image to registry
 
 build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch Gateway Runtime Docker image ($(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \

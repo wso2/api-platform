@@ -79,6 +79,7 @@ type ApplicationRepository interface {
 type APIRepository interface {
 	CreateAPI(api *model.API) error
 	GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error)
+	GetAPIsByUUIDs(uuids []string, orgUUID string) (map[string]string, error)
 	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
 	GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error)
 	GetAPIsByOrganizationUUID(orgUUID string, projectUUID string) ([]*model.API, error)
@@ -112,8 +113,13 @@ type DeploymentRepository interface {
 
 	// Deployment status methods (mutable state tracking)
 	SetCurrent(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (updatedAt time.Time, err error)
+	SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (updatedAt time.Time, err error)
 	GetStatus(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
+	GetStatusFull(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, performedAt *time.Time, statusReason string, err error)
+	UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID, gatewayID string, newStatus model.DeploymentStatus, statusReason string, performedAt time.Time, requireCurrentStatus []model.DeploymentStatus) (rowsAffected int64, err error)
+	GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
+	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 
 	// Gateway deployment methods
 	GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
@@ -144,6 +150,11 @@ type GatewayRepository interface {
 	GetTokenByUUID(tokenId string) (*model.GatewayToken, error)
 	RevokeToken(tokenId string) error
 	CountActiveTokens(gatewayId string) (int, error)
+
+	// Manifest operations
+	UpdateGatewayManifest(gatewayID string, manifest []byte) error
+	GetGatewayManifest(gatewayID string) ([]byte, error)
+
 }
 
 // DevPortalRepository interface for DevPortal-related database operations
@@ -166,6 +177,7 @@ type DevPortalRepository interface {
 type SubscriptionPlanRepository interface {
 	Create(plan *model.SubscriptionPlan) error
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
+	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByNameAndOrg(planName, orgUUID string) (*model.SubscriptionPlan, error)
 	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
 	Update(plan *model.SubscriptionPlan) error

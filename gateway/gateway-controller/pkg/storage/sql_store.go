@@ -50,12 +50,7 @@ type sqlStore struct {
 
 	rebindQuery func(string) string
 
-	isConfigUniqueViolation           func(error) bool
-	isCertificateUniqueViolation      func(error) bool
-	isTemplateUniqueViolation         func(error) bool
-	isAPIKeyUniqueViolation           func(error) bool
-	isSubscriptionUniqueViolation     func(error) bool
-	isSubscriptionPlanUniqueViolation func(error) bool
+	isUniqueViolation func(error) bool
 
 	backendName string
 }
@@ -68,12 +63,7 @@ func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId 
 		backendName: backendName,
 		// Defaults are identity/false; backends can override.
 		rebindQuery:                       func(query string) string { return query },
-		isConfigUniqueViolation:           func(error) bool { return false },
-		isCertificateUniqueViolation:      func(error) bool { return false },
-		isTemplateUniqueViolation:         func(error) bool { return false },
-		isAPIKeyUniqueViolation:           func(error) bool { return false },
-		isSubscriptionUniqueViolation:     func(error) bool { return false },
-		isSubscriptionPlanUniqueViolation: func(error) bool { return false },
+		isUniqueViolation: func(error) bool { return false },
 	}
 }
 
@@ -239,7 +229,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 
 	if err != nil {
 		// Check for unique constraint violation
-		if s.isConfigUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists", ErrConflict, cfg.DisplayName, cfg.Version)
 		}
 		return fmt.Errorf("failed to insert configuration: %w", err)
@@ -789,7 +779,7 @@ func (s *sqlStore) SaveLLMProviderTemplate(template *models.StoredLLMProviderTem
 
 	if err != nil {
 		// Check for unique constraint violation
-		if s.isTemplateUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
@@ -836,7 +826,7 @@ func (s *sqlStore) UpdateLLMProviderTemplate(template *models.StoredLLMProviderT
 	)
 
 	if err != nil {
-		if s.isTemplateUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to update template: %w", err)
@@ -986,7 +976,7 @@ func (s *sqlStore) SaveCertificate(cert *models.StoredCertificate) error {
 
 	if err != nil {
 		// Check for unique constraint violation
-		if s.isCertificateUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: certificate with name '%s' already exists", ErrConflict, cert.Name)
 		}
 		return fmt.Errorf("failed to save certificate: %w", err)
@@ -1188,7 +1178,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 		if err != nil {
 			tx.Rollback()
 			// Check for unique constraint violation on api_key field
-			if s.isAPIKeyUniqueViolation(err) {
+			if s.isUniqueViolation(err) {
 				return fmt.Errorf("%w: API key value already exists", ErrConflict)
 			}
 			return fmt.Errorf("failed to insert API key: %w", err)
@@ -1486,7 +1476,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	if err != nil {
 		tx.Rollback()
 		// Check for unique constraint violation on api_key field
-		if s.isAPIKeyUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: API key value already exists", ErrConflict)
 		}
 		return fmt.Errorf("failed to update API key: %w", err)
@@ -1768,7 +1758,7 @@ func (s *sqlStore) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
 	plan.CreatedAt = now
 	plan.UpdatedAt = now
 	query := `
-		INSERT INTO subscription_plans (id, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
+		INSERT INTO subscription_plans (uuid, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
 			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -1776,7 +1766,7 @@ func (s *sqlStore) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
 		plan.StopOnQuotaReach, plan.ThrottleLimitCount, plan.ThrottleLimitUnit,
 		plan.ExpiryTime, string(plan.Status), plan.CreatedAt, plan.UpdatedAt)
 	if err != nil {
-		if s.isSubscriptionPlanUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: subscription plan already exists", ErrConflict)
 		}
 		return fmt.Errorf("failed to insert subscription plan: %w", err)
@@ -1787,10 +1777,10 @@ func (s *sqlStore) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
 // GetSubscriptionPlanByID retrieves a subscription plan by ID and gateway.
 func (s *sqlStore) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
 	query := `
-		SELECT id, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
+		SELECT uuid, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
 			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at
 		FROM subscription_plans
-		WHERE id = ? AND gateway_id = ?
+		WHERE uuid = ? AND gateway_id = ?
 	`
 	plan := &models.SubscriptionPlan{}
 	err := s.queryRow(query, id, s.gatewayId).Scan(
@@ -1810,7 +1800,7 @@ func (s *sqlStore) GetSubscriptionPlanByID(id, gatewayID string) (*models.Subscr
 // ListSubscriptionPlans returns all subscription plans for a gateway.
 func (s *sqlStore) ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error) {
 	query := `
-		SELECT id, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
+		SELECT uuid, gateway_id, plan_name, billing_plan, stop_on_quota_reach,
 			throttle_limit_count, throttle_limit_unit, expiry_time, status, created_at, updated_at
 		FROM subscription_plans
 		WHERE gateway_id = ?
@@ -1847,7 +1837,7 @@ func (s *sqlStore) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
 		UPDATE subscription_plans
 		SET plan_name = ?, billing_plan = ?, stop_on_quota_reach = ?, throttle_limit_count = ?,
 			throttle_limit_unit = ?, expiry_time = ?, status = ?, updated_at = ?
-		WHERE id = ? AND gateway_id = ?
+		WHERE uuid = ? AND gateway_id = ?
 	`
 	result, err := s.exec(query,
 		plan.PlanName, plan.BillingPlan, plan.StopOnQuotaReach,
@@ -1870,7 +1860,7 @@ func (s *sqlStore) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
 
 // DeleteSubscriptionPlan removes a subscription plan by ID and gateway.
 func (s *sqlStore) DeleteSubscriptionPlan(id, gatewayID string) error {
-	query := `DELETE FROM subscription_plans WHERE id = ? AND gateway_id = ?`
+	query := `DELETE FROM subscription_plans WHERE uuid = ? AND gateway_id = ?`
 	result, err := s.exec(query, id, s.gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscription plan: %w", err)
@@ -1904,7 +1894,7 @@ func (s *sqlStore) DeleteSubscriptionPlansNotIn(ids []string) error {
 		placeholders[i] = "?"
 		args = append(args, ids[i])
 	}
-	query := fmt.Sprintf(`DELETE FROM subscription_plans WHERE gateway_id = ? AND id NOT IN (%s)`,
+	query := fmt.Sprintf(`DELETE FROM subscription_plans WHERE gateway_id = ? AND uuid NOT IN (%s)`,
 		strings.Join(placeholders, ","))
 	_, err := s.exec(query, args...)
 	if err != nil {
@@ -1931,14 +1921,14 @@ func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
 	sub.CreatedAt = now
 	sub.UpdatedAt = now
 	query := `
-		INSERT INTO subscriptions (id, gateway_id, api_id, application_id, subscription_token_hash,
+		INSERT INTO subscriptions (uuid, gateway_id, api_id, application_id, subscription_token_hash,
 			subscription_plan_id, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.exec(query, sub.ID, s.gatewayId, sub.APIID, sub.ApplicationID,
 		tokenHash, sub.SubscriptionPlanID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
 	if err != nil {
-		if s.isSubscriptionUniqueViolation(err) {
+		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: subscription token already exists for this API", ErrConflict)
 		}
 		return fmt.Errorf("failed to insert subscription: %w", err)
@@ -1950,10 +1940,10 @@ func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
 // SubscriptionToken is not stored; use Platform-API to retrieve the original token.
 func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
 	query := `
-		SELECT id, api_id, application_id, subscription_token_hash, subscription_plan_id,
+		SELECT uuid, api_id, application_id, subscription_token_hash, subscription_plan_id,
 			gateway_id, status, created_at, updated_at
 		FROM subscriptions
-		WHERE id = ? AND gateway_id = ?
+		WHERE uuid = ? AND gateway_id = ?
 	`
 	sub := &models.Subscription{}
 	err := s.queryRow(query, id, s.gatewayId).Scan(
@@ -1973,7 +1963,7 @@ func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscripti
 // ListSubscriptionsByAPI returns subscriptions for an API with optional filters.
 func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
 	query := `
-		SELECT id, api_id, application_id, subscription_token_hash, subscription_plan_id,
+		SELECT uuid, api_id, application_id, subscription_token_hash, subscription_plan_id,
 			gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE gateway_id = ?
@@ -2012,7 +2002,7 @@ func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID
 // ListActiveSubscriptions returns all ACTIVE subscriptions for this gateway in one query.
 func (s *sqlStore) ListActiveSubscriptions() ([]*models.Subscription, error) {
 	query := `
-		SELECT id, api_id, application_id, subscription_token_hash, subscription_plan_id,
+		SELECT uuid, api_id, application_id, subscription_token_hash, subscription_plan_id,
 			gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE gateway_id = ? AND status = ?
@@ -2058,7 +2048,7 @@ func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
 		UPDATE subscriptions
 		SET api_id = ?, application_id = ?, subscription_token_hash = ?,
 			subscription_plan_id = ?, status = ?, updated_at = ?
-		WHERE id = ? AND gateway_id = ?
+		WHERE uuid = ? AND gateway_id = ?
 	`
 	result, err := s.exec(query, sub.APIID, sub.ApplicationID, sub.SubscriptionTokenHash,
 		sub.SubscriptionPlanID, string(sub.Status), sub.UpdatedAt, sub.ID, s.gatewayId)
@@ -2077,7 +2067,7 @@ func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
 
 // DeleteSubscription removes a subscription by ID and gateway.
 func (s *sqlStore) DeleteSubscription(id, gatewayID string) error {
-	query := `DELETE FROM subscriptions WHERE id = ? AND gateway_id = ?`
+	query := `DELETE FROM subscriptions WHERE uuid = ? AND gateway_id = ?`
 	result, err := s.exec(query, id, s.gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscription: %w", err)
@@ -2114,7 +2104,7 @@ func (s *sqlStore) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) er
 		placeholders[i] = "?"
 		args = append(args, ids[i])
 	}
-	query := fmt.Sprintf(`DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ? AND id NOT IN (%s)`,
+	query := fmt.Sprintf(`DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ? AND uuid NOT IN (%s)`,
 		strings.Join(placeholders, ","))
 	_, err := s.exec(query, args...)
 	if err != nil {

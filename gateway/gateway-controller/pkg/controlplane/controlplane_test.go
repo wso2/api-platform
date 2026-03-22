@@ -22,7 +22,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -145,7 +148,6 @@ func TestAPIDeployedEvent(t *testing.T) {
 		Payload: APIDeployedEventPayload{
 			APIID:        "api-123",
 			DeploymentID: "rev-1",
-			VHost:        "api.example.com",
 		},
 		Timestamp:     "2025-01-30T12:00:00Z",
 		CorrelationID: "corr-789",
@@ -160,9 +162,6 @@ func TestAPIDeployedEvent(t *testing.T) {
 	if event.Payload.DeploymentID != "rev-1" {
 		t.Errorf("Payload.DeploymentID = %q, want %q", event.Payload.DeploymentID, "rev-1")
 	}
-	if event.Payload.VHost != "api.example.com" {
-		t.Errorf("Payload.VHost = %q, want %q", event.Payload.VHost, "api.example.com")
-	}
 	if event.CorrelationID != "corr-789" {
 		t.Errorf("CorrelationID = %q, want %q", event.CorrelationID, "corr-789")
 	}
@@ -172,7 +171,6 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 	payload := APIDeployedEventPayload{
 		APIID:        "test-api",
 		DeploymentID: "rev-2",
-		VHost:        "staging.example.com",
 	}
 
 	if payload.APIID != "test-api" {
@@ -180,9 +178,6 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 	}
 	if payload.DeploymentID != "rev-2" {
 		t.Errorf("DeploymentID = %q, want %q", payload.DeploymentID, "rev-2")
-	}
-	if payload.VHost != "staging.example.com" {
-		t.Errorf("VHost = %q, want %q", payload.VHost, "staging.example.com")
 	}
 }
 
@@ -227,6 +222,17 @@ func createTestClientWithConfig(t *testing.T, cfg config.ControlPlaneConfig) *Cl
 	}
 
 	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub)
+}
+
+func createTestClientWithHost(t *testing.T, host string) *Client {
+	t.Helper()
+	return createTestClientWithConfig(t, config.ControlPlaneConfig{
+		Host:               host,
+		Token:              "test-token",
+		ReconnectInitial:   1 * time.Second,
+		ReconnectMax:       30 * time.Second,
+		InsecureSkipVerify: true,
+	})
 }
 
 func TestNewClient(t *testing.T) {
@@ -313,6 +319,75 @@ func TestClient_getRestAPIBaseURL(t *testing.T) {
 	expected := "https://control-plane.example.com/api/internal/v1"
 	if url != expected {
 		t.Errorf("getRestAPIBaseURL() = %q, want %q", url, expected)
+	}
+}
+
+func TestClient_discoverGatewayPath_Success(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/gateway/.well-known" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"gatewayPath":"internal/data/v1"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	gatewayPath, err := client.discoverGatewayPath()
+	if err != nil {
+		t.Fatalf("discoverGatewayPath() error = %v", err)
+	}
+
+	if gatewayPath != "/internal/data/v1" {
+		t.Errorf("discoverGatewayPath() = %q, want %q", gatewayPath, "/internal/data/v1")
+	}
+
+	resolved := client.resolveWebSocketConnectURL()
+	expected := "wss://" + host + "/internal/data/v1/ws/gateways/connect"
+	if resolved != expected {
+		t.Errorf("resolveWebSocketConnectURL() = %q, want %q", resolved, expected)
+	}
+}
+
+func TestClient_resolveWebSocketConnectURL_FallbackOnWellKnownError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal error"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	resolved := client.resolveWebSocketConnectURL()
+	fallback := client.getWebSocketConnectURL()
+
+	if resolved != fallback {
+		t.Errorf("resolveWebSocketConnectURL() = %q, want fallback %q", resolved, fallback)
+	}
+}
+
+func TestNormalizeGatewayPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "plain", input: "internal/data/v1", expected: "/internal/data/v1"},
+		{name: "leading slash", input: "/internal/data/v1", expected: "/internal/data/v1"},
+		{name: "trailing slash", input: "internal/data/v1/", expected: "/internal/data/v1"},
+		{name: "surrounded spaces", input: "  /internal/data/v1/  ", expected: "/internal/data/v1"},
+		{name: "empty", input: "", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeGatewayPath(tt.input); got != tt.expected {
+				t.Errorf("normalizeGatewayPath(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
 	}
 }
 

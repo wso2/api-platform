@@ -23,6 +23,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -30,17 +31,6 @@ import (
 //go:embed gateway-controller-db.sql
 var schemaSQL string
 
-const (
-	sqliteUniqueArtifactsNameVersion = "UNIQUE constraint failed: artifacts.gateway_id, artifacts.kind, artifacts.display_name, artifacts.version"
-	sqliteUniqueArtifactsUUID        = "UNIQUE constraint failed: artifacts.uuid"
-	sqliteUniqueArtifactsHandle      = "UNIQUE constraint failed: artifacts.gateway_id, artifacts.kind, artifacts.handle"
-	sqliteUniqueCertificatesName     = "UNIQUE constraint failed: certificates.name, certificates.gateway_id"
-	sqliteUniqueCertificatesUUID     = "UNIQUE constraint failed: certificates.uuid"
-	sqliteUniqueTemplatesHandle      = "UNIQUE constraint failed: llm_provider_templates.handle, llm_provider_templates.gateway_id"
-	sqliteUniqueAPIKeysKey           = "UNIQUE constraint failed: api_keys.api_key"
-	sqliteUniqueAPIKeysUUID          = "UNIQUE constraint failed: api_keys.uuid, api_keys.gateway_id"
-	sqliteUniqueSubscriptionPlans    = "UNIQUE constraint failed: subscription_plans.gateway_id, subscription_plans.plan_name"
-)
 
 // SQLiteStorage implements the Storage interface using SQLite
 type SQLiteStorage struct {
@@ -105,34 +95,6 @@ func (s *SQLiteStorage) initSchema() error {
 	return nil
 }
 
-func isUniqueConstraintError(err error) bool {
-	return err != nil && (err.Error() == sqliteUniqueArtifactsNameVersion ||
-		err.Error() == sqliteUniqueArtifactsUUID ||
-		err.Error() == sqliteUniqueArtifactsHandle)
-}
-
-func isCertificateUniqueConstraintError(err error) bool {
-	return err != nil && (err.Error() == sqliteUniqueCertificatesName ||
-		err.Error() == sqliteUniqueCertificatesUUID)
-}
-
-func isTemplateUniqueConstraintError(err error) bool {
-	return err != nil && err.Error() == sqliteUniqueTemplatesHandle
-}
-
-func isAPIKeyUniqueConstraintError(err error) bool {
-	return err != nil &&
-		(err.Error() == sqliteUniqueAPIKeysKey ||
-			err.Error() == sqliteUniqueAPIKeysUUID)
-}
-
-// SQLite UNIQUE constraint message for subscriptions (api_id, subscription_token_hash, gateway_id)
-const sqliteUniqueSubscriptions = "UNIQUE constraint failed: subscriptions.api_id, subscriptions.subscription_token_hash, subscriptions.gateway_id"
-
-func isSubscriptionUniqueConstraintError(err error) bool {
-	return err != nil && err.Error() == sqliteUniqueSubscriptions
-}
-
-func isSubscriptionPlanUniqueConstraintError(err error) bool {
-	return err != nil && err.Error() == sqliteUniqueSubscriptionPlans
+func isSQLiteUniqueConstraintError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed:")
 }

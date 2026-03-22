@@ -1,35 +1,37 @@
 name: mcp-acl-list
-version: v0.1.0
+version: v0.2.2
 description: |
-  MCP ACL List policy controls access to tools, resources, and prompts using
-  mode and exceptions. It filters list responses based on the configured mode
-  and enforces the same allow/deny rules on request paths. This policy does not
-  rewrite capability fields (tools, resources, or prompts) or modify list entry contents.
-
-  - Missing capability config: Allow all capabilities of that type
-  - mode: allow, exceptions: [..] => allow all except listed exceptions
-  - mode: deny, exceptions: [..] => deny all except listed exceptions
+  Control MCP tool, resource, and prompt access with allow/deny mode plus exceptions, apply the same rules to requests and list responses, and avoid rewriting capability names or entry fields.
 
 parameters:
   type: object
   additionalProperties: false
+  anyOf:
+    - required:
+        - tools
+    - required:
+        - resources
+    - required:
+        - prompts
   properties:
     tools:
       type: object
+      x-wso2-policy-advanced-param: false
       additionalProperties: false
       description: |
         ACL configuration for tools. Use mode and exceptions to allow or deny tools.
-      required:
-        - mode
       properties:
         mode:
           type: string
+          x-wso2-policy-advanced-param: false
           description: ACL mode for tools.
           enum:
             - allow
             - deny
+          default: deny
         exceptions:
           type: array
+          x-wso2-policy-advanced-param: false
           description: List of tool names that are exceptions to the mode.
           items:
             type: string
@@ -38,20 +40,22 @@ parameters:
             maxLength: 256
     resources:
       type: object
+      x-wso2-policy-advanced-param: false
       additionalProperties: false
       description: |
         ACL configuration for resources. Use mode and exceptions to allow or deny resources.
-      required:
-        - mode
       properties:
         mode:
           type: string
+          x-wso2-policy-advanced-param: false
           description: ACL mode for resources.
           enum:
             - allow
             - deny
+          default: deny
         exceptions:
           type: array
+          x-wso2-policy-advanced-param: false
           description: List of resource URIs that are exceptions to the mode.
           items:
             type: string
@@ -60,20 +64,22 @@ parameters:
             maxLength: 2048
     prompts:
       type: object
+      x-wso2-policy-advanced-param: false
       additionalProperties: false
       description: |
         ACL configuration for prompts. Use mode and exceptions to allow or deny prompts.
-      required:
-        - mode
       properties:
         mode:
           type: string
+          x-wso2-policy-advanced-param: false
           description: ACL mode for prompts.
           enum:
             - allow
             - deny
+          default: deny
         exceptions:
           type: array
+          x-wso2-policy-advanced-param: false
           description: List of prompt names that are exceptions to the mode.
           items:
             type: string
@@ -83,4 +89,5 @@ parameters:
 
 systemParameters:
   type: object
+  additionalProperties: false
   properties: {}

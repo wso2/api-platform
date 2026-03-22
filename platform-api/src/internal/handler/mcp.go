@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -220,6 +221,10 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 			h.slogger.Error("Invalid URL provided for MCP server info fetch", "error", err, "inputUrl", req.Url)
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 			return
+		case errors.Is(err, constants.ErrURLUnreachable):
+			h.slogger.Error("MCP server URL is unreachable", "error", err, "inputUrl", req.Url)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", strings.Split(err.Error(), ":")[0]))
+			return
 		default:
 			h.handleServiceError(c, err)
 			return
@@ -244,6 +249,9 @@ func (h *MCPProxyHandler) handleServiceError(c *gin.Context, err error) {
 	case errors.Is(err, constants.ErrProjectNotFound):
 		h.slogger.Error("MCP request validation failed", "reason", "Project not found")
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
+	case errors.Is(err, constants.ErrMCPProxyLimitReached):
+		h.slogger.Error("MCP proxy limit reached", "reason", err.Error())
+		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "MCP proxy limit reached for the organization"))
 	default:
 		h.slogger.Error("MCP proxy service error", "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))

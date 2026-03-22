@@ -1462,7 +1462,7 @@ paths:
       description: |
         Creates an immutable deployment artifact for an API and deploys it to a specified gateway.
         Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
-        not the UUID. The deployment becomes active immediately on the target gateway. 
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
       operationId: DeployAPI
       tags:
@@ -1588,8 +1588,8 @@ paths:
       summary: Undeploy deployment from gateway
       description: |
         Undeploys an active deployment, stopping the API from being served on the specified gateway.
-        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
-        Returns the updated deployment object with status changed to UNDEPLOYED.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         
         Both deploymentId and gatewayId are required for safety. The backend validates that the 
         deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
@@ -1614,7 +1614,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -1634,8 +1634,8 @@ paths:
     post:
       summary: Restore a previous deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
-        on the specified gateway. This operation changes the deployment state of the API on that gateway.
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
         
         Both deploymentId and gatewayId are required for safety. The backend validates that the 
@@ -1661,7 +1661,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -1960,6 +1960,32 @@ paths:
                 $ref: '#/components/schemas/GatewayArtifactListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateways/{gatewayId}/manifest:
+    get:
+      summary: Get gateway policy manifest
+      description: |
+        Returns the policy manifest for the specified gateway. The manifest is populated by the gateway
+        controller when it connects to the platform API, and contains all installed policies. Custom
+        policies additionally include their full policy definition schema.
+      operationId: GetGatewayManifest
+      tags:
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/GatewayID'
+      responses:
+        '200':
+          description: Gateway policy manifest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManifestSyncResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -2774,7 +2800,7 @@ paths:
       description: |
         Creates an immutable deployment artifact for an LLM provider and deploys it to a specified gateway.
         Each deployment targets a single gateway. The providerId parameter is the LLM provider handle (identifier),
-        not the UUID. The deployment becomes active immediately on the target gateway.
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
       operationId: deployLLMProvider
       tags:
@@ -2920,8 +2946,8 @@ paths:
       summary: Undeploy LLM provider deployment from gateway
       description: |
         Undeploys an active LLM provider deployment, stopping it from being served on the specified gateway.
-        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
-        Returns the updated deployment object with status changed to UNDEPLOYED.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
         deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
@@ -2951,7 +2977,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -2971,8 +2997,8 @@ paths:
     post:
       summary: Restore a previous LLM provider deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
-        on the specified gateway. This operation changes the deployment state of the LLM provider on that gateway.
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
@@ -3003,7 +3029,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -3029,7 +3055,7 @@ paths:
       description: |
         Creates an immutable deployment artifact for an LLM proxy and deploys it to a specified gateway.
         Each deployment targets a single gateway. The proxyId parameter is the LLM proxy handle (identifier),
-        not the UUID. The deployment becomes active immediately on the target gateway.
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
       operationId: deployLLMProxy
       tags:
@@ -3175,8 +3201,8 @@ paths:
       summary: Undeploy LLM proxy deployment from gateway
       description: |
         Undeploys an active LLM proxy deployment, stopping it from being served on the specified gateway.
-        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
-        Returns the updated deployment object with status changed to UNDEPLOYED.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
         deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
@@ -3206,7 +3232,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -3226,8 +3252,8 @@ paths:
     post:
       summary: Restore a previous LLM proxy deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
-        on the specified gateway. This operation changes the deployment state of the LLM proxy on that gateway.
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
@@ -3258,7 +3284,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -3927,7 +3953,7 @@ paths:
       description: |
         Creates an immutable deployment artifact for an MCP proxy and deploys it to a specified gateway.
         Each deployment targets a single gateway. The id parameter is the MCP proxy handle (identifier),
-        not the UUID. The deployment becomes active immediately on the target gateway. 
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
       operationId: DeployMCPProxy
       tags:
@@ -4073,8 +4099,8 @@ paths:
       summary: Undeploy deployment from gateway
       description: |
         Undeploys an active deployment, stopping the MCP proxy from being served on the specified gateway.
-        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
-        Returns the updated deployment object with status changed to UNDEPLOYED.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         
         Both deploymentId and gatewayId are required for safety. The backend validates that the 
         deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
@@ -4104,7 +4130,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -4124,8 +4150,8 @@ paths:
     post:
       summary: Restore a previous deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
-        on the specified gateway. This operation changes the deployment state of the MCP proxy on that gateway.
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
         
         Both deploymentId and gatewayId are required for safety. The backend validates that the 
@@ -4156,7 +4182,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -5048,6 +5074,49 @@ components:
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
 
+    GatewayPolicyDefinition:
+      type: object
+      description: A policy installed on a gateway controller.
+      required:
+        - name
+        - version
+        - isCustomPolicy
+      properties:
+        name:
+          type: string
+          description: Unique policy name
+          example: "set-wso2-headers"
+        version:
+          type: string
+          description: Semantic version of the policy
+          example: "v0.8.0"
+        description:
+          type: string
+          description: Human-readable description of the policy
+          example: "Sets WSO2-specific headers in the request and response."
+        isCustomPolicy:
+          type: boolean
+          description: Whether this is a user-installed custom policy.
+          example: true
+        policyDefinition:
+          type: object
+          description: |
+            The full policy schema as declared in the policy's policy-definition.yaml.
+            Contains `parameters` and `systemParameters` JSON Schema documents.
+            Only present for custom policies.
+          additionalProperties: true
+
+    ManifestSyncResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          description: |
+            All policies installed on the gateway. Each entry includes name, version, and isCustomPolicy.
+            Custom policies additionally include policyDefinition with their parameters and systemParameters schemas.
+          items:
+            $ref: '#/components/schemas/GatewayPolicyDefinition'
+
     GatewayResponse:
       type: object
       properties:
@@ -5764,6 +5833,9 @@ components:
         subscriptionPlanId:
           type: string
           description: Subscription plan UUID
+        subscriptionPlanName:
+          type: string
+          description: Subscription plan display name (e.g. Bronze, Gold)
         organizationId:
           type: string
           format: uuid
@@ -6591,11 +6663,17 @@ components:
           enum:
             - DEPLOYED
             - UNDEPLOYED
+            - DEPLOYING
+            - UNDEPLOYING
+            - FAILED
             - ARCHIVED
           description: |
             Current deployment lifecycle state:
             - DEPLOYED: Currently active on the gateway
             - UNDEPLOYED: Suspended but can be rolled back
+            - DEPLOYING: Deployment in progress, waiting for gateway acknowledgement
+            - UNDEPLOYING: Undeployment in progress, waiting for gateway acknowledgement
+            - FAILED: Deployment or undeployment failed (see statusReason for error code)
             - ARCHIVED: Historical deployment, can be rolled back
         baseDeploymentId:
           type: string
@@ -6610,6 +6688,10 @@ components:
           type: string
           format: date-time
           description: Timestamp when the deployment artifact was created
+        statusReason:
+          type: string
+          nullable: true
+          description: Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR)
         updatedAt:
           type: string
           format: date-time
@@ -6737,6 +6819,37 @@ components:
           description: URL to the OpenAPI specification for the provider
           example: https://api.openai.com/openapi.json
 
+    LLMProviderTemplateResourceMapping:
+      type: object
+      required:
+        - resource
+      properties:
+        resource:
+          type: string
+          minLength: 1
+          description: Resource path pattern this mapping applies to (for example /responses or /chat/*)
+          example: /responses
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+
+    LLMProviderTemplateResourceMappings:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProviderTemplateResourceMapping'
+
     LLMProviderTemplate:
       type: object
       required:
@@ -6777,6 +6890,8 @@ components:
           $ref: '#/components/schemas/ExtractionIdentifier'
         responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        resourceMappings:
+          $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
         createdAt:
           type: string
           format: date-time
@@ -8041,8 +8156,11 @@ components:
         enum:
           - DEPLOYED
           - UNDEPLOYED
+          - DEPLOYING
+          - UNDEPLOYING
+          - FAILED
           - ARCHIVED
-      description: Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+      description: Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 
 tags:
   - name: Health

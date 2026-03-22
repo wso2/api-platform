@@ -1,0 +1,65 @@
+post:
+  summary: Create chat completion with prompt caching
+  operationId: createChatCompletionCached
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+                required:
+                  - role
+                  - content
+                properties:
+                  role:
+                    type: string
+                    enum: ["system", "user", "assistant"]
+                  content:
+                    type: string
+
+  responses:
+    "200":
+      description: Successful response with cached prompt tokens
+      content:
+        application/json:
+          # gpt-4.1-2025-04-14: input=2e-6, output=8e-6, cache_read=5e-7
+          # prompt=200 (cached=100), completion=50
+          # cost = (200-100)*2e-6 + 100*5e-7 + 50*8e-6
+          #      = 2e-4 + 5e-5 + 4e-4 = 0.0006500000
+          example:
+            id: chatcmpl-CachedPromptTest
+            object: chat.completion
+            created: 1741569952
+            model: gpt-4.1-2025-04-14
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Response using cached prompt tokens."
+                  refusal: null
+                  annotations: []
+                logprobs: null
+                finish_reason: stop
+            usage:
+              prompt_tokens: 200
+              completion_tokens: 50
+              total_tokens: 250
+              prompt_tokens_details:
+                cached_tokens: 100
+                audio_tokens: 0
+              completion_tokens_details:
+                reasoning_tokens: 0
+                audio_tokens: 0
+                accepted_prediction_tokens: 0
+                rejected_prediction_tokens: 0
+            service_tier: default

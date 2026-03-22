@@ -83,7 +83,7 @@ func GenerateDockerfile(outputDir string, policies []*types.DiscoveredPolicy, bu
 
 	// Write Dockerfile
 	dockerfilePath := filepath.Join(outputDir, "Dockerfile")
-	if err := os.WriteFile(dockerfilePath, buf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(dockerfilePath, buf.Bytes(), 0600); err != nil {
 		return errors.NewPackagingError("failed to write Dockerfile", err)
 	}
 
@@ -163,7 +163,7 @@ docker run policy-engine:custom --build-info
 `
 
 	readmePath := filepath.Join(outputDir, "BUILD.md")
-	if err := os.WriteFile(readmePath, []byte(instructions), 0644); err != nil {
+	if err := os.WriteFile(readmePath, []byte(instructions), 0600); err != nil {
 		return fmt.Errorf("failed to write BUILD.md: %w", err)
 	}
 

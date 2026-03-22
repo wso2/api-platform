@@ -23,11 +23,12 @@ import (
 	"testing"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 	// Setup policy definitions
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"APIKeyValidation|v1.0.0": {
 			Name:    "APIKeyValidation",
 			Version: "v1.0.0",
@@ -91,7 +92,7 @@ func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 
 func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 	// Empty policy definitions
-	policyDefs := map[string]api.PolicyDefinition{}
+	policyDefs := map[string]models.PolicyDefinition{}
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with non-existent policy
@@ -136,7 +137,7 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 
 func TestPolicyValidator_InvalidParameters(t *testing.T) {
 	// Setup policy definition with schema
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"APIKeyValidation|v1.0.0": {
 			Name:    "APIKeyValidation",
 			Version: "v1.0.0",
@@ -200,7 +201,7 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 
 func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 	// Setup policy definitions
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"RateLimiting|v1.0.0": {
 			Name:    "RateLimiting",
 			Version: "v1.0.0",
@@ -260,7 +261,7 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 
 func TestPolicyValidator_MultipleErrors(t *testing.T) {
 	// Setup one valid policy definition
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"ValidPolicy|v1.0.0": {
 			Name:    "ValidPolicy",
 			Version: "v1.0.0",
@@ -318,7 +319,7 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 
 func TestPolicyValidator_TypeMismatch(t *testing.T) {
 	// Setup policy definition expecting integer
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"TestPolicy|v1.0.0": {
 			Name:    "TestPolicy",
 			Version: "v1.0.0",
@@ -377,7 +378,7 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 
 func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	// Create policy definitions with required parameters
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"JWTValidation|v1.0.0": {
 			Name:    "JWTValidation",
 			Version: "v1.0.0",
@@ -466,7 +467,7 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 // Test that two different major-only versions of the same policy name
 // can be referenced within the same API and both resolve successfully.
 func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"MultiVersionPolicy|v1.0.0": {
 			Name:    "MultiVersionPolicy",
 			Version: "v1.0.0",
@@ -522,7 +523,7 @@ func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
 // TestPolicyValidator_FullSemverRejected ensures that full semantic version (e.g. v1.0.0)
 // in API policy refs is rejected; only major-only (e.g. v1) is allowed.
 func TestPolicyValidator_FullSemverRejected(t *testing.T) {
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"SomePolicy|v1.0.0": {
 			Name:    "SomePolicy",
 			Version: "v1.0.0",
@@ -576,7 +577,7 @@ func TestPolicyValidator_FullSemverRejected(t *testing.T) {
 
 func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
 	// Policy definitions contain a single v0.x.y version
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"MyPolicy|v0.1.0": {
 			Name:    "MyPolicy",
 			Version: "v0.1.0",
@@ -623,7 +624,7 @@ func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
 
 func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
 	// Policy definitions contain only v1.x.y, but API asks for v0
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"MyPolicy|v1.0.0": {
 			Name:    "MyPolicy",
 			Version: "v1.0.0",
@@ -673,7 +674,7 @@ func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
 
 func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 	// Policy definitions contain multiple v0.x.y versions; resolution should fail
-	policyDefs := map[string]api.PolicyDefinition{
+	policyDefs := map[string]models.PolicyDefinition{
 		"MyPolicy|v0.1.0": {
 			Name:    "MyPolicy",
 			Version: "v0.1.0",

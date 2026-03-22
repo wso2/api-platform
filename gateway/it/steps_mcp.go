@@ -20,6 +20,7 @@ package it
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -34,7 +35,7 @@ type JsonRPCRequest struct {
 }
 
 // RegisterMCPSteps registers all MCP related step definitions
-func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
+func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps, jwtSteps *JWTSteps) {
 	ctx.Step(`^I deploy this MCP configuration:$`, func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		err := httpSteps.SendPOSTToService("gateway-controller", "/mcp-proxies", body)
@@ -70,15 +71,23 @@ func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 	ctx.Step(`^I use the MCP Client to send an initialize request to "([^"]*)"$`, func(url string) error {
 		httpSteps.SetHeader("Content-Type", "application/json")
-		payload := generateMcpPayload("initialize")
+		payload := generateMcpPayload("initialize", "")
 		return httpSteps.SendMcpRequest(url, &godog.DocString{
 			Content: payload,
 		})
 	})
 
-	ctx.Step(`^I use the MCP Client to send a tools/call request to "([^"]*)"$`, func(url string) error {
+	ctx.Step(`^I use the MCP Client to send a tools/call request with invalid params to "([^"]*)"$`, func(url string) error {
 		httpSteps.SetHeader("Content-Type", "application/json")
-		payload := generateMcpPayload("tools/call")
+		payload := generateInvalidMcpPayload()
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
+	})
+
+	ctx.Step(`^I use the MCP Client to send "([^"]*)" tools/call request to "([^"]*)"$`, func(tool, url string) error {
+		httpSteps.SetHeader("Content-Type", "application/json")
+		payload := generateMcpPayload("tools/call", tool)
 		return httpSteps.SendMcpRequest(url, &godog.DocString{
 			Content: payload,
 		})
@@ -87,9 +96,33 @@ func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	ctx.Step(`^I get the MCP proxy "([^"]*)"$`, func(name string) error {
 		return httpSteps.SendGETToService("gateway-controller", "/mcp-proxies/"+name)
 	})
+
+	ctx.Step(`^I use the MCP Client to send an initialize request to "([^"]*)" with the JWT token$`, func(url string) error {
+		if jwtSteps == nil || jwtSteps.currentToken == "" {
+			return fmt.Errorf("no JWT token available - call 'I get a JWT token from the mock JWKS server' first")
+		}
+		httpSteps.SetHeader("Content-Type", "application/json")
+		httpSteps.SetHeader("Authorization", "Bearer "+jwtSteps.currentToken)
+		payload := generateMcpPayload("initialize", "add")
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
+	})
+
+	ctx.Step(`^I use the MCP Client to send a tools/call request to "([^"]*)" with the JWT token$`, func(url string) error {
+		if jwtSteps == nil || jwtSteps.currentToken == "" {
+			return fmt.Errorf("no JWT token available - call 'I get a JWT token from the mock JWKS server' first")
+		}
+		httpSteps.SetHeader("Content-Type", "application/json")
+		httpSteps.SetHeader("Authorization", "Bearer "+jwtSteps.currentToken)
+		payload := generateMcpPayload("tools/call", "add")
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
+	})
 }
 
-func generateMcpPayload(method string) string {
+func generateMcpPayload(method, tool string) string {
 	var initRequest JsonRPCRequest
 	switch method {
 	case "initialize":
@@ -104,20 +137,68 @@ func generateMcpPayload(method string) string {
 			},
 		}
 	case "tools/call":
-		initRequest = JsonRPCRequest{
-			JSONRPC: "2.0",
-			ID:      2,
-			Method:  method,
-			Params: map[string]any{
-				"name": "add",
-				"arguments": map[string]any{
-					"a": 40,
-					"b": 60,
+		switch tool {
+		case "add":
+			initRequest = JsonRPCRequest{
+				JSONRPC: "2.0",
+				ID:      2,
+				Method:  method,
+				Params: map[string]any{
+					"name": "add",
+					"arguments": map[string]any{
+						"a": 40,
+						"b": 60,
+					},
 				},
-			},
+			}
+		case "echo":
+			initRequest = JsonRPCRequest{
+				JSONRPC: "2.0",
+				ID:      2,
+				Method:  method,
+				Params: map[string]any{
+					"name": "echo",
+					"arguments": map[string]any{
+						"message": "Hello, World!",
+					},
+				},
+			}
+		case "sum":
+			initRequest = JsonRPCRequest{
+				JSONRPC: "2.0",
+				ID:      2,
+				Method:  method,
+				Params: map[string]any{
+					"name": "sum",
+					"arguments": map[string]any{
+						"a": 40,
+						"b": 60,
+					},
+				},
+			}
+		default:
+			return ""
 		}
 	default:
 		return ""
+	}
+
+	payloadBytes, _ := json.Marshal(initRequest)
+	return string(payloadBytes)
+}
+
+func generateInvalidMcpPayload() string {
+	initRequest := JsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      2,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "add",
+			"arguments": map[string]any{
+				"a": 40,
+				"b": "x",
+			},
+		},
 	}
 
 	payloadBytes, _ := json.Marshal(initRequest)

@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"platform-api/src/api"
 	"platform-api/src/config"
@@ -209,17 +210,26 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	if _, err := s.deploymentRepo.SetCurrentWithDetails(
+		provider.UUID, orgUUID, gatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	); err != nil {
+		return nil, fmt.Errorf("failed to set deployment status for LLM provider: %w", err)
+	}
+
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if provider.Configuration.VHost != nil {
-			vhost = *provider.Configuration.VHost
-		}
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
 			ProviderId:   provider.UUID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
-			Environment:  "production",
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(gatewayID, deploymentEvent); err != nil {
@@ -231,11 +241,12 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		nil,
 	)
 }
 
@@ -276,22 +287,27 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	updatedAt, err := s.deploymentRepo.SetCurrent(provider.UUID, orgUUID, targetDeployment.GatewayID, deploymentID, model.DeploymentStatusDeployed)
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		provider.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
 
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if provider.Configuration.VHost != nil {
-			vhost = *provider.Configuration.VHost
-		}
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
 			ProviderId:   provider.ID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
-			Environment:  "production",
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
@@ -303,11 +319,12 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
 		targetDeployment.CreatedAt,
 		&updatedAt,
+		nil,
 	)
 }
 
@@ -343,21 +360,27 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	newUpdatedAt, err := s.deploymentRepo.SetCurrent(provider.UUID, orgUUID, deployment.GatewayID, deploymentID, model.DeploymentStatusUndeployed)
+	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusUndeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusUndeploying
+	}
+	performedAt := time.Now()
+	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		provider.UUID, orgUUID, deployment.GatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusUndeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
 	// Broadcast LLM provider undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if provider.Configuration.VHost != nil {
-			vhost = *provider.Configuration.VHost
-		}
 		undeploymentEvent := &model.LLMProviderUndeploymentEvent{
-			ProviderId:  provider.ID,
-			Vhost:       vhost,
-			Environment: "production",
+			ProviderId:   provider.ID,
+			DeploymentID: deploymentID,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastLLMProviderUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
@@ -369,11 +392,12 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusUndeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
 		&newUpdatedAt,
+		nil,
 	)
 }
 
@@ -417,9 +441,12 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 
 	if status != nil {
 		validStatuses := map[string]bool{
-			string(model.DeploymentStatusDeployed):   true,
-			string(model.DeploymentStatusUndeployed): true,
-			string(model.DeploymentStatusArchived):   true,
+			string(model.DeploymentStatusDeployed):    true,
+			string(model.DeploymentStatusUndeployed):  true,
+			string(model.DeploymentStatusDeploying):   true,
+			string(model.DeploymentStatusUndeploying): true,
+			string(model.DeploymentStatusFailed):      true,
+			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
 			return nil, constants.ErrInvalidDeploymentStatus
@@ -445,6 +472,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 			d.Metadata,
 			d.CreatedAt,
 			d.UpdatedAt,
+			d.StatusReason,
 		)
 		if err != nil {
 			return nil, err
@@ -485,6 +513,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		deployment.StatusReason,
 	)
 }
 
@@ -982,17 +1011,26 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	if _, err := s.deploymentRepo.SetCurrentWithDetails(
+		proxy.UUID, orgUUID, gatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	); err != nil {
+		s.slogger.Warn("Failed to set deployment status for LLM proxy", "error", err)
+	}
+
 	// Broadcast LLM proxy deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if proxy.Configuration.Vhost != nil {
-			vhost = *proxy.Configuration.Vhost
-		}
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
 			ProxyId:      proxy.UUID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
-			Environment:  "production",
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
@@ -1004,11 +1042,12 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		nil,
 	)
 }
 
@@ -1049,22 +1088,27 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	updatedAt, err := s.deploymentRepo.SetCurrent(proxy.UUID, orgUUID, targetDeployment.GatewayID, deploymentID, model.DeploymentStatusDeployed)
+	// Set initial status based on config; transitional (DEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusDeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusDeploying
+	}
+	performedAt := time.Now()
+	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		proxy.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusDeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
 
 	// Broadcast LLM proxy deployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if proxy.Configuration.Vhost != nil {
-			vhost = *proxy.Configuration.Vhost
-		}
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
 			ProxyId:      proxy.ID,
 			DeploymentID: deploymentID,
-			Vhost:        vhost,
-			Environment:  "production",
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
@@ -1076,11 +1120,12 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
 		targetDeployment.GatewayID,
-		model.DeploymentStatusDeployed,
+		initialStatus,
 		targetDeployment.BaseDeploymentID,
 		targetDeployment.Metadata,
 		targetDeployment.CreatedAt,
 		&updatedAt,
+		nil,
 	)
 }
 
@@ -1116,21 +1161,27 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	newUpdatedAt, err := s.deploymentRepo.SetCurrent(proxy.UUID, orgUUID, deployment.GatewayID, deploymentID, model.DeploymentStatusUndeployed)
+	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
+	initialStatus := model.DeploymentStatusUndeployed
+	if s.cfg.Deployments.TransitionalStatusEnabled {
+		initialStatus = model.DeploymentStatusUndeploying
+	}
+	performedAt := time.Now()
+	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
+		proxy.UUID, orgUUID, deployment.GatewayID, deploymentID,
+		initialStatus, string(model.DeploymentStatusUndeployed),
+		&performedAt, "",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
 	// Broadcast LLM proxy undeployment event to gateway
 	if s.gatewayEventsService != nil {
-		vhost := ""
-		if proxy.Configuration.Vhost != nil {
-			vhost = *proxy.Configuration.Vhost
-		}
 		undeploymentEvent := &model.LLMProxyUndeploymentEvent{
-			ProxyId:     proxy.ID,
-			Vhost:       vhost,
-			Environment: "production",
+			ProxyId:      proxy.ID,
+			DeploymentID: deploymentID,
+			PerformedAt:  performedAt,
 		}
 
 		if err := s.gatewayEventsService.BroadcastLLMProxyUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
@@ -1142,11 +1193,12 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		deployment.DeploymentID,
 		deployment.Name,
 		deployment.GatewayID,
-		model.DeploymentStatusUndeployed,
+		initialStatus,
 		deployment.BaseDeploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
 		&newUpdatedAt,
+		nil,
 	)
 }
 
@@ -1190,9 +1242,12 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 
 	if status != nil {
 		validStatuses := map[string]bool{
-			string(model.DeploymentStatusDeployed):   true,
-			string(model.DeploymentStatusUndeployed): true,
-			string(model.DeploymentStatusArchived):   true,
+			string(model.DeploymentStatusDeployed):    true,
+			string(model.DeploymentStatusUndeployed):  true,
+			string(model.DeploymentStatusDeploying):   true,
+			string(model.DeploymentStatusUndeploying): true,
+			string(model.DeploymentStatusFailed):      true,
+			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
 			return nil, constants.ErrInvalidDeploymentStatus
@@ -1218,6 +1273,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 			d.Metadata,
 			d.CreatedAt,
 			d.UpdatedAt,
+			d.StatusReason,
 		)
 		if err != nil {
 			return nil, err
@@ -1258,6 +1314,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		deployment.Metadata,
 		deployment.CreatedAt,
 		deployment.UpdatedAt,
+		deployment.StatusReason,
 	)
 }
 

@@ -35,7 +35,7 @@ func newTestAPIServer() *APIServer {
 		Main:    config.VHostEntry{Default: "localhost"},
 		Sandbox: config.VHostEntry{Default: "sandbox-*"},
 	}
-	defs := map[string]api.PolicyDefinition{
+	defs := map[string]models.PolicyDefinition{
 		"auth|v1.0.0":       {Name: "auth", Version: "v1.0.0"},
 		"auth|v2.0.0":       {Name: "auth", Version: "v2.0.0"},
 		"auth|v5.0.0":       {Name: "auth", Version: "v5.0.0"},

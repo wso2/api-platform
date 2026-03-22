@@ -1,10 +1,7 @@
 name: mcp-auth
-version: v0.2.2
+version: v0.2.3
 description: |
-  This policy is used to secure traffic to Model Context Protocol server as defined in the specification 
-  (https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The Gateway acts as the 
-  resource server and protects the MCP resources by validating the access tokens presented in the requests.
-  This uses the JwtAuthentication policy underneath to validate the access tokens.
+  Secure Model Context Protocol traffic by validating bearer access tokens for MCP resources using the underlying JWT authentication runtime.
 
 parameters:
   type: object
@@ -12,39 +9,43 @@ parameters:
   properties:
     issuers:
       type: array
-      description: >-
-        List of issuer names (referencing entries in `system.keyManagers`).
-        This list will be sent as the authorization servers in the protected resource
-        metadata response. If omitted, all configured key managers will be used. The
-        selection will be based on the MCP client Implementation.
-        Furthermore, this list will also be used for validating tokens. If omitted, 
-        runtime will try to match token `iss` claim to available key managers or try all providers.
+      x-wso2-policy-advanced-param: true
+      description: Specify issuer names from `system.keyManagers` to publish in protected resource metadata and use for token validation; if empty, runtime uses all configured key managers.
+      default: []
       items:
         type: string
 
     requiredScopes:
       type: array
+      x-wso2-policy-advanced-param: true
       description: >-
         List of scopes that should be included in the token generated through MCP auth flow.
         List of scopes that must be present in the token (space-delimited 'scope' claim or array 'scp').
+      default: []
       items:
         type: string
 
     audiences:
       type: array
+      x-wso2-policy-advanced-param: true
       description: List of acceptable audience values; token must contain at least one.
+      default: []
       items:
         type: string
 
     requiredClaims:
       type: object
+      x-wso2-policy-advanced-param: true
       description: Map of claimName -> expectedValue. Runtime may support equality or regex-based matching.
+      default: {}
       additionalProperties:
         type: string
 
     claimMappings:
       type: object
+      x-wso2-policy-advanced-param: true
       description: Map claimName -> downstream header or context key to expose for downstream services.
+      default: {}
       additionalProperties:
         type: string
 
@@ -60,14 +61,14 @@ systemParameters:
       items:
         type: object
         additionalProperties: false
-        required: ["name"]
+        required: ["name", "issuer"]
         properties:
           name:
             type: string
             description: Unique name for this key manager/provider (used in `user.issuers`).
           issuer:
             type: string
-            description: Optional issuer (iss) value associated with keys from this provider.
+            description: Issuer (iss) value associated with keys from this provider.
           jwks:
             type: object
             description: JWKS configuration supporting both remote endpoints and local certificates. Either 'remote' or 'local' must be specified, but not both.
@@ -165,12 +166,19 @@ systemParameters:
       type: integer
       description: HTTP status code to return on authentication failure (401 for Unauthorized, 403 for Forbidden).
       default: 401
+      enum:
+        - 401
+        - 403
       "wso2/defaultValue": "${config.policy_configurations.jwtauth_v0.onfailurestatuscode}"
 
     errorMessageFormat:
       type: string
       description: Format of error response on JWT validation failure. Supported values are "json" (structured error), "plain" (plain text), or "minimal" (minimal response).
       default: json
+      enum:
+        - json
+        - plain
+        - minimal
       "wso2/defaultValue": "${config.policy_configurations.jwtauth_v0.errormessageformat}"
     
     errorMessage:

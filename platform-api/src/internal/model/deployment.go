@@ -37,8 +37,9 @@ type Deployment struct {
 
 	// Lifecycle state fields (from deployment_status table via JOIN)
 	// nil values indicate ARCHIVED state (no record in status table)
-	Status    *DeploymentStatus `json:"status,omitempty" db:"status"`
-	UpdatedAt *time.Time        `json:"updatedAt,omitempty" db:"status_updated_at"`
+	Status       *DeploymentStatus `json:"status,omitempty" db:"status"`
+	UpdatedAt    *time.Time        `json:"updatedAt,omitempty" db:"status_updated_at"`
+	StatusReason *string           `json:"statusReason,omitempty" db:"status_reason"`
 }
 
 // TableName returns the table name for the Deployment model
@@ -62,6 +63,9 @@ type DeploymentStatus string
 const (
 	DeploymentStatusDeployed   DeploymentStatus = "DEPLOYED"
 	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
+	DeploymentStatusDeploying   DeploymentStatus = "DEPLOYING"
+	DeploymentStatusUndeploying DeploymentStatus = "UNDEPLOYING"
+	DeploymentStatusFailed      DeploymentStatus = "FAILED"
 	DeploymentStatusArchived   DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )
 

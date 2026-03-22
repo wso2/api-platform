@@ -40,7 +40,7 @@ import (
 //
 // Policy execution order: System Policies -> API Level Policies -> Operation Level Policies
 // Each level does not override the previous one; policies are executed in the given order.
-func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config, policyDefinitions map[string]api.PolicyDefinition) *models.StoredPolicyConfig {
+func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config, policyDefinitions map[string]models.PolicyDefinition) *models.StoredPolicyConfig {
 	// Collect API-level policies (validate policy version exists, pass major-only to engine)
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
 	if cfg.GetPolicies() != nil {

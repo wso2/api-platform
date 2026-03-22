@@ -220,9 +220,9 @@ func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
 		t.Errorf("Expected first policy to be %s, got %s", existingPolicy.Name, resPolicies[0].Name)
 	}
 
-	// Check second policy is the modify headers policy
-	if resPolicies[1].Name != constants.MODIFY_HEADERS_POLICY_NAME {
-		t.Errorf("Expected last policy to be %s, got %s", constants.MODIFY_HEADERS_POLICY_NAME, resPolicies[1].Name)
+	// Check second policy is the set headers policy
+	if resPolicies[1].Name != constants.SET_HEADERS_POLICY_NAME {
+		t.Errorf("Expected last policy to be %s, got %s", constants.SET_HEADERS_POLICY_NAME, resPolicies[1].Name)
 	}
 }
 
@@ -460,7 +460,7 @@ func TestAddMCPSpecificOperations_OlderVersion(t *testing.T) {
 }
 
 func TestGetParamsOfPolicy_MCP(t *testing.T) {
-	params, err := GetParamsOfPolicy(constants.MODIFY_HEADERS_POLICY_PARAMS, "X-Custom-Header", "custom-value")
+	params, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, "X-Custom-Header", "custom-value")
 	if err != nil {
 		t.Fatalf("GetParamsOfPolicy returned error: %v", err)
 	}
@@ -469,8 +469,12 @@ func TestGetParamsOfPolicy_MCP(t *testing.T) {
 		t.Fatal("Expected non-nil params")
 	}
 
-	// Check that requestHeaders is present
-	if _, ok := params["requestHeaders"]; !ok {
-		t.Error("Expected requestHeaders in params")
+	// Check that request is present
+	request, ok := params["request"].(map[string]any)
+	if !ok {
+		t.Fatal("Expected request object in params")
+	}
+	if _, ok := request["headers"]; !ok {
+		t.Error("Expected request.headers in params")
 	}
 }
