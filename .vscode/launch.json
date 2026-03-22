@@ -9,7 +9,7 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/platform-api/src/cmd/main.go",
+            "program": "${workspaceFolder}/platform-api/src/cmd",
             "cwd": "${workspaceFolder}/platform-api/src",
             "env": {
                 // Database configuration
@@ -22,11 +22,26 @@
             },
         },
         {
+            "name": "Gateway Builder",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/gateway/gateway-builder/cmd/builder",
+            "args": [
+                "-build-file", "${workspaceFolder}/gateway/build.yaml",
+                // "-build-file", "${workspaceFolder}/gateway/sample-policies/build.yaml",
+                "-system-build-lock", "${workspaceFolder}/gateway/system-policies/system-build-lock.yaml",
+                "-policy-engine-src", "${workspaceFolder}/gateway/gateway-runtime/policy-engine",
+                "-out-dir", "${workspaceFolder}/gateway/gateway-builder/target/output",
+                "-log-level", "debug",
+            ],
+        },
+        {
             "name": "Gateway Controller",
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller/main.go",
+            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller",
             "args": [
                 "-config",
                 "${workspaceFolder}/gateway/configs/config.toml",
@@ -59,22 +74,7 @@
             },
         },
         {
-            "name": "Gateway Builder",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceFolder}/gateway/gateway-builder/cmd/builder",
-            "args": [
-                "-build-file", "${workspaceFolder}/gateway/build.yaml",
-                // "-build-file", "${workspaceFolder}/gateway/sample-policies/build.yaml",
-                "-system-build-lock", "${workspaceFolder}/gateway/system-policies/system-build-lock.yaml",
-                "-policy-engine-src", "${workspaceFolder}/gateway/gateway-runtime/policy-engine",
-                "-out-dir", "${workspaceFolder}/gateway/gateway-builder/target/output",
-                "-log-level", "debug",
-            ],
-        },
-        {
-            "name": "Policy Engine - xDS",
+            "name": "Policy Engine",
             "type": "go",
             "request": "launch",
             "mode": "auto",
@@ -82,21 +82,6 @@
             "args": [
                 "-config", "${workspaceFolder}/gateway/configs/config.toml",
                 "-xds-server", "localhost:18001",
-            ],
-            "env": {
-                "APIP_GW_POLICY__ENGINE_SERVER_MODE": "tcp",
-                "APIP_GW_ANALYTICS_ACCESS__LOGS__SERVICE_MODE": "tcp",
-            },
-        },
-        {
-            "name": "Policy Engine - File",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceFolder}/gateway/gateway-runtime/policy-engine/cmd/policy-engine",
-            "args": [
-                "-config", "${workspaceFolder}/gateway/configs/config.toml",
-                "-policy-chains-file", "${workspaceFolder}/gateway/gateway-runtime/policy-engine/configs/policy-chains.yaml",
             ],
             "env": {
                 "APIP_GW_POLICY__ENGINE_SERVER_MODE": "tcp",

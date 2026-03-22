@@ -19,8 +19,6 @@
 package controlplane
 
 import (
-	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +30,6 @@ import (
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -816,51 +813,3 @@ func TestClient_CalculateNextRetryDelay_CappedAtMax(t *testing.T) {
 	})
 }
 
-// mockPolicyManagerForCP is a simple mock for testing policy removal in control plane client
-type mockPolicyManagerForCP struct {
-	removePolicyErr error
-	addPolicyErr    error
-	removedPolicyID string
-	addedPolicy     *models.StoredPolicyConfig
-}
-
-func (m *mockPolicyManagerForCP) RemovePolicy(id string) error {
-	m.removedPolicyID = id
-	return m.removePolicyErr
-}
-
-func (m *mockPolicyManagerForCP) AddPolicy(policy *models.StoredPolicyConfig) error {
-	m.addedPolicy = policy
-	return m.addPolicyErr
-}
-
-func (m *mockPolicyManagerForCP) GetPolicy(id string) (*models.StoredPolicyConfig, error) {
-	return nil, nil
-}
-
-func (m *mockPolicyManagerForCP) ListPolicies() []*models.StoredPolicyConfig {
-	return nil
-}
-
-// TestPolicyRemovalInControlPlane tests the policy removal error handling in control plane
-func TestPolicyRemovalInControlPlane(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want bool // true if ErrPolicyNotFound
-	}{
-		{"policy not found", fmt.Errorf("wrapped: %w", storage.ErrPolicyNotFound), true},
-		{"storage error", errors.New("database failed"), false},
-		{"success", nil, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mock := &mockPolicyManagerForCP{removePolicyErr: tt.err}
-			err := mock.RemovePolicy("test-id")
-			if got := storage.IsPolicyNotFoundError(err); got != tt.want {
-				t.Errorf("IsPolicyNotFoundError() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}

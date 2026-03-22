@@ -24,12 +24,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
 func TestHandleEvent_APICreate_AddsConfigFromDB(t *testing.T) {
@@ -121,79 +117,3 @@ func TestHandleEvent_APIDelete_RemovesAPIKeysFromMemoryAndXDS(t *testing.T) {
 	}
 }
 
-func TestUpdatePoliciesForAPI_RemovesExistingPolicyWhenNoPoliciesAreDerived(t *testing.T) {
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
-	existingPolicyID := "test-api-id-policies"
-
-	require.NoError(t, policyStore.Set(&models.StoredPolicyConfig{
-		ID: existingPolicyID,
-		Configuration: policyenginev1.Configuration{
-			Metadata: policyenginev1.Metadata{
-				APIName: "Test API",
-				Version: "v1.0.0",
-				Context: "/test",
-			},
-		},
-	}))
-
-	listener := &EventListener{
-		logger:        newTestLogger(),
-		policyManager: policyManager,
-		routerConfig: &config.RouterConfig{
-			VHosts: config.VHostsConfig{
-				Main: config.VHostEntry{Default: "api.example.com"},
-			},
-		},
-		systemConfig: &config.Config{},
-	}
-
-	listener.updatePoliciesForAPI(
-		testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending),
-		"corr-policy-remove",
-	)
-
-	_, err := policyManager.GetPolicy(existingPolicyID)
-	require.Error(t, err)
-	assert.Equal(t, 0, policyStore.Count())
-}
-
-func TestUpdatePoliciesForAPI_AddsDerivedPolicyWhenPoliciesExist(t *testing.T) {
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
-	cfg := testRestStoredConfigWithPolicies(
-		"policy-api-id",
-		"policy-api",
-		"Policy API",
-		"v1.0.0",
-		models.StatusPending,
-		[]api.Policy{
-			{Name: "rate-limit", Version: "v1"},
-		},
-	)
-
-	listener := &EventListener{
-		logger:        newTestLogger(),
-		policyManager: policyManager,
-		routerConfig: &config.RouterConfig{
-			VHosts: config.VHostsConfig{
-				Main: config.VHostEntry{Default: "api.example.com"},
-			},
-		},
-		systemConfig: &config.Config{},
-		policyDefinitions: map[string]models.PolicyDefinition{
-			"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
-		},
-	}
-
-	listener.updatePoliciesForAPI(cfg, "corr-policy-add")
-
-	policy, err := policyManager.GetPolicy(cfg.UUID + "-policies")
-	require.NoError(t, err)
-	assert.Equal(t, "Policy API", policy.APIName())
-	assert.Equal(t, "v1.0.0", policy.APIVersion())
-	require.Len(t, policy.Configuration.Routes, 1)
-	require.Len(t, policy.Configuration.Routes[0].Policies, 1)
-	assert.Equal(t, "rate-limit", policy.Configuration.Routes[0].Policies[0].Name)
-	assert.Equal(t, "v1", policy.Configuration.Routes[0].Policies[0].Version)
-}

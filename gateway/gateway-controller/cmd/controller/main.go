@@ -30,9 +30,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -278,43 +279,32 @@ func main() {
 		policyDefinitions[key] = def
 	}
 
-	// Initialize policy store and policy xDS server
+	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
-	// Initialize policy store
-	policyStore := storage.NewPolicyStore()
-
 	// Initialize policy snapshot manager
-	policySnapshotManager := policyxds.NewSnapshotManager(policyStore, log)
+	policySnapshotManager := policyxds.NewSnapshotManager(log)
 
 	// Initialize subscription snapshot manager (driven by DB storage)
 	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)
-	// Initialize policy manager (used to derive policies from API configurations)
-	policyManager := policyxds.NewPolicyManager(policyStore, policySnapshotManager, log)
 
-	// Load policies from existing API configurations on startup
+	// Initialize policy manager (stores RuntimeDeployConfigs and triggers snapshot updates)
+	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
+
+	// Initialize transformer registry
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	transform.Init(map[string]models.ConfigTransformer{
+		"RestApi":     transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions),
+		"WebSubApi":   transform.NewWebSubAPITransformer(&cfg.Router, cfg, policyDefinitions),
+		"LlmProvider": llmTransformer,
+		"LlmProxy":    llmTransformer,
+		"Mcp":         transform.NewMCPKindTransformer(&cfg.Router, cfg, policyDefinitions),
+	})
+
+	// Load policies and policy route configs from existing API configurations on startup
 	if cfg.IsPersistentMode() {
-		log.Info("Deriving policies from loaded API configurations")
-		loadedAPIs := configStore.GetAll()
-		derivedCount := 0
-		for _, apiConfig := range loadedAPIs {
-			// Derive policy configuration from API
-			if apiConfig.Kind == "RestApi" || apiConfig.Kind == "WebSubApi" {
-				storedPolicy := policybuilder.DerivePolicyFromAPIConfig(apiConfig, &cfg.Router, cfg, policyDefinitions)
-				if storedPolicy != nil {
-					if err := policyStore.Set(storedPolicy); err != nil {
-						log.Warn("Failed to load policy from API",
-							slog.String("api_id", apiConfig.UUID),
-							slog.Any("error", err))
-					} else {
-						derivedCount++
-					}
-				}
-			}
-		}
-		log.Info("Loaded policies from API configurations",
-			slog.Int("total_apis", len(loadedAPIs)),
-			slog.Int("policies_derived", derivedCount))
+		loadPoliciesFromAPIs(log, cfg, configStore, policyManager, policyDefinitions)
 	}
 
 	// Generate initial policy snapshot
@@ -423,7 +413,8 @@ func main() {
 	}
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager,
+		lazyResourceXDSManager, log, cpClient,
 		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.

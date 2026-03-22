@@ -47,13 +47,14 @@ type MCPDeploymentParams struct {
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
 type MCPDeploymentService struct {
-	store           *storage.ConfigStore
-	db              storage.Storage
-	snapshotManager *xds.SnapshotManager
-	parser          *config.Parser
-	validator       *config.MCPValidator
-	transformer     Transformer
-	policyManager   *policyxds.PolicyManager
+	store                        *storage.ConfigStore
+	db                           storage.Storage
+	snapshotManager              *xds.SnapshotManager
+	parser                       *config.Parser
+	validator                    *config.MCPValidator
+	transformer                  Transformer
+	policyManager                *policyxds.PolicyManager
+	policyRouteConfigTransformer models.ConfigTransformer
 }
 
 // NewMCPDeploymentService creates a new MCP deployment service
@@ -61,17 +62,35 @@ func NewMCPDeploymentService(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
-	policyManager *policyxds.PolicyManager,
 	policyValidator *config.PolicyValidator,
+	policyManager *policyxds.PolicyManager,
+	policyRouteConfigTransformer models.ConfigTransformer,
 ) *MCPDeploymentService {
 	return &MCPDeploymentService{
-		store:           store,
-		db:              db,
-		snapshotManager: snapshotManager,
-		parser:          config.NewParser(),
-		validator:       config.NewMCPValidator().WithPolicyValidator(policyValidator),
-		transformer:     NewMCPTransformer(),
-		policyManager:   policyManager,
+		store:                        store,
+		db:                           db,
+		snapshotManager:              snapshotManager,
+		parser:                       config.NewParser(),
+		validator:                    config.NewMCPValidator().WithPolicyValidator(policyValidator),
+		transformer:                  NewMCPTransformer(),
+		policyManager:                policyManager,
+		policyRouteConfigTransformer: policyRouteConfigTransformer,
+	}
+}
+
+// updatePolicyRouteConfig transforms cfg and upserts it into the policy route config manager.
+func (s *MCPDeploymentService) updatePolicyRouteConfig(cfg *models.StoredConfig, logger *slog.Logger) {
+	if s.policyManager == nil || s.policyRouteConfigTransformer == nil {
+		return
+	}
+	rdc, err := s.policyRouteConfigTransformer.Transform(cfg)
+	if err != nil {
+		logger.Error("Failed to transform MCP config for policy route config", slog.Any("error", err))
+		return
+	}
+	key := storage.Key(cfg.Kind, cfg.Handle)
+	if err := s.policyManager.AddRuntimeConfig(key, rdc); err != nil {
+		logger.Error("Failed to update policy route config for MCP", slog.Any("error", err))
 	}
 }
 
@@ -176,6 +195,8 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 				slog.String("correlation_id", params.CorrelationID))
 		}
 	}()
+
+	s.updatePolicyRouteConfig(storedCfg, params.Logger)
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
@@ -393,13 +414,10 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		}
 	}()
 
-	// Remove derived policy configuration
 	if s.policyManager != nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			logger.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			logger.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
+		key := storage.Key(cfg.Kind, cfg.Handle)
+		if err := s.policyManager.RemoveRuntimeConfig(key); err != nil {
+			logger.Warn("Failed to remove policy route config for MCP", slog.Any("error", err))
 		}
 	}
 

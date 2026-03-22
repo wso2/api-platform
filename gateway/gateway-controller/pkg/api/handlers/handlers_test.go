@@ -1181,12 +1181,8 @@ func TestGetXDSSyncStatus(t *testing.T) {
 func TestGetXDSSyncStatusWithPolicyVersion(t *testing.T) {
 	server := createTestAPIServer()
 
-	policyStore := storage.NewPolicyStore()
-	snapshotMgr := policyxds.NewSnapshotManager(policyStore, server.logger)
-	server.policyManager = policyxds.NewPolicyManager(policyStore, snapshotMgr, server.logger)
-
-	policyStore.IncrementResourceVersion()
-	policyStore.IncrementResourceVersion()
+	snapshotMgr := policyxds.NewSnapshotManager(server.logger)
+	server.policyManager = policyxds.NewPolicyManager(snapshotMgr, server.logger)
 
 	c, w := createTestContext("GET", "/xds_sync_status", nil)
 	server.GetXDSSyncStatus(c)
@@ -1196,7 +1192,7 @@ func TestGetXDSSyncStatusWithPolicyVersion(t *testing.T) {
 	var response adminapi.XDSSyncStatusResponse
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Equal(t, "2", *response.PolicyChainVersion)
+	assert.Equal(t, "0", *response.PolicyChainVersion)
 }
 
 // TestGetConfigDumpWithCertificates tests config dump with certificates
@@ -1738,79 +1734,6 @@ func TestExtractAuthenticatedUserSuccess(t *testing.T) {
 	assert.Equal(t, "test-user", user.UserID)
 }
 
-// TestConvertAPIPolicy tests the convertAPIPolicy function
-func TestConvertAPIPolicy(t *testing.T) {
-	params := map[string]interface{}{
-		"0000-key1-0000-000000000000": "value1",
-		"0000-key2-0000-000000000000": 42,
-	}
-	policy := api.Policy{
-		Name:    "test-policy",
-		Version: "v1.0.0",
-		Params:  &params,
-	}
-
-	result := convertAPIPolicy(policy, "api", "v1.0.0")
-
-	assert.Equal(t, "test-policy", result.Name)
-	assert.Equal(t, "v1.0.0", result.Version)
-	assert.True(t, result.Enabled)
-	assert.Equal(t, "value1", result.Parameters["0000-key1-0000-000000000000"])
-	assert.Equal(t, 42, result.Parameters["0000-key2-0000-000000000000"])
-	assert.Equal(t, "api", result.Parameters["attachedTo"])
-}
-
-// TestConvertAPIPolicyNoParams tests convertAPIPolicy with no params
-func TestConvertAPIPolicyNoParams(t *testing.T) {
-	policy := api.Policy{
-		Name:    "test-policy",
-		Version: "v1.0.0",
-	}
-
-	result := convertAPIPolicy(policy, "", "v1.0.0")
-
-	assert.Equal(t, "test-policy", result.Name)
-	assert.NotNil(t, result.Parameters)
-	assert.Empty(t, result.Parameters["attachedTo"])
-}
-
-// TestBuildStoredPolicyFromAPINoPolicies tests buildStoredPolicyFromAPI with no policies
-func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
-	server := createTestAPIServer()
-
-	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
-		Spec: api.APIConfigData{
-			DisplayName: "0000-test-api-0000-000000000000",
-			Version:     "v1.0",
-			Context:     "/test",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://backend.example.com"),
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
-				},
-			},
-		},
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.RestApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-	}
-
-	result := server.buildStoredPolicyFromAPI(cfg)
-	assert.Nil(t, result)
-}
-
 // TestGetLLMProviderTemplateErrors tests getLLMProviderTemplate error cases
 func TestGetLLMProviderTemplateErrors(t *testing.T) {
 	server := createTestAPIServer()
@@ -2109,24 +2032,6 @@ func TestHandleStatusUpdateDBError(t *testing.T) {
 	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 }
 
-// TestBuildStoredPolicyFromAPIInvalidKind tests buildStoredPolicyFromAPI with invalid kind
-func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
-	server := createTestAPIServer()
-
-	apiConfig := api.RestAPI{
-		Kind: api.RestAPIKind("InvalidKind"),
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                "InvalidKind",
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-	}
-
-	result := server.buildStoredPolicyFromAPI(cfg)
-	assert.Nil(t, result)
-}
-
 // TestConfigDumpAPIStatusConversion tests status conversion in GetConfigDump
 func TestConfigDumpAPIStatusConversion(t *testing.T) {
 	server := createTestAPIServer()
@@ -2415,27 +2320,6 @@ func BenchmarkListRestAPIs(b *testing.B) {
 	}
 }
 
-// Test for WebSubApi kind in buildStoredPolicyFromAPI
-func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
-	server := createTestAPIServer()
-
-	// Note: WebSubApi requires different data structure than RestApi
-	// The function will return nil if parsing fails
-	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubApi,
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-	}
-
-	result := server.buildStoredPolicyFromAPI(cfg)
-	// Should return nil because the spec can't be parsed as WebhookAPIData without proper setup
-	assert.Nil(t, result)
-}
-
 // Test GetConfigDump with config missing handle
 func TestGetConfigDumpMissingHandle(t *testing.T) {
 	server := createTestAPIServer()
@@ -2504,115 +2388,6 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// TestBuildStoredPolicyFromAPIWithVhosts tests buildStoredPolicyFromAPI with custom vhosts
-func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
-	server := createTestAPIServer()
-	server.policyDefinitions["test-policy|v1.0.0"] = models.PolicyDefinition{Name: "test-policy", Version: "v1.0.0"}
-
-	policies := []api.Policy{
-		{Name: "test-policy", Version: "v1"},
-	}
-
-	sandboxUrl := "http://sandbox.example.com"
-	sandboxVhost := "sandbox.localhost"
-	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
-		Spec: api.APIConfigData{
-			DisplayName: "0000-test-api-0000-000000000000",
-			Version:     "v1.0",
-			Context:     "/test",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://backend.example.com"),
-				},
-				Sandbox: &api.Upstream{
-					Url: &sandboxUrl,
-				},
-			},
-			Vhosts: &struct {
-				Main    string  `json:"main" yaml:"main"`
-				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main:    "custom.localhost",
-				Sandbox: &sandboxVhost,
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
-				},
-			},
-			Policies: &policies,
-		},
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.RestApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-	}
-
-	result := server.buildStoredPolicyFromAPI(cfg)
-	assert.NotNil(t, result)
-	// Should have 2 routes (one for main vhost, one for sandbox)
-	assert.Equal(t, 2, len(result.Configuration.Routes))
-}
-
-// TestBuildStoredPolicyFromAPIOperationPolicies tests operation-level policy merging
-func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
-	server := createTestAPIServer()
-	server.policyDefinitions["api-policy|v1.0.0"] = models.PolicyDefinition{Name: "api-policy", Version: "v1.0.0"}
-	server.policyDefinitions["op-policy|v1.0.0"] = models.PolicyDefinition{Name: "op-policy", Version: "v1.0.0"}
-
-	apiPolicies := []api.Policy{
-		{Name: "api-policy", Version: "v1"},
-	}
-
-	opPolicies := []api.Policy{
-		{Name: "op-policy", Version: "v1"},
-	}
-
-	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
-		Spec: api.APIConfigData{
-			DisplayName: "0000-test-api-0000-000000000000",
-			Version:     "v1.0",
-			Context:     "/test",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{
-					Url: stringPtr("http://backend.example.com"),
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method:   "GET",
-					Path:     "/resource",
-					Policies: &opPolicies,
-				},
-			},
-			Policies: &apiPolicies,
-		},
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.RestApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-	}
-
-	result := server.buildStoredPolicyFromAPI(cfg)
-	assert.NotNil(t, result)
-	assert.Equal(t, 1, len(result.Configuration.Routes))
-	// Should have both operation-level and API-level policies
-	assert.GreaterOrEqual(t, len(result.Configuration.Routes[0].Policies), 1)
-}
-
 // Test handleStatusUpdate with empty correlation ID
 func TestHandleStatusUpdateEmptyCorrelationID(t *testing.T) {
 	server := createTestAPIServer()
@@ -2657,27 +2432,6 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 	if !panicked {
 		assert.True(t, w.Code >= http.StatusBadRequest)
 	}
-}
-
-// Test for WebSubAPI - simplified test
-func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
-	server := createTestAPIServer()
-
-	// WebSubApi requires specific data structure that's complex to mock
-	// Testing that the function handles WebSubApi kind without panicking
-	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubApi,
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-	}
-
-	result := server.buildStoredPolicyFromAPI(cfg)
-	// Should return nil since we don't have valid spec data
-	assert.Nil(t, result)
 }
 
 // Test ListMCPProxies with stored configs that have unmarshal issues
@@ -2732,22 +2486,6 @@ func TestConvertHandleToUUIDInvalid(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteRestAPIWithAPIKeys(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
-}
-
-// Test for checking the execution condition in convertAPIPolicy
-func TestConvertAPIPolicyWithExecutionCondition(t *testing.T) {
-	execCondition := "request.headers['X-Test'] == 'value'"
-	policy := api.Policy{
-		Name:               "conditional-policy",
-		Version:            "v1.0.0",
-		ExecutionCondition: &execCondition,
-	}
-
-	result := convertAPIPolicy(policy, "route", "v1.0.0")
-
-	assert.Equal(t, "conditional-policy", result.Name)
-	assert.NotNil(t, result.ExecutionCondition)
-	assert.Equal(t, execCondition, *result.ExecutionCondition)
 }
 
 // TestGetMCPProxyByIdFound tests getting an existing MCP proxy
@@ -2812,21 +2550,6 @@ func TestUpdateRestAPIDBError(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestGetMCPProxyByIdDBUnavailable(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
-}
-
-// Test with policies that have nil parameters
-func TestConvertAPIPolicyNilParams(t *testing.T) {
-	policy := api.Policy{
-		Name:    "test-policy",
-		Version: "v1.0.0",
-		Params:  nil,
-	}
-
-	result := convertAPIPolicy(policy, "api", "v1.0.0")
-
-	assert.Equal(t, "test-policy", result.Name)
-	assert.NotNil(t, result.Parameters)
-	assert.Equal(t, "api", result.Parameters["attachedTo"])
 }
 
 // TestListLLMProvidersUnmarshalError tests ListLLMProviders with unmarshal error

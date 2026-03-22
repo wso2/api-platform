@@ -43,7 +43,6 @@ const (
 
 // SnapshotManager manages xDS snapshots for policy and route configurations.
 // It holds two LinearCaches: one for PolicyChainConfig and one for RouteConfig.
-// Supports both legacy PolicyStore and new RuntimeConfigStore paths.
 type SnapshotManager struct {
 	policyCache  *cache.LinearCache
 	routeCache   *cache.LinearCache
@@ -55,9 +54,7 @@ type SnapshotManager struct {
 }
 
 // NewSnapshotManager creates a new policy snapshot manager with LinearCaches for custom type URLs.
-// Accepts *PolicyStore for backward compatibility (callers pass it but the SnapshotManager
-// uses RuntimeConfigStore for the new path via SetRuntimeStore).
-func NewSnapshotManager(legacyStore *storage.PolicyStore, logger *slog.Logger) *SnapshotManager {
+func NewSnapshotManager(logger *slog.Logger) *SnapshotManager {
 	policyCache := cache.NewLinearCache(
 		PolicyChainTypeURL,
 		cache.WithLogger(slogAdapter{logger}),
@@ -142,50 +139,6 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		slog.Int("route_resources", len(routeById)))
 
 	return nil
-}
-
-// UpdateSnapshotLegacy generates xDS snapshots from legacy StoredPolicyConfigs.
-// Used by the backward-compatible AddPolicy/RemovePolicy path.
-func (sm *SnapshotManager) UpdateSnapshotLegacy(ctx context.Context, legacyStore *storage.PolicyStore) error {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	policies := legacyStore.GetAll()
-
-	sm.logger.Info("Updating policy snapshot (legacy)",
-		slog.Int("policy_count", len(policies)),
-		slog.String("node_id", sm.nodeID))
-
-	// Build policy chain resources from StoredPolicyConfigs (same format as before)
-	policyById := make(map[string]types.Resource)
-	for _, policy := range policies {
-		resource, err := storedPolicyToResource(policy)
-		if err != nil {
-			sm.logger.Error("Failed to create resource from stored policy",
-				slog.String("id", policy.ID),
-				slog.Any("error", err))
-			continue
-		}
-		policyById[policy.ID] = resource
-	}
-	sm.policyCache.SetResources(policyById)
-
-	version := legacyStore.IncrementResourceVersion()
-	sm.logger.Info("Policy snapshot updated successfully (legacy)",
-		slog.Int64("version", version),
-		slog.Int("policy_resources", len(policyById)))
-
-	return nil
-}
-
-// storedPolicyToResource converts a StoredPolicyConfig to an xDS Any resource.
-func storedPolicyToResource(policy *models.StoredPolicyConfig) (types.Resource, error) {
-	data := map[string]interface{}{
-		"id":            policy.ID,
-		"configuration": policy.Configuration,
-		"version":       policy.Version,
-	}
-	return toAnyResource(data, PolicyChainTypeURL)
 }
 
 // Translator converts RuntimeDeployConfig to xDS resources.

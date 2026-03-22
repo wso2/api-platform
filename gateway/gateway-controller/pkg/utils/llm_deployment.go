@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -48,17 +49,19 @@ type LLMDeploymentParams struct {
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
 type LLMDeploymentService struct {
-	store               *storage.ConfigStore
-	db                  storage.Storage
-	snapshotManager     *xds.SnapshotManager
-	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
-	templateDefinitions map[string]*api.LLMProviderTemplate
-	deploymentService   *APIDeploymentService
-	parser              *config.Parser
-	validator           *config.LLMValidator
-	policyValidator     *config.PolicyValidator
-	transformer         Transformer
-	routerConfig        *config.RouterConfig
+	store                        *storage.ConfigStore
+	db                           storage.Storage
+	snapshotManager              *xds.SnapshotManager
+	lazyResourceManager          *lazyresourcexds.LazyResourceStateManager
+	templateDefinitions          map[string]*api.LLMProviderTemplate
+	deploymentService            *APIDeploymentService
+	parser                       *config.Parser
+	validator                    *config.LLMValidator
+	policyValidator              *config.PolicyValidator
+	transformer                  Transformer
+	routerConfig                 *config.RouterConfig
+	policyManager                *policyxds.PolicyManager
+	policyRouteConfigTransformer models.ConfigTransformer
 }
 
 // NewLLMDeploymentService initializes the service
@@ -70,18 +73,22 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	routerConfig *config.RouterConfig,
 	policyVersionResolver PolicyVersionResolver,
 	policyValidator *config.PolicyValidator,
+	policyManager *policyxds.PolicyManager,
+	policyRouteConfigTransformer models.ConfigTransformer,
 ) *LLMDeploymentService {
 	service := &LLMDeploymentService{
-		store:               store,
-		db:                  db,
-		snapshotManager:     snapshotManager,
-		lazyResourceManager: lazyResourceManager,
-		templateDefinitions: templateDefinitions,
-		deploymentService:   deploymentService,
-		parser:              config.NewParser(),
-		validator:           config.NewLLMValidator(),
-		policyValidator:     policyValidator,
-		transformer:         NewLLMProviderTransformer(store, routerConfig, policyVersionResolver),
+		store:                        store,
+		db:                           db,
+		snapshotManager:              snapshotManager,
+		lazyResourceManager:          lazyResourceManager,
+		templateDefinitions:          templateDefinitions,
+		deploymentService:            deploymentService,
+		parser:                       config.NewParser(),
+		validator:                    config.NewLLMValidator(),
+		policyValidator:              policyValidator,
+		transformer:                  NewLLMProviderTransformer(store, routerConfig, policyVersionResolver),
+		policyManager:                policyManager,
+		policyRouteConfigTransformer: policyRouteConfigTransformer,
 	}
 
 	// Initialize OOB templates
@@ -90,6 +97,22 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	}
 
 	return service
+}
+
+// updatePolicyRouteConfig transforms cfg and upserts it into the policy route config manager.
+func (s *LLMDeploymentService) updatePolicyRouteConfig(cfg *models.StoredConfig, logger *slog.Logger) {
+	if s.policyManager == nil || s.policyRouteConfigTransformer == nil {
+		return
+	}
+	rdc, err := s.policyRouteConfigTransformer.Transform(cfg)
+	if err != nil {
+		logger.Error("Failed to transform LLM config for policy route config", slog.Any("error", err))
+		return
+	}
+	key := storage.Key(cfg.Kind, cfg.Handle)
+	if err := s.policyManager.AddRuntimeConfig(key, rdc); err != nil {
+		logger.Error("Failed to update policy route config for LLM", slog.Any("error", err))
+	}
 }
 
 // DeployLLMProviderConfiguration parses, validates, transforms and persists the provider, then triggers xDS
@@ -212,6 +235,8 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		}
 	}()
 
+	s.updatePolicyRouteConfig(storedCfg, params.Logger)
+
 	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
 }
 
@@ -319,6 +344,8 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 				slog.String("correlation_id", params.CorrelationID))
 		}
 	}()
+
+	s.updatePolicyRouteConfig(storedCfg, params.Logger)
 
 	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
 }
@@ -924,6 +951,13 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 		}
 	}()
 
+	if s.policyManager != nil {
+		key := storage.Key(cfg.Kind, cfg.Handle)
+		if err := s.policyManager.RemoveRuntimeConfig(key); err != nil {
+			logger.Warn("Failed to remove policy route config for LLM provider", slog.Any("error", err))
+		}
+	}
+
 	return cfg, nil
 }
 
@@ -1003,6 +1037,13 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 			logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
 		}
 	}()
+
+	if s.policyManager != nil {
+		key := storage.Key(cfg.Kind, cfg.Handle)
+		if err := s.policyManager.RemoveRuntimeConfig(key); err != nil {
+			logger.Warn("Failed to remove policy route config for LLM proxy", slog.Any("error", err))
+		}
+	}
 
 	return cfg, nil
 }

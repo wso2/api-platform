@@ -50,6 +50,7 @@ func createTestServerWithLLM() *APIServer {
 		server.routerConfig,
 		policyVersionResolver,
 		policyValidator,
+		nil, nil,
 	)
 	server.llmDeploymentService = llmService
 	return server

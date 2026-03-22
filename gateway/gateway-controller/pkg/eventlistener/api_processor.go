@@ -24,10 +24,9 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 )
 
 // processAPIEvent dispatches API events by action
@@ -108,8 +107,28 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	// Update xDS snapshot
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
 
-	// Update policies
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	// Update policy xDS via transformer
+	if l.policyManager != nil {
+		if transformer, ok := transform.Get(storedConfig.Kind); ok {
+			rdc, err := transformer.Transform(storedConfig)
+			if err != nil {
+				l.logger.Error("Failed to transform API for policy xDS",
+					slog.String("api_id", entityID),
+					slog.String("kind", storedConfig.Kind),
+					slog.String("correlation_id", event.EventID),
+					slog.Any("error", err))
+				return
+			}
+			key := storage.Key(storedConfig.Kind, storedConfig.Handle)
+			if err := l.policyManager.AddRuntimeConfig(key, rdc); err != nil {
+				l.logger.Error("Failed to update policy xDS after replica sync",
+					slog.String("api_id", entityID),
+					slog.String("correlation_id", event.EventID),
+					slog.Any("error", err))
+				return
+			}
+		}
+	}
 
 	l.logger.Info("Successfully processed API create/update event",
 		slog.String("api_id", entityID),
@@ -164,12 +183,12 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 	// Update xDS snapshot
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
 
-	// Remove policies
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil {
-			if !storage.IsPolicyNotFoundError(err) {
-				l.logger.Warn("Failed to remove policy after API deletion",
+	// Remove policy route config
+	if l.policyManager != nil && existingConfig != nil {
+		key := storage.Key(existingConfig.Kind, existingConfig.Handle)
+		if err := l.policyManager.RemoveRuntimeConfig(key); err != nil {
+			if !storage.IsNotFoundError(err) {
+				l.logger.Warn("Failed to remove policy route config after API deletion",
 					slog.String("api_id", entityID),
 					slog.Any("error", err))
 			}
@@ -179,38 +198,6 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 	l.logger.Info("Successfully processed API delete event",
 		slog.String("api_id", entityID),
 		slog.String("event_id", event.EventID))
-}
-
-// updatePoliciesForAPI derives and updates policy configuration for an API
-func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlationID string) {
-	if l.policyManager == nil || l.systemConfig == nil {
-		return
-	}
-
-	// Only REST APIs and WebSub APIs have policies
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) {
-		return
-	}
-
-	storedPolicy := policybuilder.DerivePolicyFromAPIConfig(cfg, l.routerConfig, l.systemConfig, l.policyDefinitions)
-	if storedPolicy != nil {
-		if err := l.policyManager.AddPolicy(storedPolicy); err != nil {
-			l.logger.Error("Failed to update policy from replica sync",
-				slog.String("api_id", cfg.UUID),
-				slog.String("correlation_id", correlationID),
-				slog.Any("error", err))
-		}
-	} else {
-		policyID := cfg.UUID + "-policies"
-		if existingPolicy, err := l.policyManager.GetPolicy(policyID); err == nil && existingPolicy != nil {
-			if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-				l.logger.Error("Failed to remove policy from replica sync",
-					slog.String("api_id", cfg.UUID),
-					slog.String("correlation_id", correlationID),
-					slog.Any("error", err))
-			}
-		}
-	}
 }
 
 // extractAPINameVersion extracts the display name and version from a StoredConfig.
