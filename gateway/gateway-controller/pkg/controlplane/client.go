@@ -36,6 +36,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/common/eventhub"
@@ -127,6 +128,7 @@ type Client struct {
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
 	gatewayPath                 string // cached gateway path from well-known discovery
+	policyResolver              *resolver.PolicyResolver
 }
 
 // NewClient creates a new control plane client
@@ -147,10 +149,11 @@ func NewClient(
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	subSnapshotManager utils.SubscriptionSnapshotUpdater,
 	eventHubInstance eventhub.EventHub,
+	policyResolver *resolver.PolicyResolver,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, policyResolver)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager)
 
@@ -1123,7 +1126,24 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 		return nil
 	}
 
-	storedPolicy := policy.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig, c.policyDefinitions)
+	// Resolve secrets
+	resolvedCfg, validationErrors := c.policyResolver.ResolvePolicies(result.StoredConfig)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", result.StoredConfig.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+
+	storedPolicy := policy.DerivePolicyFromAPIConfig(resolvedCfg, c.routerConfig, c.systemConfig, c.policyDefinitions)
 
 	if storedPolicy != nil {
 		// Add or update policy

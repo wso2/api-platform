@@ -607,7 +607,7 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 
 	t.Run("WebSubApi with labels", func(t *testing.T) {
 		asyncApiConfig := api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "async-api-v1.0",

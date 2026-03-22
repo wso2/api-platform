@@ -88,6 +88,7 @@ COPY --from=builder /build/controller .
 COPY default-policies /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
+
 RUN mkdir -p /app/data
 
 EXPOSE 2345 9090 18000

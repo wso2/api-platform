@@ -114,19 +114,25 @@ func (m *testMockDB) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTe
 	return result, nil
 }
 
-func (m *testMockDB) SaveAPIKey(key *models.APIKey) error                         { return nil }
-func (m *testMockDB) GetAPIKeyByID(id string) (*models.APIKey, error)             { return nil, storage.ErrNotFound }
-func (m *testMockDB) GetAPIKeyByUUID(uuid string) (*models.APIKey, error)         { return nil, storage.ErrNotFound }
-func (m *testMockDB) GetAPIKeyByKey(key string) (*models.APIKey, error)           { return nil, storage.ErrNotFound }
-func (m *testMockDB) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error)      { return nil, nil }
-func (m *testMockDB) GetAllAPIKeys() ([]*models.APIKey, error)                    { return nil, nil }
+func (m *testMockDB) SaveAPIKey(key *models.APIKey) error { return nil }
+func (m *testMockDB) GetAPIKeyByID(id string) (*models.APIKey, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *testMockDB) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *testMockDB) GetAPIKeyByKey(key string) (*models.APIKey, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *testMockDB) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) { return nil, nil }
+func (m *testMockDB) GetAllAPIKeys() ([]*models.APIKey, error)               { return nil, nil }
 func (m *testMockDB) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
-func (m *testMockDB) UpdateAPIKey(key *models.APIKey) error              { return nil }
-func (m *testMockDB) DeleteAPIKey(key string) error                      { return nil }
-func (m *testMockDB) RemoveAPIKeysAPI(apiId string) error                { return nil }
-func (m *testMockDB) RemoveAPIKeyAPIAndName(apiId, name string) error    { return nil }
+func (m *testMockDB) UpdateAPIKey(key *models.APIKey) error           { return nil }
+func (m *testMockDB) DeleteAPIKey(key string) error                   { return nil }
+func (m *testMockDB) RemoveAPIKeysAPI(apiId string) error             { return nil }
+func (m *testMockDB) RemoveAPIKeyAPIAndName(apiId, name string) error { return nil }
 func (m *testMockDB) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
 	return 0, nil
 }
@@ -149,9 +155,9 @@ func (m *testMockDB) GetSubscriptionByID(id, gatewayID string) (*models.Subscrip
 func (m *testMockDB) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
 	return nil, nil
 }
-func (m *testMockDB) ListActiveSubscriptions() ([]*models.Subscription, error)  { return nil, nil }
-func (m *testMockDB) UpdateSubscription(sub *models.Subscription) error         { return nil }
-func (m *testMockDB) DeleteSubscription(id, gatewayID string) error             { return nil }
+func (m *testMockDB) ListActiveSubscriptions() ([]*models.Subscription, error)        { return nil, nil }
+func (m *testMockDB) UpdateSubscription(sub *models.Subscription) error               { return nil }
+func (m *testMockDB) DeleteSubscription(id, gatewayID string) error                   { return nil }
 func (m *testMockDB) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error { return nil }
 func (m *testMockDB) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
 	return nil
@@ -169,3 +175,16 @@ func (m *testMockDB) DeleteCertificate(id string) error                      { r
 
 func (m *testMockDB) GetDB() *sql.DB { return nil }
 func (m *testMockDB) Close() error   { return nil }
+
+// Secret management methods
+
+func (m *testMockDB) SaveSecret(secret *models.Secret) error   { return nil }
+func (m *testMockDB) GetSecrets() ([]models.SecretMeta, error) { return nil, nil }
+func (m *testMockDB) GetSecret(handle string) (*models.Secret, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *testMockDB) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *testMockDB) DeleteSecret(handle string) error         { return nil }
+func (m *testMockDB) SecretExists(handle string) (bool, error) { return false, nil }
