@@ -141,3 +141,118 @@ func TestDerivePolicyFromAPIConfig_SandboxVhosts(t *testing.T) {
 		})
 	}
 }
+
+// TestDerivePolicyFromAPIConfig_EmptyVersionResolvesToLatest verifies that an API-level
+// policy with an empty version string is resolved to the latest available version
+// and included in the policy chain.
+func TestDerivePolicyFromAPIConfig_EmptyVersionResolvesToLatest(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"header-mutate|v1.0.0": {Name: "header-mutate", Version: "v1.0.0"},
+		"header-mutate|v2.0.0": {Name: "header-mutate", Version: "v2.0.0"},
+	}
+
+	apiConfig := api.RestAPI{
+		Kind:     api.RestApi,
+		Metadata: api.Metadata{Name: "test-api"},
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Context:     "/test",
+			Version:     "1.0.0",
+			Operations:  []api.Operation{{Method: "GET", Path: "/hello"}},
+			Policies:    &[]api.Policy{{Name: "header-mutate", Version: ""}}, // empty version
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{Main: api.Upstream{Url: ptr("http://backend:8080")}},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "test-api",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+	}
+
+	result := DerivePolicyFromAPIConfig(cfg, testRouterConfig(), &config.Config{}, defs)
+
+	require.NotNil(t, result, "expected non-nil result when empty-version policy resolves")
+	require.Len(t, result.Configuration.Routes, 1)
+	policies := result.Configuration.Routes[0].Policies
+	require.Len(t, policies, 1, "expected the API-level policy to be included")
+	assert.Equal(t, "header-mutate", policies[0].Name)
+}
+
+// TestDerivePolicyFromAPIConfig_OperationLevelEmptyVersionResolvesToLatest verifies that an
+// operation-level policy with an empty version string is resolved and included in the chain.
+func TestDerivePolicyFromAPIConfig_OperationLevelEmptyVersionResolvesToLatest(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"rate-limit|v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
+	}
+
+	apiConfig := api.RestAPI{
+		Kind:     api.RestApi,
+		Metadata: api.Metadata{Name: "test-api"},
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Context:     "/test",
+			Version:     "1.0.0",
+			Operations: []api.Operation{{
+				Method: "GET",
+				Path:   "/hello",
+				Policies: &[]api.Policy{
+					{Name: "rate-limit", Version: ""}, // empty version at operation level
+				},
+			}},
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{Main: api.Upstream{Url: ptr("http://backend:8080")}},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "test-api",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+	}
+
+	result := DerivePolicyFromAPIConfig(cfg, testRouterConfig(), &config.Config{}, defs)
+
+	require.NotNil(t, result)
+	require.Len(t, result.Configuration.Routes, 1)
+	policies := result.Configuration.Routes[0].Policies
+	require.Len(t, policies, 1, "expected the operation-level policy to be included")
+	assert.Equal(t, "rate-limit", policies[0].Name)
+}
+
+// TestDerivePolicyFromAPIConfig_UnknownPolicySkipped verifies that a policy not present
+// in the definitions is silently skipped and does not cause a panic or error.
+func TestDerivePolicyFromAPIConfig_UnknownPolicySkipped(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{} // empty — policy won't be found
+
+	apiConfig := api.RestAPI{
+		Kind:     api.RestApi,
+		Metadata: api.Metadata{Name: "test-api"},
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Context:     "/test",
+			Version:     "1.0.0",
+			Operations:  []api.Operation{{Method: "GET", Path: "/hello"}},
+			Policies:    &[]api.Policy{{Name: "unknown-policy", Version: ""}},
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{Main: api.Upstream{Url: ptr("http://backend:8080")}},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "test-api",
+		Kind:                string(api.RestApi),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+	}
+
+	// Unknown policy should be skipped; with no resolved policies the result is nil.
+	result := DerivePolicyFromAPIConfig(cfg, testRouterConfig(), &config.Config{}, defs)
+	assert.Nil(t, result, "expected nil result when all policies are unresolvable")
+}
