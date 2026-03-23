@@ -1,6 +1,6 @@
 package policyv1alpha
 
-import core "github.com/wso2/api-platform/sdk/core/policy"
+import core "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 
 // ParameterType defines the type of a policy parameter.
 type ParameterType = core.ParameterType

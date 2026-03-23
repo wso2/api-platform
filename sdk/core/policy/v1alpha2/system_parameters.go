@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha2
 
 const (
 	// SystemParamConfigRefKey stores the config expression extracted from

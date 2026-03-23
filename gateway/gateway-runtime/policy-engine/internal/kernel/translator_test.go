@@ -417,7 +417,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 		Results: []executor.RequestPolicyResult{
 			{
 				Skipped: false,
-				Action: &policy.UpstreamRequestModifications{
+				Action: policy.UpstreamRequestModifications{
 					SetHeaders: map[string]string{
 						"x-custom": "value",
 					},
@@ -450,7 +450,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 		Results: []executor.RequestPolicyResult{
 			{
 				Skipped: false,
-				Action: &policy.UpstreamRequestModifications{
+				Action: policy.UpstreamRequestModifications{
 					Body: []byte("modified body"),
 				},
 			},
@@ -489,7 +489,7 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 
 	result := &executor.RequestExecutionResult{
 		ShortCircuited: true,
-		FinalAction: &policy.ImmediateResponse{
+		FinalAction: policy.ImmediateResponse{
 			StatusCode: 403,
 			Headers: map[string]string{
 				"content-type": "application/json",
@@ -524,7 +524,7 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 		Results: []executor.RequestPolicyResult{
 			{
 				Skipped: true, // This policy was skipped
-				Action: &policy.UpstreamRequestModifications{
+				Action: policy.UpstreamRequestModifications{
 					SetHeaders: map[string]string{
 						"should-not-appear": "value",
 					},
@@ -556,7 +556,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 		Results: []executor.RequestPolicyResult{
 			{
 				Skipped: false,
-				Action: &policy.UpstreamRequestModifications{
+				Action: policy.UpstreamRequestModifications{
 					AddQueryParameters: map[string][]string{
 						"added": {"param"},
 					},
@@ -589,7 +589,7 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 		Results: []executor.RequestPolicyResult{
 			{
 				Skipped: false,
-				Action: &policy.UpstreamRequestModifications{
+				Action: policy.UpstreamRequestModifications{
 					Path: &newPath,
 				},
 			},
@@ -628,7 +628,7 @@ func TestTranslateResponseActionsCore_ShortCircuit(t *testing.T) {
 
 	result := &executor.ResponseExecutionResult{
 		ShortCircuited: true,
-		FinalAction: &policy.ImmediateResponse{
+		FinalAction: policy.ImmediateResponse{
 			StatusCode: 503,
 			Headers:    map[string]string{"x-error": "upstream-fault"},
 			Body:       []byte(`{"error":"service unavailable"}`),
@@ -669,7 +669,7 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 		Results: []executor.ResponsePolicyResult{
 			{
 				Skipped: false,
-				Action: &policy.DownstreamResponseModifications{
+				Action: policy.UpstreamResponseModifications{
 					SetHeaders: map[string]string{"x-response": "modified"},
 				},
 			},

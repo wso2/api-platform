@@ -65,14 +65,14 @@ func (p *HeaderModifyingPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest returns modifications to set the configured header.
 func (p *HeaderModifyingPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return &policy.UpstreamRequestModifications{
+	return policy.UpstreamRequestModifications{
 		SetHeaders: map[string]string{p.Key: p.Value},
 	}
 }
 
 // OnResponse returns modifications to set the configured header.
 func (p *HeaderModifyingPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return &policy.DownstreamResponseModifications{
+	return policy.UpstreamResponseModifications{
 		SetHeaders: map[string]string{p.Key: p.Value},
 	}
 }
@@ -96,7 +96,7 @@ func (p *ShortCircuitingPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest returns an ImmediateResponse to short-circuit the request.
 func (p *ShortCircuitingPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return &policy.ImmediateResponse{
+	return policy.ImmediateResponse{
 		StatusCode: p.StatusCode,
 		Body:       p.Body,
 	}

@@ -1,75 +1,117 @@
 package policyv1alpha
 
-import core "github.com/wso2/api-platform/sdk/core/policy"
+// PolicyMetadata contains metadata passed to GetPolicy for instance creation
+// This will be passed to the GetPolicy factory function to provide context about policy
+type PolicyMetadata struct {
+	// RouteName is the unique identifier for the route this policy is attached to
+	RouteName string
 
-// Policy is the interface all policies must implement.
-// It uses a monolithic style: Mode() declares processing requirements, and
-// OnRequest/OnResponse are called by the kernel for the respective phases.
-//
-// New policies should be written against policyv2alpha, which uses a clean
-// sub-interface model where capabilities are declared by implementing
-// RequestHeaderPolicy, RequestPolicy, ResponsePolicy, etc.
+	// APIId is the unique identifier of the API this policy belongs to
+	APIId string
+
+	// APIName is the name of the API this policy belongs to
+	APIName string
+
+	// APIVersion is the version of the API this policy belongs to
+	APIVersion string
+
+	// AttachedTo indicates where the policy is attached (e.g., LevelAPI, LevelRoute)
+	AttachedTo Level
+}
+
+// Policy is the base interface that all policies must implement
 type Policy interface {
-	// Mode declares which phases this policy participates in and what body
-	// access is required. The kernel inspects this once at chain-build time.
+
+	// Mode returns the policy's processing mode for each phase
+	// Used by the kernel to optimize execution (e.g., skip body buffering if not needed)
 	Mode() ProcessingMode
 
-	// OnRequest is called once the full request body is buffered (or immediately
-	// if no body buffering is required). params is the merged map of init and
-	// runtime parameters stored at chain-build time.
+	// OnRequest executes the policy during request phase
+	// Called with request context including headers and body (if body mode is BUFFER)
+	// Returns RequestAction with modifications or immediate response
+	// Returns nil if policy has no action (pass-through)
 	OnRequest(ctx *RequestContext, params map[string]interface{}) RequestAction
 
-	// OnResponse is called once the full response body is buffered (or immediately
-	// if no body buffering is required). params is the same merged map.
+	// OnResponse executes the policy during response phase
+	// Called with response context including headers and body (if body mode is BUFFER)
+	// Returns ResponseAction with modifications
+	// Returns nil if policy has no action (pass-through)
 	OnResponse(ctx *ResponseContext, params map[string]interface{}) ResponseAction
 }
 
-// PolicyMetadata contains metadata passed to GetPolicy for instance creation.
-type PolicyMetadata = core.PolicyMetadata
-
-// PolicyFactory is the function signature for creating policy instances.
+// PolicyFactory is the function signature for creating policy instances
 // Policy implementations must export a GetPolicy function with this signature:
 //
-//	func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)
+//	func GetPolicy(
+//	    metadata PolicyMetadata,
+//	    params map[string]interface{},
+//	) (Policy, error)
+//
+// Parameters:
+//   - metadata: Contains route-level metadata (routeName, etc.)
+//   - params: Merged parameters combining static config (from policy definition
+//     with resolved ${config} references) and runtime parameters (from API
+//     configuration). Runtime params override static config on key conflicts.
+//
+// Returns:
+//   - Policy instance (can be singleton, cached, or per-route)
+//   - Error if initialization/validation fails
+//
+// The policy should perform all initialization, validation, and preprocessing
+// in GetPolicy. This includes parsing configuration, caching expensive operations,
+// and setting up any required state.
 type PolicyFactory func(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)
 
-// Level defines the attachment level of a policy.
-type Level = core.Level
+// ProcessingMode declares a policy's processing requirements for each phase
+// Used by the kernel to optimize execution (skip unnecessary phases, buffer strategically)
+type ProcessingMode struct {
+	// RequestHeaderMode specifies if/how the policy processes request headers
+	RequestHeaderMode HeaderProcessingMode
+
+	// RequestBodyMode specifies if/how the policy processes request body
+	RequestBodyMode BodyProcessingMode
+
+	// ResponseHeaderMode specifies if/how the policy processes response headers
+	ResponseHeaderMode HeaderProcessingMode
+
+	// ResponseBodyMode specifies if/how the policy processes response body
+	ResponseBodyMode BodyProcessingMode
+}
+
+// HeaderProcessingMode defines how a policy processes headers
+type HeaderProcessingMode string
 
 const (
-	LevelAPI   = core.LevelAPI
-	LevelRoute = core.LevelRoute
+	// HeaderModeSkip - Don't process headers, skip method invocation
+	HeaderModeSkip HeaderProcessingMode = "SKIP"
+
+	// HeaderModeProcess - Process headers (headers are always available)
+	HeaderModeProcess HeaderProcessingMode = "PROCESS"
 )
 
-// ─── Processing mode ─────────────────────────────────────────────────────────
-
-// ProcessingMode declares a policy's processing requirements for each phase.
-// The kernel uses this at chain-build time to decide whether to buffer bodies
-// and which Envoy ext_proc modes to request.
-type ProcessingMode = core.ProcessingMode
-
-// HeaderProcessingMode defines how a policy processes headers.
-type HeaderProcessingMode = core.HeaderProcessingMode
+// BodyProcessingMode defines how a policy processes body content
+type BodyProcessingMode string
 
 const (
-	// HeaderModeSkip — don't process headers; the phase method is not called.
-	HeaderModeSkip = core.HeaderModeSkip
+	// BodyModeSkip - Don't process body, skip method invocation
+	BodyModeSkip BodyProcessingMode = "SKIP"
 
-	// HeaderModeProcess — process headers.
-	HeaderModeProcess = core.HeaderModeProcess
+	// BodyModeBuffer - Process body with full buffering
+	// The kernel buffers complete body before invoking OnRequestBody/OnResponseBody
+	BodyModeBuffer BodyProcessingMode = "BUFFER"
+
+	// BodyModeStream - Process body in streaming chunks
+	// The kernel invokes streaming methods for each chunk (requires StreamingPolicy interface)
+	BodyModeStream BodyProcessingMode = "STREAM"
 )
 
-// BodyProcessingMode defines how a policy processes body content.
-type BodyProcessingMode = core.BodyProcessingMode
+// Level defines the attachment level of a policy
+type Level string
 
 const (
-	// BodyModeSkip — don't process body; the phase method is not called.
-	BodyModeSkip = core.BodyModeSkip
+	// LevelAPI indicates the policy is attached at the API level
+	LevelAPI Level = "api"
 
-	// BodyModeBuffer — buffer the complete body before invoking OnRequest/OnResponse.
-	BodyModeBuffer = core.BodyModeBuffer
-
-	// BodyModeStream — process body in streaming chunks.
-	// Deprecated: Use policyv2alpha.StreamingRequestPolicy / StreamingResponsePolicy instead.
-	BodyModeStream = core.BodyModeStream
+	// LevelRoute indicates the policy is attached at the route level
+	LevelRoute Level = "route"
 )

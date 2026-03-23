@@ -1,9 +1,9 @@
-// Package policy provides the policy interface for the WSO2 API Gateway.
+// Package policyv1alpha2 provides the policy interface for the WSO2 API Gateway.
 //
 // Policies declare capabilities by implementing phase-specific sub-interfaces.
 // The kernel discovers which phases a policy participates in via type assertions
 // at chain-build time — once at startup, with zero per-request overhead.
-package policy
+package policyv1alpha2
 
 // Policy is the base interface all policies must implement.
 // Mode declares the policy's processing requirements for each phase; the kernel

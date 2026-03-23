@@ -1,13 +1,11 @@
 package policyv1alpha
 
-import core "github.com/wso2/api-platform/sdk/core/policy"
-
 const (
 	// SystemParamConfigRefKey stores the config expression extracted from
 	// wso2/defaultValue in policy systemParameters schemas.
-	SystemParamConfigRefKey = core.SystemParamConfigRefKey
+	SystemParamConfigRefKey = "__wso2_internal_ref"
 
 	// SystemParamDefaultValueKey stores the schema default value paired with
 	// SystemParamConfigRefKey for runtime fallback on missing config keys.
-	SystemParamDefaultValueKey = core.SystemParamDefaultValueKey
+	SystemParamDefaultValueKey = "__wso2_internal_default"
 )

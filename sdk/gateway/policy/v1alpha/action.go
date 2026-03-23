@@ -1,62 +1,74 @@
 package policyv1alpha
 
-import core "github.com/wso2/api-platform/sdk/core/policy"
+// RequestAction marker interface (oneof pattern)
 
-// DropHeaderAction controls which headers appear in the analytics event.
-type DropHeaderAction = core.DropHeaderAction
+type RequestAction interface {
+	isRequestAction()    // private marker method
+	StopExecution() bool // returns true if execution should stop
+}
 
-// ImmediateResponse terminates the policy chain and returns a response to the
-// downstream client immediately. Return as *ImmediateResponse (pointer) from any
-// action method; the kernel dispatches on the pointer type via type assertion.
-// Returning nil from a method that returns a sealed action interface means "no action".
-type ImmediateResponse = core.ImmediateResponse
+// ResponseAction marker interface (oneof pattern)
+type ResponseAction interface {
+	isResponseAction()   // private marker method
+	StopExecution() bool // returns true if execution should stop
+}
 
-// ─── Header phase actions (sealed oneof) ─────────────────────────────────────
+// Holds the action and headers list to drop or allow from analytics event
+type DropHeaderAction struct {
+	Action  string   // Type of the action -> "allow" or "deny"
+	Headers []string // Headers list to drop or allow
+}
 
-// RequestHeaderAction is a sealed oneof returned by OnRequestHeaders.
-// Implement either UpstreamRequestHeaderModifications or return ImmediateResponse.
-type RequestHeaderAction = core.RequestHeaderAction
+// UpstreamRequestModifications - continue request to upstream with modifications
+type UpstreamRequestModifications struct {
+	SetHeaders               map[string]string         // Set or replace headers
+	RemoveHeaders            []string                  // Headers to remove
+	AppendHeaders            map[string][]string       // Headers to append
+	AddQueryParameters       map[string][]string       // Query parameters to add
+	RemoveQueryParameters    []string                  // Query parameters to remove
+	Body                     []byte                    // nil = no change, []byte{} = clear
+	Path                     *string                   // nil = no change
+	Method                   *string                   // nil = no change
+	UpstreamName             *string                   // Name of upstreamDefinition to route to (nil = no change)
+	AnalyticsMetadata        map[string]any            // Custom analytics metadata (key-value pairs)
+	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
+	DropHeadersFromAnalytics DropHeaderAction          // Request headers to exclude from analytics event
+}
 
-// UpstreamRequestHeaderModifications continues the request to upstream with the
-// specified header and routing modifications. Returned when no short-circuit is needed.
-type UpstreamRequestHeaderModifications = core.UpstreamRequestHeaderModifications
+func (u UpstreamRequestModifications) isRequestAction() {}
+func (u UpstreamRequestModifications) StopExecution() bool {
+	return false // Continue to next policy
+}
 
-// ResponseHeaderAction is a sealed oneof returned by OnResponseHeaders.
-// Implement either DownstreamResponseHeaderModifications or return ImmediateResponse.
-type ResponseHeaderAction = core.ResponseHeaderAction
+// ImmediateResponse - short-circuit and return response immediately
+type ImmediateResponse struct {
+	StatusCode               int
+	Headers                  map[string]string
+	Body                     []byte
+	AnalyticsMetadata        map[string]any            // Custom analytics metadata (key-value pairs)
+	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
+	DropHeadersFromAnalytics DropHeaderAction          // Headers to be excluded from analytics event
+}
 
-// DownstreamResponseHeaderModifications continues with the specified response header
-// modifications applied before the response is forwarded to the client.
-type DownstreamResponseHeaderModifications = core.DownstreamResponseHeaderModifications
+func (i ImmediateResponse) isRequestAction()  {}
+func (i ImmediateResponse) isResponseAction() {}
+func (i ImmediateResponse) StopExecution() bool {
+	return true // Stop chain, return response immediately
+}
 
-// ─── Buffered body actions (sealed oneof) ────────────────────────────────────
+// UpstreamResponseModifications - modify response from upstream
+type UpstreamResponseModifications struct {
+	SetHeaders               map[string]string         // Set or replace headers
+	RemoveHeaders            []string                  // Headers to remove
+	AppendHeaders            map[string][]string       // Headers to append
+	Body                     []byte                    // nil = no change, []byte{} = clear
+	StatusCode               *int                      // nil = no change
+	AnalyticsMetadata        map[string]any            // Custom analytics metadata (key-value pairs)
+	DynamicMetadata          map[string]map[string]any // Dynamic metadata by namespace
+	DropHeadersFromAnalytics DropHeaderAction          // Response headers to exclude from analytics event
+}
 
-// RequestAction is a sealed oneof returned by RequestPolicy.OnRequestBody.
-// Implement either UpstreamRequestModifications or return ImmediateResponse.
-type RequestAction = core.RequestAction
-
-// UpstreamRequestModifications forwards the request to upstream with the
-// specified mutations. Returned when processing should continue normally.
-type UpstreamRequestModifications = core.UpstreamRequestModifications
-
-// ResponseAction is a sealed oneof returned by ResponsePolicy.OnResponseBody.
-// Implement either DownstreamResponseModifications or return ImmediateResponse.
-type ResponseAction = core.ResponseAction
-
-// DownstreamResponseModifications forwards the response to the client with the
-// specified mutations.
-type DownstreamResponseModifications = core.DownstreamResponseModifications
-
-// UpstreamResponseModifications is a backward-compatible alias for DownstreamResponseModifications.
-// Deprecated: Use DownstreamResponseModifications instead.
-type UpstreamResponseModifications = core.UpstreamResponseModifications
-
-// ─── Streaming body actions ───────────────────────────────────────────────────
-
-// RequestChunkAction is returned by StreamingRequestPolicy.OnRequestBodyChunk.
-// Only the chunk payload can be modified.
-type RequestChunkAction = core.RequestChunkAction
-
-// ResponseChunkAction is returned by StreamingResponsePolicy.OnResponseBodyChunk.
-// Only the chunk payload can be modified.
-type ResponseChunkAction = core.ResponseChunkAction
+func (u UpstreamResponseModifications) isResponseAction() {}
+func (u UpstreamResponseModifications) StopExecution() bool {
+	return false // Continue to next policy
+}

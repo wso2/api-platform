@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha2
 
 // DropHeaderAction controls which headers appear in the analytics event.
 type DropHeaderAction struct {

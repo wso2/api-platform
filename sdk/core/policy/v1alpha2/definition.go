@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha2
 
 // PolicyParameters holds policy configuration with type-safe validated values
 type PolicyParameters struct {

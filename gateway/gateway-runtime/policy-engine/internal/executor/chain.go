@@ -154,7 +154,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 		}
 
 		// Execute policy
-		action := normalizeRequestAction(pol.OnRequest(ctx, params))
+		action := pol.OnRequest(ctx, params)
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -191,8 +191,8 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			}
 
 			// Apply modifications to context (T045)
-			if mods, ok := action.(*policy.UpstreamRequestModifications); ok {
-				applyRequestModifications(ctx, mods)
+			if mods, ok := action.(policy.UpstreamRequestModifications); ok {
+				applyRequestModifications(ctx, &mods)
 			}
 		}
 
@@ -289,7 +289,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 		}
 
 		// Execute policy
-		action := normalizeResponseAction(pol.OnResponse(ctx, params))
+		action := pol.OnResponse(ctx, params)
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -325,8 +325,8 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 				break
 			}
 
-			if mods, ok := action.(*policy.DownstreamResponseModifications); ok {
-				applyResponseModifications(ctx, mods)
+			if mods, ok := action.(policy.UpstreamResponseModifications); ok {
+				applyResponseModifications(ctx, &mods)
 			}
 		}
 
@@ -335,29 +335,6 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 
 	result.TotalExecutionTime = time.Since(startTime)
 	return result, nil
-}
-
-// normalizeRequestAction converts legacy value-type actions (returned by older policies)
-// to their pointer equivalents so that all downstream type assertions use the pointer form.
-func normalizeRequestAction(action policy.RequestAction) policy.RequestAction {
-	switch a := action.(type) {
-	case policy.UpstreamRequestModifications:
-		return &a
-	case policy.ImmediateResponse:
-		return &a
-	}
-	return action
-}
-
-// normalizeResponseAction converts legacy value-type actions to pointer form.
-func normalizeResponseAction(action policy.ResponseAction) policy.ResponseAction {
-	switch a := action.(type) {
-	case policy.DownstreamResponseModifications:
-		return &a
-	case policy.ImmediateResponse:
-		return &a
-	}
-	return action
 }
 
 // applyRequestModifications applies request modifications to context
@@ -420,7 +397,7 @@ func applyRequestModifications(ctx *policy.RequestContext, mods *policy.Upstream
 
 // applyResponseModifications applies response modifications to context
 // T046: Implements response context modification
-func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.DownstreamResponseModifications) {
+func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.UpstreamResponseModifications) {
 	// Get direct access to response headers for mutation (kernel-only API)
 	headers := ctx.ResponseHeaders.UnsafeInternalValues()
 

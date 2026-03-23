@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha2
 
 import "strings"
 

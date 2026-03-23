@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha2
 
 // AuthContext contains structured authentication information populated by auth policies.
 // It replaces the unstructured map[string]string previously used for inter-policy

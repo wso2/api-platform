@@ -110,14 +110,14 @@ func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
 }
 
 func (p *headerModifyPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return &policy.UpstreamRequestModifications{
+	return policy.UpstreamRequestModifications{
 		SetHeaders:    map[string]string{"x-bench-header": "bench-value"},
 		AppendHeaders: map[string][]string{"x-multi": {"v1", "v2"}},
 	}
 }
 
 func (p *headerModifyPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return &policy.DownstreamResponseModifications{
+	return policy.UpstreamResponseModifications{
 		SetHeaders: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
