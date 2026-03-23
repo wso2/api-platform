@@ -55,7 +55,7 @@ func (l *EventListener) updateSnapshotAsync(entityID, correlationID, failureMess
 
 		if err := l.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
 			l.logger.Error(failureMessage,
-				slog.String("api_id", entityID),
+				slog.String("entity_id", entityID),
 				slog.Any("error", err))
 		}
 	}()
@@ -187,8 +187,9 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 		return
 	}
 
-	// Only REST APIs and WebSub APIs have policies
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) {
+	// Policies are derived only for artifact kinds that can expose route-level policies.
+	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) &&
+		cfg.Kind != string(api.LlmProvider) && cfg.Kind != string(api.LlmProxy) {
 		return
 	}
 

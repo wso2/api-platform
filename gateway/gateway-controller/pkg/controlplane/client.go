@@ -204,6 +204,9 @@ func NewClient(
 		policyVersionResolver,
 		policyValidator,
 	)
+	if eventHubInstance != nil {
+		client.llmDeploymentService.SetEventHub(eventHubInstance, gatewayID)
+	}
 
 	client.mcpDeploymentService = utils.NewMCPDeploymentService(
 		store,
@@ -1785,11 +1788,13 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Update policy engine xDS snapshot (best-effort)
-	if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
+	// In event-driven mode the EventListener owns local policy convergence.
+	if c.eventHub == nil {
+		if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
+			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "success",
@@ -1888,11 +1893,13 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Update policy engine xDS snapshot (best-effort)
-	if err := c.updatePolicyForDeployment(providerID, deployedEvent.CorrelationID, result); err != nil {
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
+	// In event-driven mode, the EventListener owns local policy convergence.
+	if c.eventHub == nil {
+		if err := c.updatePolicyForDeployment(providerID, deployedEvent.CorrelationID, result); err != nil {
+			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "success",
@@ -1945,7 +1952,7 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		return
 	}
 
-	_, err = c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
+	cfg, err := c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM provider configuration",
 			slog.String("provider_id", providerID),
@@ -1954,6 +1961,19 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
 			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
+	}
+
+	if c.eventHub == nil {
+		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
+			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
+				c.logger.Warn("Failed to remove LLM provider API keys from policy engine",
+					slog.String("provider_id", providerID),
+					slog.Any("error", err))
+			}
+		}
+		if cfg != nil {
+			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		}
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",
@@ -2006,7 +2026,7 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	_, err = c.llmDeploymentService.DeleteLLMProxy(proxyID, undeployedEvent.CorrelationID, c.logger)
+	cfg, err := c.llmDeploymentService.DeleteLLMProxy(proxyID, undeployedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM proxy configuration",
 			slog.String("proxy_id", proxyID),
@@ -2015,6 +2035,19 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
 			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
+	}
+
+	if c.eventHub == nil {
+		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
+			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
+				c.logger.Warn("Failed to remove LLM proxy API keys from policy engine",
+					slog.String("proxy_id", proxyID),
+					slog.Any("error", err))
+			}
+		}
+		if cfg != nil {
+			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		}
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "success",

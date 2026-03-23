@@ -754,6 +754,20 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		systemConfig:      systemCfg,
 	}
 
+	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg)
+	server.deploymentService = deploymentService
+	server.llmDeploymentService = utils.NewLLMDeploymentService(
+		store,
+		db,
+		nil,
+		nil,
+		map[string]*api.LLMProviderTemplate{},
+		deploymentService,
+		routerCfg,
+		nil,
+		nil,
+	)
+
 	// Initialize API key service (needed for API key operations)
 	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
 	server.apiKeyService = apiKeyService
@@ -762,7 +776,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	restAPIService := restapi.NewRestAPIService(
 		store, db, nil, nil,
 		policyDefs, &server.policyDefMu,
-		nil, nil, nil,
+		deploymentService, nil, nil,
 		routerCfg, systemCfg,
 		httpClient, parser, validator, logger, server.eventHub,
 	)
@@ -837,6 +851,25 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 	}
 }
 
+func createLLMTemplateBody(t *testing.T, handle, displayName string) []byte {
+	t.Helper()
+
+	template := api.LLMProviderTemplate{
+		ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProviderTemplate,
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.LLMProviderTemplateData{
+			DisplayName: displayName,
+		},
+	}
+
+	body, err := json.Marshal(template)
+	require.NoError(t, err)
+	return body
+}
+
 func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, contextPath string) []byte {
 	t.Helper()
 
@@ -890,6 +923,12 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	}
 	if server.apiKeyService != nil {
 		server.apiKeyService.SetEventHub(hub, gatewayID)
+	}
+	if server.deploymentService != nil {
+		server.deploymentService.SetEventHub(hub, gatewayID)
+	}
+	if server.llmDeploymentService != nil {
+		server.llmDeploymentService.SetEventHub(hub, gatewayID)
 	}
 }
 
@@ -1406,6 +1445,133 @@ func TestUpdateLLMProviderTemplateInvalidBody(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteLLMProviderTemplateNotFound(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+func TestCreateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	body := createLLMTemplateBody(t, "openai", "OpenAI Template")
+	c, w := createTestContextWithHeader("POST", "/llm-provider-templates", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-create-llm-template")
+
+	server.CreateLLMProviderTemplate(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	require.Len(t, mockDB.templates, 1)
+	require.Len(t, mockHub.publishedEvents, 1)
+
+	var storedTemplate *models.StoredLLMProviderTemplate
+	for _, template := range mockDB.templates {
+		storedTemplate = template
+	}
+	require.NotNil(t, storedTemplate)
+
+	assert.Equal(t, "openai", storedTemplate.GetHandle())
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, storedTemplate.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-create-llm-template", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := server.store.GetTemplate(storedTemplate.UUID)
+	require.Error(t, err)
+}
+
+func TestUpdateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "template-update-id",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata: api.Metadata{
+				Name: "openai",
+			},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "OpenAI Template",
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, mockDB.SaveLLMProviderTemplate(template))
+	require.NoError(t, server.store.AddTemplate(template))
+
+	body := createLLMTemplateBody(t, "openai", "Updated OpenAI Template")
+	c, w := createTestContextWithHeader("PUT", "/llm-provider-templates/openai", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-update-llm-template")
+
+	server.UpdateLLMProviderTemplate(c, "openai")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, template.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-update-llm-template", mockHub.publishedEvents[0].event.EventID)
+
+	storedInDB, err := mockDB.GetLLMProviderTemplate(template.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated OpenAI Template", storedInDB.Configuration.Spec.DisplayName)
+
+	storedInMemory, err := server.store.GetTemplate(template.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "OpenAI Template", storedInMemory.Configuration.Spec.DisplayName)
+}
+
+func TestDeleteLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "template-delete-id",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata: api.Metadata{
+				Name: "openai",
+			},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "OpenAI Template",
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, mockDB.SaveLLMProviderTemplate(template))
+
+	c, w := createTestContext("DELETE", "/llm-provider-templates/openai", nil)
+	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-template")
+
+	server.DeleteLLMProviderTemplate(c, "openai")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMTemplate, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, template.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-delete-llm-template", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := mockDB.GetLLMProviderTemplate(template.UUID)
+	require.Error(t, err)
+
+	_, err = server.store.GetTemplate(template.UUID)
+	require.EqualError(t, err, fmt.Sprintf("template with ID '%s' not found", template.UUID))
 }
 
 // TestListLLMProviders tests listing LLM providers
@@ -2189,6 +2355,7 @@ func TestValidationErrorsInUpdateRestAPI(t *testing.T) {
 // TestGetLLMProviderByIdFound tests getting an existing LLM provider
 func TestGetLLMProviderByIdFound(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	providerConfig := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
@@ -2218,7 +2385,46 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
+
+	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
+	server.GetLLMProviderById(c, "test-llm-provider")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+
+	providerConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata: api.Metadata{
+			Name: "test-llm-provider",
+		},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "test-llm",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("http://llm-backend.com"),
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID:                "0000-llm-id-0000-000000000000",
+		Kind:                string(api.LlmProvider),
+		Handle:              "test-llm-provider",
+		DisplayName:         "test-llm",
+		Version:             "v1.0",
+		SourceConfiguration: providerConfig,
+		DesiredState:        models.StateDeployed,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+	mockDB.SaveConfig(cfg)
 
 	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
 	server.GetLLMProviderById(c, "test-llm-provider")
@@ -2229,6 +2435,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 // TestGetLLMProxyByIdFound tests getting an existing LLM proxy
 func TestGetLLMProxyByIdFound(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	proxyConfig := api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
@@ -2256,7 +2463,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
 	server.GetLLMProxyById(c, "test-llm-proxy-handle")
@@ -2267,6 +2474,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 // TestGetLLMProviderByIdWithDeployedAt tests GetLLMProviderById with deployedAt
 func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	deployedAt := time.Now()
 	providerConfig := api.LLMProviderConfiguration{
@@ -2298,7 +2506,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/llm-providers/test-llm-provider", nil)
 	server.GetLLMProviderById(c, "test-llm-provider")
@@ -2316,6 +2524,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 // TestGetLLMProxyByIdWithDeployedAt tests GetLLMProxyById with deployedAt
 func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	deployedAt := time.Now()
 	proxyConfig := api.LLMProxyConfiguration{
@@ -2345,7 +2554,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 		CreatedAt:           time.Now(),
 		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/llm-proxies/test-llm-proxy-handle", nil)
 	server.GetLLMProxyById(c, "test-llm-proxy-handle")
@@ -2383,6 +2592,130 @@ func TestCreateRestAPIMissingContentType(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteLLMProviderInternalError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := &models.StoredConfig{
+		UUID:        "0000-llm-provider-id-0000-000000000000",
+		Kind:        string(api.LlmProvider),
+		Handle:      "test-llm-provider",
+		DisplayName: "test-llm",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProvider,
+			Metadata: api.Metadata{
+				Name: "test-llm-provider",
+			},
+			Spec: api.LLMProviderConfigData{
+				DisplayName: "test-llm",
+				Version:     "v1.0.0",
+				Template:    "openai",
+				Upstream: api.LLMProviderConfigData_Upstream{
+					Url: stringPtr("http://llm-backend.com"),
+				},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	apiKey := &models.APIKey{
+		UUID:         "provider-key-id",
+		Name:         "provider-key",
+		APIKey:       "hashed-provider-key",
+		MaskedAPIKey: "***provider-key",
+		ArtifactUUID: cfg.UUID,
+		Status:       models.APIKeyStatusActive,
+		CreatedAt:    time.Now(),
+		CreatedBy:    "test-user",
+		UpdatedAt:    time.Now(),
+		Source:       "external",
+	}
+	mockDB.SaveConfig(cfg)
+	mockDB.SaveAPIKey(apiKey)
+	require.NoError(t, server.store.Add(cfg))
+
+	c, w := createTestContext("DELETE", "/llm-providers/test-llm-provider", nil)
+	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-provider")
+
+	server.DeleteLLMProvider(c, "test-llm-provider")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMProvider, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-delete-llm-provider", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := mockDB.GetConfig(cfg.UUID)
+	require.Error(t, err)
+
+	_, err = mockDB.GetAPIKeysByAPIAndName(cfg.UUID, apiKey.Name)
+	require.Error(t, err)
+
+	_, err = server.store.Get(cfg.UUID)
+	require.NoError(t, err)
+}
+
+func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := &models.StoredConfig{
+		UUID:        "0000-llm-proxy-id-0000-000000000000",
+		Kind:        string(api.LlmProxy),
+		Handle:      "test-llm-proxy",
+		DisplayName: "test-llm-proxy",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProxy,
+			Metadata: api.Metadata{
+				Name: "test-llm-proxy",
+			},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "test-llm-proxy",
+				Version:     "v1.0.0",
+				Provider: api.LLMProxyProvider{
+					Id: "provider-a",
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	mockDB.SaveConfig(cfg)
+	require.NoError(t, server.store.Add(cfg))
+
+	c, w := createTestContext("DELETE", "/llm-proxies/test-llm-proxy", nil)
+	c.Set(middleware.CorrelationIDKey, "corr-id-delete-llm-proxy")
+
+	server.DeleteLLMProxy(c, "test-llm-proxy")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeLLMProxy, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-delete-llm-proxy", mockHub.publishedEvents[0].event.EventID)
+
+	_, err := mockDB.GetConfig(cfg.UUID)
+	require.Error(t, err)
+
+	_, err = server.store.Get(cfg.UUID)
+	require.NoError(t, err)
 }
 
 // TestDeleteLLMProxyInternalError tests DeleteLLMProxy with internal error
@@ -2499,8 +2832,8 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 		},
 		DesiredState: models.StateDeployed,
 		Origin:       models.OriginGatewayAPI,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 	_ = server.store.Add(cfg)
 

@@ -107,17 +107,27 @@ func (s *APIDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID
 	s.gatewayID = gatewayID
 }
 
+// TODO: (VirajSalaka) We do not need gatewayID in the event as it is part of the publishEvent.
 // publishEvent publishes an event to the EventHub for async processing.
 func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
 	if s.eventHub == nil {
 		return
 	}
+	if strings.TrimSpace(s.gatewayID) == "" {
+		logger.Warn("Skipping event publish because gateway ID is not configured",
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID))
+		return
+	}
 	event := eventhub.Event{
-		EventType: eventType,
-		Action:    action,
-		EntityID:  entityID,
-		EventID:   correlationID,
-		EventData: eventhub.EmptyEventData,
+		GatewayID:           s.gatewayID,
+		OriginatedTimestamp: time.Now(),
+		EventType:           eventType,
+		Action:              action,
+		EntityID:            entityID,
+		EventID:             correlationID,
+		EventData:           eventhub.EmptyEventData,
 	}
 	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
 		logger.Error("Failed to publish event",
@@ -125,6 +135,15 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 			slog.String("action", action),
 			slog.String("entity_id", entityID),
 			slog.Any("error", err))
+	}
+}
+
+func isReplicaSyncedKind(kind string) bool {
+	switch kind {
+	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -210,10 +229,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	var existingConfig *models.StoredConfig
 	var isUpdate bool
 
-	// TODO: (VirajSalaka) Revisit the logic to do these validations from the gateway itself 
+	// TODO: (VirajSalaka) Revisit the logic to do these validations from the gateway itself
 
 	// Check for conflicts with other configurations
-	
+
 	if s.store != nil {
 		existingConfig, _ = s.store.Get(apiID)
 		isUpdate = existingConfig != nil
@@ -485,8 +504,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		}
 	}
 
-	// TODO: (VirajSalaka) Fix other types also with the same eventing synchronization.
-	if s.eventHub == nil || (storedCfg.Kind != "WebSubApi" && storedCfg.Kind != "RestApi") {
+	if s.eventHub == nil || !isReplicaSyncedKind(storedCfg.Kind) {
 		// Memory-only mode: add to in-memory store inline
 		if err := s.store.Add(storedCfg); err != nil {
 			// Rollback database write (only if persistent mode)
@@ -533,8 +551,7 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 		}
 	}
 
-	// TODO: (VirajSalaka) Fix other types also with the same eventing synchronization.
-	if s.eventHub == nil || (existing.Kind != "WebSubApi" && existing.Kind != "RestApi") {
+	if s.eventHub == nil || !isReplicaSyncedKind(existing.Kind) {
 		// Memory-only mode: update in-memory store inline
 		if err := s.store.Update(existing); err != nil {
 			// Rollback DB to original state since memory update failed

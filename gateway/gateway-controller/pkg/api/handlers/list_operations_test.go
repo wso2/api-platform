@@ -176,8 +176,8 @@ func TestListLLMProviderTemplatesWithData(t *testing.T) {
 	}
 
 	// Add templates to store
-	server.store.AddTemplate(template1)
-	server.store.AddTemplate(template2)
+	require.NoError(t, server.db.SaveLLMProviderTemplate(template1))
+	require.NoError(t, server.db.SaveLLMProviderTemplate(template2))
 
 	c, w := createTestContext("GET", "/llm-provider-templates", nil)
 	server.ListLLMProviderTemplates(c, api.ListLLMProviderTemplatesParams{})
@@ -213,7 +213,8 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	server.store.AddTemplate(template)
+	require.NoError(t, server.db.SaveLLMProviderTemplate(template))
+	require.NoError(t, server.store.AddTemplate(template))
 
 	c, w := createTestContext("GET", "/llm-provider-templates/template1", nil)
 	server.GetLLMProviderTemplateById(c, "0000-template1-0000-000000000000")
@@ -252,8 +253,11 @@ func TestListLLMProvidersWithData(t *testing.T) {
 
 	now := time.Now()
 	provider := &models.StoredConfig{
-		UUID:         "0000-provider1-0000-000000000000",
-		Kind:         "LlmProvider",
+		UUID:        "0000-provider1-0000-000000000000",
+		Kind:        "LlmProvider",
+		Handle:      "openai-provider",
+		DisplayName: "OpenAI Provider",
+		Version:     "1.0.0",
 		DesiredState: "deployed",
 		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProviderConfiguration{
@@ -276,7 +280,8 @@ func TestListLLMProvidersWithData(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	server.store.Add(provider)
+	require.NoError(t, server.store.Add(provider))
+	require.NoError(t, server.db.SaveConfig(provider))
 
 	c, w := createTestContext("GET", "/llm-providers", nil)
 	server.ListLLMProviders(c, api.ListLLMProvidersParams{})
@@ -315,8 +320,11 @@ func TestListLLMProxiesWithData(t *testing.T) {
 
 	now := time.Now()
 	proxy := &models.StoredConfig{
-		UUID:         "0000-proxy1-0000-000000000000",
-		Kind:         "LlmProxy",
+		UUID:        "0000-proxy1-0000-000000000000",
+		Kind:        "LlmProxy",
+		Handle:      "0000-llm-proxy-1-0000-000000000000",
+		DisplayName: "LLM Proxy 1",
+		Version:     "1.0.0",
 		DesiredState: "deployed",
 		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProxyConfiguration{
@@ -337,7 +345,8 @@ func TestListLLMProxiesWithData(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	server.store.Add(proxy)
+	require.NoError(t, server.store.Add(proxy))
+	require.NoError(t, server.db.SaveConfig(proxy))
 
 	c, w := createTestContext("GET", "/llm-proxies", nil)
 	server.ListLLMProxies(c, api.ListLLMProxiesParams{})
