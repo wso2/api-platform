@@ -29,6 +29,10 @@ func loadPoliciesFromAPIs(
 	for _, apiConfig := range loadedAPIs {
 		transformer, ok := transform.Get(apiConfig.Kind)
 		if !ok {
+			log.Error("No transformer registered for API kind — skipping API during startup",
+				slog.String("kind", apiConfig.Kind),
+				slog.String("api_id", apiConfig.UUID),
+				slog.String("name", apiConfig.Handle))
 			continue
 		}
 		rdc, err := transformer.Transform(apiConfig)

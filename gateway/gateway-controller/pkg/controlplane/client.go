@@ -1509,16 +1509,16 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 		}
 
 		// 5. Delete from in-memory store
-		if err := c.store.Delete(apiID); err != nil {
-			c.logger.Error("Failed to delete API configuration from memory store",
+		if storeErr := c.store.Delete(apiID); storeErr != nil && !storage.IsNotFoundError(storeErr) {
+			c.logger.Error("Failed to delete API configuration from memory store; skipping policy cleanup",
 				slog.String("api_id", apiID),
-				slog.Any("error", err),
+				slog.Any("error", storeErr),
 			)
-		} else {
-			c.logger.Info("Successfully deleted API configuration from memory store",
-				slog.String("api_id", apiID),
-			)
+			return
 		}
+		c.logger.Info("Successfully deleted API configuration from memory store",
+			slog.String("api_id", apiID),
+		)
 
 		// 6. Update xDS snapshot asynchronously (API will be removed from routes)
 		c.updateXDSSnapshotAsync(apiID, correlationID, false, false)
@@ -3222,7 +3222,7 @@ func (c *Client) updatePolicyForDeployment(entityID, correlationID string, resul
 	cfg := result.StoredConfig
 	transformer, ok := transform.Get(cfg.Kind)
 	if !ok {
-		return nil
+		return fmt.Errorf("no policy transformer registered for kind %q", cfg.Kind)
 	}
 
 	rdc, err := transformer.Transform(cfg)
