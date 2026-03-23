@@ -54,7 +54,7 @@ func (l *EventListener) updateSnapshotAsync(entityID, correlationID, failureMess
 
 		if err := l.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
 			l.logger.Error(failureMessage,
-				slog.String("api_id", entityID),
+				slog.String("entity_id", entityID),
 				slog.Any("error", err))
 		}
 	}()

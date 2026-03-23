@@ -136,6 +136,9 @@ func NewAPIServer(
 		eventHub:           eventHub,
 		gatewayID:          systemConfig.Controller.Server.GatewayID,
 	}
+	if eventHub != nil {
+		server.llmDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
+	}
 
 	// Create RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
@@ -470,6 +473,7 @@ func (s *APIServer) DeleteWebSubAPI(c *gin.Context, id string) {
 // (POST /llm-provider-templates)
 func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -483,9 +487,10 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	storedTemplate, err := s.llmDeploymentService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 
 	if err != nil {
@@ -566,6 +571,7 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 // (PUT /llm-provider-templates/{id})
 func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -579,9 +585,10 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(id, utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to parse template configuration", slog.Any("error", err))
@@ -608,8 +615,9 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 // (DELETE /llm-provider-templates/{id})
 func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
-	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
+	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, log)
 	if err != nil {
 		log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -686,10 +694,11 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	// Delegate to service which parses/validates/transforms and persists
 	stored, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Origin:      models.OriginGatewayAPI,
-		Logger:      log,
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Origin:        models.OriginGatewayAPI,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM provider", slog.Any("error", err))
@@ -724,18 +733,21 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	// Service lookup is DB-first so reads still work before this replica has
+	// replayed the corresponding EventHub event into its in-memory store.
+	cfg, err := s.llmDeploymentService.GetLLMProviderByHandle(id)
 	if err != nil {
-		log.Error("Failed to look up LLM provider", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to look up LLM provider",
-		})
-		return
-	}
-	if cfg == nil {
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			log.Error("Failed to look up LLM provider", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to look up LLM provider",
+			})
+			return
+		}
 		log.Warn("LLM provider configuration not found",
-			slog.String("handle", id))
+			slog.String("handle", id),
+			slog.Any("error", err))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM provider configuration with handle '%s' not found", id),
@@ -840,6 +852,19 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 		"message": "LLM provider deleted successfully",
 		"id":      cfg.Handle,
 	})
+
+	if s.eventHub == nil && s.apiKeyXDSManager != nil {
+		apiName, apiVersion := cfg.DisplayName, cfg.Version
+		if apiName != "" {
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove LLM provider API keys from policy engine",
+					slog.Any("error", err),
+					slog.String("api_id", cfg.UUID),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion))
+			}
+		}
+	}
 }
 
 // ListLLMProxies implements ServerInterface.ListLLMProxies
@@ -898,10 +923,11 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	// Delegate to service which parses/validates/transforms and persists
 	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Origin:      models.OriginGatewayAPI,
-		Logger:      log,
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+		Origin:        models.OriginGatewayAPI,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM proxy", slog.Any("error", err))
@@ -935,18 +961,19 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	cfg, err := s.llmDeploymentService.GetLLMProxyByHandle(id)
 	if err != nil {
-		log.Error("Failed to look up LLM proxy", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to look up LLM proxy",
-		})
-		return
-	}
-	if cfg == nil {
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			log.Error("Failed to look up LLM proxy", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to look up LLM proxy",
+			})
+			return
+		}
 		log.Warn("LLM proxy configuration not found",
-			slog.String("handle", id))
+			slog.String("handle", id),
+			slog.Any("error", err))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
@@ -1051,6 +1078,19 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 		"message": "LLM proxy deleted successfully",
 		"id":      cfg.Handle,
 	})
+
+	if s.eventHub == nil && s.apiKeyXDSManager != nil {
+		apiName, apiVersion := cfg.DisplayName, cfg.Version
+		if apiName != "" {
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove LLM proxy API keys from policy engine",
+					slog.Any("error", err),
+					slog.String("api_id", cfg.UUID),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion))
+			}
+		}
+	}
 }
 
 // CreateMCPProxy implements ServerInterface.CreateMCPProxy

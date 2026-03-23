@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
@@ -35,8 +36,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
-const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
-const lazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
+const (
+	LazyResourceTypeLLMProviderTemplate     = "LlmProviderTemplate"
+	LazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
+)
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
@@ -89,7 +92,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 		parser:                       config.NewParser(),
 		validator:                    config.NewLLMValidator(),
 		policyValidator:              policyValidator,
-		transformer:                  NewLLMProviderTransformer(store, routerConfig, policyVersionResolver),
+		transformer:                  NewLLMProviderTransformer(store, db, routerConfig, policyVersionResolver),
 		policyManager:                policyManager,
 		policyRouteConfigTransformer: policyRouteConfigTransformer,
 	}
@@ -98,8 +101,103 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	if err := service.InitializeOOBTemplates(templateDefinitions); err != nil {
 		slog.Error("Failed to initialize out-of-the-box LLM provider templates", slog.Any("error", err))
 	}
+	if err := service.InitializeExistingLLMState(); err != nil {
+		slog.Warn("Failed to initialize stored LLM state", slog.Any("error", err))
+	}
 
 	return service
+}
+
+// SetEventHub configures EventHub publishing for replica-synced LLM provider flows.
+func (s *LLMDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
+	if s.deploymentService != nil {
+		s.deploymentService.SetEventHub(eventHub, gatewayID)
+	}
+}
+
+func (s *LLMDeploymentService) isEventDriven() bool {
+	return s.deploymentService != nil && s.deploymentService.eventHub != nil
+}
+
+func (s *LLMDeploymentService) publishLLMProviderEvent(action, entityID, correlationID string, logger *slog.Logger) {
+	if s.deploymentService == nil {
+		return
+	}
+	s.deploymentService.publishEvent(eventhub.EventTypeLLMProvider, action, entityID, correlationID, logger)
+}
+
+func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlationID string, logger *slog.Logger) {
+	if s.deploymentService == nil {
+		return
+	}
+	s.deploymentService.publishEvent(eventhub.EventTypeLLMProxy, action, entityID, correlationID, logger)
+}
+
+func (s *LLMDeploymentService) publishLLMTemplateEvent(action, entityID, correlationID string, logger *slog.Logger) {
+	if s.deploymentService == nil {
+		return
+	}
+	s.deploymentService.publishEvent(eventhub.EventTypeLLMTemplate, action, entityID, correlationID, logger)
+}
+
+// LLM configs are persisted as their original management payloads. The derived
+// RestAPI form is rebuilt on demand because it depends on in-memory template and
+// policy state that is not stored in SQL.
+func (s *LLMDeploymentService) hydrateStoredLLMConfig(cfg *models.StoredConfig) error {
+	if cfg == nil {
+		return nil
+	}
+
+	switch src := cfg.SourceConfiguration.(type) {
+	case api.LLMProviderConfiguration:
+		var restAPI api.RestAPI
+		if _, err := s.transformer.Transform(&src, &restAPI); err != nil {
+			return fmt.Errorf("failed to transform stored LLM provider %s: %w", cfg.UUID, err)
+		}
+		cfg.Configuration = restAPI
+	case api.LLMProxyConfiguration:
+		var restAPI api.RestAPI
+		if _, err := s.transformer.Transform(&src, &restAPI); err != nil {
+			return fmt.Errorf("failed to transform stored LLM proxy %s: %w", cfg.UUID, err)
+		}
+		cfg.Configuration = restAPI
+	}
+
+	return nil
+}
+
+// Startup can populate the in-memory store from disk before any EventHub replay
+// happens. Rehydrate those entries and restore provider-template mappings so the
+// local replica has the same derived state it would get from an event replay.
+func (s *LLMDeploymentService) InitializeExistingLLMState() error {
+	var errs []string
+
+	for _, cfg := range s.store.GetAllByKind(string(api.LlmProvider)) {
+		if err := s.hydrateStoredLLMConfig(cfg); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+
+		providerCfg, ok := cfg.SourceConfiguration.(api.LLMProviderConfiguration)
+		if !ok {
+			continue
+		}
+		if err := s.publishProviderTemplateMappingAsLazyResource(cfg.Handle, providerCfg.Spec.Template, ""); err != nil {
+			errs = append(errs, fmt.Sprintf("failed to publish provider-template mapping for %s: %v", cfg.Handle, err))
+		}
+	}
+
+	for _, cfg := range s.store.GetAllByKind(string(api.LlmProxy)) {
+		if err := s.hydrateStoredLLMConfig(cfg); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+
+	return nil
 }
 
 // updatePolicyRouteConfig transforms cfg and upserts it into the policy route config manager.
@@ -218,31 +316,42 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	// Publish provider-to-template mapping as lazy resource for policy engine
-	if providerConfig.Metadata.Name != "" && providerConfig.Spec.Template != "" {
-		if err := s.publishProviderTemplateMappingAsLazyResource(
-			providerConfig.Metadata.Name,
-			providerConfig.Spec.Template,
-			params.CorrelationID,
-		); err != nil {
-			params.Logger.Warn("Failed to publish provider-to-template mapping",
-				slog.String("provider_name", providerConfig.Metadata.Name),
-				slog.String("template_handle", providerConfig.Spec.Template),
-				slog.Any("error", err))
+	// In multi-replica mode the database write above is the only local mutation
+	// on the write path. Store, lazy-resource, xDS, and policy updates happen in
+	// the EventListener after all replicas consume the same event.
+	if s.isEventDriven() {
+		action := "CREATE"
+		if isUpdate {
+			action = "UPDATE"
 		}
-	}
+		s.publishLLMProviderEvent(action, apiID, params.CorrelationID, params.Logger)
+	} else {
+		// Publish provider-to-template mapping as lazy resource for policy engine
+		if providerConfig.Metadata.Name != "" && providerConfig.Spec.Template != "" {
+			if err := s.publishProviderTemplateMappingAsLazyResource(
+				providerConfig.Metadata.Name,
+				providerConfig.Spec.Template,
+				params.CorrelationID,
+			); err != nil {
+				params.Logger.Warn("Failed to publish provider-to-template mapping",
+					slog.String("provider_name", providerConfig.Metadata.Name),
+					slog.String("template_handle", providerConfig.Spec.Template),
+					slog.Any("error", err))
+			}
+		}
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			params.Logger.Error("Failed to update xDS snapshot",
-				slog.Any("error", err),
-				slog.String("api_uuid", apiID),
-				slog.String("correlation_id", params.CorrelationID))
-		}
-	}()
+		// Update xDS snapshot asynchronously
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot",
+					slog.Any("error", err),
+					slog.String("api_uuid", apiID),
+					slog.String("correlation_id", params.CorrelationID))
+			}
+		}()
+	}
 
 	s.updatePolicyRouteConfig(storedCfg, params.Logger)
 
@@ -348,17 +457,25 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			params.Logger.Error("Failed to update xDS snapshot",
-				slog.Any("error", err),
-				slog.String("api_id", apiID),
-				slog.String("correlation_id", params.CorrelationID))
+	if s.isEventDriven() {
+		action := "CREATE"
+		if isUpdate {
+			action = "UPDATE"
 		}
-	}()
+		s.publishLLMProxyEvent(action, apiID, params.CorrelationID, params.Logger)
+	} else {
+		// Update xDS snapshot asynchronously
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot",
+					slog.Any("error", err),
+					slog.String("api_id", apiID),
+					slog.String("correlation_id", params.CorrelationID))
+			}
+		}()
+	}
 
 	s.updatePolicyRouteConfig(storedCfg, params.Logger)
 
@@ -367,9 +484,10 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 
 // LLMTemplateParams Template params for CRUD
 type LLMTemplateParams struct {
-	Spec        []byte
-	ContentType string
-	Logger      *slog.Logger
+	Spec          []byte
+	ContentType   string
+	CorrelationID string
+	Logger        *slog.Logger
 }
 
 // parseAndValidateLLMTemplate parses the raw spec and validates it, returning the typed template.
@@ -422,6 +540,11 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 			}
 			return nil, fmt.Errorf("failed to save template to database: %w", err)
 		}
+	}
+
+	if s.isEventDriven() && s.db != nil {
+		s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
+		return stored, nil
 	}
 
 	// Add to memory store (with rollback if it fails)
@@ -608,7 +731,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 
 // UpdateLLMProviderTemplate validates and updates existing template by handle
 func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
-	existing, err := s.store.GetTemplateByHandle(handle)
+	existing, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
@@ -638,6 +761,11 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
 			return nil, fmt.Errorf("failed to update template in database: %w", err)
 		}
+	}
+
+	if s.isEventDriven() && s.db != nil {
+		s.publishLLMTemplateEvent("UPDATE", updated.UUID, params.CorrelationID, params.Logger)
+		return updated, nil
 	}
 
 	// Update memory store (with rollback if it fails)
@@ -686,15 +814,23 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 }
 
 // DeleteLLMProviderTemplate deletes a template by name
-func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models.StoredLLMProviderTemplate, error) {
-	tmpl, err := s.store.GetTemplateByHandle(handle)
+func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID string, logger *slog.Logger) (*models.StoredLLMProviderTemplate, error) {
+	tmpl, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
 
+	if s.isEventDriven() && s.db != nil {
+		if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
+			return nil, fmt.Errorf("failed to delete template from database: %w", err)
+		}
+		s.publishLLMTemplateEvent("DELETE", tmpl.UUID, correlationID, logger)
+		return tmpl, nil
+	}
+
 	// Remove from policy engine via lazy resource xDS (ID = handle)
 	if s.lazyResourceManager != nil {
-		if err := s.lazyResourceManager.RemoveResourceByIDAndType(handle, lazyResourceTypeLLMProviderTemplate, ""); err != nil {
+		if err := s.lazyResourceManager.RemoveResourceByIDAndType(handle, LazyResourceTypeLLMProviderTemplate, ""); err != nil {
 			// Don't fail deletion if xDS publish fails; just log.
 			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
 				slog.String("template_id", tmpl.UUID),
@@ -744,6 +880,11 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models
 // If displayName is nil or empty, all templates are returned.
 func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*models.StoredLLMProviderTemplate {
 	templates := s.store.GetAllTemplates()
+	if s.db != nil {
+		if storedTemplates, err := s.db.GetAllLLMProviderTemplates(); err == nil {
+			templates = storedTemplates
+		}
+	}
 
 	// Return all templates if no filter is specified
 	if displayName == nil || *displayName == "" {
@@ -763,6 +904,21 @@ func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*
 
 // GetLLMProviderTemplateByHandle returns template by handle
 func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	if s.db != nil {
+		templates, err := s.db.GetAllLLMProviderTemplates()
+		if err == nil {
+			for _, template := range templates {
+				if template.GetHandle() == handle {
+					return template, nil
+				}
+			}
+			return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+		}
+		if !storage.IsDatabaseUnavailableError(err) {
+			return nil, err
+		}
+	}
+
 	return s.store.GetTemplateByHandle(handle)
 }
 
@@ -789,7 +945,7 @@ func (s *LLMDeploymentService) publishTemplateAsLazyResource(tmpl *api.LLMProvid
 
 	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
 		ID:           tmpl.Metadata.Name,
-		ResourceType: lazyResourceTypeLLMProviderTemplate,
+		ResourceType: LazyResourceTypeLLMProviderTemplate,
 		Resource:     m,
 	}, correlationID)
 }
@@ -815,7 +971,7 @@ func (s *LLMDeploymentService) publishProviderTemplateMappingAsLazyResource(prov
 
 	return s.lazyResourceManager.StoreResource(&storage.LazyResource{
 		ID:           providerName,
-		ResourceType: lazyResourceTypeProviderTemplateMapping,
+		ResourceType: LazyResourceTypeProviderTemplateMapping,
 		Resource:     mappingResource,
 	}, correlationID)
 }
@@ -829,7 +985,7 @@ func (s *LLMDeploymentService) removeProviderTemplateMappingLazyResource(provide
 		return fmt.Errorf("provider name is empty")
 	}
 
-	return s.lazyResourceManager.RemoveResourceByIDAndType(providerName, lazyResourceTypeProviderTemplateMapping, correlationID)
+	return s.lazyResourceManager.RemoveResourceByIDAndType(providerName, LazyResourceTypeProviderTemplateMapping, correlationID)
 }
 
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers
@@ -844,6 +1000,13 @@ func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*m
 // ListLLMProviders returns all stored LLM provider configurations with optional filtering
 func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParams) []*models.StoredConfig {
 	configs := s.store.GetAllByKind(string(api.LlmProvider))
+	// Prefer database rows when available because EventHub-based flows can leave
+	// the local store briefly behind the canonical state right after a write.
+	if s.db != nil {
+		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProvider)); err == nil {
+			configs = storedConfigs
+		}
+	}
 
 	// If no filters are provided, return all configs
 	if params.DisplayName == nil && params.Version == nil &&
@@ -866,12 +1029,6 @@ func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParam
 
 // matchesFilters checks if a config matches all provided filter criteria
 func matchesFilters(config *models.StoredConfig, params any) bool {
-	restCfg, ok := config.Configuration.(api.RestAPI)
-	if !ok {
-		return false
-	}
-	apiCfg := restCfg.Spec
-
 	var name, version, cnt, vhost, status *string
 
 	switch p := params.(type) {
@@ -883,18 +1040,50 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 		return false
 	}
 
+	var displayName string
+	var configVersion string
+	var configContext string
+	var configVHost *string
+
+	switch sc := config.SourceConfiguration.(type) {
+	case api.LLMProviderConfiguration:
+		displayName = sc.Spec.DisplayName
+		configVersion = sc.Spec.Version
+		if sc.Spec.Context != nil {
+			configContext = *sc.Spec.Context
+		}
+		configVHost = sc.Spec.Vhost
+	case api.LLMProxyConfiguration:
+		displayName = sc.Spec.DisplayName
+		configVersion = sc.Spec.Version
+		if sc.Spec.Context != nil {
+			configContext = *sc.Spec.Context
+		}
+	default:
+		restCfg, ok := config.Configuration.(api.RestAPI)
+		if !ok {
+			return false
+		}
+		displayName = restCfg.Spec.DisplayName
+		configVersion = restCfg.Spec.Version
+		configContext = restCfg.Spec.Context
+		if restCfg.Spec.Vhosts != nil {
+			configVHost = &restCfg.Spec.Vhosts.Main
+		}
+	}
+
 	// Check DisplayName filter
-	if name != nil && apiCfg.DisplayName != *name {
+	if name != nil && displayName != *name {
 		return false
 	}
 
 	// Check Version filter
-	if version != nil && apiCfg.Version != *version {
+	if version != nil && configVersion != *version {
 		return false
 	}
 
 	// Check Context filter
-	if cnt != nil && apiCfg.Context != *cnt {
+	if cnt != nil && configContext != *cnt {
 		return false
 	}
 
@@ -905,7 +1094,7 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 
 	// Check Vhost filter
 	if vhost != nil {
-		if apiCfg.Vhosts == nil || apiCfg.Vhosts.Main != *vhost {
+		if configVHost == nil || *configVHost != *vhost {
 			return false
 		}
 	}
@@ -915,7 +1104,7 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 
 // UpdateLLMProvider updates an existing provider identified by name+version using DeployLLMProviderConfiguration
 func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	existing, err := s.GetLLMProviderByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
 	}
@@ -934,17 +1123,29 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	logger *slog.Logger) (*models.StoredConfig, error) {
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	cfg, err := s.GetLLMProviderByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
 	}
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
+	// Remove the canonical row first so every replica observes the same delete
+	// via the follow-up event, instead of each writer mutating local state inline.
 	if s.db != nil {
+		if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+			return cfg, fmt.Errorf("failed to delete LLM provider API keys from database: %w", err)
+		}
 		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
+	}
+	if s.isEventDriven() {
+		s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
+		return cfg, nil
+	}
+	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil && !storage.IsNotFoundError(err) {
+		return cfg, fmt.Errorf("failed to delete LLM provider API keys from memory store: %w", err)
 	}
 	if err := s.store.Delete(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
@@ -976,9 +1177,33 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	return cfg, nil
 }
 
+func (s *LLMDeploymentService) GetLLMProviderByHandle(handle string) (*models.StoredConfig, error) {
+	// In EventHub mode the database is the source of truth.
+	if s.db != nil {
+		cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
+		if err == nil {
+			_ = s.hydrateStoredLLMConfig(cfg)
+			return cfg, nil
+		}
+		return nil, err
+	}
+
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.hydrateStoredLLMConfig(cfg)
+	return cfg, nil
+}
+
 // ListLLMProxies returns all stored LLM proxy configurations
 func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) []*models.StoredConfig {
 	configs := s.store.GetAllByKind(string(api.LlmProxy))
+	if s.db != nil {
+		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProxy)); err == nil {
+			configs = storedConfigs
+		}
+	}
 
 	// If no filters are provided, return all configs
 	if params.DisplayName == nil && params.Version == nil &&
@@ -1010,7 +1235,7 @@ func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*mode
 
 // UpdateLLMProxy updates an existing provider identified by name+version using DeployLLMProxyConfiguration
 func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	existing, err := s.GetLLMProxyByHandle(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
 	}
@@ -1026,9 +1251,27 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	return res.StoredConfig, nil
 }
 
+func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {
+	if s.db != nil {
+		cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)
+		if err == nil {
+			_ = s.hydrateStoredLLMConfig(cfg)
+			return cfg, nil
+		}
+		return nil, err
+	}
+
+	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.hydrateStoredLLMConfig(cfg)
+	return cfg, nil
+}
+
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	cfg, err := s.GetLLMProxyByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
 	}
@@ -1036,9 +1279,19 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
 	}
 	if s.db != nil {
+		if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+			return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)
+		}
 		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
+	}
+	if s.isEventDriven() {
+		s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
+		return cfg, nil
+	}
+	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil && !storage.IsNotFoundError(err) {
+		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from memory store: %w", err)
 	}
 	if err := s.store.Delete(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
