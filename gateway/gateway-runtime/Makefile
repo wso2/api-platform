@@ -39,6 +39,7 @@ build: ## Build Gateway Runtime Docker image using buildx
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -62,6 +63,7 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -85,6 +87,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -109,6 +112,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \

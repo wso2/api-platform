@@ -40,6 +40,7 @@ WORKDIR /workspace
 
 # Download SDK dependencies first (cached by go.mod/go.sum changes)
 COPY --from=sdk go.mod go.sum /api-platform/sdk/
+COPY --from=sdk-core go.mod /api-platform/sdk/core/
 WORKDIR /api-platform/sdk
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
@@ -52,6 +53,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Copy full source for build
 COPY --from=sdk . /api-platform/sdk
+COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
 
 # Build gateway-builder binary (cache mounts persist across rebuilds)
@@ -82,6 +84,7 @@ ENV ENABLE_DEBUG=${ENABLE_DEBUG}
 
 # Download SDK dependencies (cached by go.mod/go.sum changes)
 COPY --from=sdk go.mod go.sum /api-platform/sdk/
+COPY --from=sdk-core go.mod /api-platform/sdk/core/
 WORKDIR /api-platform/sdk
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
@@ -101,6 +104,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy all source and policy files
 COPY policy-engine/ /api-platform/gateway/gateway-runtime/policy-engine/
 COPY --from=sdk . /api-platform/sdk
+COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
 COPY --from=system-policies . /api-platform/gateway/system-policies/
 COPY --from=dev-policies . /api-platform/gateway/dev-policies/

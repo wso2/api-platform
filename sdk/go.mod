@@ -8,7 +8,7 @@ require (
 	github.com/milvus-io/milvus/client/v2 v2.6.2
 	github.com/milvus-io/milvus/pkg/v2 v2.6.8
 	github.com/redis/go-redis/v9 v9.17.3
-	github.com/wso2/api-platform/sdk/core v0.5.4
+	github.com/wso2/api-platform/sdk/core v0.0.0
 )
 
 replace github.com/wso2/api-platform/sdk/core => ./core
