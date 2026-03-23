@@ -75,7 +75,7 @@ func (t *WebSubAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runt
 			DisplayName: apiData.DisplayName,
 			ProjectID:   projectID,
 		},
-		Context:             apiData.Context,
+		Context:             ResolveAPIContext(apiData.Context, apiData.Version),
 		PolicyChainResolver: "route-key",
 		Routes:              make(map[string]*models.Route),
 		PolicyChains:        make(map[string]*models.PolicyChain),

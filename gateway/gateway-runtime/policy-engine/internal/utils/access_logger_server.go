@@ -63,6 +63,10 @@ func (s *AccessLogServiceServer) StreamAccessLogs(stream v3.AccessLogService_Str
 		if httpLogs != nil {
 			slog.Debug("Received a stream of access logs", "count", len(httpLogs.LogEntry))
 			for _, logEntry := range httpLogs.LogEntry {
+				if logEntry.GetCommonProperties().GetRouteName() == "" {
+					slog.Debug("Dropping access log entry with no route name (unmatched request)")
+					continue
+				}
 				s.analytics.Process(logEntry)
 			}
 		}

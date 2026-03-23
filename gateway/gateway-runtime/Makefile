@@ -26,7 +26,7 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
-.PHONY: help build build-coverage-image build-debug push clean build-and-push-multiarch test
+.PHONY: help build build-coverage-image build-debug push clean clean-policy-engine build-and-push-multiarch test
 
 help: ## Show this help message
 	@echo 'Gateway Runtime Build (Version: $(VERSION))'
@@ -131,10 +131,13 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 test: ## Run policy-engine tests
 	cd policy-engine && go test -v $$(go list ./... | grep -v /testutils) -cover -coverprofile=unit-test-coverage.txt
 
-clean: ## Clean Docker images
-	@echo "Cleaning Docker images..."
-	@docker rmi $(IMAGE_NAME):$(VERSION) 2>/dev/null || true
-	@docker rmi $(IMAGE_NAME):latest 2>/dev/null || true
-	@docker rmi $(IMAGE_NAME)-coverage:$(VERSION) 2>/dev/null || true
+clean-policy-engine: ## Reset policy-engine go.mod/go.sum and remove generated files
+	@echo "Resetting policy-engine go.mod and go.sum..."
+	@cd policy-engine && git checkout -- go.mod go.sum
+	@echo "Removing generated files in policy-engine main package..."
+	@rm -f policy-engine/cmd/policy-engine/build_info.go policy-engine/cmd/policy-engine/plugin_registry.go
+	@echo "Policy-engine clean completed"
+
+clean: clean-policy-engine ## Clean Docker images and policy-engine generated artifacts
 	@rm -rf target
 	@echo "Clean completed"

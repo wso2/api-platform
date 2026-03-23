@@ -216,6 +216,6 @@ clean-db: ## Remove local dev SQLite database files
 
 .PHONY: clean
 clean: ## Clean all build artifacts
-	$(MAKE) -C gateway-controller clean
+# 	$(MAKE) -C gateway-controller clean
 	$(MAKE) -C gateway-builder clean
 	$(MAKE) -C gateway-runtime clean
