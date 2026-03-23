@@ -34,7 +34,7 @@ import (
 func CreatePolicyDir(t *testing.T, baseDir, name, version string) string {
 	t.Helper()
 	policyPath := filepath.Join(baseDir, "policies", name, version)
-	err := os.MkdirAll(policyPath, 0755)
+	err := os.MkdirAll(policyPath, 0750)
 	require.NoError(t, err, "failed to create policy directory %s", policyPath)
 	return policyPath
 }
@@ -161,7 +161,7 @@ func Factory(metadata policy.PolicyMetadata, initParams map[string]interface{}) 
 func CreateValidPolicyDir(t *testing.T, baseDir, name, version string) string {
 	t.Helper()
 	policyDir := filepath.Join(baseDir, name)
-	err := os.MkdirAll(policyDir, 0755)
+	err := os.MkdirAll(policyDir, 0750)
 	require.NoError(t, err, "failed to create policy directory %s", policyDir)
 
 	// Create policy.yaml

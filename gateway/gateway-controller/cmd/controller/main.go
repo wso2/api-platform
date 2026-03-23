@@ -151,7 +151,10 @@ func main() {
 				log.Error("Failed to initialize EventHub", slog.Any("error", err))
 				os.Exit(1)
 			}
-			eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID)
+			if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
+				log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
+				os.Exit(1)
+			}
 			log.Info("EventHub initialized for multi-replica sync",
 				slog.String("gateway_id", cfg.Controller.Server.GatewayID))
 		} else {
@@ -529,10 +532,14 @@ func main() {
 		evtListener.Stop()
 	}
 	if eventHubInstance != nil {
-		eventHubInstance.Close()
+		if err := eventHubInstance.Close(); err != nil {
+			log.Warn("Failed to close EventHub cleanly", slog.Any("error", err))
+		}
 	}
 	if eventHubStorage != nil {
-		eventHubStorage.Close()
+		if err := eventHubStorage.Close(); err != nil {
+			log.Warn("Failed to close EventHub storage cleanly", slog.Any("error", err))
+		}
 	}
 
 	// Stop control plane client

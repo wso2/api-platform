@@ -343,7 +343,9 @@ func (c *Client) Connect() error {
 
 	// Wait for connection.ack message
 	if err := c.waitForConnectionAck(conn); err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close connection after missing connection.ack", slog.Any("error", closeErr))
+		}
 		c.state.mu.Lock()
 		c.state.Conn = nil
 		c.state.mu.Unlock()
