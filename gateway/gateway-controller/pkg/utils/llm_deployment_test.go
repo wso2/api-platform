@@ -525,7 +525,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_WithDBAndEventHubPublish
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil, nil, nil)
 
 	mockHub := &mockLLMEventHub{}
 	service.SetEventHub(mockHub, "test-gateway")
@@ -559,7 +559,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_WithDBAndEventHubPublish
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil, nil, nil)
 
 	existing := testStoredLLMTemplate("template-update-id", "openai", "OpenAI Template")
 	require.NoError(t, db.SaveLLMProviderTemplate(existing))
@@ -600,7 +600,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_WithDBAndEventHubPublish
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil, nil, nil)
 
 	template := testStoredLLMTemplate("template-delete-id", "openai", "OpenAI Template")
 	require.NoError(t, db.SaveLLMProviderTemplate(template))
@@ -727,7 +727,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil, nil, nil)
 
 	mockHub := &mockLLMEventHub{}
 	service.SetEventHub(mockHub, "test-gateway")
@@ -805,7 +805,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	apiDeploymentService := NewAPIDeploymentService(store, db, nil, nil, routerConfig)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil, nil, nil)
 
 	mockHub := &mockLLMEventHub{}
 	service.SetEventHub(mockHub, "test-gateway")

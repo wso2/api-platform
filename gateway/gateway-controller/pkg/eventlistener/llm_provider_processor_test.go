@@ -31,8 +31,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
 func testLLMProviderTemplate(uuid, handle string) *models.StoredLLMProviderTemplate {
@@ -146,25 +146,31 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 	lazySnapshot := lazyresourcexds.NewLazyResourceSnapshotManager(lazyStore, newTestLogger())
 	lazyManager := lazyresourcexds.NewLazyResourceStateManager(lazyStore, lazySnapshot, newTestLogger())
 
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
+	policyDefs := map[string]models.PolicyDefinition{
+		"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
+	}
+	routerCfg := &config.RouterConfig{
+		GatewayHost: "gateway.example.com",
+		VHosts: config.VHostsConfig{
+			Main: config.VHostEntry{Default: "api.example.com"},
+		},
+	}
+	systemCfg := &config.Config{}
+	policyManager := policyxds.NewPolicyManager(policyxds.NewSnapshotManager(newTestLogger()), newTestLogger())
+	pvr := utils.NewLoadedPolicyVersionResolver(policyDefs)
+	llmT := transform.NewLLMTransformer(store, db, routerCfg, systemCfg, policyDefs, pvr)
+	transform.Init(map[string]models.ConfigTransformer{"LlmProvider": llmT, "LlmProxy": llmT})
+	t.Cleanup(func() { transform.Init(nil) })
 
 	listener := &EventListener{
 		store:               store,
 		db:                  db,
 		lazyResourceManager: lazyManager,
 		policyManager:       policyManager,
-		routerConfig: &config.RouterConfig{
-			GatewayHost: "gateway.example.com",
-			VHosts: config.VHostsConfig{
-				Main: config.VHostEntry{Default: "api.example.com"},
-			},
-		},
-		systemConfig: &config.Config{},
-		policyDefinitions: map[string]models.PolicyDefinition{
-			"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
-		},
-		logger: newTestLogger(),
+		routerConfig:        routerCfg,
+		systemConfig:        systemCfg,
+		policyDefinitions:   policyDefs,
+		logger:              newTestLogger(),
 	}
 
 	listener.handleEvent(eventhub.Event{
@@ -184,13 +190,13 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 	assert.Equal(t, "openai", mapping.Resource["template_handle"])
 	assert.Equal(t, cfg.Handle, mapping.Resource["provider_name"])
 
-	policy, err := policyManager.GetPolicy(cfg.UUID + "-policies")
-	require.NoError(t, err)
+	rdc, ok := policyManager.GetRuntimeStore().Get(storage.Key(cfg.Kind, cfg.Handle))
+	require.True(t, ok)
 	var policyRoutes int
-	for _, route := range policy.Configuration.Routes {
-		if len(route.Policies) > 0 {
+	for _, chain := range rdc.PolicyChains {
+		if len(chain.Policies) > 0 {
 			policyRoutes++
-			assert.Equal(t, "rate-limit", route.Policies[0].Name)
+			assert.Equal(t, "rate-limit", chain.Policies[0].Name)
 		}
 	}
 	assert.Equal(t, 1, policyRoutes)
@@ -218,18 +224,10 @@ func TestHandleEvent_LLMProviderDelete_RemovesLocalStateAndAPIKeys(t *testing.T)
 		},
 	}, ""))
 
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
-	require.NoError(t, policyStore.Set(&models.StoredPolicyConfig{
-		ID: cfg.UUID + "-policies",
-		Configuration: policyenginev1.Configuration{
-			Metadata: policyenginev1.Metadata{
-				APIName: "Test Provider",
-				Version: "v1.0.0",
-				Context: "/llm",
-			},
-		},
-	}))
+	policyManager := policyxds.NewPolicyManager(policyxds.NewSnapshotManager(newTestLogger()), newTestLogger())
+	policyManager.GetRuntimeStore().Set(storage.Key(cfg.Kind, cfg.Handle), &models.RuntimeDeployConfig{
+		Metadata: models.Metadata{Kind: cfg.Kind, Handle: cfg.Handle},
+	})
 
 	listener := &EventListener{
 		store:               store,
@@ -262,8 +260,8 @@ func TestHandleEvent_LLMProviderDelete_RemovesLocalStateAndAPIKeys(t *testing.T)
 	_, exists := lazyManager.GetResourceByIDAndType(cfg.Handle, utils.LazyResourceTypeProviderTemplateMapping)
 	assert.False(t, exists)
 
-	_, err = policyManager.GetPolicy(cfg.UUID + "-policies")
-	require.Error(t, err)
+	_, found := policyManager.GetRuntimeStore().Get(storage.Key(cfg.Kind, cfg.Handle))
+	assert.False(t, found)
 }
 
 func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T) {
@@ -292,25 +290,31 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 	cfg := testLLMProxyStoredConfig("llm-proxy-create-id", "proxy-a", "provider-a", policies)
 	require.NoError(t, db.SaveConfig(cfg))
 
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
+	policyDefs := map[string]models.PolicyDefinition{
+		"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
+	}
+	routerCfg := &config.RouterConfig{
+		ListenerPort: 8080,
+		GatewayHost:  "gateway.example.com",
+		VHosts: config.VHostsConfig{
+			Main: config.VHostEntry{Default: "api.example.com"},
+		},
+	}
+	systemCfg := &config.Config{}
+	policyManager := policyxds.NewPolicyManager(policyxds.NewSnapshotManager(newTestLogger()), newTestLogger())
+	pvr := utils.NewLoadedPolicyVersionResolver(policyDefs)
+	llmT := transform.NewLLMTransformer(store, db, routerCfg, systemCfg, policyDefs, pvr)
+	transform.Init(map[string]models.ConfigTransformer{"LlmProvider": llmT, "LlmProxy": llmT})
+	t.Cleanup(func() { transform.Init(nil) })
 
 	listener := &EventListener{
-		store:         store,
-		db:            db,
-		policyManager: policyManager,
-		routerConfig: &config.RouterConfig{
-			ListenerPort: 8080,
-			GatewayHost:  "gateway.example.com",
-			VHosts: config.VHostsConfig{
-				Main: config.VHostEntry{Default: "api.example.com"},
-			},
-		},
-		systemConfig: &config.Config{},
-		policyDefinitions: map[string]models.PolicyDefinition{
-			"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
-		},
-		logger: newTestLogger(),
+		store:             store,
+		db:                db,
+		policyManager:     policyManager,
+		routerConfig:      routerCfg,
+		systemConfig:      systemCfg,
+		policyDefinitions: policyDefs,
+		logger:            newTestLogger(),
 	}
 
 	listener.handleEvent(eventhub.Event{
@@ -325,13 +329,13 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 	_, ok := stored.Configuration.(api.RestAPI)
 	assert.True(t, ok)
 
-	policy, err := policyManager.GetPolicy(cfg.UUID + "-policies")
-	require.NoError(t, err)
+	rdc, ok := policyManager.GetRuntimeStore().Get(storage.Key(cfg.Kind, cfg.Handle))
+	require.True(t, ok)
 	var policyRoutes int
-	for _, route := range policy.Configuration.Routes {
-		if len(route.Policies) > 0 {
+	for _, chain := range rdc.PolicyChains {
+		if len(chain.Policies) > 0 {
 			policyRoutes++
-			assert.Equal(t, "rate-limit", route.Policies[0].Name)
+			assert.Equal(t, "rate-limit", chain.Policies[0].Name)
 		}
 	}
 	assert.Equal(t, 1, policyRoutes)
@@ -346,18 +350,10 @@ func TestHandleEvent_LLMProxyDelete_RemovesLocalStateAndAPIKeys(t *testing.T) {
 	require.NoError(t, store.Add(cfg))
 	require.NoError(t, store.StoreAPIKey(apiKey))
 
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
-	require.NoError(t, policyStore.Set(&models.StoredPolicyConfig{
-		ID: cfg.UUID + "-policies",
-		Configuration: policyenginev1.Configuration{
-			Metadata: policyenginev1.Metadata{
-				APIName: "Test Proxy",
-				Version: "v1.0.0",
-				Context: "/llm-proxy",
-			},
-		},
-	}))
+	policyManager := policyxds.NewPolicyManager(policyxds.NewSnapshotManager(newTestLogger()), newTestLogger())
+	policyManager.GetRuntimeStore().Set(storage.Key(cfg.Kind, cfg.Handle), &models.RuntimeDeployConfig{
+		Metadata: models.Metadata{Kind: cfg.Kind, Handle: cfg.Handle},
+	})
 
 	listener := &EventListener{
 		store:            store,
@@ -386,6 +382,6 @@ func TestHandleEvent_LLMProxyDelete_RemovesLocalStateAndAPIKeys(t *testing.T) {
 		assert.Equal(t, "corr-llm-proxy-delete", xdsManager.removeCalls[0].correlationID)
 	}
 
-	_, err = policyManager.GetPolicy(cfg.UUID + "-policies")
-	require.Error(t, err)
+	_, found := policyManager.GetRuntimeStore().Get(storage.Key(cfg.Kind, cfg.Handle))
+	assert.False(t, found)
 }
