@@ -69,6 +69,7 @@ func makeStoredConfig(t *testing.T, sandbox *api.Upstream) *models.StoredConfig 
 		Kind:                string(api.RestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
+		Origin:              models.OriginGatewayAPI,
 	}
 }
 

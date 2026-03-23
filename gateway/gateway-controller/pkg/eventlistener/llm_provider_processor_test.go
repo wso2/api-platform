@@ -82,7 +82,7 @@ func testLLMProviderStoredConfig(uuid, handle, template string, policies *[]api.
 		DisplayName:         "Test Provider",
 		Version:             "v1.0.0",
 		SourceConfiguration: provider,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
@@ -114,7 +114,7 @@ func testLLMProxyStoredConfig(uuid, handle, provider string, policies *[]api.LLM
 		DisplayName:         "Test Proxy",
 		Version:             "v1.0.0",
 		SourceConfiguration: proxy,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}

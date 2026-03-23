@@ -40,12 +40,15 @@ import (
 
 // APIDeploymentParams contains parameters for API deployment operations
 type APIDeploymentParams struct {
-	Data          []byte       // Raw configuration data (YAML/JSON)
-	ContentType   string       // Content type for parsing
-	Kind          string       // API kind: "RestApi" or "WebSubApi"
-	APIID         string       // API ID (if provided, used for updates; if empty, generates new UUID)
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	Data          []byte        // Raw configuration data (YAML/JSON)
+	ContentType   string        // Content type for parsing
+	Kind          string        // API kind: "RestApi" or "WebSubApi"
+	APIID         string        // API ID (if provided, used for updates; if empty, generates new UUID)
+	DeploymentID  string        // Platform deployment ID (empty for gateway-api origin)
+	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
+	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
+	CorrelationID string        // Correlation ID for tracking
+	Logger        *slog.Logger  // Logger instance
 }
 
 // APIDeploymentResult contains the result of API deployment
@@ -146,6 +149,10 @@ func isReplicaSyncedKind(kind string) bool {
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var (
 		parsedConfig any
 		apiName      string
@@ -257,10 +264,12 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		Version:             apiVersion,
 		Configuration:       parsedConfig,
 		SourceConfiguration: parsedConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		DeploymentID:        params.DeploymentID,
+		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          nil,
+		DeployedAt:          params.DeployedAt,
 	}
 
 	if kind == "WebSubApi" {
@@ -529,9 +538,11 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	existing.Version = newConfig.Version
 	existing.Configuration = newConfig.Configuration
 	existing.SourceConfiguration = newConfig.SourceConfiguration
-	existing.Status = models.StatusPending
+	existing.DesiredState = models.StateDeployed
+	existing.DeploymentID = newConfig.DeploymentID
+	existing.Origin = newConfig.Origin
 	existing.UpdatedAt = now
-	existing.DeployedAt = nil
+	existing.DeployedAt = newConfig.DeployedAt
 
 	// Update database first (only if persistent mode)
 	if s.db != nil {

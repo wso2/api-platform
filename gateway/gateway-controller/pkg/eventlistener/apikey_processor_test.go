@@ -34,7 +34,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)
 
 	require.NoError(t, db.SaveConfig(cfg))
@@ -75,7 +75,7 @@ func TestHandleEvent_APIKeyUpdate_SyncsMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	originalKey := testAPIKey("api-key-id-1", "test-key", "Original Key", cfg.UUID)
 	updatedKey := testAPIKey("api-key-id-1", "test-key", "Updated Key", cfg.UUID)
 
@@ -114,7 +114,7 @@ func TestHandleEvent_APIKeyUpdate_SyncsMemoryAndXDS(t *testing.T) {
 func TestHandleEvent_APIKeyDelete_RemovesMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)
 
 	require.NoError(t, store.Add(cfg))
@@ -148,7 +148,7 @@ func TestHandleEvent_APIKeyDelete_RemovesMemoryAndXDS(t *testing.T) {
 func TestHandleEvent_APIKeyDelete_SkipsXDSWhenKeyNameIsUnavailable(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	require.NoError(t, store.Add(cfg))
 
 	listener := &EventListener{
@@ -193,7 +193,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS_ForLLMProxy(t *testing.T) {
 				},
 			},
 		},
-		Status: models.StatusPending,
+		DesiredState: models.StateDeployed,
 	}
 	apiKey := testAPIKey("api-key-id-llm-proxy", "test-key", "Test Key", cfg.UUID)
 

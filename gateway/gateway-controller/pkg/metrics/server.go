@@ -50,7 +50,9 @@ func NewServer(cfg *config.MetricsConfig, log *slog.Logger) *Server {
 	// Health endpoint for the metrics server itself
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.Warn("Failed to write metrics health response", slog.Any("error", err))
+		}
 	})
 
 	httpServer := &http.Server{

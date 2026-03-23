@@ -141,11 +141,13 @@ func TestSchemaInitialization(t *testing.T) {
 			"version":      "TEXT",
 			"kind":         "TEXT",
 			"handle":       "TEXT",
-			"status":       "TEXT",
+			"desired_state": "TEXT",
+			"deployment_id": "TEXT",
 			"created_at":   "TIMESTAMP",
 			"updated_at":   "TIMESTAMP",
 			"deployed_at":  "TIMESTAMP",
 			"gateway_id":   "TEXT",
+			"origin":       "TEXT",
 		}
 
 		for colName, colType := range expectedColumns {
@@ -209,7 +211,8 @@ func TestSchemaInitialization(t *testing.T) {
 		}
 
 		expectedIndexes := []string{
-			"idx_artifacts_status",
+			"idx_artifacts_desired_state",
+			"idx_artifacts_deployment_id",
 			"idx_artifacts_kind",
 		}
 
@@ -233,7 +236,7 @@ func TestSchemaInitialization(t *testing.T) {
 		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'").Scan(&sqlStr)
 		require.NoError(t, err)
 
-		assert.Contains(t, sqlStr, "CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed'))", "Should have CHECK constraint on status")
+		assert.Contains(t, sqlStr, "CHECK(desired_state IN ('deployed', 'undeployed'))", "Should have CHECK constraint on desired_state")
 	})
 
 	// Verify WAL mode is enabled

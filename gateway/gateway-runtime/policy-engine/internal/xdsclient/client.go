@@ -112,7 +112,9 @@ func (c *Client) Stop() {
 		// Close connection if open
 		c.mu.Lock()
 		if c.conn != nil {
-			c.conn.Close()
+			if err := c.conn.Close(); err != nil {
+				slog.WarnContext(c.ctx, "Failed to close xDS client connection during stop", "error", err)
+			}
 			c.conn = nil
 		}
 		c.mu.Unlock()
@@ -238,7 +240,9 @@ func (c *Client) connectAndRun() error {
 	defer func() {
 		c.mu.Lock()
 		if c.conn != nil {
-			c.conn.Close()
+			if err := c.conn.Close(); err != nil {
+				slog.WarnContext(c.ctx, "Failed to close xDS client connection", "error", err)
+			}
 			c.conn = nil
 		}
 		c.mu.Unlock()

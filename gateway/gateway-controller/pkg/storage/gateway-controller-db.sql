@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS artifacts (
     version TEXT NOT NULL,
     kind TEXT NOT NULL,
     handle TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed')),
+    desired_state TEXT NOT NULL CHECK(desired_state IN ('deployed', 'undeployed')),
+    deployment_id TEXT,
+    origin TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deployed_at TIMESTAMP, -- NULL until first deployment
@@ -17,7 +19,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
     UNIQUE(gateway_id, kind, handle)
 );
 
-CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
+CREATE INDEX IF NOT EXISTS idx_artifacts_desired_state ON artifacts(desired_state);
+CREATE INDEX IF NOT EXISTS idx_artifacts_deployment_id ON artifacts(deployment_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind);
 CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
 

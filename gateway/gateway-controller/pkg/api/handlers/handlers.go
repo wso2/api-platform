@@ -171,39 +171,37 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, correlatio
 		return
 	}
 
-	now := time.Now()
 	if success {
-		if cfg.Status == models.StatusUndeployed {
-			cfg.Status = models.StatusUndeployed
-		} else {
-			cfg.Status = models.StatusDeployed
+		// For direct artifacts (no deployment_id), set deployed_at here.
+		// Platform-deployed artifacts get deployed_at from the WebSocket event timestamp
+		// during SaveConfig/UpdateConfig.
+		if cfg.DeploymentID == "" {
+			now := time.Now()
+			cfg.DeployedAt = &now
+			cfg.UpdatedAt = now
+
+			// Update database (only if persistent mode)
+			if s.db != nil {
+				if err := s.db.UpdateConfig(cfg); err != nil {
+					log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
+				}
+			}
+
+			// Update in-memory store
+			if err := s.store.Update(cfg); err != nil {
+				log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
+			}
 		}
-		cfg.DeployedAt = &now
+
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
 			slog.String("handle", cfg.Handle))
 	} else {
-		cfg.Status = models.StatusFailed
-		cfg.DeployedAt = nil
 		log.Error("Configuration deployment failed",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
 			slog.String("handle", cfg.Handle))
-	}
-
-	cfg.UpdatedAt = now
-
-	// Update database (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(cfg); err != nil {
-			log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-		}
-	}
-
-	// Update in-memory store
-	if err := s.store.Update(cfg); err != nil {
-		log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
 	}
 }
 
@@ -266,11 +264,11 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
-			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
 				continue
 			}
 
-			status := api.MCPProxyListItemStatus(cfg.Status)
+			status := api.MCPProxyListItemStatus(cfg.DesiredState)
 			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
 			var mcp api.MCPProxyConfiguration
 			j, _ := json.Marshal(cfg.SourceConfiguration)
@@ -322,11 +320,11 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
-			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
 				continue
 			}
 
-			status := string(cfg.Status)
+			status := string(cfg.DesiredState)
 			websubItems = append(websubItems, api.WebSubAPIListItem{
 				Id:          stringPtr(cfg.Handle),
 				DisplayName: stringPtr(cfg.DisplayName),
@@ -364,11 +362,11 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			if v, ok := filters["context"]; ok && cfgContext != v {
 				continue
 			}
-			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
 				continue
 			}
 
-			status := string(cfg.Status)
+			status := string(cfg.DesiredState)
 			apiItems = append(apiItems, api.RestAPIListItem{
 				Id:          stringPtr(cfg.Handle),
 				DisplayName: stringPtr(cfg.DisplayName),
@@ -410,7 +408,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -648,7 +646,7 @@ func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProviders
 
 	items := make([]api.LLMProviderListItem, len(configs))
 	for i, cfg := range configs {
-		status := api.LLMProviderListItemStatus(cfg.Status)
+		status := api.LLMProviderListItemStatus(cfg.DesiredState)
 
 		// Convert SourceConfiguration to LLMProviderConfiguration
 		var prov api.LLMProviderConfiguration
@@ -699,6 +697,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
+		Origin:        models.OriginGatewayAPI,
 		Logger:        log,
 	})
 	if err != nil {
@@ -774,7 +773,7 @@ func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	providerDetail := gin.H{
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -813,6 +812,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -925,7 +925,7 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 
 	items := make([]api.LLMProxyListItem, len(configs))
 	for i, cfg := range configs {
-		status := api.LLMProxyListItemStatus(cfg.Status)
+		status := api.LLMProxyListItemStatus(cfg.DesiredState)
 
 		// Convert SourceConfiguration to LLMProxyConfiguration
 		var proxy api.LLMProxyConfiguration
@@ -977,6 +977,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Origin:        models.OriginGatewayAPI,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM proxy", slog.Any("error", err))
@@ -1049,7 +1050,7 @@ func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	proxyDetail := gin.H{
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -1088,6 +1089,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	updated, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -1261,6 +1263,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		ID:            "", // Empty to generate new UUID
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -1319,7 +1322,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
-		status := api.MCPProxyListItemStatus(cfg.Status)
+		status := api.MCPProxyListItemStatus(cfg.DesiredState)
 		// Convert SourceConfiguration to MCPProxyConfiguration
 		var mcp api.MCPProxyConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
@@ -1410,7 +1413,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 		"id":            cfg.Handle,
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -1452,6 +1455,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	updated, err := s.mcpDeploymentService.UpdateMCPProxy(handle, utils.MCPDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	}, log)
@@ -1571,13 +1575,13 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 				return
 			}
 
-			if cfg.Status == models.StatusDeployed {
+			if cfg.DeployedAt != nil {
 				log.Info("API deployed successfully, pushing to control plane",
 					slog.String("config_id", configID),
 					slog.String("displayName", cfg.DisplayName))
 
 				apiID := configID
-				deploymentID := ""
+				deploymentID := cfg.DeploymentID
 
 				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
 					log.Error("Failed to push deployment to control plane",
@@ -1588,14 +1592,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 						slog.String("api_id", apiID))
 				}
 				return
-
-			} else if cfg.Status == models.StatusFailed {
-				log.Warn("API deployment failed, skipping control plane push",
-					slog.String("config_id", configID),
-					slog.String("displayName", cfg.DisplayName))
-				return
 			}
-			// Continue waiting if status is still pending
 		}
 	}
 }
@@ -1640,19 +1637,15 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 			continue
 		}
 
-		// Convert status to the correct type
+		// Convert desired state to the admin API status type
 		var status adminapi.ConfigDumpAPIMetadataStatus
-		switch cfg.Status {
-		case models.StatusDeployed:
+		switch cfg.DesiredState {
+		case models.StateDeployed:
 			status = adminapi.Deployed
-		case models.StatusFailed:
-			status = adminapi.Failed
-		case models.StatusPending:
-			status = adminapi.Pending
-		case models.StatusUndeployed:
+		case models.StateUndeployed:
 			status = adminapi.Undeployed
 		default:
-			status = adminapi.Pending
+			status = adminapi.Deployed
 		}
 
 		configuration, err := toGenericMap(cfg.Configuration)

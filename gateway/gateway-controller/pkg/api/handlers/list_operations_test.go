@@ -258,7 +258,8 @@ func TestListLLMProvidersWithData(t *testing.T) {
 		Handle:      "openai-provider",
 		DisplayName: "OpenAI Provider",
 		Version:     "1.0.0",
-		Status:      "active",
+		DesiredState: "deployed",
+		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProvider,
@@ -324,7 +325,8 @@ func TestListLLMProxiesWithData(t *testing.T) {
 		Handle:      "0000-llm-proxy-1-0000-000000000000",
 		DisplayName: "LLM Proxy 1",
 		Version:     "1.0.0",
-		Status:      "active",
+		DesiredState: "deployed",
+		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.LlmProxy,

@@ -19,6 +19,10 @@ var (
 	jwkSet     jose.JSONWebKeySet
 )
 
+type tokenClaims struct {
+	Scope string `json:"scope"`
+}
+
 func init() {
 	var err error
 	// Generate RSA key pair
@@ -54,10 +58,16 @@ func jwksHandler(w http.ResponseWriter, r *http.Request) {
 
 func tokenHandler(w http.ResponseWriter, r *http.Request) {
 	issuer := "http://mock-jwks.default.svc.cluster.local:8080/token"
+	scope := "default"
 
 	// Check if issuer is overridden via query param (optional, for flexibility)
 	if iss := r.URL.Query().Get("issuer"); iss != "" {
 		issuer = iss
+	}
+
+	// Check whether a scope parameter is provided (optional, for flexibility)
+	if scopeParam := r.URL.Query().Get("scope"); scopeParam != "" {
+		scope = scopeParam
 	}
 
 	claims := jwt.Claims{
@@ -68,7 +78,7 @@ func tokenHandler(w http.ResponseWriter, r *http.Request) {
 		Audience:  jwt.Audience{"test-audience"},
 	}
 
-	raw, err := jwt.Signed(signer).Claims(claims).Serialize()
+	raw, err := jwt.Signed(signer).Claims(claims).Claims(tokenClaims{Scope: scope}).Serialize()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to sign token: %v", err), http.StatusInternalServerError)
 		return

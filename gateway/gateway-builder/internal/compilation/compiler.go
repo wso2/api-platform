@@ -112,7 +112,7 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	// Ensure output directory exists
 	outputDir := filepath.Dir(options.OutputPath)
 	slog.Debug("Creating output directory", "dir", outputDir, "phase", "compilation")
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0750); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 

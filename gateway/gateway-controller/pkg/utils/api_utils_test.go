@@ -202,7 +202,8 @@ func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 		return &models.StoredConfig{
 			UUID:      "0000-test-api-0000-000000000000",
 			Kind:      "RestApi",
-			Status:    models.StatusDeployed,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 			// Configuration will be marshaled in the HTTP request body

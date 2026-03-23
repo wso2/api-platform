@@ -254,13 +254,13 @@ Feature: Sandbox Routing
           - method: GET
             path: /whoami
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 params:
-                  responseHeaders:
-                    - action: SET
-                      name: X-Sandbox-Ref-Policy
-                      value: applied
+                  response:
+                    headers:
+                      - name: X-Sandbox-Ref-Policy
+                        value: applied
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/env-sandbox-ref-policy/v1.0/whoami" to be ready with host "main-sandbox-policy.local"
@@ -690,13 +690,13 @@ Feature: Sandbox Routing
           - method: GET
             path: /whoami
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 params:
-                  responseHeaders:
-                    - action: SET
-                      name: X-Both-Ref-Policy
-                      value: applied
+                  response:
+                    headers:
+                      - name: X-Both-Ref-Policy
+                        value: applied
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/env-both-ref-policy/v1.0/whoami" to be ready with host "main-both-ref-policy.local"
@@ -747,13 +747,13 @@ Feature: Sandbox Routing
           - method: GET
             path: /whoami
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 params:
-                  responseHeaders:
-                    - action: SET
-                      name: X-Main-Ref-Policy
-                      value: applied
+                  response:
+                    headers:
+                      - name: X-Main-Ref-Policy
+                        value: applied
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/env-main-ref-policy/v1.0/whoami" to be ready with host "main-main-ref-policy.local"
@@ -872,13 +872,13 @@ Feature: Sandbox Routing
           - method: GET
             path: /whoami
             policies:
-              - name: modify-headers
+              - name: set-headers
                 version: v0
                 params:
-                  responseHeaders:
-                    - action: SET
-                      name: X-Both-URL-Policy
-                      value: applied
+                  response:
+                    headers:
+                      - name: X-Both-URL-Policy
+                        value: applied
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/env-both-url-policy/v1.0/whoami" to be ready with host "main-both-url-policy.local"

@@ -38,11 +38,14 @@ const (
 )
 
 type MCPDeploymentParams struct {
-	Data          []byte       // Raw configuration data (YAML/JSON)
-	ContentType   string       // Content type for parsing
-	ID            string       // ID (if provided, used for updates; if empty, generates new UUID)
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	Data          []byte        // Raw configuration data (YAML/JSON)
+	ContentType   string        // Content type for parsing
+	ID            string        // ID (if provided, used for updates; if empty, generates new UUID)
+	DeploymentID  string        // Platform deployment ID (empty for gateway-api origin)
+	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
+	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
+	CorrelationID string        // Correlation ID for tracking
+	Logger        *slog.Logger  // Logger instance
 }
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
@@ -77,6 +80,10 @@ func NewMCPDeploymentService(
 
 // DeployMCPConfiguration handles the complete MCP configuration deployment process
 func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams) (*APIDeploymentResult, error) {
+	if !models.IsValidOrigin(params.Origin) {
+		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+
 	var existingConfig *models.StoredConfig
 	var isUpdate bool
 
@@ -137,10 +144,12 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		Version:             mcpConfig.Spec.Version,
 		Configuration:       *apiConfig,
 		SourceConfiguration: *mcpConfig,
-		Status:              models.StatusPending,
+		DesiredState:        models.StateDeployed,
+		DeploymentID:        params.DeploymentID,
+		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          nil,
+		DeployedAt:          params.DeployedAt,
 	}
 
 	// Try to save/update the configuration
@@ -242,9 +251,11 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	now := time.Now()
 	existing.Configuration = newConfig.Configuration
 	existing.SourceConfiguration = newConfig.SourceConfiguration
-	existing.Status = models.StatusPending
+	existing.DesiredState = models.StateDeployed
+	existing.DeploymentID = newConfig.DeploymentID
+	existing.Origin = newConfig.Origin
 	existing.UpdatedAt = now
-	existing.DeployedAt = nil
+	existing.DeployedAt = newConfig.DeployedAt
 
 	// Update database first (only if persistent mode)
 	if s.db != nil {

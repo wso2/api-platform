@@ -25,10 +25,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestConfigStatus_Constants(t *testing.T) {
-	assert.Equal(t, ConfigStatus("pending"), StatusPending)
-	assert.Equal(t, ConfigStatus("deployed"), StatusDeployed)
-	assert.Equal(t, ConfigStatus("failed"), StatusFailed)
+func TestDesiredState_Constants(t *testing.T) {
+	assert.Equal(t, DesiredState("deployed"), StateDeployed)
+	assert.Equal(t, DesiredState("undeployed"), StateUndeployed)
 }
 
 func TestStoredConfig_Handle(t *testing.T) {
@@ -54,7 +53,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 	config := &StoredConfig{
 		UUID:       "0000-test-id-123-0000-000000000000",
 		Kind:       "API",
-		Status:     StatusDeployed,
+		DesiredState: StateDeployed,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 		DeployedAt: &deployedAt,
@@ -62,7 +61,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 
 	assert.Equal(t, "0000-test-id-123-0000-000000000000", config.UUID)
 	assert.Equal(t, "API", config.Kind)
-	assert.Equal(t, StatusDeployed, config.Status)
+	assert.Equal(t, StateDeployed, config.DesiredState)
 	assert.Equal(t, now, config.CreatedAt)
 	assert.Equal(t, now, config.UpdatedAt)
 	assert.NotNil(t, config.DeployedAt)
@@ -72,7 +71,7 @@ func TestStoredConfig_Fields(t *testing.T) {
 func TestStoredConfig_NilDeployedAt(t *testing.T) {
 	config := &StoredConfig{
 		UUID:       "0000-test-id-0000-000000000000",
-		Status:     StatusPending,
+		DesiredState: StateDeployed,
 		DeployedAt: nil,
 	}
 

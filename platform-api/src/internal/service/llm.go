@@ -132,6 +132,12 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
 	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
+
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, constants.ErrLLMProviderTemplateExists
@@ -215,6 +221,11 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle string, req *api.LLM
 		RequestModel:     mapExtractionIdentifierAPI(req.RequestModel),
 		ResponseModel:    mapExtractionIdentifierAPI(req.ResponseModel),
 	}
+	resourceMappings, err := mapTemplateResourceMappingsAPI(req.ResourceMappings)
+	if err != nil {
+		return nil, err
+	}
+	m.ResourceMappings = resourceMappings
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1312,8 +1323,90 @@ func mapTemplateModelToAPI(m *model.LLMProviderTemplate) *api.LLMProviderTemplat
 		RemainingTokens:  mapExtractionIdentifierModelToAPI(m.RemainingTokens),
 		RequestModel:     mapExtractionIdentifierModelToAPI(m.RequestModel),
 		ResponseModel:    mapExtractionIdentifierModelToAPI(m.ResponseModel),
+		ResourceMappings: mapTemplateResourceMappingsModelToAPI(m.ResourceMappings),
 		CreatedAt:        utils.TimePtr(m.CreatedAt),
 		UpdatedAt:        utils.TimePtr(m.UpdatedAt),
+	}
+}
+
+func mapTemplateResourceMappingsAPI(in *api.LLMProviderTemplateResourceMappings) (*model.LLMProviderTemplateResourceMappings, error) {
+	if in == nil {
+		return nil, nil
+	}
+	out := &model.LLMProviderTemplateResourceMappings{}
+	if in.Resources != nil {
+		resources := make([]model.LLMProviderTemplateResourceMapping, 0, len(*in.Resources))
+		for _, r := range *in.Resources {
+			mapped, err := mapTemplateResourceMappingAPI(&r)
+			if err != nil {
+				return nil, err
+			}
+			if mapped != nil {
+				resources = append(resources, *mapped)
+			}
+		}
+		out.Resources = resources
+	}
+	if len(out.Resources) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func mapTemplateResourceMappingAPI(in *api.LLMProviderTemplateResourceMapping) (*model.LLMProviderTemplateResourceMapping, error) {
+	if in == nil {
+		return nil, nil
+	}
+	resource, isValid := utils.NormalizeAndValidateLLMResourcePath(in.Resource)
+	if !isValid {
+		return nil, fmt.Errorf("%w: resource mapping resource must be a valid path pattern", constants.ErrInvalidInput)
+	}
+	return &model.LLMProviderTemplateResourceMapping{
+		Resource: resource,
+		LLMProviderTemplateExtractionFields: model.LLMProviderTemplateExtractionFields{
+			PromptTokens:     mapExtractionIdentifierAPI(in.PromptTokens),
+			CompletionTokens: mapExtractionIdentifierAPI(in.CompletionTokens),
+			TotalTokens:      mapExtractionIdentifierAPI(in.TotalTokens),
+			RemainingTokens:  mapExtractionIdentifierAPI(in.RemainingTokens),
+			RequestModel:     mapExtractionIdentifierAPI(in.RequestModel),
+			ResponseModel:    mapExtractionIdentifierAPI(in.ResponseModel),
+		},
+	}, nil
+}
+
+func mapTemplateResourceMappingsModelToAPI(in *model.LLMProviderTemplateResourceMappings) *api.LLMProviderTemplateResourceMappings {
+	if in == nil {
+		return nil
+	}
+	out := &api.LLMProviderTemplateResourceMappings{}
+	if len(in.Resources) > 0 {
+		resources := make([]api.LLMProviderTemplateResourceMapping, 0, len(in.Resources))
+		for _, r := range in.Resources {
+			mapped := mapTemplateResourceMappingModelToAPI(&r)
+			if mapped != nil {
+				resources = append(resources, *mapped)
+			}
+		}
+		out.Resources = &resources
+	}
+	if out.Resources == nil || len(*out.Resources) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceMapping) *api.LLMProviderTemplateResourceMapping {
+	if in == nil {
+		return nil
+	}
+	return &api.LLMProviderTemplateResourceMapping{
+		Resource:         strings.TrimSpace(in.Resource),
+		PromptTokens:     mapExtractionIdentifierModelToAPI(in.PromptTokens),
+		CompletionTokens: mapExtractionIdentifierModelToAPI(in.CompletionTokens),
+		TotalTokens:      mapExtractionIdentifierModelToAPI(in.TotalTokens),
+		RemainingTokens:  mapExtractionIdentifierModelToAPI(in.RemainingTokens),
+		RequestModel:     mapExtractionIdentifierModelToAPI(in.RequestModel),
+		ResponseModel:    mapExtractionIdentifierModelToAPI(in.ResponseModel),
 	}
 }
 

@@ -38,15 +38,27 @@ const (
 	KindLlmProvider ArtifactKind = "LlmProvider"
 )
 
-// ConfigStatus represents the lifecycle state of an API configuration
-type ConfigStatus string
+// DesiredState represents the intended deployment state of an API configuration.
+// It reflects what the user wants (deployed or undeployed), not the runtime status.
+type DesiredState string
 
 const (
-	StatusPending    ConfigStatus = "pending"    // Submitted but not yet deployed
-	StatusDeployed   ConfigStatus = "deployed"   // Active in Router
-	StatusFailed     ConfigStatus = "failed"     // Deployment failed
-	StatusUndeployed ConfigStatus = "undeployed" // Removed from Router but config preserved
+	StateDeployed   DesiredState = "deployed"   // User wants this configuration active in Router
+	StateUndeployed DesiredState = "undeployed" // User wants this configuration removed from Router
 )
+
+// Origin identifies how an artifact was created.
+type Origin string
+
+const (
+	OriginControlPlane Origin = "control_plane" // Deployed via platform-API WebSocket events
+	OriginGatewayAPI   Origin = "gateway_api"   // Created directly via gateway REST API
+)
+
+// IsValidOrigin returns true if the origin value is a recognized enum value.
+func IsValidOrigin(o Origin) bool {
+	return o == OriginControlPlane || o == OriginGatewayAPI
+}
 
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
@@ -57,7 +69,9 @@ type StoredConfig struct {
 	Version             string       `json:"version"`
 	Configuration       any          `json:"configuration"`
 	SourceConfiguration any          `json:"source_configuration,omitempty"`
-	Status              ConfigStatus `json:"status"`
+	DesiredState        DesiredState `json:"desiredState"`
+	DeploymentID        string       `json:"deploymentId,omitempty"`
+	Origin              Origin       `json:"origin"`
 	CreatedAt           time.Time    `json:"createdAt"`
 	UpdatedAt           time.Time    `json:"updatedAt"`
 	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
