@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
@@ -88,8 +89,8 @@ func ipWhitelistMiddleware(allowedIPs []string, next http.Handler) http.Handler 
 		// Check if IP is allowed
 		if !isIPAllowed(clientIP, allowedIPs) {
 			slog.Warn("Blocked admin request from unauthorized IP",
-				"client_ip", clientIP,
-				"path", r.URL.Path)
+				"client_ip", sanitizeLogValue(clientIP),
+				"path", sanitizeLogValue(r.URL.Path))
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -123,4 +124,12 @@ func isIPAllowed(clientIP string, allowedIPs []string) bool {
 		}
 	}
 	return false
+}
+
+func sanitizeLogValue(value string) string {
+	return strings.NewReplacer(
+		"\n", "\\n",
+		"\r", "\\r",
+		"\t", "\\t",
+	).Replace(value)
 }

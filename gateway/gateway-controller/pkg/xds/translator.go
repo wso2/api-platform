@@ -361,7 +361,7 @@ func (t *Translator) TranslateConfigs(
 
 	for _, cfg := range configs {
 		// Skip undeployed APIs - they should not appear in xDS routes
-		if cfg.Status == models.StatusUndeployed {
+		if cfg.DesiredState == models.StateUndeployed {
 			log.Debug("Skipping undeployed API in xDS translation",
 				slog.String("id", cfg.UUID),
 				slog.String("displayName", cfg.DisplayName))

@@ -81,15 +81,15 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		assert.Len(t, configs, 3, "All 3 configurations should persist")
 
 		// Verify each configuration by name/version
-		cfg1, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI1-v1.0")
+		cfg1, err := db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI1-v1.0")
 		assert.NoError(t, err, "Should find PersistAPI1/v1.0")
 		assert.NotNil(t, cfg1)
 
-		cfg2, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI2-v1.0")
+		cfg2, err := db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI2-v1.0")
 		assert.NoError(t, err, "Should find PersistAPI2/v1.0")
 		assert.NotNil(t, cfg2)
 
-		cfg3, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI3-v2.0")
+		cfg3, err := db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI3-v2.0")
 		assert.NoError(t, err, "Should find PersistAPI3/v2.0")
 		assert.NotNil(t, cfg3)
 	}
@@ -101,9 +101,9 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 
 		// Get and update a configuration
-		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI1-v1.0")
+		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI1-v1.0")
 		require.NoError(t, err)
-		cfg.Status = "deployed"
+		cfg.DesiredState = "undeployed"
 
 		require.NoError(t, db.UpdateConfig(cfg))
 		require.NoError(t, db.Close())
@@ -117,9 +117,9 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 		defer db.Close()
 
-		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI1-v1.0")
+		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI1-v1.0")
 		assert.NoError(t, err)
-		assert.Equal(t, models.StatusDeployed, cfg.Status)
+		assert.Equal(t, models.StateUndeployed, cfg.DesiredState)
 	}
 
 	// Phase 5: Delete a configuration and verify deletion persists
@@ -129,7 +129,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		require.NoError(t, err, "Failed to reopen database")
 
 		// Get the ID of PersistAPI2
-		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI2-v1.0")
+		cfg, err := db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI2-v1.0")
 		require.NoError(t, err)
 
 		// Delete it
@@ -151,7 +151,7 @@ func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
 		assert.Len(t, configs, 2, "Should have 2 configurations after deletion")
 
 		// Verify PersistAPI2 is gone
-		_, err = db.GetConfigByKindAndHandle(models.KindRestApi,"PersistAPI2-v1.0")
+		_, err = db.GetConfigByKindAndHandle(models.KindRestApi, "PersistAPI2-v1.0")
 		assert.Error(t, err, "PersistAPI2 should not exist")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	}
@@ -254,7 +254,7 @@ func TestZeroDataLoss(t *testing.T) {
 		assert.True(t, exists, "Configuration should exist in both before and after")
 		assert.Equal(t, cfgBefore.DisplayName, cfgAfter.DisplayName)
 		assert.Equal(t, cfgBefore.Version, cfgAfter.Version)
-		assert.Equal(t, cfgBefore.Status, cfgAfter.Status)
+		assert.Equal(t, cfgBefore.DesiredState, cfgAfter.DesiredState)
 	}
 
 	t.Log("Zero data loss verified successfully")

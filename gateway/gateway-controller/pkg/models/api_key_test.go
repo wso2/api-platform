@@ -138,9 +138,8 @@ func TestAPIKeyStatusConstants(t *testing.T) {
 	assert.Equal(t, APIKeyStatus("expired"), APIKeyStatusExpired)
 }
 
-func TestConfigStatusConstants(t *testing.T) {
-	// Verify config status constants have expected values
-	assert.Equal(t, ConfigStatus("pending"), StatusPending)
-	assert.Equal(t, ConfigStatus("deployed"), StatusDeployed)
-	assert.Equal(t, ConfigStatus("failed"), StatusFailed)
+func TestDesiredStateConstants(t *testing.T) {
+	// Verify desired state constants have expected values
+	assert.Equal(t, DesiredState("deployed"), StateDeployed)
+	assert.Equal(t, DesiredState("undeployed"), StateUndeployed)
 }

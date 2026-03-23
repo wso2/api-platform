@@ -169,7 +169,7 @@ func setupSQLiteDBForEventListenerTests(t *testing.T) storage.Storage {
 	return db
 }
 
-func testRestStoredConfig(uuid, handle, displayName, version string, status models.ConfigStatus) *models.StoredConfig {
+func testRestStoredConfig(uuid, handle, displayName, version string, status models.DesiredState) *models.StoredConfig {
 	restAPI := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.RestApi,
@@ -204,7 +204,8 @@ func testRestStoredConfig(uuid, handle, displayName, version string, status mode
 		Version:             version,
 		Configuration:       restAPI,
 		SourceConfiguration: restAPI,
-		Status:              status,
+		DesiredState:        status,
+		Origin:              models.OriginGatewayAPI,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
@@ -212,7 +213,7 @@ func testRestStoredConfig(uuid, handle, displayName, version string, status mode
 
 func testRestStoredConfigWithPolicies(
 	uuid, handle, displayName, version string,
-	status models.ConfigStatus,
+	status models.DesiredState,
 	policies []api.Policy,
 ) *models.StoredConfig {
 	cfg := testRestStoredConfig(uuid, handle, displayName, version, status)
@@ -279,6 +280,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		newTestLogger(),
 		&config.Config{
 			Controller: config.Controller{
@@ -296,7 +298,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 	listener.Stop()
 }
 
-func TestHandleEvent_AcceptsKnownNoopTypesAndUnknown(t *testing.T) {
+func TestHandleEvent_AcceptsKnownTypesAndUnknown(t *testing.T) {
 	var logBuf bytes.Buffer
 	listener := &EventListener{
 		logger: slog.New(slog.NewTextHandler(&logBuf, nil)),
@@ -317,7 +319,7 @@ func TestHandleEvent_AcceptsKnownNoopTypesAndUnknown(t *testing.T) {
 
 	logs := logBuf.String()
 	assert.Contains(t, logs, "Certificate event received")
-	assert.Contains(t, logs, "LLM template event received")
+	assert.Contains(t, logs, "Unknown LLM template event action")
 	assert.Contains(t, logs, "Unknown event type received")
 }
 

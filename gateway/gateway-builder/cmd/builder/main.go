@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/buildfile"
@@ -37,10 +38,10 @@ import (
 )
 
 const (
-	DefaultBuildFile            = "build.yaml"
-	DefaultSystemBuildLockFile  = "system-build-lock.yaml"
-	DefaultOutputDir            = "output"
-	DefaultPolicyEngineSrc      = "/api-platform/gateway/gateway-runtime/policy-engine"
+	DefaultBuildFile           = "build.yaml"
+	DefaultSystemBuildLockFile = "system-build-lock.yaml"
+	DefaultOutputDir           = "output"
+	DefaultPolicyEngineSrc     = "/api-platform/gateway/gateway-runtime/policy-engine"
 )
 
 // Version information (set via ldflags during build)
@@ -207,8 +208,8 @@ func main() {
 	}
 
 	slog.Info("Build metadata for policy engine",
-		"version", policyEngineVersion,
-		"git_commit", policyEngineGitCommit,
+		"version", sanitizeLogValue(policyEngineVersion),
+		"git_commit", sanitizeLogValue(policyEngineGitCommit),
 		"build_date", buildTimestamp.Format(time.RFC3339),
 		"phase", "compilation")
 
@@ -274,6 +275,14 @@ func main() {
 	} else {
 		slog.Info("Build lock file generated with versions", "path", filepath.Join(filepath.Dir(*buildFilePath), "build-lock.yaml"))
 	}
+}
+
+func sanitizeLogValue(value string) string {
+	return strings.NewReplacer(
+		"\n", "\\n",
+		"\r", "\\r",
+		"\t", "\\t",
+	).Replace(value)
 }
 
 // initLogger sets up the slog logger based on format and level

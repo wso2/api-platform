@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -33,7 +34,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)
 
 	require.NoError(t, db.SaveConfig(cfg))
@@ -74,7 +75,7 @@ func TestHandleEvent_APIKeyUpdate_SyncsMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	originalKey := testAPIKey("api-key-id-1", "test-key", "Original Key", cfg.UUID)
 	updatedKey := testAPIKey("api-key-id-1", "test-key", "Updated Key", cfg.UUID)
 
@@ -113,7 +114,7 @@ func TestHandleEvent_APIKeyUpdate_SyncsMemoryAndXDS(t *testing.T) {
 func TestHandleEvent_APIKeyDelete_RemovesMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)
 
 	require.NoError(t, store.Add(cfg))
@@ -147,7 +148,7 @@ func TestHandleEvent_APIKeyDelete_RemovesMemoryAndXDS(t *testing.T) {
 func TestHandleEvent_APIKeyDelete_SkipsXDSWhenKeyNameIsUnavailable(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
-	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StatusPending)
+	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
 	require.NoError(t, store.Add(cfg))
 
 	listener := &EventListener{
@@ -164,4 +165,69 @@ func TestHandleEvent_APIKeyDelete_SkipsXDSWhenKeyNameIsUnavailable(t *testing.T)
 	})
 
 	assert.Empty(t, xdsManager.revokeCalls)
+}
+
+func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS_ForLLMProxy(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	xdsManager := &mockAPIKeyXDSManager{}
+	providerCfg := testLLMProviderStoredConfig("provider-1", "provider-a", "openai", nil)
+	require.NoError(t, db.SaveConfig(providerCfg))
+	cfg := &models.StoredConfig{
+		UUID:        "test-llm-proxy-id",
+		Kind:        string(api.LlmProxy),
+		Handle:      "test-llm-proxy",
+		DisplayName: "Test LLM Proxy",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProxy,
+			Metadata: api.Metadata{
+				Name: "test-llm-proxy",
+			},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "Test LLM Proxy",
+				Version:     "v1.0.0",
+				Provider: api.LLMProxyProvider{
+					Id: "provider-a",
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+	}
+	apiKey := testAPIKey("api-key-id-llm-proxy", "test-key", "Test Key", cfg.UUID)
+
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, db.SaveAPIKey(apiKey))
+
+	listener := &EventListener{
+		store:            store,
+		db:               db,
+		apiKeyXDSManager: xdsManager,
+		logger:           newTestLogger(),
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeAPIKey,
+		Action:    "CREATE",
+		EntityID:  apikey.BuildAPIKeyEntityID(cfg.UUID, apiKey.UUID),
+		EventID:   "corr-apikey-create-llm-proxy",
+	})
+
+	storedKey, err := store.GetAPIKeyByName(cfg.UUID, apiKey.Name)
+	require.NoError(t, err)
+	assert.Equal(t, apiKey.UUID, storedKey.UUID)
+
+	storedCfg, err := store.Get(cfg.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, cfg.DisplayName, storedCfg.DisplayName)
+	assert.Equal(t, cfg.Kind, storedCfg.Kind)
+
+	if assert.Len(t, xdsManager.storeCalls, 1) {
+		assert.Equal(t, cfg.UUID, xdsManager.storeCalls[0].apiID)
+		assert.Equal(t, cfg.DisplayName, xdsManager.storeCalls[0].apiName)
+		assert.Equal(t, cfg.Version, xdsManager.storeCalls[0].apiVersion)
+		assert.Equal(t, apiKey.UUID, xdsManager.storeCalls[0].apiKeyID)
+		assert.Equal(t, "corr-apikey-create-llm-proxy", xdsManager.storeCalls[0].correlationID)
+	}
 }

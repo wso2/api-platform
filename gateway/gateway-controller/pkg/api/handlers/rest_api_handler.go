@@ -131,7 +131,7 @@ func (h *RestAPIHandler) GetRestAPIById(c *gin.Context, id string) {
 		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},

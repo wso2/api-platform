@@ -62,7 +62,7 @@ func newSQLStore(db *sql.DB, logger *slog.Logger, backendName string, gatewayId 
 		gatewayId:   gatewayId,
 		backendName: backendName,
 		// Defaults are identity/false; backends can override.
-		rebindQuery:                       func(query string) string { return query },
+		rebindQuery:       func(query string) string { return query },
 		isUniqueViolation: func(error) bool { return false },
 	}
 }
@@ -123,6 +123,14 @@ func (t *sqlStoreTx) Rollback() error {
 	return t.tx.Rollback()
 }
 
+func (s *sqlStore) rollbackTx(tx *sqlStoreTx, reason string) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		s.logger.Warn("Failed to rollback transaction",
+			slog.String("reason", reason),
+			slog.Any("error", err))
+	}
+}
+
 // kindToResourceTable maps a kind string to its per-type table name.
 func kindToResourceTable(kind string) (string, error) {
 	switch kind {
@@ -141,8 +149,11 @@ func kindToResourceTable(kind string) (string, error) {
 	}
 }
 
-// unmarshalSourceConfig unmarshals JSON into the correct typed struct for the given kind,
-// and populates both SourceConfiguration and (for RestApi/WebSubApi) Configuration.
+// unmarshalSourceConfig unmarshals JSON into the correct typed struct for the given kind.
+// RestApi/WebSubApi rows can populate Configuration directly because the stored
+// payload is already the deployable shape. LLM provider/proxy rows only restore
+// SourceConfiguration; their derived RestAPI form is rebuilt later by the
+// deployment/event-listener layer once templates and policies are available.
 func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 	switch cfg.Kind {
 	case "RestApi":
@@ -193,8 +204,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	query := `
 		INSERT INTO artifacts (
 			uuid, gateway_id, display_name, version, kind, handle,
-			status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			desired_state, deployment_id, origin, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := s.begin()
@@ -215,6 +226,10 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	defer stmt.Close()
 
 	now := time.Now()
+	var deploymentID interface{}
+	if cfg.DeploymentID != "" {
+		deploymentID = cfg.DeploymentID
+	}
 	_, err = stmt.Exec(
 		cfg.UUID,
 		s.gatewayId,
@@ -222,7 +237,9 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		cfg.Version,
 		cfg.Kind,
 		cfg.Handle,
-		cfg.Status,
+		cfg.DesiredState,
+		deploymentID,
+		cfg.Origin,
 		now,
 		now,
 	)
@@ -280,7 +297,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	query := `
 		UPDATE artifacts
 		SET display_name = ?, version = ?, kind = ?, handle = ?,
-			status = ?, updated_at = ?
+			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
@@ -305,12 +322,18 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	}
 	defer stmt.Close()
 
+	var updateDeploymentID interface{}
+	if cfg.DeploymentID != "" {
+		updateDeploymentID = cfg.DeploymentID
+	}
 	result, err := stmt.Exec(
 		cfg.DisplayName,
 		cfg.Version,
 		cfg.Kind,
 		cfg.Handle,
-		cfg.Status,
+		cfg.DesiredState,
+		updateDeploymentID,
+		cfg.Origin,
 		time.Now(),
 		cfg.UUID,
 		s.gatewayId,
@@ -403,13 +426,14 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 
 	// Step 1: Get artifact base record
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
+		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at
 		FROM artifacts
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
 	var cfg models.StoredConfig
 	var deployedAt sql.NullTime
+	var deploymentID sql.NullString
 
 	err := s.queryRow(artifactQuery, id, s.gatewayId).Scan(
 		&cfg.UUID,
@@ -417,7 +441,9 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
-		&cfg.Status,
+		&cfg.DesiredState,
+		&deploymentID,
+		&cfg.Origin,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
 		&deployedAt,
@@ -437,6 +463,9 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	if deployedAt.Valid {
 		cfg.DeployedAt = &deployedAt.Time
 	}
+	if deploymentID.Valid {
+		cfg.DeploymentID = deploymentID.String
+	}
 
 	// Step 2: Get configuration from the correct type table
 	if err := s.loadResourceConfig(&cfg); err != nil {
@@ -455,13 +484,14 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 // GetConfigByKindAndHandle retrieves a deployment configuration by kind and handle (metadata.name)
 func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
-		SELECT uuid, kind, handle, display_name, version, status, created_at, updated_at, deployed_at
+		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at
 		FROM artifacts
 		WHERE kind = ? AND handle = ? AND gateway_id = ?
 	`
 
 	var cfg models.StoredConfig
 	var deployedAt sql.NullTime
+	var deploymentID sql.NullString
 
 	err := s.queryRow(artifactQuery, kind, handle, s.gatewayId).Scan(
 		&cfg.UUID,
@@ -469,7 +499,9 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 		&cfg.Handle,
 		&cfg.DisplayName,
 		&cfg.Version,
-		&cfg.Status,
+		&cfg.DesiredState,
+		&deploymentID,
+		&cfg.Origin,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
 		&deployedAt,
@@ -485,6 +517,9 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 	if deployedAt.Valid {
 		cfg.DeployedAt = &deployedAt.Time
 	}
+	if deploymentID.Valid {
+		cfg.DeploymentID = deploymentID.String
+	}
 
 	if err := s.loadResourceConfig(&cfg); err != nil {
 		return nil, err
@@ -498,32 +533,32 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	// Use UNION ALL across all type tables joined with artifacts
 	query := `
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN rest_apis r ON a.uuid = r.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN websub_apis w ON a.uuid = w.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_providers lp ON a.uuid = lp.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_proxies lx ON a.uuid = lx.uuid
 		WHERE a.gateway_id = ?
 		UNION ALL
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN mcp_proxies m ON a.uuid = m.uuid
 		WHERE a.gateway_id = ?
@@ -547,8 +582,8 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	}
 
 	query := fmt.Sprintf(`
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.status,
-			a.created_at, a.updated_at, a.deployed_at
+		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN %s r ON a.uuid = r.uuid
 		WHERE a.kind = ? AND a.gateway_id = ?
@@ -564,7 +599,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	return s.scanConfigRows(rows)
 }
 
-// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, status, created_at, updated_at, deployed_at)
+// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at)
 func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 
@@ -572,6 +607,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		var cfg models.StoredConfig
 		var configJSON sql.NullString
 		var deployedAt sql.NullTime
+		var deploymentID sql.NullString
 
 		err := rows.Scan(
 			&cfg.UUID,
@@ -580,7 +616,9 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 			&cfg.DisplayName,
 			&cfg.Version,
 			&configJSON,
-			&cfg.Status,
+			&cfg.DesiredState,
+			&deploymentID,
+			&cfg.Origin,
 			&cfg.CreatedAt,
 			&cfg.UpdatedAt,
 			&deployedAt,
@@ -592,6 +630,9 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 
 		if deployedAt.Valid {
 			cfg.DeployedAt = &deployedAt.Time
+		}
+		if deploymentID.Valid {
+			cfg.DeploymentID = deploymentID.String
 		}
 
 		if configJSON.Valid && configJSON.String != "" {
@@ -654,6 +695,8 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 	var args []interface{}
 
 	if cfg.Kind == "LlmProxy" {
+		// Proxies persist both the raw JSON payload and the resolved provider UUID
+		// so relational lookups do not depend on parsing the configuration blob.
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
 		if !ok {
 			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
@@ -699,6 +742,8 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	var args []interface{}
 
 	if cfg.Kind == "LlmProxy" {
+		// Keep the provider UUID in sync with the latest handle->UUID resolution
+		// so proxy reads can follow a stable foreign key instead of JSON content.
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
 		if !ok {
 			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
@@ -1133,7 +1178,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 	// Ensure transaction is properly handled
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			s.rollbackTx(tx, "panic while saving API key")
 			panic(p) // Re-throw panic after rollback
 		}
 	}()
@@ -1144,7 +1189,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 	err = tx.QueryRowQ(checkQuery, apiKey.ArtifactUUID, apiKey.Name, s.gatewayId).Scan(&existingUUID)
 
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		tx.Rollback()
+		s.rollbackTx(tx, "failed to check existing API key")
 		return fmt.Errorf("failed to check existing API key: %w", err)
 	}
 
@@ -1176,7 +1221,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 		)
 
 		if err != nil {
-			tx.Rollback()
+			s.rollbackTx(tx, "failed to insert API key")
 			// Check for unique constraint violation on api_key field
 			if s.isUniqueViolation(err) {
 				return fmt.Errorf("%w: API key value already exists", ErrConflict)
@@ -1186,7 +1231,7 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 
 	} else {
 		// Existing record found, return conflict error that API Key name already exists
-		tx.Rollback()
+		s.rollbackTx(tx, "api key name already exists for API")
 		s.logger.Error("API key name already exists for the API",
 			slog.String("name", apiKey.Name),
 			slog.String("artifact_uuid", apiKey.ArtifactUUID),
@@ -1447,7 +1492,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	// Ensure transaction is properly handled
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			s.rollbackTx(tx, "panic while updating API key")
 			panic(p) // Re-throw panic after rollback
 		}
 	}()
@@ -1474,7 +1519,7 @@ func (s *sqlStore) UpdateAPIKey(apiKey *models.APIKey) error {
 	)
 
 	if err != nil {
-		tx.Rollback()
+		s.rollbackTx(tx, "failed to update API key")
 		// Check for unique constraint violation on api_key field
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: API key value already exists", ErrConflict)

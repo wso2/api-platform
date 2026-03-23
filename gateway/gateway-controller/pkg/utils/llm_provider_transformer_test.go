@@ -112,7 +112,7 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 	err := store.AddTemplate(openAITemplate)
 	require.NoError(t, err, "Failed to add test template")
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, &cfg, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, &cfg, newTestPolicyVersionResolver())
 	return transformer, store
 }
 
@@ -123,7 +123,7 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 func TestNewLLMProviderTransformer(t *testing.T) {
 	store := storage.NewConfigStore()
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, &cfg, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, nil, &cfg, newTestPolicyVersionResolver())
 
 	assert.NotNil(t, transformer, "Transformer should not be nil")
 	assert.NotNil(t, transformer.store, "Store should not be nil")

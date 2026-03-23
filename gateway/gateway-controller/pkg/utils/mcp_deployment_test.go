@@ -86,7 +86,8 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 				Metadata: api.Metadata{Name: "mcp-proxy"},
 				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -104,7 +105,8 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 				Metadata: api.Metadata{Name: "rest-api"},
 				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -133,6 +135,7 @@ func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 	params := MCPDeploymentParams{
 		Data:          []byte("invalid yaml: ["),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -160,6 +163,7 @@ spec:
 	params := MCPDeploymentParams{
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -191,7 +195,8 @@ func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 			Metadata: api.Metadata{Name: "test-mcp"},
 			Spec:     apiData,
 		},
-		Status:    models.StatusPending,
+		DesiredState:    models.StateDeployed,
+		Origin:          models.OriginGatewayAPI,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -214,6 +219,7 @@ spec:
 	params := MCPDeploymentParams{
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -241,6 +247,7 @@ func TestMCPDeploymentService_UpdateMCPProxy_NoDatabase(t *testing.T) {
 	params := MCPDeploymentParams{
 		Data:          []byte("test data"),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "corr-id",
 		Logger:        logger,
 	}
@@ -274,7 +281,8 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 				Metadata: api.Metadata{Name: "test-mcp"},
 				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -315,7 +323,8 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 				Metadata: api.Metadata{Name: "original-mcp"},
 				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -339,7 +348,8 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 				Metadata: api.Metadata{Name: "original-mcp"},
 				Spec:     newApiData,
 			},
-			Status: models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 		}
 
 		isUpdate, err := service.updateExistingConfig(newConfig, logger)
@@ -368,7 +378,8 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 				Metadata: api.Metadata{Name: "non-existent-mcp"},
 				Spec:     apiData,
 			},
-			Status: models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
 		}
 
 		_, err := service.updateExistingConfig(newConfig, logger)
