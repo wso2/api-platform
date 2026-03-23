@@ -1167,9 +1167,7 @@ func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) [
 	configs := s.store.GetAllByKind(string(api.LlmProxy))
 	if s.db != nil {
 		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProxy)); err == nil {
-			if len(storedConfigs) > 0 || len(configs) == 0 {
-				configs = storedConfigs
-			}
+			configs = storedConfigs
 		}
 	}
 
