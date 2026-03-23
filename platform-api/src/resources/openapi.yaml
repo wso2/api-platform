@@ -1969,12 +1969,12 @@ paths:
 
   /gateway-custom-policies:
     get:
-      summary: Get synced custom policies for a given organization 
+      summary: Get synced custom policies for the current organization
       description: |
-        Returns all custom policies synced to the given organization.
+        Returns all custom policies synced to the current organization (from the JWT `organization` claim).
       operationId: ListGatewayCustomPolicies
       tags:
-        - Gateways
+        - Gateway Policies
       responses:
         '200':
           description: List of custom policies
@@ -2003,7 +2003,7 @@ paths:
         After syncing, the policy can be applied to APIs in the organization.
       operationId: SyncCustomPolicy
       tags:
-        - Gateways
+        - Gateway Policies
       parameters:
         - $ref: '#/components/parameters/GatewayID'
         - name: policyName
