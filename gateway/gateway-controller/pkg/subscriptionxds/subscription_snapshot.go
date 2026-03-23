@@ -79,11 +79,6 @@ func (sm *SnapshotManager) GetCache() cache.Cache {
 // Storage I/O is performed without holding the manager lock; the lock is only held when
 // updating the cache to avoid blocking other readers during the full storage sweep.
 func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
-	if sm.store == nil {
-		// In memory-only mode there is no persistent storage; skip snapshot generation gracefully.
-		return nil
-	}
-
 	// Perform all storage I/O without holding the lock.
 	configs, err := sm.store.GetAllConfigs()
 	if err != nil {
