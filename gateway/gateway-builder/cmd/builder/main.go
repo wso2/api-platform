@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/policyengine"
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/validation"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
@@ -272,7 +273,14 @@ func main() {
 	if err := buildfile.WriteBuildLockWithVersions(*buildFilePath, policies); err != nil {
 		slog.Warn("Failed to write build lock file with versions", "error", err)
 	} else {
-		slog.Info("Build lock file generated with versions", "path", filepath.Join(filepath.Dir(*buildFilePath), "build-lock.yaml"))
+		buildLockPath := filepath.Join(filepath.Dir(*buildFilePath), "build-lock.yaml")
+		slog.Info("Build lock file generated with versions", "path", buildLockPath)
+		gcBuildLockDst := filepath.Join(*outputDir, "gateway-controller", "build-lock.yaml")
+		if err := fsutil.CopyFile(buildLockPath, gcBuildLockDst); err != nil {
+			slog.Warn("Failed to copy build-lock.yaml into gateway-controller build context", "error", err)
+		} else {
+			slog.Info("Copied build-lock.yaml into gateway-controller build context", "dst", gcBuildLockDst)
+		}
 	}
 }
 
