@@ -375,6 +375,233 @@ func createTestZip(t *testing.T, files map[string][]byte) []byte {
 	return buf.Bytes()
 }
 
+func TestAPIUtilsService_FetchControlPlaneDeployments(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("Full sync (no since parameter)", func(t *testing.T) {
+		deployedAt := time.Date(2026, 3, 4, 10, 30, 0, 0, time.UTC)
+		expectedResponse := models.ControlPlaneDeploymentsResponse{
+			Deployments: []models.ControlPlaneDeployment{
+				{
+					ArtifactID:   "api-123",
+					DeploymentID: "dep-789",
+					Kind:         "RestApi",
+					State:        "DEPLOYED",
+					DeployedAt:   deployedAt,
+				},
+				{
+					ArtifactID:   "llm-001",
+					DeploymentID: "dep-111",
+					Kind:         "LlmProvider",
+					State:        "DEPLOYED",
+					DeployedAt:   deployedAt,
+				},
+			},
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/deployments", r.URL.Path)
+			assert.Empty(t, r.URL.Query().Get("since"))
+			assert.Equal(t, "test-token", r.Header.Get("api-key"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(expectedResponse)
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(nil)
+		assert.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, "api-123", result[0].ArtifactID)
+		assert.Equal(t, "dep-789", result[0].DeploymentID)
+		assert.Equal(t, "RestApi", result[0].Kind)
+		assert.Equal(t, "DEPLOYED", result[0].State)
+	})
+
+	t.Run("Incremental sync (with since parameter)", func(t *testing.T) {
+		since := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/deployments", r.URL.Path)
+			sinceParam := r.URL.Query().Get("since")
+			assert.NotEmpty(t, sinceParam)
+			// Verify the since parameter is a valid RFC3339 timestamp
+			parsedSince, err := time.Parse(time.RFC3339, sinceParam)
+			assert.NoError(t, err)
+			assert.True(t, parsedSince.Equal(since))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(models.ControlPlaneDeploymentsResponse{
+				Deployments: []models.ControlPlaneDeployment{},
+			})
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(&since)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("Server returns error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("internal error"))
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(nil)
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("Connection error", func(t *testing.T) {
+		cfg := PlatformAPIConfig{BaseURL: "http://localhost:99999", Token: "test-token", Timeout: 1 * time.Second}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(nil)
+		assert.Error(t, err)
+		assert.Nil(t, result)
+	})
+}
+
+func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("Successful batch fetch", func(t *testing.T) {
+		expectedZip := createTestZip(t, map[string][]byte{
+			"dep-789/api-abc.yaml": []byte("apiVersion: v1"),
+		})
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/deployments/fetch-batch", r.URL.Path)
+			assert.Equal(t, "test-token", r.Header.Get("api-key"))
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/zip", r.Header.Get("Accept"))
+
+			// Verify request body
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			var req models.BatchFetchRequest
+			err = json.Unmarshal(body, &req)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"dep-789", "dep-456"}, req.DeploymentIDs)
+
+			w.Header().Set("Content-Type", "application/zip")
+			w.WriteHeader(http.StatusOK)
+			w.Write(expectedZip)
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.BatchFetchDeployments([]string{"dep-789", "dep-456"})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, result)
+	})
+
+	t.Run("Server returns error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("bad request"))
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.BatchFetchDeployments([]string{"dep-789"})
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "400")
+	})
+}
+
+func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := PlatformAPIConfig{BaseURL: "http://localhost"}
+	svc := NewAPIUtilsService(cfg, logger)
+
+	t.Run("Extract multiple deployments", func(t *testing.T) {
+		yamlContent1 := []byte("apiVersion: v1\nkind: RestApi\nmetadata:\n  name: api-1")
+		yamlContent2 := []byte("apiVersion: v1\nkind: LlmProvider\nmetadata:\n  name: provider-1")
+
+		zipData := createTestZip(t, map[string][]byte{
+			"dep-789/api-abc.yaml":              yamlContent1,
+			"dep-456/llm-provider-xyz.yaml":     yamlContent2,
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		assert.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, yamlContent1, result["dep-789"])
+		assert.Equal(t, yamlContent2, result["dep-456"])
+	})
+
+	t.Run("Skip non-YAML files", func(t *testing.T) {
+		zipData := createTestZip(t, map[string][]byte{
+			"dep-789/api-abc.yaml": []byte("valid yaml"),
+			"dep-789/readme.txt":  []byte("not yaml"),
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		assert.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, []byte("valid yaml"), result["dep-789"])
+	})
+
+	t.Run("Empty zip", func(t *testing.T) {
+		zipData := createTestZip(t, map[string][]byte{})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("Invalid zip data", func(t *testing.T) {
+		result, err := svc.ExtractDeploymentsFromBatchZip([]byte("not a zip"))
+		assert.Error(t, err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("Path traversal entries are skipped", func(t *testing.T) {
+		zipData := createTestZip(t, map[string][]byte{
+			"../../../etc/malicious.yaml":  []byte("malicious"),
+			"dep-789/api-abc.yaml":         []byte("valid content"),
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		assert.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, []byte("valid content"), result["dep-789"])
+	})
+
+	t.Run("Files at root level are skipped", func(t *testing.T) {
+		zipData := createTestZip(t, map[string][]byte{
+			"root-file.yaml": []byte("should be skipped"),
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
+}
+
 // Test for JSON marshaling of APIDeploymentPush
 func TestAPIDeploymentPush_JSON(t *testing.T) {
 	now := time.Now()

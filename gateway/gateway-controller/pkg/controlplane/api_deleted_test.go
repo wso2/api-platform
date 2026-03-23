@@ -81,6 +81,11 @@ func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error
 	return nil
 }
 
+func (m *mockStorageForDeletion) UpsertConfig(config *models.StoredConfig) (bool, error) {
+	m.configs[config.UUID] = config
+	return true, nil
+}
+
 func (m *mockStorageForDeletion) DeleteConfig(id string) error {
 	m.deleteCallCount++
 	if m.deleteErr != nil {

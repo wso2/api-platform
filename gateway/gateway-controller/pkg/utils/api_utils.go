@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -518,6 +519,171 @@ func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string
 	}
 
 	return result, nil
+}
+
+// FetchControlPlaneDeployments retrieves the list of deployments that should be active on this gateway
+// from the platform-API. If since is non-nil, only deployments updated after that timestamp are returned
+// (incremental sync). Pass nil for a full sync.
+func (s *APIUtilsService) FetchControlPlaneDeployments(since *time.Time) ([]models.ControlPlaneDeployment, error) {
+	deploymentsURL := s.getBaseURL() + "/deployments"
+	if since != nil {
+		deploymentsURL += "?since=" + since.Format(time.RFC3339)
+	}
+
+	s.logger.Info("Fetching control plane deployments",
+		slog.String("url", deploymentsURL),
+	)
+
+	req, err := http.NewRequest("GET", deploymentsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch control plane deployments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("control plane deployments request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var response models.ControlPlaneDeploymentsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode control plane deployments response: %w", err)
+	}
+
+	s.logger.Info("Successfully fetched control plane deployments",
+		slog.Int("count", len(response.Deployments)),
+	)
+
+	return response.Deployments, nil
+}
+
+// BatchFetchDeployments fetches multiple deployment artifacts in a single request.
+// It returns the raw zip data containing deployment directories, each named by deployment ID
+// and containing the artifact YAML file. Returns an error if the request fails.
+func (s *APIUtilsService) BatchFetchDeployments(deploymentIDs []string) ([]byte, error) {
+	batchURL := s.getBaseURL() + "/deployments/fetch-batch"
+
+	s.logger.Info("Batch fetching deployments from platform-API",
+		slog.String("url", batchURL),
+		slog.Int("count", len(deploymentIDs)),
+	)
+
+	requestBody := models.BatchFetchRequest{
+		DeploymentIDs: deploymentIDs,
+	}
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal batch fetch request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", batchURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/zip")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to batch fetch deployments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("batch fetch request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read batch fetch response body: %w", err)
+	}
+
+	s.logger.Info("Successfully batch fetched deployments",
+		slog.Int("count", len(deploymentIDs)),
+		slog.Int("size_bytes", len(bodyBytes)),
+	)
+
+	return bodyBytes, nil
+}
+
+// ExtractDeploymentsFromBatchZip processes a batch zip response and extracts YAML content
+// for each deployment. The zip structure has top-level directories named by deployment ID,
+// each containing a YAML file. Returns a map of deployment ID to YAML content bytes.
+func (s *APIUtilsService) ExtractDeploymentsFromBatchZip(zipData []byte) (map[string][]byte, error) {
+	zipReader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zip reader: %w", err)
+	}
+
+	deployments := make(map[string][]byte)
+	for _, file := range zipReader.File {
+		// Skip directories
+		if file.FileInfo().IsDir() {
+			continue
+		}
+
+		cleanPath := filepath.Clean(file.Name)
+		if strings.Contains(cleanPath, "..") {
+			s.logger.Warn("Skipping zip entry with path traversal",
+				slog.String("path", file.Name),
+			)
+			continue
+		}
+
+		// Extract deployment ID from directory name (first path component)
+		dir := filepath.Dir(cleanPath)
+		deploymentID := filepath.Base(dir)
+		if deploymentID == "." || deploymentID == "" {
+			s.logger.Warn("Skipping file with unexpected path in batch zip",
+				slog.String("path", file.Name),
+			)
+			continue
+		}
+
+		// Only process YAML files
+		ext := filepath.Ext(cleanPath)
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			s.logger.Warn("Failed to open file in batch zip",
+				slog.String("path", file.Name),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			s.logger.Warn("Failed to read file in batch zip",
+				slog.String("path", file.Name),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		deployments[deploymentID] = content
+	}
+
+	s.logger.Info("Extracted deployments from batch zip",
+		slog.Int("count", len(deployments)),
+	)
+
+	return deployments, nil
 }
 
 // SaveAPIDefinition saves the API definition zip file to disk

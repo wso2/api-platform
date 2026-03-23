@@ -49,6 +49,7 @@ func validConfig() *Config {
 				ReconnectInitial: 1 * time.Second,
 				ReconnectMax:     30 * time.Second,
 				PollingInterval:  5 * time.Second,
+				SyncBatchSize:    50,
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -636,6 +637,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 		reconnectInitial time.Duration
 		reconnectMax     time.Duration
 		pollingInterval  time.Duration
+		syncBatchSize    int
 		wantErr          bool
 		errContains      string
 	}{
@@ -645,6 +647,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          false,
 		},
 		{
@@ -653,6 +656,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          false,
 		},
 		{
@@ -668,6 +672,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 0,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "controlplane.reconnect_initial must be positive",
 		},
@@ -677,6 +682,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     0,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "controlplane.reconnect_max must be positive",
 		},
@@ -686,6 +692,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 60 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "reconnect_initial",
 		},
@@ -695,8 +702,19 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  0,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "controlplane.polling_interval must be positive",
+		},
+		{
+			name:             "Non-positive sync batch size",
+			host:             "localhost",
+			reconnectInitial: 1 * time.Second,
+			reconnectMax:     30 * time.Second,
+			pollingInterval:  5 * time.Second,
+			syncBatchSize:    -1,
+			wantErr:          true,
+			errContains:      "controlplane.sync_batch_size must be positive",
 		},
 	}
 
@@ -708,6 +726,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			cfg.Controller.ControlPlane.ReconnectInitial = tt.reconnectInitial
 			cfg.Controller.ControlPlane.ReconnectMax = tt.reconnectMax
 			cfg.Controller.ControlPlane.PollingInterval = tt.pollingInterval
+			cfg.Controller.ControlPlane.SyncBatchSize = tt.syncBatchSize
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)

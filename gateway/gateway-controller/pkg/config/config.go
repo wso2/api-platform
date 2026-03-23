@@ -386,6 +386,7 @@ type ControlPlaneConfig struct {
 	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (default: true for dev)
 	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
+	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -539,6 +540,7 @@ func defaultConfig() *Config {
 				PollingInterval:       15 * time.Minute,
 				InsecureSkipVerify:    true,
 				DeploymentPushEnabled: false,
+				SyncBatchSize:         50,
 			},
 		},
 		Router: RouterConfig{
@@ -982,6 +984,11 @@ func (c *Config) validateControlPlaneConfig() error {
 	// Validate polling interval
 	if cp.PollingInterval <= 0 {
 		return fmt.Errorf("controlplane.polling_interval must be positive, got: %s", cp.PollingInterval)
+	}
+
+	// Validate sync batch size
+	if cp.SyncBatchSize <= 0 {
+		return fmt.Errorf("controlplane.sync_batch_size must be positive, got: %d", cp.SyncBatchSize)
 	}
 
 	return nil
