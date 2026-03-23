@@ -215,6 +215,9 @@ func NewClient(
 		policyManager,
 		policyValidator,
 	)
+	if eventHubInstance != nil {
+		client.mcpDeploymentService.SetEventHub(eventHubInstance, gatewayID)
+	}
 
 	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
@@ -2137,12 +2140,13 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 		return
 	}
 
-	// Update policy engine xDS snapshot (best-effort)
-	if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
-		// Error already logged in updatePolicyForDeployment
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
+	// In event-driven mode the EventListener owns local policy convergence.
+	if c.eventHub == nil {
+		if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
+			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
+				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "success",
@@ -2184,20 +2188,42 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 		return
 	}
 
-	// Check if MCP proxy exists on this gateway
-	mcpConfig, err := c.findAPIConfig(proxyID)
+	if c.mcpDeploymentService == nil {
+		c.logger.Error("MCP deployment service not available",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", undeployedEvent.CorrelationID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	_, err = c.mcpDeploymentService.UndeployMCPProxy(
+		proxyID,
+		undeployedEvent.Payload.DeploymentID,
+		&undeployedEvent.Payload.PerformedAt,
+		undeployedEvent.CorrelationID,
+		c.logger,
+	)
 	if err != nil {
-		if storage.IsNotFoundError(err) {
+		if storage.IsNotFoundError(err) || strings.Contains(strings.ToLower(err.Error()), "not found") {
 			c.logger.Warn("MCP proxy configuration not found for undeployment",
 				slog.String("proxy_id", proxyID),
 			)
-			// Not an error - the MCP proxy might already be undeployed or deleted
 			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "success",
 				undeployedEvent.Payload.PerformedAt, "")
 			return
 		}
-		// Real storage error - log and abort
-		c.logger.Error("Failed to fetch MCP proxy configuration for undeployment",
+		if errors.Is(err, utils.ErrMCPDeploymentIDMismatch) {
+			c.logger.Warn("Ignoring stale MCP proxy undeploy event: deployment ID mismatch",
+				slog.String("proxy_id", proxyID),
+				slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+			return
+		}
+		c.logger.Error("Failed to undeploy MCP proxy configuration",
 			slog.String("proxy_id", proxyID),
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 			slog.Any("error", err),
@@ -2206,60 +2232,8 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
-
-	// Only process undeploy if the event's DeploymentID matches the current one.
-	// This prevents stale undeploy events from affecting a newer deployment.
-	if mcpConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
-		mcpConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
-		c.logger.Warn("Ignoring stale MCP proxy undeploy event: deployment ID mismatch",
-			slog.String("proxy_id", proxyID),
-			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
-			slog.String("current_deployment_id", mcpConfig.DeploymentID),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
-		return
-	}
-
-	// Set status to undeployed (preserve config, keys, and policies)
-	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
-	mcpUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
-	if mcpUndeployPerformedAt.IsZero() {
-		mcpUndeployPerformedAt = time.Now()
-	}
-	mcpConfig.DesiredState = models.StateUndeployed
-	mcpConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
-	mcpConfig.DeployedAt = &mcpUndeployPerformedAt
-	mcpConfig.UpdatedAt = time.Now()
-
-	// Update database
-	if err := c.db.UpdateConfig(mcpConfig); err != nil {
-		c.logger.Error("Failed to update config status in database",
-			slog.String("proxy_id", proxyID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	// Update in-memory store
-	if err := c.store.Update(mcpConfig); err != nil {
-		c.logger.Error("Failed to update config status in memory store",
-			slog.String("proxy_id", proxyID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
-	c.updateXDSSnapshotAsync(proxyID, undeployedEvent.CorrelationID, false, true)
-
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "success",
 		undeployedEvent.Payload.PerformedAt, "")
-
 	c.logger.Info("Successfully processed MCP proxy undeployment event",
 		slog.String("proxy_id", proxyID),
 		slog.String("correlation_id", undeployedEvent.CorrelationID),

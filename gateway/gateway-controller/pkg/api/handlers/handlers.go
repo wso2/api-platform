@@ -113,6 +113,7 @@ func NewAPIServer(
 	parser := config.NewParser()
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator)
 
 	server := &APIServer{
 		store:                store,
@@ -124,7 +125,7 @@ func NewAPIServer(
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator),
+		mcpDeploymentService: mcpDeploymentService,
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
 		apiKeyService:      apiKeyService,
@@ -138,6 +139,7 @@ func NewAPIServer(
 	}
 	if eventHub != nil {
 		server.llmDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
+		server.mcpDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
 	}
 
 	// Create RestAPI service and handler
@@ -238,6 +240,9 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 
 	configs := s.store.GetAllByKind(kind)
+	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
+		configs = s.mcpDeploymentService.ListMCPProxies()
+	}
 
 	// Filter based on kind to return appropriate response format
 	if kind == string(api.Mcp) {
@@ -1294,7 +1299,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	}
 
 	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -1315,7 +1320,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
-	configs := s.store.GetAllByKind(string(api.Mcp))
+	configs := s.mcpDeploymentService.ListMCPProxies()
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
@@ -1472,7 +1477,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 		slog.String("handle", handle))
 
 	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {

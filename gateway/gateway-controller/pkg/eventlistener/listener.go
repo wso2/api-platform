@@ -189,6 +189,8 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processLLMProxyEvent(event)
 	case eventhub.EventTypeLLMTemplate:
 		l.processLLMTemplateEvent(event)
+	case eventhub.EventTypeMCPProxy:
+		l.processMCPProxyEvent(event)
 	default:
 		l.logger.Warn("Unknown event type received",
 			slog.String("event_type", string(event.EventType)),
