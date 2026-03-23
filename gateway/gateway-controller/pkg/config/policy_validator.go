@@ -32,13 +32,31 @@ import (
 // PolicyValidator validates policies referenced in API configurations
 type PolicyValidator struct {
 	policyDefinitions map[string]models.PolicyDefinition
+	latestVersions    map[string]string // policyName -> latest full semver, pre-computed at construction
 }
 
 // NewPolicyValidator creates a new policy validator
 func NewPolicyValidator(policyDefinitions map[string]models.PolicyDefinition) *PolicyValidator {
 	return &PolicyValidator{
 		policyDefinitions: policyDefinitions,
+		latestVersions:    BuildLatestVersionIndex(policyDefinitions),
 	}
+}
+
+// BuildLatestVersionIndex scans policy definitions once and builds a map of
+// policyName -> latest full semver. Used for O(1) empty-version resolution.
+func BuildLatestVersionIndex(definitions map[string]models.PolicyDefinition) map[string]string {
+	index := make(map[string]string)
+	for _, def := range definitions {
+		if !fullSemverPattern.MatchString(def.Version) {
+			continue
+		}
+		existing, ok := index[def.Name]
+		if !ok || versionutil.CompareSemver(def.Version, existing) > 0 {
+			index[def.Name] = def.Version
+		}
+	}
+	return index
 }
 
 // ValidateMCPProxyPolicies validates all policies in an MCP proxy configuration
@@ -136,17 +154,26 @@ var (
 // version (vX.Y.Z) from the loaded definitions. Full semantic version
 // (e.g., v1.0.0) is rejected.
 func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, error) {
-	return ResolvePolicyVersion(pv.policyDefinitions, name, version)
+	return ResolvePolicyVersion(pv.policyDefinitions, pv.latestVersions, name, version)
 }
 
 // ResolvePolicyVersion resolves a policy version using the given definitions map.
 // Only major-only versions (e.g., v1) are accepted; they are resolved to the
 // unique full version (vX.Y.Z) for that policy name. Full semantic version
 // (e.g., v1.0.0) is rejected. Used by both the validator and the derivation path.
-func ResolvePolicyVersion(definitions map[string]models.PolicyDefinition, name, version string) (string, error) {
+// latestVersions is an optional pre-computed index (policyName -> latest full semver)
+// for O(1) empty-version resolution; pass nil to fall back to scanning definitions.
+func ResolvePolicyVersion(definitions map[string]models.PolicyDefinition, latestVersions map[string]string, name, version string) (string, error) {
 	trimmed := strings.TrimSpace(version)
 	if trimmed == "" {
 		// No version specified: resolve to the latest available full version for this policy.
+		if latestVersions != nil {
+			if latest, ok := latestVersions[name]; ok {
+				return latest, nil
+			}
+			return "", fmt.Errorf("policy '%s' not found in loaded policy definitions", name)
+		}
+		// Fallback: scan definitions (no pre-computed index available).
 		var latestFull string
 		for _, def := range definitions {
 			if def.Name != name || !fullSemverPattern.MatchString(def.Version) {

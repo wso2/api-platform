@@ -41,11 +41,14 @@ import (
 // Policy execution order: System Policies -> API Level Policies -> Operation Level Policies
 // Each level does not override the previous one; policies are executed in the given order.
 func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config, policyDefinitions map[string]models.PolicyDefinition) *models.StoredPolicyConfig {
+	// Pre-compute latest version index once for all ResolvePolicyVersion calls in this function.
+	latestVersions := config.BuildLatestVersionIndex(policyDefinitions)
+
 	// Collect API-level policies (validate policy version exists, pass major-only to engine)
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
 	if cfg.GetPolicies() != nil {
 		for _, p := range *cfg.GetPolicies() {
-			_, err := config.ResolvePolicyVersion(policyDefinitions, p.Name, p.Version)
+			_, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
 			if err != nil {
 				slog.Error("Failed to resolve policy version for API-level policy", "policy_name", p.Name, "error", err)
 				continue
@@ -77,7 +80,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			// Append operation-level policies (they don't override, just execute after API-level)
 			if ch.Policies != nil && len(*ch.Policies) > 0 {
 				for _, opPolicy := range *ch.Policies {
-					_, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
+					_, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for operation-level policy", "policy_name", opPolicy.Name, "channel_name", ch.Name, "error", err)
 						continue
@@ -116,7 +119,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			// Append operation-level policies (they don't override, just execute after API-level)
 			if op.Policies != nil && len(*op.Policies) > 0 {
 				for _, opPolicy := range *op.Policies {
-					_, err := config.ResolvePolicyVersion(policyDefinitions, opPolicy.Name, opPolicy.Version)
+					_, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for operation-level policy", "policy_name", opPolicy.Name, "operation_method", op.Method, "operation_path", op.Path, "error", err)
 						continue

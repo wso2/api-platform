@@ -735,7 +735,7 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 		"MyPolicy|v1.0.0": {Name: "MyPolicy", Version: "v1.0.0"},
 	}
 
-	resolved, err := ResolvePolicyVersion(policyDefs, "MyPolicy", "")
+	resolved, err := ResolvePolicyVersion(policyDefs, BuildLatestVersionIndex(policyDefs), "MyPolicy", "")
 	if err != nil {
 		t.Fatalf("Expected empty version to resolve, got error: %v", err)
 	}
@@ -814,6 +814,51 @@ func TestPolicyValidator_EmptyVersion_PolicyNotFound(t *testing.T) {
 	}
 	if len(errors) > 0 && !contains(errors[0].Message, "not found") {
 		t.Errorf("Expected 'not found' error, got: %s", errors[0].Message)
+	}
+}
+
+// TestBuildLatestVersionIndex_PicksLatestPerPolicy verifies that the index returns
+// the highest semver for each policy name when multiple versions are present.
+func TestBuildLatestVersionIndex_PicksLatestPerPolicy(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"auth|v1.0.0": {Name: "auth", Version: "v1.0.0"},
+		"auth|v1.2.0": {Name: "auth", Version: "v1.2.0"},
+		"auth|v2.0.0": {Name: "auth", Version: "v2.0.0"},
+		"log|v1.0.0":  {Name: "log", Version: "v1.0.0"},
+		"log|v1.1.0":  {Name: "log", Version: "v1.1.0"},
+	}
+
+	index := BuildLatestVersionIndex(defs)
+
+	if index["auth"] != "v2.0.0" {
+		t.Errorf("expected auth latest to be v2.0.0, got %s", index["auth"])
+	}
+	if index["log"] != "v1.1.0" {
+		t.Errorf("expected log latest to be v1.1.0, got %s", index["log"])
+	}
+}
+
+// TestBuildLatestVersionIndex_SkipsNonSemver verifies that definitions whose
+// version is not a full semver (e.g., "v1") are excluded from the index.
+func TestBuildLatestVersionIndex_SkipsNonSemver(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"auth|v1":     {Name: "auth", Version: "v1"},     // major-only, must be skipped
+		"auth|v1.0.0": {Name: "auth", Version: "v1.0.0"}, // valid
+	}
+
+	index := BuildLatestVersionIndex(defs)
+
+	if index["auth"] != "v1.0.0" {
+		t.Errorf("expected auth latest to be v1.0.0, got %s", index["auth"])
+	}
+}
+
+// TestBuildLatestVersionIndex_EmptyDefinitions verifies an empty map is returned
+// when no definitions are provided.
+func TestBuildLatestVersionIndex_EmptyDefinitions(t *testing.T) {
+	index := BuildLatestVersionIndex(map[string]models.PolicyDefinition{})
+	if len(index) != 0 {
+		t.Errorf("expected empty index, got %v", index)
 	}
 }
 
