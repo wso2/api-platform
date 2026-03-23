@@ -384,7 +384,7 @@ type ControlPlaneConfig struct {
 	ReconnectInitial      time.Duration `koanf:"reconnect_initial"`       // Initial retry delay
 	ReconnectMax          time.Duration `koanf:"reconnect_max"`           // Maximum retry delay
 	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
-	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (default: true for dev)
+	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
 }
 
@@ -537,7 +537,7 @@ func defaultConfig() *Config {
 				ReconnectInitial:      1 * time.Second,
 				ReconnectMax:          5 * time.Minute,
 				PollingInterval:       15 * time.Minute,
-				InsecureSkipVerify:    true,
+				InsecureSkipVerify:    false,
 				DeploymentPushEnabled: false,
 			},
 		},

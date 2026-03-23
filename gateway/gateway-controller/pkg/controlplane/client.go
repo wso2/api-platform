@@ -290,14 +290,14 @@ func (c *Client) Connect() error {
 	// Create WebSocket dialer with timeout
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
-		TLSClientConfig: &tls.Config{
+		TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
 			InsecureSkipVerify: c.config.InsecureSkipVerify,
 		},
 	}
 
 	// Log TLS configuration
 	if c.config.InsecureSkipVerify {
-		c.logger.Debug("TLS certificate verification disabled (insecure_skip_verify=true)")
+		c.logger.Warn("TLS certificate verification disabled (insecure_skip_verify=true)")
 	}
 
 	// Add api-key header for authentication
@@ -455,7 +455,9 @@ func (c *Client) discoverGatewayPath() (string, error) {
 	httpClient := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.config.InsecureSkipVerify},
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
+				InsecureSkipVerify: c.config.InsecureSkipVerify,
+			},
 		},
 	}
 
@@ -2798,8 +2800,23 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 
 // calculateNextRetryDelay calculates the next retry delay with exponential backoff and jitter
 func (c *Client) calculateNextRetryDelay() {
-	// Exponential backoff: initial * 2^retries
-	baseDelay := c.config.ReconnectInitial * time.Duration(1<<uint(c.state.RetryCount))
+	// Exponential backoff with bounded doubling to avoid overflow before capping.
+	baseDelay := c.config.ReconnectInitial
+	retries := c.state.RetryCount
+	if retries < 0 {
+		retries = 0
+	}
+	for i := 0; i < retries; i++ {
+		if baseDelay >= c.config.ReconnectMax {
+			baseDelay = c.config.ReconnectMax
+			break
+		}
+		if baseDelay > c.config.ReconnectMax/2 {
+			baseDelay = c.config.ReconnectMax
+			break
+		}
+		baseDelay *= 2
+	}
 
 	// Cap at maximum
 	if baseDelay > c.config.ReconnectMax {
@@ -3226,7 +3243,7 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
 				InsecureSkipVerify: c.config.InsecureSkipVerify,
 			},
 		},
