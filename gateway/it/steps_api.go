@@ -27,8 +27,8 @@ import (
 
 // policyPropagationDelay is the time to wait after mutating operations
 // to allow the Policy Engine to receive and apply configuration changes.
-// Reduced from 2s to 500ms as xDS sync typically completes in <500ms.
-const policyPropagationDelay = 500 * time.Millisecond
+// Reduced from 2s to 1s as xDS sync typically completes in <1s.
+const policyPropagationDelay = 1 * time.Second
 
 // RegisterAPISteps registers all API deployment step definitions
 func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
