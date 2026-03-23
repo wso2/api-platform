@@ -378,7 +378,7 @@ func (c *Client) Connect() error {
 		defer c.wg.Done()
 		c.syncSubscriptionPlans(gwID)
 		c.syncSubscriptionsForExistingAPIs(gwID)
-		// Sync API keys for LlmProvider and LlmProxy artifacts.
+		// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
 		c.syncAPIKeysForExistingArtifacts(gwID)
 	}(gatewayID)
 
