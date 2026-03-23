@@ -351,9 +351,9 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 					slog.String("correlation_id", params.CorrelationID))
 			}
 		}()
-	}
 
-	s.updatePolicyRouteConfig(storedCfg, params.Logger)
+		s.updatePolicyRouteConfig(storedCfg, params.Logger)
+	}
 
 	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
 }
@@ -475,9 +475,9 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 					slog.String("correlation_id", params.CorrelationID))
 			}
 		}()
-	}
 
-	s.updatePolicyRouteConfig(storedCfg, params.Logger)
+		s.updatePolicyRouteConfig(storedCfg, params.Logger)
+	}
 
 	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
 }
