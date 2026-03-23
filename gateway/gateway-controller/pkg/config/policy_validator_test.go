@@ -726,6 +726,142 @@ func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 	}
 }
 
+// TestPolicyValidator_EmptyVersion_ResolvesToLatest ensures that an empty version
+// string resolves to the latest available policy version.
+func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"MyPolicy|v0.1.0": {Name: "MyPolicy", Version: "v0.1.0"},
+		"MyPolicy|v0.2.0": {Name: "MyPolicy", Version: "v0.2.0"},
+		"MyPolicy|v1.0.0": {Name: "MyPolicy", Version: "v1.0.0"},
+	}
+
+	resolved, err := ResolvePolicyVersion(policyDefs, BuildLatestVersionIndex(policyDefs), "MyPolicy", "")
+	if err != nil {
+		t.Fatalf("Expected empty version to resolve, got error: %v", err)
+	}
+	if resolved != "v1.0.0" {
+		t.Fatalf("Expected latest resolved version v1.0.0, got %s", resolved)
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "MyPolicy",
+					Version: "", // empty — should resolve to v1.0.0
+				},
+			},
+			Operations: []api.Operation{{Method: "GET", Path: "/resource"}},
+		},
+	}
+
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
+	if len(errors) > 0 {
+		t.Errorf("Expected no validation errors for empty version, got %d: %v", len(errors), errors)
+	}
+}
+
+// TestPolicyValidator_EmptyVersion_PolicyNotFound ensures an error is returned
+// when the policy name does not exist in definitions and version is empty.
+func TestPolicyValidator_EmptyVersion_PolicyNotFound(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "NonExistentPolicy",
+					Version: "",
+				},
+			},
+			Operations: []api.Operation{{Method: "GET", Path: "/resource"}},
+		},
+	}
+
+	errors := validator.ValidateRestAPIPolicies(apiConfig)
+	if len(errors) == 0 {
+		t.Error("Expected validation error when policy not found and version is empty")
+	}
+	if len(errors) > 0 && !contains(errors[0].Message, "not found") {
+		t.Errorf("Expected 'not found' error, got: %s", errors[0].Message)
+	}
+}
+
+// TestBuildLatestVersionIndex_PicksLatestPerPolicy verifies that the index returns
+// the highest semver for each policy name when multiple versions are present.
+func TestBuildLatestVersionIndex_PicksLatestPerPolicy(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"auth|v1.0.0": {Name: "auth", Version: "v1.0.0"},
+		"auth|v1.2.0": {Name: "auth", Version: "v1.2.0"},
+		"auth|v2.0.0": {Name: "auth", Version: "v2.0.0"},
+		"log|v1.0.0":  {Name: "log", Version: "v1.0.0"},
+		"log|v1.1.0":  {Name: "log", Version: "v1.1.0"},
+	}
+
+	index := BuildLatestVersionIndex(defs)
+
+	if index["auth"] != "v2.0.0" {
+		t.Errorf("expected auth latest to be v2.0.0, got %s", index["auth"])
+	}
+	if index["log"] != "v1.1.0" {
+		t.Errorf("expected log latest to be v1.1.0, got %s", index["log"])
+	}
+}
+
+// TestBuildLatestVersionIndex_SkipsNonSemver verifies that definitions whose
+// version is not a full semver (e.g., "v1") are excluded from the index.
+func TestBuildLatestVersionIndex_SkipsNonSemver(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"auth|v1":     {Name: "auth", Version: "v1"},     // major-only, must be skipped
+		"auth|v1.0.0": {Name: "auth", Version: "v1.0.0"}, // valid
+	}
+
+	index := BuildLatestVersionIndex(defs)
+
+	if index["auth"] != "v1.0.0" {
+		t.Errorf("expected auth latest to be v1.0.0, got %s", index["auth"])
+	}
+}
+
+// TestBuildLatestVersionIndex_EmptyDefinitions verifies an empty map is returned
+// when no definitions are provided.
+func TestBuildLatestVersionIndex_EmptyDefinitions(t *testing.T) {
+	index := BuildLatestVersionIndex(map[string]models.PolicyDefinition{})
+	if len(index) != 0 {
+		t.Errorf("expected empty index, got %v", index)
+	}
+}
+
 // Helper functions
 func boolPtr(b bool) *bool {
 	return &b

@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	versionutil "github.com/wso2/api-platform/common/version"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -39,6 +40,7 @@ type RestAPITransformer struct {
 	routerConfig      *config.RouterConfig
 	systemConfig      *config.Config
 	policyDefinitions map[string]models.PolicyDefinition
+	latestVersions    map[string]string // pre-computed policyName -> latest full semver
 }
 
 // NewRestAPITransformer creates a new RestAPITransformer.
@@ -51,6 +53,7 @@ func NewRestAPITransformer(
 		routerConfig:      routerConfig,
 		systemConfig:      systemConfig,
 		policyDefinitions: policyDefinitions,
+		latestVersions:    config.BuildLatestVersionIndex(policyDefinitions),
 	}
 }
 
@@ -216,12 +219,12 @@ func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) map[stri
 		return result
 	}
 	for _, p := range *policies {
-		_, err := config.ResolvePolicyVersion(t.policyDefinitions, p.Name, p.Version)
+		resolved, err := config.ResolvePolicyVersion(t.policyDefinitions, t.latestVersions, p.Name, p.Version)
 		if err != nil {
 			slog.Error("Failed to resolve policy version for API-level policy", "policy_name", p.Name, "error", err)
 			continue
 		}
-		result[p.Name] = convertAPIPolicyToSDK(p, policyv1alpha.LevelAPI, p.Version)
+		result[p.Name] = convertAPIPolicyToSDK(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved))
 	}
 	return result
 }
@@ -246,12 +249,12 @@ func (t *RestAPITransformer) buildPolicyChain(
 	// Operation-level policies
 	if opPolicies != nil {
 		for _, opPol := range *opPolicies {
-			_, err := config.ResolvePolicyVersion(t.policyDefinitions, opPol.Name, opPol.Version)
+			resolved, err := config.ResolvePolicyVersion(t.policyDefinitions, t.latestVersions, opPol.Name, opPol.Version)
 			if err != nil {
 				slog.Error("Failed to resolve operation-level policy version", "policy_name", opPol.Name, "error", err)
 				continue
 			}
-			result = append(result, convertAPIPolicyToSDK(opPol, policyv1alpha.LevelRoute, opPol.Version))
+			result = append(result, convertAPIPolicyToSDK(opPol, policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
 		}
 	}
 
