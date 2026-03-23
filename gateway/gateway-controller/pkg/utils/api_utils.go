@@ -314,13 +314,14 @@ type controlPlaneAPIKey struct {
 // Only active keys that carry a sha256 hash are returned; others are skipped.
 func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, artifactName string) ([]models.APIKey, error) {
 	var endpoint string
+	baseURL := s.getBaseURL()
 	switch artifactKind {
 	case models.KindLlmProvider:
-		endpoint = s.config.BaseURL + "/llm-providers/" + artifactID + "/api-keys"
+		endpoint = baseURL + "/llm-providers/" + artifactID + "/api-keys"
 	case models.KindLlmProxy:
-		endpoint = s.config.BaseURL + "/llm-proxies/" + artifactID + "/api-keys"
+		endpoint = baseURL + "/llm-proxies/" + artifactID + "/api-keys"
 	case models.KindRestApi:
-		endpoint = s.config.BaseURL + "/apis/" + artifactID + "/api-keys"
+		endpoint = baseURL + "/apis/" + artifactID + "/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}
@@ -330,15 +331,6 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 		slog.String("artifact_name", artifactName),
 	)
 
-	client := &http.Client{
-		Timeout: s.config.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
-
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API keys request: %w", err)
@@ -346,7 +338,7 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 	req.Header.Add("api-key", s.config.Token)
 	req.Header.Add("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch API keys: %w", err)
 	}
@@ -385,7 +377,7 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 			Name:          ck.Name,
 			APIKey:        sha256Hash,
 			MaskedAPIKey:  ck.MaskedAPIKey,
-			ArtifactUUID:  ck.ArtifactUUID,
+			ArtifactUUID:  artifactID,
 			Status:        models.APIKeyStatus(ck.Status),
 			CreatedAt:     ck.CreatedAt,
 			CreatedBy:     ck.CreatedBy,

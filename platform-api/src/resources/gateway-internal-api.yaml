@@ -1271,7 +1271,7 @@ components:
 
     InternalAPIKeyItem:
       type: object
-      description: API key associated with an LLM Provider or LLM Proxy artifact
+      description: API key associated with an LLM Provider, LLM Proxy, or REST API artifact (used by /llm-providers/{providerId}/api-keys, /llm-proxies/{proxyId}/api-keys, and /apis/{apiId}/api-keys)
       required:
         - uuid
         - name

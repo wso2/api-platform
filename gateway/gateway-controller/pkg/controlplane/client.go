@@ -852,9 +852,19 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 	}
 
 	// Reload in-memory store from the now-reconciled DB state and push a single xDS refresh.
-	c.apiKeyStore.Clear()
-	if err := storage.LoadAPIKeysFromDatabase(c.db, c.store, c.apiKeyStore); err != nil {
+	// Load into a temporary store first; only replace the live store and push the xDS snapshot
+	// if the database load succeeds. This ensures a DB failure does not wipe the live store and
+	// cause all API key authentication to fail for in-flight requests.
+	tempStore := storage.NewAPIKeyStore(c.logger)
+	if err := storage.LoadAPIKeysFromDatabase(c.db, c.store, tempStore); err != nil {
 		c.logger.Warn("Failed to reload API keys from database after bulk sync", slog.Any("error", err))
+		return
+	}
+	c.apiKeyStore.Clear()
+	for _, apiKey := range tempStore.GetAll() {
+		if err := c.apiKeyStore.Store(apiKey); err != nil {
+			c.logger.Warn("Failed to populate API key store entry after bulk sync", slog.Any("error", err))
+		}
 	}
 	c.refreshAPIKeySnapshot()
 }
