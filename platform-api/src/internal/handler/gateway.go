@@ -517,6 +517,54 @@ func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 	})
 }
 
+// SyncCustomPolicy handles PUT /api/v1/gateways/:gatewayId/custom-policies/:policyName/versions/:version
+// It upserts a custom policy from the gateway's stored manifest into the gateway_custom_policies table.
+func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	gatewayId := c.Param("gatewayId")
+	policyName := c.Param("policyName")
+	version := c.Param("version")
+
+	if gatewayId == "" || policyName == "" || version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"gatewayId, policyName and version are required"))
+		return
+	}
+
+	policy, err := h.gatewayService.SyncCustomPolicy(gatewayId, orgId, policyName, version)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "gateway not found") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
+			return
+		}
+		if strings.Contains(msg, "not found in gateway manifest") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
+			return
+		}
+		if strings.Contains(msg, "not a custom policy") || strings.Contains(msg, "manifest is not available") {
+			c.JSON(http.StatusUnprocessableEntity, utils.NewErrorResponse(422, "Unprocessable Entity", msg))
+			return
+		}
+		if strings.Contains(msg, "already exists") {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", msg))
+			return
+		}
+		h.slogger.Error("Failed to sync custom policy", "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to sync custom policy"))
+		return
+	}
+
+	c.JSON(http.StatusOK, policy)
+}
+
 // RegisterRoutes registers gateway routes with the router
 func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering gateway routes")
@@ -532,6 +580,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
 		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
 		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
+		gatewayGroup.PUT("/:gatewayId/custom-policies/:policyName/versions/:version", h.SyncCustomPolicy)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")

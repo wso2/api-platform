@@ -69,17 +69,20 @@ type GatewayService struct {
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
 	apiRepo              repository.APIRepository
+	customPolicyRepo     repository.CustomPolicyRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 }
 
 // NewGatewayService creates a new gateway service
 func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
-	apiRepo repository.APIRepository, gatewayEventsService *GatewayEventsService, slogger *slog.Logger) *GatewayService {
+	apiRepo repository.APIRepository, customPolicyRepo repository.CustomPolicyRepository,
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger) *GatewayService {
 	return &GatewayService{
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
 		apiRepo:              apiRepo,
+		customPolicyRepo:     customPolicyRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 	}
@@ -118,7 +121,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policie
 			Description: p.Description,
 			ManagedBy:   p.ManagedBy,
 		}
-		if p.ManagedBy == "customer" {
+		if p.ManagedBy == constants.PolicyManagedByCustomer {
 			policyDef := map[string]interface{}{}
 			if p.Parameters != nil {
 				policyDef["parameters"] = p.Parameters
@@ -141,7 +144,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policie
 
 	customerCount := 0
 	for _, p := range policies {
-		if p.ManagedBy == "customer" {
+		if p.ManagedBy == constants.PolicyManagedByCustomer {
 			customerCount++
 		}
 	}
@@ -152,6 +155,97 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policie
 		slog.Int("customer_policy_count", customerCount),
 	)
 	return nil
+}
+
+// SyncCustomPolicy upserts a custom policy from the gateway manifest into the gateway_custom_policies table.
+// The gateway must belong to the caller's organization. The policy must exist in the manifest and it should be a custom policy.
+func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version string) (*model.CustomPolicy, error) {
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	if err != nil || gateway == nil {
+		return nil, errors.New("gateway not found")
+	}
+	if gateway.OrganizationID != orgID {
+		return nil, errors.New("gateway not found")
+	}
+
+	raw, err := s.gatewayRepo.GetGatewayManifest(gatewayID)
+	if err != nil {
+		s.slogger.Error("failed to read gateway manifest", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID))
+		return nil, fmt.Errorf("failed to read gateway manifest: %w", err)
+	}
+	if len(raw) == 0 {
+		s.slogger.Error("gateway manifest is not available", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID))
+		return nil, errors.New("gateway manifest is not available")
+	}
+
+	var policies []GatewayPolicyDefinition
+	if err := json.Unmarshal(raw, &policies); err != nil {
+		return nil, fmt.Errorf("failed to parse gateway manifest: %w", err)
+	}
+
+	var found *GatewayPolicyDefinition
+	for i := range policies {
+		if policies[i].Name == policyName && policies[i].Version == version {
+			found = &policies[i]
+			break
+		}
+	}
+	if found == nil {
+		s.slogger.Error("policy not found in gateway manifest", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
+		return nil, fmt.Errorf("policy '%s' version '%s' not found in gateway manifest", policyName, version)
+	}
+	if found.ManagedBy != constants.PolicyManagedByCustomer {
+		s.slogger.Error("policy is not a custom policy", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
+		return nil, fmt.Errorf("policy '%s' version '%s' is not a custom policy", policyName, version)
+	}
+
+	var policyDefJSON json.RawMessage
+	if found.PolicyDefinition != nil {
+		b, err := json.Marshal(found.PolicyDefinition)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize policy definition: %w", err)
+		}
+		policyDefJSON = json.RawMessage(b)
+	}
+
+	existing, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgID, policyName, version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing custom policy: %w", err)
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("custom policy '%s' version '%s' already exists", policyName, version)
+	}
+
+	policyID, err := utils.GenerateUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate policy UUID: %w", err)
+	}
+
+	policy := &model.CustomPolicy{
+		UUID:             policyID,
+		OrganizationUUID: orgID,
+		Name:             policyName,
+		Version:          version,
+		Description:      found.Description,
+		PolicyDefinition: policyDefJSON,
+	}
+
+	if err := s.customPolicyRepo.InsertCustomPolicy(policy); err != nil {
+		return nil, fmt.Errorf("failed to insert custom policy: %w", err)
+	}
+
+	s.slogger.Info("Custom policy synced",
+		slog.String("gateway_id", gatewayID),
+		slog.String("org_id", orgID),
+		slog.String("policy_name", policyName),
+		slog.String("version", version),
+	)
+
+	persisted, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgID, policyName, version)
+	if err != nil || persisted == nil {
+		return policy, nil
+	}
+	return persisted, nil
 }
 
 // RegisterGateway registers a new gateway with organization validation

@@ -1967,6 +1967,51 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateways/{gatewayId}/custom-policies/{policyName}/versions/{version}:
+    put:
+      summary: Sync a custom policy from the gateway manifest 
+      description: |
+        Inserts a custom policy available in the gateway manifest to a given organization. 
+        After syncing the policy, it can be applied to APIs in the organization. 
+      operationId: SyncCustomPolicy
+      tags:
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/GatewayID'
+        - name: policyName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the custom policy
+          example: "rate-limit-custom"
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Version of the custom policy (e.g. 1.0.0, 2.0.0)
+          example: "1.0.0"
+      responses:
+        '200':
+          description: Custom policy synced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomPolicyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Policy is not a custom policy or manifest is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways/{gatewayId}/manifest:
     get:
       summary: Get gateway policy manifest
@@ -5073,6 +5118,49 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
+    CustomPolicyResponse:
+      type: object
+      description: A custom policy stored in the platform's custom policy registry.
+      required:
+        - uuid
+        - organizationUuid
+        - name
+        - version
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique identifier of the custom policy record
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        organizationUuid:
+          type: string
+          format: uuid
+          description: Organization this policy belongs to
+        name:
+          type: string
+          description: Policy name
+          example: "rate-limit-custom"
+        version:
+          type: string
+          description: Policy version
+          example: "1.0.0"
+        description:
+          type: string
+          description: Human-readable description of the policy
+          example: "Custom rate limiting policy"
+        policyDefinition:
+          type: object
+          description: |
+            The full policy schema as declared in the policy's policy-definition.yaml.
+            Contains `parameters` and `systemParameters` JSON Schema documents.
+            Only present for custom policies.
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     GatewayPolicyDefinition:
       type: object
