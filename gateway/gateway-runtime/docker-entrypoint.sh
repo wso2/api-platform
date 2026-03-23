@@ -70,17 +70,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --py.*)
             py_arg="$1"
-            PY_ARGS+=("--${py_arg#--py.}")
-            # Keep Go-side socket checks and Python executor CLI override in sync.
-            if [[ "$py_arg" == --py.socket=* ]]; then
-                export PYTHON_EXECUTOR_SOCKET="${py_arg#--py.socket=}"
+            if [[ "$py_arg" == "--py.socket" || "$py_arg" == --py.socket=* ]]; then
+                log "ERROR: --py.socket override is not supported; socket path is fixed"
+                exit 1
             fi
+            PY_ARGS+=("--${py_arg#--py.}")
             shift
             if [[ $# -gt 0 && "$1" != --* ]]; then
                 PY_ARGS+=("$1")
-                if [[ "$py_arg" == "--py.socket" ]]; then
-                    export PYTHON_EXECUTOR_SOCKET="$1"
-                fi
                 shift
             fi
             ;;
@@ -113,7 +110,6 @@ export APIP_GW_POLICY_ENGINE_METRICS_ENABLED="${APIP_GW_POLICY_ENGINE_METRICS_EN
 export PYTHON_POLICY_WORKERS="${PYTHON_POLICY_WORKERS:-4}"
 export PYTHON_POLICY_MAX_CONCURRENT="${PYTHON_POLICY_MAX_CONCURRENT:-100}"
 export PYTHON_POLICY_TIMEOUT="${PYTHON_POLICY_TIMEOUT:-30}"
-export PYTHON_EXECUTOR_SOCKET="${PYTHON_EXECUTOR_SOCKET:-/var/run/api-platform/python-executor.sock}"
 
 # Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
 export XDS_SERVER_HOST="${GATEWAY_CONTROLLER_HOST}"
@@ -123,6 +119,7 @@ export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
 PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
 
 POLICY_ENGINE_SOCKET="/var/run/api-platform/policy-engine.sock"
+PYTHON_EXECUTOR_SOCKET="/var/run/api-platform/python-executor.sock"
 
 log "Starting Gateway Runtime"
 log "  Gateway Controller: ${GATEWAY_CONTROLLER_HOST}"

@@ -139,33 +139,35 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	peStatus := "healthy"
-	statusCode := http.StatusOK
-	if h.health != nil && !h.health.IsHealthy() {
-		peStatus = "unhealthy"
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	resp := HealthResponse{
-		Status:    peStatus,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-	}
+	// Check policy engine health
+	peHealthy := h.health == nil || h.health.IsHealthy()
 
 	// Check Python executor health if checker is configured
+	pyHealthy := true
 	if h.pythonHealth != nil {
-		ready, loadedPolicies, err := h.pythonHealth.IsPythonHealthy()
-		if err != nil || !ready {
-			resp.PythonExecutor = &PythonExecutorHealth{
-				Status:         "unhealthy",
-				LoadedPolicies: loadedPolicies,
-			}
-			statusCode = http.StatusServiceUnavailable
-			resp.Status = "unhealthy"
+		ready, _, err := h.pythonHealth.IsPythonHealthy()
+		pyHealthy = err == nil && ready
+	}
+
+	// Build response
+	resp := HealthResponse{
+		Status:    "healthy",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	statusCode := http.StatusOK
+
+	// If any component is unhealthy, set status to unhealthy and provide reason
+	if !peHealthy || !pyHealthy {
+		resp.Status = "unhealthy"
+		statusCode = http.StatusServiceUnavailable
+
+		// Build reason message
+		if !peHealthy && !pyHealthy {
+			resp.Reason = "policy engine and python executor are unhealthy"
+		} else if !peHealthy {
+			resp.Reason = "policy engine is unhealthy"
 		} else {
-			resp.PythonExecutor = &PythonExecutorHealth{
-				Status:         "healthy",
-				LoadedPolicies: loadedPolicies,
-			}
+			resp.Reason = "python executor is unhealthy"
 		}
 	}
 

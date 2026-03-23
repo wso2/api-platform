@@ -926,11 +926,6 @@ func TestDiscoverPoliciesFromBuildFile_PythonAutoDetect(t *testing.T) {
 
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), `name: my-python-policy
 version: v1.0.0
-processingMode:
-  requestHeaderMode: PROCESS
-  requestBodyMode: SKIP
-  responseHeaderMode: SKIP
-  responseBodyMode: SKIP
 `)
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy.py"), "def on_request(): pass\n")
 	testutils.WriteFile(t, filepath.Join(policyDir, "requirements.txt"), "")
@@ -949,7 +944,6 @@ policies:
 	require.Len(t, policies, 1)
 	assert.Equal(t, "my-python-policy", policies[0].Name)
 	assert.Equal(t, "python", policies[0].Runtime)
-	assert.NotNil(t, policies[0].ProcessingMode)
 }
 
 func TestDiscoverPoliciesFromBuildFile_GoAutoDetect(t *testing.T) {
@@ -994,11 +988,6 @@ func TestDiscoverPoliciesFromBuildFile_MixedGoAndPython(t *testing.T) {
 	testutils.CreateDir(t, pyDir)
 	testutils.WriteFile(t, filepath.Join(pyDir, "policy-definition.yaml"), `name: py-policy
 version: v1.0.0
-processingMode:
-  requestHeaderMode: PROCESS
-  requestBodyMode: SKIP
-  responseHeaderMode: SKIP
-  responseBodyMode: SKIP
 `)
 	testutils.WriteFile(t, filepath.Join(pyDir, "policy.py"), "def on_request(): pass\n")
 

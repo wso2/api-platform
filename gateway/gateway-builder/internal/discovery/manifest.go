@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://wso2.com).
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -32,7 +32,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
 )
@@ -350,8 +349,6 @@ func buildPythonDiscoveredPolicy(entry types.BuildEntry, policyPath string, sour
 		)
 	}
 
-	processingMode := parseProcessingMode(definition.ProcessingModeConfig)
-
 	discovered := &types.DiscoveredPolicy{
 		Name:             definition.Name,
 		Version:          definition.Version,
@@ -362,7 +359,6 @@ func buildPythonDiscoveredPolicy(entry types.BuildEntry, policyPath string, sour
 		Definition:       definition,
 		Runtime:          "python",
 		PythonSourceDir:  policyPath,
-		ProcessingMode:   processingMode,
 	}
 
 	slog.Info("Discovered Python policy",
@@ -513,40 +509,8 @@ func discoverGoPolicy(entry types.BuildEntry, baseDir string) (*types.Discovered
 	return discovered, nil
 }
 
-// parseProcessingMode converts ProcessingModeConfig to ProcessingMode
-func parseProcessingMode(config *policy.ProcessingModeConfig) *policy.ProcessingMode {
-	if config == nil {
-		// Default: process request headers only
-		return &policy.ProcessingMode{
-			RequestHeaderMode:  policy.HeaderModeProcess,
-			RequestBodyMode:    policy.BodyModeSkip,
-			ResponseHeaderMode: policy.HeaderModeSkip,
-			ResponseBodyMode:   policy.BodyModeSkip,
-		}
-	}
-
-	mode := &policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeSkip,
-		ResponseBodyMode:   policy.BodyModeSkip,
-	}
-
-	if config.RequestHeaderMode == "SKIP" {
-		mode.RequestHeaderMode = policy.HeaderModeSkip
-	}
-	if config.RequestBodyMode == "BUFFER" {
-		mode.RequestBodyMode = policy.BodyModeBuffer
-	}
-	if config.ResponseHeaderMode == "PROCESS" {
-		mode.ResponseHeaderMode = policy.HeaderModeProcess
-	}
-	if config.ResponseBodyMode == "BUFFER" {
-		mode.ResponseBodyMode = policy.BodyModeBuffer
-	}
-
-	return mode
-}
+// processingMode is intentionally no longer parsed from YAML.
+// Python policy processing requirements are provided by the Python policy instance itself.
 
 // moduleInfo contains resolved module information from 'go mod download'
 type moduleInfo struct {

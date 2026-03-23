@@ -53,6 +53,9 @@ from sdk.policy import (
     ResponseContext,
     RequestAction,
     ResponseAction,
+    ProcessingMode,
+    HeaderProcessingMode,
+    BodyProcessingMode,
     UpstreamRequestModifications,
 )
 
@@ -80,6 +83,17 @@ class SlugifyBodyPolicy(Policy):
         )
 
     # ------------------------------------------------------------------
+    # mode — inform the Go kernel about buffering requirements
+    # ------------------------------------------------------------------
+    def mode(self) -> ProcessingMode:
+        return ProcessingMode(
+            request_header_mode=HeaderProcessingMode.SKIP,
+            request_body_mode=BodyProcessingMode.BUFFER,
+            response_header_mode=HeaderProcessingMode.SKIP,
+            response_body_mode=BodyProcessingMode.SKIP,
+        )
+
+    # ------------------------------------------------------------------
     # on_request — request phase (hot path)
     # ------------------------------------------------------------------
 
@@ -97,8 +111,7 @@ class SlugifyBodyPolicy(Policy):
 
         # ── 1. Guard ────────────────────────────────────────────────────────
         # ctx.body is None when the request has no body (e.g. GET).
-        # ctx.body.present is False when Envoy did not buffer (mode mismatch —
-        # should not happen if processingMode is set correctly, but be safe).
+        # ctx.body.present is False when Envoy did not buffer (mode mismatch).
         if ctx.body is None or not ctx.body.present:
             logger.info("on_request: no body present, passing request through unchanged")
             # Return empty modifications = continue request unchanged

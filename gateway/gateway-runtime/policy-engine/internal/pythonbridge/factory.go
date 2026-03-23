@@ -32,10 +32,8 @@ import (
 //
 // BridgeFactory holds:
 //   - streamManager: shared StreamManager singleton
-//   - mode: ProcessingMode parsed from policy-definition.yaml at build time
 type BridgeFactory struct {
 	StreamManager *StreamManager
-	Mode          policy.ProcessingMode
 	PolicyName    string
 	PolicyVersion string
 }
@@ -79,17 +77,44 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		return nil, fmt.Errorf("InitPolicy failed for %s:%s: %s", f.PolicyName, f.PolicyVersion, resp.ErrorMessage)
 	}
 
+	if resp.ProcessingMode == nil {
+		return nil, fmt.Errorf("InitPolicyResponse missing processing_mode for %s:%s", f.PolicyName, f.PolicyVersion)
+	}
+
+	mode, err := processingModeFromProto(resp.ProcessingMode)
+	if err != nil {
+		return nil, fmt.Errorf("invalid processing_mode from InitPolicy for %s:%s: %w", f.PolicyName, f.PolicyVersion, err)
+	}
+
 	slogger.Info("Python policy instance created", "instance_id", resp.InstanceId)
 
 	return &PythonBridge{
 		policyName:    f.PolicyName,
 		policyVersion: f.PolicyVersion,
-		mode:          f.Mode,
+		mode:          mode,
 		metadata:      metadata,
 		streamManager: f.StreamManager,
 		translator:    NewTranslator(),
 		slogger:       slogger,
 		instanceID:    resp.InstanceId,
+	}, nil
+}
+
+func processingModeFromProto(pm *proto.ProcessingMode) (policy.ProcessingMode, error) {
+	// Processing mode is mandatory for Python policies because it informs
+	// Envoy ext_proc buffering decisions.
+	if pm == nil {
+		return policy.ProcessingMode{}, fmt.Errorf("processing_mode is nil")
+	}
+	if pm.RequestHeaderMode == "" || pm.RequestBodyMode == "" || pm.ResponseHeaderMode == "" || pm.ResponseBodyMode == "" {
+		return policy.ProcessingMode{}, fmt.Errorf("processing_mode has empty required fields")
+	}
+
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderProcessingMode(pm.RequestHeaderMode),
+		RequestBodyMode:    policy.BodyProcessingMode(pm.RequestBodyMode),
+		ResponseHeaderMode: policy.HeaderProcessingMode(pm.ResponseHeaderMode),
+		ResponseBodyMode:   policy.BodyProcessingMode(pm.ResponseBodyMode),
 	}, nil
 }
 

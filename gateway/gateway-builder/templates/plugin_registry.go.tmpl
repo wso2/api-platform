@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://wso2.com).
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -76,12 +76,6 @@ func init() {
 		StreamManager: pythonbridge.GetStreamManager(),
 		PolicyName:    "{{ .Name }}",
 		PolicyVersion: "{{ .Version }}",
-		Mode: policy.ProcessingMode{
-			RequestHeaderMode:  {{ headerModeConst .ProcessingMode.RequestHeaderMode }},
-			RequestBodyMode:    {{ bodyModeConst .ProcessingMode.RequestBodyMode }},
-			ResponseHeaderMode: {{ headerModeConst .ProcessingMode.ResponseHeaderMode }},
-			ResponseBodyMode:   {{ bodyModeConst .ProcessingMode.ResponseBodyMode }},
-		},
 	}
 	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, bridgeFactory_{{ .ImportAlias }}.GetPolicy); err != nil {
 		slog.ErrorContext(ctx, "Failed to register Python policy {{ .Name }} version {{ .Version }}", "error", err)

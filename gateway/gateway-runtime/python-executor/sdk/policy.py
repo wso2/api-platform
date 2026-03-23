@@ -165,6 +165,15 @@ class Policy(ABC):
         """Execute during response phase."""
         ...
 
+    @abstractmethod
+    def mode(self) -> ProcessingMode:
+        """Return the policy's processing mode for each phase.
+
+        The Gateway kernel uses this to decide whether Envoy ext_proc should
+        buffer request/response bodies before invoking this policy.
+        """
+        ...
+
     def close(self) -> None:
         """Release resources held by this policy instance.
 

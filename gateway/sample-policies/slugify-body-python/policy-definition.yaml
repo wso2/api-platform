@@ -10,14 +10,6 @@ description: |
 
   This policy is the canonical sample for Python policy development.
 
-# processingMode tells the gateway which phases to activate for this policy.
-# BUFFER is required for any phase where the policy needs to read or modify the body.
-processingMode:
-  requestHeaderMode: SKIP    # We don't need to inspect request headers
-  requestBodyMode: BUFFER    # We need to read and replace the request body
-  responseHeaderMode: SKIP   # We don't touch response headers
-  responseBodyMode: SKIP     # We don't touch the response body
-
 parameters:
   type: object
   properties:

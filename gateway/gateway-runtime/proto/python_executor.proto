@@ -93,6 +93,19 @@ message ExecutionResponse {
   google.protobuf.Struct updated_metadata = 5;
 }
 
+// ProcessingMode declares which phases the Gateway kernel must buffer
+// before calling Python policy hooks.
+message ProcessingMode {
+  // "SKIP" or "PROCESS"
+  string request_header_mode = 1;
+  // "SKIP" or "BUFFER"
+  string request_body_mode = 2;
+  // "SKIP" or "PROCESS"
+  string response_header_mode = 3;
+  // "SKIP" or "BUFFER"
+  string response_body_mode = 4;
+}
+
 // ---------------------- Policy Lifecycle ----------------------
 
 message InitPolicyRequest {
@@ -106,6 +119,7 @@ message InitPolicyResponse {
   bool success = 1;
   string instance_id = 2;              // Opaque ID for this instance (UUID)
   string error_message = 3;            // Set if success=false
+  ProcessingMode processing_mode = 4;  // Processing requirements for this policy instance
 }
 
 message DestroyPolicyRequest {

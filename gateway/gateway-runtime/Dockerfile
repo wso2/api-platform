@@ -108,7 +108,6 @@ COPY --from=sdk . /api-platform/sdk
 COPY --from=common . /api-platform/common
 COPY --from=system-policies . /api-platform/gateway/system-policies/
 COPY --from=dev-policies . /api-platform/policies/dev-policies/
-COPY --from=sample-policies . /api-platform/policies/sample-policies/
 COPY --from=target build.yaml /api-platform/policies/build.yaml
 
 RUN mkdir -p /api-platform/output

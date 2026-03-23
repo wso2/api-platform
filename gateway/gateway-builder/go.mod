@@ -14,6 +14,3 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
-
-// Use local SDK for development
-replace github.com/wso2/api-platform/sdk => ../../sdk

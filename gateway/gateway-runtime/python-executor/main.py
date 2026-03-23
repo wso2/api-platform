@@ -29,6 +29,9 @@ import sys
 from executor.server import PythonExecutorServer
 
 
+PYTHON_EXECUTOR_SOCKET = "/var/run/api-platform/python-executor.sock"
+
+
 def positive_int(value):
     """Validate that the value is a positive integer."""
     try:
@@ -66,11 +69,6 @@ def _parse_args():
             return fallback
 
     parser = argparse.ArgumentParser(description="Python Executor gRPC server")
-    parser.add_argument(
-        "--socket",
-        default=os.environ.get("PYTHON_EXECUTOR_SOCKET", "/var/run/api-platform/python-executor.sock"),
-        help="Path to the UDS socket (env: PYTHON_EXECUTOR_SOCKET)",
-    )
     parser.add_argument(
         "--workers",
         default=os.environ.get("PYTHON_POLICY_WORKERS"),
@@ -143,7 +141,7 @@ async def main():
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    socket_path = args.socket
+    socket_path = PYTHON_EXECUTOR_SOCKET
     worker_count = args.workers
     max_concurrent = args.max_concurrent
     timeout = args.timeout

@@ -103,6 +103,16 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
 
         instance = factory(metadata, params)
 
+        # Processing mode is mandatory for Python policies so that the Go
+        # policy engine can configure Envoy ext_proc buffering correctly.
+        mode = instance.mode()
+        processing_mode = proto.ProcessingMode(
+            request_header_mode=mode.request_header_mode.value,
+            request_body_mode=mode.request_body_mode.value,
+            response_header_mode=mode.response_header_mode.value,
+            response_body_mode=mode.response_body_mode.value,
+        )
+
         instance_id = str(uuid.uuid4())
         self._store.put(instance_id, instance)
 
@@ -110,7 +120,11 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
             f"InitPolicy OK: {request.policy_name}:{request.policy_version} "
             f"route={metadata.route_name} instance_id={instance_id}"
         )
-        return proto.InitPolicyResponse(success=True, instance_id=instance_id)
+        return proto.InitPolicyResponse(
+            success=True,
+            instance_id=instance_id,
+            processing_mode=processing_mode,
+        )
 
     # ------------------------------------------------------------------ #
     #  DestroyPolicy — called when a route is removed or replaced         #

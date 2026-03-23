@@ -241,10 +241,7 @@ func main() {
 	if cfg.PolicyEngine.Admin.Enabled {
 		// Check if Python executor is available (socket configured)
 		var pythonHealthChecker admin.PythonHealthChecker
-		if _, err := os.Stat(os.Getenv("PYTHON_EXECUTOR_SOCKET")); err == nil {
-			sm := pythonbridge.GetStreamManager()
-			pythonHealthChecker = pythonbridge.NewPythonHealthAdapter(sm)
-		} else if _, err := os.Stat("/var/run/api-platform/python-executor.sock"); err == nil {
+		if _, err := os.Stat("/var/run/api-platform/python-executor.sock"); err == nil {
 			sm := pythonbridge.GetStreamManager()
 			pythonHealthChecker = pythonbridge.NewPythonHealthAdapter(sm)
 		}

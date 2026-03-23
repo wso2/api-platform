@@ -419,15 +419,12 @@ var (
 	streamManagerOnce   sync.Once
 )
 
+const pythonExecutorSocketPath = "/var/run/api-platform/python-executor.sock"
+
 // GetStreamManager returns the singleton StreamManager instance.
-// The socket path is read from PYTHON_EXECUTOR_SOCKET env var or uses a default.
 func GetStreamManager() *StreamManager {
 	streamManagerOnce.Do(func() {
-		socketPath := os.Getenv("PYTHON_EXECUTOR_SOCKET")
-		if socketPath == "" {
-			socketPath = "/var/run/api-platform/python-executor.sock"
-		}
-		globalStreamManager = NewStreamManager(socketPath)
+		globalStreamManager = NewStreamManager(pythonExecutorSocketPath)
 	})
 	return globalStreamManager
 }

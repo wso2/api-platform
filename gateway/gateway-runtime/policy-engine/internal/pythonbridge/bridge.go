@@ -50,7 +50,7 @@ type PythonBridge struct {
 	closeErr      error
 }
 
-// Mode returns the policy's processing mode (declared statically for Python policies).
+// Mode returns the policy's processing mode.
 func (b *PythonBridge) Mode() policy.ProcessingMode {
 	return b.mode
 }
