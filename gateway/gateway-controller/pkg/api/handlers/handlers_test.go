@@ -766,6 +766,8 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		routerCfg,
 		nil,
 		nil,
+		nil,
+		nil,
 	)
 
 	// Initialize API key service (needed for API key operations)

@@ -26,22 +26,21 @@ spec:
   context: /weather/$version
   upstream:
     main:
-      url: "http://sample-backend:5000/api/v2"
+      url: "http://httpbin.org/api/v2"
   policies:
-    - name: modify-headers
+    - name: set-headers
       version: v0
       params:
-        requestHeaders:
-          - action: SET
-            name: api-level-req-header
-            value: hello
-        responseHeaders:
-          - action: SET
-            name: api-level-res-header
-            value: world
-          - action: SET
-            name: x-content-type-options
-            value: nosniff
+        request:
+          headers:
+            - name: api-level-req-header
+              value: hello
+        response:
+          headers:
+            - name: api-level-res-header
+              value: world
+            - name: x-content-type-options
+              value: nosniff
   operations:
     - method: GET
       path: /{country_code}/{city}
@@ -49,14 +48,14 @@ spec:
         - name: modify-headers
           version: v0
           params:
-            requestHeaders:
-              - action: SET
-                name: operation-level-req-header
-                value: hello
-            responseHeaders:
-              - action: SET
-                name: operation-level-res-header
-                value: world
+            request:
+              headers:
+                - name: operation-level-req-header
+                  value: hello
+            response:
+              headers:
+                - name: operation-level-res-header
+                  value: world
     - method: GET
       path: /alerts/active
     - method: POST

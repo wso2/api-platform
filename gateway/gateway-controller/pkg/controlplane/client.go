@@ -1871,8 +1871,13 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 					slog.Any("error", err))
 			}
 		}
-		if cfg != nil {
-			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		if cfg != nil && c.policyManager != nil {
+			key := storage.Key(cfg.Kind, cfg.Handle)
+			if err := c.policyManager.RemoveRuntimeConfig(key); err != nil && !storage.IsNotFoundError(err) {
+				c.logger.Warn("Failed to remove policy config after LLM provider undeployment",
+					slog.String("provider_id", providerID),
+					slog.Any("error", err))
+			}
 		}
 	}
 
@@ -1945,8 +1950,13 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 					slog.Any("error", err))
 			}
 		}
-		if cfg != nil {
-			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		if cfg != nil && c.policyManager != nil {
+			key := storage.Key(cfg.Kind, cfg.Handle)
+			if err := c.policyManager.RemoveRuntimeConfig(key); err != nil && !storage.IsNotFoundError(err) {
+				c.logger.Warn("Failed to remove policy config after LLM proxy undeployment",
+					slog.String("proxy_id", proxyID),
+					slog.Any("error", err))
+			}
 		}
 	}
 

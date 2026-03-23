@@ -26,6 +26,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -119,7 +120,28 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+
+	// Update policy xDS via transformer
+	if l.policyManager != nil {
+		if transformer, ok := transform.Get(storedConfig.Kind); ok {
+			rdc, err := transformer.Transform(storedConfig)
+			if err != nil {
+				l.logger.Error("Failed to transform LLM provider for policy xDS",
+					slog.String("provider_id", entityID),
+					slog.String("correlation_id", event.EventID),
+					slog.Any("error", err))
+				return
+			}
+			key := storage.Key(storedConfig.Kind, storedConfig.Handle)
+			if err := l.policyManager.AddRuntimeConfig(key, rdc); err != nil {
+				l.logger.Error("Failed to update policy xDS after LLM provider replica sync",
+					slog.String("provider_id", entityID),
+					slog.String("correlation_id", event.EventID),
+					slog.Any("error", err))
+				return
+			}
+		}
+	}
 
 	l.logger.Info("Successfully processed LLM provider create/update event",
 		slog.String("provider_id", entityID),
@@ -178,7 +200,28 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy replica sync")
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+
+	// Update policy xDS via transformer
+	if l.policyManager != nil {
+		if transformer, ok := transform.Get(storedConfig.Kind); ok {
+			rdc, err := transformer.Transform(storedConfig)
+			if err != nil {
+				l.logger.Error("Failed to transform LLM proxy for policy xDS",
+					slog.String("proxy_id", entityID),
+					slog.String("correlation_id", event.EventID),
+					slog.Any("error", err))
+				return
+			}
+			key := storage.Key(storedConfig.Kind, storedConfig.Handle)
+			if err := l.policyManager.AddRuntimeConfig(key, rdc); err != nil {
+				l.logger.Error("Failed to update policy xDS after LLM proxy replica sync",
+					slog.String("proxy_id", entityID),
+					slog.String("correlation_id", event.EventID),
+					slog.Any("error", err))
+				return
+			}
+		}
+	}
 
 	l.logger.Info("Successfully processed LLM proxy create/update event",
 		slog.String("proxy_id", entityID),
@@ -238,10 +281,10 @@ func (l *EventListener) handleLLMProviderDelete(event eventhub.Event) {
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider deletion")
 
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-			l.logger.Warn("Failed to remove policy after LLM provider deletion",
+	if l.policyManager != nil && existingConfig != nil {
+		key := storage.Key(existingConfig.Kind, existingConfig.Handle)
+		if err := l.policyManager.RemoveRuntimeConfig(key); err != nil && !storage.IsNotFoundError(err) {
+			l.logger.Warn("Failed to remove policy route config after LLM provider deletion",
 				slog.String("provider_id", entityID),
 				slog.Any("error", err))
 		}
@@ -296,10 +339,10 @@ func (l *EventListener) handleLLMProxyDelete(event eventhub.Event) {
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy deletion")
 
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-			l.logger.Warn("Failed to remove policy after LLM proxy deletion",
+	if l.policyManager != nil && existingConfig != nil {
+		key := storage.Key(existingConfig.Kind, existingConfig.Handle)
+		if err := l.policyManager.RemoveRuntimeConfig(key); err != nil && !storage.IsNotFoundError(err) {
+			l.logger.Warn("Failed to remove policy route config after LLM proxy deletion",
 				slog.String("proxy_id", entityID),
 				slog.Any("error", err))
 		}

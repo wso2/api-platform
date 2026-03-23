@@ -126,7 +126,7 @@ func NewAPIServer(
 			policyManager, transform.NewMCPKindTransformer(routerConfig, systemConfig, policyDefinitions)),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator,
-			policyManager, transform.NewLLMTransformer(store, routerConfig, systemConfig, policyDefinitions, policyVersionResolver)),
+			policyManager, transform.NewLLMTransformer(store, db, routerConfig, systemConfig, policyDefinitions, policyVersionResolver)),
 		apiKeyService:      apiKeyService,
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,

@@ -296,7 +296,7 @@ func main() {
 
 	// Initialize transformer registry
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
-	llmTransformer := transform.NewLLMTransformer(configStore, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	transform.Init(map[string]models.ConfigTransformer{
 		"RestApi":     transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions),
 		"WebSubApi":   transform.NewWebSubAPITransformer(&cfg.Router, cfg, policyDefinitions),
