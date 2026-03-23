@@ -194,3 +194,29 @@ func TestRestAPITransformer_LatestVersionIndexBuiltOnConstruction(t *testing.T) 
 	routeKey := "GET|/test/hello|main.local"
 	assert.True(t, findPolicyInChain(rdc, routeKey, "auth"))
 }
+
+// TestRestAPITransformer_EmptyVersionUsesResolvedVersionInChain verifies that the
+// resolved full semver (not the original empty string) is stored in the policy chain,
+// so the policy engine can match it to the correct policy definition.
+func TestRestAPITransformer_EmptyVersionUsesResolvedVersionInChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"header-mutate|v2.0.0": {Name: "header-mutate", Version: "v2.0.0"},
+	}
+
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+	cfg := makeRestAPIStoredConfig(
+		[]api.Policy{{Name: "header-mutate", Version: ""}},
+		nil,
+	)
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, rdc)
+
+	routeKey := "GET|/test/hello|main.local"
+	chain, ok := rdc.PolicyChains[routeKey]
+	require.True(t, ok)
+	require.Len(t, chain.Policies, 1)
+	assert.Equal(t, "v2", chain.Policies[0].Version,
+		"resolved major version should be stored in the chain, not the original empty string")
+}

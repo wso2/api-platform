@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	versionutil "github.com/wso2/api-platform/common/version"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -48,12 +49,12 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
 	if cfg.GetPolicies() != nil {
 		for _, p := range *cfg.GetPolicies() {
-			_, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
+			resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
 			if err != nil {
 				slog.Error("Failed to resolve policy version for API-level policy", "policy_name", p.Name, "error", err)
 				continue
 			}
-			apiPolicies[p.Name] = ConvertAPIPolicyToModel(p, policyv1alpha.LevelAPI, p.Version)
+			apiPolicies[p.Name] = ConvertAPIPolicyToModel(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved))
 		}
 	}
 
@@ -80,12 +81,12 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			// Append operation-level policies (they don't override, just execute after API-level)
 			if ch.Policies != nil && len(*ch.Policies) > 0 {
 				for _, opPolicy := range *ch.Policies {
-					_, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
+					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for operation-level policy", "policy_name", opPolicy.Name, "channel_name", ch.Name, "error", err)
 						continue
 					}
-					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, opPolicy.Version))
+					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
 				}
 			}
 
@@ -119,12 +120,12 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			// Append operation-level policies (they don't override, just execute after API-level)
 			if op.Policies != nil && len(*op.Policies) > 0 {
 				for _, opPolicy := range *op.Policies {
-					_, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
+					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for operation-level policy", "policy_name", opPolicy.Name, "operation_method", op.Method, "operation_path", op.Path, "error", err)
 						continue
 					}
-					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, opPolicy.Version))
+					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
 				}
 			}
 
