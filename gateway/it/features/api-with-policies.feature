@@ -221,6 +221,88 @@ Feature: API Configuration with Policies
     When I delete the API "update-remove-policy-api"
     Then the response should be successful
 
+  Scenario: Deploy API with API-level policy using empty version resolves to latest
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: empty-version-api-level-api
+      spec:
+        displayName: Empty-Version-Api-Level-Api
+        version: v1.0
+        context: /empty-version-api/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        policies:
+          - name: cors
+            version: ""
+            params:
+              allowedOrigins:
+                - "http://example.com"
+              allowedMethods:
+                - GET
+              allowedHeaders:
+                - Content-Type
+        operations:
+          - method: GET
+            path: /{country_code}/{city}
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And I wait for the endpoint "http://localhost:8080/empty-version-api/v1.0/test/test" to be ready
+    When I set header "Origin" to "http://example.com"
+    And I send a GET request to "http://localhost:8080/empty-version-api/v1.0/us/seattle"
+    Then the response status code should be 200
+    And the response header "Access-Control-Allow-Origin" should be "http://example.com"
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "empty-version-api-level-api"
+    Then the response should be successful
+
+  Scenario: Deploy API with operation-level policy using empty version resolves to latest
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: empty-version-op-level-api
+      spec:
+        displayName: Empty-Version-Op-Level-Api
+        version: v1.0
+        context: /empty-version-op/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /{country_code}/{city}
+            policies:
+              - name: cors
+                version: ""
+                params:
+                  allowedOrigins:
+                    - "http://example.com"
+                  allowedMethods:
+                    - GET
+                  allowedHeaders:
+                    - Content-Type
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And I wait for the endpoint "http://localhost:8080/empty-version-op/v1.0/test/test" to be ready
+    When I set header "Origin" to "http://example.com"
+    And I send a GET request to "http://localhost:8080/empty-version-op/v1.0/us/seattle"
+    Then the response status code should be 200
+    And the response header "Access-Control-Allow-Origin" should be "http://example.com"
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "empty-version-op-level-api"
+    Then the response should be successful
+
   Scenario: Deploy API with different HTTP methods
     When I deploy this API configuration:
       """
