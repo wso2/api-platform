@@ -100,6 +100,55 @@ func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*mo
 		}
 		policies = append(policies, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return policies, nil
+}
+
+// UpdateCustomPolicy updates an existing policy's version and definition identified by (org, name, oldVersion).
+func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error {
+	now := time.Now()
+	query := `
+		UPDATE gateway_custom_policies
+		SET version = ?, description = ?, policy_definition = ?, updated_at = ?
+		WHERE organization_uuid = ? AND name = ? AND version = ?
+	`
+	_, err := r.db.Exec(r.db.Rebind(query),
+		policy.Version, policy.Description, policy.PolicyDefinition, now,
+		policy.OrganizationUUID, policy.Name, oldVersion,
+	)
+	return err
+}
+
+// GetCustomPoliciesByName retrieves all versions of a custom policy for a given org and name.
+func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error) {
+	query := `
+		SELECT uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at
+		FROM gateway_custom_policies
+		WHERE organization_uuid = ? AND name = ?
+		ORDER BY version
+	`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var policies []*model.CustomPolicy
+	for rows.Next() {
+		p := &model.CustomPolicy{}
+		if err := rows.Scan(
+			&p.UUID, &p.OrganizationUUID, &p.Name, &p.Version,
+			&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		policies = append(policies, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return policies, nil
 }
 

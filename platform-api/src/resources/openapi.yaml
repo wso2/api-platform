@@ -1967,12 +1967,40 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateway-custom-policies:
+    get:
+      summary: Get synced custom policies for a given organization 
+      description: |
+        Returns all custom policies synced to the given organization.
+      operationId: ListGatewayCustomPolicies
+      tags:
+        - Gateways
+      responses:
+        '200':
+          description: List of custom policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomPolicyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways/{gatewayId}/custom-policies/{policyName}/versions/{version}:
     put:
-      summary: Sync a custom policy from the gateway manifest 
+      summary: Sync a custom policy from the gateway manifest
       description: |
-        Inserts a custom policy available in the gateway manifest to a given organization. 
-        After syncing the policy, it can be applied to APIs in the organization. 
+        Syncs a custom policy from the gateway manifest into the organization's custom policy registry.
+        Version-based rules apply:
+        - **New major version**: creates a new policy record (e.g. v1.x.x and v2.x.x coexist).
+        - **New minor version** (same major): updates the existing record (e.g. v1.1.0 → v1.2.0).
+        - **Patch version change** (same major.minor): not allowed.
+        - **Downgrade**: not allowed.
+        Policy names are case-insensitive.
+        After syncing, the policy can be applied to APIs in the organization.
       operationId: SyncCustomPolicy
       tags:
         - Gateways
@@ -2003,6 +2031,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Patch version update or downgrade is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '422':
           description: Policy is not a custom policy or manifest is unavailable
           content:
@@ -5126,6 +5160,7 @@ components:
         - organizationUuid
         - name
         - version
+        - policyDefinition
       properties:
         uuid:
           type: string
@@ -5153,7 +5188,6 @@ components:
           description: |
             The full policy schema as declared in the policy's policy-definition.yaml.
             Contains `parameters` and `systemParameters` JSON Schema documents.
-            Only present for custom policies.
           additionalProperties: true
         createdAt:
           type: string

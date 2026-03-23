@@ -276,7 +276,9 @@ type MCPProxyRepository interface {
 // CustomPolicyRepository defines the interface for custom policy persistence
 type CustomPolicyRepository interface {
 	InsertCustomPolicy(policy *model.CustomPolicy) error
+	UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error
 	GetCustomPolicyByNameAndVersion(orgUUID, name, version string) (*model.CustomPolicy, error)
+	GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error)
 	ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error)
 	DeleteCustomPolicy(orgUUID, name, version string) error
 	CountCustomPolicyUsages(policyUUID string) (int, error)

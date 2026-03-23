@@ -552,7 +552,7 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 			c.JSON(http.StatusUnprocessableEntity, utils.NewErrorResponse(422, "Unprocessable Entity", msg))
 			return
 		}
-		if strings.Contains(msg, "already exists") {
+		if strings.Contains(msg, "already exists") || strings.Contains(msg, "patch version updates are not allowed") || strings.Contains(msg, "cannot downgrade") {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", msg))
 			return
 		}
@@ -563,6 +563,26 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, policy)
+}
+
+// ListCustomPolicies handles GET /api/v1/gateway-custom-policies
+func (h *GatewayHandler) ListCustomPolicies(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	policies, err := h.gatewayService.ListCustomPolicies(orgId)
+	if err != nil {
+		h.slogger.Error("Failed to list custom policies", "org_id", orgId, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to list custom policies"))
+		return
+	}
+
+	c.JSON(http.StatusOK, policies)
 }
 
 // RegisterRoutes registers gateway routes with the router
@@ -581,6 +601,11 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
 		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
 		gatewayGroup.PUT("/:gatewayId/custom-policies/:policyName/versions/:version", h.SyncCustomPolicy)
+	}
+
+	customPoliciesGroup := r.Group("/api/v1/gateway-custom-policies")
+	{
+		customPoliciesGroup.GET("", h.ListCustomPolicies)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")
