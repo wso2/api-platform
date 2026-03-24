@@ -104,19 +104,8 @@ type RequestAction interface {
 type UpstreamRequestModifications struct {
 	Body []byte // nil = passthrough; []byte{} = clear body
 
-	// Header allows modifying upstream request headers alongside body modifications.
-	Header *UpstreamRequestHeaderModifications
-
-	// Routing mutations (also valid before the request is forwarded).
-	Path                    *string
-	Method                  *string
-	QueryParametersToAdd    map[string][]string
-	QueryParametersToRemove []string
-	UpstreamName            *string // route to a named upstream definition (nil = no change)
-
-	AnalyticsMetadata     map[string]any
-	DynamicMetadata       map[string]map[string]any
-	AnalyticsHeaderFilter DropHeaderAction
+	// Embeds all header and routing mutations available at the header phase.
+	UpstreamRequestHeaderModifications
 }
 
 func (UpstreamRequestModifications) isRequestAction()    {}
@@ -143,12 +132,8 @@ type DownstreamResponseModifications struct {
 	Body       []byte // nil = passthrough; []byte{} = clear body
 	StatusCode *int   // nil = no change
 
-	// Header allows modifying downstream response headers alongside body modifications.
-	Header *DownstreamResponseHeaderModifications
-
-	AnalyticsMetadata     map[string]any
-	DynamicMetadata       map[string]map[string]any
-	AnalyticsHeaderFilter DropHeaderAction
+	// Embeds all header mutations available at the response phase.
+	DownstreamResponseHeaderModifications
 }
 
 func (DownstreamResponseModifications) isResponseAction()   {}
