@@ -202,8 +202,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	query := `
 		INSERT INTO artifacts (
 			uuid, gateway_id, display_name, version, kind, handle,
-			desired_state, deployment_id, origin, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			desired_state, deployment_id, origin, created_at, updated_at, deployed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := s.begin()
@@ -228,6 +228,10 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if cfg.DeploymentID != "" {
 		deploymentID = cfg.DeploymentID
 	}
+	var deployedAt interface{}
+	if cfg.DeployedAt != nil && !cfg.DeployedAt.IsZero() {
+		deployedAt = *cfg.DeployedAt
+	}
 	_, err = stmt.Exec(
 		cfg.UUID,
 		s.gatewayId,
@@ -240,6 +244,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		cfg.Origin,
 		now,
 		now,
+		deployedAt,
 	)
 
 	if err != nil {
@@ -295,7 +300,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	query := `
 		UPDATE artifacts
 		SET display_name = ?, version = ?, kind = ?, handle = ?,
-			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?
+			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?, deployed_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
@@ -324,6 +329,10 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	if cfg.DeploymentID != "" {
 		updateDeploymentID = cfg.DeploymentID
 	}
+	var updateDeployedAt interface{}
+	if cfg.DeployedAt != nil && !cfg.DeployedAt.IsZero() {
+		updateDeployedAt = *cfg.DeployedAt
+	}
 	result, err := stmt.Exec(
 		cfg.DisplayName,
 		cfg.Version,
@@ -333,6 +342,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		updateDeploymentID,
 		cfg.Origin,
 		time.Now(),
+		updateDeployedAt,
 		cfg.UUID,
 		s.gatewayId,
 	)
