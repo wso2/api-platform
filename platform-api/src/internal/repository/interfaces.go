@@ -154,7 +154,6 @@ type GatewayRepository interface {
 	// Manifest operations
 	UpdateGatewayManifest(gatewayID string, manifest []byte) error
 	GetGatewayManifest(gatewayID string) ([]byte, error)
-
 }
 
 // DevPortalRepository interface for DevPortal-related database operations
@@ -272,4 +271,15 @@ type MCPProxyRepository interface {
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+}
+
+// CustomPolicyRepository defines the interface for custom policy persistence
+type CustomPolicyRepository interface {
+	InsertCustomPolicy(policy *model.CustomPolicy) error
+	UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error
+	GetCustomPolicyByNameAndVersion(orgUUID, name, version string) (*model.CustomPolicy, error)
+	GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error)
+	ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error)
+	DeleteCustomPolicy(orgUUID, name, version string) error
+	CountCustomPolicyUsages(policyUUID string) (int, error)
 }
