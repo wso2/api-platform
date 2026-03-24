@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -213,6 +214,10 @@ func (h *APIHandler) ListAPIs(c *gin.Context) {
 	projectId := strings.TrimSpace(c.Query("projectId"))
 	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
+		return
+	}
+	if _, err := uuid.Parse(projectId); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "invalid projectId"))
 		return
 	}
 
