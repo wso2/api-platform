@@ -39,8 +39,8 @@ def positive_int(value):
         if ivalue <= 0:
             raise ValueError
         return ivalue
-    except (ValueError, TypeError):
-        raise argparse.ArgumentTypeError(f"'{value}' is not a positive integer")
+    except (ValueError, TypeError) as e:
+        raise argparse.ArgumentTypeError(f"'{value}' is not a positive integer") from e
 
 
 def _parse_args():

@@ -1,5 +1,8 @@
 version: v1
 policies:
+    - name: add-headers
+      version: v0.2.0
+      gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
     - name: token-based-ratelimit
       version: v0.8.3
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
@@ -30,12 +33,12 @@ policies:
     - name: cors
       version: v0.8.0
       gomodule: github.com/wso2/gateway-controllers/policies/cors@v0
-    - name: dynamic-endpoint
-      version: v0.2.0
-      gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
     - name: json-schema-guardrail
       version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
+    - name: json-to-xml
+      version: v0.2.0
+      gomodule: github.com/wso2/gateway-controllers/policies/json-to-xml@v0
     - name: jwt-auth
       version: v0.8.2
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0
@@ -60,8 +63,11 @@ policies:
     - name: model-weighted-round-robin
       version: v0.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v0
+    - name: modify-headers
+      version: v0.2.0
+      gomodule: github.com/wso2/gateway-controllers/policies/modify-headers@v0
     - name: pii-masking-regex
-      version: v0.8.1
+      version: v0.8.2
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0
     - name: prompt-decorator
       version: v0.8.1
@@ -88,7 +94,7 @@ policies:
       version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v0
     - name: sentence-count-guardrail
-      version: v0.2.2
+      version: v0.2.3
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v0
     - name: set-headers
       version: v0.8.0
@@ -97,17 +103,8 @@ policies:
       version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0
     - name: word-count-guardrail
-      version: v0.2.2
+      version: v0.2.3
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
-    - name: json-xml-mediator
-      version: v0.8.0
-      gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v0
-    - name: subscription-validation
+    - name: xml-to-json
       version: v0.2.0
-      gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0
-    - name: llm-cost
-      version: v0.1.1
-      gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
-    - name: llm-cost-based-ratelimit
-      version: v0.1.0
-      gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0
+      gomodule: github.com/wso2/gateway-controllers/policies/xml-to-json@v0

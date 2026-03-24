@@ -285,20 +285,23 @@ func (b *PythonBridge) mergeMetadata(shared *policy.SharedContext, updated *stru
 
 // errorResponse returns an ImmediateResponse for errors.
 func (b *PythonBridge) errorResponse(err error) policy.RequestAction {
+	b.slogger.Error("Python policy execution failed", "error", err, "phase", "on_request")
 	return policy.ImmediateResponse{
 		StatusCode: 500,
 		Headers:    map[string]string{"Content-Type": "text/plain"},
-		Body:       []byte(fmt.Sprintf("Policy execution error: %v", err)),
+		Body:       []byte("Internal policy error"),
 	}
 }
 
 // errorResponseAction returns an error response action.
 func (b *PythonBridge) errorResponseAction(err error) policy.ResponseAction {
 	// For response phase errors, we return modifications that indicate failure
+	b.slogger.Error("Python policy execution failed", "error", err, "phase", "on_response")
 	statusCode := 500
 	return policy.UpstreamResponseModifications{
+		SetHeaders: map[string]string{"Content-Type": "text/plain"},
 		StatusCode: &statusCode,
-		Body:       []byte(fmt.Sprintf("Policy execution error: %v", err)),
+		Body:       []byte("Internal policy error"),
 	}
 }
 

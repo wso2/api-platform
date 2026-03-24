@@ -212,7 +212,13 @@ func DiscoverPoliciesFromBuildFile(buildFilePath string, baseDir string) ([]*typ
 				)
 			}
 
-			runtime := DetectRuntime(policyPath)
+			runtime, err := DetectRuntime(policyPath)
+			if err != nil {
+				return nil, errors.NewDiscoveryError(
+					fmt.Sprintf("failed to detect policy runtime for %s", policyPath),
+					err,
+				)
+			}
 
 			if runtime == "python" {
 				policy, err := discoverLocalPythonPolicy(entry, baseDir)
@@ -236,23 +242,23 @@ func DiscoverPoliciesFromBuildFile(buildFilePath string, baseDir string) ([]*typ
 
 // DetectRuntime auto-detects the policy runtime by examining the directory contents.
 // Presence of go.mod → "go"; presence of .py files (and no go.mod) → "python".
-func DetectRuntime(policyDir string) string {
+func DetectRuntime(policyDir string) (string, error) {
 	goMod := filepath.Join(policyDir, "go.mod")
 	if _, err := os.Stat(goMod); err == nil {
-		return "go"
+		return "go", nil
 	}
 
 	entries, err := os.ReadDir(policyDir)
 	if err != nil {
-		return "go"
+		return "", fmt.Errorf("failed to read policy directory %s: %w", policyDir, err)
 	}
 	for _, e := range entries {
 		if !e.IsDir() && filepath.Ext(e.Name()) == ".py" {
-			return "python"
+			return "python", nil
 		}
 	}
 
-	return "go"
+	return "go", nil
 }
 
 // discoverPipPolicy discovers a Python policy from a pip package reference.

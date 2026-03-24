@@ -82,9 +82,7 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 	}
 
 	// Parse embedded template
-	tmpl, err := template.New("plugin_registry").Funcs(template.FuncMap{
-		"formatSystemParams": formatSystemParams,
-	}).Parse(templates.PluginRegistryTemplate)
+	tmpl, err := template.New("plugin_registry").Parse(templates.PluginRegistryTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
@@ -150,13 +148,4 @@ func sanitizeIdentifier(s string) string {
 	}
 
 	return result.String()
-}
-
-// formatSystemParams formats system parameters for Go code generation
-func formatSystemParams(params map[string]interface{}) string {
-	if params == nil {
-		return "nil"
-	}
-	// Simple formatting - in real implementation this would need proper Go map syntax
-	return "nil"
 }

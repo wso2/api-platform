@@ -825,8 +825,9 @@ func TestDetectRuntime_GoPolicy(t *testing.T) {
 	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "module test\n\ngo 1.23")
 	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.go"), "package test")
 
-	runtime := DetectRuntime(tmpDir)
+	runtime, err := DetectRuntime(tmpDir)
 
+	require.NoError(t, err)
 	assert.Equal(t, "go", runtime)
 }
 
@@ -835,8 +836,9 @@ func TestDetectRuntime_PythonPolicy(t *testing.T) {
 	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.py"), "def on_request(): pass")
 	testutils.WriteFile(t, filepath.Join(tmpDir, "requirements.txt"), "")
 
-	runtime := DetectRuntime(tmpDir)
+	runtime, err := DetectRuntime(tmpDir)
 
+	require.NoError(t, err)
 	assert.Equal(t, "python", runtime)
 }
 
@@ -847,23 +849,26 @@ func TestDetectRuntime_GoTakesPrecedence(t *testing.T) {
 	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.go"), "package test")
 	testutils.WriteFile(t, filepath.Join(tmpDir, "helper.py"), "# python helper")
 
-	runtime := DetectRuntime(tmpDir)
+	runtime, err := DetectRuntime(tmpDir)
 
+	require.NoError(t, err)
 	assert.Equal(t, "go", runtime)
 }
 
 func TestDetectRuntime_EmptyDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	runtime := DetectRuntime(tmpDir)
+	runtime, err := DetectRuntime(tmpDir)
 
+	require.NoError(t, err)
 	assert.Equal(t, "go", runtime)
 }
 
 func TestDetectRuntime_NonexistentDirectory(t *testing.T) {
-	runtime := DetectRuntime("/nonexistent/path")
+	runtime, err := DetectRuntime("/nonexistent/path")
 
-	assert.Equal(t, "go", runtime)
+	assert.Error(t, err)
+	assert.Empty(t, runtime)
 }
 
 // ==== ParsePipPackageRef tests ====

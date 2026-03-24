@@ -106,15 +106,44 @@ func processingModeFromProto(pm *proto.ProcessingMode) (policy.ProcessingMode, e
 	if pm == nil {
 		return policy.ProcessingMode{}, fmt.Errorf("processing_mode is nil")
 	}
-	if pm.RequestHeaderMode == "" || pm.RequestBodyMode == "" || pm.ResponseHeaderMode == "" || pm.ResponseBodyMode == "" {
-		return policy.ProcessingMode{}, fmt.Errorf("processing_mode has empty required fields")
+
+	var requestHeaderMode policy.HeaderProcessingMode
+	switch policy.HeaderProcessingMode(pm.RequestHeaderMode) {
+	case policy.HeaderModeSkip, policy.HeaderModeProcess:
+		requestHeaderMode = policy.HeaderProcessingMode(pm.RequestHeaderMode)
+	default:
+		return policy.ProcessingMode{}, fmt.Errorf("invalid request_header_mode: %q", pm.RequestHeaderMode)
+	}
+
+	var requestBodyMode policy.BodyProcessingMode
+	switch policy.BodyProcessingMode(pm.RequestBodyMode) {
+	case policy.BodyModeSkip, policy.BodyModeBuffer, policy.BodyModeStream:
+		requestBodyMode = policy.BodyProcessingMode(pm.RequestBodyMode)
+	default:
+		return policy.ProcessingMode{}, fmt.Errorf("invalid request_body_mode: %q", pm.RequestBodyMode)
+	}
+
+	var responseHeaderMode policy.HeaderProcessingMode
+	switch policy.HeaderProcessingMode(pm.ResponseHeaderMode) {
+	case policy.HeaderModeSkip, policy.HeaderModeProcess:
+		responseHeaderMode = policy.HeaderProcessingMode(pm.ResponseHeaderMode)
+	default:
+		return policy.ProcessingMode{}, fmt.Errorf("invalid response_header_mode: %q", pm.ResponseHeaderMode)
+	}
+
+	var responseBodyMode policy.BodyProcessingMode
+	switch policy.BodyProcessingMode(pm.ResponseBodyMode) {
+	case policy.BodyModeSkip, policy.BodyModeBuffer, policy.BodyModeStream:
+		responseBodyMode = policy.BodyProcessingMode(pm.ResponseBodyMode)
+	default:
+		return policy.ProcessingMode{}, fmt.Errorf("invalid response_body_mode: %q", pm.ResponseBodyMode)
 	}
 
 	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderProcessingMode(pm.RequestHeaderMode),
-		RequestBodyMode:    policy.BodyProcessingMode(pm.RequestBodyMode),
-		ResponseHeaderMode: policy.HeaderProcessingMode(pm.ResponseHeaderMode),
-		ResponseBodyMode:   policy.BodyProcessingMode(pm.ResponseBodyMode),
+		RequestHeaderMode:  requestHeaderMode,
+		RequestBodyMode:    requestBodyMode,
+		ResponseHeaderMode: responseHeaderMode,
+		ResponseBodyMode:   responseBodyMode,
 	}, nil
 }
 
