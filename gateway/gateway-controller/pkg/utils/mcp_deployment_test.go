@@ -225,7 +225,7 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 
 	t.Run("Save new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
+		service := NewMCPDeploymentService(store, newTestMockDB(), nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test MCP",
@@ -266,7 +266,8 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 	t.Run("Updates existing config", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
+		db := newTestMockDB()
+		service := NewMCPDeploymentService(store, db, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original MCP",
@@ -291,6 +292,7 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
+		db.SaveConfig(original)
 		store.Add(original)
 
 		// Create updated config
@@ -322,7 +324,7 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 	t.Run("Error when config not found", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
+		service := NewMCPDeploymentService(store, newTestMockDB(), nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Non-existent MCP",

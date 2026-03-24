@@ -1117,12 +1117,12 @@ func TestGetRestAPIByIdNotFound(t *testing.T) {
 
 // TestGetAPIByIdNoDB tests getting an API when DB is not available
 func TestGetRestAPIByIdNoDB(t *testing.T) {
-	server := createTestAPIServerWithDB(nil)
+	server := createTestAPIServerWithDB(NewMockStorage())
 
 	c, w := createTestContext("GET", "/rest-apis/test-id", nil)
 	server.GetRestAPIById(c, "0000-test-id-0000-000000000000")
 
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // TestGetAPIByIdWrongKind tests getting an API with wrong kind
