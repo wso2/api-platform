@@ -430,6 +430,21 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.polling_interval"
 		case "insecure_skip_verify":
 			return "controller.controlplane.insecure_skip_verify"
+		// APIP_GW_ + CONTROLLER_CONTROLPLANE_* (underscore-to-dot would split insecure_skip_verify)
+		case "controller_controlplane_host":
+			return "controller.controlplane.host"
+		case "controller_controlplane_token":
+			return "controller.controlplane.token"
+		case "controller_controlplane_reconnect_initial":
+			return "controller.controlplane.reconnect_initial"
+		case "controller_controlplane_reconnect_max":
+			return "controller.controlplane.reconnect_max"
+		case "controller_controlplane_polling_interval":
+			return "controller.controlplane.polling_interval"
+		case "controller_controlplane_insecure_skip_verify":
+			return "controller.controlplane.insecure_skip_verify"
+		case "controller_controlplane_deployment_push_enabled":
+			return "controller.controlplane.deployment_push_enabled"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
