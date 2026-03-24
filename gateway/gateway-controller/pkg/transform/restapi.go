@@ -82,7 +82,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			DisplayName: apiData.DisplayName,
 			ProjectID:   projectID,
 		},
-		Context:             apiData.Context,
+		Context:             strings.ReplaceAll(apiData.Context, "$version", apiData.Version),
 		PolicyChainResolver: "route-key",
 		Routes:              make(map[string]*models.Route),
 		PolicyChains:        make(map[string]*models.PolicyChain),
