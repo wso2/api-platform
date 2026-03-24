@@ -88,7 +88,7 @@ policies:
       version: v0.8.1
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v0
     - name: sentence-count-guardrail
-      version: v0.2.2
+      version: v0.2.3
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v0
     - name: set-headers
       version: v0.8.0
@@ -97,7 +97,7 @@ policies:
       version: v0.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0
     - name: word-count-guardrail
-      version: v0.2.2
+      version: v0.2.3
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
     - name: json-xml-mediator
       version: v0.8.0

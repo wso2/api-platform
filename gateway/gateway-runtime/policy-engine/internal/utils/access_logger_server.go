@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"os"
 	"time"
@@ -38,6 +39,16 @@ import (
 type AccessLogServiceServer struct {
 	cfg       *config.Config
 	analytics *analytics.Analytics
+}
+
+func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
+	if value <= 0 {
+		return 0, fmt.Errorf("%s must be positive, got %d", fieldName, value)
+	}
+	if value > math.MaxUint32 {
+		return 0, fmt.Errorf("%s exceeds uint32 range: %d", fieldName, value)
+	}
+	return uint32(value), nil
 }
 
 // newAccessLogServiceServer creates a new instance of the Access Log Service Server.
@@ -78,10 +89,17 @@ func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 		Time:    2 * time.Hour, // Ping the client if it is idle for 2 hours
 		Timeout: 20 * time.Second,
 	}
+	maxHeaderListSize, err := checkedUInt32FromPositiveInt(
+		"analytics.access_logs_service.max_header_limit",
+		cfg.Analytics.AccessLogsServiceCfg.ExtProcMaxHeaderLimit,
+	)
+	if err != nil {
+		panic(err)
+	}
 	server, err := CreateGRPCServer(cfg.Analytics.AccessLogsServiceCfg.PublicKeyPath,
 		cfg.Analytics.AccessLogsServiceCfg.PrivateKeyPath, cfg.Analytics.AccessLogsServiceCfg.ALSPlainText,
 		grpc.MaxRecvMsgSize(cfg.Analytics.AccessLogsServiceCfg.ExtProcMaxMessageSize),
-		grpc.MaxHeaderListSize(uint32(cfg.Analytics.AccessLogsServiceCfg.ExtProcMaxHeaderLimit)),
+		grpc.MaxHeaderListSize(maxHeaderListSize),
 		grpc.KeepaliveParams(kaParams))
 	if err != nil {
 		panic(err)

@@ -1,5 +1,5 @@
 name: word-count-guardrail
-version: v0.2.2
+version: v0.2.3
 description: |
   Validate word counts in request or response content using min/max limits, optional JSONPath extraction, and optional inverted logic.
 
