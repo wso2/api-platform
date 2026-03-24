@@ -500,8 +500,14 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
 	cfg, err := s.GetMCPProxyByHandle(handle)
 	if err != nil {
-		logger.Error("MCP proxy configuration not found", slog.String("handle", handle))
-		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
+		if isMCPNotFoundError(err) {
+			logger.Error("MCP proxy configuration not found", slog.String("handle", handle))
+			return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
+		}
+		logger.Error("Failed to fetch MCP proxy configuration",
+			slog.String("handle", handle),
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to fetch MCP proxy configuration")
 	}
 
 	// Delete from database first (only if persistent mode)
