@@ -121,6 +121,27 @@ func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVer
 	return err
 }
 
+// GetCustomPolicyByUUID retrieves a custom policy by its UUID, scoped to an organization.
+func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*model.CustomPolicy, error) {
+	query := `
+		SELECT uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at
+		FROM gateway_custom_policies
+		WHERE organization_uuid = ? AND uuid = ?
+	`
+	p := &model.CustomPolicy{}
+	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, policyUUID).Scan(
+		&p.UUID, &p.OrganizationUUID, &p.Name, &p.Version,
+		&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
 // GetCustomPoliciesByName retrieves all versions of a custom policy for a given org and name.
 func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error) {
 	query := `
