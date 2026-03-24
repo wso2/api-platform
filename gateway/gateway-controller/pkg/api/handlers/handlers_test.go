@@ -147,6 +147,14 @@ func (m *MockStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+func (m *MockStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	if m.updateErr != nil {
+		return false, m.updateErr
+	}
+	m.configs[cfg.UUID] = cfg
+	return true, nil
+}
+
 func (m *MockStorage) DeleteConfig(id string) error {
 	if m.deleteErr != nil {
 		return m.deleteErr

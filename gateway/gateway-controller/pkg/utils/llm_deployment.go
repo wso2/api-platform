@@ -270,10 +270,27 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		DeployedAt:          params.DeployedAt,
 	}
 
-	// Save or update
-	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
+	// Determine if this is an update by checking the in-memory store
+	var isUpdate bool
+	if existing, _ := s.store.Get(apiID); existing != nil {
+		isUpdate = true
+	}
+
+	// Save or update using timestamp-guarded upsert.
+	// affected=true means the DB row was actually inserted or updated.
+	// affected=false means a newer version already exists (stale event — no-op).
+	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save or update LLM provider configuration: %w", err)
+	}
+
+	if !affected {
+		// Stale event — DB was not modified. Return success but skip event publishing, lazy-resource, and xDS update.
+		return &APIDeploymentResult{
+			StoredConfig: storedCfg,
+			IsUpdate:     isUpdate,
+			IsStale:      true,
+		}, nil
 	}
 
 	// Log success
@@ -330,7 +347,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		}()
 	}
 
-	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
+	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false}, nil
 }
 
 // DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
@@ -410,11 +427,27 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		DeployedAt:          params.DeployedAt,
 	}
 
-	// Save or update
-	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
+	// Determine if this is an update by checking the in-memory store
+	var isUpdate bool
+	if existing, _ := s.store.Get(apiID); existing != nil {
+		isUpdate = true
+	}
+
+	// Save or update using timestamp-guarded upsert.
+	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save or update LLM proxy configuration: %w", err)
 	}
+
+	if !affected {
+		// Stale event — DB was not modified. Return success but skip event publishing and xDS update.
+		return &APIDeploymentResult{
+			StoredConfig: storedCfg,
+			IsUpdate:     isUpdate,
+			IsStale:      true,
+		}, nil
+	}
+
 	// Log success
 	if isUpdate {
 		params.Logger.Info("LLM proxy configuration updated",
@@ -452,7 +485,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		}()
 	}
 
-	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
+	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false}, nil
 }
 
 // LLMTemplateParams Template params for CRUD
@@ -938,12 +971,8 @@ func (s *LLMDeploymentService) removeProviderTemplateMappingLazyResource(provide
 }
 
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers
-func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*models.StoredConfig, error) {
-	res, err := s.DeployLLMProviderConfiguration(params)
-	if err != nil {
-		return nil, err
-	}
-	return res.StoredConfig, nil
+func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	return s.DeployLLMProviderConfiguration(params)
 }
 
 // ListLLMProviders returns all stored LLM provider configurations with optional filtering
@@ -1050,7 +1079,7 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 }
 
 // UpdateLLMProvider updates an existing provider identified by name+version using DeployLLMProviderConfiguration
-func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*models.StoredConfig, error) {
+func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	existing, err := s.GetLLMProviderByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
@@ -1060,11 +1089,7 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	}
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
-	res, err := s.DeployLLMProviderConfiguration(params)
-	if err != nil {
-		return nil, err
-	}
-	return res.StoredConfig, nil
+	return s.DeployLLMProviderConfiguration(params)
 }
 
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
@@ -1152,16 +1177,12 @@ func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) [
 }
 
 // CreateLLMProxy is a convenience wrapper around DeployLLMProxyConfiguration for creating proxies
-func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*models.StoredConfig, error) {
-	res, err := s.DeployLLMProxyConfiguration(params)
-	if err != nil {
-		return nil, err
-	}
-	return res.StoredConfig, nil
+func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	return s.DeployLLMProxyConfiguration(params)
 }
 
 // UpdateLLMProxy updates an existing provider identified by name+version using DeployLLMProxyConfiguration
-func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*models.StoredConfig, error) {
+func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	existing, err := s.GetLLMProxyByHandle(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
@@ -1171,11 +1192,7 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	}
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
-	res, err := s.DeployLLMProxyConfiguration(params)
-	if err != nil {
-		return nil, err
-	}
-	return res.StoredConfig, nil
+	return s.DeployLLMProxyConfiguration(params)
 }
 
 func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {

@@ -690,7 +690,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
-	stored, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -710,8 +710,12 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM provider created successfully",
@@ -725,7 +729,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	// In EventHub mode the listener rebuilds local policy state after replaying
 	// the provider event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -806,7 +810,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
@@ -826,6 +830,8 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
 		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM provider updated successfully"),
@@ -835,7 +841,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 
 	// In EventHub mode the listener rebuilds local policy state after replaying
 	// the provider event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -969,7 +975,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
-	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -989,8 +995,12 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM proxy created successfully",
@@ -1004,7 +1014,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	// In EventHub mode the listener rebuilds local policy state after replaying
 	// the proxy event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -1083,7 +1093,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
@@ -1103,6 +1113,8 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
 		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM proxy updated successfully"),
@@ -1112,7 +1124,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 
 	// In EventHub mode the listener rebuilds local policy state after replaying
 	// the proxy event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {

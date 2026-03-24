@@ -49,6 +49,11 @@ func (m *testMockDB) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+func (m *testMockDB) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	m.configs[cfg.UUID] = cfg
+	return true, nil
+}
+
 func (m *testMockDB) DeleteConfig(id string) error {
 	delete(m.configs, id)
 	return nil

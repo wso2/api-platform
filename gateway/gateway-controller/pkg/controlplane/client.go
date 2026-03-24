@@ -1805,6 +1805,14 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	if result.IsStale {
+		c.logger.Debug("Skipped stale LLM proxy deploy event (newer version exists in DB)",
+			slog.String("proxy_id", proxyID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
 	// In event-driven mode the EventListener owns local policy convergence.
 	if c.eventHub == nil {
 		if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
@@ -1907,6 +1915,14 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
 			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	if result.IsStale {
+		c.logger.Debug("Skipped stale LLM provider deploy event (newer version exists in DB)",
+			slog.String("provider_id", providerID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
 		return
 	}
 
