@@ -48,8 +48,11 @@ type mockStorageForDeletion struct {
 	getErr             error
 	removeKeyErr       error
 	replaceErr         error
+	upsertAffected     *bool // nil = default (true); non-nil = use this value
+	upsertErr          error
 	deleteCallCount    int
 	removeKeyCallCount int
+	upsertCallCount    int
 }
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
@@ -82,8 +85,18 @@ func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error
 }
 
 func (m *mockStorageForDeletion) UpsertConfig(config *models.StoredConfig) (bool, error) {
-	m.configs[config.UUID] = config
-	return true, nil
+	m.upsertCallCount++
+	if m.upsertErr != nil {
+		return false, m.upsertErr
+	}
+	affected := true
+	if m.upsertAffected != nil {
+		affected = *m.upsertAffected
+	}
+	if affected {
+		m.configs[config.UUID] = config
+	}
+	return affected, nil
 }
 
 func (m *mockStorageForDeletion) DeleteConfig(id string) error {
