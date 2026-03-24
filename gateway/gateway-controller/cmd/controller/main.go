@@ -313,7 +313,7 @@ func main() {
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-	if err := policySnapshotManager.UpdateSnapshot(ctx); err != nil {
+	if err := policySnapshotManager.UpdateSnapshotLegacy(ctx, policyStore); err != nil {
 		log.Warn("Failed to generate initial policy xDS snapshot", slog.Any("error", err))
 	}
 	cancel()
