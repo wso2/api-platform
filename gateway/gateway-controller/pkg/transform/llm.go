@@ -107,7 +107,7 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 	switch sc := cfg.SourceConfiguration.(type) {
 	case api.LLMProviderConfiguration:
 		meta.TemplateHandle = sc.Spec.Template
-		meta.ProviderName = sc.Spec.DisplayName
+		meta.ProviderName = sc.Metadata.Name
 
 	case api.LLMProxyConfiguration:
 		// Get provider name and template handle from referenced provider
@@ -117,7 +117,7 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 		}
 		if provSrc, ok := providerCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
 			meta.TemplateHandle = provSrc.Spec.Template
-			meta.ProviderName = provSrc.Spec.DisplayName
+			meta.ProviderName = provSrc.Metadata.Name
 		}
 	}
 
