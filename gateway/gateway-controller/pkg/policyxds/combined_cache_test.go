@@ -183,7 +183,7 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.Response, 1)
@@ -197,9 +197,9 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		assert.True(t, policyCache.createWatchCalled)
-		assert.True(t, apiKeyCache.createWatchCalled)
-		assert.True(t, lazyResourceCache.createWatchCalled)
-		assert.True(t, subscriptionCache.createWatchCalled)
+		assert.False(t, apiKeyCache.createWatchCalled)
+		assert.False(t, lazyResourceCache.createWatchCalled)
+		assert.False(t, subscriptionCache.createWatchCalled)
 
 		// Call cancel
 		cancel()
@@ -224,7 +224,7 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.Response, 1)
@@ -238,9 +238,9 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		assert.True(t, policyCancelCalled)
-		assert.True(t, apiKeyCancelCalled)
-		assert.True(t, lazyResourceCancelCalled)
-		assert.True(t, subscriptionCancelCalled)
+		assert.False(t, apiKeyCancelCalled)
+		assert.False(t, lazyResourceCancelCalled)
+		assert.False(t, subscriptionCancelCalled)
 	})
 }
 
@@ -255,7 +255,7 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
@@ -266,9 +266,9 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		assert.NotNil(t, cancel)
 
 		assert.True(t, policyCache.createDeltaWatchCalled)
-		assert.True(t, apiKeyCache.createDeltaWatchCalled)
-		assert.True(t, lazyResourceCache.createDeltaWatchCalled)
-		assert.True(t, subscriptionCache.createDeltaWatchCalled)
+		assert.False(t, apiKeyCache.createDeltaWatchCalled)
+		assert.False(t, lazyResourceCache.createDeltaWatchCalled)
+		assert.False(t, subscriptionCache.createDeltaWatchCalled)
 
 		cancel()
 	})
@@ -286,7 +286,7 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
@@ -319,7 +319,7 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
@@ -330,9 +330,9 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cancel()
 
 		assert.True(t, policyCancelCalled)
-		assert.True(t, apiKeyCancelCalled)
-		assert.True(t, lazyResourceCancelCalled)
-		assert.True(t, subscriptionCancelCalled)
+		assert.False(t, apiKeyCancelCalled)
+		assert.False(t, lazyResourceCancelCalled)
+		assert.False(t, subscriptionCancelCalled)
 	})
 }
 
