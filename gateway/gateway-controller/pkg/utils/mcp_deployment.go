@@ -152,14 +152,26 @@ func isMCPNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return storage.IsNotFoundError(err) || strings.Contains(strings.ToLower(err.Error()), "not found")
+	return storage.IsNotFoundError(err)
+}
+
+func (s *MCPDeploymentService) hydrateStoredMCPConfig(cfg *models.StoredConfig) {
+	if err := HydrateStoredMCPConfig(cfg); err != nil {
+		configID := ""
+		if cfg != nil {
+			configID = cfg.UUID
+		}
+		slog.Default().Warn("failed to hydrate StoredConfig",
+			slog.String("id", configID),
+			slog.Any("error", err))
+	}
 }
 
 func (s *MCPDeploymentService) getMCPProxyByID(id string) (*models.StoredConfig, error) {
 	if s.db != nil {
 		cfg, err := s.db.GetConfig(id)
 		if err == nil {
-			_ = HydrateStoredMCPConfig(cfg)
+			s.hydrateStoredMCPConfig(cfg)
 			return cfg, nil
 		}
 		if !isMCPNotFoundError(err) {
@@ -171,7 +183,7 @@ func (s *MCPDeploymentService) getMCPProxyByID(id string) (*models.StoredConfig,
 	if err != nil {
 		return nil, err
 	}
-	_ = HydrateStoredMCPConfig(cfg)
+	s.hydrateStoredMCPConfig(cfg)
 	return cfg, nil
 }
 
@@ -435,13 +447,17 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 	return &mcpConfig, &apiConfig, nil
 }
 
-// ListMCPProxies returns all stored MCP proxy configurations
+// ListMCPProxies returns all stored MCP proxy configurations with their
+// derived RestAPI Configuration hydrated from StoredConfig.SourceConfiguration.
 func (s *MCPDeploymentService) ListMCPProxies() []*models.StoredConfig {
 	configs := s.store.GetAllByKind(string(api.Mcp))
 	if s.db != nil {
 		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.Mcp)); err == nil {
 			configs = storedConfigs
 		}
+	}
+	for _, cfg := range configs {
+		s.hydrateStoredMCPConfig(cfg)
 	}
 	return configs
 }
@@ -451,7 +467,7 @@ func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.Store
 	if s.db != nil {
 		cfg, err := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
 		if err == nil {
-			_ = HydrateStoredMCPConfig(cfg)
+			s.hydrateStoredMCPConfig(cfg)
 			return cfg, nil
 		}
 		if isMCPNotFoundError(err) {
@@ -467,7 +483,7 @@ func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.Store
 	if cfg == nil {
 		return nil, storage.ErrNotFound
 	}
-	_ = HydrateStoredMCPConfig(cfg)
+	s.hydrateStoredMCPConfig(cfg)
 	return cfg, nil
 }
 

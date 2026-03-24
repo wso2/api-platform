@@ -19,6 +19,9 @@
 package utils
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -31,6 +34,35 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
+
+func newUnhydratedTestMCPStoredConfig(id, handle, displayName, version, contextPath string) *models.StoredConfig {
+	upstreamURL := "http://localhost:8080"
+
+	return &models.StoredConfig{
+		UUID:        id,
+		Kind:        string(api.Mcp),
+		Handle:      handle,
+		DisplayName: displayName,
+		Version:     version,
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: handle},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: displayName,
+				Version:     version,
+				Context:     stringPtr(contextPath),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+}
 
 func TestNewMCPDeploymentService(t *testing.T) {
 	store := storage.NewConfigStore()
@@ -117,6 +149,88 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 		proxies := service.ListMCPProxies()
 		assert.Len(t, proxies, 1)
 		assert.Equal(t, "0000-mcp-1-0000-000000000000", proxies[0].UUID)
+	})
+
+	t.Run("Hydrates database-backed MCP configs before returning", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := NewMCPDeploymentService(store, db, nil, nil, nil)
+
+		cfg := newUnhydratedTestMCPStoredConfig("0000-db-mcp-1-0000-000000000000", "db-mcp", "DB MCP", "1.0.0", "/db-mcp")
+		require.NoError(t, db.SaveConfig(cfg))
+
+		proxies := service.ListMCPProxies()
+		require.Len(t, proxies, 1)
+
+		restCfg, ok := proxies[0].Configuration.(api.RestAPI)
+		require.True(t, ok, "expected hydrated RestAPI configuration")
+		assert.Equal(t, "db-mcp", restCfg.Metadata.Name)
+	})
+}
+
+func TestIsMCPNotFoundError_UsesStorageSentinelOnly(t *testing.T) {
+	assert.True(t, isMCPNotFoundError(storage.ErrNotFound))
+	assert.True(t, isMCPNotFoundError(fmt.Errorf("wrapped: %w", storage.ErrNotFound)))
+	assert.False(t, isMCPNotFoundError(errors.New("not found")))
+}
+
+func TestMCPDeploymentService_getMCPProxyByID_LogsHydrationFailures(t *testing.T) {
+	originalLogger := slog.Default()
+	var logBuf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() {
+		slog.SetDefault(originalLogger)
+	})
+
+	t.Run("database-backed lookup", func(t *testing.T) {
+		logBuf.Reset()
+
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := NewMCPDeploymentService(store, db, nil, nil, nil)
+		cfg := &models.StoredConfig{
+			UUID:                "0000-bad-db-mcp-0000-000000000000",
+			Kind:                string(api.Mcp),
+			Handle:              "bad-db-mcp",
+			SourceConfiguration: "invalid",
+			DesiredState:        models.StateDeployed,
+			Origin:              models.OriginGatewayAPI,
+			CreatedAt:           time.Now(),
+			UpdatedAt:           time.Now(),
+		}
+		require.NoError(t, db.SaveConfig(cfg))
+
+		found, err := service.getMCPProxyByID(cfg.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, cfg.UUID, found.UUID)
+		assert.Contains(t, logBuf.String(), "failed to hydrate StoredConfig")
+		assert.Contains(t, logBuf.String(), cfg.UUID)
+		assert.Contains(t, logBuf.String(), "unexpected MCP source configuration type")
+	})
+
+	t.Run("memory store fallback", func(t *testing.T) {
+		logBuf.Reset()
+
+		store := storage.NewConfigStore()
+		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
+		cfg := &models.StoredConfig{
+			UUID:                "0000-bad-store-mcp-0000-000000000000",
+			Kind:                string(api.Mcp),
+			Handle:              "bad-store-mcp",
+			SourceConfiguration: "invalid",
+			DesiredState:        models.StateDeployed,
+			Origin:              models.OriginGatewayAPI,
+			CreatedAt:           time.Now(),
+			UpdatedAt:           time.Now(),
+		}
+		require.NoError(t, store.Add(cfg))
+
+		found, err := service.getMCPProxyByID(cfg.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, cfg.UUID, found.UUID)
+		assert.Contains(t, logBuf.String(), "failed to hydrate StoredConfig")
+		assert.Contains(t, logBuf.String(), cfg.UUID)
+		assert.Contains(t, logBuf.String(), "unexpected MCP source configuration type")
 	})
 }
 

@@ -621,9 +621,14 @@ func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *te
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	db.SaveConfig(cfg)
-	_ = client.store.Add(cfg)
-
+	dbCfg := *cfg
+	memCfg := *cfg
+	if err := db.SaveConfig(&dbCfg); err != nil {
+		t.Fatalf("failed to seed MCP config in DB: %v", err)
+	}
+	if err := client.store.Add(&memCfg); err != nil {
+		t.Fatalf("failed to seed MCP config in memory store: %v", err)
+	}
 	event := map[string]interface{}{
 		"type":          "mcpproxy.undeployed",
 		"payload":       map[string]interface{}{"proxyId": cfg.UUID, "deploymentId": "rev-1", "performedAt": "2025-01-30T12:00:00Z"},
