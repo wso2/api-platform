@@ -75,7 +75,7 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	loadedCount := 0
 
 	// Bootstrap: Sync filesystem certificates to database on first run
-	if cs.db != nil && cs.certsDir != "" {
+	if cs.certsDir != "" {
 		if err := cs.bootstrapCertificatesFromFilesystem(); err != nil {
 			cs.logger.Warn("Failed to bootstrap certificates from filesystem",
 				slog.Any("error", err))
@@ -83,17 +83,15 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	}
 
 	// Load custom certificates from database (primary and only source for custom certs)
-	if cs.db != nil {
-		dbCerts, count, err := cs.loadDatabaseCertificates()
-		if err != nil {
-			cs.logger.Warn("Failed to load certificates from database",
-				slog.Any("error", err))
-		} else if count > 0 {
-			certBuffer.Write(dbCerts)
-			loadedCount += count
-			cs.logger.Info("Loaded custom certificates from database",
-				slog.Int("count", count))
-		}
+	dbCerts, count, err := cs.loadDatabaseCertificates()
+	if err != nil {
+		cs.logger.Warn("Failed to load certificates from database",
+			slog.Any("error", err))
+	} else if count > 0 {
+		certBuffer.Write(dbCerts)
+		loadedCount += count
+		cs.logger.Info("Loaded custom certificates from database",
+			slog.Int("count", count))
 	}
 
 	// Load system certificates

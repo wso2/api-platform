@@ -701,7 +701,7 @@ func defaultConfig() *Config {
 // Validate validates the configuration
 func (c *Config) Validate() error {
 	// Validate storage type
-	validStorageTypes := []string{"sqlite", "postgres", "memory"}
+	validStorageTypes := []string{"sqlite", "postgres"}
 	isValidType := false
 	for _, t := range validStorageTypes {
 		if c.Controller.Storage.Type == t {
@@ -710,7 +710,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	if !isValidType {
-		return fmt.Errorf("storage.type must be one of: sqlite, postgres, memory, got: %s", c.Controller.Storage.Type)
+		return fmt.Errorf("storage.type must be one of: sqlite, postgres, got: %s", c.Controller.Storage.Type)
 	}
 
 	// Validate SQLite configuration
@@ -1420,16 +1420,6 @@ func (c *Config) validateAPIKeyConfig() error {
 // validateSubscriptionsConfig validates subscriptions configuration.
 func (c *Config) validateSubscriptionsConfig() error {
 	return nil
-}
-
-// IsPersistentMode returns true if storage type is not memory
-func (c *Config) IsPersistentMode() bool {
-	return c.Controller.Storage.Type != "memory"
-}
-
-// IsMemoryOnlyMode returns true if storage type is memory
-func (c *Config) IsMemoryOnlyMode() bool {
-	return c.Controller.Storage.Type == "memory"
 }
 
 // IsAccessLogsEnabled returns true if access logs are enabled

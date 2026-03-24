@@ -38,7 +38,10 @@ func validConfig() *Config {
 				GatewayID: constants.PlatformGatewayId,
 			},
 			Storage: StorageConfig{
-				Type: "memory",
+				Type: "sqlite",
+				SQLite: SQLiteConfig{
+					Path: "/tmp/test-controller.db",
+				},
 			},
 			Logging: LoggingConfig{
 				Level:  "info",
@@ -100,7 +103,6 @@ func TestConfig_Validate_StorageType(t *testing.T) {
 		wantErr     bool
 		errContains string
 	}{
-		{name: "Valid memory", storageType: "memory", wantErr: false},
 		{name: "Valid sqlite", storageType: "sqlite", wantErr: true, errContains: "storage.sqlite.path is required"},
 		{name: "Valid postgres", storageType: "postgres", wantErr: true, errContains: "storage.postgres.host is required"},
 		{name: "Invalid type", storageType: "invalid", wantErr: true, errContains: "storage.type must be one of"},
@@ -110,6 +112,7 @@ func TestConfig_Validate_StorageType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
 			cfg.Controller.Storage.Type = tt.storageType
+			cfg.Controller.Storage.SQLite = SQLiteConfig{} // clear sqlite config to test type-only validation
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -1225,27 +1228,6 @@ func TestConfig_ValidateHTTPListenerConfig(t *testing.T) {
 }
 
 func TestConfig_HelperMethods(t *testing.T) {
-	t.Run("IsPersistentMode", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.Controller.Storage.Type = "sqlite"
-		assert.True(t, cfg.IsPersistentMode())
-
-		cfg.Controller.Storage.Type = "postgres"
-		assert.True(t, cfg.IsPersistentMode())
-
-		cfg.Controller.Storage.Type = "memory"
-		assert.False(t, cfg.IsPersistentMode())
-	})
-
-	t.Run("IsMemoryOnlyMode", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.Controller.Storage.Type = "memory"
-		assert.True(t, cfg.IsMemoryOnlyMode())
-
-		cfg.Controller.Storage.Type = "sqlite"
-		assert.False(t, cfg.IsMemoryOnlyMode())
-	})
-
 	t.Run("IsAccessLogsEnabled", func(t *testing.T) {
 		cfg := validConfig()
 		cfg.Router.AccessLogs.Enabled = true

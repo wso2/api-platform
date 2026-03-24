@@ -211,10 +211,6 @@ func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error
 
 // GetByHandle retrieves a REST API by its handle from the database.
 func (s *RestAPIService) GetByHandle(handle string) (*GetResult, error) {
-	if s.db == nil {
-		return nil, ErrDatabaseUnavailable
-	}
-
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
 	if err != nil {
 		return nil, ErrNotFound
@@ -256,10 +252,6 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, &ValidationError{Errors: validationErrors}
 	}
 
-	if s.db == nil {
-		return nil, ErrDatabaseUnavailable
-	}
-
 	// Check if config exists
 	existing, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, params.Handle)
 	if err != nil {
@@ -299,10 +291,6 @@ type DeleteParams struct {
 // Delete removes a REST API configuration.
 func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	log := params.Logger
-
-	if s.db == nil {
-		return nil, ErrDatabaseUnavailable
-	}
 
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, params.Handle)
 	if err != nil {

@@ -476,13 +476,7 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	var existing *models.StoredConfig
-	if s.db != nil {
-		existing, _ = s.db.GetConfig(storedCfg.UUID)
-	} else {
-		// In-memory mode: check store for existing config to determine if this is an update or create
-		existing, _ = s.store.Get(storedCfg.UUID)
-	}
+	existing, _ := s.db.GetConfig(storedCfg.UUID)
 
 	// If config already exists, update it
 	if existing != nil {
@@ -493,28 +487,24 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		return s.updateExistingConfig(storedCfg, existing, logger)
 	}
 
-	// Save new config to database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.SaveConfig(storedCfg); err != nil {
-			logger.Info("Error saving new API configuration to database",
-				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.DisplayName),
-				slog.String("version", storedCfg.Version))
-			return false, fmt.Errorf("failed to save config to database: %w", err)
-		}
+	// Save new config to database first
+	if err := s.db.SaveConfig(storedCfg); err != nil {
+		logger.Info("Error saving new API configuration to database",
+			slog.String("api_id", storedCfg.UUID),
+			slog.String("displayName", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version))
+		return false, fmt.Errorf("failed to save config to database: %w", err)
 	}
 
 	if s.eventHub == nil || !isReplicaSyncedKind(storedCfg.Kind) {
-		// Memory-only mode: add to in-memory store inline
+		// Add to in-memory store inline
 		if err := s.store.Add(storedCfg); err != nil {
-			// Rollback database write (only if persistent mode)
-			if s.db != nil {
-				logger.Info("Error adding new API configuration to memory store, rolling back database",
-					slog.String("api_id", storedCfg.UUID),
-					slog.String("displayName", storedCfg.DisplayName),
-					slog.String("version", storedCfg.Version))
-				_ = s.db.DeleteConfig(storedCfg.UUID)
-			}
+			// Rollback database write
+			logger.Info("Error adding new API configuration to memory store, rolling back database",
+				slog.String("api_id", storedCfg.UUID),
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
+			_ = s.db.DeleteConfig(storedCfg.UUID)
 			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
 	}
@@ -544,25 +534,21 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	existing.UpdatedAt = now
 	existing.DeployedAt = newConfig.DeployedAt
 
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			return false, fmt.Errorf("failed to update config in database: %w", err)
-		}
+	// Update database first
+	if err := s.db.UpdateConfig(existing); err != nil {
+		return false, fmt.Errorf("failed to update config in database: %w", err)
 	}
 
 	if s.eventHub == nil || !isReplicaSyncedKind(existing.Kind) {
-		// Memory-only mode: update in-memory store inline
+		// Update in-memory store inline
 		if err := s.store.Update(existing); err != nil {
 			// Rollback DB to original state since memory update failed
-			if s.db != nil {
-				if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-					logger.Error("Failed to rollback DB after memory update failure",
-						slog.Any("error", rbErr),
-						slog.String("id", original.UUID),
-						slog.String("displayName", original.DisplayName),
-						slog.String("version", original.Version))
-				}
+			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
+				logger.Error("Failed to rollback DB after memory update failure",
+					slog.Any("error", rbErr),
+					slog.String("id", original.UUID),
+					slog.String("displayName", original.DisplayName),
+					slog.String("version", original.Version))
 			}
 			return false, fmt.Errorf("failed to update config in memory store: %w", err)
 		}
