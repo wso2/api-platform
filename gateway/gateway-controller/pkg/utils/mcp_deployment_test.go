@@ -118,15 +118,6 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 	})
 }
 
-func TestMCPDeploymentService_GetMCPProxyByHandle_NoDatabase(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
-
-	_, err := service.GetMCPProxyByHandle("0000-test-handle-0000-000000000000")
-	assert.Error(t, err)
-	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
-}
-
 func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
@@ -229,40 +220,12 @@ spec:
 	assert.Contains(t, err.Error(), "already exists")
 }
 
-func TestMCPDeploymentService_DeleteMCPProxy_NoDatabase(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	_, err := service.DeleteMCPProxy("0000-test-handle-0000-000000000000", "corr-id", logger)
-	assert.Error(t, err)
-	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
-}
-
-func TestMCPDeploymentService_UpdateMCPProxy_NoDatabase(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	params := MCPDeploymentParams{
-		Data:          []byte("test data"),
-		ContentType:   "application/yaml",
-		Origin:        models.OriginGatewayAPI,
-		CorrelationID: "corr-id",
-		Logger:        logger,
-	}
-
-	_, err := service.UpdateMCPProxy("0000-test-handle-0000-000000000000", params, logger)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
-}
-
 func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Save new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
+		service := NewMCPDeploymentService(store, newTestMockDB(), nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test MCP",
@@ -303,7 +266,8 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 	t.Run("Updates existing config", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
+		db := newTestMockDB()
+		service := NewMCPDeploymentService(store, db, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original MCP",
@@ -328,6 +292,7 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
+		db.SaveConfig(original)
 		store.Add(original)
 
 		// Create updated config
@@ -359,7 +324,7 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 
 	t.Run("Error when config not found", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil, nil, nil)
+		service := NewMCPDeploymentService(store, newTestMockDB(), nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Non-existent MCP",

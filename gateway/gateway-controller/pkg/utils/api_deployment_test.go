@@ -232,7 +232,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 
 	t.Run("Save new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		mockDB := newTestMockDB()
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test API",
@@ -265,7 +266,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 
 	t.Run("Update existing config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		mockDB := newTestMockDB()
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test API",
@@ -287,6 +289,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 		store.Add(existingCfg)
+		require.NoError(t, mockDB.SaveConfig(existingCfg))
 
 		// Now update it
 		newApiData := api.APIConfigData{
@@ -319,7 +322,8 @@ func TestUpdateExistingConfig(t *testing.T) {
 
 	t.Run("Updates existing config successfully", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		mockDB := newTestMockDB()
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original API",
@@ -341,6 +345,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 		store.Add(original)
+		require.NoError(t, mockDB.SaveConfig(original))
 
 		// Create updated config
 		newApiData := api.APIConfigData{
@@ -705,7 +710,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 	t.Run("Successfully saves new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		service := NewAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "New API",
@@ -739,6 +744,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 	t.Run("Update path when config exists", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		mockDB := newTestMockDB()
 
 		// Add existing config
 		apiData := api.APIConfigData{
@@ -760,8 +766,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 		store.Add(existingCfg)
+		require.NoError(t, mockDB.SaveConfig(existingCfg))
 
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
 
 		// Try to save with same ID (should update instead)
 		updateCfg := &models.StoredConfig{
@@ -787,8 +794,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 func TestUpdateExistingConfig_Rollback(t *testing.T) {
 	t.Run("Memory store update failure without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewAPIDeploymentService(store, nil, nil, nil, nil)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		mockDB := newTestMockDB()
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original API",
@@ -810,6 +818,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 		store.Add(original)
+		require.NoError(t, mockDB.SaveConfig(original))
 
 		// Create an update that will fail (invalid ID in newConfig to simulate store.Update failure)
 		// We can't easily simulate store.Update failure without modifying the store

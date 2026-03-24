@@ -204,6 +204,9 @@ func NewClient(
 		policyVersionResolver,
 		policyValidator,
 	)
+	if eventHubInstance != nil {
+		client.llmDeploymentService.SetEventHub(eventHubInstance, gatewayID)
+	}
 
 	client.mcpDeploymentService = utils.NewMCPDeploymentService(
 		store,
@@ -287,14 +290,14 @@ func (c *Client) Connect() error {
 	// Create WebSocket dialer with timeout
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
-		TLSClientConfig: &tls.Config{
+		TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
 			InsecureSkipVerify: c.config.InsecureSkipVerify,
 		},
 	}
 
 	// Log TLS configuration
 	if c.config.InsecureSkipVerify {
-		c.logger.Debug("TLS certificate verification disabled (insecure_skip_verify=true)")
+		c.logger.Warn("TLS certificate verification disabled (insecure_skip_verify=true)")
 	}
 
 	// Add api-key header for authentication
@@ -452,7 +455,9 @@ func (c *Client) discoverGatewayPath() (string, error) {
 	httpClient := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.config.InsecureSkipVerify},
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
+				InsecureSkipVerify: c.config.InsecureSkipVerify,
+			},
 		},
 	}
 
@@ -1375,21 +1380,19 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 // Returns the config and an error. If the config is not found in either store,
 // returns (nil, storage.ErrNotFound). Other errors indicate actual storage failures.
 func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
-	// Check database first (source of truth when available)
-	if c.db != nil {
-		config, err := c.db.GetConfig(apiID)
-		if err == nil {
-			return config, nil
-		}
-		// If it's a real error (not just "not found"), surface it
-		if !storage.IsNotFoundError(err) {
-			return nil, fmt.Errorf("database error while fetching config: %w", err)
-		}
-		// Config not found in DB, fall through to check memory store
+	// Check database (source of truth)
+	config, err := c.db.GetConfig(apiID)
+	if err == nil {
+		return config, nil
 	}
+	// If it's a real error (not just "not found"), surface it
+	if !storage.IsNotFoundError(err) {
+		return nil, fmt.Errorf("database error while fetching config: %w", err)
+	}
+	// Config not found in DB, fall through to check memory store
 
 	// Fall back to in-memory store
-	config, err := c.store.Get(apiID)
+	config, err = c.store.Get(apiID)
 	if err == nil {
 		return config, nil
 	}
@@ -1496,17 +1499,15 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 	)
 
 	// Check and clean up stale API keys from database
-	if c.db != nil {
-		if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
-			c.logger.Warn("Failed to remove stale API keys from database",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-		} else {
-			c.logger.Debug("Cleaned up any stale API keys from database",
-				slog.String("api_id", apiID),
-			)
-		}
+	if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
+		c.logger.Warn("Failed to remove stale API keys from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Debug("Cleaned up any stale API keys from database",
+			slog.String("api_id", apiID),
+		)
 	}
 
 	if c.eventHub != nil {
@@ -1560,32 +1561,28 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 	)
 
 	// 1. Delete API configuration from database first (for atomicity)
-	if c.db != nil {
-		if err := c.db.DeleteConfig(apiID); err != nil {
-			c.logger.Error("Failed to delete API configuration from database",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-			// Continue with cleanup even if database deletion fails
-		} else {
-			c.logger.Info("Successfully deleted API configuration from database",
-				slog.String("api_id", apiID),
-			)
-		}
+	if err := c.db.DeleteConfig(apiID); err != nil {
+		c.logger.Error("Failed to delete API configuration from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		// Continue with cleanup even if database deletion fails
+	} else {
+		c.logger.Info("Successfully deleted API configuration from database",
+			slog.String("api_id", apiID),
+		)
 	}
 
 	// 2. Delete all API keys from database
-	if c.db != nil {
-		if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
-			c.logger.Warn("Failed to delete API keys from database",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-		} else {
-			c.logger.Info("Successfully deleted API keys from database",
-				slog.String("api_id", apiID),
-			)
-		}
+	if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
+		c.logger.Warn("Failed to delete API keys from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Info("Successfully deleted API keys from database",
+			slog.String("api_id", apiID),
+		)
 	}
 
 	if c.eventHub != nil {
@@ -1808,11 +1805,13 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Update policy engine xDS snapshot (best-effort)
-	if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
+	// In event-driven mode the EventListener owns local policy convergence.
+	if c.eventHub == nil {
+		if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
+			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
+				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "success",
@@ -1911,11 +1910,13 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Update policy engine xDS snapshot (best-effort)
-	if err := c.updatePolicyForDeployment(providerID, deployedEvent.CorrelationID, result); err != nil {
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
+	// In event-driven mode, the EventListener owns local policy convergence.
+	if c.eventHub == nil {
+		if err := c.updatePolicyForDeployment(providerID, deployedEvent.CorrelationID, result); err != nil {
+			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
+				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "success",
@@ -1968,7 +1969,7 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		return
 	}
 
-	_, err = c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
+	cfg, err := c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM provider configuration",
 			slog.String("provider_id", providerID),
@@ -1977,6 +1978,19 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
 			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
+	}
+
+	if c.eventHub == nil {
+		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
+			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
+				c.logger.Warn("Failed to remove LLM provider API keys from policy engine",
+					slog.String("provider_id", providerID),
+					slog.Any("error", err))
+			}
+		}
+		if cfg != nil {
+			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		}
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",
@@ -2029,7 +2043,7 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	_, err = c.llmDeploymentService.DeleteLLMProxy(proxyID, undeployedEvent.CorrelationID, c.logger)
+	cfg, err := c.llmDeploymentService.DeleteLLMProxy(proxyID, undeployedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM proxy configuration",
 			slog.String("proxy_id", proxyID),
@@ -2038,6 +2052,19 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
 			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
+	}
+
+	if c.eventHub == nil {
+		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
+			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
+				c.logger.Warn("Failed to remove LLM proxy API keys from policy engine",
+					slog.String("proxy_id", proxyID),
+					slog.Any("error", err))
+			}
+		}
+		if cfg != nil {
+			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		}
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "success",
@@ -2230,17 +2257,15 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 	mcpConfig.DeployedAt = &mcpUndeployPerformedAt
 	mcpConfig.UpdatedAt = time.Now()
 
-	// Update database (only if persistent mode)
-	if c.db != nil {
-		if err := c.db.UpdateConfig(mcpConfig); err != nil {
-			c.logger.Error("Failed to update config status in database",
-				slog.String("proxy_id", proxyID),
-				slog.Any("error", err),
-			)
-			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
-				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
+	// Update database
+	if err := c.db.UpdateConfig(mcpConfig); err != nil {
+		c.logger.Error("Failed to update config status in database",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
 	}
 
 	// Update in-memory store
@@ -2788,8 +2813,23 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 
 // calculateNextRetryDelay calculates the next retry delay with exponential backoff and jitter
 func (c *Client) calculateNextRetryDelay() {
-	// Exponential backoff: initial * 2^retries
-	baseDelay := c.config.ReconnectInitial * time.Duration(1<<uint(c.state.RetryCount))
+	// Exponential backoff with bounded doubling to avoid overflow before capping.
+	baseDelay := c.config.ReconnectInitial
+	retries := c.state.RetryCount
+	if retries < 0 {
+		retries = 0
+	}
+	for i := 0; i < retries; i++ {
+		if baseDelay >= c.config.ReconnectMax {
+			baseDelay = c.config.ReconnectMax
+			break
+		}
+		if baseDelay > c.config.ReconnectMax/2 {
+			baseDelay = c.config.ReconnectMax
+			break
+		}
+		baseDelay *= 2
+	}
 
 	// Cap at maximum
 	if baseDelay > c.config.ReconnectMax {
@@ -3216,7 +3256,7 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
 				InsecureSkipVerify: c.config.InsecureSkipVerify,
 			},
 		},

@@ -384,7 +384,7 @@ type ControlPlaneConfig struct {
 	ReconnectInitial      time.Duration `koanf:"reconnect_initial"`       // Initial retry delay
 	ReconnectMax          time.Duration `koanf:"reconnect_max"`           // Maximum retry delay
 	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
-	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (default: true for dev)
+	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
 }
@@ -431,6 +431,21 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.polling_interval"
 		case "insecure_skip_verify":
 			return "controller.controlplane.insecure_skip_verify"
+		// APIP_GW_ + CONTROLLER_CONTROLPLANE_* (underscore-to-dot would split insecure_skip_verify)
+		case "controller_controlplane_host":
+			return "controller.controlplane.host"
+		case "controller_controlplane_token":
+			return "controller.controlplane.token"
+		case "controller_controlplane_reconnect_initial":
+			return "controller.controlplane.reconnect_initial"
+		case "controller_controlplane_reconnect_max":
+			return "controller.controlplane.reconnect_max"
+		case "controller_controlplane_polling_interval":
+			return "controller.controlplane.polling_interval"
+		case "controller_controlplane_insecure_skip_verify":
+			return "controller.controlplane.insecure_skip_verify"
+		case "controller_controlplane_deployment_push_enabled":
+			return "controller.controlplane.deployment_push_enabled"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
@@ -538,7 +553,7 @@ func defaultConfig() *Config {
 				ReconnectInitial:      1 * time.Second,
 				ReconnectMax:          5 * time.Minute,
 				PollingInterval:       15 * time.Minute,
-				InsecureSkipVerify:    true,
+				InsecureSkipVerify:    false,
 				DeploymentPushEnabled: false,
 				SyncBatchSize:         50,
 			},
@@ -688,7 +703,7 @@ func defaultConfig() *Config {
 // Validate validates the configuration
 func (c *Config) Validate() error {
 	// Validate storage type
-	validStorageTypes := []string{"sqlite", "postgres", "memory"}
+	validStorageTypes := []string{"sqlite", "postgres"}
 	isValidType := false
 	for _, t := range validStorageTypes {
 		if c.Controller.Storage.Type == t {
@@ -697,7 +712,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	if !isValidType {
-		return fmt.Errorf("storage.type must be one of: sqlite, postgres, memory, got: %s", c.Controller.Storage.Type)
+		return fmt.Errorf("storage.type must be one of: sqlite, postgres, got: %s", c.Controller.Storage.Type)
 	}
 
 	// Validate SQLite configuration
@@ -1412,16 +1427,6 @@ func (c *Config) validateAPIKeyConfig() error {
 // validateSubscriptionsConfig validates subscriptions configuration.
 func (c *Config) validateSubscriptionsConfig() error {
 	return nil
-}
-
-// IsPersistentMode returns true if storage type is not memory
-func (c *Config) IsPersistentMode() bool {
-	return c.Controller.Storage.Type != "memory"
-}
-
-// IsMemoryOnlyMode returns true if storage type is memory
-func (c *Config) IsMemoryOnlyMode() bool {
-	return c.Controller.Storage.Type == "memory"
 }
 
 // IsAccessLogsEnabled returns true if access logs are enabled
