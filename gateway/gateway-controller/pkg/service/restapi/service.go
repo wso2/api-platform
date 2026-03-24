@@ -155,8 +155,11 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
 	}
 
-	// Build and add policy config derived from API configuration
-	s.updatePolicyForConfig(result.StoredConfig, result.IsUpdate, log)
+	// Build and add policy config derived from API configuration.
+	// In event-driven mode the EventListener handles this after replaying the event.
+	if s.eventHub == nil {
+		s.updatePolicyForConfig(result.StoredConfig, log)
+	}
 
 	return &CreateResult{
 		StoredConfig: result.StoredConfig,
@@ -328,7 +331,7 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 }
 
 // updatePolicyForConfig upserts the runtime config for an API into the policy engine.
-func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, isUpdate bool, log *slog.Logger) {
+func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, log *slog.Logger) {
 	if s.policyManager == nil {
 		return
 	}

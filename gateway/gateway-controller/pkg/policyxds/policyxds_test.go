@@ -35,7 +35,7 @@ func TestNewSnapshotManager(t *testing.T) {
 		t.Fatal("NewSnapshotManager returned nil")
 	}
 
-	if manager.GetCache() == nil {
+	if manager.GetPolicyCache() == nil {
 		t.Error("GetCache() returned nil")
 	}
 

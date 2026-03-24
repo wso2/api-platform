@@ -78,18 +78,13 @@ func (sm *SnapshotManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
 	sm.runtimeStore = store
 }
 
-// GetPolicyCache returns the policy chain cache.
-func (sm *SnapshotManager) GetPolicyCache() cache.Cache {
-	return sm.policyCache
-}
-
 // GetRouteCache returns the route config cache.
 func (sm *SnapshotManager) GetRouteCache() cache.Cache {
 	return sm.routeCache
 }
 
-// GetCache returns the policy chain cache (backward compatible).
-func (sm *SnapshotManager) GetCache() cache.Cache {
+// GetPolicyCache returns the policy chain cache (backward compatible).
+func (sm *SnapshotManager) GetPolicyCache() cache.Cache {
 	return sm.policyCache
 }
 

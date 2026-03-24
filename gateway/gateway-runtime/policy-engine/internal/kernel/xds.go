@@ -84,7 +84,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 
 	ctx := context.Background()
 	for routeKey, chain := range chains {
-		cl.kernel.Routes[routeKey] = chain
+		cl.kernel.PolicyChains[routeKey] = chain
 		slog.InfoContext(ctx, "Loaded policy chain for route",
 			"route", routeKey,
 			"policies", len(chain.Policies))

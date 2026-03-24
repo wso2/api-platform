@@ -130,27 +130,6 @@ func (pm *PolicyManager) RemoveRuntimeConfig(key string) error {
 	return nil
 }
 
-// GetRuntimeConfig retrieves a RuntimeDeployConfig by key.
-func (pm *PolicyManager) GetRuntimeConfig(key string) (*models.RuntimeDeployConfig, error) {
-	if pm.runtimeStore == nil {
-		return nil, fmt.Errorf("runtime config store not configured")
-	}
-
-	rdc, exists := pm.runtimeStore.Get(key)
-	if !exists {
-		return nil, fmt.Errorf("runtime config not found: %s", key)
-	}
-	return rdc, nil
-}
-
-// ListRuntimeConfigs returns all RuntimeDeployConfigs.
-func (pm *PolicyManager) ListRuntimeConfigs() []*models.RuntimeDeployConfig {
-	if pm.runtimeStore == nil {
-		return nil
-	}
-	return pm.runtimeStore.GetAll()
-}
-
 // GetResourceVersion returns the current resource version used for xDS updates.
 func (pm *PolicyManager) GetResourceVersion() int64 {
 	if pm.runtimeStore != nil {
