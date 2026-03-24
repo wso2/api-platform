@@ -1944,7 +1944,9 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	)
 }
 
-// handleLLMProviderUndeployedEvent handles LLM provider undeployment events
+// handleLLMProviderUndeployedEvent handles LLM provider undeployment events.
+// This performs a soft undeploy (set desired_state = undeployed) rather than a hard delete,
+// preserving the config, keys, and policies for potential redeployment.
 func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("LLM Provider Undeployment Event",
 		slog.Any("payload", event["payload"]),
@@ -1975,19 +1977,25 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		return
 	}
 
-	if c.llmDeploymentService == nil {
-		c.logger.Error("LLM deployment service not available",
-			slog.String("provider_id", providerID),
-			slog.String("correlation_id", undeployedEvent.CorrelationID),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
+	c.logger.Info("Processing LLM provider undeployment",
+		slog.String("provider_id", providerID),
+		slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
 
-	cfg, err := c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
+	// Look up existing config
+	providerConfig, err := c.findAPIConfig(providerID)
 	if err != nil {
-		c.logger.Error("Failed to delete LLM provider configuration",
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM provider configuration not found for undeployment",
+				slog.String("provider_id", providerID),
+			)
+			// Still send success ack - the provider is already gone
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
+			return
+		}
+		c.logger.Error("Failed to fetch LLM provider configuration for undeployment",
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
@@ -1996,17 +2004,77 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		return
 	}
 
-	if c.eventHub == nil {
-		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
-			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
-				c.logger.Warn("Failed to remove LLM provider API keys from policy engine",
-					slog.String("provider_id", providerID),
-					slog.Any("error", err))
-			}
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	if providerConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		providerConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale LLM provider undeploy event: deployment ID mismatch",
+			slog.String("provider_id", providerID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", providerConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
+	// Soft undeploy: set desired_state to undeployed (preserve config, keys, and policies)
+	performedAt := undeployedEvent.Payload.PerformedAt
+	if performedAt.IsZero() {
+		performedAt = time.Now()
+	}
+	providerConfig.DesiredState = models.StateUndeployed
+	providerConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	providerConfig.DeployedAt = &performedAt
+	providerConfig.UpdatedAt = time.Now()
+
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
+	if c.db != nil {
+		affected, err := c.db.UpsertConfig(providerConfig)
+		if err != nil {
+			c.logger.Error("Failed to upsert config for LLM provider undeployment",
+				slog.String("provider_id", providerID),
+				slog.Any("error", err),
+			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
 		}
-		if cfg != nil {
-			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		if !affected {
+			c.logger.Debug("Skipped stale LLM provider undeploy event (newer version exists in DB)",
+				slog.String("provider_id", providerID),
+				slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+			)
+			return
 		}
+	}
+
+	if c.eventHub != nil {
+		// Event-driven mode: publish event; EventListener handles store/xDS
+		evt := eventhub.Event{
+			EventType: eventhub.EventTypeLLMProvider,
+			Action:    "UPDATE",
+			EntityID:  providerID,
+			EventID:   undeployedEvent.CorrelationID,
+		}
+		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+			c.logger.Error("Failed to publish LLM provider undeployment event", slog.Any("error", err))
+		}
+	} else {
+		// Memory-only mode: update in-memory store and xDS inline
+		if err := c.store.Update(providerConfig); err != nil {
+			c.logger.Error("Failed to update LLM provider config status in memory store",
+				slog.String("provider_id", providerID),
+				slog.Any("error", err),
+			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
+
+		// Note: We keep API keys and policies for potential redeploy
+
+		// Update xDS snapshot asynchronously (undeployed configs will be filtered out)
+		c.updateXDSSnapshotAsync(providerID, undeployedEvent.CorrelationID, false, true)
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",
@@ -2018,7 +2086,9 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 	)
 }
 
-// handleLLMProxyUndeployedEvent handles LLM proxy undeployment events
+// handleLLMProxyUndeployedEvent handles LLM proxy undeployment events.
+// This performs a soft undeploy (set desired_state = undeployed) rather than a hard delete,
+// preserving the config, keys, and policies for potential redeployment.
 func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("LLM Proxy Undeployment Event",
 		slog.Any("payload", event["payload"]),
@@ -2049,19 +2119,25 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	if c.llmDeploymentService == nil {
-		c.logger.Error("LLM deployment service not available",
-			slog.String("proxy_id", proxyID),
-			slog.String("correlation_id", undeployedEvent.CorrelationID),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
+	c.logger.Info("Processing LLM proxy undeployment",
+		slog.String("proxy_id", proxyID),
+		slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
 
-	cfg, err := c.llmDeploymentService.DeleteLLMProxy(proxyID, undeployedEvent.CorrelationID, c.logger)
+	// Look up existing config
+	proxyConfig, err := c.findAPIConfig(proxyID)
 	if err != nil {
-		c.logger.Error("Failed to delete LLM proxy configuration",
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM proxy configuration not found for undeployment",
+				slog.String("proxy_id", proxyID),
+			)
+			// Still send success ack - the proxy is already gone
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
+			return
+		}
+		c.logger.Error("Failed to fetch LLM proxy configuration for undeployment",
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
@@ -2070,17 +2146,77 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	if c.eventHub == nil {
-		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
-			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
-				c.logger.Warn("Failed to remove LLM proxy API keys from policy engine",
-					slog.String("proxy_id", proxyID),
-					slog.Any("error", err))
-			}
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	if proxyConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		proxyConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale LLM proxy undeploy event: deployment ID mismatch",
+			slog.String("proxy_id", proxyID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", proxyConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
+	// Soft undeploy: set desired_state to undeployed (preserve config, keys, and policies)
+	performedAt := undeployedEvent.Payload.PerformedAt
+	if performedAt.IsZero() {
+		performedAt = time.Now()
+	}
+	proxyConfig.DesiredState = models.StateUndeployed
+	proxyConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	proxyConfig.DeployedAt = &performedAt
+	proxyConfig.UpdatedAt = time.Now()
+
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
+	if c.db != nil {
+		affected, err := c.db.UpsertConfig(proxyConfig)
+		if err != nil {
+			c.logger.Error("Failed to upsert config for LLM proxy undeployment",
+				slog.String("proxy_id", proxyID),
+				slog.Any("error", err),
+			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
 		}
-		if cfg != nil {
-			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
+		if !affected {
+			c.logger.Debug("Skipped stale LLM proxy undeploy event (newer version exists in DB)",
+				slog.String("proxy_id", proxyID),
+				slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+			)
+			return
 		}
+	}
+
+	if c.eventHub != nil {
+		// Event-driven mode: publish event; EventListener handles store/xDS
+		evt := eventhub.Event{
+			EventType: eventhub.EventTypeLLMProxy,
+			Action:    "UPDATE",
+			EntityID:  proxyID,
+			EventID:   undeployedEvent.CorrelationID,
+		}
+		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+			c.logger.Error("Failed to publish LLM proxy undeployment event", slog.Any("error", err))
+		}
+	} else {
+		// Memory-only mode: update in-memory store and xDS inline
+		if err := c.store.Update(proxyConfig); err != nil {
+			c.logger.Error("Failed to update LLM proxy config status in memory store",
+				slog.String("proxy_id", proxyID),
+				slog.Any("error", err),
+			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
+
+		// Note: We keep API keys and policies for potential redeploy
+
+		// Update xDS snapshot asynchronously (undeployed configs will be filtered out)
+		c.updateXDSSnapshotAsync(proxyID, undeployedEvent.CorrelationID, false, true)
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "success",
