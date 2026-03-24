@@ -55,7 +55,7 @@ func newMockCache() *mockCache {
 	}
 }
 
-func (m *mockCache) CreateWatch(request *cache.Request, streamState stream.StreamState, responseChan chan cache.Response) func() {
+func (m *mockCache) CreateWatch(request *cache.Request, subscription cache.Subscription, responseChan chan cache.Response) (func(), error) {
 	m.createWatchCalled = true
 	// Send response if available
 	if m.responseChan != nil {
@@ -67,12 +67,12 @@ func (m *mockCache) CreateWatch(request *cache.Request, streamState stream.Strea
 			}
 		}()
 	}
-	return m.watchCancelFunc
+	return m.watchCancelFunc, nil
 }
 
-func (m *mockCache) CreateDeltaWatch(request *cache.DeltaRequest, streamState stream.StreamState, responseChan chan cache.DeltaResponse) func() {
+func (m *mockCache) CreateDeltaWatch(request *cache.DeltaRequest, subscription cache.Subscription, responseChan chan cache.DeltaResponse) (func(), error) {
 	m.createDeltaWatchCalled = true
-	return m.deltaWatchCancelFunc
+	return m.deltaWatchCancelFunc, nil
 }
 
 func (m *mockCache) Fetch(ctx context.Context, request *cache.Request) (cache.Response, error) {
@@ -91,9 +91,9 @@ func newMockDeltaCache() *mockDeltaCache {
 	}
 }
 
-func (m *mockDeltaCache) CreateDeltaWatch(request *cache.DeltaRequest, streamState stream.StreamState, responseChan chan cache.DeltaResponse) func() {
+func (m *mockDeltaCache) CreateDeltaWatch(request *cache.DeltaRequest, subscription cache.Subscription, responseChan chan cache.DeltaResponse) (func(), error) {
 	m.createDeltaWatchCalled = true
-	return m.deltaWatchCancelFunc
+	return m.deltaWatchCancelFunc, nil
 }
 
 // mockResponse implements cache.Response for testing
@@ -116,6 +116,14 @@ func (m *mockResponse) GetRequest() *cache.Request {
 
 func (m *mockResponse) GetVersion() (string, error) {
 	return m.version, m.err
+}
+
+func (m *mockResponse) GetResponseVersion() string {
+	return m.version
+}
+
+func (m *mockResponse) GetReturnedResources() map[string]string {
+	return nil
 }
 
 func (m *mockResponse) GetContext() context.Context {
@@ -180,7 +188,9 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		}
 		responseChan := make(chan cache.Response, 1)
 
-		cancel := cc.CreateWatch(request, stream.NewStreamState(false, nil), responseChan)
+		subscription := stream.NewSotwSubscription(request.GetResourceNames(), false)
+		cancel, err := cc.CreateWatch(request, &subscription, responseChan)
+		require.NoError(t, err)
 		assert.NotNil(t, cancel)
 
 		// Wait for watches to be created
@@ -219,7 +229,9 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		}
 		responseChan := make(chan cache.Response, 1)
 
-		cancel := cc.CreateWatch(request, stream.NewStreamState(false, nil), responseChan)
+		subscription := stream.NewSotwSubscription(request.GetResourceNames(), false)
+		cancel, err := cc.CreateWatch(request, &subscription, responseChan)
+		require.NoError(t, err)
 		cancel()
 
 		// Wait for cancel to propagate
@@ -248,7 +260,9 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
 
-		cancel := cc.CreateDeltaWatch(request, stream.NewStreamState(false, nil), responseChan)
+		subscription := stream.NewDeltaSubscription(request.GetResourceNamesSubscribe(), request.GetResourceNamesUnsubscribe(), request.GetInitialResourceVersions(), false)
+		cancel, err := cc.CreateDeltaWatch(request, &subscription, responseChan)
+		require.NoError(t, err)
 		assert.NotNil(t, cancel)
 
 		assert.True(t, policyCache.createDeltaWatchCalled)
@@ -277,7 +291,9 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
 
-		cancel := cc.CreateDeltaWatch(request, stream.NewStreamState(false, nil), responseChan)
+		subscription := stream.NewDeltaSubscription(request.GetResourceNamesSubscribe(), request.GetResourceNamesUnsubscribe(), request.GetInitialResourceVersions(), false)
+		cancel, err := cc.CreateDeltaWatch(request, &subscription, responseChan)
+		require.NoError(t, err)
 		assert.NotNil(t, cancel)
 
 		// Should not panic - this tests the fallback path when type assertion fails
@@ -308,7 +324,9 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
 
-		cancel := cc.CreateDeltaWatch(request, stream.NewStreamState(false, nil), responseChan)
+		subscription := stream.NewDeltaSubscription(request.GetResourceNamesSubscribe(), request.GetResourceNamesUnsubscribe(), request.GetInitialResourceVersions(), false)
+		cancel, err := cc.CreateDeltaWatch(request, &subscription, responseChan)
+		require.NoError(t, err)
 		cancel()
 
 		assert.True(t, policyCancelCalled)
@@ -449,7 +467,9 @@ func TestCombinedCache_CancelWatch(t *testing.T) {
 		}
 		responseChan := make(chan cache.Response, 1)
 
-		cancel := cc.CreateWatch(request, stream.NewStreamState(false, nil), responseChan)
+		subscription := stream.NewSotwSubscription(request.GetResourceNames(), false)
+		cancel, err := cc.CreateWatch(request, &subscription, responseChan)
+		require.NoError(t, err)
 
 		// Wait a bit for the watch to be created
 		time.Sleep(20 * time.Millisecond)
@@ -939,6 +959,14 @@ type mockResponseWithVersionError struct{}
 
 func (m *mockResponseWithVersionError) GetVersion() (string, error) {
 	return "", assert.AnError
+}
+
+func (m *mockResponseWithVersionError) GetResponseVersion() string {
+	return ""
+}
+
+func (m *mockResponseWithVersionError) GetReturnedResources() map[string]string {
+	return nil
 }
 
 func (m *mockResponseWithVersionError) GetRequest() *cache.Request {
