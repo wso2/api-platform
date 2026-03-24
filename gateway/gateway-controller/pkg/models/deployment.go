@@ -24,12 +24,12 @@ import "time"
 // list deployments endpoint. It contains the minimum metadata needed for the gateway
 // to compute a sync diff against its local state.
 type ControlPlaneDeployment struct {
-	ArtifactID    string    `json:"artifactId"`
-	DeploymentID  string    `json:"deploymentId"`
-	Kind          string    `json:"kind"`
-	State         string    `json:"state"`
-	DeployedAt    time.Time `json:"deployedAt"`
-	CorrelationID string    `json:"correlationId"`
+	ArtifactID   string    `json:"artifactId"`
+	DeploymentID string    `json:"deploymentId"`
+	Kind         string    `json:"kind"`
+	State        string    `json:"state"`
+	DeployedAt   time.Time `json:"deployedAt"`
+	Etag         string    `json:"etag"`
 }
 
 // ControlPlaneDeploymentsResponse is the response body from GET /deployments

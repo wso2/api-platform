@@ -1192,6 +1192,17 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	if result.IsStale {
+		// Stale event — DB was not modified. Do not send ack; in HA mode the
+		// controller that actually processed the event will ack. If all controllers
+		// see stale, platform-API will timeout and handle accordingly.
+		c.logger.Debug("Skipped stale API deploy event (newer version exists in DB)",
+			slog.String("api_id", apiID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
 	// Update policy engine xDS snapshot (best-effort)
 	// Skip when eventHub is set — EventListener handles policy derivation
 	if c.eventHub == nil {
@@ -1296,15 +1307,27 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	apiConfig.DeployedAt = &apiUndeployPerformedAt
 	apiConfig.UpdatedAt = time.Now()
 
-	// Update database (only if persistent mode)
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
+	// This prevents stale undeploy events from overwriting newer state.
 	if c.db != nil {
-		if err := c.db.UpdateConfig(apiConfig); err != nil {
-			c.logger.Error("Failed to update config status in database",
+		affected, err := c.db.UpsertConfig(apiConfig)
+		if err != nil {
+			c.logger.Error("Failed to upsert config for undeployment",
 				slog.String("api_id", apiID),
 				slog.Any("error", err),
 			)
 			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
 				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			return
+		}
+		if !affected {
+			// Stale event — DB was not modified. Do not send ack; in HA mode the
+			// controller that actually processed the event will ack. If all controllers
+			// see stale, platform-API will timeout and handle accordingly.
+			c.logger.Debug("Skipped stale API undeploy event (newer version exists in DB)",
+				slog.String("api_id", apiID),
+				slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+			)
 			return
 		}
 	}
@@ -1321,7 +1344,7 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 			c.logger.Error("Failed to publish API undeployment event", slog.Any("error", err))
 		}
 	} else {
-		// Update in-memory store
+		// Memory-only mode: update in-memory store and xDS inline
 		if err := c.store.Update(apiConfig); err != nil {
 			c.logger.Error("Failed to update config status in memory store",
 				slog.String("api_id", apiID),

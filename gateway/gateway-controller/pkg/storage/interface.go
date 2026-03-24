@@ -76,6 +76,16 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic and thread-safe.
 	UpdateConfig(cfg *models.StoredConfig) error
 
+	// UpsertConfig performs a timestamp-guarded insert-or-update of an API configuration.
+	// It inserts the config if it does not exist, or updates it only if the incoming
+	// deployed_at timestamp is newer than the existing one. This prevents stale events
+	// (from sync or WebSocket) from overwriting newer data.
+	//
+	// Returns (true, nil) if the row was actually inserted or updated.
+	// Returns (false, nil) if the row exists with a newer deployed_at (stale event — no-op).
+	// Returns (false, error) on database errors.
+	UpsertConfig(cfg *models.StoredConfig) (bool, error)
+
 	// DeleteConfig removes an API configuration by ID.
 	//
 	// Returns an error if the configuration does not exist.

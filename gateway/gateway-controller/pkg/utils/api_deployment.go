@@ -55,6 +55,7 @@ type APIDeploymentParams struct {
 type APIDeploymentResult struct {
 	StoredConfig *models.StoredConfig
 	IsUpdate     bool
+	IsStale      bool // true if the DB row was NOT modified (a newer version already exists)
 }
 
 // ValidationErrorListError wraps validation errors for API configuration.
@@ -351,11 +352,21 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// (the DB layer marshals SourceConfiguration, not Configuration).
 	storedCfg.SourceConfiguration = storedCfg.Configuration
 
-	// Try to save/update the configuration
-	var saveErr error
-	isUpdate, saveErr = s.saveOrUpdateConfig(storedCfg, params.Logger)
+	// Try to save/update the configuration using timestamp-guarded upsert.
+	// affected=true means the row was actually inserted or updated in the DB.
+	// affected=false means a newer version already exists (stale event — no-op).
+	affected, saveErr := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if saveErr != nil {
 		return nil, saveErr
+	}
+
+	if !affected {
+		// Stale event — DB was not modified. Return success but skip event publishing and xDS update.
+		return &APIDeploymentResult{
+			StoredConfig: storedCfg,
+			IsUpdate:     isUpdate,
+			IsStale:      true,
+		}, nil
 	}
 
 	// Log success
@@ -398,6 +409,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
 		IsUpdate:     isUpdate,
+		IsStale:      false,
 	}, nil
 }
 
@@ -455,107 +467,67 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 	return s.store.TopicManager.GetAllByConfig(apiConfig.UUID)
 }
 
-// saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
+// saveOrUpdateConfig performs a timestamp-guarded upsert of the API configuration.
+//
+// When a persistent database is available, it uses UpsertConfig (INSERT ... ON CONFLICT
+// with deployed_at timestamp guard) so that stale events never overwrite newer data.
+// Returns (affected bool, error) where affected=true means the DB row was actually
+// inserted or updated. Callers should only publish EventHub events and update xDS
+// snapshots when affected=true.
+//
+// When running in memory-only mode (no database), it falls back to the in-memory store's
+// Add/Update which always succeeds (affected=true).
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	var existing *models.StoredConfig
 	if s.db != nil {
-		existing, _ = s.db.GetConfig(storedCfg.UUID)
-	} else {
-		// In-memory mode: check store for existing config to determine if this is an update or create
-		existing, _ = s.store.Get(storedCfg.UUID)
-	}
-
-	// If config already exists, update it
-	if existing != nil {
-		logger.Info("API configuration already exists, updating",
-			slog.String("api_id", storedCfg.UUID),
-			slog.String("displayName", storedCfg.DisplayName),
-			slog.String("version", storedCfg.Version))
-		return s.updateExistingConfig(storedCfg, existing, logger)
-	}
-
-	// Save new config to database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.SaveConfig(storedCfg); err != nil {
-			logger.Info("Error saving new API configuration to database",
+		affected, err := s.db.UpsertConfig(storedCfg)
+		if err != nil {
+			return false, fmt.Errorf("failed to upsert config to database: %w", err)
+		}
+		if !affected {
+			logger.Debug("Skipped stale API configuration (newer version exists in DB)",
 				slog.String("api_id", storedCfg.UUID),
 				slog.String("displayName", storedCfg.DisplayName),
 				slog.String("version", storedCfg.Version))
-			return false, fmt.Errorf("failed to save config to database: %w", err)
+			return false, nil
 		}
+
+		// In event-driven mode, the EventListener will update the in-memory store
+		// via event processing. Only update the store inline for non-event types.
+		if s.eventHub == nil || (storedCfg.Kind != "WebSubApi" && storedCfg.Kind != "RestApi") {
+			if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
+				// Preserve CreatedAt from existing record (UpsertConfig SQL doesn't
+				// touch created_at on conflict, so the memory store should match).
+				storedCfg.CreatedAt = existing.CreatedAt
+				if err := s.store.Update(storedCfg); err != nil {
+					logger.Warn("Failed to update config in memory store after DB upsert",
+						slog.String("api_id", storedCfg.UUID),
+						slog.Any("error", err))
+				}
+			} else {
+				if err := s.store.Add(storedCfg); err != nil {
+					logger.Warn("Failed to add config to memory store after DB upsert",
+						slog.String("api_id", storedCfg.UUID),
+						slog.Any("error", err))
+				}
+			}
+		}
+
+		return true, nil
 	}
 
-	// TODO: (VirajSalaka) Fix other types also with the same eventing synchronization.
-	if s.eventHub == nil || (storedCfg.Kind != "WebSubApi" && storedCfg.Kind != "RestApi") {
-		// Memory-only mode: add to in-memory store inline
+	// Memory-only mode (no database): use in-memory store directly
+	if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
+		// Preserve CreatedAt from existing record on updates
+		storedCfg.CreatedAt = existing.CreatedAt
+		if err := s.store.Update(storedCfg); err != nil {
+			return false, fmt.Errorf("failed to update config in memory store: %w", err)
+		}
+	} else {
 		if err := s.store.Add(storedCfg); err != nil {
-			// Rollback database write (only if persistent mode)
-			if s.db != nil {
-				logger.Info("Error adding new API configuration to memory store, rolling back database",
-					slog.String("api_id", storedCfg.UUID),
-					slog.String("displayName", storedCfg.DisplayName),
-					slog.String("version", storedCfg.Version))
-				_ = s.db.DeleteConfig(storedCfg.UUID)
-			}
 			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
 	}
-	// In event-driven mode, the EventListener will add to store via event processing
-
-	return false, nil // Successfully created new config
-}
-
-// updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
-	existing *models.StoredConfig, logger *slog.Logger) (bool, error) {
-
-	// Backup original state for potential rollback
-	original := *existing
-
-	// Update the existing configuration (including denormalized fields used by secondary indexes)
-	now := time.Now()
-	existing.Kind = newConfig.Kind
-	existing.Handle = newConfig.Handle
-	existing.DisplayName = newConfig.DisplayName
-	existing.Version = newConfig.Version
-	existing.Configuration = newConfig.Configuration
-	existing.SourceConfiguration = newConfig.SourceConfiguration
-	existing.DesiredState = models.StateDeployed
-	existing.DeploymentID = newConfig.DeploymentID
-	existing.Origin = newConfig.Origin
-	existing.UpdatedAt = now
-	existing.DeployedAt = newConfig.DeployedAt
-
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			return false, fmt.Errorf("failed to update config in database: %w", err)
-		}
-	}
-
-	// TODO: (VirajSalaka) Fix other types also with the same eventing synchronization.
-	if s.eventHub == nil || (existing.Kind != "WebSubApi" && existing.Kind != "RestApi") {
-		// Memory-only mode: update in-memory store inline
-		if err := s.store.Update(existing); err != nil {
-			// Rollback DB to original state since memory update failed
-			if s.db != nil {
-				if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-					logger.Error("Failed to rollback DB after memory update failure",
-						slog.Any("error", rbErr),
-						slog.String("id", original.UUID),
-						slog.String("displayName", original.DisplayName),
-						slog.String("version", original.Version))
-				}
-			}
-			return false, fmt.Errorf("failed to update config in memory store: %w", err)
-		}
-	}
-	// In event-driven mode, the EventListener will update store via event processing
-
-	// Update the newConfig to reflect the changes
-	*newConfig = *existing
-
-	return true, nil // Successfully updated existing config
+	return true, nil
 }
 
 func (s *APIDeploymentService) RegisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *slog.Logger) error {

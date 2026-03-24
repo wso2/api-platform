@@ -379,6 +379,125 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+// UpsertConfig performs a timestamp-guarded insert-or-update.
+// The artifact row is only written if no existing row has a newer deployed_at.
+// Returns (true, nil) when the DB was actually modified, (false, nil) when a
+// newer version already exists (stale event), or (false, error) on failure.
+func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	startTime := time.Now()
+	table := "artifacts"
+
+	if cfg.Handle == "" {
+		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
+
+	// INSERT ... ON CONFLICT upsert with deployed_at guard.
+	// The WHERE clause ensures we only overwrite when the incoming deployed_at
+	// is strictly newer than the stored value (or the stored value is NULL).
+	query := `
+		INSERT INTO artifacts (
+			uuid, gateway_id, display_name, version, kind, handle,
+			desired_state, deployment_id, origin, created_at, updated_at, deployed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(uuid) DO UPDATE SET
+			display_name  = excluded.display_name,
+			version       = excluded.version,
+			kind          = excluded.kind,
+			handle        = excluded.handle,
+			desired_state = excluded.desired_state,
+			deployment_id = excluded.deployment_id,
+			origin        = excluded.origin,
+			updated_at    = excluded.updated_at,
+			deployed_at   = excluded.deployed_at
+		WHERE artifacts.deployed_at IS NULL
+		   OR artifacts.deployed_at < excluded.deployed_at
+	`
+
+	tx, err := s.begin()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stmt, err := tx.tx.Prepare(s.bind(query))
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	now := time.Now()
+	var deploymentID interface{}
+	if cfg.DeploymentID != "" {
+		deploymentID = cfg.DeploymentID
+	}
+
+	result, err := stmt.Exec(
+		cfg.UUID,
+		s.gatewayId,
+		cfg.DisplayName,
+		cfg.Version,
+		cfg.Kind,
+		cfg.Handle,
+		cfg.DesiredState,
+		deploymentID,
+		cfg.Origin,
+		now,
+		now,
+		cfg.DeployedAt,
+	)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to upsert artifact: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		// Stale event — existing row has a newer deployed_at. No-op.
+		_ = tx.Rollback()
+		committed = true // prevent double-rollback in defer
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "skipped").Inc()
+		s.logger.Info("Upsert skipped (stale event)",
+			slog.String("uuid", cfg.UUID),
+			slog.String("deployment_id", cfg.DeploymentID))
+		return false, nil
+	}
+
+	// Upsert the per-resource-type table (configuration JSON).
+	if err := s.upsertResourceConfigTx(tx, cfg); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to upsert resource configuration: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to commit upsert transaction: %w", err)
+	}
+	committed = true
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("upsert", table).Observe(time.Since(startTime).Seconds())
+
+	s.logger.Info("Configuration upserted",
+		slog.String("uuid", cfg.UUID),
+		slog.String("kind", cfg.Kind),
+		slog.String("handle", cfg.Handle),
+		slog.String("deployment_id", cfg.DeploymentID))
+
+	return true, nil
+}
+
 // DeleteConfig removes an artifact configuration by UUID
 func (s *sqlStore) DeleteConfig(id string) error {
 	startTime := time.Now()
@@ -770,6 +889,60 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	}
 
 	return true, nil
+}
+
+// upsertResourceConfigTx performs INSERT ... ON CONFLICT(uuid) DO UPDATE for the
+// per-resource-type table. Works identically on SQLite (3.24+) and PostgreSQL.
+func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig) error {
+	resourceTable, err := kindToResourceTable(cfg.Kind)
+	if err != nil {
+		return err
+	}
+
+	configJSON, err := json.Marshal(cfg.SourceConfiguration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration: %w", err)
+	}
+
+	var query string
+	var args []interface{}
+
+	if cfg.Kind == "LlmProxy" {
+		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
+		if !ok {
+			return fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
+		}
+		providerUUID, err := s.resolveProviderUUID(tx, proxyConfig.Spec.Provider.Id)
+		if err != nil {
+			return fmt.Errorf("failed to resolve provider: %w", err)
+		}
+		query = fmt.Sprintf(`
+			INSERT INTO %s (uuid, configuration, provider_uuid) VALUES (?, ?, ?)
+			ON CONFLICT(uuid) DO UPDATE SET
+				configuration  = excluded.configuration,
+				provider_uuid  = excluded.provider_uuid
+		`, resourceTable)
+		args = []interface{}{cfg.UUID, string(configJSON), providerUUID}
+	} else {
+		query = fmt.Sprintf(`
+			INSERT INTO %s (uuid, configuration) VALUES (?, ?)
+			ON CONFLICT(uuid) DO UPDATE SET
+				configuration = excluded.configuration
+		`, resourceTable)
+		args = []interface{}{cfg.UUID, string(configJSON)}
+	}
+
+	stmt, err := tx.tx.Prepare(s.bind(query))
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	if _, err = stmt.Exec(args...); err != nil {
+		return fmt.Errorf("failed to upsert resource configuration: %w", err)
+	}
+
+	return nil
 }
 
 // resolveProviderUUID looks up the provider UUID from the database by provider handle and gateway ID.
