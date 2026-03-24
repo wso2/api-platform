@@ -61,18 +61,23 @@ jobs:
           
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Validate tag does not exist
+      - name: Validate tags do not exist
         run: |
-          TAG_NAME="sdk/v${{ steps.version.outputs.version }}"
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Error: Tag $TAG_NAME already exists!"
-            exit 1
-          fi
-          echo "Tag $TAG_NAME does not exist, proceeding with release"
+          SDK_TAG="sdk/v${{ steps.version.outputs.version }}"
+          SDK_CORE_TAG="sdk/core/v${{ steps.version.outputs.version }}"
+          for TAG_NAME in "$SDK_TAG" "$SDK_CORE_TAG"; do
+            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+              echo "Error: Tag $TAG_NAME already exists!"
+              exit 1
+            fi
+            echo "Tag $TAG_NAME does not exist, proceeding with release"
+          done
 
-      - name: Create and push tag
+      - name: Create and push tags
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "sdk/v${{ steps.version.outputs.version }}" -m "SDK ${{ steps.version.outputs.version }}"
+          git tag -a "sdk/core/v${{ steps.version.outputs.version }}" -m "SDK Core ${{ steps.version.outputs.version }}"
           git push origin "sdk/v${{ steps.version.outputs.version }}"
+          git push origin "sdk/core/v${{ steps.version.outputs.version }}"
