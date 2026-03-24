@@ -1,5 +1,7 @@
 package policyv1alpha
 
+import core "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+
 // PolicyMetadata contains metadata passed to GetPolicy for instance creation
 // This will be passed to the GetPolicy factory function to provide context about policy
 type PolicyMetadata struct {
@@ -62,47 +64,22 @@ type Policy interface {
 // and setting up any required state.
 type PolicyFactory func(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)
 
-// ProcessingMode declares a policy's processing requirements for each phase
-// Used by the kernel to optimize execution (skip unnecessary phases, buffer strategically)
-type ProcessingMode struct {
-	// RequestHeaderMode specifies if/how the policy processes request headers
-	RequestHeaderMode HeaderProcessingMode
-
-	// RequestBodyMode specifies if/how the policy processes request body
-	RequestBodyMode BodyProcessingMode
-
-	// ResponseHeaderMode specifies if/how the policy processes response headers
-	ResponseHeaderMode HeaderProcessingMode
-
-	// ResponseBodyMode specifies if/how the policy processes response body
-	ResponseBodyMode BodyProcessingMode
-}
-
-// HeaderProcessingMode defines how a policy processes headers
-type HeaderProcessingMode string
+// ProcessingMode, HeaderProcessingMode, and BodyProcessingMode are type aliases for
+// the canonical definitions in sdk/core. This allows policies to implement Mode()
+// once using the core types and satisfy both policyv1alpha.Policy and policyv1alpha2.Policy.
+type ProcessingMode = core.ProcessingMode
+type HeaderProcessingMode = core.HeaderProcessingMode
+type BodyProcessingMode = core.BodyProcessingMode
 
 const (
-	// HeaderModeSkip - Don't process headers, skip method invocation
-	HeaderModeSkip HeaderProcessingMode = "SKIP"
-
-	// HeaderModeProcess - Process headers (headers are always available)
-	HeaderModeProcess HeaderProcessingMode = "PROCESS"
+	HeaderModeSkip    HeaderProcessingMode = core.HeaderModeSkip
+	HeaderModeProcess HeaderProcessingMode = core.HeaderModeProcess
 )
 
-// BodyProcessingMode defines how a policy processes body content
-type BodyProcessingMode string
-
 const (
-	// BodyModeSkip - Don't process body, skip method invocation
-	BodyModeSkip BodyProcessingMode = "SKIP"
-
-	// BodyModeBuffer - Process body with full buffering
-	// The kernel buffers complete body before invoking OnRequestBody/OnResponseBody
-	BodyModeBuffer BodyProcessingMode = "BUFFER"
-
-	// BodyModeStream - Process body in streaming chunks
-	// The kernel invokes streaming methods for each chunk (requires StreamingPolicy interface)
-	BodyModeStream BodyProcessingMode = "STREAM"
+	BodyModeSkip   BodyProcessingMode = core.BodyModeSkip
+	BodyModeBuffer BodyProcessingMode = core.BodyModeBuffer
+	BodyModeStream BodyProcessingMode = core.BodyModeStream
 )
 
 // Level defines the attachment level of a policy

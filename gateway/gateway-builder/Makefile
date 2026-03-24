@@ -60,6 +60,7 @@ build: ## Build Docker image using buildx
 		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -82,6 +83,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context system-policies=../system-policies \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \

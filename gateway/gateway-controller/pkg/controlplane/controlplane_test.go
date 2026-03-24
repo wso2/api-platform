@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -557,6 +558,108 @@ func TestClient_handleMessage_UnknownType(t *testing.T) {
 	client.handleMessage(1, []byte(msg))
 }
 
+
+func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *testing.T) {
+	client := createTestClient(t)
+	db := client.db.(*mockStorageForDeletion)
+	hub := client.eventHub.(*mockControlPlaneEventHub)
+	contextPath := "/mcp"
+	upstreamURL := "https://example.com"
+
+	cfg := &models.StoredConfig{
+		UUID:         "mcp-123",
+		Kind:         string(api.Mcp),
+		Handle:       "test-mcp",
+		DisplayName:  "Test MCP",
+		Version:      "v1.0.0",
+		DeploymentID: "rev-1",
+		Origin:       models.OriginControlPlane,
+		Configuration: api.RestAPI{
+			Kind:     api.RestApi,
+			Metadata: api.Metadata{Name: "test-mcp"},
+			Spec: api.APIConfigData{
+				DisplayName: "Test MCP",
+				Version:     "v1.0.0",
+				Context:     "/mcp",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{Url: &upstreamURL},
+				},
+				Operations: []api.Operation{
+					{Method: api.OperationMethodGET, Path: "/"},
+				},
+			},
+		},
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: "test-mcp"},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "Test MCP",
+				Version:     "v1.0.0",
+				Context:     &contextPath,
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	dbCfg := *cfg
+	memCfg := *cfg
+	if err := db.SaveConfig(&dbCfg); err != nil {
+		t.Fatalf("failed to seed MCP config in DB: %v", err)
+	}
+	if err := client.store.Add(&memCfg); err != nil {
+		t.Fatalf("failed to seed MCP config in memory store: %v", err)
+	}
+	event := map[string]interface{}{
+		"type":          "mcpproxy.undeployed",
+		"payload":       map[string]interface{}{"proxyId": cfg.UUID, "deploymentId": "rev-1", "performedAt": "2025-01-30T12:00:00Z"},
+		"timestamp":     "2025-01-30T12:00:00Z",
+		"correlationId": "corr-mcp-undeploy",
+	}
+	client.handleMCPProxyUndeploymentEvent(event)
+
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected 1 MCP replica-sync event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeMCPProxy {
+		t.Fatalf("expected MCP proxy event type, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "UPDATE" {
+		t.Fatalf("expected UPDATE action, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != cfg.UUID {
+		t.Fatalf("expected entity id %s, got %s", cfg.UUID, hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-mcp-undeploy" {
+		t.Fatalf("expected correlation id corr-mcp-undeploy, got %s", hub.publishedEvents[0].event.EventID)
+	}
+
+	stored, err := db.GetConfig(cfg.UUID)
+	if err != nil {
+		t.Fatalf("expected stored MCP config after undeploy: %v", err)
+	}
+	if stored.DesiredState != models.StateUndeployed {
+		t.Fatalf("expected DB desired state undeployed, got %s", stored.DesiredState)
+	}
+	if stored.DeploymentID != "rev-1" {
+		t.Fatalf("expected DB deployment ID rev-1, got %s", stored.DeploymentID)
+	}
+
+	inMemory, err := client.store.Get(cfg.UUID)
+	if err != nil {
+		t.Fatalf("expected MCP config to remain in memory until event replay: %v", err)
+	}
+	if inMemory.DesiredState != models.StateDeployed {
+		t.Fatalf("expected in-memory desired state to remain deployed until replay, got %s", inMemory.DesiredState)
+	}
+}
 
 func TestClient_ConcurrentStateAccess(t *testing.T) {
 	client := createTestClient(t)

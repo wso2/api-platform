@@ -36,6 +36,8 @@ const (
 	EventTypeLLMProxy EventType = "LLM_PROXY"
 	// EventTypeLLMTemplate represents an LLM template change event
 	EventTypeLLMTemplate EventType = "LLM_TEMPLATE"
+	// EventTypeMCPProxy represents an MCP proxy change event
+	EventTypeMCPProxy EventType = "MCP_PROXY"
 
 	// EmptyEventData is the canonical JSON payload for events that do not
 	// require additional data beyond the top-level event fields.

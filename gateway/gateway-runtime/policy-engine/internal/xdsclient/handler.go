@@ -306,7 +306,9 @@ func (h *ResourceHandler) convertStoredConfigToPolicyChains(stored *StoredPolicy
 	return configs
 }
 
-// validatePolicyChainConfig validates a PolicyChain configuration
+// validatePolicyChainConfig validates a PolicyChain configuration.
+// Only checks structural requirements (non-empty route key, name, version).
+// Policy existence is handled gracefully in buildPolicyChain.
 func (h *ResourceHandler) validatePolicyChainConfig(config *policyenginev1.PolicyChain) error {
 	if config.RouteKey == "" {
 		return fmt.Errorf("route_key is required")
@@ -370,8 +372,10 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 		// GetInstance returns the policy and merged params (initParams + runtime params)
 		impl, mergedParams, err := h.registry.GetInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
-				policyConfig.Name, policyConfig.Version, routeKey, err)
+			// Fail the entire chain rather than silently omitting a policy.
+			// A security policy (e.g. api-key-auth) that fails to instantiate must not
+			// be silently skipped — doing so would let traffic pass without that policy.
+			return nil, fmt.Errorf("failed to create policy instance %s:%s: %w", policyConfig.Name, policyConfig.Version, err)
 		}
 
 		// Build PolicySpec with merged params so OnRequest/OnResponse receive merged values
@@ -396,13 +400,9 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 
 		// Get policy mode and update body requirements
 		mode := impl.Mode()
-
-		// Update request body requirement (if any policy needs buffering)
 		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			requiresRequestBody = true
 		}
-
-		// Update response body requirement (if any policy needs buffering)
 		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			requiresResponseBody = true
 		}

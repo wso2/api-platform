@@ -777,6 +777,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 
 	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg)
 	server.deploymentService = deploymentService
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		store,
 		db,
@@ -926,6 +927,66 @@ func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, co
 	return body
 }
 
+func createTestMCPRequestBody(t *testing.T, handle, displayName, version, contextPath string) []byte {
+	t.Helper()
+	upstreamURL := "http://backend.example.com"
+
+	mcpConfig := api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.Mcp,
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: displayName,
+			Version:     version,
+			Context:     stringPtr(contextPath),
+			Upstream: api.MCPProxyConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+		},
+	}
+
+	body, err := json.Marshal(mcpConfig)
+	require.NoError(t, err)
+	return body
+}
+
+func createTestMCPStoredConfig(t *testing.T, id, handle, displayName, version, contextPath string, desiredState models.DesiredState) *models.StoredConfig {
+	t.Helper()
+	upstreamURL := "http://backend.example.com"
+
+	cfg := &models.StoredConfig{
+		UUID:        id,
+		Kind:        string(api.Mcp),
+		Handle:      handle,
+		DisplayName: displayName,
+		Version:     version,
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata: api.Metadata{
+				Name: handle,
+			},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: displayName,
+				Version:     version,
+				Context:     stringPtr(contextPath),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: desiredState,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	require.NoError(t, utils.HydrateStoredMCPConfig(cfg))
+	return cfg
+}
+
 func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID string) {
 	server.eventHub = hub
 	server.gatewayID = gatewayID
@@ -950,6 +1011,9 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	}
 	if server.llmDeploymentService != nil {
 		server.llmDeploymentService.SetEventHub(hub, gatewayID)
+	}
+	if server.mcpDeploymentService != nil {
+		server.mcpDeploymentService.SetEventHub(hub, gatewayID)
 	}
 }
 
@@ -1655,10 +1719,22 @@ func TestDeleteLLMProxyNotFound(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
 }
 
-// TestListMCPProxies tests listing MCP proxies
-// Note: This test requires full deployment service setup
 func TestListMCPProxies(t *testing.T) {
-	t.Skip("Skipping test that requires full deployment service setup")
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+
+	cfg := createTestMCPStoredConfig(t, "0000-mcp-id-0000-000000000000", "test-mcp", "Test MCP", "v1.0.0", "/mcp", models.StateDeployed)
+	require.NoError(t, mockDB.SaveConfig(cfg))
+
+	c, w := createTestContext("GET", "/mcp-proxies", nil)
+	server.ListMCPProxies(c, api.ListMCPProxiesParams{})
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "success", response["status"])
+	assert.Equal(t, float64(1), response["count"])
 }
 
 // TestListMCPProxiesWithFilters tests listing MCP proxies with filters
@@ -1689,6 +1765,67 @@ func TestUpdateMCPProxyInvalidBody(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteMCPProxyNotFound(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+func TestCreateMCPProxyWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	body := createTestMCPRequestBody(t, "test-mcp", "Test MCP", "v1.0.0", "/mcp")
+	c, w := createTestContextWithHeader("POST", "/mcp-proxies", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-create-mcp")
+
+	server.CreateMCPProxy(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	cfg, err := mockDB.GetConfigByKindAndHandle(string(api.Mcp), "test-mcp")
+	require.NoError(t, err)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeMCPProxy, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-create-mcp", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
+
+	_, err = server.store.Get(cfg.UUID)
+	require.Error(t, err)
+}
+
+func TestDeleteMCPProxyWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := createTestMCPStoredConfig(t, "0000-mcp-delete-id-0000-000000000000", "test-mcp", "Test MCP", "v1.0.0", "/mcp", models.StateDeployed)
+	require.NoError(t, mockDB.SaveConfig(cfg))
+	require.NoError(t, server.store.Add(cfg))
+
+	c, w := createTestContext("DELETE", "/mcp-proxies/test-mcp", nil)
+	c.Set(middleware.CorrelationIDKey, "corr-id-delete-mcp")
+
+	server.DeleteMCPProxy(c, "test-mcp")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeMCPProxy, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-delete-mcp", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
+
+	_, err := mockDB.GetConfig(cfg.UUID)
+	require.Error(t, err)
+
+	_, err = server.store.Get(cfg.UUID)
+	require.NoError(t, err)
 }
 
 // TestGenerateAPIKeyNoAuth tests CreateAPIKey without authentication
@@ -3048,6 +3185,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 // Test ListMCPProxies with stored configs that have unmarshal issues
 func TestListMCPProxiesUnmarshalError(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	// Add MCP config, then replace SourceConfiguration with something that can't be marshaled to JSON
 	cfg := &models.StoredConfig{
@@ -3069,8 +3207,8 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	_ = server.store.Add(cfg)
-	// Mutate SourceConfiguration to something that can't be JSON marshaled
+	require.NoError(t, mockDB.SaveConfig(cfg))
+	// Mutate the DB-backed object to something that can't be JSON marshaled.
 	cfg.SourceConfiguration = make(chan int)
 
 	c, w := createTestContext("GET", "/mcp-proxies", nil)
