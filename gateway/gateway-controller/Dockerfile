@@ -30,6 +30,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Copying only the mod files first ensures that the go mod download cache 
 # is only invalidated when dependencies change, not when source code changes.
 COPY --from=sdk go.mod go.sum /sdk/
+COPY --from=sdk-core go.mod /sdk/core/
 COPY --from=common go.mod go.sum /common/
 
 COPY go.mod go.sum ./
@@ -37,6 +38,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 COPY --from=sdk . /sdk
+COPY --from=sdk-core . /sdk/core
 COPY --from=common . /common
 COPY . ./
 

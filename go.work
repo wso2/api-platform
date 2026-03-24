@@ -14,5 +14,7 @@ use (
 	./platform-api/src
 	./samples/sample-service
 	./sdk
+	./sdk/core
+	./sdk/ai
 	./tests/mock-servers/mock-platform-api
 )

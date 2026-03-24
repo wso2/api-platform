@@ -45,6 +45,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Copy SDK (needed for go.mod replace directive)
 COPY --from=sdk . /workspace/sdk
+COPY --from=sdk-core . /workspace/sdk/core
 
 # Pre-download Go dependencies for SDK
 WORKDIR /workspace/sdk
@@ -92,6 +93,7 @@ COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
 COPY --from=sdk . /api-platform/sdk
+COPY --from=sdk-core . /api-platform/sdk/core
 
 # Set working directory
 WORKDIR /workspace
