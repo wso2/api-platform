@@ -1,11 +1,11 @@
-name: SDK Release
+name: SDK Core Release
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'sdk/**'
+      - 'sdk/core/**'
   workflow_dispatch:
     inputs:
       version:
@@ -36,43 +36,43 @@ jobs:
             echo "Using manually provided version: ${VERSION}"
           else
             # Push trigger (PR merge) - auto-increment patch version
-            # Get the latest SDK tag
-            LATEST_TAG=$(git tag -l "sdk/v*" | sort -V | tail -n 1)
+            # Get the latest SDK Core tag
+            LATEST_TAG=$(git tag -l "sdk/core/v*" | sort -V | tail -n 1)
             if [ -z "$LATEST_TAG" ]; then
               # No existing tags, start with 0.0.1
               VERSION="0.0.1"
-              echo "No existing SDK tags found, starting with version: ${VERSION}"
+              echo "No existing SDK Core tags found, starting with version: ${VERSION}"
             else
-              # Extract version from tag (remove sdk/v prefix)
-              CURRENT_VERSION="${LATEST_TAG#sdk/v}"
-              echo "Latest SDK tag: ${LATEST_TAG} (version: ${CURRENT_VERSION})"
-              
+              # Extract version from tag (remove sdk/core/v prefix)
+              CURRENT_VERSION="${LATEST_TAG#sdk/core/v}"
+              echo "Latest SDK Core tag: ${LATEST_TAG} (version: ${CURRENT_VERSION})"
+
               # Parse major.minor.patch
               MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
               MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
               PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
-              
+
               # Increment patch version
               NEW_PATCH=$((PATCH + 1))
               VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
               echo "Auto-incremented patch version: ${VERSION}"
             fi
           fi
-          
+
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Validate tag does not exist
         run: |
-          SDK_TAG="sdk/v${{ steps.version.outputs.version }}"
-          if git rev-parse "$SDK_TAG" >/dev/null 2>&1; then
-            echo "Error: Tag $SDK_TAG already exists!"
+          SDK_CORE_TAG="sdk/core/v${{ steps.version.outputs.version }}"
+          if git rev-parse "$SDK_CORE_TAG" >/dev/null 2>&1; then
+            echo "Error: Tag $SDK_CORE_TAG already exists!"
             exit 1
           fi
-          echo "Tag $SDK_TAG does not exist, proceeding with release"
+          echo "Tag $SDK_CORE_TAG does not exist, proceeding with release"
 
       - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "sdk/v${{ steps.version.outputs.version }}" -m "SDK ${{ steps.version.outputs.version }}"
-          git push origin "sdk/v${{ steps.version.outputs.version }}"
+          git tag -a "sdk/core/v${{ steps.version.outputs.version }}" -m "SDK Core ${{ steps.version.outputs.version }}"
+          git push origin "sdk/core/v${{ steps.version.outputs.version }}"
