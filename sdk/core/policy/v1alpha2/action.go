@@ -9,9 +9,8 @@ type DropHeaderAction struct {
 // ─── Short-circuit ────────────────────────────────────────────────────────────
 
 // ImmediateResponse terminates the policy chain and returns a response to the
-// downstream client immediately. Return as *ImmediateResponse (pointer) from any
-// action method; the kernel dispatches on the pointer type via type assertion.
-// Returning nil from a method that returns a sealed action interface means "no action".
+// downstream client immediately. Returning nil from a method that returns a sealed
+// action interface means "no action".
 type ImmediateResponse struct {
 	StatusCode            int
 	Headers               map[string]string
@@ -19,9 +18,6 @@ type ImmediateResponse struct {
 	AnalyticsMetadata     map[string]any            // Custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // Dynamic metadata by namespace
 	AnalyticsHeaderFilter DropHeaderAction          // Headers to exclude from analytics
-
-	// Deprecated: Use AnalyticsHeaderFilter instead.
-	DropHeadersFromAnalytics DropHeaderAction
 }
 
 // ─── Header phase actions (sealed oneof) ─────────────────────────────────────
@@ -39,9 +35,8 @@ type RequestHeaderAction interface {
 // UpstreamRequestHeaderModifications continues the request to upstream with the
 // specified header and routing modifications. Returned when no short-circuit is needed.
 type UpstreamRequestHeaderModifications struct {
-	Set    map[string]string   // overwrite header (last write wins)
-	Remove []string            // remove by name (case-insensitive)
-	Append map[string][]string // append values alongside existing
+	HeadersToSet    map[string]string // overwrite header (last write wins)
+	HeadersToRemove []string          // remove by name (case-insensitive)
 
 	// Routing mutations — applied before the request is forwarded to upstream.
 	// These are valid at the header phase because routing decisions do not require
@@ -72,9 +67,8 @@ type ResponseHeaderAction interface {
 // DownstreamResponseHeaderModifications continues with the specified response header
 // modifications applied before the response is forwarded to the client.
 type DownstreamResponseHeaderModifications struct {
-	Set    map[string]string   // overwrite header (last write wins)
-	Remove []string            // remove by name (case-insensitive)
-	Append map[string][]string // append values alongside existing
+	HeadersToSet    map[string]string // overwrite header (last write wins)
+	HeadersToRemove []string          // remove by name (case-insensitive)
 
 	AnalyticsMetadata     map[string]any            // custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
@@ -111,7 +105,6 @@ type UpstreamRequestModifications struct {
 	Body []byte // nil = passthrough; []byte{} = clear body
 
 	// Header allows modifying upstream request headers alongside body modifications.
-	// Prefer this over the deprecated flat SetHeaders/RemoveHeaders/AppendHeaders fields.
 	Header *UpstreamRequestHeaderModifications
 
 	// Routing mutations (also valid before the request is forwarded).
@@ -124,22 +117,6 @@ type UpstreamRequestModifications struct {
 	AnalyticsMetadata     map[string]any
 	DynamicMetadata       map[string]map[string]any
 	AnalyticsHeaderFilter DropHeaderAction
-
-	// Deprecated fields — retained for backward compatibility with policies written
-	// against SDK ≤ v0.4.3. New policies should use Header and the renamed fields instead.
-
-	// Deprecated: Use Header.Set instead.
-	SetHeaders map[string]string
-	// Deprecated: Use Header.Remove instead.
-	RemoveHeaders []string
-	// Deprecated: Use Header.Append instead.
-	AppendHeaders map[string][]string
-	// Deprecated: Use QueryParametersToAdd instead.
-	AddQueryParameters map[string][]string
-	// Deprecated: Use QueryParametersToRemove instead.
-	RemoveQueryParameters []string
-	// Deprecated: Use AnalyticsHeaderFilter instead.
-	DropHeadersFromAnalytics DropHeaderAction
 }
 
 func (UpstreamRequestModifications) isRequestAction()    {}
@@ -167,24 +144,11 @@ type DownstreamResponseModifications struct {
 	StatusCode *int   // nil = no change
 
 	// Header allows modifying downstream response headers alongside body modifications.
-	// Prefer this over the deprecated flat SetHeaders/RemoveHeaders/AppendHeaders fields.
 	Header *DownstreamResponseHeaderModifications
 
 	AnalyticsMetadata     map[string]any
 	DynamicMetadata       map[string]map[string]any
 	AnalyticsHeaderFilter DropHeaderAction
-
-	// Deprecated fields — retained for backward compatibility with policies written
-	// against SDK ≤ v0.4.3. New policies should use Header instead.
-
-	// Deprecated: Use Header.Set instead.
-	SetHeaders map[string]string
-	// Deprecated: Use Header.Remove instead.
-	RemoveHeaders []string
-	// Deprecated: Use Header.Append instead.
-	AppendHeaders map[string][]string
-	// Deprecated: Use AnalyticsHeaderFilter instead.
-	DropHeadersFromAnalytics DropHeaderAction
 }
 
 func (DownstreamResponseModifications) isResponseAction()   {}
@@ -193,10 +157,6 @@ func (DownstreamResponseModifications) StopExecution() bool { return false }
 // ImmediateResponse also implements ResponseAction — returning it replaces the
 // entire upstream response with the specified status, headers, and body.
 func (ImmediateResponse) isResponseAction() {}
-
-// UpstreamResponseModifications is a backward-compatible alias for DownstreamResponseModifications.
-// Deprecated: Use DownstreamResponseModifications instead.
-type UpstreamResponseModifications = DownstreamResponseModifications
 
 // Compile-time interface satisfaction checks.
 // These ensure ImmediateResponse satisfies all sealed action interfaces and that
