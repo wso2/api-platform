@@ -212,6 +212,19 @@ func (m *MockStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, 
 	return result, nil
 }
 
+func (m *MockStorage) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.StoredConfig, 0)
+	for _, cfg := range m.configs {
+		if cfg.Origin == origin {
+			result = append(result, cfg)
+		}
+	}
+	return result, nil
+}
+
 func (m *MockStorage) SaveLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error {
 	if m.saveErr != nil {
 		return m.saveErr

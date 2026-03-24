@@ -776,6 +776,64 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 	return configs, nil
 }
 
+// GetAllConfigsByOrigin retrieves artifact metadata (without full configuration) for all
+// configs with the given origin. Queries only the artifacts table — no resource-table JOINs —
+// so Configuration/SourceConfiguration will be nil.
+func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	query := `
+		SELECT uuid, kind, handle, display_name, version, desired_state,
+			deployment_id, origin, created_at, updated_at, deployed_at
+		FROM artifacts
+		WHERE origin = ? AND gateway_id = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.query(query, string(origin), s.gatewayId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query configurations by origin: %w", err)
+	}
+	defer rows.Close()
+
+	var configs []*models.StoredConfig
+	for rows.Next() {
+		var cfg models.StoredConfig
+		var deployedAt sql.NullTime
+		var deploymentID sql.NullString
+
+		err := rows.Scan(
+			&cfg.UUID,
+			&cfg.Kind,
+			&cfg.Handle,
+			&cfg.DisplayName,
+			&cfg.Version,
+			&cfg.DesiredState,
+			&deploymentID,
+			&cfg.Origin,
+			&cfg.CreatedAt,
+			&cfg.UpdatedAt,
+			&deployedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		if deployedAt.Valid {
+			cfg.DeployedAt = &deployedAt.Time
+		}
+		if deploymentID.Valid {
+			cfg.DeploymentID = deploymentID.String
+		}
+
+		configs = append(configs, &cfg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return configs, nil
+}
+
 // loadResourceConfig loads the configuration from the correct type table into the StoredConfig.
 // cfg.UUID and cfg.Kind must already be populated.
 func (s *sqlStore) loadResourceConfig(cfg *models.StoredConfig) error {

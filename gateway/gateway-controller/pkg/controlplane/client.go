@@ -126,7 +126,9 @@ type Client struct {
 	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
-	gatewayPath                 string // cached gateway path from well-known discovery
+	gatewayPath                 string     // cached gateway path from well-known discovery
+	syncOnce                    sync.Once  // ensures deployment sync runs only on first connect
+	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
 }
 
 // NewClient creates a new control plane client
@@ -190,6 +192,8 @@ func NewClient(
 		cancel:   cancel,
 		stopChan: make(chan struct{}),
 	}
+
+	client.isFirstConnect.Store(true)
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
@@ -368,14 +372,30 @@ func (c *Client) Connect() error {
 	// reading mutable state from goroutines.
 	gatewayID := c.state.GatewayID
 
-	// Perform a one-time bulk sync: plans first (since subscriptions reference
-	// plans via FK), then subscriptions for all known APIs.
-	c.wg.Add(1)
-	go func(gwID string) {
-		defer c.wg.Done()
-		c.syncSubscriptionPlans(gwID)
-		c.syncSubscriptionsForExistingAPIs(gwID)
-	}(gatewayID)
+	// On first connect (startup): run deployment sync first, then subscription
+	// sync sequentially — subscriptions reference APIs via FK, so they must
+	// wait for deployments to land. On reconnects: only subscription sync runs
+	// (deployment reconnect sync is deferred; see proposal doc).
+	c.syncOnce.Do(func() {
+		c.wg.Add(1)
+		go func(gwID string) {
+			defer c.wg.Done()
+			c.syncDeployments(gwID)
+			c.syncSubscriptionPlans(gwID)
+			c.syncSubscriptionsForExistingAPIs(gwID)
+		}(gatewayID)
+	})
+
+	// On reconnects (syncOnce already fired): sync subscriptions independently.
+	// Uses atomic flag to skip on first connect since syncOnce goroutine handles it.
+	if !c.isFirstConnect.CompareAndSwap(true, false) {
+		c.wg.Add(1)
+		go func(gwID string) {
+			defer c.wg.Done()
+			c.syncSubscriptionPlans(gwID)
+			c.syncSubscriptionsForExistingAPIs(gwID)
+		}(gatewayID)
+	}
 
 	// Push gateway manifest to the control plane on connect
 	c.wg.Add(1)

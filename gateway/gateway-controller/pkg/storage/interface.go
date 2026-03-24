@@ -118,6 +118,14 @@ type Storage interface {
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error)
 
+	// GetAllConfigsByOrigin retrieves artifact metadata for all configs with the
+	// given origin. Only the artifacts table is queried (no resource-table JOINs),
+	// so the Configuration field will be nil. This is intended for sync diff
+	// computation where only metadata (UUID, Kind, DesiredState, DeployedAt) is needed.
+	//
+	// Returns an empty slice if no configurations of the specified origin exist.
+	GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error)
+
 	// ========================================
 	// LLM Provider Template Methods
 	// ========================================

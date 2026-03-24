@@ -130,6 +130,16 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
+func (m *mockStorageForDeletion) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	var configs []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == origin {
+			configs = append(configs, config)
+		}
+	}
+	return configs, nil
+}
+
 func (m *mockStorageForDeletion) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
 		if config.Kind == kind && config.Handle == handle {
