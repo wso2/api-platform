@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strconv"
 	"time"
 
@@ -229,10 +230,10 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	properties := logEntry.GetCommonProperties()
-	if properties != nil && properties.TimeToLastRxByte != nil && 
-		properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToFirstUpstreamRxByte != nil && 
+	if properties != nil && properties.TimeToLastRxByte != nil &&
+		properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToFirstUpstreamRxByte != nil &&
 		properties.TimeToLastUpstreamRxByte != nil && properties.TimeToLastDownstreamTxByte != nil {
-		
+
 		lastRx :=
 			(properties.TimeToLastRxByte.Seconds * 1000) +
 				(int64(properties.TimeToLastRxByte.Nanos) / 1_000_000)
@@ -254,15 +255,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 				(int64(properties.TimeToLastDownstreamTxByte.Nanos) / 1_000_000)
 
 		latencies := dto.Latencies{
-			BackendLatency:            lastUpRx - firstUpTx,
+			BackendLatency:           lastUpRx - firstUpTx,
 			RequestMediationLatency:  firstUpTx - lastRx,
-			ResponseLatency:           lastDownTx - firstUpRx,
+			ResponseLatency:          lastDownTx - firstUpRx,
 			ResponseMediationLatency: lastDownTx - lastUpRx,
 		}
 
 		event.Latencies = &latencies
 	}
-
 
 	// prepare metaInfo
 	metaInfo := dto.MetaInfo{}
@@ -403,22 +403,22 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			// Parse the JSON string into a map
 			var propsMap map[string]interface{}
 			if err := json.Unmarshal([]byte(mcpRequestProps), &propsMap); err == nil {
-				mcpAnalytics["mcp_analytics"] = propsMap
+				maps.Copy(mcpAnalytics, propsMap)
 			} else {
 				slog.Debug("Failed to unmarshal MCP request properties", "error", err)
 				// Fallback to raw string if parsing fails
-				mcpAnalytics["mcp_analytics"] = mcpRequestProps
+				mcpAnalytics["mcp_request_properties"] = mcpRequestProps
 			}
 		}
-		if mcpServerInfo, ok := keyValuePairsFromMetadata["mcp_server_info"]; ok && mcpServerInfo != "" {
+		if mcpResponseProps, ok := keyValuePairsFromMetadata["mcp_response_properties"]; ok && mcpResponseProps != "" {
 			// Parse the JSON string into a map
-			var serverInfoMap map[string]interface{}
-			if err := json.Unmarshal([]byte(mcpServerInfo), &serverInfoMap); err == nil {
-				mcpAnalytics["mcp_server_info"] = serverInfoMap
+			var responsePropsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(mcpResponseProps), &responsePropsMap); err == nil {
+				maps.Copy(mcpAnalytics, responsePropsMap)
 			} else {
-				slog.Debug("Failed to unmarshal MCP server info", "error", err)
+				slog.Debug("Failed to unmarshal MCP response properties", "error", err)
 				// Fallback to raw string if parsing fails
-				mcpAnalytics["mcp_server_info"] = mcpServerInfo
+				mcpAnalytics["mcp_response_properties"] = mcpResponseProps
 			}
 		}
 		event.Properties["mcpAnalytics"] = mcpAnalytics
