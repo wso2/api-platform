@@ -45,6 +45,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -1221,12 +1222,14 @@ func TestGetXDSSyncStatus(t *testing.T) {
 func TestGetXDSSyncStatusWithPolicyVersion(t *testing.T) {
 	server := createTestAPIServer()
 
-	policyStore := storage.NewPolicyStore()
-	snapshotMgr := policyxds.NewSnapshotManager(policyStore, server.logger)
-	server.policyManager = policyxds.NewPolicyManager(policyStore, snapshotMgr, server.logger)
+	runtimeStore := storage.NewRuntimeConfigStore()
+	snapshotMgr := policyxds.NewSnapshotManager(server.logger)
+	snapshotMgr.SetRuntimeStore(runtimeStore)
+	server.policyManager = policyxds.NewPolicyManager(snapshotMgr, server.logger)
+	server.policyManager.SetRuntimeStore(runtimeStore)
 
-	policyStore.IncrementResourceVersion()
-	policyStore.IncrementResourceVersion()
+	runtimeStore.IncrementResourceVersion()
+	runtimeStore.IncrementResourceVersion()
 
 	c, w := createTestContext("GET", "/xds_sync_status", nil)
 	server.GetXDSSyncStatus(c)
@@ -1975,7 +1978,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.Nil(t, result)
 }
 
@@ -2292,7 +2295,7 @@ func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.Nil(t, result)
 }
 
@@ -2770,7 +2773,7 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	// Should return nil because the spec can't be parsed as WebhookAPIData without proper setup
 	assert.Nil(t, result)
 }
@@ -2897,7 +2900,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.NotNil(t, result)
 	// Should have 2 routes (one for main vhost, one for sandbox)
 	assert.Equal(t, 2, len(result.Configuration.Routes))
@@ -2949,7 +2952,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.NotNil(t, result)
 	assert.Equal(t, 1, len(result.Configuration.Routes))
 	// Should have both operation-level and API-level policies
@@ -3019,7 +3022,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	// Should return nil since we don't have valid spec data
 	assert.Nil(t, result)
 }

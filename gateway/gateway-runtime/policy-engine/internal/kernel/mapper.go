@@ -117,13 +117,6 @@ func (k *Kernel) ApplyWholeRouteConfigs(newConfigs map[string]*RouteConfig) {
 	k.RouteConfigs = newConfigs
 }
 
-// ApplyWholePolicyChains atomically replaces all policy chains.
-func (k *Kernel) ApplyWholePolicyChains(newChains map[string]*registry.PolicyChain) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.PolicyChains = newChains
-}
-
 // ApplyWholeRoutes replaces all existing route mappings with the provided set (backward compatible)
 func (k *Kernel) ApplyWholeRoutes(newRoutes map[string]*registry.PolicyChain) {
 	k.mu.Lock()

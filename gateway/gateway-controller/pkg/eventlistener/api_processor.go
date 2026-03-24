@@ -24,9 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -164,15 +162,12 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 	// Update xDS snapshot
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
 
-	// Remove policies
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil {
-			if !storage.IsPolicyNotFoundError(err) {
-				l.logger.Warn("Failed to remove policy after API deletion",
-					slog.String("api_id", entityID),
-					slog.Any("error", err))
-			}
+	// Remove runtime config for the deleted API
+	if l.policyManager != nil && existingConfig != nil {
+		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config after API deletion",
+				slog.String("api_id", entityID),
+				slog.Any("error", err))
 		}
 	}
 
@@ -181,36 +176,17 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 		slog.String("event_id", event.EventID))
 }
 
-// updatePoliciesForAPI derives and updates policy configuration for an API
+// updatePoliciesForAPI upserts the RuntimeDeployConfig for an API into the policy xDS store.
 func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlationID string) {
-	if l.policyManager == nil || l.systemConfig == nil {
+	if l.policyManager == nil {
 		return
 	}
 
-	// Policies are derived only for artifact kinds that can expose route-level policies.
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) &&
-		cfg.Kind != string(api.LlmProvider) && cfg.Kind != string(api.LlmProxy) {
-		return
-	}
-
-	storedPolicy := policybuilder.DerivePolicyFromAPIConfig(cfg, l.routerConfig, l.systemConfig, l.policyDefinitions)
-	if storedPolicy != nil {
-		if err := l.policyManager.AddPolicy(storedPolicy); err != nil {
-			l.logger.Error("Failed to update policy from replica sync",
-				slog.String("api_id", cfg.UUID),
-				slog.String("correlation_id", correlationID),
-				slog.Any("error", err))
-		}
-	} else {
-		policyID := cfg.UUID + "-policies"
-		if existingPolicy, err := l.policyManager.GetPolicy(policyID); err == nil && existingPolicy != nil {
-			if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-				l.logger.Error("Failed to remove policy from replica sync",
-					slog.String("api_id", cfg.UUID),
-					slog.String("correlation_id", correlationID),
-					slog.Any("error", err))
-			}
-		}
+	if err := l.policyManager.UpsertAPIConfig(cfg); err != nil {
+		l.logger.Error("Failed to upsert runtime config from replica sync",
+			slog.String("api_id", cfg.UUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
 	}
 }
 

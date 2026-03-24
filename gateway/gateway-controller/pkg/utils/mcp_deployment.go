@@ -386,13 +386,10 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		}
 	}()
 
-	// Remove derived policy configuration
+	// Remove runtime config for the deleted MCP proxy
 	if s.policyManager != nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			logger.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			logger.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
+		if err := s.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
+			logger.Warn("Failed to remove runtime config after MCP proxy deletion", slog.Any("error", err))
 		}
 	}
 
