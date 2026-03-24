@@ -278,8 +278,11 @@ type CustomPolicyRepository interface {
 	InsertCustomPolicy(policy *model.CustomPolicy) error
 	UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error
 	GetCustomPolicyByNameAndVersion(orgUUID, name, version string) (*model.CustomPolicy, error)
+	GetCustomPolicyByUUID(orgUUID, policyUUID string) (*model.CustomPolicy, error)
 	GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error)
 	ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error)
 	DeleteCustomPolicy(orgUUID, name, version string) error
 	CountCustomPolicyUsages(policyUUID string) (int, error)
+	// DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
+	DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error
 }

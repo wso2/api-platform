@@ -334,6 +334,37 @@ func (s *GatewayService) ListCustomPolicies(orgID string) ([]*model.CustomPolicy
 	return s.customPolicyRepo.ListCustomPolicyByOrganization(orgID)
 }
 
+// GetCustomPolicyByUUID returns a custom policy by UUID, verifying org ownership and version.
+func (s *GatewayService) GetCustomPolicyByUUID(orgID, policyUUID, version string) (*model.CustomPolicy, error) {
+	policy, err := s.customPolicyRepo.GetCustomPolicyByUUID(orgID, policyUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
+	}
+	if policy == nil {
+		return nil, constants.ErrCustomPolicyNotFound
+	}
+	if policy.Version != version {
+		return nil, constants.ErrCustomPolicyVersionMismatch
+	}
+	return policy, nil
+}
+
+// DeleteCustomPolicyByUUID deletes a custom policy by UUID, verifying org ownership, version, and no active usages.
+func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version string) error {
+	policy, err := s.customPolicyRepo.GetCustomPolicyByUUID(orgID, policyUUID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
+	}
+	if policy == nil {
+		return constants.ErrCustomPolicyNotFound
+	}
+	if policy.Version != version {
+		return constants.ErrCustomPolicyVersionMismatch
+	}
+
+	return s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID)
+}
+
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
 	functionalityType string, properties map[string]interface{}) (*api.GatewayResponse, error) {

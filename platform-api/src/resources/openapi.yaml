@@ -2055,6 +2055,81 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateway-custom-policies/{customPolicyUuid}/version/{version}:
+    get:
+      summary: Get a specific custom policy version
+      description: Returns a custom policy by its UUID and version for the current organization.
+      operationId: GetGatewayCustomPolicy
+      tags:
+        - Gateway Policies
+      parameters:
+        - name: customPolicyUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the custom policy record
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Version of the custom policy (e.g. "1.0.0")
+          example: "1.0.0"
+      responses:
+        '200':
+          description: Custom policy retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomPolicyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete a specific custom policy version
+      description: |
+        Deletes a custom policy by its UUID and version. The policy must not be in use by any APIs.
+      operationId: DeleteGatewayCustomPolicy
+      tags:
+        - Gateway Policies
+      parameters:
+        - name: customPolicyUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the custom policy record
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Version of the custom policy (e.g. "1.0.0")
+          example: "1.0.0"
+      responses:
+        '204':
+          description: Custom policy deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Custom policy is in use by one or more APIs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways/{gatewayId}/manifest:
     get:
       summary: Get gateway policy manifest

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"time"
 
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 )
@@ -121,6 +122,27 @@ func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVer
 	return err
 }
 
+// GetCustomPolicyByUUID retrieves a custom policy by its UUID, scoped to an organization.
+func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*model.CustomPolicy, error) {
+	query := `
+		SELECT uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at
+		FROM gateway_custom_policies
+		WHERE organization_uuid = ? AND uuid = ?
+	`
+	p := &model.CustomPolicy{}
+	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, policyUUID).Scan(
+		&p.UUID, &p.OrganizationUUID, &p.Name, &p.Version,
+		&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
 // GetCustomPoliciesByName retrieves all versions of a custom policy for a given org and name.
 func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error) {
 	query := `
@@ -165,4 +187,39 @@ func (r *CustomPolicyRepo) CountCustomPolicyUsages(policyUUID string) (int, erro
 	query := `SELECT COUNT(*) FROM gateway_custom_policy_usages WHERE policy_uuid = ?`
 	err := r.db.QueryRow(r.db.Rebind(query), policyUUID).Scan(&count)
 	return count, err
+}
+
+// DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
+func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error {
+	deleteQuery := `
+		DELETE FROM gateway_custom_policies
+		WHERE organization_uuid = ? AND uuid = ?
+		AND NOT EXISTS (
+			SELECT 1 FROM gateway_custom_policy_usages WHERE policy_uuid = ?
+		)
+	`
+	result, err := r.db.Exec(r.db.Rebind(deleteQuery), orgUUID, policyUUID, policyUUID)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 1 {
+		return nil
+	}
+
+	// Zero rows: diagnose whether the policy doesn't exist or is in use.
+	// This read is safe — it is no longer guarding the deletion itself.
+	var count int
+	checkQuery := `SELECT COUNT(*) FROM gateway_custom_policies WHERE organization_uuid = ? AND uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(checkQuery), orgUUID, policyUUID).Scan(&count); err != nil {
+		return err
+	}
+	if count == 0 {
+		return constants.ErrCustomPolicyNotFound
+	}
+	return constants.ErrCustomPolicyInUse
 }
