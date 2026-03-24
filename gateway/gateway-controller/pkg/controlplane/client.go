@@ -1001,6 +1001,10 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleLLMProxyDeployedEvent(event)
 	case "llmproxy.undeployed":
 		c.handleLLMProxyUndeployedEvent(event)
+	case "llmprovider.deleted":
+		c.handleLLMProviderDeletedEvent(event)
+	case "llmproxy.deleted":
+		c.handleLLMProxyDeletedEvent(event)
 	case "apikey.created":
 		c.handleAPIKeyCreatedEvent(event)
 	case "apikey.updated":
@@ -2225,6 +2229,186 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("Successfully processed LLM proxy undeployment event",
 		slog.String("proxy_id", proxyID),
 		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
+}
+
+// handleLLMProviderDeletedEvent handles LLM provider deletion events.
+// This performs a hard delete, permanently removing the provider and all related resources.
+func (c *Client) handleLLMProviderDeletedEvent(event map[string]interface{}) {
+	c.logger.Info("LLM Provider Deletion Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal LLM provider deletion event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deletedEvent LLMProviderDeletedEvent
+	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
+		c.logger.Error("Failed to parse LLM provider deletion event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	providerID := deletedEvent.Payload.ProviderID
+	if providerID == "" {
+		c.logger.Error("Provider ID is empty in LLM provider deletion event")
+		return
+	}
+
+	if c.llmDeploymentService == nil {
+		c.logger.Error("LLM deployment service not available",
+			slog.String("provider_id", providerID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+		)
+		return
+	}
+
+	// Check if provider exists on this gateway
+	providerConfig, err := c.findAPIConfig(providerID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM provider configuration not found for deletion",
+				slog.String("provider_id", providerID),
+			)
+			return
+		}
+		c.logger.Error("Failed to fetch LLM provider configuration for deletion, aborting",
+			slog.String("provider_id", providerID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
+	// eventHub publish, template mapping removal, and xDS update)
+	cfg, err := c.llmDeploymentService.DeleteLLMProvider(providerConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	if err != nil {
+		c.logger.Error("Failed to delete LLM provider configuration",
+			slog.String("provider_id", providerID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Non-eventHub mode: remove API keys from policy engine and derived policy
+	// (in eventHub mode, the EventListener handles this after replaying the delete event)
+	if c.eventHub == nil && cfg != nil {
+		if c.apiKeyXDSManager != nil {
+			apiName, apiVersion := cfg.DisplayName, cfg.Version
+			if apiName != "" {
+				if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, deletedEvent.CorrelationID); err != nil {
+					c.logger.Warn("Failed to remove LLM provider API keys from policy engine",
+						slog.String("provider_id", providerID),
+						slog.Any("error", err),
+					)
+				}
+			}
+		}
+		c.removePolicyConfiguration(cfg.UUID, deletedEvent.CorrelationID, false)
+	}
+
+	c.logger.Info("Successfully processed LLM provider deletion event",
+		slog.String("provider_id", providerID),
+		slog.String("correlation_id", deletedEvent.CorrelationID),
+	)
+}
+
+// handleLLMProxyDeletedEvent handles LLM proxy deletion events.
+// This performs a hard delete, permanently removing the proxy and all related resources.
+func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
+	c.logger.Info("LLM Proxy Deletion Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal LLM proxy deletion event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deletedEvent LLMProxyDeletedEvent
+	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
+		c.logger.Error("Failed to parse LLM proxy deletion event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	proxyID := deletedEvent.Payload.ProxyID
+	if proxyID == "" {
+		c.logger.Error("Proxy ID is empty in LLM proxy deletion event")
+		return
+	}
+
+	if c.llmDeploymentService == nil {
+		c.logger.Error("LLM deployment service not available",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+		)
+		return
+	}
+
+	// Check if proxy exists on this gateway
+	proxyConfig, err := c.findAPIConfig(proxyID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM proxy configuration not found for deletion",
+				slog.String("proxy_id", proxyID),
+			)
+			return
+		}
+		c.logger.Error("Failed to fetch LLM proxy configuration for deletion, aborting",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
+	// eventHub publish, and xDS update)
+	cfg, err := c.llmDeploymentService.DeleteLLMProxy(proxyConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	if err != nil {
+		c.logger.Error("Failed to delete LLM proxy configuration",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Non-eventHub mode: remove API keys from policy engine and derived policy
+	// (in eventHub mode, the EventListener handles this after replaying the delete event)
+	if c.eventHub == nil && cfg != nil {
+		if c.apiKeyXDSManager != nil {
+			apiName, apiVersion := cfg.DisplayName, cfg.Version
+			if apiName != "" {
+				if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, deletedEvent.CorrelationID); err != nil {
+					c.logger.Warn("Failed to remove LLM proxy API keys from policy engine",
+						slog.String("proxy_id", proxyID),
+						slog.Any("error", err),
+					)
+				}
+			}
+		}
+		c.removePolicyConfiguration(cfg.UUID, deletedEvent.CorrelationID, false)
+	}
+
+	c.logger.Info("Successfully processed LLM proxy deletion event",
+		slog.String("proxy_id", proxyID),
+		slog.String("correlation_id", deletedEvent.CorrelationID),
 	)
 }
 
