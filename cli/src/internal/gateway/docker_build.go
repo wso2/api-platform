@@ -71,11 +71,12 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 
 	// Copy build-lock.yaml into gateway-controller's build context
 	buildLockSrc := filepath.Join(config.TempDir, "build-lock.yaml")
-	if _, err := os.Stat(buildLockSrc); err == nil {
-		buildLockDst := filepath.Join(config.TempDir, "output", "gateway-controller", "build-lock.yaml")
-		if err := utils.CopyFile(buildLockSrc, buildLockDst); err != nil {
-			return fmt.Errorf("failed to copy build-lock.yaml into gateway-controller build context: %w", err)
-		}
+	if _, err := os.Stat(buildLockSrc); err != nil {
+		return fmt.Errorf("build-lock.yaml not found in gateway-builder output: %w", err)
+	}
+	buildLockDst := filepath.Join(config.TempDir, "output", "gateway-controller", "build-lock.yaml")
+	if err := utils.CopyFile(buildLockSrc, buildLockDst); err != nil {
+		return fmt.Errorf("failed to copy build-lock.yaml into gateway-controller build context: %w", err)
 	}
 
 	fmt.Println("  ✓ Gateway-builder completed")
