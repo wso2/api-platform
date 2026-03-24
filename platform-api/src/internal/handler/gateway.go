@@ -517,7 +517,7 @@ func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
 	})
 }
 
-// SyncCustomPolicy handles PUT /api/v1/gateways/:gatewayId/custom-policies/:policyName/versions/:version
+// SyncCustomPolicy handles POST /api/v1/gateway-custom-policies/sync
 // It upserts a custom policy from the gateway's stored manifest into the gateway_custom_policies table.
 func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -527,13 +527,13 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 		return
 	}
 
-	gatewayId := c.Param("gatewayId")
-	policyName := c.Param("policyName")
-	version := c.Param("version")
+	gatewayId := c.Query("gatewayId")
+	policyName := c.Query("policyName")
+	version := c.Query("policyVersion")
 
 	if gatewayId == "" || policyName == "" || version == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"gatewayId, policyName and version are required"))
+			"gatewayId, policyName and policyVersion are required"))
 		return
 	}
 
@@ -600,12 +600,12 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
 		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
 		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
-		gatewayGroup.PUT("/:gatewayId/custom-policies/:policyName/versions/:version", h.SyncCustomPolicy)
 	}
 
 	customPoliciesGroup := r.Group("/api/v1/gateway-custom-policies")
 	{
 		customPoliciesGroup.GET("", h.ListCustomPolicies)
+		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")

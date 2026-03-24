@@ -1989,8 +1989,8 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gatewayId}/custom-policies/{policyName}/versions/{version}:
-    put:
+  /gateway-custom-policies/sync:
+    post:
       summary: Sync a custom policy from the gateway manifest
       description: |
         Syncs a custom policy from the gateway manifest into the organization's custom policy registry.
@@ -2005,20 +2005,27 @@ paths:
       tags:
         - Gateway Policies
       parameters:
-        - $ref: '#/components/parameters/GatewayID'
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the gateway whose manifest contains the policy
+          example: "019d18ee-fed1-7e86-bef6-f64211c3c5bc"
         - name: policyName
-          in: path
+          in: query
           required: true
           schema:
             type: string
-          description: Name of the custom policy
-          example: "rate-limit-custom"
-        - name: version
-          in: path
+          description: Name of the custom policy (case-insensitive)
+          example: "set-wso2-headers"
+        - name: policyVersion
+          in: query
           required: true
           schema:
             type: string
-          description: Version of the custom policy (e.g. 1.0.0, 2.0.0)
+          description: Version of the custom policy in MAJOR.MINOR.PATCH format
           example: "1.0.0"
       responses:
         '200':
@@ -2027,12 +2034,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CustomPolicyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Patch version update or downgrade is not allowed
+          description: Policy already exists, patch version update, or downgrade is not allowed
           content:
             application/json:
               schema:
