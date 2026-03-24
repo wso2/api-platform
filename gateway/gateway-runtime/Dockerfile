@@ -20,7 +20,7 @@
 # Combines Envoy Router and Policy Engine into a single container
 
 # Stage 1: Builder Base
-FROM --platform=$BUILDPLATFORM golang:1.25.7-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -127,13 +127,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -out-dir /api-platform/output
 
 # Stage 3a: dlv installer (builds dlv for the debug stage)
-FROM golang:1.25.7-bookworm AS debug-dlv-builder
+FROM golang:1.26.1-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
 # Stage 3b: Debug Runtime (policy-engine wrapped in dlv, port 2346)
-FROM envoyproxy/envoy:v1.35.3 AS debug
+FROM envoyproxy/envoy:v1.35.8 AS debug
 
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -171,7 +171,7 @@ EXPOSE 2346 8080 8443 9901 9002 9003
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
 # Stage 4: Runtime (production — must remain last so default builds are unaffected)
-FROM envoyproxy/envoy:v1.35.3 AS production
+FROM envoyproxy/envoy:v1.35.8 AS production
 
 ARG VERSION=unknown
 ARG ENABLE_COVERAGE=false
@@ -183,12 +183,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     tini \
     gettext-base \
     ca-certificates \
-    curl \
-    netcat-openbsd \
-    dnsutils \
-    iproute2 \
-    iputils-ping \
-    net-tools
+    curl
 
 RUN mkdir -p /app /var/run/api-platform /coverage
 
