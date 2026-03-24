@@ -50,6 +50,7 @@ type APIService struct {
 	devPortalRepo        repository.DevPortalRepository
 	publicationRepo      repository.APIPublicationRepository
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
+	customPolicyRepo     repository.CustomPolicyRepository
 	gatewayEventsService *GatewayEventsService
 	devPortalService     *DevPortalService
 	apiUtil              *utils.APIUtil
@@ -62,6 +63,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 	deploymentRepo repository.DeploymentRepository,
 	devPortalRepo repository.DevPortalRepository, publicationRepo repository.APIPublicationRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
+	customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil,
 	slogger *slog.Logger) *APIService {
 	return &APIService{
@@ -73,6 +75,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
 		subscriptionPlanRepo: subscriptionPlanRepo,
+		customPolicyRepo:     customPolicyRepo,
 		gatewayEventsService: gatewayEventsService,
 		devPortalService:     devPortalService,
 		apiUtil:              apiUtil,
@@ -153,6 +156,8 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID string) (*
 		// Log error but don't fail API creation if default DevPortal association fails
 		s.slogger.Error("Failed to create default DevPortal association for API", "apiUUID", apiUUID, "error", err)
 	}
+
+	s.refreshCustomPolicyUsages(apiUUID, orgUUID, apiModel)
 
 	return s.apiUtil.ModelToRESTAPI(apiModel)
 }
@@ -281,6 +286,8 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
 	}
+
+	s.refreshCustomPolicyUsages(apiUUID, orgUUID, updatedAPIModel)
 
 	return s.apiUtil.ModelToRESTAPI(updatedAPIModel)
 }
@@ -1767,4 +1774,84 @@ func restAPIGatewayFunctionalityTypePtr(value string) *api.RESTAPIGatewayRespons
 	}
 	converted := api.RESTAPIGatewayResponseFunctionalityType(value)
 	return &converted
+}
+
+// refreshCustomPolicyUsages evaluates gateway_custom_policy_usages for an API.
+// 1. Collects all policy (name, version) references across all three levels (API-level, operation-level, channel-level).
+// 2. Resolves which ones are custom policies for the org via gateway_custom_policies.
+// 3. Diffs against the current usage rows — inserting new ones and deleting removed ones.
+func (s *APIService) refreshCustomPolicyUsages(apiUUID, orgUUID string, apiModel *model.API) {
+	if s.customPolicyRepo == nil {
+		return
+	}
+
+	// Step 1: collect all unique (name, version) pairs across all policy levels
+	type policyRef struct{ name, version string }
+	seen := make(map[policyRef]bool)
+	var refs []policyRef
+
+	collect := func(policies []model.Policy) {
+		for _, p := range policies {
+			ref := policyRef{p.Name, p.Version}
+			if !seen[ref] {
+				seen[ref] = true
+				refs = append(refs, ref)
+			}
+		}
+	}
+
+	// API-level policies
+	collect(apiModel.Configuration.Policies)
+	// Operation-level policies
+	for _, op := range apiModel.Configuration.Operations {
+		if op.Request != nil {
+			collect(op.Request.Policies)
+		}
+	}
+	// Channel-level policies
+	for _, ch := range apiModel.Channels {
+		if ch.Request != nil {
+			collect(ch.Request.Policies)
+		}
+	}
+
+	// Step 2: resolve which refs are synced custom policies for this org
+	newSet := make(map[string]bool)
+	for _, ref := range refs {
+		cp, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgUUID, ref.name, ref.version)
+		if err != nil {
+			s.slogger.Warn("Failed to lookup custom policy during usage refresh", "name", ref.name, "version", ref.version, "orgUUID", orgUUID, "error", err)
+			continue
+		}
+		if cp != nil {
+			newSet[cp.UUID] = true
+		}
+	}
+
+	// Step 3: fetch current usages from the join table
+	currentUUIDs, err := s.customPolicyRepo.GetCustomPolicyUsagesByAPIUUID(apiUUID)
+	if err != nil {
+		s.slogger.Warn("Failed to fetch custom policy usages", "apiUUID", apiUUID, "error", err)
+		return
+	}
+	currentSet := make(map[string]bool, len(currentUUIDs))
+	for _, u := range currentUUIDs {
+		currentSet[u] = true
+	}
+
+	// Step 4: insert new, delete removed, skip unchanged
+	for uuid := range newSet {
+		if !currentSet[uuid] {
+			if err := s.customPolicyRepo.InsertCustomPolicyUsage(uuid, apiUUID); err != nil {
+				s.slogger.Warn("Failed to insert custom policy usage", "policyUUID", uuid, "apiUUID", apiUUID, "error", err)
+			}
+		}
+	}
+	for uuid := range currentSet {
+		if !newSet[uuid] {
+			if err := s.customPolicyRepo.DeleteCustomPolicyUsage(uuid, apiUUID); err != nil {
+				s.slogger.Warn("Failed to delete custom policy usage", "policyUUID", uuid, "apiUUID", apiUUID, "error", err)
+			}
+		}
+	}
 }

@@ -189,6 +189,39 @@ func (r *CustomPolicyRepo) CountCustomPolicyUsages(policyUUID string) (int, erro
 	return count, err
 }
 
+// GetCustomPolicyUsagesByAPIUUID returns all policy UUIDs currently used with the given API.
+func (r *CustomPolicyRepo) GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]string, error) {
+	query := `SELECT policy_uuid FROM gateway_custom_policy_usages WHERE api_uuid = ?`
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var uuids []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, u)
+	}
+	return uuids, rows.Err()
+}
+
+// InsertCustomPolicyUsage adds a custom policy usage entry for the given API.
+func (r *CustomPolicyRepo) InsertCustomPolicyUsage(policyUUID, apiUUID string) error {
+	query := `INSERT INTO gateway_custom_policy_usages (policy_uuid, api_uuid) VALUES (?, ?)`
+	_, err := r.db.Exec(r.db.Rebind(query), policyUUID, apiUUID)
+	return err
+}
+
+// DeleteCustomPolicyUsage removes the usage entry.
+func (r *CustomPolicyRepo) DeleteCustomPolicyUsage(policyUUID, apiUUID string) error {
+	query := `DELETE FROM gateway_custom_policy_usages WHERE policy_uuid = ? AND api_uuid = ?`
+	_, err := r.db.Exec(r.db.Rebind(query), policyUUID, apiUUID)
+	return err
+}
+
 // DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
 func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error {
 	deleteQuery := `

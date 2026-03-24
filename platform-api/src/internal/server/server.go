@@ -171,7 +171,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo, devPortalRepo, publicationRepo,
-		subscriptionPlanRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
+		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger)
 	subscriptionService := service.NewSubscriptionService(apiRepo, subscriptionRepo, gatewayEventsService, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, slogger)
